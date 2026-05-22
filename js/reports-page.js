@@ -19,9 +19,96 @@ const ReportsPage = (() => {
     let _expandedRow = null;
     let _editingId = null;
     let _modalHashtags = [];
+    let _reportTemplates = [];
+    let _activeTemplateId = 'finance-day-summary';
+    let _reportTableState = null;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
+    const CUSTOM_TEMPLATE_STORAGE_KEY = 'eventgenix_report_table_templates_v1';
+    const REPORT_TABLE_TEMPLATES = [
+        {
+            id: 'finance-day-summary',
+            title: 'Фінансовий підсумок дня',
+            category: 'Фінанси',
+            layout: 'financial',
+            description: 'Доходи, витрати, маржа й короткий коментар по зміні.',
+            purpose: 'Швидкий щоденний фінансовий звіт для бухгалтера або директора.',
+            defaultReport: { type: 'income', category: 'Інше', hashtag: 'table-finance', amountColumn: 'profit' },
+            columns: [
+                { key: 'date', label: 'Дата', type: 'date', placeholder: '2026-05-22' },
+                { key: 'income', label: 'Доходи', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'expense', label: 'Витрати', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'profit', label: 'Прибуток', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'comment', label: 'Коментар', type: 'text', placeholder: 'Що вплинуло на результат?' }
+            ],
+            rows: [
+                { date: '', income: '', expense: '', profit: '', comment: '' },
+                { date: '', income: '', expense: '', profit: '', comment: '' }
+            ]
+        },
+        {
+            id: 'operations-checklist',
+            title: 'Операційний чекліст',
+            category: 'Операції',
+            layout: 'checklist',
+            description: 'Контроль зон, відповідальних і статусів перед/після зміни.',
+            purpose: 'Стандартна таблиця для операційного контролю без фінансового перерахунку.',
+            defaultReport: { type: 'expense', category: 'Офіс', hashtag: 'table-ops', amountColumn: null },
+            columns: [
+                { key: 'zone', label: 'Зона', type: 'text', placeholder: 'Reception / зал / кухня' },
+                { key: 'task', label: 'Що перевірити', type: 'text', placeholder: 'Каса, чистота, реквізит...' },
+                { key: 'owner', label: 'Відповідальний', type: 'text', placeholder: 'Імʼя' },
+                { key: 'status', label: 'Статус', type: 'text', placeholder: 'OK / ризик / зробити' },
+                { key: 'note', label: 'Нотатка', type: 'text', placeholder: 'Що потрібно доробити?' }
+            ],
+            rows: [
+                { zone: 'Reception', task: 'Каса і чеки', owner: '', status: '', note: '' },
+                { zone: 'Зал', task: 'Чистота та безпека', owner: '', status: '', note: '' },
+                { zone: 'Склад', task: 'Реквізит і витратники', owner: '', status: '', note: '' }
+            ]
+        },
+        {
+            id: 'payroll-staff',
+            title: 'Команда / payroll',
+            category: 'HR',
+            layout: 'payroll',
+            description: 'Години, ставки, бонуси й сума до виплати по працівниках.',
+            purpose: 'Таблична заготовка для передачі зарплатного звіту у фінанси.',
+            defaultReport: { type: 'expense', category: 'ЗП', hashtag: 'table-payroll', amountColumn: 'total' },
+            columns: [
+                { key: 'employee', label: 'Працівник', type: 'text', placeholder: 'Імʼя' },
+                { key: 'role', label: 'Роль', type: 'text', placeholder: 'Аніматор / адміністратор' },
+                { key: 'hours', label: 'Години', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'rate', label: 'Ставка', type: 'number', placeholder: '0' },
+                { key: 'bonus', label: 'Бонус', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'total', label: 'До виплати', type: 'number', placeholder: '0', total: 'sum' }
+            ],
+            rows: [
+                { employee: '', role: '', hours: '', rate: '', bonus: '', total: '' },
+                { employee: '', role: '', hours: '', rate: '', bonus: '', total: '' }
+            ]
+        },
+        {
+            id: 'custom-table',
+            title: 'Кастомна таблиця',
+            category: 'Custom',
+            layout: 'custom',
+            description: 'Порожній універсальний формат, коли потрібен нестандартний звіт.',
+            purpose: 'Швидкий старт для ручного табличного звіту.',
+            defaultReport: { type: 'expense', category: 'Інше', hashtag: 'table-custom', amountColumn: 'value' },
+            columns: [
+                { key: 'item', label: 'Позиція', type: 'text', placeholder: 'Назва рядка' },
+                { key: 'value', label: 'Значення', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'comment', label: 'Коментар', type: 'text', placeholder: 'Деталі' }
+            ],
+            rows: [
+                { item: '', value: '', comment: '' },
+                { item: '', value: '', comment: '' },
+                { item: '', value: '', comment: '' }
+            ]
+        }
+    ];
 
     // ==========================================
     // HELPERS
@@ -71,10 +158,119 @@ const ReportsPage = (() => {
     }
 
     function esc(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    function clone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+    }
+
+    function slugifyKey(value, fallback = 'column') {
+        const raw = String(value || fallback).trim().toLowerCase();
+        const ascii = raw
+            .normalize('NFKD')
+            .replace(/[^\w\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+        return ascii || `${fallback}-${Date.now()}`;
+    }
+
+    function normalizeReportRawData(rawData) {
+        if (!rawData) return {};
+        if (typeof rawData === 'object') return rawData;
+        try {
+            return JSON.parse(rawData);
+        } catch {
+            return {};
+        }
+    }
+
+    function parseNumber(value) {
+        if (value === null || value === undefined || value === '') return 0;
+        const normalized = String(value).replace(/\s/g, '').replace(',', '.');
+        const num = Number(normalized);
+        return Number.isFinite(num) ? num : 0;
+    }
+
+    function csvCell(value) {
+        const text = String(value ?? '');
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    function normalizeTemplate(template, source = 'standard') {
+        if (!template || !Array.isArray(template.columns) || template.columns.length === 0) {
+            throw new Error('У шаблоні мають бути columns');
+        }
+        const columns = template.columns.map((col, index) => {
+            const label = String(col.label || col.title || col.key || `Колонка ${index + 1}`).trim();
+            return {
+                key: slugifyKey(col.key || label, `col-${index + 1}`),
+                label,
+                type: ['number', 'date', 'text'].includes(col.type) ? col.type : 'text',
+                placeholder: String(col.placeholder || ''),
+                total: col.total === 'sum' ? 'sum' : null
+            };
+        });
+        const seen = new Set();
+        columns.forEach((col, index) => {
+            let key = col.key;
+            while (seen.has(key)) key = `${col.key}-${index + 1}`;
+            seen.add(key);
+            col.key = key;
+        });
+        const rows = Array.isArray(template.rows) && template.rows.length
+            ? template.rows
+            : [Object.fromEntries(columns.map(col => [col.key, '']))];
+
+        return {
+            id: String(template.id || `${source}-${Date.now()}`),
+            title: String(template.title || 'Новий шаблон'),
+            category: String(template.category || 'Custom'),
+            layout: String(template.layout || 'custom'),
+            description: String(template.description || 'Завантажений шаблон таблиці.'),
+            purpose: String(template.purpose || ''),
+            source,
+            defaultReport: {
+                type: template.defaultReport?.type === 'income' ? 'income' : 'expense',
+                category: String(template.defaultReport?.category || 'Інше'),
+                hashtag: String(template.defaultReport?.hashtag || `table-${source}`),
+                amountColumn: template.defaultReport?.amountColumn || columns.find(col => col.type === 'number')?.key || null
+            },
+            columns,
+            rows: rows.map(row => {
+                const normalizedRow = {};
+                columns.forEach(col => {
+                    normalizedRow[col.key] = row?.[col.key] ?? '';
+                });
+                return normalizedRow;
+            })
+        };
+    }
+
+    function loadCustomReportTemplates() {
+        try {
+            const raw = localStorage.getItem(CUSTOM_TEMPLATE_STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(item => normalizeTemplate(item, 'uploaded'));
+        } catch (err) {
+            console.warn('Failed to load custom report templates', err);
+            return [];
+        }
+    }
+
+    function saveCustomReportTemplates() {
+        try {
+            const custom = _reportTemplates.filter(t => t.source === 'uploaded');
+            localStorage.setItem(CUSTOM_TEMPLATE_STORAGE_KEY, JSON.stringify(custom));
+        } catch (err) {
+            console.warn('Failed to save custom report templates', err);
+        }
     }
 
     const STATUS_LABELS = {
@@ -121,6 +317,8 @@ const ReportsPage = (() => {
             }
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
+
+        setupReportTemplateWorkspace();
 
         const periodFilter = document.getElementById('periodFilter');
         if (periodFilter) {
@@ -303,6 +501,293 @@ const ReportsPage = (() => {
     }
 
     // ==========================================
+    // RENDER: Template-driven report workspace
+    // ==========================================
+
+    function setupReportTemplateWorkspace() {
+        _reportTemplates = [
+            ...REPORT_TABLE_TEMPLATES.map(template => normalizeTemplate(clone(template), 'standard')),
+            ...loadCustomReportTemplates()
+        ];
+
+        document.getElementById('reportTemplateUploadBtn')?.addEventListener('click', () => {
+            document.getElementById('reportTemplateUpload')?.click();
+        });
+        document.getElementById('reportTemplateUpload')?.addEventListener('change', importReportTemplateFile);
+        document.getElementById('reportTemplateResetBtn')?.addEventListener('click', resetReportTemplateTable);
+        document.getElementById('reportTemplateAddRowBtn')?.addEventListener('click', addReportTemplateRow);
+        document.getElementById('reportTemplateExportCsvBtn')?.addEventListener('click', exportReportTemplateCsv);
+        document.getElementById('reportTemplateSaveBtn')?.addEventListener('click', createReportFromTemplate);
+
+        document.getElementById('reportTemplateCards')?.addEventListener('click', event => {
+            const card = event.target.closest('[data-report-template-id]');
+            if (!card) return;
+            loadReportTemplate(card.dataset.reportTemplateId);
+        });
+
+        const table = document.getElementById('reportSheetTable');
+        table?.addEventListener('input', handleReportSheetInput);
+        table?.addEventListener('click', event => {
+            const deleteBtn = event.target.closest('[data-report-row-delete]');
+            if (!deleteBtn) return;
+            deleteReportTemplateRow(Number(deleteBtn.dataset.reportRowDelete));
+        });
+
+        renderReportTemplateCards();
+        loadReportTemplate(_activeTemplateId, { silent: true });
+    }
+
+    function renderReportTemplateCards() {
+        const container = document.getElementById('reportTemplateCards');
+        if (!container) return;
+
+        container.innerHTML = _reportTemplates.map(template => `
+            <button type="button"
+                class="rpt-template-card ${template.id === _activeTemplateId ? 'active' : ''}"
+                data-report-template-id="${esc(template.id)}"
+                role="option"
+                aria-selected="${template.id === _activeTemplateId}">
+                <span class="rpt-template-card-title">${esc(template.title)}</span>
+                <span class="rpt-template-card-desc">${esc(template.description)}</span>
+                <span class="rpt-template-card-meta">
+                    <span class="rpt-template-chip">${esc(template.category)}</span>
+                    <span class="rpt-template-chip">${template.columns.length} колонок</span>
+                    ${template.source === 'uploaded' ? '<span class="rpt-template-chip">uploaded</span>' : ''}
+                </span>
+            </button>
+        `).join('');
+    }
+
+    function setTemplateStatus(message = '') {
+        const status = document.getElementById('reportTemplateStatus');
+        if (status) status.textContent = message;
+    }
+
+    function loadReportTemplate(templateId, options = {}) {
+        const template = _reportTemplates.find(t => t.id === templateId) || _reportTemplates[0];
+        if (!template) return;
+
+        _activeTemplateId = template.id;
+        _reportTableState = {
+            ...clone(template),
+            rows: template.rows.map(row => ({ ...row }))
+        };
+
+        renderReportTemplateCards();
+        renderReportTableWorkspace();
+        if (!options.silent) setTemplateStatus(`Шаблон "${template.title}" завантажено`);
+    }
+
+    function renderReportTableWorkspace() {
+        const state = _reportTableState;
+        const table = document.getElementById('reportSheetTable');
+        if (!state || !table) return;
+
+        const title = document.getElementById('reportSheetTitle');
+        const meta = document.getElementById('reportSheetMeta');
+        if (title) title.textContent = state.title;
+        if (meta) {
+            meta.textContent = `${state.purpose || state.description} · ${state.rows.length} рядків · ${state.columns.length} колонок`;
+        }
+
+        const head = `
+            <thead>
+                <tr>
+                    <th class="rpt-sheet-row-index">#</th>
+                    ${state.columns.map(col => `<th>${esc(col.label)}</th>`).join('')}
+                    <th aria-label="Дії">Дії</th>
+                </tr>
+            </thead>
+        `;
+        const body = `
+            <tbody>
+                ${state.rows.map((row, rowIndex) => `
+                    <tr>
+                        <td class="rpt-sheet-row-index">${rowIndex + 1}</td>
+                        ${state.columns.map(col => `
+                            <td>
+                                <input class="rpt-sheet-input"
+                                    data-row-index="${rowIndex}"
+                                    data-column-key="${esc(col.key)}"
+                                    type="${col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'}"
+                                    step="${col.type === 'number' ? '0.01' : ''}"
+                                    value="${esc(row[col.key])}"
+                                    placeholder="${esc(col.placeholder)}"
+                                    aria-label="${esc(col.label)} рядок ${rowIndex + 1}">
+                            </td>
+                        `).join('')}
+                        <td><button type="button" class="rpt-sheet-delete" data-report-row-delete="${rowIndex}" title="Видалити рядок">×</button></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        const totals = renderReportSheetTotals();
+        table.innerHTML = head + body + totals;
+    }
+
+    function renderReportSheetTotals() {
+        if (!_reportTableState) return '';
+        const totalColumns = _reportTableState.columns.filter(col => col.total === 'sum');
+        if (!totalColumns.length) return '';
+        const totalsByKey = new Map(totalColumns.map(col => [
+            col.key,
+            _reportTableState.rows.reduce((sum, row) => sum + parseNumber(row[col.key]), 0)
+        ]));
+        return `
+            <tfoot>
+                <tr class="rpt-sheet-total-row">
+                    <td>Разом</td>
+                    ${_reportTableState.columns.map(col => `<td>${totalsByKey.has(col.key) ? formatAmount(totalsByKey.get(col.key)) : ''}</td>`).join('')}
+                    <td></td>
+                </tr>
+            </tfoot>
+        `;
+    }
+
+    function handleReportSheetInput(event) {
+        const input = event.target.closest('.rpt-sheet-input');
+        if (!input || !_reportTableState) return;
+        const rowIndex = Number(input.dataset.rowIndex);
+        const key = input.dataset.columnKey;
+        if (!_reportTableState.rows[rowIndex] || !key) return;
+        _reportTableState.rows[rowIndex][key] = input.value;
+        setTemplateStatus('Є незбережені зміни в таблиці');
+    }
+
+    function addReportTemplateRow() {
+        if (!_reportTableState) return;
+        const row = Object.fromEntries(_reportTableState.columns.map(col => [col.key, '']));
+        _reportTableState.rows.push(row);
+        renderReportTableWorkspace();
+        setTemplateStatus('Додано рядок');
+    }
+
+    function deleteReportTemplateRow(rowIndex) {
+        if (!_reportTableState || _reportTableState.rows.length <= 1) {
+            setTemplateStatus('У таблиці має лишитися хоча б один рядок');
+            return;
+        }
+        _reportTableState.rows.splice(rowIndex, 1);
+        renderReportTableWorkspace();
+        setTemplateStatus('Рядок видалено');
+    }
+
+    function resetReportTemplateTable() {
+        loadReportTemplate(_activeTemplateId);
+    }
+
+    async function importReportTemplateFile(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const template = normalizeTemplate({
+                ...parsed,
+                id: parsed.id || `uploaded-${Date.now()}`
+            }, 'uploaded');
+
+            _reportTemplates = _reportTemplates.filter(t => t.id !== template.id);
+            _reportTemplates.push(template);
+            saveCustomReportTemplates();
+            renderReportTemplateCards();
+            loadReportTemplate(template.id);
+            showNotification('Шаблон таблиці завантажено');
+        } catch (err) {
+            showNotification('Не вдалося завантажити шаблон: ' + err.message, 'error');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    function buildReportTablePayload() {
+        if (!_reportTableState) return null;
+        return {
+            reportTableTemplate: {
+                id: _reportTableState.id,
+                title: _reportTableState.title,
+                category: _reportTableState.category,
+                layout: _reportTableState.layout,
+                source: _reportTableState.source,
+                columns: _reportTableState.columns,
+                rows: _reportTableState.rows,
+                generatedAt: new Date().toISOString()
+            }
+        };
+    }
+
+    function getTemplateReportAmount() {
+        const state = _reportTableState;
+        if (!state) return 0;
+        const amountColumn = state.defaultReport?.amountColumn;
+        if (!amountColumn) return 0;
+        return Math.max(0, Math.round(state.rows.reduce((sum, row) => sum + parseNumber(row[amountColumn]), 0)));
+    }
+
+    function exportReportTemplateCsv() {
+        if (!_reportTableState) return;
+        const columns = _reportTableState.columns;
+        const header = columns.map(col => csvCell(col.label)).join(';');
+        const rows = _reportTableState.rows.map(row => columns.map(col => csvCell(row[col.key])).join(';'));
+        const csv = '\ufeff' + [header, ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${slugifyKey(_reportTableState.title, 'report')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setTemplateStatus('CSV експортовано');
+    }
+
+    async function createReportFromTemplate() {
+        if (!_reportTableState) return;
+        const reportDefaults = _reportTableState.defaultReport || {};
+        const amount = getTemplateReportAmount();
+        const payload = buildReportTablePayload();
+
+        try {
+            await apiRequest('POST', '/api/reports', {
+                type: reportDefaults.type || 'expense',
+                amount,
+                description: `Табличний звіт: ${_reportTableState.title}`,
+                category: reportDefaults.category || _reportTableState.category || 'Інше',
+                hashtags: [reportDefaults.hashtag || 'table-report'].filter(Boolean),
+                submittedVia: 'web-template',
+                rawData: payload
+            });
+            showNotification('Табличний звіт створено');
+            setTemplateStatus('Звіт створено і збережено в реєстрі');
+            await Promise.all([loadReports(), loadSummary(), loadHashtags()]);
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
+    }
+
+    function renderReportRawTemplatePreview(rawData) {
+        const data = normalizeReportRawData(rawData);
+        const table = data.reportTableTemplate;
+        if (!table || !Array.isArray(table.columns) || !Array.isArray(table.rows)) return '';
+
+        const columns = table.columns.slice(0, 6);
+        const rows = table.rows.slice(0, 4);
+        return `
+            <div class="rpt-raw-table-preview">
+                <table>
+                    <thead>
+                        <tr>${columns.map(col => `<th>${esc(col.label || col.key)}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(row => `<tr>${columns.map(col => `<td>${esc(row[col.key]) || '—'}</td>`).join('')}</tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // ==========================================
     // RENDER: Hashtag Dashboard
     // ==========================================
 
@@ -450,6 +935,7 @@ const ReportsPage = (() => {
                     ${report.ocrText ? `<p><strong>OCR текст:</strong> ${esc(report.ocrText)}</p>` : ''}
                     ${report.voiceTranscript ? `<p><strong>Голосовий:</strong> ${esc(report.voiceTranscript)}</p>` : ''}
                     <p><strong>Канал:</strong> ${esc(report.submittedVia) || 'web'}</p>
+                    ${renderReportRawTemplatePreview(report.rawData)}
                     ${report.accountantName ? `<p><strong>Бухгалтер:</strong> ${esc(report.accountantName)}</p>` : ''}
                     ${report.processedAt ? `<p><strong>Опрацьовано:</strong> ${formatDateTime(report.processedAt)}</p>` : ''}
                     <p><strong>Створено:</strong> ${formatDateTime(report.createdAt)}</p>
@@ -696,6 +1182,9 @@ const ReportsPage = (() => {
         toggleHashtagActive,
         addHashtagFromSelect,
         addHashtagCustom,
-        removeModalHashtag
+        removeModalHashtag,
+        loadReportTemplate,
+        importReportTemplateFile,
+        exportReportTemplateCsv
     };
 })();

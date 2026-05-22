@@ -340,6 +340,9 @@ checkPage('reports.html', (doc, html) => {
     check('Reports page has no chart canvases or Chart.js CDN', !doc.getElementById('barChart') && !doc.getElementById('pieChart') && !doc.getElementById('lineChart') && !html.includes('cdn.jsdelivr.net/npm/chart.js'));
     check('Reports page script no longer renders Chart.js widgets', !reportsCode.includes('renderCharts') && !reportsCode.includes('new Chart(') && !reportsCode.includes('rpt-chart'));
     check('Reports manual modal uses page-scoped polished controls', !!doc.querySelector('#reportModal .rpt-report-modal') && html.includes('#reportForm select.form-control') && html.includes('appearance: none') && html.includes('rpt-hashtag-controls') && !html.includes('id="reportHashtagSelect" class="form-control" style='));
+    check('Reports page exposes template-driven table workspace', !!doc.getElementById('report-template-workspace') && !!doc.getElementById('reportTemplateCards') && !!doc.getElementById('reportSheetTable') && !!doc.getElementById('reportTemplateUpload'));
+    check('Reports template workflow supports standard/uploaded schemas and CSV export', reportsCode.includes('const REPORT_TABLE_TEMPLATES') && reportsCode.includes('function loadReportTemplate') && reportsCode.includes('function importReportTemplateFile') && reportsCode.includes('function exportReportTemplateCsv') && reportsCode.includes('reportTableTemplate'));
+    check('Reports template save uses existing rawData report contract', reportsCode.includes("rawData: payload") && reportsCode.includes("submittedVia: 'web-template'"));
 });
 
 // ═══════════════════════════════════════════════════

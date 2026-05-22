@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.38">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.38">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.38">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.38">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.38">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.38">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.38">
+    <link rel="stylesheet" href="css/base.css?v=0.61.39">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.39">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.39">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.39">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.39">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.39">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -117,6 +117,316 @@
         }
         .rpt-filter-btn.primary { background: var(--primary); color: white; }
         .rpt-filter-btn.secondary { background: var(--gray-100); color: var(--gray-600); }
+
+        /* Template-driven table workspace */
+        .rpt-template-workspace {
+            margin: 0 0 20px;
+            padding: 18px;
+            border: 1px solid rgba(99,102,241,0.16);
+            border-radius: 18px;
+            background:
+                linear-gradient(135deg, rgba(16,185,129,0.08), rgba(99,102,241,0.05)),
+                var(--white);
+            box-shadow: var(--shadow-xs);
+        }
+        .rpt-template-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: start;
+            margin-bottom: 14px;
+        }
+        .rpt-template-eyebrow {
+            margin: 0 0 4px;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #059669;
+        }
+        .rpt-template-head h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .rpt-template-head p {
+            margin: 6px 0 0;
+            max-width: 760px;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--gray-500);
+        }
+        .rpt-template-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .rpt-template-action {
+            min-height: 40px;
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(99,102,241,0.20);
+            background: rgba(255,255,255,0.82);
+            color: var(--gray-700);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 850;
+            cursor: pointer;
+            transition: transform .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
+        }
+        .rpt-template-action:hover {
+            transform: translateY(-1px);
+            border-color: rgba(16,185,129,0.45);
+            color: #047857;
+        }
+        .rpt-template-action.primary {
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+            border-color: transparent;
+        }
+        .rpt-template-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .rpt-template-card {
+            border: 1px solid rgba(148,163,184,0.24);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.76);
+            padding: 14px;
+            text-align: left;
+            cursor: pointer;
+            min-height: 116px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        .rpt-template-card:hover,
+        .rpt-template-card:focus-visible {
+            outline: none;
+            transform: translateY(-1px);
+            border-color: rgba(16,185,129,0.50);
+            box-shadow: 0 12px 28px rgba(15,23,42,0.08);
+        }
+        .rpt-template-card.active {
+            border-color: rgba(16,185,129,0.75);
+            background: linear-gradient(135deg, rgba(16,185,129,0.14), rgba(255,255,255,0.86));
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.10);
+        }
+        .rpt-template-card-title {
+            font-size: 14px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .rpt-template-card-desc {
+            font-size: 12px;
+            line-height: 1.35;
+            color: var(--gray-500);
+        }
+        .rpt-template-card-meta {
+            margin-top: auto;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .rpt-template-chip {
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: rgba(99,102,241,0.10);
+            color: #4F46E5;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .rpt-sheet-panel {
+            border: 1px solid rgba(148,163,184,0.22);
+            border-radius: 16px;
+            background: rgba(248,250,252,0.78);
+            overflow: hidden;
+        }
+        .rpt-sheet-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(148,163,184,0.20);
+        }
+        .rpt-sheet-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .rpt-sheet-meta {
+            margin: 4px 0 0;
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+        .rpt-sheet-status {
+            min-height: 18px;
+            margin-top: 8px;
+            color: #047857;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .rpt-sheet-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .rpt-sheet-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            background: #FFFFFF;
+        }
+        .rpt-sheet-table {
+            width: 100%;
+            min-width: 760px;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .rpt-sheet-table th,
+        .rpt-sheet-table td {
+            border: 1px solid rgba(148,163,184,0.22);
+            padding: 0;
+            vertical-align: stretch;
+        }
+        .rpt-sheet-table th {
+            background: #F1F5F9;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            padding: 9px 10px;
+            white-space: nowrap;
+        }
+        .rpt-sheet-row-index {
+            width: 46px;
+            min-width: 46px;
+            text-align: center;
+            background: #F8FAFC;
+            color: #64748B;
+            font-weight: 900;
+            user-select: none;
+        }
+        .rpt-sheet-input {
+            width: 100%;
+            min-width: 130px;
+            min-height: 42px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #0F172A;
+            padding: 10px 11px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            box-sizing: border-box;
+        }
+        .rpt-sheet-input:focus {
+            outline: 2px solid rgba(16,185,129,0.55);
+            outline-offset: -2px;
+            background: rgba(236,253,245,0.68);
+        }
+        .rpt-sheet-total-row td {
+            background: #F8FAFC;
+            padding: 10px 11px;
+            font-weight: 900;
+            color: #0F172A;
+        }
+        .rpt-sheet-delete {
+            min-width: 42px;
+            min-height: 42px;
+            border: 0;
+            background: transparent;
+            color: #EF4444;
+            cursor: pointer;
+            font-weight: 900;
+        }
+        .rpt-raw-table-preview {
+            margin-top: 8px;
+            border: 1px solid rgba(148,163,184,0.22);
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--white);
+        }
+        .rpt-raw-table-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .rpt-raw-table-preview th,
+        .rpt-raw-table-preview td {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(148,163,184,0.18);
+            text-align: left;
+        }
+        .rpt-raw-table-preview th {
+            background: rgba(99,102,241,0.08);
+            font-weight: 900;
+        }
+
+        body.dark-mode .rpt-template-workspace {
+            background:
+                linear-gradient(135deg, rgba(16,185,129,0.16), rgba(99,102,241,0.08)),
+                #111827;
+            border-color: rgba(52,211,153,0.20);
+        }
+        body.dark-mode .rpt-template-head h3,
+        body.dark-mode .rpt-template-card-title,
+        body.dark-mode .rpt-sheet-title {
+            color: #F8FAFC;
+        }
+        body.dark-mode .rpt-template-head p,
+        body.dark-mode .rpt-template-card-desc,
+        body.dark-mode .rpt-sheet-meta {
+            color: #94A3B8;
+        }
+        body.dark-mode .rpt-template-action,
+        body.dark-mode .rpt-template-card {
+            background: rgba(15,23,42,0.82);
+            border-color: rgba(148,163,184,0.24);
+            color: #E2E8F0;
+        }
+        body.dark-mode .rpt-template-card.active {
+            background: linear-gradient(135deg, rgba(16,185,129,0.20), rgba(15,23,42,0.92));
+            border-color: rgba(52,211,153,0.58);
+        }
+        body.dark-mode .rpt-sheet-panel {
+            background: rgba(15,23,42,0.78);
+            border-color: rgba(148,163,184,0.22);
+        }
+        body.dark-mode .rpt-sheet-table-wrap,
+        body.dark-mode .rpt-raw-table-preview {
+            background: #0F172A;
+        }
+        body.dark-mode .rpt-sheet-table th,
+        body.dark-mode .rpt-sheet-row-index,
+        body.dark-mode .rpt-sheet-total-row td,
+        body.dark-mode .rpt-raw-table-preview th {
+            background: #172033;
+            color: #CBD5E1;
+        }
+        body.dark-mode .rpt-sheet-table th,
+        body.dark-mode .rpt-sheet-table td,
+        body.dark-mode .rpt-raw-table-preview th,
+        body.dark-mode .rpt-raw-table-preview td {
+            border-color: rgba(148,163,184,0.18);
+        }
+        body.dark-mode .rpt-sheet-input {
+            color: #F8FAFC;
+        }
+        body.dark-mode .rpt-sheet-input:focus {
+            background: rgba(16,185,129,0.14);
+        }
 
         /* Table */
         .rpt-table-wrap {
@@ -530,6 +840,17 @@
             #reportForm .rpt-hashtag-controls .btn-page-secondary {
                 width: 100%;
             }
+            .rpt-template-head,
+            .rpt-sheet-toolbar {
+                grid-template-columns: 1fr;
+            }
+            .rpt-template-actions,
+            .rpt-sheet-buttons {
+                justify-content: stretch;
+            }
+            .rpt-template-action {
+                flex: 1 1 100%;
+            }
         }
     </style>
 </head>
@@ -619,6 +940,45 @@
                     <div class="rpt-card-label">Очікують</div>
                 </div>
             </div>
+
+            <!-- Template-driven report table workspace -->
+            <section class="rpt-template-workspace" id="report-template-workspace" aria-labelledby="reportTemplateTitle">
+                <div class="rpt-template-head">
+                    <div>
+                        <p class="rpt-template-eyebrow">Excel-like workflow</p>
+                        <h3 id="reportTemplateTitle">Шаблони таблиць звітів</h3>
+                        <p>
+                            Обери стандартний формат, заповни таблицю як у Excel, експортуй CSV або створи запис звіту.
+                            Завантажений JSON-шаблон може мати власні колонки, рядки й підказку для оператора.
+                        </p>
+                    </div>
+                    <div class="rpt-template-actions">
+                        <button type="button" class="rpt-template-action" id="reportTemplateUploadBtn">Завантажити шаблон</button>
+                        <input type="file" id="reportTemplateUpload" accept="application/json,.json" hidden>
+                        <button type="button" class="rpt-template-action" id="reportTemplateResetBtn">Скинути таблицю</button>
+                        <button type="button" class="rpt-template-action primary" id="reportTemplateSaveBtn">Створити звіт з таблиці</button>
+                    </div>
+                </div>
+
+                <div class="rpt-template-cards" id="reportTemplateCards" role="listbox" aria-label="Стандартні шаблони звітів"></div>
+
+                <div class="rpt-sheet-panel" id="reportSheetPanel">
+                    <div class="rpt-sheet-toolbar">
+                        <div>
+                            <h4 class="rpt-sheet-title" id="reportSheetTitle">Шаблон не вибрано</h4>
+                            <p class="rpt-sheet-meta" id="reportSheetMeta">Оберіть шаблон, щоб завантажити структуру таблиці.</p>
+                            <div class="rpt-sheet-status" id="reportTemplateStatus" aria-live="polite"></div>
+                        </div>
+                        <div class="rpt-sheet-buttons">
+                            <button type="button" class="rpt-template-action" id="reportTemplateAddRowBtn">+ Рядок</button>
+                            <button type="button" class="rpt-template-action" id="reportTemplateExportCsvBtn">CSV</button>
+                        </div>
+                    </div>
+                    <div class="rpt-sheet-table-wrap">
+                        <table class="rpt-sheet-table" id="reportSheetTable" aria-label="Редагована таблиця звіту"></table>
+                    </div>
+                </div>
+            </section>
 
             <!-- Hashtag dashboard cards -->
             <div class="rpt-hashtag-dashboard" id="hashtagDashboard"></div>
@@ -792,13 +1152,13 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=0.61.38"></script>
-    <script src="js/notification.js?v=0.61.38"></script>
-    <script src="js/api.js?v=0.61.38"></script>
-    <script src="js/auth.js?v=0.61.38"></script>
-    <script src="js/components/sidebar.js?v=0.61.38"></script>
+    <script src="js/config.js?v=0.61.39"></script>
+    <script src="js/notification.js?v=0.61.39"></script>
+    <script src="js/api.js?v=0.61.39"></script>
+    <script src="js/auth.js?v=0.61.39"></script>
+    <script src="js/components/sidebar.js?v=0.61.39"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/reports-page.js?v=0.61.38"></script><script src="js/ui.js?v=0.61.38"></script>
-    <script src="js/alerts.js?v=0.61.38"></script>
+    <script src="js/reports-page.js?v=0.61.39"></script><script src="js/ui.js?v=0.61.39"></script>
+    <script src="js/alerts.js?v=0.61.39"></script>
 </body>
 </html>

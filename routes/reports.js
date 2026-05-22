@@ -35,6 +35,16 @@ function sanitizeHashtags(tags) {
     )];
 }
 
+function parseRawData(val) {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try {
+        return JSON.parse(val);
+    } catch {
+        return {};
+    }
+}
+
 function mapReportRow(r) {
     return {
         id: r.id,
@@ -48,7 +58,7 @@ function mapReportRow(r) {
         photoUrl: r.photo_url,
         ocrText: r.ocr_text,
         voiceTranscript: r.voice_transcript,
-        rawData: r.raw_data,
+        rawData: parseRawData(r.raw_data),
         status: r.status,
         assignedTo: r.assigned_to,
         assignedAt: r.assigned_at,
@@ -432,7 +442,7 @@ router.put('/:id', async (req, res) => {
         const {
             type, amount, description, category,
             status, photoUrl, ocrText,
-            hashtags, hashtagActive
+            hashtags, hashtagActive, rawData
         } = req.body;
 
         const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [id]);
@@ -456,6 +466,7 @@ router.put('/:id', async (req, res) => {
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
         if (hashtags !== undefined) { params.push(JSON.stringify(sanitizeHashtags(hashtags))); updates.push(`hashtags = $${params.length}`); }
         if (hashtagActive !== undefined) { params.push(!!hashtagActive); updates.push(`hashtag_active = $${params.length}`); }
+        if (rawData !== undefined) { params.push(JSON.stringify(rawData || {})); updates.push(`raw_data = $${params.length}`); }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });

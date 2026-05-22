@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.39 - Reports Template Workflow
+
+### Reports Template Workflow [codex]
+- **Звіти** - додано Excel-like workspace: оператор обирає шаблон, редагує структуровану таблицю, експортує CSV або створює запис звіту.
+- **Шаблони** - перший набір покриває фінансовий підсумок дня, операційний чекліст, payroll/команду та кастомну таблицю.
+- **Upload templates** - JSON-шаблони з власними колонками, рядками, категорією й підказкою можна завантажити у Reports workspace без нового dependency.
+- **Raw data contract** - таблична структура зберігається в існуючому `rawData` звіту; backend `PUT` тепер також приймає оновлення `rawData` без DB-міграції.
+- **Regression guard** - UI smoke check фіксує template workspace, upload control, CSV export path і rawData save contract.
+
+---
+
 ## v0.61.38 - Topbar Assistant Motion Polish
 
 ### Topbar Assistant Motion Polish [codex]

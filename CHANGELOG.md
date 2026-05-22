@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.38 - Topbar Assistant Motion Polish
+
+### Topbar Assistant Motion Polish [codex]
+- **Topbar** - шапку CRM зібрано в один coherent product header: компактний статус Помічника, центральна command-строка та єдиний utility cluster.
+- **Помічник** - зменшено візуальну домінантність rail: прибрано важкий неоновий контейнер, залишено компактний assistant status і slim contextual hint без layout jump.
+- **Анімації** - додано state-based micro-interactions для idle, hover, listening, thinking/loading, success і error; motion обмежений transform/opacity та поважає `prefers-reduced-motion`.
+- **Theme / Exit** - theme toggle використовує SVG glyphs замість emoji-style символів, а `Вийти` вирівняно з пошуком і theme як менш домінантний ghost-control.
+- **Regression guard** - UI smoke check фіксує компактний topbar contract, unified 40px controls, assistant motion tokens і SVG theme glyphs.
+
+---
+
 ## v0.61.37 - Profile Task Workflow Polish
 
 ### Profile Task Workflow Polish [codex]

@@ -1932,8 +1932,12 @@ function initHeaderThemeToggle() {
         btn.className = 'header-theme-toggle';
         btn.innerHTML = `
             <span class="header-theme-track" aria-hidden="true">
-                <span class="header-theme-glyph header-theme-glyph--sun">☀</span>
-                <span class="header-theme-glyph header-theme-glyph--moon">☾</span>
+                <span class="header-theme-glyph header-theme-glyph--sun">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                </span>
+                <span class="header-theme-glyph header-theme-glyph--moon">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M21 14.8A8.5 8.5 0 0 1 9.2 3a7 7 0 1 0 11.8 11.8Z"/></svg>
+                </span>
                 <span class="header-theme-thumb"></span>
             </span>`;
 

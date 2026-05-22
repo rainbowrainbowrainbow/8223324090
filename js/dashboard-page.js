@@ -106,7 +106,8 @@ const DashboardPage = (() => {
         if (typeof customConfirm === 'function') {
             return customConfirm(message, 'Підтвердження');
         }
-        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+        notifyDashboardIssue('Підтвердження недоступне. Оновіть сторінку і повторіть дію.');
+        return false;
     }
 
     const BOARD_RELATION_LABELS = {
@@ -745,9 +746,11 @@ const DashboardPage = (() => {
         const draftSavedAt = draft.updatedAt ? new Date(draft.updatedAt).getTime() : 0;
         if (!draftSavedAt || draftSavedAt <= serverSavedAt) return;
         const message = 'Є локальна незбережена версія board mode. Відновити її?';
-        const shouldRestore = typeof confirmModal === 'function'
-            ? await confirmModal(message, { type: 'warning', okText: 'Відновити', cancelText: 'Не зараз' })
-            : window.confirm(message);
+        const shouldRestore = await confirmDashboardAction(message, {
+            type: 'warning',
+            okText: 'Відновити',
+            cancelText: 'Не зараз'
+        });
         if (!shouldRestore) {
             localStorage.removeItem(_boardRecoveryKey);
             return;
@@ -5076,9 +5079,11 @@ const DashboardPage = (() => {
         const hasContent = getBoardItems().length > 0 || getBoardDrawings().length > 0 || getBoardConnectors().length > 0;
         if (!hasContent) return;
         const message = 'Очистити всі нотатки, фігури, текстові блоки, frames і малювання на board?';
-        const confirmed = typeof confirmModal === 'function'
-            ? await confirmModal(message, { type: 'warning', okText: 'Очистити', cancelText: 'Скасувати' })
-            : window.confirm(message);
+        const confirmed = await confirmDashboardAction(message, {
+            type: 'warning',
+            okText: 'Очистити',
+            cancelText: 'Скасувати'
+        });
         if (!confirmed) return;
         pushBoardUndo('clear-all');
         _config.boardState.items = [];

@@ -329,11 +329,10 @@ const UnsafeDismissGuard = (() => {
         if (typeof customConfirm === 'function') {
             return !!(await customConfirm(message, 'Незбережені зміни'));
         }
-        try {
-            return typeof window.confirm === 'function' ? window.confirm(message) : false;
-        } catch {
-            return false;
+        if (typeof showNotification === 'function') {
+            showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
         }
+        return false;
     }
 
     async function attemptCloseEditableSurface(surface, closeFn, options = {}) {

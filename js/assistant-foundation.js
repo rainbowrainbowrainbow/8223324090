@@ -46,7 +46,10 @@
         if (typeof customConfirm === 'function') {
             return customConfirm(message, 'Підтвердження');
         }
-        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+        if (typeof showNotification === 'function') {
+            showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+        }
+        return false;
     }
 
     function compactText(value, limit = 180) {

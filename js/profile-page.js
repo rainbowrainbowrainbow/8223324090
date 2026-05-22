@@ -786,13 +786,16 @@ async function openProfilePasswordModal() {
 }
 
 async function revokeProfileSessions() {
-    const confirmed = typeof confirmModal === 'function'
-        ? await confirmModal('Завершити всі активні сесії? Поточний пристрій теж вийде з CRM.', {
+    let confirmed = false;
+    if (typeof confirmModal === 'function') {
+        confirmed = await confirmModal('Завершити всі активні сесії? Поточний пристрій теж вийде з CRM.', {
             type: 'danger',
             okText: 'Завершити сесії',
             cancelText: 'Скасувати'
-        })
-        : window.confirm?.('Завершити всі активні сесії?');
+        });
+    } else if (typeof showNotification === 'function') {
+        showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+    }
     if (!confirmed) return;
     const result = await profileSecurityFetch('/auth/security/revoke-sessions', { method: 'POST', body: '{}' });
     if (!result.success) {

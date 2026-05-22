@@ -1291,9 +1291,12 @@ async function openAccountAccessEditor(userId, button) {
 async function toggleAccountActive(userId, isActive, button) {
     if (!Number.isFinite(Number(userId))) return;
     const label = isActive ? 'активувати акаунт' : 'вимкнути акаунт';
-    const ok = typeof confirmModal === 'function'
-        ? await confirmModal(`Підтвердити: ${label}?`, { type: isActive ? 'info' : 'warning', okText: isActive ? 'Активувати' : 'Вимкнути' })
-        : window.confirm(`Підтвердити: ${label}?`);
+    let ok = false;
+    if (typeof confirmModal === 'function') {
+        ok = await confirmModal(`Підтвердити: ${label}?`, { type: isActive ? 'info' : 'warning', okText: isActive ? 'Активувати' : 'Вимкнути' });
+    } else if (typeof showNotification === 'function') {
+        showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+    }
     if (!ok) return;
     if (button) button.disabled = true;
     const result = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/active`, {

@@ -44,7 +44,8 @@
         if (typeof customConfirm === 'function') {
             return customConfirm(message, 'Підтвердження');
         }
-        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+        notify('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+        return false;
     }
 
     function formatDate(value, fallback = '—') {

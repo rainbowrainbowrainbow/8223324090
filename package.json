@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.30",
+  "version": "0.61.31",
   "eventGenix": {
-    "releaseLabel": "Personal Task Pinning"
+    "releaseLabel": "Native Dialog Audit Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

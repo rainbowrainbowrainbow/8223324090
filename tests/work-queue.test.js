@@ -1519,7 +1519,7 @@ describe('work queue endpoint', () => {
             throw new Error(`Unexpected dashboard fetch: ${value}`);
         };
         dom.window.alert = () => {};
-        dom.window.confirm = () => true;
+        dom.window.confirmModal = async () => true;
 
         vm.runInContext(dashboardJs, dom.getInternalVMContext());
         const DashboardPage = vm.runInContext('DashboardPage', dom.getInternalVMContext());

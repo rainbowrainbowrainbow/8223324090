@@ -1238,6 +1238,16 @@ function isLeadSecondaryDirty(modalId) {
     return getLeadSecondaryState(modalId) !== (leadSecondaryInitialState.get(modalId) || '');
 }
 
+async function confirmLeadUiAction(message, options = {}) {
+    if (typeof confirmModal === 'function') {
+        return confirmModal(message, options);
+    }
+    if (typeof showNotification === 'function') {
+        showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+    }
+    return false;
+}
+
 async function closeLeadSecondaryModal(modalId, force = false) {
     const overlay = document.getElementById(modalId);
     if (!overlay) return true;
@@ -1254,13 +1264,11 @@ async function closeLeadSecondaryModal(modalId, force = false) {
     }
 
     if (!force && isLeadSecondaryDirty(modalId)) {
-        const confirmed = typeof confirmModal === 'function'
-            ? await confirmModal('Unsaved changes. Close without saving?', {
-                type: 'warning',
-                okText: 'Close without saving',
-                cancelText: 'Return'
-            })
-            : window.confirm?.('Unsaved changes. Close without saving?');
+        const confirmed = await confirmLeadUiAction('Є незбережені зміни. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
         if (!confirmed) return false;
     }
 
@@ -1335,16 +1343,12 @@ async function closeCustomerCardModal(force = false) {
     }
 
     if (!force && isCustomerCardDirty()) {
-        if (typeof confirmModal === 'function') {
-            const confirmed = await confirmModal('Є незбережені зміни в картці клієнта. Закрити без збереження?', {
-                type: 'warning',
-                okText: 'Закрити без збереження',
-                cancelText: 'Повернутись'
-            });
-            if (!confirmed) return false;
-        } else if (!window.confirm('Є незбережені зміни в картці клієнта. Закрити без збереження?')) {
-            return false;
-        }
+        const confirmed = await confirmLeadUiAction('Є незбережені зміни в картці клієнта. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+        if (!confirmed) return false;
     }
 
     closeNow();
@@ -2275,9 +2279,10 @@ async function submitLeadCustomerLinkExisting() {
 }
 
 async function submitLeadCustomerCreateNew() {
-    const ok = typeof confirmModal === 'function'
-        ? await confirmModal('Створити нового клієнта з даних цього ліда?', { okText: 'Створити і привʼязати', type: 'success' })
-        : window.confirm('Створити нового клієнта з даних цього ліда?');
+    const ok = await confirmLeadUiAction('Створити нового клієнта з даних цього ліда?', {
+        okText: 'Створити і привʼязати',
+        type: 'success'
+    });
     if (!ok) return;
     await submitLeadCustomerLink({ createNew: true }, 'Нового клієнта створено і привʼязано до ліда.');
 }

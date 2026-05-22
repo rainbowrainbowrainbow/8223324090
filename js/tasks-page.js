@@ -2980,6 +2980,16 @@ function isTaskDetailDirty() {
     return _taskDetailInitialState !== null && getTaskDetailFormState() !== _taskDetailInitialState;
 }
 
+async function confirmTaskUiAction(message, options = {}) {
+    if (typeof confirmModal === 'function') {
+        return confirmModal(message, options);
+    }
+    if (typeof showNotification === 'function') {
+        showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+    }
+    return false;
+}
+
 async function closeTaskDetailOverlay(force) {
     const overlay = document.getElementById('taskDetailOverlay');
     if (!overlay) return true;
@@ -2997,16 +3007,7 @@ async function closeTaskDetailOverlay(force) {
     }
     if (!force && isTaskDetailDirty()) {
         const message = 'Є незбережені зміни в задачі. Закрити без збереження?';
-        let confirmed = true;
-        if (typeof confirmModal === 'function') {
-            confirmed = await confirmModal(message, { type: 'warning', okText: 'Закрити' });
-        } else {
-            try {
-                confirmed = typeof window.confirm === 'function' ? window.confirm(message) : false;
-            } catch {
-                confirmed = false;
-            }
-        }
+        const confirmed = await confirmTaskUiAction(message, { type: 'warning', okText: 'Закрити' });
         if (!confirmed) return false;
     }
     overlay.remove();

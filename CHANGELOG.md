@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.31 - Native Dialog Audit Cleanup
+
+### Native Dialog Audit Cleanup [codex]
+- **Leads** - dirty-close для додаткових модалок і картки клієнта більше не падає у старий browser `window.confirm`; використовується CRM confirm modal або fail-closed toast.
+- **Lead → customer** - створення нового клієнта з ліда тепер має той самий контрольований confirmation path без native dialog fallback.
+- **Tasks** - закриття detail overlay із незбереженими змінами більше не відкриває грубий browser confirm, якщо shared modal helper тимчасово недоступний.
+- **System cleanup** - профіль, auth dirty-close, Afisha/Certificates, Dashboard board, HR account toggle і assistant action confirmations тепер fail-closed через CRM toast/helper замість native browser confirm.
+- **Regression guard** - UI smoke check фіксує, що CRM frontend confirmation flows не повертають native browser dialogs.
+
+---
+
 ## v0.61.30 - Personal Task Pinning
 
 ### Personal Task Pinning [codex]

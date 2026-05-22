@@ -115,13 +115,16 @@ async function confirmProfileModalDiscardIfDirty() {
         if (confirmed) rememberProfileModalState();
         return confirmed;
     }
-    const confirmed = typeof confirmModal === 'function'
-        ? await confirmModal('Unsaved profile changes. Close without saving?', {
+    let confirmed = false;
+    if (typeof confirmModal === 'function') {
+        confirmed = await confirmModal('Є незбережені зміни профілю. Закрити без збереження?', {
             type: 'warning',
-            okText: 'Close without saving',
-            cancelText: 'Return'
-        })
-        : window.confirm?.('Unsaved profile changes. Close without saving?');
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    } else if (typeof showNotification === 'function') {
+        showNotification('Підтвердження недоступне. Оновіть сторінку і повторіть дію.', 'error');
+    }
     if (confirmed) rememberProfileModalState();
     return !!confirmed;
 }

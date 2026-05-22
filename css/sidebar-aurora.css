@@ -3852,6 +3852,38 @@ body.dark-mode .sidebar-nav,
 }
 
 /* v0.58.15: sidebar currency chip is optional; full rates live in Finance. */
+.sidebar-widget-settings {
+  display: grid !important;
+  gap: 8px !important;
+  margin-bottom: 10px !important;
+  padding: 10px !important;
+  border: 1px solid rgba(34,211,160,0.16) !important;
+  border-radius: 14px !important;
+  background: rgba(15,23,42,0.22) !important;
+}
+
+.sidebar-widget-settings-head {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.sidebar-widget-settings-head span {
+  color: var(--sb-design-text) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.sidebar-widget-settings-head small {
+  color: var(--sb-design-mute) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+
 .sidebar-extra-preference {
   position: relative !important;
   display: grid !important;
@@ -3859,7 +3891,7 @@ body.dark-mode .sidebar-nav,
   align-items: center !important;
   gap: 9px !important;
   min-height: 44px !important;
-  margin-bottom: 10px !important;
+  margin-bottom: 0 !important;
   padding: 8px 9px !important;
   border: 1px solid rgba(34,211,160,0.18) !important;
   border-radius: 12px !important;
@@ -3917,6 +3949,15 @@ body.dark-mode .sidebar-nav,
 body:not(.dark-mode) .sidebar-extra-preference {
   background: rgba(240,253,250,0.78) !important;
   border-color: rgba(15,118,110,0.16) !important;
+}
+
+body:not(.dark-mode) .sidebar-widget-settings {
+  background: rgba(255,255,255,0.72) !important;
+  border-color: rgba(15,118,110,0.14) !important;
+}
+
+body:not(.dark-mode) .sidebar-widget-settings-head span {
+  color: #0F172A !important;
 }
 
 body:not(.dark-mode) .sidebar-extra-preference-mark {

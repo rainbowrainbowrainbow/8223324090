@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.23 - Sidebar USD Widget Settings Fix
+
+### Sidebar USD Widget Settings Fix [codex]
+- **USD у профілі** - перемикач USD більше не ховає чіп одразу під час редагування Quick Access; зміна застосовується тільки після `Зберегти`.
+- **Налаштування віджетів** - у редакторі `Швидкий доступ` відокремлено блок `Налаштування віджетів` від списку сторінок, щоб сторінки і profile widgets не змішувалися.
+- **Клік по USD** - сам USD-чіп залишається зрозумілим entrypoint для курсів валют і не зникає “невідомо куди” від випадкового кліку в редакторі.
+
+---
+
 ## v0.61.22 - Sidebar Theme Refresh + Legacy Menu Cleanup
 
 ### Sidebar Theme Refresh + Legacy Menu Cleanup [codex]

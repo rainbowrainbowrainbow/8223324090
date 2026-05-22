@@ -613,14 +613,20 @@ const Sidebar = (() => {
             <div class="sidebar-extra-editor-tools">
                 <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку швидкого доступу">
             </div>
-            <label class="sidebar-extra-preference">
-                <input type="checkbox" data-sidebar-currency-signal${currencySignalEnabled ? ' checked' : ''}>
-                <span class="sidebar-extra-preference-mark" aria-hidden="true"></span>
-                <span class="sidebar-extra-preference-copy">
-                    <b>Показувати USD у профілі</b>
-                    <small>Повне вікно курсів відкривається у фінансах.</small>
-                </span>
-            </label>
+            <div class="sidebar-widget-settings" data-sidebar-widget-settings>
+                <div class="sidebar-widget-settings-head">
+                    <span>Налаштування віджетів</span>
+                    <small>профіль sidebar</small>
+                </div>
+                <label class="sidebar-extra-preference">
+                    <input type="checkbox" data-sidebar-currency-signal${currencySignalEnabled ? ' checked' : ''}>
+                    <span class="sidebar-extra-preference-mark" aria-hidden="true"></span>
+                    <span class="sidebar-extra-preference-copy">
+                        <b>USD у профілі</b>
+                        <small>Клік по USD відкриває курси валют. Зміна застосовується після збереження.</small>
+                    </span>
+                </label>
+            </div>
             <div class="sidebar-extra-picker" data-sidebar-extra-picker>
                 ${pickerHtml}
             </div>
@@ -684,6 +690,8 @@ const Sidebar = (() => {
         const getCheckedHrefs = () => [...extras.querySelectorAll('[data-sidebar-extra-page]:checked')].map(input => input.value);
         const saveCurrentCheckboxes = () => {
             const checkedHrefs = getCheckedHrefs();
+            const currencySignal = extras.querySelector('[data-sidebar-currency-signal]');
+            if (currencySignal) _setSidebarCurrencySignalEnabled(currencySignal.checked);
             _saveExtraMenuSelection(checkedHrefs, role);
             _state.extraEditingId = '';
             _setExtraMenuEditorOpen(false);
@@ -701,8 +709,7 @@ const Sidebar = (() => {
         if (currencySignal && currencySignal.dataset.sidebarCurrencySignalBound !== 'true') {
             currencySignal.dataset.sidebarCurrencySignalBound = 'true';
             currencySignal.addEventListener('change', () => {
-                _setSidebarCurrencySignalEnabled(currencySignal.checked);
-                _ensureCommandDeck();
+                extras.classList.add('has-widget-settings-dirty');
             });
         }
 

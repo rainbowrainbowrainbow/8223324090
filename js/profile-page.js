@@ -48,7 +48,7 @@ const CABINET_TASK_SEGMENTS = [
     { id: 'personal', label: 'Особисті', hint: 'Ваші особисті задачі і задачі категорії personal' },
     { id: 'private', label: 'Приватні', hint: 'Задачі з приватною видимістю тільки для вас' },
     { id: 'work', label: 'Робочі', hint: 'Командні та операційні задачі' },
-    { id: 'waiting', label: 'Чекаю', hint: 'Задачі, що очікують сигналу або відповіді' },
+    { id: 'actionable', label: 'Виконати', hint: 'Активні задачі, які можна закривати через дію виконання' },
     { id: 'idea', label: 'Ідеї', hint: 'Ідеї та записи для подальшого розбору' }
 ];
 
@@ -1025,6 +1025,17 @@ function cabinetList(name) {
     return Array.isArray(list) ? list : [];
 }
 
+function findCabinetTask(taskId) {
+    const id = Number(taskId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe'];
+    for (const bucket of buckets) {
+        const found = cabinetList(bucket).find(task => Number(task.id || task.taskId || task.task_id) === id);
+        if (found) return found;
+    }
+    return null;
+}
+
 function normalizedCabinetTaskToken(value, fallback = '') {
     const token = String(value ?? '').trim().toLowerCase();
     return token || fallback;
@@ -1068,6 +1079,12 @@ function isCabinetWaitingTask(task = {}) {
         || task.waiting === true;
 }
 
+function isCabinetActionableTask(task = {}) {
+    return !isCabinetWaitingTask(task)
+        && !isCabinetIdeaTask(task)
+        && !['done', 'archived', 'cancelled'].includes(cabinetTaskStatus(task));
+}
+
 function isCabinetPrivateTask(task = {}) {
     return cabinetTaskVisibility(task) === 'private' || cabinetTaskMode(task) === 'private';
 }
@@ -1089,8 +1106,8 @@ function cabinetTaskMatchesSegment(task = {}, segment = myTasksSegment) {
             return isCabinetPrivateTask(task);
         case 'work':
             return cabinetTaskMode(task) === 'work';
-        case 'waiting':
-            return isCabinetWaitingTask(task);
+        case 'actionable':
+            return isCabinetActionableTask(task);
         case 'idea':
             return isCabinetIdeaTask(task);
         case 'all':
@@ -1124,8 +1141,8 @@ function cabinetCreateDefaultsForSegment(segment = myTasksSegment, modeOverride 
     if (segment === 'private' || modeOverride === 'private') {
         return { ...defaults, category: 'personal', mode: 'private', visibility: 'private', placeholder: 'Приватна задача тільки для мене' };
     }
-    if (segment === 'waiting') {
-        return { ...defaults, kind: 'waiting', placeholder: 'Що чекає відповіді або сигналу?' };
+    if (segment === 'actionable') {
+        return { ...defaults, kind: 'action', placeholder: 'Що треба виконати?' };
     }
     if (segment === 'idea') {
         return { ...defaults, category: 'improvement', kind: 'idea', placeholder: 'Ідея, яку треба не загубити' };
@@ -1388,6 +1405,16 @@ function renderCabinetSnoozeMenu(taskIdAttr) {
         </div>`;
 }
 
+function cabinetTaskReportBadge(task = {}) {
+    const gate = window.TaskReportGate;
+    const required = gate?.taskRequiresReport ? gate.taskRequiresReport(task) : Boolean(task.reportRequired || task.requiresReport);
+    if (!required) return '';
+    const reportId = gate?.taskReportId ? gate.taskReportId(task) : (task.reportId || task.report_id || null);
+    return reportId
+        ? `<span class="cabinet-task-report-badge cabinet-task-report-badge--done">Звіт #${escapeHtml(reportId)}</span>`
+        : '<span class="cabinet-task-report-badge">потрібен звіт</span>';
+}
+
 function renderCabinetTaskCard(task, compact = false) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
@@ -1416,6 +1443,7 @@ function renderCabinetTaskCard(task, compact = false) {
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
                     ${subTotal ? `<span>${subDone}/${subTotal}</span>` : ''}
+                    ${cabinetTaskReportBadge(task)}
                 </div>
             </div>
             <div class="cabinet-task-actions">
@@ -1489,7 +1517,6 @@ function renderCabinetTaskComposer(options = {}) {
                         <option value="action" ${defaults.kind === 'action' ? 'selected' : ''}>Дія</option>
                         <option value="reminder" ${defaults.kind === 'reminder' ? 'selected' : ''}>Нагадування</option>
                         <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Follow-up</option>
-                        <option value="waiting" ${defaults.kind === 'waiting' ? 'selected' : ''}>Чекаю</option>
                         <option value="idea" ${defaults.kind === 'idea' ? 'selected' : ''}>Ідея</option>
                     </select>
                 </label>
@@ -1515,6 +1542,10 @@ function renderCabinetTaskComposer(options = {}) {
                         <option value="me_only" ${defaults.visibility === 'me_only' ? 'selected' : ''}>Тільки мені</option>
                         <option value="private" ${defaults.visibility === 'private' ? 'selected' : ''}>Приватна</option>
                     </select>
+                </label>
+                <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
+                    <input id="cabinetTaskReportRequired" type="checkbox">
+                    <span>Потрібен звіт перед виконанням</span>
                 </label>
             </div>
         </form>`;
@@ -1695,7 +1726,7 @@ async function handleCabinetTaskActionClick(event) {
     card?.classList.add('is-updating');
     try {
         if (action === 'done') {
-            await setCabinetTaskStatus(taskId, 'done', { previousStatus });
+            await setCabinetTaskStatus(taskId, 'done', { previousStatus, task: findCabinetTask(taskId) || {} });
         } else if (action === 'snooze') {
             closeCabinetSnoozeMenus();
             let minutes = button.dataset.minutes || 60;
@@ -1735,7 +1766,14 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     if (!id) throw new Error('Invalid task id');
     let result;
     if (status === 'done') {
-        result = await apiPost(`/tasks/${id}/complete`, { sourceSurface: 'profile_my_cabinet' });
+        const sourceSurface = 'profile_my_cabinet';
+        const task = options.task || findCabinetTask(id) || {};
+        result = await apiPost(`/tasks/${id}/complete`, { sourceSurface });
+        if (window.TaskReportGate?.responseNeedsReport?.(result)) {
+            const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface, taskId: id });
+            if (!reportId) throw new Error('Звіт потрібен перед виконанням задачі');
+            result = await apiPost(`/tasks/${id}/complete`, { sourceSurface, reportId });
+        }
     } else if (typeof apiQuickTaskStatus === 'function') {
         result = await apiQuickTaskStatus(id, status);
     } else {
@@ -1793,6 +1831,7 @@ async function createCabinetTask(event, mode) {
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
+        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         captureIntent: { waiting: kind === 'waiting' }
     };
     const payload = window.TaskCreate?.buildPayload

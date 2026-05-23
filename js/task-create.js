@@ -70,6 +70,13 @@
         if (draft.sourceSurface || draft.source_surface || options.sourceSurface) {
             data.source_surface = draft.sourceSurface || draft.source_surface || options.sourceSurface;
         }
+        if (draft.reportRequired || draft.requiresReport || draft.report_required) {
+            data.reportRequired = true;
+            data.controlMeta = {
+                ...(draft.controlMeta || draft.control_meta || {}),
+                reportRequired: true
+            };
+        }
 
         if (dueDate) {
             data.date = dueDate;
@@ -128,5 +135,106 @@
         normalizeChecklistTemplateKey,
         buildPayload,
         createTask
+    };
+
+    function parseMeta(task = {}) {
+        const value = task.controlMeta || task.control_meta || {};
+        if (!value) return {};
+        if (typeof value === 'object') return value;
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function taskId(task = {}) {
+        const id = Number(task.id || task.taskId || task.task_id || 0);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    }
+
+    function taskRequiresReport(task = {}) {
+        const meta = parseMeta(task);
+        return meta.reportRequired === true
+            || meta.requiresReport === true
+            || meta.report_required === true
+            || task.reportRequired === true
+            || task.requiresReport === true
+            || task.report_required === true;
+    }
+
+    function taskReportId(task = {}) {
+        const meta = parseMeta(task);
+        const id = Number(meta.reportId || meta.report_id || meta.taskReportId || meta.completionReportId || task.reportId || task.report_id || 0);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    }
+
+    function responseNeedsReport(payload = {}) {
+        return payload?.code === 'TASK_REPORT_REQUIRED'
+            || payload?.requiresReport === true
+            || payload?.meta?.reportRequired === true;
+    }
+
+    async function openReportModal(task = {}, options = {}) {
+        const id = taskId(task || options.task || {}) || taskId({ id: options.taskId || options.task_id });
+        if (!id) throw new Error('Не вдалося визначити задачу для звіту');
+        const title = task.title || options.title || `Задача #${id}`;
+        let values = null;
+        if (typeof formModal === 'function') {
+            values = await formModal('Звіт перед виконанням', [
+                {
+                    key: 'reportText',
+                    label: 'Що зроблено',
+                    type: 'textarea',
+                    required: true,
+                    placeholder: 'Коротко опишіть результат, нюанси або що треба знати після виконання...'
+                },
+                {
+                    key: 'amount',
+                    label: 'Сума, якщо є',
+                    type: 'number',
+                    defaultValue: '',
+                    placeholder: '0'
+                }
+            ], {
+                okText: 'Зберегти звіт і виконати',
+                cancelText: 'Скасувати',
+                type: 'info',
+                icon: '📝',
+                className: 'task-report-required-modal'
+            });
+        } else {
+            const reportText = window.prompt('Перед виконанням цієї задачі потрібно додати звіт.');
+            values = reportText ? { reportText, amount: '' } : null;
+        }
+        if (!values) return null;
+        const base = typeof API_BASE === 'string' ? API_BASE : '/api';
+        const response = await fetch(`${base}/tasks/${id}/completion-report`, {
+            method: 'POST',
+            headers: typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                reportText: values.reportText,
+                amount: values.amount,
+                category: 'Задача',
+                type: 'expense',
+                sourceSurface: options.sourceSurface || 'task_detail',
+                taskTitle: title
+            })
+        });
+        if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error || 'Не вдалося зберегти звіт');
+        }
+        return payload.reportId || payload.report?.id || null;
+    }
+
+    window.TaskReportGate = {
+        parseMeta,
+        responseNeedsReport,
+        taskRequiresReport,
+        taskReportId,
+        openReportModal
     };
 })();

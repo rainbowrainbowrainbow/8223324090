@@ -1011,12 +1011,12 @@ async function apiSaveTaskObservers(taskId, observerUserIds) {
     } catch (err) { console.error('API saveTaskObservers error:', err); return null; }
 }
 
-async function apiCompleteTask(taskId) {
+async function apiCompleteTask(taskId, options = {}) {
     try {
         const response = await fetch(`${API_BASE}/tasks/${taskId}/complete`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ sourceSurface: 'task_page' })
+            body: JSON.stringify({ sourceSurface: options.sourceSurface || 'task_page', reportId: options.reportId || undefined })
         });
         if (handleAuthError(response)) return null;
         return await response.json();
@@ -2742,13 +2742,22 @@ function setupTaskActionDelegation() {
 }
 
 async function cycleStatus(taskId, newStatus) {
-    const result = newStatus === 'done'
+    let result = newStatus === 'done'
         ? await apiCompleteTask(taskId)
         : await apiPatchTaskStatus(taskId, newStatus);
+    if (newStatus === 'done' && window.TaskReportGate?.responseNeedsReport?.(result)) {
+        const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
+        const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface: 'task_page', taskId });
+        if (!reportId) {
+            showNotification('Звіт потрібен перед виконанням задачі', 'warning');
+            return;
+        }
+        result = await apiCompleteTask(taskId, { reportId });
+    }
     if (result && result.success) {
         await loadAllTasks();
     } else {
-        showNotification('Помилка зміни статусу', 'error');
+        showNotification(result?.error || 'Помилка зміни статусу', 'error');
     }
 }
 
@@ -3325,7 +3334,16 @@ async function saveTaskObservers(taskId) {
 window.saveTaskObservers = saveTaskObservers;
 
 async function taskDetailComplete(taskId) {
-    const result = await apiCompleteTask(taskId);
+    let result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail' });
+    if (window.TaskReportGate?.responseNeedsReport?.(result)) {
+        const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
+        const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface: 'task_detail', taskId });
+        if (!reportId) {
+            showNotification('Звіт потрібен перед виконанням задачі', 'warning');
+            return;
+        }
+        result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail', reportId });
+    }
     if (result?.success) {
         showNotification('Задачу виконано', 'success');
         await closeTaskDetailOverlay(true);

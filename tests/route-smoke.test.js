@@ -182,6 +182,22 @@ function createFakePool() {
                 }] };
             }
             if (/FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id WHERE t\.id = \$1/i.test(text)) {
+                if (String(params[0]) === '99') {
+                    return { rows: [{
+                        id: params[0],
+                        title: 'Report required task',
+                        status: 'todo',
+                        priority: 'high',
+                        owner_user_id: 1,
+                        assigned_to: 'Route Smoke',
+                        owner_name: 'Route Smoke',
+                        owner_username: 'route-smoke',
+                        version: 1,
+                        control_meta: { reportRequired: true },
+                        active: true,
+                        created_at: '2099-05-01T10:00:00Z'
+                    }] };
+                }
                 return { rows: [{
                     id: params[0],
                     title: 'Route smoke task',
@@ -197,6 +213,9 @@ function createFakePool() {
                     active: true,
                     created_at: '2099-05-01T10:00:00Z'
                 }] };
+            }
+            if (/SELECT id FROM reports WHERE id = \$1 LIMIT 1/i.test(text)) {
+                return { rows: Number(params[0]) === 701 ? [{ id: 701 }] : [] };
             }
             if (/SELECT t\.id FROM tasks t WHERE t\.id = \$1/i.test(text)) {
                 return { rows: [{ id: params[0] }] };
@@ -681,6 +700,15 @@ describe('route-level API safety smoke', () => {
         assert.equal(completed.data.historyEvent.actionType, 'task_completed');
         assert.ok(queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'done'/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO task_action_history/i.test(q.text)));
+
+        const blocked = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page' }, withAuth());
+        assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+        assert.equal(blocked.data.code, 'TASK_REPORT_REQUIRED');
+        assert.equal(blocked.data.requiresReport, true);
+
+        const completedWithReport = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page', reportId: 701 }, withAuth());
+        assert.equal(completedWithReport.status, 200, JSON.stringify(completedWithReport.data));
+        assert.equal(completedWithReport.data.success, true);
     });
 
     it('lets lead roles load assignable users without opening user management', async () => {

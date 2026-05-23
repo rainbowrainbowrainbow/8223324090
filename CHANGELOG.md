@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.9 - Profile tasker: виконання зі звітом
+
+### Profile tasker: виконання зі звітом [codex]
+- **Profile** - сегмент `Чекаю` у меню задач замінено на робочий сегмент `Виконати`, щоб primary flow був про завершення задачі.
+- **Звіт перед виконанням** - задачі з `control_meta.reportRequired` не можна закрити без звіту; UI одразу відкриває форму звіту.
+- **Backend rule** - canonical `POST /api/tasks/:id/complete`, quick status close і work-queue done перевіряють report-required контракт на сервері.
+- **Reports linkage** - звіт зберігається у існуючій таблиці `reports`, а прив'язка фіксується в `tasks.control_meta.reportId`.
+- **Guardrail** - додано route smoke на блокування задачі без звіту і успішне виконання після прив'язаного report.
+
+---
+
 ## v0.62.8 - Таймлайн: Парк за замовченням
 
 ### Таймлайн: Парк за замовченням [codex]

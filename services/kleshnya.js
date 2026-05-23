@@ -76,6 +76,7 @@ async function createTask(data) {
         remind_at = null, snoozed_until = null, last_notified_at = null, next_notification_at = null,
         evening_review_date = null, focus_rank = 0, related_entity_type = null, related_entity_id = null,
         source_module = null, effort_minutes = null,
+        control_meta = null,
         forceDuplicate = false, duplicateMode = 'skip'
     } = data;
 
@@ -119,10 +120,10 @@ async function createTask(data) {
          template_id, afisha_id, type,
          task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
          last_notified_at, next_notification_at, evening_review_date, focus_rank,
-          related_entity_type, related_entity_id, source_module, effort_minutes, created_by_user_id)
+          related_entity_type, related_entity_id, source_module, effort_minutes, control_meta, created_by_user_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
                  $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,
-                 $39,$40,$41,$42,$43,$44) RETURNING *`,
+                 $39,$40,$41,$42,$43,$44,$45) RETURNING *`,
         [title.trim(), description || null, date || null, priority, assigned_to || null, owner || null,
          owner_user_id || null, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
@@ -133,7 +134,7 @@ async function createTask(data) {
          type || (source_type === 'recurring' ? 'recurring' : (source_type === 'afisha' ? 'afisha' : (source_type === 'booking' ? 'auto_complete' : 'manual'))),
          task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
          last_notified_at, next_notification_at, evening_review_date, focus_rank,
-         related_entity_type, related_entity_id, source_module, effort_minutes, created_by_user_id || null]
+         related_entity_type, related_entity_id, source_module, effort_minutes, JSON.stringify(control_meta || {}), created_by_user_id || null]
     );
 
     const task = result.rows[0];

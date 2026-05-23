@@ -28,6 +28,70 @@ function parsePositiveInt(value) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseJsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function taskControlMeta(task = {}) {
+    return parseJsonObject(task.control_meta || task.controlMeta || {});
+}
+
+function taskRequiresCompletionReport(task = {}) {
+    const meta = taskControlMeta(task);
+    return meta.reportRequired === true
+        || meta.requiresReport === true
+        || meta.report_required === true
+        || task.report_required === true
+        || task.requiresReport === true;
+}
+
+function taskCompletionReportId(task = {}) {
+    const meta = taskControlMeta(task);
+    return parsePositiveInt(
+        meta.reportId
+        || meta.report_id
+        || meta.taskReportId
+        || meta.task_report_id
+        || meta.completionReportId
+        || meta.completion_report_id
+        || task.reportId
+        || task.report_id
+    );
+}
+
+function reportRequiredError(task = {}) {
+    const err = new Error('Для виконання цієї задачі спочатку потрібно додати звіт.');
+    err.statusCode = 409;
+    err.code = 'TASK_REPORT_REQUIRED';
+    err.requiresReport = true;
+    err.task = {
+        id: task.id,
+        title: task.title || null,
+        reportRequired: true
+    };
+    return err;
+}
+
+async function ensureReportExists(query, reportId) {
+    const id = parsePositiveInt(reportId);
+    if (!id) return null;
+    const result = await query.query('SELECT id FROM reports WHERE id = $1 LIMIT 1', [id]);
+    if (!result.rows.length) {
+        const err = new Error('Звіт не знайдено або його ще не збережено.');
+        err.statusCode = 400;
+        err.code = 'TASK_REPORT_NOT_FOUND';
+        throw err;
+    }
+    return id;
+}
+
 function normalizeTaskRow(row = {}) {
     return {
         ...row,
@@ -220,6 +284,13 @@ async function completeTask(taskId, actor, options = {}) {
         if (!canMutateTask(actor, task)) {
             throw forbidden('You cannot complete this task');
         }
+        const incomingReportId = parsePositiveInt(options.reportId || options.report_id);
+        const existingReportId = taskCompletionReportId(task);
+        const requiresReport = taskRequiresCompletionReport(task);
+        if (requiresReport && !existingReportId && !incomingReportId) {
+            throw reportRequiredError(task);
+        }
+        const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId) : existingReportId;
         const result = await query.query(
             `UPDATE tasks
              SET status = 'done',
@@ -228,12 +299,21 @@ async function completeTask(taskId, actor, options = {}) {
                   completed_at = NOW(),
                  updated_at = NOW(),
                  escalation_level = 0,
+                 control_meta = CASE
+                    WHEN $3::int IS NULL THEN COALESCE(control_meta, '{}'::jsonb)
+                    ELSE COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
+                        'reportRequired', true,
+                        'reportId', $3::int,
+                        'reportSubmittedAt', NOW(),
+                        'reportSubmittedBy', $4::text
+                    )
+                 END,
              version = COALESCE(version, 1) + 1
          WHERE id = $1
            AND COALESCE(version, 1) = $2
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
          RETURNING *`,
-            [task.id, task.version || 1]
+            [task.id, task.version || 1, reportId || null, userDisplayName(actor)]
         );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or cannot be completed');
@@ -252,7 +332,9 @@ async function completeTask(taskId, actor, options = {}) {
             meta: {
                 route: options.route || 'work_queue_task_done',
                 ownerStateBefore: task.ownerState,
-                actorName: userDisplayName(actor)
+                actorName: userDisplayName(actor),
+                reportRequired: requiresReport,
+                reportId: reportId || null
             }
         }, { pool: query });
         return { task: updated, historyEvent };
@@ -368,6 +450,9 @@ module.exports = {
     getAssignableTaskOwner,
     getVisibleTask,
     listTaskOwnerCandidates,
+    taskCompletionReportId,
+    taskControlMeta,
+    taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
     rescheduleTask

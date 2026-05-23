@@ -87,7 +87,10 @@ function sendTaskActionError(res, err) {
     res.status(status).json({
         success: false,
         error: err?.message || 'Не вдалося оновити задачу',
-        code: err?.code || 'TASK_EXECUTION_ACTION_FAILED'
+        code: err?.code || 'TASK_EXECUTION_ACTION_FAILED',
+        requiresReport: err?.requiresReport === true,
+        task: err?.task || null,
+        meta: err?.requiresReport ? { reportRequired: true } : undefined
     });
 }
 
@@ -531,7 +534,8 @@ router.post('/tasks/:taskId/done', async (req, res) => {
         }
         const result = await completeTask(taskId, req.user, {
             sourceSurface: resolveTaskSourceSurface(req.body || {}),
-            route: 'work_queue_task_done'
+            route: 'work_queue_task_done',
+            reportId: req.body?.reportId || req.body?.report_id
         });
         res.json({ success: true, action: 'task_mark_done', task: result.task, historyEvent: result.historyEvent });
     } catch (err) {

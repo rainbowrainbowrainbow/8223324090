@@ -23,6 +23,9 @@ const {
     completeTask,
     getAssignableTaskOwner,
     listTaskOwnerCandidates,
+    taskCompletionReportId,
+    taskControlMeta,
+    taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
     rescheduleTask
@@ -133,6 +136,72 @@ const VALID_WORKFLOW_STATES = ['inbox', 'todo', 'in_progress', 'waiting', 'sched
 
 function isTruthy(value) {
     return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+function optionalInteger(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseJsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function hasOwn(body = {}, key) {
+    return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function normalizeTaskControlMeta(body = {}, oldTask = {}) {
+    const base = taskControlMeta(oldTask);
+    const incoming = parseJsonObject(body.controlMeta || body.control_meta || {});
+    const meta = { ...base, ...incoming };
+    const reportRequiredRaw = hasOwn(body, 'reportRequired')
+        ? body.reportRequired
+        : (hasOwn(body, 'requiresReport') ? body.requiresReport
+            : (hasOwn(body, 'report_required') ? body.report_required
+                : (hasOwn(body, 'requires_report') ? body.requires_report : undefined)));
+    if (reportRequiredRaw !== undefined) meta.reportRequired = isTruthy(reportRequiredRaw);
+
+    const reportIdRaw = body.reportId || body.report_id || meta.reportId || meta.report_id;
+    const reportId = optionalInteger(reportIdRaw);
+    if (reportId) meta.reportId = reportId;
+    if (meta.reportRequired === false && !reportId) {
+        delete meta.reportId;
+        delete meta.report_id;
+        delete meta.taskReportId;
+        delete meta.completionReportId;
+    }
+    return meta;
+}
+
+function makeTaskReportRequiredError(task = {}) {
+    const err = new Error('Для виконання цієї задачі спочатку потрібно додати звіт.');
+    err.statusCode = 409;
+    err.code = 'TASK_REPORT_REQUIRED';
+    err.requiresReport = true;
+    err.task = { id: task.id, title: task.title || null, reportRequired: true };
+    return err;
+}
+
+async function ensureTaskReportReference(reportId) {
+    const id = optionalInteger(reportId);
+    if (!id) return null;
+    const result = await pool.query('SELECT id FROM reports WHERE id = $1 LIMIT 1', [id]);
+    if (!result.rows.length) {
+        const err = new Error('Звіт не знайдено або його ще не збережено.');
+        err.statusCode = 400;
+        err.code = 'TASK_REPORT_NOT_FOUND';
+        throw err;
+    }
+    return id;
 }
 
 function enumValue(value, allowed, fallback) {
@@ -441,6 +510,9 @@ function normalizeTaskPayload(row) {
     const taskKind = row.task_kind || 'action';
     const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
     const workflowState = row.workflow_state || workflowFromStatus(status);
+    const controlMeta = taskControlMeta(row);
+    const reportId = taskCompletionReportId(row);
+    const reportRequired = taskRequiresCompletionReport(row);
     return {
         ...scheduledRow,
         ownerLabel,
@@ -480,7 +552,10 @@ function normalizeTaskPayload(row) {
         escalateAfter: row.escalate_after || null,
         controlMode: row.control_mode || 'normal',
         criticalReason: row.critical_reason || null,
-        controlMeta: row.control_meta || {},
+        controlMeta,
+        reportRequired,
+        requiresReport: reportRequired,
+        reportId,
         subtaskCount: Number(row.subtask_count || 0),
         subtaskDoneCount: Number(row.subtask_done_count || 0),
         dependencyCount: Number(row.dependency_count || 0),
@@ -511,7 +586,10 @@ function sendTaskActionError(res, err) {
     return res.status(status).json({
         success: false,
         error: err.message || 'Task action failed',
-        code: err.code || 'TASK_ACTION_FAILED'
+        code: err.code || 'TASK_ACTION_FAILED',
+        requiresReport: err.requiresReport === true,
+        task: err.task || null,
+        meta: err.requiresReport ? { reportRequired: true } : undefined
     });
 }
 
@@ -1234,6 +1312,77 @@ router.put('/:id/observers', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
+router.post('/:id/completion-report', async (req, res) => {
+    try {
+        const task = await loadMutableTask(req.params.id, req.user);
+        const reportText = String(req.body?.reportText || req.body?.report_text || req.body?.description || '').trim();
+        if (!reportText) {
+            return res.status(400).json({ success: false, error: 'Заповніть звіт перед виконанням задачі', code: 'TASK_REPORT_TEXT_REQUIRED' });
+        }
+        const reportType = ['income', 'expense'].includes(req.body?.type) ? req.body.type : 'expense';
+        const amount = Number.parseFloat(req.body?.amount);
+        const rawData = {
+            taskCompletionReport: {
+                taskId: task.id,
+                taskTitle: task.title || null,
+                required: true,
+                sourceSurface: sourceSurface(req.body, 'task_detail'),
+                submittedByUserId: normalizeUserId(req.user),
+                submittedByUsername: req.user?.username || null,
+                submittedAt: new Date().toISOString()
+            },
+            text: reportText
+        };
+        const result = await pool.query(
+            `INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
+                submitted_via, raw_data, hashtags)
+             VALUES ($1,$2,$3,$4,$5,NULL,'web',$6,$7)
+             RETURNING *`,
+            [
+                reportType,
+                Number.isFinite(amount) ? amount : 0,
+                `Звіт по задачі #${task.id}: ${task.title || 'Без назви'}\n\n${reportText}`,
+                req.body?.category || 'Задача',
+                req.user?.name || req.user?.displayName || req.user?.username || 'Unknown',
+                JSON.stringify(rawData),
+                JSON.stringify(['task-report', `task-${task.id}`])
+            ]
+        );
+        const report = result.rows[0];
+        const accountant = await pool.query('SELECT id FROM accountants WHERE is_on_duty = true ORDER BY id ASC LIMIT 1').catch(() => ({ rows: [] }));
+        if (accountant.rows[0]?.id) {
+            await pool.query('UPDATE reports SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2', [accountant.rows[0].id, report.id]);
+        }
+        const update = await pool.query(
+            `UPDATE tasks
+             SET control_meta = COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
+                    'reportRequired', true,
+                    'reportId', $2::int,
+                    'reportSubmittedAt', NOW(),
+                    'reportSubmittedBy', $3::text
+                 ),
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $1
+             RETURNING *`,
+            [task.id, report.id, req.user?.username || req.user?.name || 'system']
+        );
+        res.status(201).json({
+            success: true,
+            report: { id: report.id, category: report.category, amount: Number(report.amount || 0), createdAt: report.created_at || null },
+            reportId: report.id,
+            task: normalizeTaskPayload(update.rows[0] || task),
+            meta: {
+                durableReport: 'reports',
+                linkField: 'tasks.control_meta.reportId'
+            }
+        });
+        _alertPush();
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
 async function loadMutableTask(id, user) {
     const params = [id];
     const visibility = buildTaskVisibilityScope(user, params, 't');
@@ -1387,7 +1536,8 @@ router.post('/:id/complete', async (req, res) => {
     try {
         const result = await completeTask(req.params.id, req.user, {
             sourceSurface: sourceSurface(req.body),
-            route: 'tasks_task_complete'
+            route: 'tasks_task_complete',
+            reportId: req.body?.reportId || req.body?.report_id
         });
         res.json({
             success: true,
@@ -1623,6 +1773,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const source_id = b.source_id || b.sourceId;
         const osFields = normalizeTaskOsFields(b, { status: 'todo' });
         const opsFields = normalizeTaskOperations(b, { category: 'admin' });
+        const controlMeta = normalizeTaskControlMeta(b);
         if (opsFields.category === 'checklist' && osFields.task_kind === 'action') {
             osFields.task_kind = 'checklist';
         }
@@ -1697,6 +1848,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             afisha_id: afisha_id || null,
             created_by: username,
             created_by_user_id: normalizeUserId(req.user),
+            control_meta: controlMeta,
             forceDuplicate: force,
             duplicateMode: 'reject',
             ...osFields
@@ -1791,8 +1943,21 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const opsFields = normalizeTaskOperations(b, old);
         const taskCategory = opsFields.category;
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
+        const controlMeta = normalizeTaskControlMeta(b, old);
         if (taskCategory === 'checklist' && osFields.task_kind === 'action') osFields.task_kind = 'checklist';
         if (taskStatus === 'done') osFields.workflow_state = 'done';
+        if (taskStatus === 'done') {
+            const reportId = await ensureTaskReportReference(b.reportId || b.report_id || taskCompletionReportId({ ...old, control_meta: controlMeta }));
+            if (taskRequiresCompletionReport({ ...old, control_meta: controlMeta }) && !reportId) {
+                return sendTaskActionError(res, makeTaskReportRequiredError(old));
+            }
+            if (reportId) {
+                controlMeta.reportRequired = true;
+                controlMeta.reportId = reportId;
+                controlMeta.reportSubmittedAt = controlMeta.reportSubmittedAt || new Date().toISOString();
+                controlMeta.reportSubmittedBy = controlMeta.reportSubmittedBy || (req.user?.username || req.user?.name || 'system');
+            }
+        }
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
             'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
@@ -1840,6 +2005,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             setClauses.push(`${field}=$${paramIdx++}`);
             values.push(value);
         });
+        setClauses.push(`control_meta=$${paramIdx++}::jsonb`);
+        values.push(JSON.stringify(controlMeta));
 
         values.push(id);
         let whereClause = `WHERE id=$${paramIdx}`;
@@ -1932,6 +2099,21 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         if (!canMutateTask(req.user, visible.rows[0])) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
 
         const actor = req.user?.username || 'system';
+        if (status === 'done') {
+            const result = await completeTask(id, req.user, {
+                sourceSurface: sourceSurface(req.body, 'task_detail'),
+                route: 'tasks_status_complete',
+                reportId: req.body?.reportId || req.body?.report_id
+            });
+            if (actor !== 'system') {
+                try {
+                    const { onTaskComplete } = require('../services/gamification');
+                    onTaskComplete(actor, result.task).catch(() => {});
+                } catch (e) { /* gamification not ready */ }
+            }
+            _alertPush();
+            return res.json({ success: true, task: normalizeTaskPayload(result.task), historyEvent: result.historyEvent });
+        }
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
 
@@ -1945,6 +2127,9 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
 
         res.json({ success: true, task });
     } catch (err) {
+        if (err.code || err.statusCode) {
+            return sendTaskActionError(res, err);
+        }
         if (err.message === 'Task not found') {
             return res.status(404).json({ error: 'Task not found' });
         }

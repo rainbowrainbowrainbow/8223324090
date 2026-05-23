@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.52 - Certificates: ремонт shell меню
+
+### Certificates: ремонт shell меню [codex]
+- **Сертифікати** - закрито причину raw-shell на `/certificates/new`: legacy nested asset paths більше не провалюються в HTML fallback.
+- **Сумісність кешу** - старі кешовані посилання `/certificates/css/...`, `/certificates/js/...` і `/certificates/images/...` редіректяться на кореневі assets.
+- **Guardrail** - UI smoke перевіряє root-relative assets для standalone certificates routes і server-side redirect для старих nested asset URL.
+
+---
+
 ## v0.61.51 - CRM: бізнес-контексти МД
 
 ### CRM: бізнес-контексти МД [codex]

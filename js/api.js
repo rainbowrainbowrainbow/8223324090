@@ -476,10 +476,21 @@ async function apiSaveSetting(key, value) {
 }
 
 // v7.0: Products catalog API
+function addProductBusinessContextParam(params, context) {
+    const value = String(context || '').trim();
+    if (value) params.set('businessContext', value);
+}
+
+function getProductBusinessContextValue(source = {}) {
+    if (typeof source === 'string') return source;
+    return source.businessContext || source.business_context || '';
+}
+
 async function apiGetProducts(activeOnly = true, filters = {}) {
     try {
         const params = new URLSearchParams();
         if (activeOnly) params.set('active', 'true');
+        addProductBusinessContextParam(params, filters.businessContext || filters.business_context);
         if (filters.domain) params.set('domain', filters.domain);
         if (filters.kitchenType) params.set('kitchenType', filters.kitchenType);
         if (filters.menuSection) params.set('menuSection', filters.menuSection);
@@ -495,9 +506,12 @@ async function apiGetProducts(activeOnly = true, filters = {}) {
     }
 }
 
-async function apiGetProduct(id) {
+async function apiGetProduct(id, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, { headers: getAuthHeaders(false) });
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -509,7 +523,13 @@ async function apiGetProduct(id) {
 
 async function apiGetProductCatalogs() {
     try {
-        const response = await fetch(`${API_BASE}/products/catalogs`, { headers: getAuthHeaders(false) });
+        const context = typeof window !== 'undefined' && window.ProductBusinessContext
+            ? window.ProductBusinessContext.getApiContext()
+            : '';
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, context);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/catalogs${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -581,9 +601,12 @@ async function apiUpdateProductDocument(id, payload) {
     }
 }
 
-async function apiDeleteProduct(id) {
+async function apiDeleteProduct(id, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });

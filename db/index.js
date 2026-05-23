@@ -307,6 +307,7 @@ async function initDatabase() {
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS products (
                 id VARCHAR(50) PRIMARY KEY,
+                business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
                 code VARCHAR(20) NOT NULL,
                 label VARCHAR(100) NOT NULL,
                 name VARCHAR(200) NOT NULL,
@@ -354,6 +355,10 @@ async function initDatabase() {
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_kitchen_type ON products(kitchen_type)');
         await safeQuery("CREATE INDEX IF NOT EXISTS idx_products_menu_section ON products(menu_section) WHERE COALESCE(domain, 'program') = 'kitchen' AND kitchen_type = 'menu'");
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_availability_status ON products(availability_status)');
+        await safeQuery(`ALTER TABLE products ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_active ON products(business_context, is_active)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_domain_category ON products(business_context, domain, category, sort_order)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_code ON products(business_context, code)');
 
         // v7.5: Tasks table
         await safeQuery(`

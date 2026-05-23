@@ -18,6 +18,7 @@ test('products page exposes business-aware products IA', () => {
     assert.match(html, /Парк Закревського/);
     assert.match(html, /Майстерня долі/);
     assert.match(html, /id="maysternyaPanel"/);
+    assert.match(html, /id="maysternyaProductsGrid"/);
     assert.match(html, /Демо консультація/);
     assert.match(html, /Повна консультація/);
     assert.match(html, /id="productIaTabs"/);
@@ -50,6 +51,9 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /renderKitchenSubtabs/);
     assert.match(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
     assert.match(pageJs, /setProductBusinessContext/);
+    assert.match(pageJs, /getProductApiBusinessContext/);
+    assert.match(pageJs, /businessContext: getProductApiBusinessContext\(\)/);
+    assert.match(pageJs, /renderMaysternyaProducts/);
     assert.match(pageJs, /pzp_products_business_context/);
     assert.match(pageJs, /renderKitchenProducts/);
     assert.match(pageJs, /renderMenuSectionFilter/);
@@ -67,6 +71,8 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /openProductDocumentModal/);
     assert.match(apiJs, /apiGetProductCatalogs/);
     assert.match(apiJs, /apiUpdateProductDocument/);
+    assert.match(apiJs, /addProductBusinessContextParam/);
+    assert.match(apiJs, /businessContext/);
     assert.match(apiJs, /\/products\/catalogs/);
     assert.match(apiJs, /\/source-document/);
 });
@@ -76,8 +82,13 @@ test('products API reuses existing catalog engine and validates source documents
     const migration = read('db/migrations/191_products_source_document_linkage.sql');
     const kitchenMigration = read('db/migrations/199_products_kitchen_fields.sql');
     const menuMigration = read('db/migrations/200_products_menu_structure_fields.sql');
+    const businessMigration = read('db/migrations/209_products_business_context_scope.sql');
 
     assert.match(productsRoute, /router\.get\('\/catalogs'/);
+    assert.match(productsRoute, /businessContextFromRequest/);
+    assert.match(productsRoute, /pushBusinessContextCondition/);
+    assert.match(productsRoute, /businessContext: row\.business_context/);
+    assert.match(productsRoute, /INSERT INTO products \(id, business_context/);
     assert.match(productsRoute, /FROM catalog_definitions cd/);
     assert.match(productsRoute, /href: row\.id === 'graduation' \? '\/designs#catalog-graduation'/);
     assert.match(productsRoute, /secondaryHref: row\.id === 'graduation' \? null : '\/designs#catalogs'/);
@@ -109,6 +120,10 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(menuMigration, /price_variant_note TEXT/);
     assert.match(menuMigration, /availability_status VARCHAR\(30\)/);
     assert.match(menuMigration, /products_availability_status_check/);
+    assert.match(businessMigration, /business_context VARCHAR\(64\)/);
+    assert.match(businessMigration, /idx_products_business_domain_category/);
+    assert.match(businessMigration, /maysternya_doli/);
+    assert.match(businessMigration, /Повна консультація\(90\)/);
 });
 
 test('design catalog deep links remain backed by the existing designs viewer', () => {

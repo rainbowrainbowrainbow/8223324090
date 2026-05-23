@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.53 - Products: бізнес-контекст
+
+### Products: бізнес-контекст [codex]
+- **Products** - `products` отримали durable `business_context`, scoped indexes і backfill у legacy `event_genix`.
+- **Майстерня долі** - додано окремі consultation products у `maysternya_doli`; повна консультація зафіксована як `90 хв`.
+- **API** - list/detail/create/update/document/deactivate потоки продуктів тепер фільтруються за бізнес-контекстом і не змішують ПАРК/МД.
+- **UX** - сторінка Products передає активний бізнес-контекст у API і рендерить продукти МД з серверного каталогу.
+- **Guardrail** - оновлено products IA тест і migration governance під нову межу продуктів.
+
+---
+
 ## v0.61.52 - Certificates: ремонт shell меню
 
 ### Certificates: ремонт shell меню [codex]

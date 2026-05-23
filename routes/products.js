@@ -6,6 +6,12 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest,
+    requireBusinessContext,
+    pushBusinessContextCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Products');
 
@@ -46,6 +52,12 @@ const SOURCE_DOCUMENT_KINDS = new Set(['google_doc', 'pdf', 'link']);
 const PRODUCT_DOMAINS = new Set(['program', 'kitchen']);
 const KITCHEN_TYPES = new Set(['cake', 'menu']);
 const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
+
+function requireProductBusinessContext(req, res) {
+    const businessContext = businessContextFromRequest(req);
+    if (!requireBusinessContext(req, res, businessContext)) return null;
+    return businessContext;
+}
 
 function pickField(body, camelName, snakeName, fallback = undefined) {
     if (body && Object.prototype.hasOwnProperty.call(body, camelName)) return body[camelName];
@@ -153,8 +165,11 @@ function normalizeSourceDocumentPayload(body, existing = {}) {
     };
 }
 
-async function getProductWithPriceRule(client, id) {
-    const result = await client.query(`${PRODUCT_PRICE_JOIN} WHERE p.id = $1`, [id]);
+async function getProductWithPriceRule(client, id, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const result = await client.query(
+        `${PRODUCT_PRICE_JOIN} WHERE p.id = $1 AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+        [id, businessContext]
+    );
     return result.rows[0] || null;
 }
 
@@ -209,6 +224,7 @@ function mapProductRow(row) {
     const centerPrice = hasCenterPrice ? Number(row.price_rule_value) : null;
     return {
         id: row.id,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         code: row.code,
         label: row.label,
         name: row.name,
@@ -298,6 +314,8 @@ function validateProduct(body) {
 router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const activeOnly = req.query.active === 'true';
         const domain = PRODUCT_DOMAINS.has(req.query.domain) ? req.query.domain : null;
         const kitchenTypeQuery = req.query.kitchenType || req.query.kitchen_type;
@@ -308,6 +326,7 @@ router.get('/', async (req, res) => {
             : null;
         const where = [];
         const params = [];
+        where.push(pushBusinessContextCondition(params, businessContext, 'p'));
         if (activeOnly) where.push('p.is_active = true');
         if (domain) {
             params.push(domain);
@@ -337,6 +356,11 @@ router.get('/', async (req, res) => {
 // GET /api/products/catalogs — Product-level catalog entry points backed by the existing catalog engine
 router.get('/catalogs', async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        if (businessContext !== DEFAULT_BUSINESS_CONTEXT) {
+            return res.json({ success: true, catalogs: [] });
+        }
         const result = await pool.query(`
             SELECT
                 cd.id,
@@ -415,11 +439,13 @@ router.get('/catalogs', async (req, res) => {
 // GET /api/products/:id — Get single product
 router.get('/:id', async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         if (!id || id.length > 50) {
             return res.status(400).json({ error: 'Invalid product ID' });
         }
-        const product = await getProductWithPriceRule(pool, id);
+        const product = await getProductWithPriceRule(pool, id, businessContext);
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
@@ -433,12 +459,14 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/products/:id/source-document — Link/unlink a manual source document
 router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         if (!id || id.length > 50) {
             return res.status(400).json({ error: 'Invalid product ID' });
         }
 
-        const existing = await getProductWithPriceRule(pool, id);
+        const existing = await getProductWithPriceRule(pool, id, businessContext);
         if (!existing) {
             return res.status(404).json({ error: 'Product not found' });
         }
@@ -467,7 +495,7 @@ router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req
                 END,
                 updated_at = NOW(),
                 updated_by = $6
-             WHERE id = $7`,
+             WHERE id = $7 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $8`,
             [
                 fields.url,
                 fields.title,
@@ -475,11 +503,12 @@ router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req
                 fields.verifiedManual,
                 fields.cardMatchesDocument,
                 req.user.username,
-                id
+                id,
+                businessContext
             ]
         );
 
-        const product = await getProductWithPriceRule(pool, id);
+        const product = await getProductWithPriceRule(pool, id, businessContext);
         log.info(`Product source document updated: ${id} by ${req.user.username}`);
         res.json(mapProductRow(product));
     } catch (err) {
@@ -492,6 +521,8 @@ router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req
 router.post('/', requireRole('admin', 'manager'), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const payload = normalizeProductPayload(req.body);
         const errors = validateProduct(payload);
         if (errors.length > 0) {
@@ -513,13 +544,13 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         await client.query('BEGIN');
         const result = await client.query(
-            `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
              RETURNING *`,
-            [id, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
-        const product = await getProductWithPriceRule(client, id);
+        const product = await getProductWithPriceRule(client, id, businessContext);
         await client.query('COMMIT');
 
         log.info(`Product created: ${id} by ${req.user.username}`);
@@ -537,6 +568,8 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         if (!id || id.length > 50) {
             return res.status(400).json({ error: 'Invalid product ID' });
@@ -544,7 +577,10 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 
         await client.query('BEGIN');
         // Check product exists
-        const existing = await client.query('SELECT id FROM products WHERE id = $1', [id]);
+        const existing = await client.query(
+            `SELECT id FROM products WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [id, businessContext]
+        );
         if (existing.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Product not found' });
@@ -576,11 +612,11 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
                 weight_value=$20, price_variant_note=$21, availability_status=$22,
                 cake_decoration=$23, is_per_child=$24, has_filler=$25, is_custom=$26,
                 is_active=$27, sort_order=$28, updated_at=NOW(), updated_by=$29
-             WHERE id=$30 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id]
+             WHERE id=$30 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $31 RETURNING *`,
+            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
-        const product = await getProductWithPriceRule(client, id);
+        const product = await getProductWithPriceRule(client, id, businessContext);
         await client.query('COMMIT');
 
         log.info(`Product updated: ${id} by ${req.user.username}`);
@@ -597,14 +633,17 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 // DELETE /api/products/:id — Soft-delete (deactivate) product (admin only)
 router.delete('/:id', requireRole('admin'), async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         if (!id || id.length > 50) {
             return res.status(400).json({ error: 'Invalid product ID' });
         }
 
         const result = await pool.query(
-            `UPDATE products SET is_active = false, updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING *`,
-            [req.user.username, id]
+            `UPDATE products SET is_active = false, updated_at = NOW(), updated_by = $1
+             WHERE id = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3 RETURNING *`,
+            [req.user.username, id, businessContext]
         );
 
         if (result.rows.length === 0) {
@@ -626,12 +665,18 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 // GET /api/products/:id/stock-requirements
 router.get('/:id/stock-requirements', async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
         const r = await pool.query(
             `SELECT psr.*, ws.name AS stock_name, ws.quantity AS current_qty, ws.unit
              FROM product_stock_requirements psr
              JOIN warehouse_stock ws ON ws.id = psr.stock_id
-             WHERE psr.product_id = $1`,
-            [req.params.id]
+             JOIN products p ON p.id = psr.product_id
+             WHERE psr.product_id = $1
+               AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [req.params.id, businessContext]
         );
         res.json({ success: true, requirements: r.rows });
     } catch (err) {
@@ -643,9 +688,13 @@ router.get('/:id/stock-requirements', async (req, res) => {
 // POST /api/products/:id/stock-requirements
 router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
         const { stockId, quantity } = req.body;
         if (!stockId || !quantity || quantity < 1)
             return res.status(400).json({ error: 'stockId і quantity (>0) required' });
+        const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
         const r = await pool.query(
             `INSERT INTO product_stock_requirements (product_id, stock_id, quantity)
              VALUES ($1, $2, $3)
@@ -663,6 +712,10 @@ router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (r
 // DELETE /api/products/:id/stock-requirements/:stockId
 router.delete('/:id/stock-requirements/:stockId', requireRole('admin', 'manager'), async (req, res) => {
     try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
         await pool.query(
             'DELETE FROM product_stock_requirements WHERE product_id = $1 AND stock_id = $2',
             [req.params.id, parseInt(req.params.stockId)]

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.2 - Швидкий доступ: порядок за ролями
+
+### Швидкий доступ: порядок за ролями [codex]
+- **Швидкий доступ** - `/afisha` додано у role-aware quick-access contract як окремий target, а не як ізольовану кнопку.
+- **Animator** - для ролі `animator` перший quick-access пункт тепер `/afisha`, другий - таймлайн `/`.
+- **Менеджери** - `manager`, `senior_manager`, `vice_director`, `director` і `creator` мають прямий quick-access на видачу сертифіката `/certificates/new`.
+- **Sidebar** - fallback quick-access список включає `/afisha` і таймлайн, а access-фільтр таймлайну дозволяє `animator`, щоб рольовий пресет не відсікався на рендері.
+- **Guardrail** - UI-smoke перевіряє рольовий порядок quick access, canonical `/afisha` target і shortcut видачі сертифіката.
+
+---
+
 ## v0.62.0 - CRM 62: фіналізація пакету
 
 ### CRM 62: фіналізація пакету [codex]

@@ -18,8 +18,8 @@ const Sidebar = (() => {
         extraEditingId: ''
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
-    const EXTRA_MENU_HREFS = ['/dashboard', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
-    const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
+    const EXTRA_MENU_HREFS = ['/dashboard', '/afisha', '/', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
+    const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v2';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
@@ -111,7 +111,7 @@ const Sidebar = (() => {
         all:            ALL,
         tasks:          _ALL_STAFF,
         chat:           _ALL_STAFF,
-        timeline:       [..._ADMIN_UP, 'reception', 'senior_instructor', 'instructor', 'security'],
+        timeline:       [..._ADMIN_UP, 'reception', 'animator', 'senior_instructor', 'instructor', 'security'],
         maysternya_doli: ['creator'],
         management:     [..._MGR_UP, 'admin', 'marketer'],
         leads:          [..._MGR_UP, 'marketer'],

@@ -545,34 +545,34 @@ const ROLE_PREVIEW_SESSION_KEY = 'testRole';
 const ROLE_SHELL_DEFAULT = {
     startPage: '/dashboard',
     dashboardPreset: '_default',
-    quickAccess: ['/dashboard', '/tasks', '/chat', '/certificates/new']
+    quickAccess: ['/dashboard', '/afisha', '/tasks', '/chat', '/certificates/new']
 };
 
 const ROLE_SHELL_CONFIG = {
     creator: {
         startPage: '/dashboard',
         dashboardPreset: 'creator',
-        quickAccess: ['/dashboard', '/maysternya-doli', '/center', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/maysternya-doli', '/certificates/new', '/center', '/tasks', '/chat']
     },
     director: {
         startPage: '/dashboard',
         dashboardPreset: 'director',
-        quickAccess: ['/dashboard', '/center', '/reports', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/certificates/new', '/center', '/reports', '/tasks', '/chat']
     },
     vice_director: {
         startPage: '/dashboard',
         dashboardPreset: 'vice_director',
-        quickAccess: ['/dashboard', '/', '/center', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/certificates/new', '/', '/center', '/tasks', '/chat']
     },
     senior_manager: {
         startPage: '/dashboard',
         dashboardPreset: 'senior_manager',
-        quickAccess: ['/dashboard', '/', '/sales-funnel', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/certificates/new', '/', '/sales-funnel', '/tasks', '/chat']
     },
     manager: {
         startPage: '/dashboard',
         dashboardPreset: 'manager',
-        quickAccess: ['/dashboard', '/', '/sales-funnel', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/certificates/new', '/', '/sales-funnel', '/tasks', '/chat']
     },
     admin: {
         startPage: '/',
@@ -587,7 +587,7 @@ const ROLE_SHELL_CONFIG = {
     animator: {
         startPage: '/tasks',
         dashboardPreset: 'animator',
-        quickAccess: ['/tasks', '/', '/programs', '/chat', '/training']
+        quickAccess: ['/afisha', '/', '/tasks', '/programs', '/chat', '/training']
     },
     instructor: {
         startPage: '/tasks',

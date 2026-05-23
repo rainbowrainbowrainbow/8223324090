@@ -467,7 +467,9 @@ async function renderProgramIcons() {
     const allProducts = await getProducts();
 
     // Cache: skip rebuild if products haven't changed
-    const hash = allProducts.length + ':' + allProducts.map(p => p.id).join(',');
+    const hash = allProducts.length + ':' + allProducts
+        .map(p => [p.id, p.label, p.name, p.duration, p.price, p.hosts, p.isActive, p.updatedAt || ''].join('|'))
+        .join(',');
     if (hash === _programIconsHash && container.children.length > 0) return;
     _programIconsHash = hash;
 

@@ -264,7 +264,8 @@ const AppState = {
     statusFilter: 'all',        // v5.15: 'all' | 'confirmed' | 'preliminary'
     // v7.0: Products cache from API
     products: null,             // Array of products from API (or null = not loaded)
-    productsLoadedAt: 0         // Timestamp when products were loaded
+    productsLoadedAt: 0,        // Timestamp when products were loaded
+    productsBusinessContext: null
 };
 
 // Auto-update sidebar avatar when currentUser changes
@@ -288,50 +289,63 @@ if (typeof window !== 'undefined') window.AppState = AppState;
 // v7.0: Products cache TTL (5 minutes)
 const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;
 
+function getTimelineProductsBusinessContext() {
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
+        return window.TimelineBusinessContext.current().apiValue || 'event_genix';
+    }
+    return 'event_genix';
+}
+
+function mapApiProductToTimelineProduct(p) {
+    return {
+        id: p.id,
+        businessContext: p.businessContext || p.business_context || getTimelineProductsBusinessContext(),
+        code: p.code,
+        label: p.label,
+        name: p.name,
+        icon: p.icon,
+        category: p.category,
+        duration: p.duration,
+        price: p.price,
+        hosts: p.hosts,
+        age: p.ageRange,
+        kids: p.kidsCapacity,
+        description: p.description,
+        perChild: p.isPerChild,
+        hasFiller: p.hasFiller,
+        isCustom: p.isCustom,
+        isActive: p.isActive,
+        sortOrder: p.sortOrder,
+        updatedAt: p.updatedAt
+    };
+}
+
 /**
  * v7.0: Get products — from API cache, or fallback to hardcoded PROGRAMS.
  * Maps API response format (camelCase) to match PROGRAMS format for backward compat.
  */
 async function getProducts() {
     const now = Date.now();
-    if (IS_MAYSTERNYA_DOLI_TIMELINE) {
-        AppState.products = PROGRAMS;
-        AppState.productsLoadedAt = now;
-        return AppState.products;
-    }
+    const businessContext = getTimelineProductsBusinessContext();
     // Return cached if still fresh
-    if (AppState.products && (now - AppState.productsLoadedAt) < PRODUCTS_CACHE_TTL) {
+    if (AppState.products
+        && AppState.productsBusinessContext === businessContext
+        && (now - AppState.productsLoadedAt) < PRODUCTS_CACHE_TTL) {
         return AppState.products;
     }
     // Try to load from API
     if (typeof apiGetProducts === 'function') {
-        const apiProducts = await apiGetProducts(true);
-        if (apiProducts && apiProducts.length > 0) {
+        const apiProducts = await apiGetProducts(true, { businessContext });
+        if (Array.isArray(apiProducts)) {
             // Map API camelCase to match existing PROGRAMS format
-            AppState.products = apiProducts.map(p => ({
-                id: p.id,
-                code: p.code,
-                label: p.label,
-                name: p.name,
-                icon: p.icon,
-                category: p.category,
-                duration: p.duration,
-                price: p.price,
-                hosts: p.hosts,
-                age: p.ageRange,
-                kids: p.kidsCapacity,
-                description: p.description,
-                perChild: p.isPerChild,
-                hasFiller: p.hasFiller,
-                isCustom: p.isCustom,
-                isActive: p.isActive,
-                sortOrder: p.sortOrder
-            }));
+            AppState.products = apiProducts.map(mapApiProductToTimelineProduct);
             AppState.productsLoadedAt = now;
+            AppState.productsBusinessContext = businessContext;
             return AppState.products;
         }
     }
     // Fallback to hardcoded PROGRAMS
+    AppState.productsBusinessContext = businessContext;
     return PROGRAMS;
 }
 
@@ -340,7 +354,8 @@ async function getProducts() {
  * Use this when you need sync access and products were already loaded.
  */
 function getProductsSync() {
-    if (AppState.products && AppState.products.length > 0) {
+    if (Array.isArray(AppState.products)
+        && AppState.productsBusinessContext === getTimelineProductsBusinessContext()) {
         return AppState.products;
     }
     return PROGRAMS;

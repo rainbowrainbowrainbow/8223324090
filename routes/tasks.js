@@ -1250,7 +1250,9 @@ router.get('/my-cabinet', async (req, res) => {
                  CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
                  COALESCE(t.focus_rank, 99),
                  ${canonicalTaskOrderSql('t')},
-                 COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC
+                 COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC,
+                 t.created_at DESC,
+                 t.id DESC
              LIMIT 160`,
             ownParams
         );

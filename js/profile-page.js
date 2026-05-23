@@ -33,6 +33,7 @@ let cabinetSavedDecompositionTemplates = [];
 let cabinetDecompositionSuggestions = [];
 let cabinetSuggestionTimer = null;
 let lastCabinetSuggestionKey = '';
+let lastCabinetCreatedTaskId = null;
 const expandedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
@@ -1823,9 +1824,57 @@ function cabinetSubtaskCompletionTitle(task = {}) {
         : `Спочатку закрийте всі підпункти: ${summary.done}/${summary.total}.`;
 }
 
+function cabinetTaskCreatedTime(task = {}) {
+    const raw = task.created_at || task.createdAt || task.created || '';
+    const parsed = raw ? Date.parse(raw) : NaN;
+    if (!Number.isNaN(parsed)) return parsed;
+    const id = Number(task.id || task.taskId || task.task_id || 0);
+    return Number.isFinite(id) ? id : 0;
+}
+
+function cabinetTaskDueKey(task = {}) {
+    const raw = task.scheduledStartAt || task.scheduled_start_at || task.deadline || task.remindAt || task.remind_at || task.date || '';
+    const key = String(raw || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+}
+
+function cabinetTaskScheduleStartTime(task = {}) {
+    const raw = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.scheduledStartAt || task.schedule?.startAt || '';
+    const parsed = raw ? Date.parse(raw) : NaN;
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+function cabinetTaskFocusRank(task = {}) {
+    const rank = Number(task.focusRank || task.focus_rank || 0);
+    return Number.isFinite(rank) && rank > 0 ? rank : 0;
+}
+
 function compareCabinetTasksForDisplay(a = {}, b = {}) {
+    const aIsNew = lastCabinetCreatedTaskId && String(a.id || a.taskId || a.task_id) === String(lastCabinetCreatedTaskId);
+    const bIsNew = lastCabinetCreatedTaskId && String(b.id || b.taskId || b.task_id) === String(lastCabinetCreatedTaskId);
+    if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+
     const decompositionDiff = Number(cabinetTaskHasSubtasks(b)) - Number(cabinetTaskHasSubtasks(a));
     if (decompositionDiff) return decompositionDiff;
+
+    const aFocus = cabinetTaskFocusRank(a);
+    const bFocus = cabinetTaskFocusRank(b);
+    if (Boolean(aFocus) !== Boolean(bFocus)) return aFocus ? -1 : 1;
+    if (aFocus && bFocus && aFocus !== bFocus) return aFocus - bFocus;
+
+    const aDue = cabinetTaskDueKey(a);
+    const bDue = cabinetTaskDueKey(b);
+    if (aDue && bDue && aDue !== bDue) return aDue.localeCompare(bDue);
+    if (aDue !== bDue) return aDue ? -1 : 1;
+
+    const aSchedule = cabinetTaskScheduleStartTime(a);
+    const bSchedule = cabinetTaskScheduleStartTime(b);
+    if ((aSchedule !== null) !== (bSchedule !== null)) return aSchedule === null ? -1 : 1;
+    if (aSchedule !== null && bSchedule !== null && aSchedule !== bSchedule) return aSchedule - bSchedule;
+
+    const createdDiff = cabinetTaskCreatedTime(b) - cabinetTaskCreatedTime(a);
+    if (createdDiff) return createdDiff;
+
     return 0;
 }
 
@@ -2703,6 +2752,7 @@ async function createCabinetTask(event, mode) {
         }
         return;
     }
+    lastCabinetCreatedTaskId = normalizeCabinetTaskId(result.task?.id || result.taskId || result.id) || lastCabinetCreatedTaskId;
     if (input) input.value = '';
     const subtaskList = document.getElementById('cabinetSubtaskList');
     if (subtaskList) subtaskList.innerHTML = '';

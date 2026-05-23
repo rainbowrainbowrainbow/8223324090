@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.15">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.15">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.15">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.15">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.15">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.15">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.15">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.15">
+    <link rel="stylesheet" href="css/base.css?v=0.62.16">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.16">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.16">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.16">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.16">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.16">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.16">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -601,10 +601,52 @@
             gap: 8px;
             align-items: center;
         }
+        .task-saved-template-controls {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: minmax(180px, 1fr) auto auto auto auto;
+            gap: 8px;
+            align-items: center;
+        }
         .task-decomposition-controls select {
             min-height: 34px !important;
             padding: 7px 9px !important;
             font-size: 12px !important;
+        }
+        .task-saved-template-controls select {
+            min-height: 34px !important;
+            padding: 7px 9px !important;
+            font-size: 12px !important;
+        }
+        .task-saved-template-controls .task-subtask-remove {
+            min-height: 32px;
+            padding: 0 10px;
+        }
+        .task-decomposition-suggestions {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .task-decomposition-suggestions[hidden] {
+            display: none;
+        }
+        .task-suggestion-chip {
+            border: 1px solid rgba(20, 184, 166, 0.28);
+            background: rgba(20, 184, 166, 0.08);
+            color: #0f766e;
+            border-radius: 8px;
+            padding: 6px 9px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .task-suggestion-chip:hover,
+        .task-suggestion-chip:focus {
+            outline: none;
+            border-color: #0f766e;
+            background: rgba(20, 184, 166, 0.14);
         }
         .task-subtask-status {
             grid-column: 1 / -1;
@@ -1362,6 +1404,10 @@
             .quick-add:not(.task-composer) input { flex: 1 1 100%; }
             .task-composer-primary,
             .task-composer-details { grid-template-columns: 1fr; }
+            .task-decomposition-controls,
+            .task-saved-template-controls {
+                grid-template-columns: 1fr;
+            }
             .task-batch-toolbar {
                 align-items: stretch;
                 flex-direction: column;
@@ -1675,6 +1721,16 @@
                             <button type="button" id="taskSubtaskDraftBtn" class="task-subtask-add">AI</button>
                             <button type="button" id="taskSubtaskAcceptDraftBtn" class="task-subtask-add" hidden>Прийняти</button>
                         </div>
+                        <div class="task-saved-template-controls">
+                            <select id="taskSavedDecompositionTemplate" aria-label="Мій шаблон підзадач">
+                                <option value="">Мої шаблони</option>
+                            </select>
+                            <button type="button" id="taskApplySavedTemplateBtn" class="task-subtask-add">Застосувати</button>
+                            <button type="button" id="taskSaveSubtasksTemplateBtn" class="task-subtask-add">Зберегти</button>
+                            <button type="button" id="taskUpdateSavedTemplateBtn" class="task-subtask-add">Оновити</button>
+                            <button type="button" id="taskDeleteSavedTemplateBtn" class="task-subtask-remove">Видалити</button>
+                        </div>
+                        <div id="taskDecompositionSuggestions" class="task-decomposition-suggestions" hidden></div>
                         <div id="taskSubtaskDraftStatus" class="task-subtask-status" aria-live="polite"></div>
                         <div class="task-subtasks-list" id="taskSubtasksList"></div>
                     </div>
@@ -1769,14 +1825,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.15"></script>
-    <script src="js/notification.js?v=0.62.15"></script>
-    <script src="js/api.js?v=0.62.15"></script>
-    <script src="js/auth.js?v=0.62.15"></script>
-    <script src="js/components/sidebar.js?v=0.62.15"></script>
+    <script src="js/config.js?v=0.62.16"></script>
+    <script src="js/notification.js?v=0.62.16"></script>
+    <script src="js/api.js?v=0.62.16"></script>
+    <script src="js/auth.js?v=0.62.16"></script>
+    <script src="js/components/sidebar.js?v=0.62.16"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.62.15"></script>
-    <script src="js/tasks-page.js?v=0.62.15"></script>
-    <script src="js/alerts.js?v=0.62.15"></script><script src="js/ui.js?v=0.62.15"></script>
+    <script src="js/task-create.js?v=0.62.16"></script>
+    <script src="js/tasks-page.js?v=0.62.16"></script>
+    <script src="js/alerts.js?v=0.62.16"></script><script src="js/ui.js?v=0.62.16"></script>
 </body>
 </html>

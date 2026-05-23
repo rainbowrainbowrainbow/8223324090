@@ -60,6 +60,14 @@ const {
     generateTaskDecompositionDraft,
     getTaskDecompositionTemplates
 } = require('../services/taskDecomposition');
+const {
+    applySavedDecompositionTemplate,
+    createSavedDecompositionTemplate,
+    deleteSavedDecompositionTemplate,
+    getDecompositionSuggestions,
+    listSavedDecompositionTemplates,
+    updateSavedDecompositionTemplate
+} = require('../services/taskDecompositionLibrary');
 const { getTaskProductivity } = require('../services/taskProductivity');
 const {
     VALID_TASK_CATEGORIES,
@@ -1125,6 +1133,87 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
             code: 'TASK_DECOMPOSITION_DRAFT_FAILED',
             error: 'Не вдалося підготувати чернетку підзадач. Нічого не збережено.'
         });
+    }
+});
+
+// GET /api/tasks/decomposition-saved-templates - personal reusable decomposition templates.
+router.get('/decomposition-saved-templates', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const templates = await listSavedDecompositionTemplates(pool, req.user, {
+            category: req.query.category,
+            limit: req.query.limit
+        });
+        res.json({ success: true, templates });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('List saved decomposition templates error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks/decomposition-saved-templates - save the current editable subtask draft as a personal template.
+router.post('/decomposition-saved-templates', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const template = await createSavedDecompositionTemplate(pool, req.user, req.body || {});
+        res.json({ success: true, template });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('Create saved decomposition template error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// PUT /api/tasks/decomposition-saved-templates/:templateId - edit a personal saved decomposition template.
+router.put('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const template = await updateSavedDecompositionTemplate(pool, req.user, req.params.templateId, req.body || {});
+        res.json({ success: true, template });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('Update saved decomposition template error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/tasks/decomposition-saved-templates/:templateId - soft-delete a personal saved template.
+router.delete('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await deleteSavedDecompositionTemplate(pool, req.user, req.params.templateId);
+        res.json({ success: true });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('Delete saved decomposition template error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks/decomposition-saved-templates/:templateId/apply - apply a saved template into editable draft rows.
+router.post('/decomposition-saved-templates/:templateId/apply', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const template = await applySavedDecompositionTemplate(pool, req.user, req.params.templateId);
+        res.json({
+            success: true,
+            source: 'saved_template',
+            template,
+            subtasks: template.subtasks,
+            meta: { humanReviewRequired: true, persisted: false }
+        });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('Apply saved decomposition template error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks/decomposition-suggestions - restrained template/history suggestions for the current user.
+router.post('/decomposition-suggestions', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const suggestions = await getDecompositionSuggestions(pool, req.user, req.body || {});
+        res.json({ success: true, ...suggestions });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
+        log.error('Task decomposition suggestions error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

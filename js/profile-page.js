@@ -29,6 +29,10 @@ let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
 let cabinetUndoToastTimer = null;
 let profileSecurityData = null;
+let cabinetSavedDecompositionTemplates = [];
+let cabinetDecompositionSuggestions = [];
+let cabinetSuggestionTimer = null;
+let lastCabinetSuggestionKey = '';
 
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
@@ -1256,6 +1260,226 @@ function replaceCabinetSubtasks(items = [], options = {}) {
     });
 }
 
+function renderCabinetSavedTemplateOptions() {
+    const select = document.getElementById('cabinetSavedDecompositionTemplate');
+    if (!select) return;
+    const current = select.value;
+    const options = ['<option value="">Мої шаблони</option>'];
+    cabinetSavedDecompositionTemplates.forEach(template => {
+        const count = Array.isArray(template.items) ? template.items.length : (Array.isArray(template.subtasks) ? template.subtasks.length : 0);
+        const label = `${template.name || template.title || 'Шаблон'}${count ? ` (${count})` : ''}`;
+        options.push(`<option value="${escapeHtml(template.id)}">${escapeHtml(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    if (current && cabinetSavedDecompositionTemplates.some(template => String(template.id) === String(current))) {
+        select.value = current;
+    }
+}
+
+async function refreshCabinetSavedTemplates() {
+    if (!window.TaskCreate?.requestSavedDecompositionTemplates) return;
+    cabinetSavedDecompositionTemplates = await window.TaskCreate.requestSavedDecompositionTemplates({ limit: 50 });
+    renderCabinetSavedTemplateOptions();
+}
+
+async function applySelectedCabinetSavedTemplate() {
+    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setCabinetSubtaskDraftStatus('Оберіть збережений шаблон.', 'warning');
+        return;
+    }
+    const result = await window.TaskCreate?.applySavedDecompositionTemplate?.(templateId);
+    if (!result?.success) {
+        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося застосувати шаблон.', 'error');
+        return;
+    }
+    replaceCabinetSubtasks(result.subtasks || [], { sourceType: 'template' });
+    setCabinetDecompositionMode('template', { keepRows: true, keepStatus: true });
+    setCabinetSubtaskDraftStatus('Шаблон додано як чернетку. Список можна змінити перед збереженням.', 'success');
+    await refreshCabinetSavedTemplates();
+}
+
+async function saveCabinetSubtasksAsTemplate() {
+    const subtasks = readCabinetSubtasks();
+    if (subtasks.length < 2) {
+        setCabinetSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
+        return;
+    }
+    const title = document.getElementById('cabinetTaskTitle')?.value.trim() || '';
+    let values = null;
+    if (typeof formModal === 'function') {
+        values = await formModal('Зберегти шаблон підзадач', [
+            {
+                key: 'name',
+                label: 'Назва шаблону',
+                type: 'text',
+                required: true,
+                defaultValue: title ? `${title} · підзадачі` : 'Новий шаблон підзадач'
+            },
+            {
+                key: 'description',
+                label: 'Опис',
+                type: 'textarea',
+                defaultValue: ''
+            }
+        ], {
+            okText: 'Зберегти',
+            cancelText: 'Скасувати',
+            type: 'info'
+        });
+    } else {
+        const name = window.prompt('Назва шаблону підзадач', title ? `${title} · підзадачі` : 'Новий шаблон підзадач');
+        values = name ? { name, description: '' } : null;
+    }
+    if (!values?.name) return;
+    const result = await window.TaskCreate?.saveDecompositionTemplate?.({
+        name: values.name,
+        description: values.description || '',
+        category: document.getElementById('cabinetTaskCategory')?.value || 'personal',
+        subtasks
+    });
+    if (!result?.success) {
+        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося зберегти шаблон.', 'error');
+        return;
+    }
+    await refreshCabinetSavedTemplates();
+    const select = document.getElementById('cabinetSavedDecompositionTemplate');
+    if (select && result.template?.id) select.value = String(result.template.id);
+    setCabinetSubtaskDraftStatus('Шаблон підзадач збережено.', 'success');
+}
+
+async function updateSelectedCabinetSavedTemplate() {
+    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setCabinetSubtaskDraftStatus('Оберіть шаблон для оновлення.', 'warning');
+        return;
+    }
+    const subtasks = readCabinetSubtasks();
+    if (subtasks.length < 2) {
+        setCabinetSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
+        return;
+    }
+    const current = cabinetSavedDecompositionTemplates.find(template => String(template.id) === String(templateId)) || {};
+    let values = null;
+    if (typeof formModal === 'function') {
+        values = await formModal('Оновити шаблон підзадач', [
+            {
+                key: 'name',
+                label: 'Назва шаблону',
+                type: 'text',
+                required: true,
+                defaultValue: current.name || current.title || 'Шаблон підзадач'
+            },
+            {
+                key: 'description',
+                label: 'Опис',
+                type: 'textarea',
+                defaultValue: current.description || ''
+            }
+        ], {
+            okText: 'Оновити',
+            cancelText: 'Скасувати',
+            type: 'info'
+        });
+    } else {
+        const name = window.prompt('Назва шаблону підзадач', current.name || current.title || 'Шаблон підзадач');
+        values = name ? { name, description: current.description || '' } : null;
+    }
+    if (!values?.name) return;
+    const result = await window.TaskCreate?.updateDecompositionTemplate?.(templateId, {
+        name: values.name,
+        description: values.description || '',
+        category: document.getElementById('cabinetTaskCategory')?.value || current.category || 'personal',
+        subtasks
+    });
+    if (!result?.success) {
+        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося оновити шаблон.', 'error');
+        return;
+    }
+    await refreshCabinetSavedTemplates();
+    const select = document.getElementById('cabinetSavedDecompositionTemplate');
+    if (select) select.value = String(templateId);
+    setCabinetSubtaskDraftStatus('Шаблон підзадач оновлено.', 'success');
+}
+
+async function deleteSelectedCabinetSavedTemplate() {
+    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setCabinetSubtaskDraftStatus('Оберіть шаблон для видалення.', 'warning');
+        return;
+    }
+    if (typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Видалити цей шаблон підзадач?', { type: 'danger', okText: 'Видалити' });
+        if (!confirmed) return;
+    } else {
+        setCabinetSubtaskDraftStatus('Видалення шаблону тимчасово недоступне без CRM confirm modal.', 'warning');
+        return;
+    }
+    const result = await window.TaskCreate?.deleteDecompositionTemplate?.(templateId);
+    if (!result?.success) {
+        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося видалити шаблон.', 'error');
+        return;
+    }
+    await refreshCabinetSavedTemplates();
+    setCabinetSubtaskDraftStatus('Шаблон видалено.', 'success');
+}
+
+function renderCabinetDecompositionSuggestions() {
+    const host = document.getElementById('cabinetDecompositionSuggestions');
+    if (!host) return;
+    if (!cabinetDecompositionSuggestions.length) {
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
+    }
+    host.hidden = false;
+    host.innerHTML = cabinetDecompositionSuggestions.map((suggestion, index) => {
+        const count = Array.isArray(suggestion.subtasks) ? suggestion.subtasks.length : 0;
+        const label = suggestion.type === 'saved_template'
+            ? `Шаблон: ${suggestion.title || suggestion.template?.name || ''}`
+            : (suggestion.title || 'Схожа структура');
+        return `<button type="button" class="cabinet-suggestion-chip" data-cabinet-suggestion-index="${index}">
+            ${escapeHtml(label)} · ${count}
+        </button>`;
+    }).join('');
+}
+
+async function refreshCabinetDecompositionSuggestions() {
+    if (!window.TaskCreate?.requestDecompositionSuggestions) return;
+    const title = document.getElementById('cabinetTaskTitle')?.value.trim() || '';
+    const category = document.getElementById('cabinetTaskCategory')?.value || 'personal';
+    const key = [title, category].join('|');
+    if (key === lastCabinetSuggestionKey) return;
+    lastCabinetSuggestionKey = key;
+    if (title.length < 3) {
+        cabinetDecompositionSuggestions = [];
+        renderCabinetDecompositionSuggestions();
+        return;
+    }
+    const result = await window.TaskCreate.requestDecompositionSuggestions({
+        title,
+        category,
+        taskKind: document.getElementById('cabinetTaskKind')?.value || 'action',
+        taskMode: document.getElementById('cabinetTaskMode')?.value || 'personal'
+    });
+    cabinetDecompositionSuggestions = result?.success ? (result.suggestions || []) : [];
+    renderCabinetDecompositionSuggestions();
+}
+
+function scheduleCabinetDecompositionSuggestions() {
+    clearTimeout(cabinetSuggestionTimer);
+    cabinetSuggestionTimer = setTimeout(refreshCabinetDecompositionSuggestions, 450);
+}
+
+function applyCabinetSuggestion(index) {
+    const suggestion = cabinetDecompositionSuggestions[index];
+    if (!suggestion) return;
+    const sourceType = suggestion.type === 'saved_template' ? 'template' : 'system';
+    replaceCabinetSubtasks(suggestion.subtasks || suggestion.template?.subtasks || [], { sourceType });
+    setCabinetDecompositionMode(suggestion.type === 'saved_template' ? 'template' : 'manual', { keepRows: true, keepStatus: true });
+    setCabinetSubtaskDraftStatus('Підказку додано як чернетку. Список можна змінити перед збереженням.', 'success');
+}
+
 async function generateCabinetSubtasks() {
     const input = document.getElementById('cabinetTaskTitle');
     const title = input?.value.trim() || '';
@@ -1311,10 +1535,25 @@ async function generateCabinetSubtasks() {
 function bindCabinetSubtasks() {
     document.getElementById('cabinetDecompositionMode')?.addEventListener('change', event => setCabinetDecompositionMode(event.target.value));
     document.getElementById('cabinetSubtaskDraftBtn')?.addEventListener('click', generateCabinetSubtasks);
+    document.getElementById('cabinetApplySavedTemplateBtn')?.addEventListener('click', applySelectedCabinetSavedTemplate);
+    document.getElementById('cabinetSaveSubtasksTemplateBtn')?.addEventListener('click', saveCabinetSubtasksAsTemplate);
+    document.getElementById('cabinetUpdateSavedTemplateBtn')?.addEventListener('click', updateSelectedCabinetSavedTemplate);
+    document.getElementById('cabinetDeleteSavedTemplateBtn')?.addEventListener('click', deleteSelectedCabinetSavedTemplate);
+    document.getElementById('cabinetTaskTitle')?.addEventListener('input', scheduleCabinetDecompositionSuggestions);
+    document.getElementById('cabinetTaskCategory')?.addEventListener('change', () => {
+        refreshCabinetSavedTemplates();
+        scheduleCabinetDecompositionSuggestions();
+    });
+    document.getElementById('cabinetDecompositionSuggestions')?.addEventListener('click', event => {
+        const chip = event.target.closest('[data-cabinet-suggestion-index]');
+        if (!chip) return;
+        applyCabinetSuggestion(Number(chip.dataset.cabinetSuggestionIndex));
+    });
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
         setCabinetSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
         document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     });
+    refreshCabinetSavedTemplates();
     setCabinetDecompositionMode(document.getElementById('cabinetDecompositionMode')?.value || 'none', { keepRows: true, keepStatus: true });
     const list = document.getElementById('cabinetSubtaskList');
     if (!list || list.dataset.cabinetSubtasksBound === 'true') return;
@@ -1728,6 +1967,16 @@ function renderCabinetTaskComposer(options = {}) {
                     <button type="button" id="cabinetSubtaskDraftBtn" class="cabinet-subtask-add">AI</button>
                     <button type="button" id="cabinetSubtaskAcceptDraftBtn" class="cabinet-subtask-add" hidden>Прийняти</button>
                 </div>
+                <div class="cabinet-template-controls">
+                    <select id="cabinetSavedDecompositionTemplate" aria-label="Мій шаблон підзадач">
+                        <option value="">Мої шаблони</option>
+                    </select>
+                    <button type="button" id="cabinetApplySavedTemplateBtn" class="cabinet-subtask-add">Застосувати</button>
+                    <button type="button" id="cabinetSaveSubtasksTemplateBtn" class="cabinet-subtask-add">Зберегти</button>
+                    <button type="button" id="cabinetUpdateSavedTemplateBtn" class="cabinet-subtask-add">Оновити</button>
+                    <button type="button" id="cabinetDeleteSavedTemplateBtn" class="cabinet-subtask-remove">Видалити</button>
+                </div>
+                <div id="cabinetDecompositionSuggestions" class="cabinet-decomposition-suggestions" hidden></div>
                 <div id="cabinetSubtaskDraftStatus" class="cabinet-subtask-status" aria-live="polite"></div>
                 <div id="cabinetSubtaskList" class="cabinet-subtask-list"></div>
             </div>
@@ -2261,6 +2510,9 @@ async function createCabinetTask(event, mode) {
     if (input) input.value = '';
     const subtaskList = document.getElementById('cabinetSubtaskList');
     if (subtaskList) subtaskList.innerHTML = '';
+    cabinetDecompositionSuggestions = [];
+    lastCabinetSuggestionKey = '';
+    renderCabinetDecompositionSuggestions();
     setCabinetSubtaskDraftStatus('');
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });

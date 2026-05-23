@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.16 - Шаблони декомпозиції задач
+
+### Шаблони декомпозиції задач [codex]
+- **Live baseline** - production smoke підтвердив `v0.62.15` на Railway, `/api/health` з підключеною БД та `/api/version`; повний authenticated UAT заблокований відсутністю `TEST_USER` / `TEST_PASS` або live session token у workspace.
+- **Збережені шаблони** - додано персональні `task_decomposition_templates` і `task_decomposition_template_items` з owner scope, ordered items, source metadata, usage counter та soft-delete.
+- **Canonical flow** - Tasks і Profile / My Cabinet отримали однакові дії: зберегти поточні підзадачі як шаблон, застосувати шаблон у editable draft, оновити шаблон з поточного списку або видалити його.
+- **Розумні підказки** - `/api/tasks/decomposition-suggestions` ранжує saved templates і повторювані історичні структури задач за title/category/history signal без AI-магії та без автозбереження.
+- **Guardrail** - додано `tests/task-decomposition-library.test.js`, міграцію `212_task_decomposition_saved_templates.sql` і збережено Phase 1-3 contract: persisted subtasks і прогрес лишаються через `task_subtasks`.
+
+---
+
 ## v0.62.15 - Продуктивність задач
 
 ### Продуктивність задач [codex]

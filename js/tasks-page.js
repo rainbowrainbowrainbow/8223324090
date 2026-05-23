@@ -120,6 +120,10 @@ let taskDuePreset = 'today';
 let kanbanDragState = null;
 let lastKanbanDragEndedAt = 0;
 let kanbanSavingTaskIds = new Set();
+let taskSavedDecompositionTemplates = [];
+let taskDecompositionSuggestions = [];
+let taskSuggestionTimer = null;
+let lastTaskSuggestionKey = '';
 
 // ==========================================
 // UTILITIES
@@ -782,7 +786,11 @@ async function initPage() {
         document.getElementById('taskCategory')?.addEventListener('change', () => {
             syncSubcategorySelect('taskCategory', 'taskSubcategory');
             syncTaskSurfaceVisibility();
+            refreshTaskSavedTemplates();
+            scheduleTaskDecompositionSuggestions();
         });
+        document.getElementById('taskSubcategory')?.addEventListener('change', scheduleTaskDecompositionSuggestions);
+        document.getElementById('taskTitle')?.addEventListener('input', scheduleTaskDecompositionSuggestions);
         document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') addTask();
         });
@@ -800,6 +808,7 @@ async function initPage() {
         document.getElementById('createOperationPackBtn')?.addEventListener('click', createOperationPack);
         syncSubcategorySelect('taskCategory', 'taskSubcategory');
         syncSubcategorySelect('tplCategory', 'tplSubcategory');
+        await refreshTaskSavedTemplates();
 
         // v20.9.16: Load permissions and apply UI restrictions
         const permsResult = await apiGetTaskPermissions();
@@ -2201,6 +2210,230 @@ function replaceTaskComposerSubtasks(items = [], options = {}) {
     toggleTaskComposerDetails(true);
 }
 
+function renderTaskSavedTemplateOptions() {
+    const select = document.getElementById('taskSavedDecompositionTemplate');
+    if (!select) return;
+    const current = select.value;
+    const options = ['<option value="">Мої шаблони</option>'];
+    taskSavedDecompositionTemplates.forEach(template => {
+        const count = Array.isArray(template.items) ? template.items.length : (Array.isArray(template.subtasks) ? template.subtasks.length : 0);
+        const label = `${template.name || template.title || 'Шаблон'}${count ? ` (${count})` : ''}`;
+        options.push(`<option value="${escapeHtml(template.id)}">${escapeHtml(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    if (current && taskSavedDecompositionTemplates.some(template => String(template.id) === String(current))) {
+        select.value = current;
+    }
+}
+
+async function refreshTaskSavedTemplates() {
+    if (!window.TaskCreate?.requestSavedDecompositionTemplates) return;
+    taskSavedDecompositionTemplates = await window.TaskCreate.requestSavedDecompositionTemplates({ limit: 50 });
+    renderTaskSavedTemplateOptions();
+}
+
+async function applySelectedTaskSavedTemplate() {
+    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setTaskSubtaskDraftStatus('Оберіть збережений шаблон.', 'warning');
+        return;
+    }
+    const result = await window.TaskCreate?.applySavedDecompositionTemplate?.(templateId);
+    if (!result?.success) {
+        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося застосувати шаблон.', 'error');
+        return;
+    }
+    replaceTaskComposerSubtasks(result.subtasks || [], { sourceType: 'template' });
+    setTaskDecompositionMode('template', { keepRows: true, keepStatus: true });
+    setTaskSubtaskDraftStatus('Шаблон додано як чернетку. Список можна змінити перед збереженням.', 'success');
+    await refreshTaskSavedTemplates();
+}
+
+async function saveTaskSubtasksAsTemplate() {
+    const subtasks = readTaskComposerSubtasks();
+    if (subtasks.length < 2) {
+        setTaskSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
+        return;
+    }
+    const title = document.getElementById('taskTitle')?.value.trim() || '';
+    let values = null;
+    if (typeof formModal === 'function') {
+        values = await formModal('Зберегти шаблон підзадач', [
+            {
+                key: 'name',
+                label: 'Назва шаблону',
+                type: 'text',
+                required: true,
+                defaultValue: title ? `${title} · підзадачі` : 'Новий шаблон підзадач'
+            },
+            {
+                key: 'description',
+                label: 'Опис',
+                type: 'textarea',
+                defaultValue: ''
+            }
+        ], {
+            okText: 'Зберегти',
+            cancelText: 'Скасувати',
+            type: 'info'
+        });
+    } else {
+        const name = window.prompt('Назва шаблону підзадач', title ? `${title} · підзадачі` : 'Новий шаблон підзадач');
+        values = name ? { name, description: '' } : null;
+    }
+    if (!values?.name) return;
+    const category = document.getElementById('taskCategory')?.value || 'admin';
+    const result = await window.TaskCreate?.saveDecompositionTemplate?.({
+        name: values.name,
+        description: values.description || '',
+        category,
+        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
+        subtasks
+    });
+    if (!result?.success) {
+        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося зберегти шаблон.', 'error');
+        return;
+    }
+    await refreshTaskSavedTemplates();
+    const select = document.getElementById('taskSavedDecompositionTemplate');
+    if (select && result.template?.id) select.value = String(result.template.id);
+    setTaskSubtaskDraftStatus('Шаблон підзадач збережено.', 'success');
+}
+
+async function updateSelectedTaskSavedTemplate() {
+    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setTaskSubtaskDraftStatus('Оберіть шаблон для оновлення.', 'warning');
+        return;
+    }
+    const subtasks = readTaskComposerSubtasks();
+    if (subtasks.length < 2) {
+        setTaskSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
+        return;
+    }
+    const current = taskSavedDecompositionTemplates.find(template => String(template.id) === String(templateId)) || {};
+    let values = null;
+    if (typeof formModal === 'function') {
+        values = await formModal('Оновити шаблон підзадач', [
+            {
+                key: 'name',
+                label: 'Назва шаблону',
+                type: 'text',
+                required: true,
+                defaultValue: current.name || current.title || 'Шаблон підзадач'
+            },
+            {
+                key: 'description',
+                label: 'Опис',
+                type: 'textarea',
+                defaultValue: current.description || ''
+            }
+        ], {
+            okText: 'Оновити',
+            cancelText: 'Скасувати',
+            type: 'info'
+        });
+    } else {
+        const name = window.prompt('Назва шаблону підзадач', current.name || current.title || 'Шаблон підзадач');
+        values = name ? { name, description: current.description || '' } : null;
+    }
+    if (!values?.name) return;
+    const category = document.getElementById('taskCategory')?.value || current.category || 'admin';
+    const result = await window.TaskCreate?.updateDecompositionTemplate?.(templateId, {
+        name: values.name,
+        description: values.description || '',
+        category,
+        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
+        subtasks
+    });
+    if (!result?.success) {
+        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося оновити шаблон.', 'error');
+        return;
+    }
+    await refreshTaskSavedTemplates();
+    const select = document.getElementById('taskSavedDecompositionTemplate');
+    if (select) select.value = String(templateId);
+    setTaskSubtaskDraftStatus('Шаблон підзадач оновлено.', 'success');
+}
+
+async function deleteSelectedTaskSavedTemplate() {
+    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
+    if (!templateId) {
+        setTaskSubtaskDraftStatus('Оберіть шаблон для видалення.', 'warning');
+        return;
+    }
+    if (typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Видалити цей шаблон підзадач?', { type: 'danger', okText: 'Видалити' });
+        if (!confirmed) return;
+    } else {
+        setTaskSubtaskDraftStatus('Видалення шаблону тимчасово недоступне без CRM confirm modal.', 'warning');
+        return;
+    }
+    const result = await window.TaskCreate?.deleteDecompositionTemplate?.(templateId);
+    if (!result?.success) {
+        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося видалити шаблон.', 'error');
+        return;
+    }
+    await refreshTaskSavedTemplates();
+    setTaskSubtaskDraftStatus('Шаблон видалено.', 'success');
+}
+
+function renderTaskDecompositionSuggestions() {
+    const host = document.getElementById('taskDecompositionSuggestions');
+    if (!host) return;
+    if (!taskDecompositionSuggestions.length) {
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
+    }
+    host.hidden = false;
+    host.innerHTML = taskDecompositionSuggestions.map((suggestion, index) => {
+        const count = Array.isArray(suggestion.subtasks) ? suggestion.subtasks.length : 0;
+        const label = suggestion.type === 'saved_template'
+            ? `Шаблон: ${suggestion.title || suggestion.template?.name || ''}`
+            : (suggestion.title || 'Схожа структура');
+        return `<button type="button" class="task-suggestion-chip" data-task-suggestion-index="${index}">
+            ${escapeHtml(label)} · ${count}
+        </button>`;
+    }).join('');
+}
+
+async function refreshTaskDecompositionSuggestions() {
+    if (!window.TaskCreate?.requestDecompositionSuggestions) return;
+    const draft = readTaskComposerDraft();
+    const key = [draft.title, draft.category, draft.subcategory].join('|');
+    if (key === lastTaskSuggestionKey) return;
+    lastTaskSuggestionKey = key;
+    if (!draft.title || draft.title.length < 3) {
+        taskDecompositionSuggestions = [];
+        renderTaskDecompositionSuggestions();
+        return;
+    }
+    const result = await window.TaskCreate.requestDecompositionSuggestions({
+        title: draft.title,
+        category: draft.category,
+        subcategory: draft.subcategory,
+        taskKind: draft.kind,
+        taskMode: draft.mode
+    });
+    taskDecompositionSuggestions = result?.success ? (result.suggestions || []) : [];
+    renderTaskDecompositionSuggestions();
+}
+
+function scheduleTaskDecompositionSuggestions() {
+    clearTimeout(taskSuggestionTimer);
+    taskSuggestionTimer = setTimeout(refreshTaskDecompositionSuggestions, 450);
+}
+
+function applyTaskSuggestion(index) {
+    const suggestion = taskDecompositionSuggestions[index];
+    if (!suggestion) return;
+    const sourceType = suggestion.type === 'saved_template' ? 'template' : 'system';
+    replaceTaskComposerSubtasks(suggestion.subtasks || suggestion.template?.subtasks || [], { sourceType });
+    setTaskDecompositionMode(suggestion.type === 'saved_template' ? 'template' : 'manual', { keepRows: true, keepStatus: true });
+    setTaskSubtaskDraftStatus('Підказку додано як чернетку. Список можна змінити перед збереженням.', 'success');
+}
+
 async function generateTaskComposerSubtasks() {
     const mode = document.getElementById('taskDecompositionMode')?.value || 'ai';
     const title = document.getElementById('taskTitle')?.value.trim() || '';
@@ -2254,6 +2487,15 @@ function bindTaskComposerSubtasks() {
     document.getElementById('taskSubtaskAddBtn')?.addEventListener('click', () => addTaskComposerSubtask());
     document.getElementById('taskDecompositionMode')?.addEventListener('change', event => setTaskDecompositionMode(event.target.value));
     document.getElementById('taskSubtaskDraftBtn')?.addEventListener('click', generateTaskComposerSubtasks);
+    document.getElementById('taskApplySavedTemplateBtn')?.addEventListener('click', applySelectedTaskSavedTemplate);
+    document.getElementById('taskSaveSubtasksTemplateBtn')?.addEventListener('click', saveTaskSubtasksAsTemplate);
+    document.getElementById('taskUpdateSavedTemplateBtn')?.addEventListener('click', updateSelectedTaskSavedTemplate);
+    document.getElementById('taskDeleteSavedTemplateBtn')?.addEventListener('click', deleteSelectedTaskSavedTemplate);
+    document.getElementById('taskDecompositionSuggestions')?.addEventListener('click', event => {
+        const chip = event.target.closest('[data-task-suggestion-index]');
+        if (!chip) return;
+        applyTaskSuggestion(Number(chip.dataset.taskSuggestionIndex));
+    });
     document.getElementById('taskSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
         setTaskSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
         document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
@@ -2501,6 +2743,9 @@ function resetTaskComposerAfterCreate() {
     quickTaskBatchItems = [];
     renderQuickTaskBatchItems();
     resetTaskComposerSubtasks();
+    taskDecompositionSuggestions = [];
+    lastTaskSuggestionKey = '';
+    renderTaskDecompositionSuggestions();
     captureIntent = {};
     document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
     setTaskDuePreset('today', { expand: false });

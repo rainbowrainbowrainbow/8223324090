@@ -87,28 +87,36 @@
         }));
     }
 
-    async function requestDecompositionDraft(context = {}) {
+    async function taskApiRequest(path, options = {}) {
         const base = typeof API_BASE === 'string' ? API_BASE : '/api';
         const headers = typeof getAuthHeaders === 'function'
             ? getAuthHeaders()
             : { 'Content-Type': 'application/json' };
+        const response = await fetch(`${base}${path}`, {
+            ...options,
+            headers: { ...headers, ...(options.headers || {}) }
+        });
+        if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.success === false) {
+            return {
+                success: false,
+                status: response.status,
+                error: payload?.error || payload?.message || 'Request failed',
+                code: payload?.code,
+                meta: payload?.meta || {}
+            };
+        }
+        return payload;
+    }
+
+    async function requestDecompositionDraft(context = {}) {
         try {
-            const response = await fetch(`${base}/tasks/decompose-draft`, {
+            const payload = await taskApiRequest('/tasks/decompose-draft', {
                 method: 'POST',
-                headers,
                 body: JSON.stringify(context)
             });
-            if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok || !payload?.success) {
-                return {
-                    success: false,
-                    status: response.status,
-                    error: payload?.error || 'AI draft failed',
-                    code: payload?.code,
-                    meta: payload?.meta || {}
-                };
-            }
+            if (!payload?.success) return payload || { success: false, error: 'AI draft failed' };
             return {
                 ...payload,
                 subtasks: normalizeDecompositionItems(payload)
@@ -116,6 +124,95 @@
         } catch (error) {
             console.error('[TaskCreate] requestDecompositionDraft failed', error);
             return { success: false, error: error?.message || 'AI draft failed' };
+        }
+    }
+
+    async function requestSavedDecompositionTemplates(filters = {}) {
+        try {
+            const query = new URLSearchParams();
+            if (filters.category) query.set('category', filters.category);
+            if (filters.limit) query.set('limit', filters.limit);
+            const suffix = query.toString() ? `?${query.toString()}` : '';
+            const payload = await taskApiRequest(`/tasks/decomposition-saved-templates${suffix}`, { method: 'GET' });
+            return payload?.success ? (payload.templates || []) : [];
+        } catch (error) {
+            console.error('[TaskCreate] requestSavedDecompositionTemplates failed', error);
+            return [];
+        }
+    }
+
+    async function saveDecompositionTemplate(data = {}) {
+        try {
+            return await taskApiRequest('/tasks/decomposition-saved-templates', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+        } catch (error) {
+            console.error('[TaskCreate] saveDecompositionTemplate failed', error);
+            return { success: false, error: error?.message || 'Template save failed' };
+        }
+    }
+
+    async function updateDecompositionTemplate(templateId, data = {}) {
+        try {
+            return await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+        } catch (error) {
+            console.error('[TaskCreate] updateDecompositionTemplate failed', error);
+            return { success: false, error: error?.message || 'Template update failed' };
+        }
+    }
+
+    async function deleteDecompositionTemplate(templateId) {
+        try {
+            return await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}`, {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error('[TaskCreate] deleteDecompositionTemplate failed', error);
+            return { success: false, error: error?.message || 'Template delete failed' };
+        }
+    }
+
+    async function applySavedDecompositionTemplate(templateId) {
+        try {
+            const payload = await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}/apply`, {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+            if (!payload?.success) return payload || { success: false, error: 'Template apply failed' };
+            return {
+                ...payload,
+                subtasks: normalizeDecompositionItems({ subtasks: payload.subtasks || [], source: 'template' })
+            };
+        } catch (error) {
+            console.error('[TaskCreate] applySavedDecompositionTemplate failed', error);
+            return { success: false, error: error?.message || 'Template apply failed' };
+        }
+    }
+
+    async function requestDecompositionSuggestions(context = {}) {
+        try {
+            const payload = await taskApiRequest('/tasks/decomposition-suggestions', {
+                method: 'POST',
+                body: JSON.stringify(context)
+            });
+            if (!payload?.success) return { success: false, suggestions: [], error: payload?.error || 'Suggestions failed' };
+            return {
+                ...payload,
+                suggestions: (payload.suggestions || []).map(suggestion => ({
+                    ...suggestion,
+                    subtasks: normalizeDecompositionItems({
+                        subtasks: suggestion.subtasks || suggestion.template?.subtasks || [],
+                        source: suggestion.type === 'saved_template' ? 'template' : 'system'
+                    })
+                }))
+            };
+        } catch (error) {
+            console.error('[TaskCreate] requestDecompositionSuggestions failed', error);
+            return { success: false, suggestions: [], error: error?.message || 'Suggestions failed' };
         }
     }
 
@@ -226,6 +323,12 @@
         normalizeDecompositionItems,
         subtaskProgress,
         requestDecompositionDraft,
+        requestSavedDecompositionTemplates,
+        saveDecompositionTemplate,
+        updateDecompositionTemplate,
+        deleteDecompositionTemplate,
+        applySavedDecompositionTemplate,
+        requestDecompositionSuggestions,
         buildPayload,
         createTask
     };

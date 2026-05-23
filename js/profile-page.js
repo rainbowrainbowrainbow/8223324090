@@ -1673,7 +1673,7 @@ function renderCabinetPulseCluster() {
             '</button>'
         ].join('');
     }).join('');
-    return '<div class="cabinet-quick-cluster" role="tablist" aria-label="\u0428\u0432\u0438\u0434\u043a\u0438\u0439 \u0432\u0438\u0431\u0456\u0440 \u0440\u043e\u0431\u043e\u0447\u043e\u0433\u043e \u0440\u0435\u0436\u0438\u043c\u0443 My Cabinet">' + segmentsHtml + '</div>';
+    return '<div class="cabinet-quick-cluster" role="tablist" aria-label="\u0428\u0432\u0438\u0434\u043a\u0438\u0439 \u0432\u0438\u0431\u0456\u0440 \u0440\u043e\u0431\u043e\u0447\u043e\u0433\u043e \u0440\u0435\u0436\u0438\u043c\u0443 \u043e\u0441\u043e\u0431\u0438\u0441\u0442\u043e\u0433\u043e \u043a\u0430\u0431\u0456\u043d\u0435\u0442\u0443">' + segmentsHtml + '</div>';
 }
 
 function openCabinetAlerts(event) {
@@ -1700,9 +1700,9 @@ function taskKindLabel(task) {
     return {
         action: 'Дія',
         reminder: 'Нагадування',
-        followup: 'Follow-up',
-        deep_work: 'Deep work',
-        checklist: 'Checklist',
+        followup: 'Дотиск',
+        deep_work: 'Глибока робота',
+        checklist: 'Чеклист',
         routine: 'Рутина',
         waiting: 'Чекаю',
         idea: 'Ідея',
@@ -1997,7 +1997,7 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-head">
                 <div>
                     <span class="cabinet-kicker">Нова задача</span>
-                    <h3>Додати в мій cockpit</h3>
+                    <h3>Додати в мій робочий простір</h3>
                 </div>
                 <button type="submit" class="cabinet-task-create-submit">Створити задачу</button>
             </div>
@@ -2023,7 +2023,7 @@ function renderCabinetTaskComposer(options = {}) {
                     <select id="cabinetTaskKind">
                         <option value="action" ${defaults.kind === 'action' ? 'selected' : ''}>Дія</option>
                         <option value="reminder" ${defaults.kind === 'reminder' ? 'selected' : ''}>Нагадування</option>
-                        <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Follow-up</option>
+                        <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Дотиск</option>
                         <option value="idea" ${defaults.kind === 'idea' ? 'selected' : ''}>Ідея</option>
                     </select>
                 </label>
@@ -2208,20 +2208,20 @@ function renderProductivityInsights(data = {}) {
         <div>
             <span>Декомпозовані задачі</span>
             <b>${productivityNumber(summary.decomposedTasksCount)}</b>
-            <small>${productivityPercent(decomposition.decomposedCompletionRate)} completion</small>
+            <small>${productivityPercent(decomposition.decomposedCompletionRate)} завершення</small>
         </div>
         <div>
             <span>Без декомпозиції</span>
             <b>${productivityNumber(decomposition.nonDecomposedTasks)}</b>
-            <small>${productivityPercent(decomposition.nonDecomposedCompletionRate)} completion</small>
+            <small>${productivityPercent(decomposition.nonDecomposedCompletionRate)} завершення</small>
         </div>
         <div>
-            <span>AI-assisted</span>
+            <span>AI-декомпозиція</span>
             <b>${productivityNumber(decomposition.aiTasks)}</b>
             <small>${productivityNumber(decomposition.aiCompletedTasks)} завершено</small>
         </div>
         <div>
-            <span>Template-assisted</span>
+            <span>Шаблонна декомпозиція</span>
             <b>${productivityNumber(decomposition.templateTasks)}</b>
             <small>${productivityNumber(decomposition.templateCompletedTasks)} завершено</small>
         </div>
@@ -2235,7 +2235,7 @@ function renderCabinetProductivitySurface() {
         return `<section class="cabinet-productivity-surface">
             <div class="cabinet-productivity-head">
                 <div>
-                    <div class="cabinet-kicker">Productivity cockpit</div>
+                    <div class="cabinet-kicker">Панель продуктивності</div>
                     <h3>Особиста продуктивність</h3>
                 </div>
             </div>
@@ -2254,7 +2254,7 @@ function renderCabinetProductivitySurface() {
     return `<section class="cabinet-productivity-surface" aria-label="Особиста продуктивність">
         <div class="cabinet-productivity-head">
             <div>
-                <div class="cabinet-kicker">Productivity cockpit</div>
+                <div class="cabinet-kicker">Панель продуктивності</div>
                 <h3>Особиста продуктивність</h3>
             </div>
             <div class="cabinet-productivity-streak ${streak.activeToday ? 'active' : ''}">
@@ -2267,7 +2267,7 @@ function renderCabinetProductivitySurface() {
             ${productivityMetric('Сьогодні', productivityNumber(summary.completedToday), 'виконано')}
             ${productivityMetric('7 днів', productivityNumber(summary.completed7Days), 'виконано')}
             ${productivityMetric('30 днів', productivityNumber(summary.completed30Days), 'виконано')}
-            ${productivityMetric('Completion', productivityPercent(summary.completionRate), 'задач закрито')}
+            ${productivityMetric('Завершено', productivityPercent(summary.completionRate), 'задач закрито')}
             ${productivityMetric('Прострочено', productivityNumber(summary.overdueCount), 'активні задачі', { danger: Number(summary.overdueCount || 0) > 0 })}
             ${productivityMetric('Підзадачі', productivityNumber(summary.subtasksCompleted), 'виконано')}
         </div>
@@ -2305,9 +2305,9 @@ function renderMyDayTab() {
         <div class="cabinet-shell">
             <div class="cabinet-hero">
                 <div>
-                    <div class="cabinet-kicker">Personal command center</div>
+                    <div class="cabinet-kicker">Особистий центр керування</div>
                     <h2>Мій день</h2>
-                    <p>Сьогоднішні, приватні задачі й короткий review без шуму повного board.</p>
+                    <p>Сьогоднішні, приватні задачі й короткий огляд без шуму повної дошки.</p>
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
@@ -2320,10 +2320,10 @@ function renderMyDayTab() {
                 ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
                 ${renderCabinetSection('Приватне', privateTasks, 'Приватний шар порожній.', true)}
                 <section class="cabinet-task-section">
-                    <div class="cabinet-section-head"><h3>Вечірній review</h3><span>5 хв</span></div>
+                    <div class="cabinet-section-head"><h3>Вечірній огляд</h3><span>5 хв</span></div>
                     <div class="cabinet-review">
                         <p>Що завершено, що перенести, що зависло, що краще делегувати?</p>
-                        <a href="/tasks?view=waiting">Відкрити waiting</a>
+                        <a href="/tasks?view=waiting">Відкрити очікування</a>
                         <a href="/tasks?view=today">Відкрити сьогодні</a>
                     </div>
                 </section>
@@ -2340,11 +2340,11 @@ function renderMyTasksTab() {
         <div class="cabinet-shell">
             <div class="cabinet-toolbar cabinet-toolbar--tasker">
                 <div>
-                    <div class="cabinet-kicker">Personal projection</div>
+                    <div class="cabinet-kicker">Особиста проекція</div>
                     <h2>Мої задачі</h2>
-                    <p>Єдина персональна проекція з canonical Tasks: створення, фільтри, виконання і відкладання працюють з тими самими API.</p>
+                    <p>Єдина персональна проекція з основних задач: створення, фільтри, виконання і відкладання працюють з тими самими API.</p>
                 </div>
-                <a href="/tasks?view=my" class="cabinet-link-btn">Повний Tasks</a>
+                <a href="/tasks?view=my" class="cabinet-link-btn">Повний список задач</a>
             </div>
             ${renderCabinetPulseCluster()}
             ${renderCabinetTaskComposer({ segment: myTasksSegment })}
@@ -2712,7 +2712,7 @@ async function createCabinetTask(event, mode) {
     setCabinetSubtaskDraftStatus('');
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
-    if (typeof showNotification === 'function') showNotification('Задачу створено в canonical Tasks', 'success');
+    if (typeof showNotification === 'function') showNotification('Задачу створено в основних задачах', 'success');
     await refreshMyCabinetTab();
 }
 

@@ -2459,20 +2459,20 @@ router.post('/messages/:id/remind', async (req, res) => {
     try {
         const pool = require('../db').pool;
         const messageId = parseInt(req.params.id, 10);
-        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Невірний ID повідомлення' });
 
         const { remindAt } = req.body;
-        if (!remindAt) return res.status(400).json({ error: 'remindAt required' });
+        if (!remindAt) return res.status(400).json({ error: 'Потрібен час нагадування' });
         const remindDate = new Date(remindAt);
         if (isNaN(remindDate.getTime()) || remindDate <= new Date()) {
-            return res.status(400).json({ error: 'remindAt must be a future datetime' });
+            return res.status(400).json({ error: 'Час нагадування має бути в майбутньому' });
         }
         const remindAtIso = remindDate.toISOString();
 
         const msgRes = await pool.query(
             'SELECT id, channel_id, content FROM chat_messages WHERE id = $1', [messageId]
         );
-        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+        if (!msgRes.rowCount) return res.status(404).json({ error: 'Повідомлення не знайдено' });
         const m = msgRes.rows[0];
         const userId = getCurrentUserId(req);
         if (!await requireChannelMemberOrRespond(m.channel_id, userId, res)) return;
@@ -2488,7 +2488,7 @@ router.post('/messages/:id/remind', async (req, res) => {
         res.json({ success: true, taskId: result.taskId, remindAt: remindAtIso, duplicate: result.duplicate, sourceId: result.sourceId });
     } catch (err) {
         log.error('[Remind] Error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Внутрішня помилка сервера' });
     }
 });
 

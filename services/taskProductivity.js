@@ -156,7 +156,7 @@ function buildProductivityAchievements(summary, decomposition, streak) {
         achievement(
             'productivity_tasks_10',
             'Перші 10 виконаних задач',
-            'Виконати 10 персональних задач у canonical Tasks.',
+            'Виконати 10 персональних задач в основному списку.',
             summary.completedTasks,
             10
         ),
@@ -169,7 +169,7 @@ function buildProductivityAchievements(summary, decomposition, streak) {
         ),
         achievement(
             'productivity_parent_5',
-            '5 завершених parent-задач',
+            '5 завершених задач із підзадачами',
             'Завершити 5 задач, які були розбиті на підзадачі.',
             summary.parentTasksCompleted,
             5
@@ -191,7 +191,7 @@ function buildProductivityAchievements(summary, decomposition, streak) {
         achievement(
             'productivity_template_first_done',
             'Перший шаблон доведено до кінця',
-            'Завершити задачу, де є template-sourced підзадачі.',
+            'Завершити задачу, де є підзадачі з шаблону.',
             decomposition.templateCompletedTasks,
             1
         )

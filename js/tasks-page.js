@@ -1328,9 +1328,9 @@ function taskKindBadge(t) {
     const label = {
         action: 'Дія',
         reminder: 'Нагадування',
-        followup: 'Follow-up',
-        deep_work: 'Deep work',
-        checklist: 'Checklist',
+        followup: 'Дотиск',
+        deep_work: 'Глибока робота',
+        checklist: 'Чеклист',
         routine: 'Рутина',
         waiting: 'Чекаю',
         idea: 'Ідея',
@@ -1469,20 +1469,20 @@ function setupTaskGovernanceMenu() {
         }
         const groups = result.groups || [];
         const duplicateTotal = groups.reduce((sum, group) => sum + Number(group.duplicate_count || group.duplicateCount || 0), 0);
-        showNotification(groups.length ? `Знайдено ${duplicateTotal} активних дублів у ${groups.length} групах. Звичайний список показує canonical-рядки.` : 'Активних дублів не знайдено', groups.length ? 'warning' : 'success');
+        showNotification(groups.length ? `Знайдено ${duplicateTotal} активних дублів у ${groups.length} групах. Звичайний список показує основні рядки.` : 'Активних дублів не знайдено', groups.length ? 'warning' : 'success');
     });
 
     document.getElementById('taskDedupCleanupBtn')?.addEventListener('click', async () => {
         const dryRun = await apiCleanupTaskDuplicates(true);
         const victims = Number(dryRun?.victims || 0);
         if (!victims) {
-            showNotification('Cleanup не потрібен: активних дублів немає', 'success');
+            showNotification('Очищення не потрібне: активних дублів немає', 'success');
             return;
         }
         if (!await confirmModal(`Архівувати ${victims} активних дублів без видалення історії?`, { type: 'warning', okText: 'Архівувати' })) return;
         const result = await apiCleanupTaskDuplicates();
         if (!result?.success) {
-            showNotification('Cleanup дублів не виконано', 'error');
+            showNotification('Очищення дублів не виконано', 'error');
             return;
         }
         showNotification(`Архівовано дублів: ${result.archived || 0}`, 'success');
@@ -3504,7 +3504,7 @@ function renderTemplates(templates) {
             <div class="task-card-title">${escapeHtml(t.title)}</div>
             <div class="task-card-meta">
                 <span>${escapeHtml(taxoLabel)}</span>
-                ${t.defaultTaskKind === 'checklist' ? '<span class="task-os-badge checklist">Checklist</span>' : ''}
+                ${t.defaultTaskKind === 'checklist' ? '<span class="task-os-badge checklist">Чеклист</span>' : ''}
                 <span>${pattern}${days}</span>
                 ${t.assignedTo ? `<span>${escapeHtml(t.assignedTo)}</span>` : ''}
                 <span class="badge ${t.isActive ? 'badge-done' : 'badge-normal'}">${t.isActive ? 'Активний' : 'Пауза'}</span>
@@ -3878,14 +3878,14 @@ async function openTaskDetail(taskId) {
                         <option value="system" ${taskMode(t)==='system'?'selected':''}>Системна</option>
                     </select></div>
                     <div><label ${_lbl}>Тип наміру</label><select id="_tdKind" ${_inp}>
-                        ${['action','reminder','followup','deep_work','checklist','routine','waiting','idea','decision'].map(k => `<option value="${k}" ${taskKind(t)===k?'selected':''}>${escapeHtml({ action:'Дія', reminder:'Нагадування', followup:'Follow-up', deep_work:'Deep work', checklist:'Checklist', routine:'Рутина', waiting:'Чекаю', idea:'Ідея', decision:'Рішення' }[k])}</option>`).join('')}
+                        ${['action','reminder','followup','deep_work','checklist','routine','waiting','idea','decision'].map(k => `<option value="${k}" ${taskKind(t)===k?'selected':''}>${escapeHtml({ action:'Дія', reminder:'Нагадування', followup:'Дотиск', deep_work:'Глибока робота', checklist:'Чеклист', routine:'Рутина', waiting:'Чекаю', idea:'Ідея', decision:'Рішення' }[k])}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Видимість</label><select id="_tdVisibility" ${_inp}>
                         <option value="team" ${taskVisibility(t)==='team'?'selected':''}>Командна</option>
                         <option value="me_only" ${taskVisibility(t)==='me_only'?'selected':''}>Тільки мені</option>
                         <option value="private" ${taskVisibility(t)==='private'?'selected':''}>Приватна</option>
                     </select></div>
-                    <div><label ${_lbl}>Workflow</label><select id="_tdWorkflow" ${_inp}>
+                    <div><label ${_lbl}>Стан процесу</label><select id="_tdWorkflow" ${_inp}>
                         ${['inbox','todo','in_progress','waiting','scheduled','done','archived'].map(w => `<option value="${w}" ${taskWorkflow(t)===w?'selected':''}>${escapeHtml(getWorkflowLabel(w))}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Нагадати</label><input id="_tdRemindAt" type="datetime-local" value="${remindIso}" ${_inp}></div>
@@ -3897,7 +3897,7 @@ async function openTaskDetail(taskId) {
                 </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(15,23,42,0.03)">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--gray-600)">
-                        <strong>Task operations</strong>
+                        <strong>Операції задачі</strong>
                         <span>${escapeHtml(ownerStateLabel)}</span>
                         ${taskIntel.priorityBand ? `<span class="task-intel-badge task-intel-${escapeHtml(taskIntel.priorityBand)}">${escapeHtml(taskIntel.priorityBand)}</span>` : ''}
                         ${taskIntel.recommendedAction ? `<span class="task-intel-badge">${escapeHtml(taskIntel.recommendedAction)}</span>` : ''}
@@ -3977,28 +3977,28 @@ window.openTaskDetail = openTaskDetail;
 
 function historyActionTitle(actionType) {
     const labels = {
-        task_completed: 'Task completed',
-        task_owner_reassigned: 'Owner reassigned',
-        task_rescheduled: 'Task rescheduled',
-        task_observers_updated: 'Observers updated',
-        task_scheduled: 'Task scheduled',
-        task_schedule_moved: 'Schedule moved',
-        task_schedule_manual_override: 'Manual schedule',
-        task_schedule_proposal_created: 'Schedule proposal',
-        task_slot_missed: 'Slot missed',
-        task_discipline_penalty_applied: 'Discipline penalty'
+        task_completed: 'Задачу виконано',
+        task_owner_reassigned: 'Відповідального змінено',
+        task_rescheduled: 'Задачу переплановано',
+        task_observers_updated: 'Спостерігачів оновлено',
+        task_scheduled: 'Задачу заплановано',
+        task_schedule_moved: 'Розклад перенесено',
+        task_schedule_manual_override: 'Ручний розклад',
+        task_schedule_proposal_created: 'Пропозиція розкладу',
+        task_slot_missed: 'Слот пропущено',
+        task_discipline_penalty_applied: 'Штраф дисципліни застосовано'
     };
-    return labels[actionType] || actionType || 'Task action';
+    return labels[actionType] || actionType || 'Дія задачі';
 }
 
 function shortHistoryValue(value = {}) {
     if (!value || typeof value !== 'object') return '';
-    if (value.status) return `status: ${value.status}`;
-    if (value.ownerUserId !== undefined) return `owner: ${value.ownerUserId || 'none'}`;
-    if (Array.isArray(value.observerUserIds)) return `observers: ${value.observerUserIds.length}`;
-    if (value.deadline !== undefined) return `deadline: ${value.deadline || 'none'}`;
+    if (value.status) return `статус: ${value.status}`;
+    if (value.ownerUserId !== undefined) return `відповідальний: ${value.ownerUserId || 'немає'}`;
+    if (Array.isArray(value.observerUserIds)) return `спостерігачів: ${value.observerUserIds.length}`;
+    if (value.deadline !== undefined) return `дедлайн: ${value.deadline || 'немає'}`;
     if (value.scheduledStartAt !== undefined || value.scheduleStatus !== undefined) {
-        return `${value.scheduleStatus || 'schedule'}: ${value.scheduledStartAt || value.scheduleSlot || 'none'}`;
+        return `${value.scheduleStatus || 'розклад'}: ${value.scheduledStartAt || value.scheduleSlot || 'немає'}`;
     }
     return '';
 }

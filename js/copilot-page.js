@@ -180,7 +180,7 @@ const CopilotPage = (() => {
                         <option value="price-negotiation">Торг / обговорення ціни</option>
                         <option value="objection">Заперечення і відмова</option>
                         <option value="closing">Закриття угоди</option>
-                        <option value="follow-up">Follow-up — мовчав тиждень</option>
+                        <option value="follow-up">Дотиск — мовчав тиждень</option>
                         <option value="reactivation">Реактивація — давно не контактували</option>
                     </select>
                 </div>
@@ -996,7 +996,7 @@ const CopilotPage = (() => {
                     <textarea id="intSummary" class="copilot-textarea" rows="2" placeholder="Що відбулось..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="copilot-label">Follow-up дата</label>
+                    <label class="copilot-label">Дата дотиску</label>
                     <input type="date" id="intFollowup" class="copilot-input">
                 </div>
                 <div class="flex-row">
@@ -1044,7 +1044,7 @@ const CopilotPage = (() => {
                         <div style="margin-top:4px;display:flex;align-items:center;gap:8px;">
                             <span class="interaction-badge ${badgeClasses[i.type] || 'badge-note'}">${i.type}</span>
                             ${i.manager_name ? `<span style="font-size:11px;color:var(--text-muted);">👤 ${escHtml(i.manager_name)}</span>` : ''}
-                            ${i.follow_up_date && !i.follow_up_done ? `<span style="font-size:11px;color:var(--warning-color);">⏰ Follow-up: ${i.follow_up_date} <button class="btn-icon" style="font-size:10px;" onclick="CopilotPage.markFollowupDone(${i.id})">✓</button></span>` : ''}
+                            ${i.follow_up_date && !i.follow_up_done ? `<span style="font-size:11px;color:var(--warning-color);">⏰ Дотиск: ${i.follow_up_date} <button class="btn-icon" style="font-size:10px;" onclick="CopilotPage.markFollowupDone(${i.id})">✓</button></span>` : ''}
                         </div>
                     </div>
                 </div>
@@ -1090,7 +1090,7 @@ const CopilotPage = (() => {
     async function markFollowupDone(id) {
         try {
             await fetch(`/api/copilot/interactions/${id}/followup`, { method: 'PATCH', headers: authHeaders() });
-            showToast('✅ Follow-up виконано!');
+            showToast('✅ Дотиск виконано!');
             loadTracker();
         } catch (e) { showError('Помилка: ' + e.message); }
     }
@@ -1186,7 +1186,7 @@ const CopilotPage = (() => {
                         <option value="first">Перший дзвінок</option>
                         <option value="demo">Онлайн-демо</option>
                         <option value="closing">Закриття угоди</option>
-                        <option value="follow-up">Follow-up</option>
+                        <option value="follow-up">Дотиск</option>
                     </select>
                 </div>
             </div>
@@ -1427,7 +1427,7 @@ const CopilotPage = (() => {
                     <label class="copilot-label">Тип повідомлення</label>
                     <select id="writerType" class="copilot-select">
                         <option value="after-call">Після першого дзвінка</option>
-                        <option value="follow-up">Follow-up після мовчання</option>
+                        <option value="follow-up">Дотиск після мовчання</option>
                         <option value="after-demo">Після онлайн-демо</option>
                         <option value="reminder">Нагадування про рішення</option>
                         <option value="reactivation">Реактивація холодного</option>
@@ -1467,7 +1467,7 @@ const CopilotPage = (() => {
             <div class="form-row">
                 <div class="form-group">
                     <label class="copilot-label">Наступний крок</label>
-                    <input type="text" id="writerNextStep" class="copilot-input" placeholder="follow-up через 3 дні">
+                    <input type="text" id="writerNextStep" class="copilot-input" placeholder="дотиск через 3 дні">
                 </div>
                 <div class="form-group">
                     <label class="copilot-label">Тон</label>

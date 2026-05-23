@@ -4,6 +4,16 @@
 
 ---
 
+## v0.62.19 - Українські тексти задач
+
+### Українські тексти задач і нагадувань [codex]
+- **Tasks/Profile copy** - прибрано видимі `canonical Tasks`, `cockpit`, `Completion`, `review` і `board` з tasker/productivity поверхонь; користувач бачить природні українські назви.
+- **Типи задач** - `Follow-up`, `Deep work` і `Checklist` у бейджах, create-flow та detail editor замінено на `Дотиск`, `Глибока робота` і `Чеклист`.
+- **Нагадування і Copilot** - follow-up/reminder тексти в Copilot і chat reminder API повертають українські повідомлення без англійських службових фраз.
+- **Guardrail** - UI-smoke перевіряє, що скріншотні регресії `canonical Tasks` / `cockpit` і видимі follow-up англіцизми не повертаються.
+
+---
+
 ## v0.62.18 - Центр керування акаунтами
 
 ### Центр керування акаунтами [codex]

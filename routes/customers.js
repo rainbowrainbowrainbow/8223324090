@@ -146,6 +146,18 @@ function isMissingCustomerSocialIdentitiesColumnError(err) {
         || (/social_identities/i.test(message) && /(column|schema cache|does not exist|could not find)/i.test(message));
 }
 
+function isCustomerSocialIdentitiesStorageError(err) {
+    if (isMissingCustomerSocialIdentitiesColumnError(err)) return true;
+    const message = [
+        err?.message,
+        err?.details,
+        err?.hint,
+        err?.code
+    ].filter(Boolean).join(' ');
+    return /social_identities/i.test(message)
+        && /(jsonb|json|type|cast|malformed|invalid input|schema cache|expression)/i.test(message);
+}
+
 function customerWritePayload(input, options = {}) {
     const payload = {
         name: input.name,
@@ -219,8 +231,8 @@ async function insertCustomerPg(input) {
             params
         );
     } catch (err) {
-        if (!isMissingCustomerSocialIdentitiesColumnError(err)) throw err;
-        log.warn('customers.social_identities missing during create; retrying legacy customer insert', { error: err.message });
+        if (!isCustomerSocialIdentitiesStorageError(err)) throw err;
+        log.warn('customers.social_identities unavailable during create; retrying legacy customer insert', { error: err.message });
         return pool.query(
             `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -251,8 +263,8 @@ async function updateCustomerPg(id, input) {
             params
         );
     } catch (err) {
-        if (!isMissingCustomerSocialIdentitiesColumnError(err)) throw err;
-        log.warn('customers.social_identities missing during update; retrying legacy customer update', { error: err.message });
+        if (!isCustomerSocialIdentitiesStorageError(err)) throw err;
+        log.warn('customers.social_identities unavailable during update; retrying legacy customer update', { error: err.message });
         return pool.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
@@ -1347,7 +1359,7 @@ router.post('/', async (req, res) => {
         if (sb) {
             const payload = customerWritePayload(input);
             let { data, error } = await sb.from('customers').insert(payload).select().single();
-            if (error && isMissingCustomerSocialIdentitiesColumnError(error)) {
+            if (error && isCustomerSocialIdentitiesStorageError(error)) {
                 log.warn('Supabase customers.social_identities unavailable during create; retrying legacy payload', { error: error.message });
                 ({ data, error } = await sb.from('customers').insert(omitCustomerSocialIdentities(payload)).select().single());
             }
@@ -1378,7 +1390,7 @@ router.put('/:id', async (req, res) => {
         if (sb) {
             const payload = customerWritePayload(input, { updatedAt: true });
             let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).select().single();
-            if (error && isMissingCustomerSocialIdentitiesColumnError(error)) {
+            if (error && isCustomerSocialIdentitiesStorageError(error)) {
                 log.warn('Supabase customers.social_identities unavailable during update; retrying legacy payload', { error: error.message });
                 ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).select().single());
             }

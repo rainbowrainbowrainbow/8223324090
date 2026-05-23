@@ -56,7 +56,8 @@ const SEARCH_GROUP_TITLES = {
 
 const SEARCH_NAV_ALIASES = {
     '/dashboard': ['дашборд', 'головна', 'панель', 'dashboard', 'home', 'віджети', 'блоки', 'черга', 'work queue'],
-    '/': ['таймлайн', 'timeline', 'календар', 'розклад', 'бронювання', 'події', 'заходи', 'сьогодні', 'завтра', 'день'],
+    '/': ['таймлайн парк', 'таймлайн парку', 'парк таймлайн', 'таймлайн', 'timeline', 'календар', 'розклад', 'бронювання', 'події', 'заходи', 'сьогодні', 'завтра', 'день'],
+    '/maysternya-doli': ['таймлайн мд', 'мд таймлайн', 'майстерня долі', 'майстерня', 'записи психолога', 'консультації мд'],
     '/tasks': ['задачі', 'завдання', 'таски', 'tasks', 'task', 'чекліст', 'дедлайн', 'прострочені'],
     '/chat': ['чат', 'чати', 'повідомлення', 'діалоги', 'chat', 'messages', 'thread'],
     '/customers': ['клієнти', 'клієнт', 'customers', 'clients', 'база клієнтів'],
@@ -97,7 +98,8 @@ const SEARCH_NAV_ALIASES = {
 
 const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/dashboard', icon: '⌂', label: 'Дашборд', access: 'all', group: 'today' },
-    { href: '/', icon: '◴', label: 'Таймлайн', access: 'timeline', group: 'today' },
+    { href: '/', icon: '◴', label: 'Таймлайн ПАРК', access: 'timeline', group: 'today' },
+    { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
     { href: '/tasks', icon: '✓', label: 'Задачі', access: 'tasks', group: 'today' },
     { href: '/chat', icon: '⌁', label: 'Чат', access: 'chat', group: 'today' },
     { href: '/customers', icon: '◌', label: 'Клієнти', access: 'customers', group: 'sales' },

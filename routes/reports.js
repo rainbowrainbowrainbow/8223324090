@@ -51,8 +51,9 @@ function currentUsername(req) {
 }
 
 function optionalInteger(value) {
+    if (value === null || value === undefined || value === '') return null;
     const id = Number(value);
-    return Number.isInteger(id) ? id : null;
+    return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function currentUserId(req) {
@@ -163,6 +164,87 @@ function calculateTableAmount(table, defaultReport = {}) {
     return Math.max(0, Math.round((table.rows || []).reduce((sum, row) => sum + numericValue(row?.[amountColumn]), 0)));
 }
 
+function normalizedComparable(value) {
+    return String(value || '').trim().toLocaleLowerCase('uk-UA');
+}
+
+function reportLifecycleStatus(row) {
+    const raw = parseRawData(row?.raw_data);
+    const table = raw.reportTableTemplate || {};
+    return row?.report_lifecycle_status === 'closed' || table.lifecycle?.status === 'closed' ? 'closed' : 'open';
+}
+
+function isReportLifecycleClosed(row) {
+    return reportLifecycleStatus(row) === 'closed';
+}
+
+function buildClosedTablePayload(raw, req, closedAt = new Date().toISOString()) {
+    const normalized = normalizeTablePayload(raw);
+    const currentPayload = normalized.payload.reportTableTemplate
+        ? normalized.payload
+        : { reportTableTemplate: normalized.table };
+    const lifecycle = {
+        status: 'closed',
+        closedAt,
+        closedBy: currentUsername(req),
+        closedByUserId: currentUserId(req)
+    };
+    const table = {
+        ...normalized.table,
+        lifecycle,
+        lockedAt: closedAt,
+        lockedBy: currentUsername(req)
+    };
+    const lockedPayload = {
+        ...currentPayload,
+        reportTableTemplate: table
+    };
+    return { normalized, table, lockedPayload, lifecycle };
+}
+
+function tableSummaryRows(table) {
+    if (!table) return [];
+    const columns = Array.isArray(table.columns) ? table.columns : [];
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const defaultReport = table.defaultReport || {};
+    const totalColumns = columns.filter(col => col.total === 'sum');
+    const summary = [];
+    const amountColumn = defaultReport.amountColumn || (totalColumns.length === 1 ? totalColumns[0].key : null);
+    if (amountColumn) {
+        summary.push({
+            label: defaultReport.totalLabel || 'Ітого',
+            amount: rows.reduce((sum, row) => sum + numericValue(row?.[amountColumn]), 0),
+            amountColumn
+        });
+    }
+    const rules = Array.isArray(defaultReport.subtotalRules) ? defaultReport.subtotalRules : [];
+    for (const rule of rules) {
+        if (!rule?.categoryColumn || !rule?.amountColumn) continue;
+        const matchingRows = rows.filter(row =>
+            normalizedComparable(row?.[rule.categoryColumn]) === normalizedComparable(rule.categoryValue)
+        );
+        if (!matchingRows.length) continue;
+        summary.push({
+            label: rule.label || 'Ітого',
+            amount: matchingRows.reduce((sum, row) => sum + numericValue(row?.[rule.amountColumn]), 0),
+            amountColumn: rule.amountColumn
+        });
+    }
+    return summary;
+}
+
+function summaryCsvRows(table) {
+    const columns = Array.isArray(table?.columns) ? table.columns : [];
+    if (!columns.length) return [];
+    return tableSummaryRows(table).map(item => {
+        const values = columns.map(() => '');
+        values[0] = item.label;
+        const amountIndex = Math.max(0, columns.findIndex(col => col.key === item.amountColumn));
+        values[amountIndex] = item.amount;
+        return values.map(csvCell).join(';');
+    });
+}
+
 function mapDraftRow(r) {
     return {
         id: r.id,
@@ -171,6 +253,10 @@ function mapDraftRow(r) {
         status: r.status,
         tableJson: parseRawData(r.table_json),
         reportId: r.report_id,
+        closedAt: r.closed_at || null,
+        closedByUserId: r.closed_by_user_id || null,
+        closedByUsername: r.closed_by_username || null,
+        lockedSnapshot: parseRawData(r.locked_snapshot),
         createdByUsername: r.created_by_username,
         submittedAt: r.submitted_at,
         createdAt: r.created_at,
@@ -231,6 +317,7 @@ function csvCell(value) {
 }
 
 function mapReportRow(r) {
+    const rawData = parseRawData(r.raw_data);
     return {
         id: r.id,
         type: r.type,
@@ -243,7 +330,12 @@ function mapReportRow(r) {
         photoUrl: r.photo_url,
         ocrText: r.ocr_text,
         voiceTranscript: r.voice_transcript,
-        rawData: parseRawData(r.raw_data),
+        rawData,
+        lifecycleStatus: reportLifecycleStatus(r),
+        closedAt: r.closed_at || rawData.reportTableTemplate?.lifecycle?.closedAt || null,
+        closedByUserId: r.closed_by_user_id || rawData.reportTableTemplate?.lifecycle?.closedByUserId || null,
+        closedByUsername: r.closed_by_username || rawData.reportTableTemplate?.lifecycle?.closedBy || null,
+        lockedSnapshot: parseRawData(r.locked_snapshot),
         status: r.status,
         assignedTo: r.assigned_to,
         assignedAt: r.assigned_at,
@@ -669,6 +761,7 @@ router.get('/drafts', async (req, res) => {
             FROM report_table_drafts d
             LEFT JOIN report_templates t ON t.id = d.template_id
             WHERE d.created_by_username = $1
+              AND d.status = 'draft'
             ORDER BY d.updated_at DESC
             LIMIT 100
         `, [currentUsername(req)]);
@@ -768,12 +861,136 @@ router.post('/drafts/:id/submit', async (req, res) => {
 // ==========================================
 // TABLE EXPORTS — current editable table payload
 // ==========================================
+// ==========================================
+// TABLE CLOSE FLOW - immutable handoff to accountant queue
+// ==========================================
+router.post('/table/close', async (req, res) => {
+    try {
+        const closedAt = new Date().toISOString();
+        const { table, lockedPayload } = buildClosedTablePayload(req.body.tableJson || req.body.rawData || req.body, req, closedAt);
+        const defaultReport = table.defaultReport || parseRawData(req.body.defaultReport || {});
+        const type = defaultReport.type === 'income' ? 'income' : 'expense';
+        const amount = req.body.amount !== undefined
+            ? numericValue(req.body.amount)
+            : calculateTableAmount(table, defaultReport);
+        const category = req.body.category || defaultReport.category || table.category || 'Інше';
+        const description = req.body.description || `Табличний звіт: ${table.title}`;
+        const hashtags = sanitizeHashtags(req.body.hashtags || [defaultReport.hashtag || 'table-report']);
+        const reportId = optionalInteger(req.body.reportId);
+        const draftId = optionalInteger(req.body.draftId);
+
+        let row;
+        if (reportId) {
+            const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [reportId]);
+            if (!existing.rows.length) return res.status(404).json({ error: 'Report not found' });
+            if (isReportLifecycleClosed(existing.rows[0])) {
+                return res.status(409).json({ error: 'Report already closed' });
+            }
+            const result = await pool.query(`
+                UPDATE reports SET
+                    type = $1,
+                    amount = $2,
+                    description = $3,
+                    category = $4,
+                    raw_data = $5,
+                    hashtags = $6,
+                    status = 'new',
+                    processed_at = NULL,
+                    report_lifecycle_status = 'closed',
+                    closed_at = $7,
+                    closed_by_user_id = $8,
+                    closed_by_username = $9,
+                    locked_snapshot = $5,
+                    updated_at = NOW()
+                WHERE id = $10
+                RETURNING *
+            `, [
+                type,
+                amount,
+                description,
+                category,
+                JSON.stringify(lockedPayload),
+                JSON.stringify(hashtags),
+                closedAt,
+                currentUserId(req),
+                currentUsername(req),
+                reportId
+            ]);
+            row = result.rows[0];
+        } else {
+            const result = await pool.query(`
+                INSERT INTO reports (
+                    type, amount, description, category, submitted_by, submitted_by_id,
+                    submitted_via, raw_data, hashtags, status, report_lifecycle_status,
+                    closed_at, closed_by_user_id, closed_by_username, locked_snapshot
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,'web-template',$7,$8,'new','closed',$9,$10,$11,$7)
+                RETURNING *
+            `, [
+                type,
+                amount,
+                description,
+                category,
+                req.user?.displayName || req.user?.name || currentUsername(req),
+                currentUserId(req),
+                JSON.stringify(lockedPayload),
+                JSON.stringify(hashtags),
+                closedAt,
+                currentUserId(req),
+                currentUsername(req)
+            ]);
+            row = result.rows[0];
+        }
+
+        let report = await assignOnDutyAccountant(mapReportRow(row));
+
+        if (draftId) {
+            await pool.query(`
+                UPDATE report_table_drafts SET
+                    status = 'closed',
+                    report_id = $1,
+                    submitted_at = COALESCE(submitted_at, NOW()),
+                    closed_at = $2,
+                    closed_by_user_id = $3,
+                    closed_by_username = $4,
+                    locked_snapshot = $5,
+                    updated_at = NOW()
+                WHERE id = $6 AND created_by_username = $7 AND status = 'draft'
+            `, [
+                report.id,
+                closedAt,
+                currentUserId(req),
+                currentUsername(req),
+                JSON.stringify(lockedPayload),
+                draftId,
+                currentUsername(req)
+            ]);
+        }
+
+        report = {
+            ...report,
+            lifecycleStatus: 'closed',
+            closedAt,
+            closedByUserId: currentUserId(req),
+            closedByUsername: currentUsername(req),
+            lockedSnapshot: lockedPayload
+        };
+        res.status(reportId ? 200 : 201).json({ success: true, report });
+    } catch (err) {
+        log.error('POST /reports/table/close error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+// ==========================================
+// TABLE EXPORTS - current table payload or locked snapshot
+// ==========================================
 router.post('/table/export-csv', async (req, res) => {
     try {
         const { table } = normalizeTablePayload(req.body);
         const header = table.columns.map(col => csvCell(col.label || col.key)).join(';');
         const rows = table.rows.map(row => table.columns.map(col => csvCell(row?.[col.key])).join(';'));
-        const csv = '\uFEFF' + [header, ...rows].join('\n');
+        const csv = '\uFEFF' + [header, ...rows, ...summaryCsvRows(table)].join('\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${String(table.title || 'report').replace(/[^\w-]+/g, '_')}.csv"`);
         res.send(csv);
@@ -803,16 +1020,18 @@ router.post('/table/export-xlsx', async (req, res) => {
             });
             sheet.addRow(output);
         }
-        const totalColumns = table.columns.filter(col => col.total === 'sum');
-        if (totalColumns.length) {
-            const totalRow = {};
-            table.columns.forEach((col, index) => {
-                if (index === 0) totalRow[col.key] = 'Разом';
-                else if (col.total === 'sum') totalRow[col.key] = table.rows.reduce((sum, row) => sum + numericValue(row?.[col.key]), 0);
-                else totalRow[col.key] = '';
-            });
-            const row = sheet.addRow(totalRow);
-            row.font = { bold: true };
+        const summaryRows = tableSummaryRows(table);
+        if (summaryRows.length) {
+            for (const item of summaryRows) {
+                const totalRow = {};
+                table.columns.forEach((col, index) => {
+                    if (index === 0) totalRow[col.key] = item.label;
+                    else if (col.key === item.amountColumn) totalRow[col.key] = item.amount;
+                    else totalRow[col.key] = '';
+                });
+                const row = sheet.addRow(totalRow);
+                row.font = { bold: true };
+            }
         }
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${String(table.title || 'report').replace(/[^\w-]+/g, '_')}.xlsx"`);
@@ -910,6 +1129,19 @@ router.put('/:id', async (req, res) => {
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });
         }
+        const contentMutationRequested = [
+            type,
+            amount,
+            description,
+            category,
+            photoUrl,
+            ocrText,
+            hashtags,
+            rawData
+        ].some(value => value !== undefined);
+        if (isReportLifecycleClosed(existing.rows[0]) && contentMutationRequested) {
+            return res.status(423).json({ error: 'Closed report is locked for editing' });
+        }
 
         const updates = [];
         const params = [];
@@ -988,6 +1220,13 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: 'Report not found' });
+        }
+        if (isReportLifecycleClosed(existing.rows[0])) {
+            return res.status(423).json({ error: 'Closed report is locked for deletion' });
+        }
         const result = await pool.query('DELETE FROM reports WHERE id = $1 RETURNING id', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });

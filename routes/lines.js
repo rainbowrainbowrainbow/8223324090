@@ -17,7 +17,7 @@ const {
 const log = createLogger('Lines');
 
 const MAYSTERNYA_DEFAULT_LINES = [
-    { id: 'md-consult-room', name: 'Майстерня долі', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
+    { id: 'md-consult-room', name: 'Таймлайн МД', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
 ];
 
 // All lines routes require authentication

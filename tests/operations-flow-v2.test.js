@@ -69,6 +69,8 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(customersRoute, /social_identities::text ILIKE/);
         assert.match(customersRoute, /function canSearchCustomerSocialIdentities/);
         assert.match(customersRoute, /function isMissingCustomerSocialIdentitiesColumnError/);
+        assert.match(customersRoute, /function isCustomerSocialIdentitiesStorageError/);
+        assert.match(customersRoute, /jsonb\|json\|type\|cast/);
         assert.match(customersRoute, /function ensureCustomerSocialIdentitiesColumn/);
         assert.match(customersRoute, /function omitCustomerSocialIdentities/);
         assert.match(customersRoute, /retrying legacy customer insert/);

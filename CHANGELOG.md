@@ -4,6 +4,45 @@
 
 ---
 
+## v0.61.47 - Reports: стандартний звіт + close flow (Клешня, 23.05.2026)
+
+### Reports: стандартний звіт + close flow [codex]
+- **Звіти** - додано шаблон `Стандартний звіт` з фіксованими колонками `Дата`, `Категорія`, `Документ`, `Сума`, `Коментар` для парку.
+- **Підсумки** - стандартний звіт рахує загальне `Ітого` та умовне `Ітого ДАР` для рядків категорії `дар`.
+- **UX** - шаблони звітів переведено в компактний picker замість розростання ряду кнопок.
+- **Lifecycle** - close-flow зберігає locked snapshot, блокує редагування закритого звіту і передає його в бухгалтерський контур через наявний reports/accountants workflow.
+- **Regression guard** - jsdom reports workspace і UI smoke фіксують стандартний шаблон, subtotal `дар`, compact picker і locked close state.
+
+---
+
+## v0.61.46 - Customer Create Fallback
+
+### Customer Create Fallback [codex]
+- **Клієнти** - створення нового клієнта більше не падає `Internal server error`, якщо поле `customers.social_identities` у базі або Supabase має legacy-схему чи неочікуваний тип.
+- **Збереження даних** - основні поля клієнта (`name`, `phone`, `instagram`, дитина, дата народження, джерело, нотатки) записуються навіть тоді, коли додаткові соц-ідентичності тимчасово недоступні.
+- **Regression guard** - контракт operations-flow тепер фіксує fallback для legacy storage соц-ідентичностей клієнта.
+
+---
+
+## v0.61.45 - Timeline MD PARK Cleanup
+
+### Timeline MD PARK Cleanup [codex]
+- **Таймлайни** - навігація, пошук і feature registry тепер розділяють `Таймлайн МД` та `Таймлайн ПАРК` замість старих неоднозначних назв.
+- **Таймлайн МД** - паркову афішу прибрано з MD-контексту: рядок `АФІША`, афішні блоки й API-запит не рендеряться на `/maysternya-doli`.
+- **Default-лінія MD** - fallback-лінія записів і prompt швидкого додавання спеціаліста більше не повертають стару назву `Майстерня долі`.
+- **Regression guard** - `test:ui` фіксує окремі назви таймлайнів і заборону афіші в MD-контексті.
+
+---
+
+## v0.61.44 - Search Dark Theme Contrast
+
+### Search Dark Theme Contrast [codex]
+- **Темна тема пошуку** - глобальна `Ctrl+K`-модалка більше не використовує світлий text-token як фон, тому результати, підказки й empty-state читаються на темній поверхні.
+- **Підказки та навігація** - placeholder, підзаголовки, badges, `Esc`/`Enter` і стрілка переходу отримали явний dark contrast у `layout.css` та `features.css`.
+- **Regression guard** - `test:ui` фіксує dark contrast contract, щоб сторінки з `features.css` не повертали світлий контейнер із блідим текстом.
+
+---
+
 ## v0.61.43 - Reports Workspace Stabilization
 
 ### Reports Workspace Stabilization [codex]

@@ -55,6 +55,36 @@ async function setupReportsDom() {
                 { hashtag: 'visible-ops', total: 50, count: 1, activeCount: 1, inactiveCount: 0 }
             ]);
         }
+        if (target === '/api/reports/table/close' && options.method === 'POST') {
+            const body = JSON.parse(options.body || '{}');
+            const rawData = JSON.parse(JSON.stringify(body.tableJson || {}));
+            rawData.reportTableTemplate.lifecycle = {
+                status: 'closed',
+                closedAt: '2026-05-23T10:00:00.000Z',
+                closedBy: 'serhiy',
+                closedByUserId: 1
+            };
+            const report = {
+                id: body.reportId || 9100,
+                type: 'expense',
+                amount: body.amount,
+                description: body.description,
+                category: body.category,
+                submittedBy: 'Сергій',
+                submittedVia: 'web-template',
+                status: 'new',
+                lifecycleStatus: 'closed',
+                closedAt: '2026-05-23T10:00:00.000Z',
+                closedByUsername: 'serhiy',
+                createdAt: new Date().toISOString(),
+                hashtags: body.hashtags || [],
+                hashtagActive: true,
+                rawData,
+                lockedSnapshot: rawData
+            };
+            createdReports.unshift(report);
+            return jsonResponse({ success: true, report }, body.reportId ? 200 : 201);
+        }
         if (target.startsWith('/api/reports?')) return jsonResponse({ reports: createdReports, total: createdReports.length });
         if (target === '/api/reports' && options.method === 'POST') {
             const body = JSON.parse(options.body || '{}');
@@ -94,12 +124,16 @@ test('reports workspace protects dirty table state and manages rows/columns', as
     assert.equal(document.getElementById('reportTemplateDirty').classList.contains('hidden'), false);
 
     window.confirmModal = async () => false;
-    document.querySelector('[data-report-template-id="operations-checklist"]').click();
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'operations-checklist';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.match(document.getElementById('reportSheetTitle').textContent, /Фінансовий/);
+    assert.equal(picker.value, 'finance-day-summary');
 
     window.confirmModal = async () => true;
-    document.querySelector('[data-report-template-id="operations-checklist"]').click();
+    picker.value = 'operations-checklist';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
     await waitFor(() => /Операційний/.test(document.getElementById('reportSheetTitle').textContent), 'template switch');
     assert.equal(document.getElementById('reportTemplateDirty').classList.contains('hidden'), true);
 
@@ -138,4 +172,58 @@ test('reports create flow creates a real report without visible technical table 
     assert.match(document.getElementById('reportSheetModeChip').textContent, /#9001/);
     assert.equal(document.getElementById('hashtagDashboard').textContent.includes('table-finance'), false);
     assert.equal(document.getElementById('hashtagDashboard').textContent.includes('visible-ops'), true);
+});
+
+test('standard park report totals dar subtotal and locks after close', async () => {
+    const { window, requests } = await setupReportsDom();
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'park-standard-report';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /Стандартний/.test(document.getElementById('reportSheetTitle').textContent), 'standard template switch');
+
+    assert.equal(document.getElementById('reportTemplatePicker').value, 'park-standard-report');
+    const headers = [...document.querySelectorAll('#reportSheetTable thead th .rpt-sheet-th-content > span:first-child')]
+        .map(th => th.textContent.trim())
+        .slice(0, 5);
+    assert.deepEqual(headers, ['Дата', 'Категорія', 'Документ', 'Сума', 'Коментар']);
+
+    const date = document.querySelector('[data-row-index="0"][data-column-key="date"]');
+    const category = document.querySelector('[data-row-index="0"][data-column-key="category"]');
+    const documentType = document.querySelector('[data-row-index="0"][data-column-key="document"]');
+    const amount = document.querySelector('[data-row-index="0"][data-column-key="amount"]');
+    date.value = '2026-05-23';
+    category.value = 'дар';
+    documentType.value = 'чек';
+    amount.value = '120';
+    [date, category, documentType, amount].forEach(input => input.dispatchEvent(new window.Event('input', { bubbles: true })));
+
+    const category2 = document.querySelector('[data-row-index="1"][data-column-key="category"]');
+    const amount2 = document.querySelector('[data-row-index="1"][data-column-key="amount"]');
+    category2.value = 'афіша';
+    amount2.value = '80';
+    [category2, amount2].forEach(input => input.dispatchEvent(new window.Event('input', { bubbles: true })));
+
+    const summary = document.getElementById('reportSheetSummary').textContent;
+    assert.match(summary, /Ітого/);
+    assert.match(summary, /Ітого ДАР/);
+    assert.match(summary, /200/);
+    assert.match(summary, /120/);
+
+    document.getElementById('reportTemplateCloseBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports/table/close'), 'report close request');
+
+    const closeRequest = requests.find(req => req.url === '/api/reports/table/close');
+    const body = JSON.parse(closeRequest.options.body);
+    assert.equal(body.tableJson.reportTableTemplate.defaultReport.amountColumn, 'amount');
+    assert.equal(body.tableJson.reportTableTemplate.defaultReport.subtotalRules[0].categoryValue, 'дар');
+    assert.equal(body.amount, 200);
+
+    await waitFor(() => /Закритий/.test(document.getElementById('reportSheetModeChip').textContent), 'closed lock render');
+    assert.equal(document.getElementById('reportTemplateAddRowBtn').disabled, true);
+    assert.equal(document.getElementById('reportTemplateAddColumnBtn').disabled, true);
+    assert.equal(document.getElementById('reportTemplateCloseBtn').disabled, true);
+    assert.equal(document.getElementById('reportTemplateExportCsvBtn').disabled, false);
+    assert.equal(document.querySelector('.rpt-sheet-input').disabled, true);
 });

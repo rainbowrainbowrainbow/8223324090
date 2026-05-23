@@ -53,8 +53,8 @@ const Sidebar = (() => {
     const NAV_ITEMS = [
         { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
-        { href: '/',             icon: '📅', label: 'Таймлайн',      access: 'timeline',       group: 'today' },
-        { href: '/maysternya-doli', icon: '◇', label: 'Майстерня долі', access: 'maysternya_doli', group: 'today' },
+        { href: '/',             icon: '📅', label: 'Таймлайн ПАРК', access: 'timeline',       group: 'today' },
+        { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
 

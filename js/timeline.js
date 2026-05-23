@@ -261,6 +261,22 @@ function renderTimeScale(date) {
     container.appendChild(endMark);
 }
 
+function timelineShouldRenderAfisha() {
+    const ctx = window.TimelineBusinessContext?.current?.();
+    return ctx?.showAfisha !== false;
+}
+
+function normalizeTimelineLinesForContext(lines = []) {
+    const ctx = window.TimelineBusinessContext?.current?.();
+    if (ctx?.key !== 'maysternya_doli') return lines;
+    return lines.map(line => {
+        if (line?.id === 'md-consult-room' && line.name === 'Майстерня долі') {
+            return { ...line, name: 'Таймлайн МД' };
+        }
+        return line;
+    });
+}
+
 async function renderTimeline() {
     const thisGen = ++_renderGen;
     const selectedDate = new Date(AppState.selectedDate);
@@ -284,6 +300,7 @@ async function renderTimeline() {
     const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
 
     const container = document.getElementById('timelineLines');
+    const showAfisha = timelineShouldRenderAfisha();
 
     // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
@@ -291,9 +308,9 @@ async function renderTimeline() {
         const [linesResult, bookingsResult, afishaResult] = await Promise.all([
             getLinesForDate(selectedDate).catch(e => { console.error('[Timeline] getLinesForDate error:', e); return []; }),
             getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; }),
-            apiGetAfishaByDate(formatDate(selectedDate)).catch(() => [])
+            showAfisha ? apiGetAfishaByDate(formatDate(selectedDate)).catch(() => []) : Promise.resolve([])
         ]);
-        lines = linesResult || [];
+        lines = normalizeTimelineLinesForContext(linesResult || []);
         bookings = bookingsResult || [];
         afishaEvents = afishaResult || [];
     } catch (err) {
@@ -358,10 +375,12 @@ async function renderTimeline() {
     });
 
     // v7.9.3: Render afisha line at the top (only unassigned events)
-    try {
-        const hasAssigned = allAfisha.some(ev => ev.line_id);
-        renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
-    } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
+    if (showAfisha) {
+        try {
+            const hasAssigned = allAfisha.some(ev => ev.line_id);
+            renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
+        } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
+    }
 
     // console.log('[Timeline] Rendering ' + lines.length + ' lines...');
 

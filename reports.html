@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.43">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.43">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.43">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.43">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.43">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.43">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.43">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.43">
+    <link rel="stylesheet" href="css/base.css?v=0.61.47">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.47">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.47">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.47">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.47">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.47">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.47">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.47">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -191,6 +191,53 @@
             color: white;
             border-color: transparent;
         }
+        .rpt-template-action.danger {
+            background: rgba(239,68,68,0.10);
+            color: #B91C1C;
+            border-color: rgba(239,68,68,0.24);
+        }
+        .rpt-template-action.danger:hover {
+            border-color: rgba(239,68,68,0.45);
+            color: #991B1B;
+        }
+        .rpt-template-picker {
+            display: grid;
+            grid-template-columns: auto minmax(220px, 420px) minmax(0, 1fr);
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .rpt-template-picker label {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+        .rpt-template-select {
+            width: 100%;
+            min-height: 42px;
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.86);
+            color: var(--gray-800);
+            padding: 8px 11px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 850;
+        }
+        .rpt-template-active-chip {
+            min-width: 0;
+            padding: 8px 11px;
+            border-radius: 999px;
+            background: rgba(16,185,129,0.10);
+            color: #047857;
+            font-size: 12px;
+            font-weight: 900;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .rpt-template-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -345,6 +392,10 @@
             background: rgba(99,102,241,0.10);
             color: #4F46E5;
         }
+        .rpt-sheet-mode-chip.closed {
+            background: rgba(239,68,68,0.10);
+            color: #B91C1C;
+        }
         .rpt-sheet-dirty-chip {
             margin-left: 8px;
             background: rgba(245,158,11,0.13);
@@ -372,6 +423,36 @@
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             background: #FFFFFF;
+        }
+        .rpt-sheet-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(148,163,184,0.20);
+            background: rgba(255,255,255,0.60);
+        }
+        .rpt-sheet-summary-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 40px;
+            padding: 8px 12px;
+            border: 1px solid rgba(148,163,184,0.22);
+            border-radius: 12px;
+            background: rgba(248,250,252,0.90);
+            color: #475569;
+            font-size: 12px;
+            font-weight: 900;
+        }
+        .rpt-sheet-summary-card strong {
+            color: #0F172A;
+            font-size: 16px;
+        }
+        .rpt-sheet-summary-card.accent {
+            border-color: rgba(16,185,129,0.32);
+            background: rgba(16,185,129,0.10);
+            color: #047857;
         }
         .rpt-sheet-table {
             width: 100%;
@@ -445,6 +526,15 @@
             outline: 2px solid rgba(16,185,129,0.55);
             outline-offset: -2px;
             background: rgba(236,253,245,0.68);
+        }
+        .rpt-sheet-input:disabled {
+            opacity: 1;
+            color: #334155;
+            background: rgba(248,250,252,0.72);
+            cursor: default;
+        }
+        .rpt-sheet-select {
+            appearance: auto;
         }
         .rpt-sheet-total-row td {
             background: #F8FAFC;
@@ -524,10 +614,15 @@
         body.dark-mode .rpt-template-action,
         body.dark-mode .rpt-template-card,
         body.dark-mode .rpt-draft-chip,
+        body.dark-mode .rpt-template-select,
         body.dark-mode .rpt-sheet-title-input {
             background: rgba(15,23,42,0.82);
             border-color: rgba(148,163,184,0.24);
             color: #E2E8F0;
+        }
+        body.dark-mode .rpt-template-active-chip {
+            background: rgba(16,185,129,0.18);
+            color: #6EE7B7;
         }
         body.dark-mode .rpt-sheet-title-field label {
             color: #94A3B8;
@@ -540,6 +635,10 @@
             background: rgba(245,158,11,0.16);
             color: #FCD34D;
         }
+        body.dark-mode .rpt-sheet-mode-chip.closed {
+            background: rgba(248,113,113,0.16);
+            color: #FCA5A5;
+        }
         body.dark-mode .rpt-template-card.active {
             background: linear-gradient(135deg, rgba(16,185,129,0.20), rgba(15,23,42,0.92));
             border-color: rgba(52,211,153,0.58);
@@ -551,6 +650,23 @@
         body.dark-mode .rpt-sheet-table-wrap,
         body.dark-mode .rpt-raw-table-preview {
             background: #0F172A;
+        }
+        body.dark-mode .rpt-sheet-summary {
+            background: rgba(15,23,42,0.62);
+            border-bottom-color: rgba(148,163,184,0.18);
+        }
+        body.dark-mode .rpt-sheet-summary-card {
+            background: rgba(15,23,42,0.82);
+            border-color: rgba(148,163,184,0.22);
+            color: #CBD5E1;
+        }
+        body.dark-mode .rpt-sheet-summary-card strong {
+            color: #F8FAFC;
+        }
+        body.dark-mode .rpt-sheet-summary-card.accent {
+            background: rgba(16,185,129,0.16);
+            border-color: rgba(52,211,153,0.32);
+            color: #6EE7B7;
         }
         body.dark-mode .rpt-raw-table-preview-head {
             background: rgba(15,23,42,0.86);
@@ -572,6 +688,10 @@
         }
         body.dark-mode .rpt-sheet-input {
             color: #F8FAFC;
+        }
+        body.dark-mode .rpt-sheet-input:disabled {
+            background: rgba(15,23,42,0.74);
+            color: #CBD5E1;
         }
         body.dark-mode .rpt-sheet-input:focus {
             background: rgba(16,185,129,0.14);
@@ -1122,10 +1242,15 @@
                         <button type="button" class="rpt-template-action" id="reportTemplateResetBtn">Скинути таблицю</button>
                         <button type="button" class="rpt-template-action" id="reportTemplateDraftBtn">Зберегти чернетку</button>
                         <button type="button" class="rpt-template-action primary" id="reportTemplateSaveBtn">Створити звіт з таблиці</button>
+                        <button type="button" class="rpt-template-action danger" id="reportTemplateCloseBtn">Закрити і передати бухгалтеру</button>
                     </div>
                 </div>
 
-                <div class="rpt-template-cards" id="reportTemplateCards" role="listbox" aria-label="Стандартні шаблони звітів"></div>
+                <div class="rpt-template-picker" aria-label="Шаблони звітів">
+                    <label for="reportTemplatePicker">Шаблон</label>
+                    <select id="reportTemplatePicker" class="rpt-template-select" aria-label="Обрати шаблон звіту"></select>
+                    <span class="rpt-template-active-chip" id="reportTemplateActiveChip">Шаблон не вибрано</span>
+                </div>
                 <div class="rpt-drafts-strip" id="reportDraftList" aria-live="polite"></div>
 
                 <div class="rpt-sheet-panel" id="reportSheetPanel">
@@ -1152,6 +1277,7 @@
                             <button type="button" class="rpt-template-action" id="reportTemplateExportXlsxBtn">XLSX</button>
                         </div>
                     </div>
+                    <div class="rpt-sheet-summary hidden" id="reportSheetSummary" aria-live="polite"></div>
                     <div class="rpt-sheet-table-wrap">
                         <table class="rpt-sheet-table" id="reportSheetTable" aria-label="Редагована таблиця звіту"></table>
                     </div>
@@ -1330,13 +1456,13 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=0.61.43"></script>
-    <script src="js/notification.js?v=0.61.43"></script>
-    <script src="js/api.js?v=0.61.43"></script>
-    <script src="js/auth.js?v=0.61.43"></script>
-    <script src="js/components/sidebar.js?v=0.61.43"></script>
+    <script src="js/config.js?v=0.61.47"></script>
+    <script src="js/notification.js?v=0.61.47"></script>
+    <script src="js/api.js?v=0.61.47"></script>
+    <script src="js/auth.js?v=0.61.47"></script>
+    <script src="js/components/sidebar.js?v=0.61.47"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/reports-page.js?v=0.61.43"></script><script src="js/ui.js?v=0.61.43"></script>
-    <script src="js/alerts.js?v=0.61.43"></script>
+    <script src="js/reports-page.js?v=0.61.47"></script><script src="js/ui.js?v=0.61.47"></script>
+    <script src="js/alerts.js?v=0.61.47"></script>
 </body>
 </html>

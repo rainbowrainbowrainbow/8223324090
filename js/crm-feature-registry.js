@@ -120,15 +120,27 @@
         },
         {
             id: 'timeline.main',
-            title: 'Таймлайн бронювань',
+            title: 'Таймлайн ПАРК',
             href: '/',
             icon: '◴',
             access: 'timeline',
             group: 'today',
-            breadcrumb: 'Таймлайн',
+            breadcrumb: 'Таймлайн ПАРК',
             summary: 'Основний scheduler для бронювань, лінійок і подій дня.',
-            primaryAction: 'Відкрити таймлайн',
-            aliases: ['таймлайн', 'календар', 'розклад', 'бронювання', 'лінійки', 'timeline']
+            primaryAction: 'Відкрити Таймлайн ПАРК',
+            aliases: ['таймлайн парк', 'таймлайн парку', 'парк таймлайн', 'таймлайн', 'календар', 'розклад', 'бронювання', 'лінійки', 'timeline']
+        },
+        {
+            id: 'timeline.maysternya_doli',
+            title: 'Таймлайн МД',
+            href: '/maysternya-doli',
+            icon: '◇',
+            access: 'maysternya_doli',
+            group: 'today',
+            breadcrumb: 'Таймлайн МД',
+            summary: 'Окремий таймлайн записів Майстерні Долі без афіші парку.',
+            primaryAction: 'Відкрити Таймлайн МД',
+            aliases: ['таймлайн мд', 'мд таймлайн', 'майстерня долі', 'майстерня', 'записи психолога']
         },
         {
             id: 'products.programs',

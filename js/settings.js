@@ -414,7 +414,7 @@ async function addNewLine() {
         let nameValue = null;
         if (typeof promptModal === 'function') {
             nameValue = await promptModal('Назва спеціаліста або кабінету', {
-                defaultValue: 'Майстерня долі',
+                defaultValue: 'Таймлайн МД',
                 placeholder: 'Наприклад: Кабінет 1',
                 okText: 'Додати',
                 type: 'info'

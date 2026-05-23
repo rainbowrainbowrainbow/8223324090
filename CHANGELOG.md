@@ -4,6 +4,19 @@
 
 ---
 
+## v0.62.0 - CRM 62: фіналізація пакету
+
+### CRM 62: фіналізація пакету [codex]
+- **Доставка** - зафіксовано фінальний релізний маркер `v0.62.0` після серії змін для Reports, Maysternya Doli, бізнес-контекстів, сертифікатів, таймлайнів і клієнтського CRM.
+- **Reports** - стандартний звіт, compact picker, locked close-flow і бухгалтерський handoff входять у релізний пакет як завершений governed workflow.
+- **Майстерня Долі** - CRM-ліди, клієнти, customer cards, mailing і бронювання працюють через `business_context`, без змішування з ПАРК.
+- **Таймлайн** - ПАРК і МД мають окремі назви/контексти, МД не рендерить афішу, консультація МД заведена як 90 хв, продукти вантажаться за бізнес-контекстом.
+- **Клієнти** - створення/оновлення клієнта має контрольований `409 customer_duplicate` для duplicate-випадків замість сирого `500 Internal server error`.
+- **UI shell** - `/certificates`, `/certificates/new` і `/certificates/batch` вирівняні під shared CRM shell/assets; темний глобальний пошук має читабельний fallback.
+- **Verification** - version refs, cache tags, service worker cache names і live smoke перевіряються як `v0.62.0`.
+
+---
+
 ## v0.61.56 - UI: залишкові фікси
 
 ### UI: залишкові фікси [codex]

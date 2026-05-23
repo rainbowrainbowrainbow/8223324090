@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.62.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.62.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.62.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.62.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.3">
-    <link rel="stylesheet" href="css/features.css?v=0.62.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.3">
+    <link rel="stylesheet" href="css/base.css?v=0.62.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.62.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.62.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.62.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.62.4">
+    <link rel="stylesheet" href="css/features.css?v=0.62.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.62.3 Дашборд: зручне вікно віджетів">✨ 0.62.3 Дашборд: зручне вікно віджетів</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.62.4 Changelog: логічна історія релізів">✨ 0.62.4 Changelog: логічна історія релізів</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.62.3 — Дашборд: зручне вікно віджетів</p>
+                <p class="tagline">AI First CRM v0.62.4 — Changelog: логічна історія релізів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.3: Дашборд: зручне вікно віджетів</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.4: Changelog: логічна історія релізів</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1264,6 +1264,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.62.4 — Changelog: логічна історія релізів</h4>
+                    <ul>
+                        <li><b>Версії</b> — видимий changelog більше не стрибає з <code>v0.62.x</code> одразу на <code>v0.61.51</code>.</li>
+                        <li><b>Історія релізів</b> — повернуто пропущені записи <code>v0.62.2</code>, <code>v0.62.0</code> та проміжні <code>v0.61.56</code>–<code>v0.61.52</code>.</li>
+                        <li><b>Порядок</b> — модалка "Що нового" тепер показує релізи послідовно згори вниз: найновіший першим, старіші нижче.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.62.3 — Дашборд: зручне вікно віджетів</h4>
                     <ul>
                         <li><b>Вікно віджетів</b> — налаштування дашборду перероблено у двопанельний workspace замість вузького списку на один рядок.</li>
@@ -1271,6 +1279,65 @@
                         <li><b>Board/сцена</b> — налаштування сцени і board-поведінки винесені в окрему колонку, щоб не стискати список віджетів.</li>
                         <li><b>Mobile</b> — на вузьких екранах каталог віджетів показується першим, а кнопки збереження лишаються доступними внизу.</li>
                         <li><b>Guardrail</b> — UI-smoke перевіряє нову структуру settings workspace, пошук, фільтри і мінімальну висоту списку.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.62.2 — Швидкий доступ: порядок за ролями</h4>
+                    <ul>
+                        <li><b>Швидкий доступ</b> — <code>/afisha</code> додано як повноцінний role-aware quick-access target через існуючий механізм.</li>
+                        <li><b>Animator</b> — пресет швидкого доступу тепер починається з <code>/afisha</code>, другим пунктом іде таймлайн <code>/</code>.</li>
+                        <li><b>Менеджери</b> — <code>manager</code>, <code>senior_manager</code>, <code>vice_director</code>, <code>director</code> і <code>creator</code> отримали прямий shortcut на видачу сертифіката <code>/certificates/new</code>.</li>
+                        <li><b>Sidebar</b> — fallback quick-access знає про афішу і таймлайн, а access-фільтр таймлайну не відсікає роль <code>animator</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.62.0 — CRM 62: фіналізація пакету</h4>
+                    <ul>
+                        <li><b>Доставка</b> — зафіксовано релізний маркер <code>v0.62.0</code> після серії змін для Reports, Maysternya Doli, бізнес-контекстів, сертифікатів, таймлайнів і клієнтського CRM.</li>
+                        <li><b>Reports</b> — стандартний звіт, compact picker, locked close-flow і бухгалтерський handoff увійшли у завершений governed workflow.</li>
+                        <li><b>Майстерня Долі</b> — CRM-ліди, клієнти, customer cards, mailing і бронювання працюють через <code>business_context</code>, без змішування з ПАРК.</li>
+                        <li><b>Таймлайн</b> — ПАРК і МД мають окремі назви/контексти, МД не рендерить афішу, консультація МД заведена як <code>90 хв</code>.</li>
+                        <li><b>UI shell</b> — <code>/certificates</code>, <code>/certificates/new</code> і <code>/certificates/batch</code> вирівняні під shared CRM shell/assets.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.56 — UI: залишкові фікси</h4>
+                    <ul>
+                        <li><b>Пошук</b> — темний глобальний пошук отримав фінальний fallback, щоб підказки, результати й бейджі не ставали блідими.</li>
+                        <li><b>Клієнти</b> — duplicate-помилки при створенні або оновленні клієнта повертають контрольований <code>409 customer_duplicate</code> замість сирого <code>500</code>.</li>
+                        <li><b>Таймлайн МД</b> — рендер афіші додатково заблоковано на рівні staff-ліній, щоб у МД не виникали приховані афішні слоти над графіком.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.55 — Bookings: CRM handoff МД</h4>
+                    <ul>
+                        <li><b>Бронювання МД</b> — non-park бронювання без <code>leadId</code> idempotent створюють або підхоплюють lead у тому ж <code>business_context</code>.</li>
+                        <li><b>CRM-зв'язок</b> — система лінкує <code>leads.booking_id</code> і <code>customers.lead_id</code>, щоб клієнт і воронка МД не розходились.</li>
+                        <li><b>Воронка</b> — підтверджені консультації потрапляють у <code>deposit_received</code>, попередні — у <code>waiting</code>, зі статусом <code>booked</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.54 — Timeline: продукти з каталогу</h4>
+                    <ul>
+                        <li><b>Таймлайн</b> — <code>getProducts()</code> вантажить активні продукти з <code>/api/products</code> за поточним <code>businessContext</code>.</li>
+                        <li><b>Майстерня Долі</b> — консультації на <code>/maysternya-doli</code> беруться з серверного каталогу <code>maysternya_doli</code>, а hardcoded набір лишається fallback.</li>
+                        <li><b>Кеш</b> — продукти кешуються з ключем бізнес-контексту, щоб ПАРК і МД не підхоплювали чужий каталог.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.53 — Products: бізнес-контекст</h4>
+                    <ul>
+                        <li><b>Products</b> — таблиця продуктів отримала durable <code>business_context</code>, scoped indexes і backfill у legacy <code>event_genix</code>.</li>
+                        <li><b>Майстерня Долі</b> — додано окремі consultation products у <code>maysternya_doli</code>; повна консультація зафіксована як <code>90 хв</code>.</li>
+                        <li><b>API</b> — list/detail/create/update/document/deactivate потоки продуктів фільтруються за бізнес-контекстом і не змішують ПАРК/МД.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.52 — Certificates: ремонт shell меню</h4>
+                    <ul>
+                        <li><b>Сертифікати</b> — закрито причину raw-shell на <code>/certificates/new</code>: legacy nested asset paths більше не провалюються в HTML fallback.</li>
+                        <li><b>Сумісність кешу</b> — старі кешовані посилання <code>/certificates/css/...</code>, <code>/certificates/js/...</code> і <code>/certificates/images/...</code> редіректяться на кореневі assets.</li>
+                        <li><b>Guardrail</b> — UI smoke перевіряє root-relative assets для standalone certificates routes і server-side redirect для старих nested asset URL.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -8774,28 +8841,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.62.3"></script>
-    <script src="js/timeline-visibility.js?v=0.62.3"></script>
-    <script src="js/config.js?v=0.62.3"></script>
-    <script src="js/api.js?v=0.62.3"></script>
-    <script src="js/ui.js?v=0.62.3"></script>
-    <script src="js/auth.js?v=0.62.3"></script>
-    <script src="js/timeline.js?v=0.62.3"></script>
-    <script src="js/booking.js?v=0.62.3"></script>
-    <script src="js/settings.js?v=0.62.3"></script>
-    <script src="js/booking-form.js?v=0.62.3"></script>
-    <script src="js/booking-linked.js?v=0.62.3"></script>
-    <script src="js/settings-dashboard.js?v=0.62.3"></script>
-    <script src="js/settings-history.js?v=0.62.3"></script>
-    <script src="js/settings-afisha.js?v=0.62.3"></script>
-    <script src="js/settings-certificates.js?v=0.62.3"></script>
-    <script src="js/offline.js?v=0.62.3"></script>
-    <script src="js/crm-feature-registry.js?v=0.62.3"></script>
-    <script src="js/search.js?v=0.62.3"></script>
-    <script src="js/ws.js?v=0.62.3"></script>
-    <script src="js/app.js?v=0.62.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.62.3"></script>
-    <script src="js/components/sidebar.js?v=0.62.3"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.3"></script>
+    <script src="js/timeline-context.js?v=0.62.4"></script>
+    <script src="js/timeline-visibility.js?v=0.62.4"></script>
+    <script src="js/config.js?v=0.62.4"></script>
+    <script src="js/api.js?v=0.62.4"></script>
+    <script src="js/ui.js?v=0.62.4"></script>
+    <script src="js/auth.js?v=0.62.4"></script>
+    <script src="js/timeline.js?v=0.62.4"></script>
+    <script src="js/booking.js?v=0.62.4"></script>
+    <script src="js/settings.js?v=0.62.4"></script>
+    <script src="js/booking-form.js?v=0.62.4"></script>
+    <script src="js/booking-linked.js?v=0.62.4"></script>
+    <script src="js/settings-dashboard.js?v=0.62.4"></script>
+    <script src="js/settings-history.js?v=0.62.4"></script>
+    <script src="js/settings-afisha.js?v=0.62.4"></script>
+    <script src="js/settings-certificates.js?v=0.62.4"></script>
+    <script src="js/offline.js?v=0.62.4"></script>
+    <script src="js/crm-feature-registry.js?v=0.62.4"></script>
+    <script src="js/search.js?v=0.62.4"></script>
+    <script src="js/ws.js?v=0.62.4"></script>
+    <script src="js/app.js?v=0.62.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.62.4"></script>
+    <script src="js/components/sidebar.js?v=0.62.4"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.4"></script>
 </body>
 </html>

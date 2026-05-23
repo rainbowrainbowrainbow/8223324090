@@ -14,6 +14,7 @@ const {
     TASK_ACTION_TYPES,
     logTaskActionEvent
 } = require('./taskActionHistory');
+const { subtaskCompletionState } = require('./taskSubtasks');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -76,6 +77,32 @@ function reportRequiredError(task = {}) {
         title: task.title || null,
         reportRequired: true
     };
+    return err;
+}
+
+async function getParentSubtaskCompletionState(query, taskId) {
+    const result = await query.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE is_done = true)::int AS done
+         FROM task_subtasks
+         WHERE task_id = $1`,
+        [taskId]
+    );
+    return subtaskCompletionState(result.rows[0]?.done || 0, result.rows[0]?.total || 0);
+}
+
+function subtaskCompletionRequiredError(task, state) {
+    const err = new Error(`Закрийте всі підпункти перед виконанням задачі (${state.done}/${state.total}).`);
+    err.statusCode = 409;
+    err.code = 'SUBTASKS_INCOMPLETE';
+    err.task = {
+        id: task.id,
+        title: task.title || null,
+        subtaskCount: state.total,
+        subtaskDoneCount: state.done,
+        subtaskOpenCount: state.open
+    };
+    err.meta = { subtaskCompletionRequired: true };
     return err;
 }
 
@@ -283,6 +310,10 @@ async function completeTask(taskId, actor, options = {}) {
         const task = await getVisibleTask(taskId, actor, { pool: query });
         if (!canMutateTask(actor, task)) {
             throw forbidden('You cannot complete this task');
+        }
+        const subtaskState = await getParentSubtaskCompletionState(query, task.id);
+        if (!subtaskState.canCompleteParent) {
+            throw subtaskCompletionRequiredError(task, subtaskState);
         }
         const incomingReportId = parsePositiveInt(options.reportId || options.report_id);
         const existingReportId = taskCompletionReportId(task);

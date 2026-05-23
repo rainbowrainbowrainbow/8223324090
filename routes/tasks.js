@@ -637,7 +637,7 @@ function sendTaskActionError(res, err) {
         code: err.code || 'TASK_ACTION_FAILED',
         requiresReport: err.requiresReport === true,
         task: err.task || null,
-        meta: err.requiresReport ? { reportRequired: true } : undefined
+        meta: err.requiresReport ? { reportRequired: true } : err.meta
     });
 }
 
@@ -862,6 +862,7 @@ router.get('/', async (req, res) => {
              ${where}
              ORDER BY
                  CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
+                 CASE WHEN COALESCE(st.total, 0) > 0 AND COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled') THEN 0 ELSE 1 END,
                  ${canonicalTaskOrderSql('t')},
                  CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
                  CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
@@ -1245,6 +1246,7 @@ router.get('/my-cabinet', async (req, res) => {
              WHERE ${ownMatch}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
               ORDER BY
+                 CASE WHEN COALESCE(st.total, 0) > 0 THEN 0 ELSE 1 END,
                  CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
                  COALESCE(t.focus_rank, 99),
                  ${canonicalTaskOrderSql('t')},
@@ -2501,7 +2503,14 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
         } else if (action === 'done') {
             result = await pool.query(
                 `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW(), updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('done','archived')`,
+                 WHERE t.id = ANY($1::int[]) ${visibility}
+                   AND COALESCE(t.status, 'todo') NOT IN ('done','archived')
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM task_subtasks st
+                       WHERE st.task_id = t.id
+                         AND COALESCE(st.is_done, false) = false
+                   )`,
                 params
             );
         } else if (action === 'assign' && assignTo) {

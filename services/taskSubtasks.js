@@ -63,6 +63,19 @@ function subtaskProgress(doneCount, totalCount) {
     return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
 }
 
+function subtaskCompletionState(doneCount, totalCount) {
+    const total = Math.max(0, Number.parseInt(totalCount, 10) || 0);
+    const done = Math.max(0, Math.min(total, Number.parseInt(doneCount, 10) || 0));
+    const open = Math.max(0, total - done);
+    return {
+        total,
+        done,
+        open,
+        canCompleteParent: total === 0 || open === 0,
+        progress: subtaskProgress(done, total)
+    };
+}
+
 function normalizeSubtaskRow(row = {}) {
     const isDone = row.is_done === true || row.isDone === true;
     const sortOrder = Number.parseInt(row.sort_order ?? row.sortOrder ?? 0, 10) || 0;
@@ -201,5 +214,6 @@ module.exports = {
     normalizeSubtasksInput,
     replaceTaskSubtasks,
     subtaskPayloadFromBody,
+    subtaskCompletionState,
     subtaskProgress
 };

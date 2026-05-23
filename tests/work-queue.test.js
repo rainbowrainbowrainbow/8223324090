@@ -329,6 +329,10 @@ function createFakePool() {
                 }] };
             }
 
+            if (/FROM task_subtasks/i.test(text) && /WHERE task_id = \$1/i.test(text)) {
+                return { rows: [{ total: 0, done: 0 }] };
+            }
+
             if (/UPDATE tasks/i.test(text) && /SET status = 'done'/i.test(text) && /RETURNING \*/i.test(text)) {
                 return { rows: [{
                     id: params[0],

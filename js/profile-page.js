@@ -33,6 +33,9 @@ let cabinetSavedDecompositionTemplates = [];
 let cabinetDecompositionSuggestions = [];
 let cabinetSuggestionTimer = null;
 let lastCabinetSuggestionKey = '';
+const expandedCabinetSubtaskIds = new Set();
+const cabinetSubtaskCache = new Map();
+const loadingCabinetSubtaskIds = new Set();
 
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
@@ -1803,12 +1806,114 @@ function cabinetSubtaskSummary(task = {}) {
     return { total, done, progress };
 }
 
+function cabinetTaskHasSubtasks(task = {}) {
+    return cabinetSubtaskSummary(task).total > 0;
+}
+
+function cabinetTaskCompletionBlockedBySubtasks(task = {}) {
+    const summary = cabinetSubtaskSummary(task);
+    return summary.total > 0 && summary.done < summary.total;
+}
+
+function cabinetSubtaskCompletionTitle(task = {}) {
+    const summary = cabinetSubtaskSummary(task);
+    if (!summary.total) return '';
+    return summary.done >= summary.total
+        ? 'Усі підпункти закриті. Задачу можна виконати.'
+        : `Спочатку закрийте всі підпункти: ${summary.done}/${summary.total}.`;
+}
+
+function compareCabinetTasksForDisplay(a = {}, b = {}) {
+    const decompositionDiff = Number(cabinetTaskHasSubtasks(b)) - Number(cabinetTaskHasSubtasks(a));
+    if (decompositionDiff) return decompositionDiff;
+    return 0;
+}
+
+function sortCabinetTasksForDisplay(list = []) {
+    return [...list].sort(compareCabinetTasksForDisplay);
+}
+
+function normalizeCabinetSubtask(item = {}) {
+    return {
+        id: item.id || item.subtaskId || item.subtask_id || '',
+        title: item.title || '',
+        isDone: item.is_done === true || item.isDone === true
+    };
+}
+
+function cachedCabinetSubtasks(taskId, task = {}) {
+    const id = Number(taskId);
+    if (cabinetSubtaskCache.has(id)) return cabinetSubtaskCache.get(id);
+    if (Array.isArray(task.subtasks)) return task.subtasks.map(normalizeCabinetSubtask);
+    return null;
+}
+
+function updateCabinetTaskSubtaskSummary(taskId, subtasks = []) {
+    const id = Number(taskId);
+    const total = subtasks.length;
+    const done = subtasks.filter(item => normalizeCabinetSubtask(item).isDone).length;
+    if (!myCabinetData || typeof myCabinetData !== 'object') return;
+    Object.keys(myCabinetData).forEach(key => {
+        if (!Array.isArray(myCabinetData[key])) return;
+        myCabinetData[key] = myCabinetData[key].map(task => {
+            const currentId = Number(task.id || task.taskId || task.task_id || 0);
+            if (currentId !== id) return task;
+            return {
+                ...task,
+                subtask_count: total,
+                subtaskCount: total,
+                subtask_done_count: done,
+                subtaskDoneCount: done,
+                subtasks: subtasks.map(normalizeCabinetSubtask)
+            };
+        });
+    });
+}
+
 function renderCabinetSubtaskProgress(task = {}) {
     const summary = cabinetSubtaskSummary(task);
     if (!summary.total) return '';
     return `<div class="cabinet-subtask-progress">
         <div class="cabinet-subtask-progress-bar"><div class="cabinet-subtask-progress-fill" style="width:${summary.progress}%"></div></div>
         <span>${summary.done}/${summary.total} · ${summary.progress}%</span>
+    </div>`;
+}
+
+function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '') {
+    const summary = cabinetSubtaskSummary(task);
+    if (!summary.total || !taskIdAttr) return '';
+    const expanded = expandedCabinetSubtaskIds.has(Number(taskIdAttr));
+    return `<button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${expanded ? 'true' : 'false'}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
+        Пункти ${summary.done}/${summary.total}
+    </button>`;
+}
+
+function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '') {
+    const summary = cabinetSubtaskSummary(task);
+    const taskId = Number(taskIdAttr || 0);
+    if (!summary.total || !taskId) return '';
+    const expanded = expandedCabinetSubtaskIds.has(taskId);
+    const subtasks = cachedCabinetSubtasks(taskId, task);
+    let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
+    if (expanded && loadingCabinetSubtaskIds.has(taskId)) {
+        body = '<div class="cabinet-subtask-inline-empty">Завантажую підпункти...</div>';
+    } else if (expanded && Array.isArray(subtasks)) {
+        body = subtasks.length
+            ? subtasks.map(item => {
+                const subtask = normalizeCabinetSubtask(item);
+                return `<label class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''}">
+                    <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
+                    <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
+                </label>`;
+            }).join('')
+            : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
+    }
+    return `<div class="cabinet-subtask-inline-panel" data-cabinet-subtasks-panel="${taskIdAttr}" ${expanded ? '' : 'hidden'}>
+        <div class="cabinet-subtask-inline-head">
+            <span>Підпункти можна виконувати у будь-якому порядку</span>
+            <b>${summary.done}/${summary.total}</b>
+        </div>
+        <div class="cabinet-subtask-inline-list">${body}</div>
     </div>`;
 }
 
@@ -1826,6 +1931,8 @@ function renderCabinetTaskCard(task, compact = false) {
     const doneActionLabel = 'Виконати задачу';
     const snoozeActionLabel = 'Відкласти задачу';
     const openActionLabel = 'Відкрити задачу у повному списку';
+    const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
+    const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
     return `
         <div class="cabinet-task-card" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}">
             <div class="cabinet-task-main">
@@ -1839,12 +1946,14 @@ function renderCabinetTaskCard(task, compact = false) {
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
                     ${subSummary.total ? `<span>${subSummary.done}/${subSummary.total}</span>` : ''}
+                    ${renderCabinetSubtaskToggle(task, taskIdAttr)}
                     ${cabinetTaskReportBadge(task)}
                     ${renderCabinetSubtaskProgress(task)}
                 </div>
+                ${renderCabinetSubtasksPanel(task, taskIdAttr)}
             </div>
             <div class="cabinet-task-actions">
-                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneActionLabel)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>✓</button>
+                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
                 ${compact ? '' : `<span class="cabinet-snooze-wrap"><button type="button" class="cabinet-task-action-btn" title="${escapeHtml(snoozeActionLabel)}" aria-label="${escapeHtml(snoozeActionLabel)}" data-tooltip="${escapeHtml(snoozeActionLabel)}" data-cabinet-task-action="snooze-menu" data-task-id="${taskIdAttr}" aria-haspopup="menu" aria-expanded="false" ${taskIdAttr ? '' : 'disabled'}>⏰</button>${renderCabinetSnoozeMenu(taskIdAttr)}</span>`}
                 <button type="button" class="cabinet-task-action-btn" title="${escapeHtml(openActionLabel)}" aria-label="${escapeHtml(openActionLabel)}" data-tooltip="${escapeHtml(openActionLabel)}" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
             </div>
@@ -1852,14 +1961,15 @@ function renderCabinetTaskCard(task, compact = false) {
 }
 
 function renderCabinetSection(title, list, emptyText, compact = false) {
+    const visibleList = sortCabinetTasksForDisplay(list);
     return `
         <section class="cabinet-task-section">
             <div class="cabinet-section-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>${list.length}</span>
+                <span>${visibleList.length}</span>
             </div>
-            ${list.length
-                ? list.map(task => renderCabinetTaskCard(task, compact)).join('')
+            ${visibleList.length
+                ? visibleList.map(task => renderCabinetTaskCard(task, compact)).join('')
                 : `<div class="cabinet-empty">${escapeHtml(emptyText)}</div>`}
         </section>`;
 }
@@ -2225,7 +2335,7 @@ function renderMyTasksTab() {
     const all = cabinetList('all');
     const counts = cabinetSegmentCounts(all);
     const activeSegment = cabinetSegmentConfig(myTasksSegment);
-    const filtered = all.filter(task => cabinetTaskMatchesSegment(task, myTasksSegment));
+    const filtered = sortCabinetTasksForDisplay(all.filter(task => cabinetTaskMatchesSegment(task, myTasksSegment)));
     return `
         <div class="cabinet-shell">
             <div class="cabinet-toolbar cabinet-toolbar--tasker">
@@ -2272,6 +2382,77 @@ function setMyTasksSegment(segment) {
 function normalizeCabinetTaskId(value) {
     const id = Number.parseInt(value, 10);
     return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function rerenderCabinetTaskTabs() {
+    const tabContent = document.getElementById('tabContent');
+    if (!tabContent || !['myday', 'mytasks'].includes(activeTab)) return;
+    tabContent.innerHTML = renderTabContent();
+    attachProfileListeners();
+}
+
+async function loadCabinetTaskSubtasks(taskId) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) return [];
+    if (cabinetSubtaskCache.has(id)) return cabinetSubtaskCache.get(id);
+    loadingCabinetSubtaskIds.add(id);
+    rerenderCabinetTaskTabs();
+    const result = await apiGet(`/tasks/${id}/subtasks`);
+    loadingCabinetSubtaskIds.delete(id);
+    if (!result?.success || !Array.isArray(result.subtasks)) {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося завантажити підпункти задачі', 'error');
+        rerenderCabinetTaskTabs();
+        return [];
+    }
+    const subtasks = result.subtasks.map(normalizeCabinetSubtask);
+    cabinetSubtaskCache.set(id, subtasks);
+    updateCabinetTaskSubtaskSummary(id, subtasks);
+    rerenderCabinetTaskTabs();
+    return subtasks;
+}
+
+async function toggleCabinetTaskSubtasks(taskId) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) return;
+    if (expandedCabinetSubtaskIds.has(id)) {
+        expandedCabinetSubtaskIds.delete(id);
+        rerenderCabinetTaskTabs();
+        return;
+    }
+    expandedCabinetSubtaskIds.add(id);
+    if (!cabinetSubtaskCache.has(id)) {
+        await loadCabinetTaskSubtasks(id);
+        return;
+    }
+    rerenderCabinetTaskTabs();
+}
+
+async function updateCabinetSubtaskDone(input) {
+    const taskId = normalizeCabinetTaskId(input?.dataset?.taskId);
+    const subtaskId = normalizeCabinetTaskId(input?.dataset?.subtaskId);
+    if (!taskId || !subtaskId) return;
+    const nextDone = input.checked === true;
+    const previousDone = !nextDone;
+    input.disabled = true;
+    const result = await apiPatch(`/tasks/${taskId}/subtasks/${subtaskId}`, { is_done: nextDone });
+    if (!result?.success || !result.subtask) {
+        input.checked = previousDone;
+        input.disabled = false;
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
+        return;
+    }
+    const cached = cabinetSubtaskCache.get(taskId) || [];
+    const updated = cached.map(item => Number(item.id) === subtaskId
+        ? normalizeCabinetSubtask(result.subtask)
+        : normalizeCabinetSubtask(item));
+    cabinetSubtaskCache.set(taskId, updated);
+    updateCabinetTaskSubtaskSummary(taskId, updated);
+    const task = findCabinetTask(taskId) || {};
+    const summary = cabinetSubtaskSummary(task);
+    if (summary.total && summary.done >= summary.total && typeof showNotification === 'function') {
+        showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
+    }
+    rerenderCabinetTaskTabs();
 }
 
 function normalizeCabinetRestoreStatus(value) {
@@ -2355,8 +2536,23 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
+    if (action === 'subtasks-toggle') {
+        await toggleCabinetTaskSubtasks(taskId);
+        return;
+    }
+
     const card = button.closest('.cabinet-task-card');
     const previousStatus = normalizeCabinetRestoreStatus(card?.dataset?.taskStatus || 'todo');
+    if (action === 'done') {
+        const task = findCabinetTask(taskId) || {};
+        if (cabinetTaskCompletionBlockedBySubtasks(task)) {
+            expandedCabinetSubtaskIds.add(Number(taskId));
+            if (!cabinetSubtaskCache.has(Number(taskId))) await loadCabinetTaskSubtasks(taskId);
+            else rerenderCabinetTaskTabs();
+            if (typeof showNotification === 'function') showNotification(cabinetSubtaskCompletionTitle(task), 'warning');
+            return;
+        }
+    }
     button.disabled = true;
     button.classList.add('is-busy');
     card?.classList.add('is-updating');
@@ -2979,6 +3175,15 @@ function attachProfileListeners() {
         if (button.dataset.cabinetActionBound === 'true') return;
         button.dataset.cabinetActionBound = 'true';
         button.addEventListener('click', handleCabinetTaskActionClick);
+    });
+
+    document.querySelectorAll('[data-cabinet-subtask-done]').forEach(input => {
+        if (input.dataset.cabinetSubtaskBound === 'true') return;
+        input.dataset.cabinetSubtaskBound = 'true';
+        input.addEventListener('change', event => {
+            event.stopPropagation();
+            updateCabinetSubtaskDone(input);
+        });
     });
 
     document.querySelectorAll('[data-cabinet-due-preset]').forEach(button => {

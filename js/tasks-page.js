@@ -124,6 +124,9 @@ let taskSavedDecompositionTemplates = [];
 let taskDecompositionSuggestions = [];
 let taskSuggestionTimer = null;
 let lastTaskSuggestionKey = '';
+const expandedTaskSubtaskIds = new Set();
+const taskCardSubtaskCache = new Map();
+const loadingTaskSubtaskIds = new Set();
 
 // ==========================================
 // UTILITIES
@@ -213,6 +216,15 @@ function taskSubtaskSummary(task = {}) {
         done,
         progress: taskSubtaskProgress(done, total)
     };
+}
+
+function taskHasSubtasks(task = {}) {
+    return taskSubtaskSummary(task).total > 0;
+}
+
+function taskCompletionBlockedBySubtasks(task = {}) {
+    const summary = taskSubtaskSummary(task);
+    return summary.total > 0 && summary.done < summary.total;
 }
 
 function getPackStatusLabel(status) {
@@ -536,6 +548,10 @@ function compareTasksForDisplay(a = {}, b = {}) {
     if (aDone && bDone) {
         const completedDiff = new Date(taskCompletedAt(b) || b.updated_at || b.created_at || 0) - new Date(taskCompletedAt(a) || a.updated_at || a.created_at || 0);
         if (completedDiff) return completedDiff;
+    }
+    if (!aDone && !bDone) {
+        const decompositionDiff = Number(taskHasSubtasks(b)) - Number(taskHasSubtasks(a));
+        if (decompositionDiff) return decompositionDiff;
     }
     const rankDiff = taskWorkspaceDisplayRank(a) - taskWorkspaceDisplayRank(b);
     if (rankDiff) return rankDiff;
@@ -1049,6 +1065,32 @@ async function apiCompleteTask(taskId, options = {}) {
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API completeTask error:', err); return null; }
+}
+
+async function apiGetTaskSubtasks(taskId) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API getTaskSubtasks error:', err);
+        return null;
+    }
+}
+
+async function apiPatchTaskSubtask(taskId, subtaskId, data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks/${subtaskId}`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data || {})
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API patchTaskSubtask error:', err);
+        return null;
+    }
 }
 
 async function apiReassignTask(taskId, ownerUserId) {
@@ -1937,6 +1979,58 @@ function renderTaskSubtaskProgress(t) {
     <span class="task-subtask-progress-label">${escapeHtml(label)}</span>`;
 }
 
+function normalizeTaskCardSubtask(item = {}) {
+    const id = item.id || item.subtaskId || item.subtask_id || '';
+    return {
+        id,
+        title: item.title || '',
+        isDone: item.is_done === true || item.isDone === true
+    };
+}
+
+function cachedTaskSubtasks(taskId, task = {}) {
+    if (taskCardSubtaskCache.has(Number(taskId))) return taskCardSubtaskCache.get(Number(taskId));
+    if (Array.isArray(task.subtasks)) return task.subtasks.map(normalizeTaskCardSubtask);
+    return null;
+}
+
+function taskSubtaskCompletionTitle(task = {}) {
+    const summary = taskSubtaskSummary(task);
+    if (!summary.total) return '';
+    return summary.done >= summary.total
+        ? 'Усі підпункти закриті. Задачу можна виконати.'
+        : `Спочатку закрийте всі підпункти: ${summary.done}/${summary.total}.`;
+}
+
+function renderTaskCardSubtasksPanel(task = {}) {
+    const summary = taskSubtaskSummary(task);
+    if (!summary.total) return '';
+    const taskId = Number(task.id || 0);
+    const expanded = expandedTaskSubtaskIds.has(taskId);
+    const subtasks = cachedTaskSubtasks(taskId, task);
+    let body = '<div class="task-card-subtasks-empty">Розгорніть, щоб виконувати підпункти прямо тут.</div>';
+    if (expanded && loadingTaskSubtaskIds.has(taskId)) {
+        body = '<div class="task-card-subtasks-empty">Завантажую підпункти...</div>';
+    } else if (expanded && Array.isArray(subtasks)) {
+        body = subtasks.length
+            ? subtasks.map(item => {
+                const subtask = normalizeTaskCardSubtask(item);
+                return `<label class="task-card-subtask-item ${subtask.isDone ? 'is-done' : ''}">
+                    <input type="checkbox" data-task-subtask-done data-task-id="${taskId}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
+                    <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
+                </label>`;
+            }).join('')
+            : '<div class="task-card-subtasks-empty">Підпункти не знайдені.</div>';
+    }
+    return `<div class="task-card-subtasks-panel" data-task-subtasks-panel="${taskId}" ${expanded ? '' : 'hidden'}>
+        <div class="task-card-subtasks-head">
+            <span>Підпункти можна закривати у будь-якому порядку</span>
+            <b>${summary.done}/${summary.total}</b>
+        </div>
+        <div class="task-card-subtasks-list">${body}</div>
+    </div>`;
+}
+
 function renderTaskCard(t) {
     const cat = t.category || 'admin';
     const catInfo = getCategoryConfig(cat);
@@ -1957,7 +2051,12 @@ function renderTaskCard(t) {
         : '';
     const subtaskCount = Number(t.subtask_count || t.subtaskCount || 0);
     const subtaskDone = Number(t.subtask_done_count || t.subtaskDoneCount || 0);
-    const subtaskBadge = subtaskCount ? `<span class="task-os-badge checklist">${subtaskDone}/${subtaskCount}</span>` : '';
+    const hasSubtasks = subtaskCount > 0;
+    const subtaskExpanded = expandedTaskSubtaskIds.has(Number(t.id || 0));
+    const completionBlockedBySubtasks = nextStatus === 'done' && hasSubtasks && subtaskDone < subtaskCount;
+    const subtaskBadge = hasSubtasks
+        ? `<button type="button" class="task-os-badge checklist task-card-subtasks-toggle" data-task-action="subtasks-toggle" data-task-id="${t.id}" aria-expanded="${subtaskExpanded ? 'true' : 'false'}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}">Пункти ${subtaskDone}/${subtaskCount}</button>`
+        : '';
     const packStatus = t.packStatus || t.pack_status || '';
     const packBadge = packStatus ? `<span class="task-os-badge pack-status">${escapeHtml(getPackStatusLabel(packStatus))}</span>` : '';
     const blockedCount = Number(t.openDependencyCount || t.open_dependency_count || 0);
@@ -2031,8 +2130,9 @@ function renderTaskCard(t) {
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
         ${renderTaskSubtaskProgress(t)}
+        ${renderTaskCardSubtasksPanel(t)}
         <div class="task-card-actions">
-            <button class="${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `disabled aria-disabled="true" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${!isWaitingTask(t) ? `<button data-task-action="waiting" data-task-id="${t.id}">Чекаю</button>` : ''}
             ${renderCardScheduleActions(t.id)}
             <button data-task-action="snooze" data-task-id="${t.id}" data-minutes="60">+1 год</button>
@@ -2044,6 +2144,86 @@ function renderTaskCard(t) {
 // ==========================================
 // TASK ACTIONS
 // ==========================================
+
+function updateTaskSubtaskSummary(taskId, subtasks = []) {
+    const id = Number(taskId);
+    const total = subtasks.length;
+    const done = subtasks.filter(item => normalizeTaskCardSubtask(item).isDone).length;
+    allTasks = allTasks.map(task => {
+        if (Number(task.id) !== id) return task;
+        return {
+            ...task,
+            subtask_count: total,
+            subtaskCount: total,
+            subtask_done_count: done,
+            subtaskDoneCount: done,
+            subtasks: subtasks.map(normalizeTaskCardSubtask)
+        };
+    });
+}
+
+async function loadTaskCardSubtasks(taskId) {
+    const id = Number(taskId);
+    if (!id) return [];
+    if (taskCardSubtaskCache.has(id)) return taskCardSubtaskCache.get(id);
+    loadingTaskSubtaskIds.add(id);
+    renderBoard();
+    const result = await apiGetTaskSubtasks(id);
+    loadingTaskSubtaskIds.delete(id);
+    if (!result?.success || !Array.isArray(result.subtasks)) {
+        showNotification(result?.error || 'Не вдалося завантажити підпункти задачі', 'error');
+        renderBoard();
+        return [];
+    }
+    const subtasks = result.subtasks.map(normalizeTaskCardSubtask);
+    taskCardSubtaskCache.set(id, subtasks);
+    updateTaskSubtaskSummary(id, subtasks);
+    renderBoard();
+    return subtasks;
+}
+
+async function toggleTaskCardSubtasks(taskId) {
+    const id = Number(taskId);
+    if (!id) return;
+    if (expandedTaskSubtaskIds.has(id)) {
+        expandedTaskSubtaskIds.delete(id);
+        renderBoard();
+        return;
+    }
+    expandedTaskSubtaskIds.add(id);
+    if (!taskCardSubtaskCache.has(id)) {
+        await loadTaskCardSubtasks(id);
+        return;
+    }
+    renderBoard();
+}
+
+async function updateTaskCardSubtaskDone(input) {
+    const taskId = Number(input?.dataset?.taskId || 0);
+    const subtaskId = Number(input?.dataset?.subtaskId || 0);
+    if (!taskId || !subtaskId) return;
+    const nextDone = input.checked === true;
+    const previousDone = !nextDone;
+    input.disabled = true;
+    const result = await apiPatchTaskSubtask(taskId, subtaskId, { is_done: nextDone });
+    if (!result?.success || !result.subtask) {
+        input.checked = previousDone;
+        input.disabled = false;
+        showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
+        return;
+    }
+    const cached = taskCardSubtaskCache.get(taskId) || [];
+    const updated = cached.map(item => Number(item.id) === subtaskId
+        ? normalizeTaskCardSubtask(result.subtask)
+        : normalizeTaskCardSubtask(item));
+    taskCardSubtaskCache.set(taskId, updated);
+    updateTaskSubtaskSummary(taskId, updated);
+    const summary = taskSubtaskSummary(allTasks.find(task => Number(task.id) === taskId) || {});
+    if (summary.total && summary.done >= summary.total) {
+        showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
+    }
+    renderBoard();
+}
 
 let _assigneeList = [];
 function _ensureCurrentUserInAssignees() {
@@ -2983,6 +3163,7 @@ async function handleTaskActionButton(button) {
     const action = button.dataset.taskAction || '';
     if (!taskId || !action) return;
     await runTaskAction(button, async () => {
+        if (action === 'subtasks-toggle') await toggleTaskCardSubtasks(taskId);
         if (action === 'status') await cycleStatus(taskId, button.dataset.nextStatus || 'done');
         if (action === 'waiting') await markTaskWaiting(taskId);
         if (action === 'schedule') await quickScheduleTask(taskId, button.dataset.scheduleSlotAction || quickScheduleSlot);
@@ -3173,13 +3354,26 @@ function setupTaskActionDelegation() {
         if (taskId) openTaskDetail(taskId);
     });
 
-    board.addEventListener('change', (event) => {
+    board.addEventListener('change', async (event) => {
+        if (event.target.matches('[data-task-subtask-done]')) {
+            event.stopPropagation();
+            await updateTaskCardSubtaskDone(event.target);
+            return;
+        }
         if (!event.target.matches('.task-bulk-cb')) return;
         updateBulkSelection();
     });
 }
 
 async function cycleStatus(taskId, newStatus) {
+    const currentTask = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
+    if (newStatus === 'done' && taskCompletionBlockedBySubtasks(currentTask)) {
+        expandedTaskSubtaskIds.add(Number(taskId));
+        if (!taskCardSubtaskCache.has(Number(taskId))) await loadTaskCardSubtasks(taskId);
+        else renderBoard();
+        showNotification(taskSubtaskCompletionTitle(currentTask), 'warning');
+        return;
+    }
     let result = newStatus === 'done'
         ? await apiCompleteTask(taskId)
         : await apiPatchTaskStatus(taskId, newStatus);

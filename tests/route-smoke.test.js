@@ -217,6 +217,9 @@ function createFakePool() {
             if (/SELECT id FROM reports WHERE id = \$1 LIMIT 1/i.test(text)) {
                 return { rows: Number(params[0]) === 701 ? [{ id: 701 }] : [] };
             }
+            if (/FROM task_subtasks/i.test(text) && /WHERE task_id = \$1/i.test(text)) {
+                return { rows: [{ total: 0, done: 0 }] };
+            }
             if (/SELECT t\.id FROM tasks t WHERE t\.id = \$1/i.test(text)) {
                 return { rows: [{ id: params[0] }] };
             }

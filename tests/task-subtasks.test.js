@@ -5,6 +5,7 @@ const {
     hasSubtaskPayload,
     normalizeSubtaskInput,
     normalizeSubtasksInput,
+    subtaskCompletionState,
     subtaskPayloadFromBody,
     subtaskProgress
 } = require('../services/taskSubtasks');
@@ -38,6 +39,30 @@ test('calculates equal-weight subtask progress', () => {
     assert.equal(subtaskProgress(1, 4), 25);
     assert.equal(subtaskProgress(2, 3), 67);
     assert.equal(subtaskProgress(5, 3), 100);
+});
+
+test('reports whether a decomposed parent can be completed', () => {
+    assert.deepEqual(subtaskCompletionState(0, 0), {
+        total: 0,
+        done: 0,
+        open: 0,
+        canCompleteParent: true,
+        progress: null
+    });
+    assert.deepEqual(subtaskCompletionState(2, 5), {
+        total: 5,
+        done: 2,
+        open: 3,
+        canCompleteParent: false,
+        progress: 40
+    });
+    assert.deepEqual(subtaskCompletionState(9, 5), {
+        total: 5,
+        done: 5,
+        open: 0,
+        canCompleteParent: true,
+        progress: 100
+    });
 });
 
 test('rejects blank subtask titles during normalization', () => {

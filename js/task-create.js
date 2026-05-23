@@ -13,6 +13,13 @@
         purchase: 'purchase_base'
     };
 
+    const DECOMPOSITION_TEMPLATES = [
+        { key: 'personal_home', label: 'Побут / особисте' },
+        { key: 'event_preparation', label: 'Підготовка події' },
+        { key: 'content_creation', label: 'Контент' },
+        { key: 'crm_sales_followup', label: 'CRM / продаж' }
+    ];
+
     function todayStr() {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -36,6 +43,80 @@
     function normalizeChecklistTemplateKey(category, subcategory) {
         if (category !== 'checklist') return null;
         return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
+    }
+
+    function normalizeSubtasks(value) {
+        if (!Array.isArray(value)) return [];
+        return value
+            .map((item, index) => {
+                const raw = item && typeof item === 'object' ? item : { title: item };
+                const title = String(raw.title || raw.name || '').trim();
+                if (!title) return null;
+                return {
+                    id: raw.id || raw.subtaskId || raw.subtask_id || undefined,
+                    title,
+                    is_done: raw.is_done === true || raw.isDone === true || raw.done === true,
+                    sort_order: index,
+                    source_type: raw.source_type || raw.sourceType || 'manual'
+                };
+            })
+            .filter(Boolean);
+    }
+
+    function subtaskProgress(doneCount, totalCount) {
+        const total = Math.max(0, parseInt(totalCount, 10) || 0);
+        if (!total) return null;
+        const done = Math.max(0, parseInt(doneCount, 10) || 0);
+        return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+    }
+
+    function decompositionTemplateOptions(selected = '') {
+        return DECOMPOSITION_TEMPLATES
+            .map(template => `<option value="${template.key}" ${selected === template.key ? 'selected' : ''}>${template.label}</option>`)
+            .join('');
+    }
+
+    function normalizeDecompositionItems(payload = {}) {
+        const rows = Array.isArray(payload.subtasks)
+            ? payload.subtasks
+            : (Array.isArray(payload.draftItems) ? payload.draftItems : []);
+        return normalizeSubtasks(rows).map((item, index) => ({
+            ...item,
+            sort_order: index,
+            source_type: item.source_type || item.sourceType || (payload.source === 'template' || payload.source === 'template_fallback' ? 'template' : 'ai')
+        }));
+    }
+
+    async function requestDecompositionDraft(context = {}) {
+        const base = typeof API_BASE === 'string' ? API_BASE : '/api';
+        const headers = typeof getAuthHeaders === 'function'
+            ? getAuthHeaders()
+            : { 'Content-Type': 'application/json' };
+        try {
+            const response = await fetch(`${base}/tasks/decompose-draft`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(context)
+            });
+            if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload?.success) {
+                return {
+                    success: false,
+                    status: response.status,
+                    error: payload?.error || 'AI draft failed',
+                    code: payload?.code,
+                    meta: payload?.meta || {}
+                };
+            }
+            return {
+                ...payload,
+                subtasks: normalizeDecompositionItems(payload)
+            };
+        } catch (error) {
+            console.error('[TaskCreate] requestDecompositionDraft failed', error);
+            return { success: false, error: error?.message || 'AI draft failed' };
+        }
     }
 
     function buildPayload(draft = {}, options = {}) {
@@ -98,6 +179,12 @@
             data.effort_minutes = durationMinutes;
         }
 
+        const subtasks = normalizeSubtasks(draft.subtasks || draft.taskSubtasks || draft.task_subtasks);
+        if (subtasks.length) {
+            data.subtasks = subtasks;
+            if (!data.checklist_template_key && data.task_kind === 'action') data.task_kind = 'checklist';
+        }
+
         return data;
     }
 
@@ -133,6 +220,12 @@
         dateForDuePresetValue,
         defaultVisibilityForTaskMode,
         normalizeChecklistTemplateKey,
+        decompositionTemplates: DECOMPOSITION_TEMPLATES,
+        decompositionTemplateOptions,
+        normalizeSubtasks,
+        normalizeDecompositionItems,
+        subtaskProgress,
+        requestDecompositionDraft,
         buildPayload,
         createTask
     };

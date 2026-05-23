@@ -48,6 +48,20 @@ const {
     findActiveDuplicateTask
 } = require('../services/taskDuplicatePolicy');
 const {
+    hasSubtaskPayload,
+    listTaskSubtasks,
+    normalizeSubtaskRow,
+    normalizeSubtaskSourceType,
+    replaceTaskSubtasks,
+    subtaskPayloadFromBody,
+    subtaskProgress
+} = require('../services/taskSubtasks');
+const {
+    generateTaskDecompositionDraft,
+    getTaskDecompositionTemplates
+} = require('../services/taskDecomposition');
+const { getTaskProductivity } = require('../services/taskProductivity');
+const {
     VALID_TASK_CATEGORIES,
     VALID_TASK_SUBCATEGORIES,
     ORDER_OPERATION_PRESETS,
@@ -424,6 +438,25 @@ async function createTaskDependencyRows(taskId, dependencyIds = []) {
     return result.rows;
 }
 
+async function attachSubtaskSummary(task, options = {}) {
+    if (!task?.id) return task;
+    const hasKnownCounts = Number.isFinite(Number(task.subtask_count)) && Number.isFinite(Number(task.subtask_done_count));
+    if (hasKnownCounts && (!options.includeSubtasks || Array.isArray(task.subtasks))) return task;
+    const result = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE is_done = true)::int AS done
+         FROM task_subtasks
+         WHERE task_id = $1`,
+        [task.id]
+    );
+    task.subtask_count = result.rows[0]?.total || 0;
+    task.subtask_done_count = result.rows[0]?.done || 0;
+    if (options.includeSubtasks) {
+        task.subtasks = await listTaskSubtasks(pool, task.id);
+    }
+    return task;
+}
+
 function normalizeTaskOsFields(body = {}, oldTask = {}) {
     const mode = enumValue(body.task_mode ?? body.taskMode ?? oldTask.task_mode, VALID_TASK_MODES, oldTask.task_mode || 'work');
     const visibility = defaultVisibilityForMode(mode, body.visibility ?? oldTask.visibility);
@@ -513,6 +546,10 @@ function normalizeTaskPayload(row) {
     const controlMeta = taskControlMeta(row);
     const reportId = taskCompletionReportId(row);
     const reportRequired = taskRequiresCompletionReport(row);
+    const subtaskCount = Number(row.subtask_count || 0);
+    const subtaskDoneCount = Number(row.subtask_done_count || 0);
+    const progress = subtaskProgress(subtaskDoneCount, subtaskCount);
+    const subtasks = Array.isArray(row.subtasks) ? row.subtasks.map(normalizeSubtaskRow) : [];
     return {
         ...scheduledRow,
         ownerLabel,
@@ -556,8 +593,11 @@ function normalizeTaskPayload(row) {
         reportRequired,
         requiresReport: reportRequired,
         reportId,
-        subtaskCount: Number(row.subtask_count || 0),
-        subtaskDoneCount: Number(row.subtask_done_count || 0),
+        subtaskCount,
+        subtaskDoneCount,
+        subtaskProgress: progress,
+        subtaskProgressPercent: progress,
+        subtasks,
         dependencyCount: Number(row.dependency_count || 0),
         openDependencyCount: Number(row.open_dependency_count || 0),
         blockedByTitles: row.blocked_by_titles || null,
@@ -1048,6 +1088,46 @@ router.patch('/preferences', async (req, res) => {
     }
 });
 
+// GET /api/tasks/decomposition-templates - template families for draft subtasks.
+router.get('/decomposition-templates', requireRole('admin', 'user'), async (req, res) => {
+    res.json({
+        success: true,
+        templates: getTaskDecompositionTemplates(),
+        modes: ['none', 'manual', 'template', 'ai', 'template_ai']
+    });
+});
+
+// POST /api/tasks/decompose-draft - draft-only AI/template subtask suggestions.
+router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const b = req.body || {};
+        const result = await generateTaskDecompositionDraft({
+            title: b.title,
+            description: b.description,
+            category: b.category,
+            subcategory: b.subcategory,
+            taskKind: b.taskKind || b.task_kind,
+            taskMode: b.taskMode || b.task_mode,
+            taskType: b.taskType || b.task_type,
+            sourceType: b.sourceType || b.source_type,
+            sourceModule: b.sourceModule || b.source_module,
+            mode: b.mode || b.decompositionMode || b.decomposition_mode,
+            templateKey: b.templateKey || b.template_key
+        });
+        if (!result.success) {
+            return res.status(result.status || 400).json(result);
+        }
+        res.json(result);
+    } catch (err) {
+        log.error('Task decomposition draft error', err);
+        res.status(500).json({
+            success: false,
+            code: 'TASK_DECOMPOSITION_DRAFT_FAILED',
+            error: 'Не вдалося підготувати чернетку підзадач. Нічого не збережено.'
+        });
+    }
+});
+
 // GET /api/tasks/my-cabinet — personal task projection for Profile/My Cabinet
 router.get('/my-cabinet', async (req, res) => {
     try {
@@ -1152,6 +1232,21 @@ router.get('/my-cabinet', async (req, res) => {
     }
 });
 
+// GET /api/tasks/productivity — personal task productivity cockpit data
+router.get('/productivity', async (req, res) => {
+    try {
+        const productivity = await getTaskProductivity(pool, req.user);
+        res.json({
+            success: true,
+            ...productivity
+        });
+    } catch (err) {
+        if (err.statusCode === 401) return res.status(401).json({ error: 'Unauthenticated' });
+        log.error('Task productivity error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.get('/schedule-policy', async (req, res) => {
     res.json({ success: true, policy: getSchedulePolicy() });
 });
@@ -1196,6 +1291,7 @@ router.get('/:id', async (req, res) => {
                         LIMIT 1
                     ) AS viewer_observer_access_level,
                     COALESCE(observer_rows.observers, '[]'::json) AS observers,
+                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
                     COALESCE(st.total, 0)::int AS subtask_count,
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
@@ -1234,6 +1330,22 @@ router.get('/:id', async (req, res) => {
                 JOIN users ou ON ou.id = tob.user_id
                 GROUP BY tob.task_id
              ) observer_rows ON observer_rows.task_id = t.id
+             LEFT JOIN (
+                SELECT task_id,
+                       json_agg(json_build_object(
+                           'id', id,
+                           'task_id', task_id,
+                           'title', title,
+                           'is_done', is_done,
+                           'sort_order', sort_order,
+                           'source_type', COALESCE(source_type, 'manual'),
+                           'created_at', created_at,
+                           'completed_at', completed_at,
+                           'updated_at', updated_at
+                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                FROM task_subtasks
+                GROUP BY task_id
+             ) subtask_rows ON subtask_rows.task_id = t.id
              WHERE t.id = $1 ${visibility}
              LIMIT 1`,
             params
@@ -1415,7 +1527,7 @@ router.get('/:id/subtasks', async (req, res) => {
              ORDER BY sort_order ASC, id ASC`,
             [req.params.id]
         );
-        res.json({ success: true, subtasks: result.rows });
+        res.json({ success: true, subtasks: result.rows.map(normalizeSubtaskRow) });
     } catch (err) {
         log.error('Get subtasks error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1428,11 +1540,12 @@ router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
         await loadMutableTask(req.params.id, req.user);
         const title = String(req.body.title || '').trim();
         if (!title) return res.status(400).json({ error: 'title required' });
+        const sourceType = normalizeSubtaskSourceType(req.body.source_type || req.body.sourceType || 'manual');
         const result = await pool.query(
-            `INSERT INTO task_subtasks (task_id, title, sort_order)
-             VALUES ($1, $2, COALESCE($3, 0))
+            `INSERT INTO task_subtasks (task_id, title, sort_order, source_type)
+             VALUES ($1, $2, COALESCE($3, 0), $4)
              RETURNING *`,
-            [req.params.id, title, parseInt(req.body.sort_order ?? req.body.sortOrder ?? 0, 10) || 0]
+            [req.params.id, title, parseInt(req.body.sort_order ?? req.body.sortOrder ?? 0, 10) || 0, sourceType]
         );
         await pool.query(
             `UPDATE tasks
@@ -1441,7 +1554,7 @@ router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
              WHERE id = $1`,
             [req.params.id]
         );
-        res.json({ success: true, subtask: result.rows[0] });
+        res.json({ success: true, subtask: normalizeSubtaskRow(result.rows[0]) });
     } catch (err) {
         return sendTaskActionError(res, err);
     }
@@ -1454,7 +1567,9 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
         const sets = [];
         const values = [];
         if (req.body.title !== undefined) {
-            values.push(String(req.body.title || '').trim());
+            const title = String(req.body.title || '').trim();
+            if (!title) return res.status(400).json({ error: 'title required' });
+            values.push(title);
             sets.push(`title = $${values.length}`);
         }
         if (req.body.is_done !== undefined || req.body.isDone !== undefined) {
@@ -1467,7 +1582,12 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
             values.push(parseInt(req.body.sort_order ?? req.body.sortOrder, 10) || 0);
             sets.push(`sort_order = $${values.length}`);
         }
+        if (req.body.source_type !== undefined || req.body.sourceType !== undefined) {
+            values.push(normalizeSubtaskSourceType(req.body.source_type ?? req.body.sourceType));
+            sets.push(`source_type = $${values.length}`);
+        }
         if (!sets.length) return res.status(400).json({ error: 'No changes' });
+        sets.push('updated_at = NOW()');
         values.push(req.params.id, req.params.subtaskId);
         const result = await pool.query(
             `UPDATE task_subtasks
@@ -1477,7 +1597,26 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
             values
         );
         if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
-        res.json({ success: true, subtask: result.rows[0] });
+        await pool.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+        res.json({ success: true, subtask: normalizeSubtaskRow(result.rows[0]) });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// DELETE /api/tasks/:id/subtasks/:subtaskId - remove checklist item
+router.delete('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await loadMutableTask(req.params.id, req.user);
+        const result = await pool.query(
+            `DELETE FROM task_subtasks
+             WHERE task_id = $1 AND id = $2
+             RETURNING id`,
+            [req.params.id, req.params.subtaskId]
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
+        await pool.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+        res.json({ success: true, deletedId: Number(result.rows[0].id) });
     } catch (err) {
         return sendTaskActionError(res, err);
     }
@@ -1774,7 +1913,12 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const osFields = normalizeTaskOsFields(b, { status: 'todo' });
         const opsFields = normalizeTaskOperations(b, { category: 'admin' });
         const controlMeta = normalizeTaskControlMeta(b);
+        const hasManualSubtasks = hasSubtaskPayload(b);
+        const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
         if (opsFields.category === 'checklist' && osFields.task_kind === 'action') {
+            osFields.task_kind = 'checklist';
+        }
+        if (manualSubtasks.some(item => String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim())) {
             osFields.task_kind = 'checklist';
         }
 
@@ -1863,9 +2007,17 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             Object.assign(task, scheduleResult.task);
             responseTask = scheduleResult.task;
         }
-        if (task.task_kind === 'checklist' && task.checklist_template_key) {
+        if (hasManualSubtasks && !task.duplicateSkipped) {
+            const subtasks = await replaceTaskSubtasks(pool, task.id, manualSubtasks, { sourceType: 'manual' });
+            responseTask.subtask_count = subtasks.length;
+            responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
+            responseTask.subtasks = subtasks;
+        } else if (task.task_kind === 'checklist' && task.checklist_template_key) {
             const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
             responseTask.subtask_count = subtasks.length;
+            responseTask.subtask_done_count = 0;
+        } else {
+            responseTask.subtask_count = 0;
             responseTask.subtask_done_count = 0;
         }
         await createTaskDependencyRows(task.id, dependency_ids);
@@ -1873,6 +2025,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             task.observers = await replaceTaskObservers(task, observerIdsFromBody(b), req.user);
             task.observer_count = task.observers.length;
         }
+        responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks });
         emitTaskAssignedToOwner(task, req.user);
 
         res.json({
@@ -1944,7 +2097,12 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskCategory = opsFields.category;
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
         const controlMeta = normalizeTaskControlMeta(b, old);
+        const hasManualSubtasks = hasSubtaskPayload(b);
+        const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
         if (taskCategory === 'checklist' && osFields.task_kind === 'action') osFields.task_kind = 'checklist';
+        if (manualSubtasks.some(item => String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim())) {
+            osFields.task_kind = 'checklist';
+        }
         if (taskStatus === 'done') osFields.workflow_state = 'done';
         if (taskStatus === 'done') {
             const reportId = await ensureTaskReportReference(b.reportId || b.report_id || taskCompletionReportId({ ...old, control_meta: controlMeta }));
@@ -2060,9 +2218,16 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             updatedTask.observers = await replaceTaskObservers(updatedTask, observerIdsFromBody(b), req.user);
             updatedTask.observer_count = updatedTask.observers.length;
         }
+        if (hasManualSubtasks) {
+            const subtasks = await replaceTaskSubtasks(pool, updatedTask.id, manualSubtasks, { sourceType: 'manual' });
+            updatedTask.subtask_count = subtasks.length;
+            updatedTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
+            updatedTask.subtasks = subtasks;
+        }
         if (
             updatedTask.task_kind === 'checklist' &&
             updatedTask.checklist_template_key &&
+            !hasManualSubtasks &&
             old.checklist_template_key !== updatedTask.checklist_template_key
         ) {
             const existingSubtasks = await pool.query('SELECT COUNT(*)::int AS count FROM task_subtasks WHERE task_id = $1', [updatedTask.id]);
@@ -2077,6 +2242,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             emitTaskAssignedToOwner(updatedTask, req.user);
         }
 
+        updatedTask = await attachSubtaskSummary(updatedTask, { includeSubtasks: hasManualSubtasks });
         res.json({ success: true, task: normalizeTaskPayload(updatedTask), schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null });
         _alertPush();
     } catch (err) {

@@ -193,6 +193,24 @@ function normalizeChecklistTemplateKey(category, subcategory) {
     return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
 }
 
+function taskSubtaskProgress(doneCount, totalCount) {
+    if (window.TaskCreate?.subtaskProgress) return window.TaskCreate.subtaskProgress(doneCount, totalCount);
+    const total = Math.max(0, parseInt(totalCount, 10) || 0);
+    if (!total) return null;
+    const done = Math.max(0, parseInt(doneCount, 10) || 0);
+    return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+}
+
+function taskSubtaskSummary(task = {}) {
+    const total = Number(task.subtask_count || task.subtaskCount || 0);
+    const done = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
+    return {
+        total,
+        done,
+        progress: taskSubtaskProgress(done, total)
+    };
+}
+
 function getPackStatusLabel(status) {
     return PACK_STATUS_LABELS[status] || status || '';
 }
@@ -771,6 +789,7 @@ async function initPage() {
         document.querySelectorAll('[data-capture-chip]').forEach(btn => {
             btn.addEventListener('click', () => applyCaptureChip(btn.dataset.captureChip));
         });
+        bindTaskComposerSubtasks();
 
         // Templates
         document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
@@ -1899,6 +1918,16 @@ function getHealthBadge(score) {
 // TASK CARD
 // ==========================================
 
+function renderTaskSubtaskProgress(t) {
+    const summary = taskSubtaskSummary(t);
+    if (!summary.total) return '';
+    const label = `${summary.done}/${summary.total} підзадач · ${summary.progress}%`;
+    return `<div class="task-subtask-progress" title="${escapeHtml(label)}">
+        <div class="task-subtask-progress-fill" style="width:${summary.progress}%"></div>
+    </div>
+    <span class="task-subtask-progress-label">${escapeHtml(label)}</span>`;
+}
+
 function renderTaskCard(t) {
     const cat = t.category || 'admin';
     const catInfo = getCategoryConfig(cat);
@@ -1992,6 +2021,7 @@ function renderTaskCard(t) {
             ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
+        ${renderTaskSubtaskProgress(t)}
         <div class="task-card-actions">
             <button class="${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${!isWaitingTask(t) ? `<button data-task-action="waiting" data-task-id="${t.id}">Чекаю</button>` : ''}
@@ -2083,6 +2113,162 @@ function taskPriorityOptions(selected = 'normal') {
     return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
 }
 
+function renderTaskComposerSubtasks() {
+    const list = document.getElementById('taskSubtasksList');
+    if (!list) return;
+    Array.from(list.querySelectorAll('[data-task-subtask-row]')).forEach((row, index) => {
+        const order = row.querySelector('[data-task-subtask-order]');
+        if (order) order.textContent = String(index + 1);
+    });
+}
+
+function taskComposerSubtaskRow(value = '', sourceType = 'manual') {
+    const escaped = escapeHtml(value);
+    const source = escapeHtml(sourceType || 'manual');
+    return `<div class="task-subtask-row" data-task-subtask-row data-subtask-source="${source}">
+        <span class="task-subtask-order" data-task-subtask-order></span>
+        <input type="text" data-task-subtask-title value="${escaped}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
+        <button type="button" class="task-subtask-remove" data-task-subtask-remove aria-label="Видалити підзадачу">×</button>
+    </div>`;
+}
+
+function addTaskComposerSubtask(value = '', sourceType = 'manual') {
+    const list = document.getElementById('taskSubtasksList');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', taskComposerSubtaskRow(value, sourceType));
+    renderTaskComposerSubtasks();
+    setTaskDecompositionMode(sourceType === 'manual' ? 'manual' : (sourceType === 'template' ? 'template' : 'ai'), { keepStatus: true });
+    toggleTaskComposerDetails(true);
+    const inputs = list.querySelectorAll('[data-task-subtask-title]');
+    inputs[inputs.length - 1]?.focus();
+}
+
+function readTaskComposerSubtasks() {
+    return Array.from(document.querySelectorAll('#taskSubtasksList [data-task-subtask-row]'))
+        .map((row, index) => ({
+            title: row.querySelector('[data-task-subtask-title]')?.value || '',
+            sort_order: index,
+            source_type: row.dataset.subtaskSource || 'manual'
+        }))
+        .filter(item => String(item.title || '').trim());
+}
+
+function resetTaskComposerSubtasks() {
+    const list = document.getElementById('taskSubtasksList');
+    if (list) list.innerHTML = '';
+    setTaskSubtaskDraftStatus('');
+    document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    setTaskDecompositionMode('none', { keepRows: true, keepStatus: true });
+}
+
+function setTaskSubtaskDraftStatus(message = '', type = '') {
+    const node = document.getElementById('taskSubtaskDraftStatus');
+    if (!node) return;
+    node.textContent = message;
+    node.className = `task-subtask-status ${type || ''}`.trim();
+}
+
+function setTaskDecompositionMode(mode = 'manual', options = {}) {
+    const normalized = ['none', 'manual', 'template', 'ai', 'template_ai'].includes(mode) ? mode : 'manual';
+    const select = document.getElementById('taskDecompositionMode');
+    if (select) select.value = normalized;
+    const template = document.getElementById('taskDecompositionTemplate');
+    if (template) template.disabled = !['template', 'template_ai'].includes(normalized);
+    const draftBtn = document.getElementById('taskSubtaskDraftBtn');
+    if (draftBtn) {
+        draftBtn.disabled = ['none', 'manual'].includes(normalized);
+        draftBtn.textContent = normalized === 'template' ? 'Шаблон' : 'AI';
+    }
+    if (normalized === 'none') document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    if (normalized === 'none' && !options.keepRows) {
+        const list = document.getElementById('taskSubtasksList');
+        if (list) list.innerHTML = '';
+    }
+    if (!options.keepStatus) setTaskSubtaskDraftStatus('');
+}
+
+function replaceTaskComposerSubtasks(items = [], options = {}) {
+    const list = document.getElementById('taskSubtasksList');
+    if (!list) return;
+    list.innerHTML = '';
+    items.forEach(item => {
+        list.insertAdjacentHTML('beforeend', taskComposerSubtaskRow(
+            item.title || item.name || '',
+            item.source_type || item.sourceType || options.sourceType || 'ai'
+        ));
+    });
+    renderTaskComposerSubtasks();
+    toggleTaskComposerDetails(true);
+}
+
+async function generateTaskComposerSubtasks() {
+    const mode = document.getElementById('taskDecompositionMode')?.value || 'ai';
+    const title = document.getElementById('taskTitle')?.value.trim() || '';
+    if (!title) {
+        setTaskSubtaskDraftStatus('Додайте назву задачі перед генерацією підзадач.', 'warning');
+        document.getElementById('taskTitle')?.focus();
+        return;
+    }
+    if (mode === 'none' || mode === 'manual') {
+        setTaskSubtaskDraftStatus('Оберіть AI або шаблонний режим декомпозиції.', 'warning');
+        return;
+    }
+    const draftBtn = document.getElementById('taskSubtaskDraftBtn');
+    const acceptBtn = document.getElementById('taskSubtaskAcceptDraftBtn');
+    const previousText = draftBtn?.textContent || '';
+    if (draftBtn) {
+        draftBtn.disabled = true;
+        draftBtn.textContent = '...';
+    }
+    if (acceptBtn) acceptBtn.hidden = true;
+    setTaskSubtaskDraftStatus(mode === 'template' ? 'Готую шаблонну чернетку...' : 'AI готує чернетку. Нічого ще не збережено...', '');
+    const draft = readTaskComposerDraft();
+    const result = await window.TaskCreate?.requestDecompositionDraft?.({
+        ...draft,
+        mode,
+        decompositionMode: mode,
+        templateKey: document.getElementById('taskDecompositionTemplate')?.value || '',
+        sourceModule: 'tasks',
+        sourceType: 'manual'
+    });
+    if (draftBtn) {
+        draftBtn.disabled = false;
+        draftBtn.textContent = previousText || (mode === 'template' ? 'Шаблон' : 'AI');
+    }
+    if (!result?.success) {
+        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося підготувати чернетку. Додайте підзадачі вручну.', 'error');
+        return;
+    }
+    const rows = Array.isArray(result.subtasks) ? result.subtasks : [];
+    replaceTaskComposerSubtasks(rows, {
+        sourceType: result.source === 'template' || result.source === 'template_fallback' ? 'template' : 'ai'
+    });
+    if (acceptBtn) acceptBtn.hidden = false;
+    const sourceLabel = result.source === 'template_fallback'
+        ? 'AI недоступний, використано шаблон.'
+        : (result.source === 'template' ? 'Шаблонну чернетку додано.' : 'AI чернетку додано.');
+    setTaskSubtaskDraftStatus(`${sourceLabel} Перевірте список перед збереженням задачі.`, 'success');
+}
+
+function bindTaskComposerSubtasks() {
+    document.getElementById('taskSubtaskAddBtn')?.addEventListener('click', () => addTaskComposerSubtask());
+    document.getElementById('taskDecompositionMode')?.addEventListener('change', event => setTaskDecompositionMode(event.target.value));
+    document.getElementById('taskSubtaskDraftBtn')?.addEventListener('click', generateTaskComposerSubtasks);
+    document.getElementById('taskSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
+        setTaskSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
+        document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    });
+    setTaskDecompositionMode(document.getElementById('taskDecompositionMode')?.value || 'none', { keepRows: true, keepStatus: true });
+    const list = document.getElementById('taskSubtasksList');
+    if (!list) return;
+    list.addEventListener('click', (event) => {
+        const remove = event.target.closest('[data-task-subtask-remove]');
+        if (!remove) return;
+        remove.closest('[data-task-subtask-row]')?.remove();
+        renderTaskComposerSubtasks();
+    });
+}
+
 function readTaskComposerDraft() {
     const category = document.getElementById('taskCategory')?.value || 'admin';
     const scheduleDate = document.getElementById('taskScheduleDate')?.value || getTodayStr();
@@ -2104,6 +2290,7 @@ function readTaskComposerDraft() {
         dueDate: dateForDuePresetValue(taskDuePreset, scheduleDate),
         durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
         scheduleSlot: quickScheduleSlot,
+        subtasks: readTaskComposerSubtasks(),
         captureIntent: { ...captureIntent }
     };
 }
@@ -2289,6 +2476,11 @@ function buildTaskCreatePayload(draft = {}) {
         };
         data.effort_minutes = durationMinutes;
     }
+    const subtasks = Array.isArray(draft.subtasks) ? draft.subtasks.filter(item => String(item.title || '').trim()) : [];
+    if (subtasks.length) {
+        data.subtasks = subtasks.map((item, index) => ({ ...item, sort_order: index, source_type: item.source_type || 'manual' }));
+        if (data.task_kind === 'action') data.task_kind = 'checklist';
+    }
     return data;
 }
 
@@ -2308,6 +2500,7 @@ function resetTaskComposerAfterCreate() {
     if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
     quickTaskBatchItems = [];
     renderQuickTaskBatchItems();
+    resetTaskComposerSubtasks();
     captureIntent = {};
     document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
     setTaskDuePreset('today', { expand: false });
@@ -2987,10 +3180,11 @@ let _taskDetailInitialState = null;
 
 function getTaskDetailFormState() {
     const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdScheduleDate', '_tdScheduleDuration', '_tdScheduleStart', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes'];
-    return ids.map(id => {
+    const fieldState = ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
+    return `${fieldState}|subtasks:${taskDetailSubtaskState()}`;
 }
 
 function resetTaskDetailDirtyState() {
@@ -3049,6 +3243,84 @@ function syncDetailSubcategoryVisibility() {
     if (!show) select.value = '';
 }
 
+function taskDetailSubtaskRow(item = {}, index = 0) {
+    const id = item.id || item.subtaskId || item.subtask_id || '';
+    const title = escapeHtml(item.title || '');
+    const done = item.isDone === true || item.is_done === true;
+    return `<div class="task-subtask-row" data-detail-subtask-row data-subtask-id="${escapeHtml(id)}">
+        <input type="checkbox" data-detail-subtask-done ${done ? 'checked' : ''} aria-label="Підзадачу виконано">
+        <input type="text" data-detail-subtask-title value="${title}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
+        <button type="button" class="task-subtask-remove" data-detail-subtask-up aria-label="Підняти підзадачу">↑</button>
+        <button type="button" class="task-subtask-remove" data-detail-subtask-down aria-label="Опустити підзадачу">↓</button>
+        <button type="button" class="task-subtask-remove" data-detail-subtask-remove aria-label="Видалити підзадачу">×</button>
+    </div>`;
+}
+
+function renderTaskDetailSubtasks(subtasks = []) {
+    return subtasks.map(taskDetailSubtaskRow).join('');
+}
+
+function readTaskDetailSubtasks() {
+    return Array.from(document.querySelectorAll('#_tdSubtasksList [data-detail-subtask-row]'))
+        .map((row, index) => ({
+            id: row.dataset.subtaskId || undefined,
+            title: row.querySelector('[data-detail-subtask-title]')?.value || '',
+            is_done: row.querySelector('[data-detail-subtask-done]')?.checked === true,
+            sort_order: index,
+            source_type: 'manual'
+        }))
+        .filter(item => String(item.title || '').trim());
+}
+
+function taskDetailSubtaskState() {
+    return readTaskDetailSubtasks()
+        .map(item => `${item.id || 'new'}:${item.is_done ? '1' : '0'}:${item.title}`)
+        .join('~');
+}
+
+function updateTaskDetailSubtaskProgress() {
+    const rows = readTaskDetailSubtasks();
+    const total = rows.length;
+    const done = rows.filter(item => item.is_done).length;
+    const progress = taskSubtaskProgress(done, total) || 0;
+    const fill = document.getElementById('_tdSubtaskProgressFill');
+    const label = document.getElementById('_tdSubtaskProgressLabel');
+    if (fill) fill.style.width = `${progress}%`;
+    if (label) label.textContent = total ? `${done}/${total} · ${progress}%` : 'Без підзадач';
+}
+
+function addTaskDetailSubtask(value = '') {
+    const list = document.getElementById('_tdSubtasksList');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', taskDetailSubtaskRow({ title: value }, list.children.length));
+    list.dataset.subtasksLoaded = 'true';
+    updateTaskDetailSubtaskProgress();
+    list.querySelector('[data-detail-subtask-row]:last-child [data-detail-subtask-title]')?.focus();
+}
+window.addTaskDetailSubtask = addTaskDetailSubtask;
+
+function bindTaskDetailSubtasks() {
+    document.getElementById('_tdSubtaskAdd')?.addEventListener('click', () => addTaskDetailSubtask());
+    const list = document.getElementById('_tdSubtasksList');
+    if (!list) return;
+    list.addEventListener('click', (event) => {
+        const row = event.target.closest('[data-detail-subtask-row]');
+        if (!row) return;
+        if (event.target.closest('[data-detail-subtask-remove]')) {
+            row.remove();
+        } else if (event.target.closest('[data-detail-subtask-up]')) {
+            const prev = row.previousElementSibling;
+            if (prev) list.insertBefore(row, prev);
+        } else if (event.target.closest('[data-detail-subtask-down]')) {
+            const next = row.nextElementSibling;
+            if (next) list.insertBefore(next, row);
+        }
+        updateTaskDetailSubtaskProgress();
+    });
+    list.addEventListener('input', updateTaskDetailSubtaskProgress);
+    list.addEventListener('change', updateTaskDetailSubtaskProgress);
+}
+
 async function openTaskDetail(taskId) {
     try {
         const token = localStorage.getItem('pzp_token');
@@ -3105,6 +3377,9 @@ async function openTaskDetail(taskId) {
         const categoryValue = t.category || 'admin';
         const subcategoryValue = t.subcategory || '';
         const subcategoryStyle = supportsSubcategory(categoryValue) ? '' : 'display:none';
+        const detailSubtasks = Array.isArray(t.subtasks) ? t.subtasks : [];
+        const detailSubtaskSummary = taskSubtaskSummary(t);
+        const detailSubtaskProgress = detailSubtaskSummary.progress || 0;
 
         overlay.dataset.taskVersion = t.version || 1;
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -3190,6 +3465,19 @@ async function openTaskDetail(taskId) {
                     </div>
                     ${taskWhy ? `<div style="margin-top:6px;font-size:12px;color:var(--gray-500)">${escapeHtml(taskWhy)}</div>` : ''}
                 </div>
+                <div style="border:1px solid rgba(20,184,166,0.20);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                        <strong style="font-size:13px">Підзадачі</strong>
+                        <span id="_tdSubtaskProgressLabel" style="font-size:11px;font-weight:800;color:#0f766e">${detailSubtaskSummary.total ? `${detailSubtaskSummary.done}/${detailSubtaskSummary.total} · ${detailSubtaskProgress}%` : 'Без підзадач'}</span>
+                    </div>
+                    <div class="task-subtask-progress" style="margin:0 0 8px">
+                        <div id="_tdSubtaskProgressFill" class="task-subtask-progress-fill" style="width:${detailSubtaskProgress}%"></div>
+                    </div>
+                    <div id="_tdSubtasksList" class="task-subtasks-list" data-subtasks-loaded="true">
+                        ${renderTaskDetailSubtasks(detailSubtasks)}
+                    </div>
+                    <button type="button" id="_tdSubtaskAdd" class="task-subtask-add" style="margin-top:8px">+ Підзадача</button>
+                </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
                         <div>
@@ -3221,6 +3509,7 @@ async function openTaskDetail(taskId) {
             </div>
         </div>`;
         document.getElementById('_tdCategory')?.addEventListener('change', syncDetailSubcategoryVisibility);
+        bindTaskDetailSubtasks();
         document.querySelectorAll('[data-detail-schedule-slot]').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('[data-detail-schedule-slot]').forEach(slotBtn => {
@@ -3233,6 +3522,7 @@ async function openTaskDetail(taskId) {
             });
         });
         syncDetailSubcategoryVisibility();
+        updateTaskDetailSubtaskProgress();
         resetTaskDetailDirtyState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         loadTaskHistory(t.id);
@@ -3431,6 +3721,7 @@ async function saveTaskDetail(taskId) {
             pack_status: document.getElementById('_tdPackStatus')?.value || null,
             owner_role: document.getElementById('_tdOwnerRole')?.value.trim() || null,
             sla_minutes: document.getElementById('_tdSlaMinutes')?.value || null,
+            subtasks: readTaskDetailSubtasks(),
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
         const res = await fetch(`/api/tasks/${taskId}`, {

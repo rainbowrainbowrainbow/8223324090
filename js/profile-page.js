@@ -22,6 +22,7 @@ let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'profile';
 let myCabinetData = null;
+let myProductivityData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
@@ -332,7 +333,8 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
         isOwnProfile ? apiGet('/dashboard/alerts') : null,
         isOwnProfile ? apiGet('/leads/new-count') : null,
-        isOwnProfile ? apiGet('/auth/security') : null
+        isOwnProfile ? apiGet('/auth/security') : null,
+        isOwnProfile ? apiGet('/tasks/productivity').catch(() => null) : null
     ]);
 
     profileData = results[0];
@@ -347,6 +349,7 @@ async function loadProfileData(userId) {
     myCabinetData = results[9];
     syncCabinetPulseCounts(results[10], results[11]);
     profileSecurityData = results[12];
+    myProductivityData = results[13];
 }
 
 // ==========================================
@@ -457,6 +460,9 @@ async function switchTab(tab) {
     }
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
+    }
+    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myProductivityData) {
+        myProductivityData = await apiGet('/tasks/productivity').catch(() => null);
     }
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
         await refreshCabinetPulseCounts();
@@ -1186,6 +1192,140 @@ function syncCabinetTaskCreateMode() {
     }
 }
 
+function cabinetSubtaskRow(value = '', sourceType = 'manual') {
+    return `<div class="cabinet-subtask-row" data-cabinet-subtask-row data-subtask-source="${escapeHtml(sourceType || 'manual')}">
+        <input type="text" data-cabinet-subtask-title value="${escapeHtml(value)}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
+        <button type="button" class="cabinet-subtask-remove" data-cabinet-subtask-remove aria-label="Видалити підзадачу">×</button>
+    </div>`;
+}
+
+function addCabinetSubtask(value = '', sourceType = 'manual') {
+    const list = document.getElementById('cabinetSubtaskList');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', cabinetSubtaskRow(value, sourceType));
+    setCabinetDecompositionMode(sourceType === 'manual' ? 'manual' : (sourceType === 'template' ? 'template' : 'ai'), { keepStatus: true });
+    list.querySelector('[data-cabinet-subtask-row]:last-child [data-cabinet-subtask-title]')?.focus();
+}
+window.addCabinetSubtask = addCabinetSubtask;
+
+function readCabinetSubtasks() {
+    return Array.from(document.querySelectorAll('#cabinetSubtaskList [data-cabinet-subtask-row]'))
+        .map((row, index) => ({
+            title: row.querySelector('[data-cabinet-subtask-title]')?.value || '',
+            sort_order: index,
+            source_type: row.dataset.subtaskSource || 'manual'
+        }))
+        .filter(item => String(item.title || '').trim());
+}
+
+function setCabinetSubtaskDraftStatus(message = '', type = '') {
+    const node = document.getElementById('cabinetSubtaskDraftStatus');
+    if (!node) return;
+    node.textContent = message;
+    node.className = `cabinet-subtask-status ${type || ''}`.trim();
+}
+
+function setCabinetDecompositionMode(mode = 'manual', options = {}) {
+    const normalized = ['none', 'manual', 'template', 'ai', 'template_ai'].includes(mode) ? mode : 'manual';
+    const select = document.getElementById('cabinetDecompositionMode');
+    if (select) select.value = normalized;
+    const template = document.getElementById('cabinetDecompositionTemplate');
+    if (template) template.disabled = !['template', 'template_ai'].includes(normalized);
+    const draftBtn = document.getElementById('cabinetSubtaskDraftBtn');
+    if (draftBtn) {
+        draftBtn.disabled = ['none', 'manual'].includes(normalized);
+        draftBtn.textContent = normalized === 'template' ? 'Шаблон' : 'AI';
+    }
+    if (normalized === 'none') document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    if (normalized === 'none' && !options.keepRows) {
+        const list = document.getElementById('cabinetSubtaskList');
+        if (list) list.innerHTML = '';
+    }
+    if (!options.keepStatus) setCabinetSubtaskDraftStatus('');
+}
+
+function replaceCabinetSubtasks(items = [], options = {}) {
+    const list = document.getElementById('cabinetSubtaskList');
+    if (!list) return;
+    list.innerHTML = '';
+    items.forEach(item => {
+        list.insertAdjacentHTML('beforeend', cabinetSubtaskRow(
+            item.title || item.name || '',
+            item.source_type || item.sourceType || options.sourceType || 'ai'
+        ));
+    });
+}
+
+async function generateCabinetSubtasks() {
+    const input = document.getElementById('cabinetTaskTitle');
+    const title = input?.value.trim() || '';
+    const mode = document.getElementById('cabinetDecompositionMode')?.value || 'ai';
+    if (!title) {
+        setCabinetSubtaskDraftStatus('Додайте назву задачі перед генерацією підзадач.', 'warning');
+        input?.focus();
+        return;
+    }
+    if (mode === 'none' || mode === 'manual') {
+        setCabinetSubtaskDraftStatus('Оберіть AI або шаблонний режим декомпозиції.', 'warning');
+        return;
+    }
+    const button = document.getElementById('cabinetSubtaskDraftBtn');
+    const acceptBtn = document.getElementById('cabinetSubtaskAcceptDraftBtn');
+    const oldText = button?.textContent || '';
+    if (button) {
+        button.disabled = true;
+        button.textContent = '...';
+    }
+    if (acceptBtn) acceptBtn.hidden = true;
+    setCabinetSubtaskDraftStatus(mode === 'template' ? 'Готую шаблонну чернетку...' : 'AI готує чернетку. Нічого ще не збережено...', '');
+    const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
+    const result = await window.TaskCreate?.requestDecompositionDraft?.({
+        title,
+        category: document.getElementById('cabinetTaskCategory')?.value || 'personal',
+        taskKind: document.getElementById('cabinetTaskKind')?.value || 'action',
+        taskMode: selectedMode,
+        mode,
+        decompositionMode: mode,
+        templateKey: document.getElementById('cabinetDecompositionTemplate')?.value || '',
+        sourceModule: 'profile_my_cabinet',
+        sourceType: 'manual'
+    });
+    if (button) {
+        button.disabled = false;
+        button.textContent = oldText || (mode === 'template' ? 'Шаблон' : 'AI');
+    }
+    if (!result?.success) {
+        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося підготувати чернетку. Додайте підзадачі вручну.', 'error');
+        return;
+    }
+    replaceCabinetSubtasks(result.subtasks || [], {
+        sourceType: result.source === 'template' || result.source === 'template_fallback' ? 'template' : 'ai'
+    });
+    if (acceptBtn) acceptBtn.hidden = false;
+    const sourceLabel = result.source === 'template_fallback'
+        ? 'AI недоступний, використано шаблон.'
+        : (result.source === 'template' ? 'Шаблонну чернетку додано.' : 'AI чернетку додано.');
+    setCabinetSubtaskDraftStatus(`${sourceLabel} Перевірте список перед збереженням задачі.`, 'success');
+}
+
+function bindCabinetSubtasks() {
+    document.getElementById('cabinetDecompositionMode')?.addEventListener('change', event => setCabinetDecompositionMode(event.target.value));
+    document.getElementById('cabinetSubtaskDraftBtn')?.addEventListener('click', generateCabinetSubtasks);
+    document.getElementById('cabinetSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
+        setCabinetSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
+        document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    });
+    setCabinetDecompositionMode(document.getElementById('cabinetDecompositionMode')?.value || 'none', { keepRows: true, keepStatus: true });
+    const list = document.getElementById('cabinetSubtaskList');
+    if (!list || list.dataset.cabinetSubtasksBound === 'true') return;
+    list.dataset.cabinetSubtasksBound = 'true';
+    list.addEventListener('click', (event) => {
+        const remove = event.target.closest('[data-cabinet-subtask-remove]');
+        if (!remove) return;
+        remove.closest('[data-cabinet-subtask-row]')?.remove();
+    });
+}
+
 function syncCabinetPulseCounts(alertsData, funnelData) {
     const alerts = Array.isArray(alertsData?.alerts) ? alertsData.alerts : [];
     const readIds = (() => {
@@ -1415,13 +1555,30 @@ function cabinetTaskReportBadge(task = {}) {
         : '<span class="cabinet-task-report-badge">потрібен звіт</span>';
 }
 
+function cabinetSubtaskSummary(task = {}) {
+    const total = Number(task.subtask_count || task.subtaskCount || 0);
+    const done = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
+    const progress = window.TaskCreate?.subtaskProgress
+        ? window.TaskCreate.subtaskProgress(done, total)
+        : (total ? Math.round((done / total) * 100) : null);
+    return { total, done, progress };
+}
+
+function renderCabinetSubtaskProgress(task = {}) {
+    const summary = cabinetSubtaskSummary(task);
+    if (!summary.total) return '';
+    return `<div class="cabinet-subtask-progress">
+        <div class="cabinet-subtask-progress-bar"><div class="cabinet-subtask-progress-fill" style="width:${summary.progress}%"></div></div>
+        <span>${summary.done}/${summary.total} · ${summary.progress}%</span>
+    </div>`;
+}
+
 function renderCabinetTaskCard(task, compact = false) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
     const due = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline || task.remindAt || task.remind_at || task.date;
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
-    const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
-    const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
+    const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
     const priority = task.priority || 'normal';
     const priorityLabel = { high: 'Високий', critical: 'Критично', low: 'Низький', normal: 'Звичайний' }[priority] || priority;
@@ -1442,8 +1599,9 @@ function renderCabinetTaskCard(task, compact = false) {
                     <span>${taskKindLabel(task)}</span>
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
-                    ${subTotal ? `<span>${subDone}/${subTotal}</span>` : ''}
+                    ${subSummary.total ? `<span>${subSummary.done}/${subSummary.total}</span>` : ''}
                     ${cabinetTaskReportBadge(task)}
+                    ${renderCabinetSubtaskProgress(task)}
                 </div>
             </div>
             <div class="cabinet-task-actions">
@@ -1548,7 +1706,235 @@ function renderCabinetTaskComposer(options = {}) {
                     <span>Потрібен звіт перед виконанням</span>
                 </label>
             </div>
+            <div class="cabinet-task-subtasks">
+                <div class="cabinet-task-subtasks-head">
+                    <span>Підзадачі</span>
+                    <button type="button" class="cabinet-subtask-add" onclick="addCabinetSubtask()">+ Підзадача</button>
+                </div>
+                <div class="cabinet-decomposition-controls">
+                    <select id="cabinetDecompositionMode" aria-label="Режим декомпозиції">
+                        <option value="none">Без декомпозиції</option>
+                        <option value="manual">Вручну</option>
+                        <option value="template">Шаблон</option>
+                        <option value="ai">AI чернетка</option>
+                        <option value="template_ai">Шаблон + AI</option>
+                    </select>
+                    <select id="cabinetDecompositionTemplate" aria-label="Шаблон декомпозиції">
+                        <option value="personal_home">Побут / особисте</option>
+                        <option value="event_preparation">Підготовка події</option>
+                        <option value="content_creation">Контент</option>
+                        <option value="crm_sales_followup">CRM / продаж</option>
+                    </select>
+                    <button type="button" id="cabinetSubtaskDraftBtn" class="cabinet-subtask-add">AI</button>
+                    <button type="button" id="cabinetSubtaskAcceptDraftBtn" class="cabinet-subtask-add" hidden>Прийняти</button>
+                </div>
+                <div id="cabinetSubtaskDraftStatus" class="cabinet-subtask-status" aria-live="polite"></div>
+                <div id="cabinetSubtaskList" class="cabinet-subtask-list"></div>
+            </div>
         </form>`;
+}
+
+function productivityNumber(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? number.toLocaleString('uk-UA') : '0';
+}
+
+function productivityPercent(value) {
+    const number = Math.max(0, Math.min(100, Number(value || 0)));
+    return `${Number.isFinite(number) ? Math.round(number) : 0}%`;
+}
+
+function productivityMetric(label, value, caption, options = {}) {
+    const danger = options.danger ? ' danger' : '';
+    return `<div class="cabinet-productivity-metric${danger}">
+        <span>${escapeHtml(label)}</span>
+        <b>${escapeHtml(String(value))}</b>
+        <small>${escapeHtml(caption || '')}</small>
+    </div>`;
+}
+
+function productivitySourceLabel(source) {
+    return {
+        none: 'Без декомпозиції',
+        manual: 'Вручну',
+        template: 'Шаблон',
+        ai: 'AI',
+        template_ai: 'Шаблон + AI',
+        system: 'Системні',
+        mixed: 'Змішані'
+    }[source] || source;
+}
+
+function productivityCategoryLabel(category) {
+    const found = CABINET_TASK_CATEGORIES.find(([value]) => value === category);
+    return found ? found[1] : (category === 'uncategorized' ? 'Без категорії' : category);
+}
+
+function productivityBarWidth(value, max) {
+    const top = Math.max(1, Number(max || 0));
+    return Math.max(2, Math.min(100, Math.round((Number(value || 0) / top) * 100)));
+}
+
+function renderProductivitySimpleBars(title, rows, labelGetter, valueGetter) {
+    const data = Array.isArray(rows) ? rows : [];
+    const max = data.reduce((top, item) => Math.max(top, Number(valueGetter(item) || 0)), 0);
+    const body = data.length
+        ? data.map(item => {
+            const value = Number(valueGetter(item) || 0);
+            return `<div class="cabinet-productivity-bar-row">
+                <span>${escapeHtml(labelGetter(item))}</span>
+                <div class="cabinet-productivity-bar-track"><div class="cabinet-productivity-bar-fill" style="width:${productivityBarWidth(value, max)}%"></div></div>
+                <b>${productivityNumber(value)}</b>
+            </div>`;
+        }).join('')
+        : '<div class="cabinet-productivity-empty">Даних поки немає.</div>';
+    return `<section class="cabinet-productivity-chart">
+        <h4>${escapeHtml(title)}</h4>
+        ${body}
+    </section>`;
+}
+
+function renderProductivityCreatedCompletedChart(rows) {
+    const data = Array.isArray(rows) ? rows.slice(-7) : [];
+    const max = data.reduce((top, item) => Math.max(top, Number(item.created || 0), Number(item.completed || 0)), 0);
+    const body = data.length
+        ? data.map(item => `
+            <div class="cabinet-productivity-pair-row">
+                <span>${escapeHtml(String(item.date || '').slice(5))}</span>
+                <div class="cabinet-productivity-pair-bars">
+                    <div class="cabinet-productivity-pair-fill created" style="width:${productivityBarWidth(item.created, max)}%" title="Створено: ${productivityNumber(item.created)}"></div>
+                    <div class="cabinet-productivity-pair-fill completed" style="width:${productivityBarWidth(item.completed, max)}%" title="Виконано: ${productivityNumber(item.completed)}"></div>
+                </div>
+                <b>${productivityNumber(item.created)}/${productivityNumber(item.completed)}</b>
+            </div>
+        `).join('')
+        : '<div class="cabinet-productivity-empty">Даних поки немає.</div>';
+    return `<section class="cabinet-productivity-chart">
+        <h4>Створено / виконано</h4>
+        <div class="cabinet-productivity-legend"><span class="created">Створено</span><span class="completed">Виконано</span></div>
+        ${body}
+    </section>`;
+}
+
+function renderProductivityAchievements(data = {}) {
+    const achievements = Array.isArray(data.achievements) ? data.achievements : [];
+    const visible = achievements
+        .slice()
+        .sort((a, b) => Number(b.unlocked === true) - Number(a.unlocked === true) || Number(b.percent || 0) - Number(a.percent || 0))
+        .slice(0, 6);
+    if (!visible.length) return '<div class="cabinet-productivity-empty">Досягнення зʼявляться після перших задач.</div>';
+    return visible.map(item => `
+        <div class="cabinet-productivity-achievement ${item.unlocked ? 'unlocked' : ''}">
+            <div>
+                <b>${escapeHtml(item.title || item.id || '')}</b>
+                <span>${escapeHtml(item.description || '')}</span>
+            </div>
+            <small>${productivityNumber(item.progress)}/${productivityNumber(item.target)}</small>
+            <div class="cabinet-productivity-achievement-track">
+                <div style="width:${productivityBarWidth(item.percent, 100)}%"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderProductivityInsights(data = {}) {
+    const summary = data.summary || {};
+    const decomposition = data.decomposition || {};
+    const source = decomposition.sourceBreakdown || {};
+    const sourceRows = Object.entries(source)
+        .filter(([, count]) => Number(count || 0) > 0)
+        .map(([key, count]) => `<span><b>${productivityNumber(count)}</b> ${escapeHtml(productivitySourceLabel(key))}</span>`)
+        .join('');
+    return `<div class="cabinet-productivity-insights">
+        <div>
+            <span>Декомпозовані задачі</span>
+            <b>${productivityNumber(summary.decomposedTasksCount)}</b>
+            <small>${productivityPercent(decomposition.decomposedCompletionRate)} completion</small>
+        </div>
+        <div>
+            <span>Без декомпозиції</span>
+            <b>${productivityNumber(decomposition.nonDecomposedTasks)}</b>
+            <small>${productivityPercent(decomposition.nonDecomposedCompletionRate)} completion</small>
+        </div>
+        <div>
+            <span>AI-assisted</span>
+            <b>${productivityNumber(decomposition.aiTasks)}</b>
+            <small>${productivityNumber(decomposition.aiCompletedTasks)} завершено</small>
+        </div>
+        <div>
+            <span>Template-assisted</span>
+            <b>${productivityNumber(decomposition.templateTasks)}</b>
+            <small>${productivityNumber(decomposition.templateCompletedTasks)} завершено</small>
+        </div>
+        <div class="cabinet-productivity-source-chips">${sourceRows || '<span>Джерела ще порожні</span>'}</div>
+    </div>`;
+}
+
+function renderCabinetProductivitySurface() {
+    const data = myProductivityData;
+    if (!data) {
+        return `<section class="cabinet-productivity-surface">
+            <div class="cabinet-productivity-head">
+                <div>
+                    <div class="cabinet-kicker">Productivity cockpit</div>
+                    <h3>Особиста продуктивність</h3>
+                </div>
+            </div>
+            <div class="cabinet-productivity-empty">Аналітика продуктивності тимчасово недоступна.</div>
+        </section>`;
+    }
+    const summary = data.summary || {};
+    const streak = data.streak || {};
+    const charts = data.charts || {};
+    const completedByDay = Array.isArray(charts.completedByDay) ? charts.completedByDay.slice(-7) : [];
+    const sourceSplit = Array.isArray(charts.decompositionSourceSplit) ? charts.decompositionSourceSplit : [];
+    const categories = Array.isArray(charts.categoryDistribution) ? charts.categoryDistribution.slice(0, 5) : [];
+    const unlocked = (data.achievements || []).filter(item => item.unlocked).length;
+    const totalAchievements = (data.achievements || []).length;
+
+    return `<section class="cabinet-productivity-surface" aria-label="Особиста продуктивність">
+        <div class="cabinet-productivity-head">
+            <div>
+                <div class="cabinet-kicker">Productivity cockpit</div>
+                <h3>Особиста продуктивність</h3>
+            </div>
+            <div class="cabinet-productivity-streak ${streak.activeToday ? 'active' : ''}">
+                <span>Стрік задач</span>
+                <b>${productivityNumber(streak.current)}</b>
+                <small>${streak.activeToday ? 'активний сьогодні' : 'тримається з учора'}</small>
+            </div>
+        </div>
+        <div class="cabinet-productivity-metrics">
+            ${productivityMetric('Сьогодні', productivityNumber(summary.completedToday), 'виконано')}
+            ${productivityMetric('7 днів', productivityNumber(summary.completed7Days), 'виконано')}
+            ${productivityMetric('30 днів', productivityNumber(summary.completed30Days), 'виконано')}
+            ${productivityMetric('Completion', productivityPercent(summary.completionRate), 'задач закрито')}
+            ${productivityMetric('Прострочено', productivityNumber(summary.overdueCount), 'активні задачі', { danger: Number(summary.overdueCount || 0) > 0 })}
+            ${productivityMetric('Підзадачі', productivityNumber(summary.subtasksCompleted), 'виконано')}
+        </div>
+        <div class="cabinet-productivity-grid">
+            <section class="cabinet-productivity-panel">
+                <div class="cabinet-productivity-panel-head">
+                    <h4>Досягнення</h4>
+                    <span>${productivityNumber(unlocked)}/${productivityNumber(totalAchievements)}</span>
+                </div>
+                ${renderProductivityAchievements(data)}
+            </section>
+            <section class="cabinet-productivity-panel">
+                <div class="cabinet-productivity-panel-head">
+                    <h4>Декомпозиція</h4>
+                    <span>${productivityNumber(summary.decomposedTasksCount)} задач</span>
+                </div>
+                ${renderProductivityInsights(data)}
+            </section>
+        </div>
+        <div class="cabinet-productivity-charts">
+            ${renderProductivitySimpleBars('Виконано за день', completedByDay, item => String(item.date || '').slice(5), item => item.count)}
+            ${renderProductivityCreatedCompletedChart(charts.createdVsCompleted || [])}
+            ${renderProductivitySimpleBars('Джерела декомпозиції', sourceSplit, item => productivitySourceLabel(item.source), item => item.count)}
+            ${renderProductivitySimpleBars('Категорії задач', categories, item => productivityCategoryLabel(item.category), item => item.count)}
+        </div>
+    </section>`;
 }
 
 function renderMyDayTab() {
@@ -1566,6 +1952,7 @@ function renderMyDayTab() {
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
+            ${renderCabinetProductivitySurface()}
             ${renderCabinetTaskActionLegend()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
@@ -1752,7 +2139,12 @@ async function handleCabinetTaskActionClick(event) {
 }
 
 async function refreshMyCabinetTab() {
-    myCabinetData = await apiGet('/tasks/my-cabinet');
+    const [cabinet, productivity] = await Promise.all([
+        apiGet('/tasks/my-cabinet'),
+        apiGet('/tasks/productivity').catch(() => null)
+    ]);
+    myCabinetData = cabinet;
+    if (productivity) myProductivityData = productivity;
     await refreshCabinetPulseCounts();
     const tabContent = document.getElementById('tabContent');
     if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
@@ -1831,6 +2223,7 @@ async function createCabinetTask(event, mode) {
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
+        subtasks: readCabinetSubtasks(),
         reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         captureIntent: { waiting: kind === 'waiting' }
     };
@@ -1849,7 +2242,8 @@ async function createCabinetTask(event, mode) {
             schedule: { date: selectedDate || new Date().toISOString().slice(0, 10), slot: 'morning', durationMinutes: 30 },
             effort_minutes: 30,
             source_type: 'manual',
-            source_module: 'profile_my_cabinet'
+            source_module: 'profile_my_cabinet',
+            subtasks: draft.subtasks
         };
     const result = window.TaskCreate?.createTask
         ? await window.TaskCreate.createTask(payload, {
@@ -1865,6 +2259,11 @@ async function createCabinetTask(event, mode) {
         return;
     }
     if (input) input.value = '';
+    const subtaskList = document.getElementById('cabinetSubtaskList');
+    if (subtaskList) subtaskList.innerHTML = '';
+    setCabinetSubtaskDraftStatus('');
+    document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
+    setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
     if (typeof showNotification === 'function') showNotification('Задачу створено в canonical Tasks', 'success');
     await refreshMyCabinetTab();
 }
@@ -2340,6 +2739,7 @@ function attachProfileListeners() {
         cabinetDate.dataset.cabinetDateBound = 'true';
         cabinetDate.addEventListener('change', () => setCabinetDuePreset('custom'));
     }
+    bindCabinetSubtasks();
 
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {

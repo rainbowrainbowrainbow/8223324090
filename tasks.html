@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.12">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.12">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.12">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.12">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.12">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.12">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.12">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.12">
+    <link rel="stylesheet" href="css/base.css?v=0.62.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.15">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.15">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -590,6 +590,114 @@
             background: rgba(255,255,255,0.54);
             border: 1px solid rgba(100,116,139,0.12);
         }
+        .task-subtasks-group {
+            grid-column: 1 / -1;
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .task-decomposition-controls {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: minmax(150px, 0.9fr) minmax(170px, 1fr) auto auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .task-decomposition-controls select {
+            min-height: 34px !important;
+            padding: 7px 9px !important;
+            font-size: 12px !important;
+        }
+        .task-subtask-status {
+            grid-column: 1 / -1;
+            min-height: 18px;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .task-subtask-status.warning {
+            color: #b45309;
+        }
+        .task-subtask-status.error {
+            color: #b91c1c;
+        }
+        .task-subtask-status.success {
+            color: #047857;
+        }
+        .task-subtasks-list {
+            grid-column: 1 / -1;
+            display: grid;
+            gap: 7px;
+        }
+        .task-subtask-row {
+            display: grid;
+            grid-template-columns: 28px minmax(0, 1fr) 34px;
+            gap: 7px;
+            align-items: center;
+        }
+        #_tdSubtasksList .task-subtask-row {
+            grid-template-columns: 24px minmax(0, 1fr) 30px 30px 30px;
+        }
+        #_tdSubtasksList .task-subtask-row input[type="checkbox"] {
+            width: 18px;
+            min-height: 18px !important;
+            accent-color: #14b8a6;
+        }
+        .task-subtask-row input[type="text"] {
+            min-height: 36px !important;
+            padding: 7px 9px !important;
+        }
+        .task-subtask-order {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            border-radius: 999px;
+            background: rgba(20,184,166,0.12);
+            color: #0f766e;
+            font-size: 11px;
+            font-weight: 900;
+        }
+        .task-subtask-remove,
+        .task-subtask-add {
+            border: 1px solid rgba(100,116,139,0.18);
+            border-radius: 10px;
+            background: rgba(248,250,252,0.92);
+            color: var(--gray-600);
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .task-subtask-add {
+            min-height: 32px;
+            padding: 0 10px;
+            color: #0f766e;
+            background: rgba(20,184,166,0.10);
+            border-color: rgba(20,184,166,0.24);
+        }
+        .task-subtask-add[disabled] {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .task-subtask-progress {
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(148,163,184,0.16);
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .task-subtask-progress-fill {
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #14b8a6, #22c55e);
+            transition: width 0.2s ease;
+        }
+        .task-subtask-progress-label {
+            display: block;
+            margin-top: 4px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+        }
         .task-composer-label {
             grid-column: 1 / -1;
             font-size: 10px;
@@ -721,6 +829,14 @@
         body.dark-mode .task-composer-group {
             background: rgba(15,23,42,0.52);
             border-color: rgba(148,163,184,0.12);
+        }
+        html[data-theme="dark"] .task-subtask-remove,
+        html[data-theme="dark"] .task-subtask-add,
+        body.dark-mode .task-subtask-remove,
+        body.dark-mode .task-subtask-add {
+            background: rgba(15,23,42,0.78);
+            border-color: rgba(148,163,184,0.16);
+            color: #99f6e4;
         }
         html[data-theme="dark"] .task-batch-toolbar,
         body.dark-mode .task-batch-toolbar {
@@ -1539,6 +1655,29 @@
                         <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
                         <button class="task-chip" type="button" data-capture-chip="idea">Ідея</button>
                     </div>
+                    <div class="task-composer-group task-subtasks-group">
+                        <span class="task-composer-label">Підзадачі</span>
+                        <button type="button" id="taskSubtaskAddBtn" class="task-subtask-add">+ Підзадача</button>
+                        <div class="task-decomposition-controls">
+                            <select id="taskDecompositionMode" aria-label="Режим декомпозиції">
+                                <option value="none">Без декомпозиції</option>
+                                <option value="manual">Вручну</option>
+                                <option value="template">Шаблон</option>
+                                <option value="ai">AI чернетка</option>
+                                <option value="template_ai">Шаблон + AI</option>
+                            </select>
+                            <select id="taskDecompositionTemplate" aria-label="Шаблон декомпозиції">
+                                <option value="personal_home">Побут / особисте</option>
+                                <option value="event_preparation">Підготовка події</option>
+                                <option value="content_creation">Контент</option>
+                                <option value="crm_sales_followup">CRM / продаж</option>
+                            </select>
+                            <button type="button" id="taskSubtaskDraftBtn" class="task-subtask-add">AI</button>
+                            <button type="button" id="taskSubtaskAcceptDraftBtn" class="task-subtask-add" hidden>Прийняти</button>
+                        </div>
+                        <div id="taskSubtaskDraftStatus" class="task-subtask-status" aria-live="polite"></div>
+                        <div class="task-subtasks-list" id="taskSubtasksList"></div>
+                    </div>
                 </div>
                 <div class="task-batch-toolbar" aria-label="Масове створення окремих задач">
                     <button type="button" id="addTaskRowBtn" class="task-batch-add">+ Ще задача</button>
@@ -1630,14 +1769,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.12"></script>
-    <script src="js/notification.js?v=0.62.12"></script>
-    <script src="js/api.js?v=0.62.12"></script>
-    <script src="js/auth.js?v=0.62.12"></script>
-    <script src="js/components/sidebar.js?v=0.62.12"></script>
+    <script src="js/config.js?v=0.62.15"></script>
+    <script src="js/notification.js?v=0.62.15"></script>
+    <script src="js/api.js?v=0.62.15"></script>
+    <script src="js/auth.js?v=0.62.15"></script>
+    <script src="js/components/sidebar.js?v=0.62.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.62.12"></script>
-    <script src="js/tasks-page.js?v=0.62.12"></script>
-    <script src="js/alerts.js?v=0.62.12"></script><script src="js/ui.js?v=0.62.12"></script>
+    <script src="js/task-create.js?v=0.62.15"></script>
+    <script src="js/tasks-page.js?v=0.62.15"></script>
+    <script src="js/alerts.js?v=0.62.15"></script><script src="js/ui.js?v=0.62.15"></script>
 </body>
 </html>

@@ -223,12 +223,13 @@ async function createChecklistSubtasks(dbPool, taskId, templateKey) {
     if (!template || !template.items.length) return [];
     const values = [];
     const placeholders = template.items.map((item, index) => {
-        const offset = index * 3;
+        const offset = index * 4;
         values.push(taskId, item.title, item.sort_order);
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3})`;
+        values.push('template');
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
     });
     const result = await dbPool.query(
-        `INSERT INTO task_subtasks (task_id, title, sort_order)
+        `INSERT INTO task_subtasks (task_id, title, sort_order, source_type)
          VALUES ${placeholders.join(', ')}
          RETURNING *`,
         values

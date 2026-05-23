@@ -4,6 +4,39 @@
 
 ---
 
+## v0.62.15 - Продуктивність задач
+
+### Продуктивність задач [codex]
+- **Personal cockpit** - у Profile / My Cabinet додано компактну поверхню продуктивності з completed today, 7/30 days, completion rate, overdue, підзадачами та task streak.
+- **Аналітика задач** - новий `/api/tasks/productivity` рахує метрики тільки для поточного користувача з canonical `tasks` і `task_subtasks`, без окремої shadow-аналітики.
+- **Декомпозиційні insights** - cockpit показує decomposed vs non-decomposed completion, AI/template usage і source split, де `template_ai` чесно виводиться лише з persisted child source mix.
+- **Досягнення** - starter milestones для 10 задач, 7-day streak, parent tasks, decomposition usage, AI-assisted і template-assisted completions працюють як derived/idempotent стан без дублювання game achievement tables.
+- **Guardrail** - додано `tests/task-productivity.test.js` для summary metrics, streak calculation, source grouping і starter achievements.
+
+---
+
+## v0.62.14 - AI-декомпозиція задач
+
+### AI-декомпозиція задач [codex]
+- **AI draft** - канонічний task creator отримав `/api/tasks/decompose-draft`, який пропонує підзадачі через shared `ai-config` без прихованого збереження.
+- **Шаблони** - додано реальні starter-сімейства для побутових задач, підготовки події, контенту та CRM/sales follow-up; template-assisted режим має чесний fallback, якщо AI недоступний.
+- **Human review** - Tasks і Profile / My Cabinet показують згенеровані підзадачі як editable draft rows: їх можна прийняти, змінити, видалити, додати свої або згенерувати повторно перед save.
+- **Phase 1 contract** - збереження йде через існуючий `subtasks` payload і `task_subtasks.source_type` (`manual`, `template`, `ai`), а прогрес лишається equal-weight.
+- **Guardrail** - додано `tests/task-decomposition.test.js` для шаблонів, AI JSON parsing, duplicate cleanup, fallback і empty/error states.
+
+---
+
+## v0.62.13 - Підзадачі та прогрес задач
+
+### Підзадачі та прогрес задач [codex]
+- **Модель** - `task_subtasks` отримала source metadata для ручних, шаблонних і майбутніх AI draft-підзадач; існуючі задачі без підзадач не змінюють поведінку.
+- **Canonical Tasks** - `POST /api/tasks` і `PUT /api/tasks/:id` приймають `subtasks`, а detail/API payload повертає `subtaskCount`, `subtaskDoneCount` і `subtaskProgress`.
+- **Tasks + Profile** - швидке створення задач у Tasks і My Cabinet підтримує ручне розбиття на підзадачі, а картки показують однаковий прогрес з canonical task truth.
+- **Detail editor** - task detail modal дозволяє додавати, перейменовувати, видаляти, чекати і переставляти підзадачі з durable save через основний task update flow.
+- **Guardrail** - додано `tests/task-subtasks.test.js` для нормалізації payload, source type і equal-weight progress.
+
+---
+
 ## v0.62.12 - Сертифікати: пакет одноразових
 
 ### Сертифікати: пакет одноразових [codex]

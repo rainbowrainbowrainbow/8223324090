@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { linkUserToStaffProfile, unlinkStaffAccount } = require('../services/accountLinking');
 
 const { requireRole } = require('../middleware/auth');
 const log = createLogger('Employees');
@@ -38,35 +39,93 @@ router.get('/', async (req, res) => {
 
 // POST /api/employees — create profile (link user + staff + telegram)
 router.post('/', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { user_id, staff_id, telegram_chat_id, telegram_username, full_name, email, phone, role, department, access_modules, permissions } = req.body;
         if (!full_name || !full_name.trim()) {
             return res.status(400).json({ error: 'Повне ім\'я обов\'язкове' });
         }
 
-        const result = await pool.query(
-            `INSERT INTO employee_profiles (user_id, staff_id, telegram_chat_id, telegram_username, full_name, email, phone, role, department, access_modules, permissions)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-            [user_id || null, staff_id || null, telegram_chat_id || null,
-             telegram_username || null, full_name.trim(), email || null, phone || null,
-             role || 'employee', department || null,
-             JSON.stringify(access_modules || []), JSON.stringify(permissions || {})]
-        );
+        await client.query('BEGIN');
+        let profileId = null;
+        if (user_id && staff_id) {
+            const link = await linkUserToStaffProfile(client, {
+                userId: user_id,
+                staffId: staff_id,
+                actor: req.user,
+                req,
+                eventType: 'employee_profile_account_linked',
+                details: { source: 'employees_create' }
+            });
+            profileId = link.profile.id;
+        }
+
+        const result = profileId
+            ? await client.query(
+                `UPDATE employee_profiles
+                 SET telegram_chat_id=$1, telegram_username=$2, full_name=$3, email=$4, phone=$5,
+                     role=$6, department=$7, access_modules=$8, permissions=$9, is_active=true
+                 WHERE id=$10 RETURNING *`,
+                [telegram_chat_id || null, telegram_username || null, full_name.trim(), email || null, phone || null,
+                 role || 'employee', department || null, JSON.stringify(access_modules || []), JSON.stringify(permissions || {}), profileId]
+            )
+            : await client.query(
+                `INSERT INTO employee_profiles (user_id, staff_id, telegram_chat_id, telegram_username, full_name, email, phone, role, department, access_modules, permissions)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+                [user_id || null, staff_id || null, telegram_chat_id || null,
+                 telegram_username || null, full_name.trim(), email || null, phone || null,
+                 role || 'employee', department || null,
+                 JSON.stringify(access_modules || []), JSON.stringify(permissions || {})]
+            );
+        await client.query('COMMIT');
 
         log.info(`Employee profile created: ${full_name} (id: ${result.rows[0].id})`);
         res.json({ success: true, employee: result.rows[0] });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('Create employee error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
 // PUT /api/employees/:id — update profile
 router.put('/:id', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { user_id, staff_id, telegram_chat_id, telegram_username, full_name, email, phone, role, department, access_modules, permissions, is_active } = req.body;
 
-        const result = await pool.query(
+        await client.query('BEGIN');
+        const current = await client.query('SELECT id, user_id, staff_id FROM employee_profiles WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (current.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Профіль не знайдено' });
+        }
+
+        if (user_id && staff_id) {
+            const link = await linkUserToStaffProfile(client, {
+                userId: user_id,
+                staffId: staff_id,
+                actor: req.user,
+                req,
+                eventType: 'employee_profile_account_linked',
+                details: { source: 'employees_update', profileId: req.params.id }
+            });
+            if (Number(link.profile.id) !== Number(req.params.id)) {
+                throw Object.assign(new Error('Цей staff/account звʼязок належить іншому employee profile'), { statusCode: 409 });
+            }
+        } else if (!user_id && current.rows[0].user_id && current.rows[0].staff_id) {
+            await unlinkStaffAccount(client, {
+                staffId: current.rows[0].staff_id,
+                actor: req.user,
+                req,
+                eventType: 'employee_profile_account_unlinked',
+                details: { source: 'employees_update', profileId: req.params.id }
+            });
+        }
+
+        const result = await client.query(
             `UPDATE employee_profiles SET
                 user_id=$1, staff_id=$2, telegram_chat_id=$3, telegram_username=$4,
                 full_name=$5, email=$6, phone=$7, role=$8, department=$9,
@@ -79,14 +138,15 @@ router.put('/:id', async (req, res) => {
              is_active !== false, req.params.id]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Профіль не знайдено' });
-        }
+        await client.query('COMMIT');
         log.info(`Employee profile updated: ${full_name} (id: ${req.params.id})`);
         res.json({ success: true, employee: result.rows[0] });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('Update employee error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

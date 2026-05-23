@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.18 - Центр керування акаунтами
+
+### Центр керування акаунтами [codex]
+- **Canonical binding** - `users` лишається правдою акаунта, `employee_profiles` стає єдиним safe-bridge для звʼязку акаунта зі staff/person, а staff/schedule працюють як helper launcher-и.
+- **HR Accounts backbone** - у HR Accounts додано контроль conflict-state: unlinked users, unlinked staff, inactive links, duplicate Telegram identities і ambiguous profiles.
+- **Embedded actions** - HR Team і Staff graph отримали швидкі дії: відкрити linked account, привʼязати існуючий акаунт, створити акаунт для staff-профілю та повернутись у canonical HR Accounts.
+- **One-time credentials** - створення акаунта і reset/reissue пароля підтримують одноразову видачу логіна/пароля без показу старих паролів; legacy CSV/PDF export паролів для bulk-create вимкнено.
+- **Guardrail** - linkage writes у `users`, `staff` і `employees` заведено через shared `services/accountLinking.js`, додано contract-test для linkage, conflict report і credential policy.
+
+---
+
 ## v0.62.17 - Підпункти задач у списку
 
 ### Підпункти задач у списку [codex]

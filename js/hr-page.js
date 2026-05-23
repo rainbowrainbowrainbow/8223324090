@@ -774,9 +774,15 @@ let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
+let accountConflicts = null;
+let accountDeepLinkApplied = false;
 
 function canManageAccountSecurity() {
     return ['creator', 'director'].includes(AppState.currentUser?.role);
+}
+
+function canLinkAccounts() {
+    return ['creator', 'director', 'hr'].includes(AppState.currentUser?.role);
 }
 
 function normalizeAccountListInput(value) {
@@ -826,6 +832,113 @@ function getAccountStaffSelectOptions(currentUserId = null) {
         });
     });
     return options;
+}
+
+function suggestAccountUsernameFromStaff(staff = {}) {
+    const key = String(staff.unique_person_key || '').replace(/\.\w+$/, '');
+    const raw = key || staff.name || `staff.${staff.id || ''}`;
+    const normalized = raw
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '.')
+        .replace(/\.+/g, '.')
+        .replace(/^\.+|\.+$/g, '');
+    return normalized || `staff.${staff.id || Date.now()}`;
+}
+
+function staffRoleToAccountRole(roleType) {
+    const role = String(roleType || '').trim();
+    const aliases = {
+        trampoline_instructor: 'instructor',
+        cleaner: 'cleaning',
+        technician: 'maintenance',
+        head_cook: 'head_chef',
+        bartender: 'barista',
+        hr_manager: 'hr',
+        host: 'animator',
+        intern: 'animator'
+    };
+    const mapped = aliases[role] || role;
+    const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
+    return roles.includes(mapped) ? mapped : 'animator';
+}
+
+function accountCredentialPassword(credential) {
+    return credential?.password || credential?.oneTimePassword || '';
+}
+
+function showOneTimeCredentialModal(credential, title = 'One-time credentials') {
+    if (!credential) return;
+    const username = credential.username || '';
+    const password = accountCredentialPassword(credential);
+    const text = `Логін: ${username}\nПароль: ${password}`;
+    if (typeof confirmModal === 'function') {
+        confirmModal(`${title}\n\n${text}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
+            type: 'warning',
+            okText: 'Скопіювати',
+            cancelText: 'Закрити'
+        }).then(ok => {
+            if (ok && navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => showNotification('One-time credentials скопійовано', 'success'));
+            }
+        });
+        return;
+    }
+    window.alert(`${title}\n\n${text}`);
+}
+
+async function loadAccountConflicts() {
+    try {
+        const data = await crmApiFetch('/api/users/link-conflicts');
+        accountConflicts = data?.success ? data : null;
+    } catch {
+        accountConflicts = null;
+    }
+    return accountConflicts;
+}
+
+function renderAccountConflictSummary() {
+    const root = document.getElementById('accountCenterConflictSummary');
+    if (!root) return;
+    const counts = accountConflicts?.counts || {};
+    const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+    root.classList.toggle('hidden', !accountConflicts);
+    if (!accountConflicts) {
+        root.innerHTML = '';
+        return;
+    }
+    const parts = [
+        `unlinked users: ${Number(counts.unlinkedUsers || 0)}`,
+        `unlinked staff: ${Number(counts.unlinkedStaff || 0)}`,
+        `inactive links: ${Number(counts.inactiveProfileConflicts || 0)}`,
+        `telegram duplicates: ${Number(counts.duplicateTelegramIdentities || 0)}`,
+        `ambiguous profiles: ${Number(counts.ambiguousProfiles || 0)}`
+    ];
+    root.innerHTML = `
+        <strong>Контроль звʼязків:</strong>
+        <span>${total ? parts.join(' · ') : 'конфліктів у швидкому аудиті не знайдено'}</span>
+    `;
+}
+
+function applyAccountDeepLinkFilters() {
+    if (accountDeepLinkApplied) return;
+    const params = new URLSearchParams(window.location.search);
+    const accountUser = params.get('accountUser');
+    const accountStaff = params.get('accountStaff');
+    let target = null;
+    if (accountUser && /^\d+$/.test(accountUser)) {
+        target = accountUsers.find(user => Number(user.id) === Number(accountUser));
+    }
+    if (!target && accountStaff && /^\d+$/.test(accountStaff)) {
+        target = accountUsers.find(user => Number(user.staff_id) === Number(accountStaff));
+    }
+    if (!target) return;
+    accountDeepLinkApplied = true;
+    accountCenterLastUpdatedId = target.id;
+    setAccountCenterFilters({
+        query: target.username || target.name || target.staff_name || '',
+        activeOnly: false,
+        showSystem: false
+    }, { render: false });
 }
 
 async function loadTeam() {
@@ -908,6 +1021,14 @@ function renderTeam(staff) {
         const poolBadge = poolStatus !== 'core'
             ? `<span class="hr-badge ${poolStatus === 'blacklisted' ? 'hr-badge--warn' : 'hr-badge--ok'}">${HR_POOL_LABELS[poolStatus] || escapeHtml(poolStatus)}</span>`
             : '';
+        const accountActions = canLinkAccounts()
+            ? (s.has_account
+                ? `<div class="hr-team-stats"><button type="button" class="hr-account-toggle" onclick="openAccountForStaff(${Number(s.id)}, this)">Керувати акаунтом</button></div>`
+                : `<div class="hr-team-stats">
+                    <button type="button" class="hr-account-toggle" onclick="openAccountLinkForStaff(${Number(s.id)}, this)">Привʼязати акаунт</button>
+                    ${canManageAccountSecurity() ? `<button type="button" class="hr-account-toggle" onclick="openAccountCreateForStaff(${Number(s.id)}, this)">Створити акаунт</button>` : ''}
+                </div>`)
+            : '';
 
         return `<div class="hr-team-card ${s.is_active ? '' : 'inactive'}">
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
@@ -922,6 +1043,7 @@ function renderTeam(staff) {
                 </div>
                 ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-stats" style="color:var(--danger)">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
                 ${s.hourly_rate > 0 ? `<div class="hr-team-stats">Ставка: ${s.hourly_rate} ₴/год</div>` : ''}
+                ${accountActions}
                 ${canManage ? `<button class="hr-team-edit" onclick="openStaffEdit(${s.id})">Редагувати</button>` : ''}
             </div>
         </div>`;
@@ -1007,7 +1129,7 @@ function accountMatchesSearch(user, query) {
 async function loadAccountCenter(options = {}) {
     const root = document.getElementById('accountCenterList');
     if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
-    await loadAccountRoleDefinitions();
+    await Promise.all([loadAccountRoleDefinitions(), loadAccountConflicts()]);
     const data = await crmApiFetch('/api/users');
     if (!Array.isArray(data)) {
         if (root) root.innerHTML = `<div class="hr-account-empty">Центр акаунтів недоступний: ${escapeHtml(data?.error || 'немає доступу')}</div>`;
@@ -1017,6 +1139,7 @@ async function loadAccountCenter(options = {}) {
     if (options.resetFilters) {
         resetAccountCenterFilters({ render: false });
     }
+    applyAccountDeepLinkFilters();
     renderAccountCenter();
     const search = document.getElementById('accountCenterSearch');
     const activeOnly = document.getElementById('accountCenterActiveOnly');
@@ -1043,6 +1166,7 @@ window.refreshAccountCenter = async function(button) {
 function renderAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (!root) return;
+    renderAccountConflictSummary();
     const canManageSecurity = canManageAccountSecurity();
     const filters = getAccountCenterFilterState();
     const query = filters.query.toLowerCase();
@@ -1111,20 +1235,25 @@ function renderAccountCenter() {
     }).join('');
 }
 
-window.openAccountCreateModal = async function(button) {
+window.openAccountCreateModal = async function(button, context = {}) {
     if (!canManageAccountSecurity()) {
         showNotification('Створення акаунтів доступне тільки creator/director', 'error');
         return;
     }
     await loadAccountRoleDefinitions();
     await loadAccountStaffOptions();
+    const contextStaff = context.staff || (context.staffId ? teamStaff.find(staff => Number(staff.id) === Number(context.staffId)) : null);
+    const defaultStaffId = contextStaff?.id ? String(contextStaff.id) : '';
+    const defaultName = contextStaff?.name || '';
+    const defaultUsername = context.username || (contextStaff ? suggestAccountUsernameFromStaff(contextStaff) : '');
+    const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
     const result = await formModal('Створити CRM акаунт', [
-        { key: 'name', label: 'Імʼя в CRM', required: true, placeholder: 'Женя Аніматор' },
-        { key: 'username', label: 'Логін', required: true, placeholder: 'zhenya.animator' },
-        { key: 'password', label: 'Тимчасовий пароль', type: 'password', required: true, placeholder: 'Мінімум 6 символів' },
-        { key: 'confirmPassword', label: 'Повторити пароль', type: 'password', required: true },
-        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: 'animator', options: getAccountRoleOptions('animator') },
-        { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: '', options: getAccountStaffSelectOptions() },
+        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
+        { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
+        { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
+        { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
+        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
+        { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
     ], {
@@ -1135,11 +1264,12 @@ window.openAccountCreateModal = async function(button) {
     });
     if (!result) return;
     const password = String(result.password || '');
-    if (password.length < 6) {
+    const issueOneTime = !password;
+    if (password && password.length < 6) {
         showNotification('Пароль має бути не менше 6 символів', 'error');
         return;
     }
-    if (password !== String(result.confirmPassword || '')) {
+    if (password && password !== String(result.confirmPassword || '')) {
         showNotification('Паролі не збігаються', 'error');
         return;
     }
@@ -1148,7 +1278,8 @@ window.openAccountCreateModal = async function(button) {
         method: 'POST',
         body: {
             username: String(result.username || '').trim(),
-            password,
+            password: issueOneTime ? undefined : password,
+            issueOneTime,
             name: String(result.name || '').trim(),
             role: result.role || 'animator',
             staffId: result.staffId || null,
@@ -1161,10 +1292,91 @@ window.openAccountCreateModal = async function(button) {
         showNotification(response?.error || 'Не вдалося створити акаунт', 'error');
         return;
     }
-    showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте тимчасовий пароль користувачу напряму.`, 'success');
+    if (response.credential) {
+        showOneTimeCredentialModal(response.credential, `Акаунт ${response.user?.username || result.username} створено`);
+    } else {
+        showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте пароль користувачу напряму.`, 'success');
+    }
     accountCenterLastUpdatedId = response.user?.id || null;
     await loadAccountStaffOptions(true);
+    await loadTeam();
     await loadAccountCenter({ resetFilters: true });
+};
+
+window.openAccountCreateForStaff = async function(staffId, button) {
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) {
+        showNotification('Staff-профіль не знайдено', 'error');
+        return;
+    }
+    await openAccountCreateModal(button, { staff });
+};
+
+window.openAccountLinkForStaff = async function(staffId, button) {
+    if (!canLinkAccounts()) {
+        showNotification('Привʼязка акаунтів доступна тільки creator/director/hr', 'error');
+        return;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) {
+        showNotification('Staff-профіль не знайдено', 'error');
+        return;
+    }
+    if (button) button.disabled = true;
+    await loadAccountCenter();
+    if (button) button.disabled = false;
+    const candidates = accountUsers
+        .filter(user => user.is_active !== false)
+        .filter(user => !user.staff_id || Number(user.staff_id) === Number(staffId))
+        .filter(user => !isSystemAccount(user))
+        .map(user => ({
+            value: String(user.id),
+            label: `${user.name || user.username} · ${user.username} · ${user.role}${user.staff_id ? ' · вже привʼязано сюди' : ''}`
+        }));
+    if (!candidates.length) {
+        showNotification('Немає вільних активних акаунтів для привʼязки', 'warning');
+        return;
+    }
+    const result = await formModal(`Привʼязати акаунт · ${staff.name}`, [
+        { key: 'userId', label: 'CRM акаунт', type: 'select', required: true, options: candidates }
+    ], {
+        icon: '🔗',
+        type: 'info',
+        okText: 'Привʼязати',
+        className: 'account-link-modal'
+    });
+    if (!result?.userId) return;
+    const response = await crmApiFetch(`/api/staff/${encodeURIComponent(staffId)}/link`, {
+        method: 'POST',
+        body: { userId: Number(result.userId) }
+    });
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося привʼязати акаунт', 'error');
+        return;
+    }
+    showNotification('Акаунт привʼязано до staff-профілю', 'success');
+    accountCenterLastUpdatedId = Number(result.userId);
+    await loadAccountStaffOptions(true);
+    await loadTeam();
+    await loadAccountCenter({ resetFilters: true });
+};
+
+window.openAccountForStaff = async function(staffId, button) {
+    if (button) button.disabled = true;
+    await activateHrTab('accounts', { updateHash: true });
+    if (button) button.disabled = false;
+    const target = accountUsers.find(user => Number(user.staff_id) === Number(staffId));
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!target) {
+        showNotification('Акаунт для цього staff-профілю не знайдено в центрі акаунтів', 'warning');
+        return;
+    }
+    accountCenterLastUpdatedId = target.id;
+    setAccountCenterFilters({
+        query: target.username || staff?.name || '',
+        activeOnly: false,
+        showSystem: false
+    }, { render: true });
 };
 
 async function openAccountProfileModal(userId, button) {
@@ -1218,36 +1430,45 @@ async function openAccountPasswordModal(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
-    const result = await formModal(`Змінити пароль · ${user.username}`, [
-        { key: 'newPassword', label: 'Новий пароль', type: 'password', required: true, placeholder: 'Мінімум 6 символів' },
-        { key: 'confirmPassword', label: 'Повторити пароль', type: 'password', required: true }
+    const result = await formModal(`Пароль · ${user.username}`, [
+        { key: 'mode', label: 'Режим', type: 'select', defaultValue: 'issue', options: [
+            { value: 'issue', label: 'Згенерувати одноразовий пароль' },
+            { value: 'manual', label: 'Ввести новий пароль вручну' }
+        ] },
+        { key: 'newPassword', label: 'Новий пароль вручну', type: 'password', placeholder: 'Заповніть тільки для ручного режиму' },
+        { key: 'confirmPassword', label: 'Повторити пароль вручну', type: 'password' }
     ], {
         icon: '🔐',
         type: 'warning',
-        okText: 'Змінити пароль',
+        okText: 'Оновити доступ',
         className: 'account-password-modal'
     });
     if (!result) return;
+    const issueOneTime = result.mode !== 'manual';
     const password = String(result.newPassword || '');
-    if (password.length < 6) {
+    if (!issueOneTime && password.length < 6) {
         showNotification('Пароль має бути не менше 6 символів', 'error');
         return;
     }
-    if (password !== String(result.confirmPassword || '')) {
+    if (!issueOneTime && password !== String(result.confirmPassword || '')) {
         showNotification('Паролі не збігаються', 'error');
         return;
     }
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
         method: 'POST',
-        body: { newPassword: password }
+        body: issueOneTime ? { issueOneTime: true } : { newPassword: password }
     });
     if (button) button.disabled = false;
     if (!response?.success) {
         showNotification(response?.error || 'Не вдалося змінити пароль', 'error');
         return;
     }
-    showNotification(`Пароль для ${response.username || user.username} змінено`, 'success');
+    if (response.credential) {
+        showOneTimeCredentialModal(response.credential, `Пароль для ${response.username || user.username} перевипущено`);
+    } else {
+        showNotification(`Пароль для ${response.username || user.username} змінено`, 'success');
+    }
 }
 
 async function openAccountAccessEditor(userId, button) {

@@ -28,6 +28,11 @@ describe('backoffice foundation v2 contracts', () => {
     const warehouseRoute = readRepoFile('routes', 'warehouse.js');
     const warehousePage = readRepoFile('js', 'warehouse-page.js');
     const warehouseHtml = readRepoFile('warehouse.html');
+    const usersRoute = readRepoFile('routes', 'users.js');
+    const staffRoute = readRepoFile('routes', 'staff.js');
+    const employeesRoute = readRepoFile('routes', 'employees.js');
+    const hrPage = readRepoFile('js', 'hr-page.js');
+    const accountLinkingService = readRepoFile('services', 'accountLinking.js');
     const migration = readRepoFile('db', 'migrations', '177_backoffice_foundation_v1.sql');
     const warehouseMultiMigration = readRepoFile('db', 'migrations', '184_warehouse_multi_location_contractors.sql');
     const chatUniqueMigration = readRepoFile('db', 'migrations', '164_chat_channel_provisioning_unique.sql');
@@ -157,5 +162,38 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(warehouseMultiMigration, /CREATE TABLE IF NOT EXISTS warehouse_locations/);
         assert.match(warehouseMultiMigration, /CREATE TABLE IF NOT EXISTS warehouse_stock_movements/);
         assert.doesNotMatch(migration, /CREATE TABLE\s+(IF NOT EXISTS\s+)?warehouses\b/i);
+    });
+
+    it('routes account and staff binding through one safe linkage contract', () => {
+        assert.match(accountLinkingService, /async function linkUserToStaffProfile/);
+        assert.match(accountLinkingService, /async function unlinkStaffAccount/);
+        assert.match(accountLinkingService, /async function unlinkUserFromStaffProfiles/);
+        assert.match(accountLinkingService, /function oneTimeCredential/);
+        assert.match(accountLinkingService, /async function getAccountLinkConflicts/);
+        assert.match(accountLinkingService, /staff_already_linked/);
+
+        assert.match(usersRoute, /router\.get\('\/link-conflicts'/);
+        assert.match(usersRoute, /linkUserToStaffProfile/);
+        assert.match(usersRoute, /unlinkUserFromStaffProfiles/);
+        assert.match(usersRoute, /password_one_time_reissued/);
+        assert.match(usersRoute, /credential:\s*issueOneTime \?/);
+
+        assert.match(staffRoute, /staff_overlay_account_linked/);
+        assert.match(staffRoute, /bulk_account_created_with_staff_link/);
+        assert.match(staffRoute, /credentialsPolicy/);
+        assert.match(staffRoute, /router\.post\('\/bulk-pdf'[\s\S]*res\.status\(410\)/);
+        assert.match(staffRoute, /function staffRoleToAccountRole/);
+
+        assert.match(employeesRoute, /employee_profile_account_linked/);
+        assert.match(employeesRoute, /employee_profile_account_unlinked/);
+
+        assert.match(hrPage, /function renderAccountConflictSummary/);
+        assert.match(hrPage, /openAccountCreateForStaff/);
+        assert.match(hrPage, /openAccountLinkForStaff/);
+        assert.match(hrPage, /showOneTimeCredentialModal/);
+        assert.match(staffPage, /createAccountForLinkingStaff/);
+        assert.match(staffPage, /data-linked-user/);
+        assert.match(staffHtml, /linkCreateAccountBtn/);
+        assert.match(staffHtml, /bulkCsvBtn" class="btn-page-secondary hidden/);
     });
 });

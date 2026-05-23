@@ -8,6 +8,13 @@ const { pool } = require('../db');
 const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS, revokeAllUserTokens } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const {
+    linkUserToStaffProfile,
+    unlinkUserFromStaffProfiles,
+    getAccountLinkConflicts,
+    generateOneTimePassword,
+    oneTimeCredential
+} = require('../services/accountLinking');
 
 const log = createLogger('Users');
 
@@ -36,67 +43,6 @@ function normalizeStaffId(value) {
     if (value === null || value === undefined || value === '') return null;
     const parsed = parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : NaN;
-}
-
-async function syncUserStaffProfile(client, userId, staffId) {
-    await client.query(
-        'UPDATE employee_profiles SET user_id = NULL WHERE user_id = $1 AND ($2::int IS NULL OR staff_id <> $2)',
-        [userId, staffId]
-    );
-
-    if (!staffId) return null;
-
-    const staff = await client.query(
-        `SELECT id, name, department, position, role_type, phone
-         FROM staff
-         WHERE id = $1 AND COALESCE(is_active, true) = true`,
-        [staffId]
-    );
-    if (staff.rows.length === 0) {
-        const err = new Error('Staff-профіль не знайдено або він неактивний');
-        err.statusCode = 404;
-        throw err;
-    }
-
-    const occupied = await client.query(
-        `SELECT ep.user_id, u.username
-         FROM employee_profiles ep
-         LEFT JOIN users u ON u.id = ep.user_id
-         WHERE ep.staff_id = $1
-           AND ep.user_id IS NOT NULL
-           AND ep.user_id <> $2
-         LIMIT 1`,
-        [staffId, userId]
-    );
-    if (occupied.rows.length) {
-        const err = new Error(`Staff-профіль уже привʼязаний до ${occupied.rows[0].username || 'іншого акаунта'}`);
-        err.statusCode = 409;
-        throw err;
-    }
-
-    const profile = await client.query('SELECT id FROM employee_profiles WHERE staff_id = $1 FOR UPDATE', [staffId]);
-    const row = staff.rows[0];
-    if (profile.rows.length) {
-        await client.query(
-            `UPDATE employee_profiles
-             SET user_id = $1,
-                 full_name = COALESCE(NULLIF(full_name, ''), $2),
-                 department = COALESCE(department, $3),
-                 role = COALESCE(role, $4, 'employee'),
-                 phone = COALESCE(phone, $5),
-                 is_active = true
-             WHERE staff_id = $6`,
-            [userId, row.name, row.department, row.role_type, row.phone, staffId]
-        );
-    } else {
-        await client.query(
-            `INSERT INTO employee_profiles (user_id, staff_id, full_name, phone, role, department, is_active)
-             VALUES ($1, $2, $3, $4, $5, $6, true)`,
-            [userId, staffId, row.name, row.phone || null, row.role_type || 'employee', row.department || null]
-        );
-    }
-
-    return row;
 }
 
 // GET /api/users — list all users for account management (creator/director/hr)
@@ -159,6 +105,25 @@ router.get('/staff-options', requireRole('creator', 'director'), async (req, res
     }
 });
 
+// GET /api/users/link-conflicts — account/person/staff linkage health summary
+router.get('/link-conflicts', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+    try {
+        const result = await getAccountLinkConflicts({ limit: req.query.limit || 25 });
+        res.json({
+            success: true,
+            ...result,
+            canonical: {
+                accountTruth: 'users',
+                bridgeTruth: 'employee_profiles',
+                staffTruth: 'staff'
+            }
+        });
+    } catch (err) {
+        log.error('Account link conflict report error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // PATCH /api/users/:id/profile — edit account identity and HR staff binding
 router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res) => {
     const client = await pool.connect();
@@ -211,7 +176,22 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
             [username, String(name).trim(), parseInt(id, 10)]
         );
 
-        const staff = await syncUserStaffProfile(client, parseInt(id, 10), staffId);
+        const staffLink = staffId
+            ? await linkUserToStaffProfile(client, {
+                userId: parseInt(id, 10),
+                staffId,
+                actor: req.user,
+                req,
+                eventType: 'account_profile_staff_linked',
+                details: { source: 'users_profile_editor' }
+            })
+            : await unlinkUserFromStaffProfiles(client, {
+                userId: parseInt(id, 10),
+                actor: req.user,
+                req,
+                eventType: 'account_profile_staff_unlinked',
+                details: { source: 'users_profile_editor' }
+            });
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
@@ -227,7 +207,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
         await client.query('COMMIT');
 
         log.info(`User ${req.user.username} updated account profile for ${target.rows[0].username}`);
-        res.json({ success: true, user: updated.rows[0], staff });
+        res.json({ success: true, user: updated.rows[0], staff: staffLink?.staff || null, link: staffLink || null });
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         log.error('Update account profile error', err);
@@ -299,8 +279,13 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
     try {
         const { id } = req.params;
         const { newPassword } = req.body;
+        const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true;
 
-        if (!newPassword || newPassword.length < 6) {
+        if (!newPassword && !issueOneTime) {
+            return res.status(400).json({ error: 'Потрібен новий пароль або one-time reissue' });
+        }
+        const finalPassword = issueOneTime ? generateOneTimePassword() : String(newPassword || '');
+        if (finalPassword.length < 6) {
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }
 
@@ -310,7 +295,7 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
 
-        const hash = await bcrypt.hash(newPassword, 10);
+        const hash = await bcrypt.hash(finalPassword, 10);
         await pool.query(
             `UPDATE users
              SET password_hash = $1,
@@ -323,14 +308,18 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
-            eventType: 'password_reset_by_admin',
+            eventType: issueOneTime ? 'password_one_time_reissued' : 'password_reset_by_admin',
             reason: 'account_management',
-            details: { sessionsRevoked: true },
+            details: { sessionsRevoked: true, oneTimeIssued: issueOneTime },
             req
         });
 
         log.info(`User ${req.user.username} reset password for ${target.rows[0].username}`);
-        res.json({ success: true, username: target.rows[0].username });
+        res.json({
+            success: true,
+            username: target.rows[0].username,
+            credential: issueOneTime ? oneTimeCredential(target.rows[0].username, finalPassword, 'password_reissue') : null
+        });
     } catch (err) {
         log.error('Reset password error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -386,16 +375,18 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { password, name, role, extraRoles, pageAllowlist } = req.body;
+        const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true || !password;
         const username = normalizeUsername(req.body.username);
         const staffId = normalizeStaffId(req.body.staffId);
 
-        if (!username || !password || !name) {
-            return res.status(400).json({ error: 'username, password, name обов\'язкові' });
+        if (!username || !name) {
+            return res.status(400).json({ error: 'username та name обов\'язкові' });
         }
         if (username.length < 3 || username.length > 50 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
             return res.status(400).json({ error: 'Логін має містити 3-50 символів: латиниця, цифри, крапка, дефіс або підкреслення' });
         }
-        if (password.length < 6) {
+        const finalPassword = issueOneTime ? generateOneTimePassword() : String(password || '');
+        if (finalPassword.length < 6) {
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }
         if (Number.isNaN(staffId)) {
@@ -424,21 +415,28 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
         }
 
         await client.query('BEGIN');
-        const hash = await bcrypt.hash(password, 10);
+        const hash = await bcrypt.hash(finalPassword, 10);
         const result = await client.query(
             'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist',
             [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
         );
 
         if (staffId) {
-            await syncUserStaffProfile(client, result.rows[0].id, staffId);
+            await linkUserToStaffProfile(client, {
+                userId: result.rows[0].id,
+                staffId,
+                actor: req.user,
+                req,
+                eventType: 'account_created_with_staff_link',
+                details: { source: 'users_create', oneTimeIssued: issueOneTime }
+            });
         }
         await recordAccountSecurityEvent({
             actor: req.user,
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId, oneTimeIssued: issueOneTime },
             req,
             client
         });
@@ -460,7 +458,11 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
             }
         } catch (e) { /* non-critical */ }
 
-        res.json({ success: true, user: result.rows[0] });
+        res.json({
+            success: true,
+            user: result.rows[0],
+            credential: issueOneTime ? oneTimeCredential(result.rows[0].username, finalPassword, 'account_create') : null
+        });
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         log.error('Create user error', err);

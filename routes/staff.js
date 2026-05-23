@@ -36,6 +36,16 @@ const router = express.Router();
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
+const bcrypt = require('bcryptjs');
+const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const {
+    linkUserToStaffProfile,
+    unlinkStaffAccount,
+    generateOneTimePassword,
+    oneTimeCredential,
+    suggestUsernameForStaff,
+    uniqueUsername
+} = require('../services/accountLinking');
 
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Staff');
@@ -602,33 +612,26 @@ const EXCEL_TO_CRM_ROLE = {
     'Хозяюшки залу': { dept: 'cleaning', role: 'cleaning' }
 };
 
-function transliterate(name) {
-    const map = {
-        'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye',
-        'ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l',
-        'м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u',
-        'ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'',
-        'ю':'yu','я':'ya','ъ':'','э':'e','ы':'y'
+function staffRoleToAccountRole(roleType) {
+    const role = String(roleType || '').trim();
+    const aliases = {
+        trampoline_instructor: 'instructor',
+        cleaner: 'cleaning',
+        technician: 'maintenance',
+        head_cook: 'head_chef',
+        bartender: 'barista',
+        hr_manager: 'hr',
+        host: 'animator',
+        intern: 'animator'
     };
-    return name.toLowerCase().split('').map(c => map[c] || c).join('')
-        .replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
-}
-
-function generateUsername(fullName) {
-    const parts = fullName.trim().split(/\s+/);
-    if (parts.length >= 2) {
-        return transliterate(parts[1]) + '.' + transliterate(parts[0].charAt(0));
-    }
-    return transliterate(parts[0]);
-}
-
-function generatePassword(length = 8) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    let pwd = '';
-    for (let i = 0; i < length; i++) {
-        pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return pwd;
+    const mapped = aliases[role] || role;
+    return [
+        'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
+        'security', 'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook',
+        'head_chef', 'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
+        'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
+        'vice_director', 'director'
+    ].includes(mapped) ? mapped : 'animator';
 }
 
 // GET /api/staff/link-status — account linking status for all active staff
@@ -658,64 +661,62 @@ router.get('/link-status', async (req, res) => {
     }
 });
 
-// POST /api/staff/:id/link — link staff record to existing user account
+// POST /api/staff/:id/link — thin adapter over canonical employee_profiles bridge
 router.post('/:id/link', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const staffId = parseInt(req.params.id);
-        const { userId } = req.body;
-        if (!userId) return res.status(400).json({ success: false, error: 'userId обов\'язковий' });
+        await client.query('BEGIN');
+        const link = await linkUserToStaffProfile(client, {
+            staffId: req.params.id,
+            userId: req.body.userId,
+            actor: req.user,
+            req,
+            eventType: 'staff_overlay_account_linked',
+            details: { source: 'staff_schedule_overlay' }
+        });
+        await client.query('COMMIT');
 
-        // Check if user is already linked to another staff
-        const existing = await pool.query(
-            'SELECT ep.id, ep.staff_id, s.name FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id WHERE ep.user_id = $1 AND ep.is_active = true',
-            [userId]
-        );
-        if (existing.rows.length > 0) {
-            return res.json({
-                success: false,
-                warning: true,
-                error: `Цей акаунт вже зв'язаний з: ${existing.rows[0].name} (staff #${existing.rows[0].staff_id})`
-            });
-        }
-
-        // Get staff info
-        const staff = await pool.query('SELECT * FROM staff WHERE id = $1', [staffId]);
-        if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Staff не знайдено' });
-        const s = staff.rows[0];
-
-        // Check if profile exists for this staff
-        const profile = await pool.query('SELECT * FROM employee_profiles WHERE staff_id = $1', [staffId]);
-        if (profile.rows.length > 0) {
-            await pool.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, staffId]);
-        } else {
-            await pool.query(
-                'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
-                [staffId, userId, s.name, s.department, s.role_type || 'employee']
-            );
-        }
-
-        log.info(`Staff #${staffId} (${s.name}) linked to user #${userId}`);
-        res.json({ success: true });
+        log.info(`Staff #${link.staff.id} (${link.staff.name}) linked to user #${link.user.id}`);
+        res.json({ success: true, link });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('POST /staff/:id/link error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        const status = err.statusCode || 500;
+        res.status(status).json({
+            success: false,
+            warning: status === 409,
+            error: err.statusCode ? err.message : 'Помилка сервера',
+            conflict: err.details || null
+        });
+    } finally {
+        client.release();
     }
 });
 
 // POST /api/staff/:id/unlink — unlink staff from user account
 router.post('/:id/unlink', requireRole('creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const staffId = parseInt(req.params.id);
-        await pool.query('UPDATE employee_profiles SET user_id = NULL WHERE staff_id = $1', [staffId]);
-        res.json({ success: true });
+        await client.query('BEGIN');
+        const result = await unlinkStaffAccount(client, {
+            staffId: req.params.id,
+            actor: req.user,
+            req,
+            eventType: 'staff_overlay_account_unlinked',
+            details: { source: 'staff_schedule_overlay' }
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, result });
     } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
         log.error('POST /staff/:id/unlink error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
-// POST /api/staff/bulk-create-accounts — create user accounts for all unlinked staff
-const bcrypt = require('bcryptjs');
+// POST /api/staff/bulk-create-accounts — create one-time credential packets for unlinked staff
 router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (req, res) => {
     const client = await pool.connect();
     try {
@@ -738,63 +739,62 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
             // Skip duplicates (same person in multiple departments)
             const personKey = staff.unique_person_key?.replace(/\.\w+$/, ''); // strip .mgr suffix
             if (personKey && seenPersonKeys.has(personKey)) {
-                skipped.push({ name: staff.name, reason: 'Дубль (вже створено для іншого відділу)' });
+                skipped.push({ staffId: staff.id, name: staff.name, reason: 'duplicate_person_key', label: 'Дубль: акаунт створюється тільки для основного staff-профілю' });
                 continue;
             }
             if (personKey) seenPersonKeys.add(personKey);
 
-            let username = generateUsername(staff.name);
-            // Ensure unique username
-            const existingUser = await client.query('SELECT id FROM users WHERE username = $1', [username]);
-            if (existingUser.rows.length > 0) {
-                username = username + '.' + staff.id;
-            }
-
-            const password = generatePassword();
+            const username = await uniqueUsername(client, suggestUsernameForStaff(staff));
+            const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
-            const role = staff.role_type || 'user';
+            const role = staffRoleToAccountRole(staff.role_type);
 
             const userResult = await client.query(
-                'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) RETURNING id',
+                'INSERT INTO users (username, password_hash, role, name, password_changed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username, name, role',
                 [username, passwordHash, role, staff.name]
             );
-            const userId = userResult.rows[0].id;
 
-            // Create/update employee profile
-            const profile = await client.query('SELECT id FROM employee_profiles WHERE staff_id = $1', [staff.id]);
-            if (profile.rows.length > 0) {
-                await client.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, staff.id]);
-            } else {
-                await client.query(
-                    'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
-                    [staff.id, userId, staff.name, staff.department, role]
-                );
-            }
+            await linkUserToStaffProfile(client, {
+                userId: userResult.rows[0].id,
+                staffId: staff.id,
+                actor: req.user,
+                req,
+                eventType: 'bulk_account_created_with_staff_link',
+                details: { source: 'staff_bulk_create', oneTimeIssued: true }
+            });
+            await recordAccountSecurityEvent({
+                actor: req.user,
+                target: userResult.rows[0],
+                eventType: 'account_created',
+                reason: 'staff_bulk_create',
+                details: { role, staffId: staff.id, oneTimeIssued: true },
+                req,
+                client
+            });
 
-            // Also link duplicate staff entries (same person, different dept)
-            if (personKey) {
-                const dupes = unlinked.rows.filter(r =>
-                    r.id !== staff.id && r.unique_person_key?.replace(/\.\w+$/, '') === personKey
-                );
-                for (const dupe of dupes) {
-                    const dupeProfile = await client.query('SELECT id FROM employee_profiles WHERE staff_id = $1', [dupe.id]);
-                    if (dupeProfile.rows.length > 0) {
-                        await client.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, dupe.id]);
-                    } else {
-                        await client.query(
-                            'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
-                            [dupe.id, userId, dupe.name, dupe.department, dupe.role_type || 'employee']
-                        );
-                    }
-                }
-            }
-
-            created.push({ staffId: staff.id, name: staff.name, username, password, role, department: staff.department });
+            created.push({
+                staffId: staff.id,
+                name: staff.name,
+                username,
+                role,
+                department: staff.department,
+                credential: oneTimeCredential(username, password, 'staff_bulk_create')
+            });
         }
 
         await client.query('COMMIT');
         log.info(`Bulk create: ${created.length} accounts created, ${skipped.length} skipped`);
-        res.json({ success: true, created, skipped });
+        res.json({
+            success: true,
+            created,
+            skipped,
+            credentialsPolicy: {
+                oneTimeVisible: true,
+                oldPasswordsReadable: false,
+                csvExport: false,
+                pdfExport: false
+            }
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         log.error('POST /staff/bulk-create-accounts error', err);
@@ -806,62 +806,10 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
 
 // POST /api/staff/bulk-pdf — generate PDF with credentials
 router.post('/bulk-pdf', requireRole('creator', 'director'), async (req, res) => {
-    try {
-        const { accounts } = req.body;
-        if (!accounts || !accounts.length) return res.status(400).json({ error: 'No accounts data' });
-
-        const PDFDocument = require('pdfkit');
-        const doc = new PDFDocument({ size: 'A4', margin: 40 });
-        const chunks = [];
-        doc.on('data', c => chunks.push(c));
-        doc.on('end', () => {
-            const pdf = Buffer.concat(chunks);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', 'attachment; filename=crm-accounts.pdf');
-            res.send(pdf);
-        });
-
-        // Header
-        doc.fontSize(20).font('Helvetica-Bold').text('Event Genix CRM', { align: 'center' });
-        doc.fontSize(12).font('Helvetica').text('Loginy ta paroli spivrobitnykiv', { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(9).fillColor('#888').text(`Zgenerovano: ${new Date().toLocaleDateString('uk-UA')} | Kilkist: ${accounts.length}`, { align: 'center' });
-        doc.moveDown(1);
-
-        // Table header
-        const startX = 40;
-        const colWidths = [30, 160, 110, 100, 110];
-        const headers = ['#', 'PIB', 'Login', 'Parol', 'Rol'];
-        doc.fillColor('#fff').rect(startX, doc.y, 515, 22).fill('#4338ca');
-        let hY = doc.y + 6;
-        let hX = startX + 6;
-        doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
-        headers.forEach((h, i) => { doc.text(h, hX, hY, { width: colWidths[i], align: 'left' }); hX += colWidths[i]; });
-        doc.y += 22;
-
-        // Rows
-        doc.font('Helvetica').fontSize(9).fillColor('#1a1a2e');
-        accounts.forEach((a, idx) => {
-            if (doc.y > 750) { doc.addPage(); doc.y = 40; }
-            const rowY = doc.y;
-            const bg = idx % 2 === 0 ? '#f8f7fc' : '#fff';
-            doc.fillColor(bg).rect(startX, rowY, 515, 20).fill(bg);
-            doc.fillColor('#1a1a2e');
-            let rX = startX + 6;
-            const vals = [String(idx + 1), a.name || '', a.username || '', a.password || '', a.role || ''];
-            vals.forEach((v, i) => { doc.text(v, rX, rowY + 5, { width: colWidths[i], align: 'left' }); rX += colWidths[i]; });
-            doc.y = rowY + 20;
-        });
-
-        // Footer
-        doc.moveDown(2);
-        doc.fontSize(8).fillColor('#999').text('Konfidentsiino. Pislia rozdachi — zminity paroli.', { align: 'center' });
-
-        doc.end();
-    } catch (err) {
-        log.error('bulk-pdf error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    res.status(410).json({
+        success: false,
+        error: 'PDF/CSV експорт одноразових паролів вимкнено. Скопіюйте one-time credentials із захищеного результату створення.'
+    });
 });
 
 // POST /api/staff/import-excel — import staff from Excel file

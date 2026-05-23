@@ -496,6 +496,15 @@ function renderSchedule() {
             openLinkModal(parseInt(badge.dataset.linkStaff));
         });
     });
+    tbody.querySelectorAll('.link-badge.linked').forEach(badge => {
+        badge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const userId = parseInt(badge.dataset.linkedUser, 10);
+            if (Number.isFinite(userId)) {
+                window.location.href = `/hr?tab=accounts&accountUser=${encodeURIComponent(userId)}`;
+            }
+        });
+    });
 
     // Employee profile click handlers: the name/avatar area opens the HR profile,
     // while date cells keep opening shift editing and account badges keep linking accounts.
@@ -965,6 +974,56 @@ async function fetchAllUsers() {
     }
 }
 
+function getCredentialPassword(credential) {
+    return credential?.password || credential?.oneTimePassword || '';
+}
+
+function showOneTimeCredential(credential, title = 'One-time credentials') {
+    if (!credential) return;
+    const text = `Логін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
+    if (typeof confirmModal === 'function') {
+        confirmModal(`${title}\n\n${text}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
+            type: 'warning',
+            okText: 'Скопіювати',
+            cancelText: 'Закрити'
+        }).then(ok => {
+            if (ok && navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => showNotification('One-time credentials скопійовано', 'success'));
+            }
+        });
+        return;
+    }
+    window.alert(`${title}\n\n${text}`);
+}
+
+function suggestUsernameFromStaffInfo(info = {}) {
+    const key = String(info.unique_person_key || '').replace(/\.\w+$/, '');
+    const raw = key || info.name || `staff.${info.id || ''}`;
+    const normalized = raw
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '.')
+        .replace(/\.+/g, '.')
+        .replace(/^\.+|\.+$/g, '');
+    return normalized || `staff.${info.id || Date.now()}`;
+}
+
+function getStaffAccountRole(info = {}) {
+    const role = String(info.role_type || '').trim();
+    const aliases = {
+        trampoline_instructor: 'instructor',
+        cleaner: 'cleaning',
+        technician: 'maintenance',
+        head_cook: 'head_chef',
+        bartender: 'barista',
+        hr_manager: 'hr',
+        host: 'animator',
+        intern: 'animator'
+    };
+    const mapped = aliases[role] || role;
+    const allowed = new Set(['animator', 'instructor', 'manager', 'hr', 'admin', 'cook', 'barista', 'waiter', 'maintenance', 'cleaning']);
+    return allowed.has(mapped) ? mapped : 'animator';
+}
+
 function getLinkInfo(staffId) {
     return StaffState.linkData.find(r => r.id === staffId);
 }
@@ -1017,7 +1076,7 @@ function renderLinkBadge(emp) {
         return '<span class="link-badge freelance-badge" title="Фріланс-слот">~</span>';
     }
     if (info.user_id) {
-        return `<span class="link-badge linked" title="Акаунт: ${escapeHtml(info.username)} (${escapeHtml(info.user_role)})">✅ ${escapeHtml(info.username)}</span>`;
+        return `<span class="link-badge linked" title="Акаунт: ${escapeHtml(info.username)} (${escapeHtml(info.user_role)}) — натисніть для керування" data-linked-user="${Number(info.user_id)}">✅ ${escapeHtml(info.username)}</span>`;
     }
     return `<span class="link-badge unlinked" title="Немає акаунту — натисніть для зв'язки" data-link-staff="${emp.id}">⚠️ Зв'язати</span>`;
 }
@@ -1122,19 +1181,86 @@ async function confirmLinkAccount() {
         });
         const data = await res.json();
 
-        if (data.warning) {
-            if (!await confirmModal(data.error + '\n\nПродовжити?', { type: 'warning', okText: 'Так' })) return;
-        }
-
         if (data.success) {
             showNotification('Акаунт зв\'язано');
             closeLinkModal();
             await fetchLinkStatus();
             renderLinkStatsBar();
             renderSchedule();
-        } else if (!data.warning) {
+        } else {
             showNotification(data.error || 'Помилка зв\'язування', 'error');
         }
+    } catch (err) {
+        showNotification('Помилка мережі', 'error');
+    }
+}
+
+async function createAccountForLinkingStaff() {
+    const info = getLinkInfo(StaffState.linkingStaffId);
+    if (!info || typeof formModal !== 'function') return;
+    const result = await formModal(`Створити акаунт · ${info.name}`, [
+        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: info.name || '' },
+        { key: 'username', label: 'Логін', required: true, defaultValue: suggestUsernameFromStaffInfo(info) },
+        { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
+        { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
+        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: getStaffAccountRole(info), options: [
+            { value: 'animator', label: 'Аніматор' },
+            { value: 'instructor', label: 'Інструктор' },
+            { value: 'manager', label: 'Менеджер' },
+            { value: 'hr', label: 'HR' },
+            { value: 'admin', label: 'Адмін' },
+            { value: 'cook', label: 'Повар' },
+            { value: 'barista', label: 'Бармен' },
+            { value: 'waiter', label: 'Офіціант' },
+            { value: 'maintenance', label: 'Технік' },
+            { value: 'cleaning', label: 'Клінінг' }
+        ] }
+    ], {
+        icon: '👤',
+        type: 'info',
+        okText: 'Створити',
+        className: 'staff-account-create-modal'
+    });
+    if (!result) return;
+    const password = String(result.password || '');
+    const issueOneTime = !password;
+    if (password && password.length < 6) {
+        showNotification('Пароль має бути не менше 6 символів', 'error');
+        return;
+    }
+    if (password && password !== String(result.confirmPassword || '')) {
+        showNotification('Паролі не збігаються', 'error');
+        return;
+    }
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: String(result.username || '').trim(),
+                password: issueOneTime ? undefined : password,
+                issueOneTime,
+                name: String(result.name || '').trim(),
+                role: result.role || 'animator',
+                staffId: info.id
+            })
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showNotification(data.error || 'Не вдалося створити акаунт', 'error');
+            return;
+        }
+        closeLinkModal();
+        if (data.credential) {
+            showOneTimeCredential(data.credential, `Акаунт ${data.user?.username || result.username} створено`);
+        } else {
+            showNotification(`Акаунт ${data.user?.username || result.username} створено`, 'success');
+        }
+        await fetchAllUsers();
+        await fetchLinkStatus();
+        renderLinkStatsBar();
+        renderSchedule();
     } catch (err) {
         showNotification('Помилка мережі', 'error');
     }
@@ -1148,7 +1274,7 @@ async function handleBulkCreate() {
         return;
     }
 
-    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників без акаунтів?\n\nБуде згенеровано логіни та паролі.`, { type: 'warning', okText: 'Створити' })) return;
+    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників без акаунтів?\n\nCRM покаже одноразові логіни і паролі тільки в цьому вікні. CSV/PDF експорт паролів вимкнено.`, { type: 'warning', okText: 'Створити' })) return;
 
     showNotification('Створюємо акаунти...');
     try {
@@ -1175,26 +1301,32 @@ async function handleBulkCreate() {
 
 function showBulkResults(data) {
     const body = document.getElementById('bulkResultsBody');
-    let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${data.created.length} акаунтів</p>`;
+    const created = Array.isArray(data.created) ? data.created : [];
+    const skipped = Array.isArray(data.skipped) ? data.skipped : [];
+    let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${created.length} акаунтів</p>`;
+    html += '<p style="margin:0 0 8px;font-size:12px;color:var(--warning,#f59e0b)">Паролі показані один раз. CSV/PDF експорт паролів вимкнено.</p>';
 
-    if (data.skipped.length > 0) {
-        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${data.skipped.length} (дублі)</p>`;
+    if (skipped.length > 0) {
+        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${skipped.length} (дублі або вже привʼязані)</p>`;
     }
 
     html += `<table class="bulk-results-table">
         <thead><tr><th>Ім'я</th><th>Логін</th><th>Пароль</th><th>Роль</th></tr></thead>
         <tbody>`;
 
-    for (const c of data.created) {
+    for (const c of created) {
+        const password = getCredentialPassword(c.credential) || c.password || '';
         html += `<tr>
             <td style="font-family:inherit;font-weight:600">${escapeHtml(c.name)}</td>
             <td>${escapeHtml(c.username)}</td>
-            <td>${escapeHtml(c.password)}</td>
+            <td>${escapeHtml(password)}</td>
             <td>${escapeHtml(c.role)}</td>
         </tr>`;
     }
     html += '</tbody></table>';
     body.innerHTML = html;
+    document.getElementById('bulkCsvBtn')?.classList.add('hidden');
+    document.getElementById('bulkPdfBtn')?.classList.add('hidden');
     document.getElementById('bulkResultsOverlay')?.classList.add('visible');
 }
 
@@ -1205,8 +1337,8 @@ function closeBulkResults() {
 function copyBulkResults() {
     if (!StaffState.bulkResults) return;
     const lines = ['Ім\'я\tЛогін\tПароль\tРоль'];
-    for (const c of StaffState.bulkResults.created) {
-        lines.push(`${c.name}\t${c.username}\t${c.password}\t${c.role}`);
+    for (const c of (StaffState.bulkResults.created || [])) {
+        lines.push(`${c.name}\t${c.username}\t${getCredentialPassword(c.credential) || c.password || ''}\t${c.role}`);
     }
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
         showNotification('Скопійовано в буфер обміну');
@@ -1214,39 +1346,11 @@ function copyBulkResults() {
 }
 
 function downloadBulkCsv() {
-    if (!StaffState.bulkResults) return;
-    const lines = ['Ім\'я,Логін,Пароль,Роль,Відділ'];
-    for (const c of StaffState.bulkResults.created) {
-        lines.push(`"${c.name}","${c.username}","${c.password}","${c.role}","${c.department}"`);
-    }
-    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `accounts_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    showNotification('CSV експорт паролів вимкнено: one-time credentials можна тільки скопіювати зараз.', 'warning');
 }
 
-// v39.9: PDF download of credentials
 async function downloadBulkPdf() {
-    if (!StaffState.bulkResults?.created?.length) return;
-    try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/staff/bulk-pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ accounts: StaffState.bulkResults.created })
-        });
-        if (!res.ok) { if (typeof showNotification === 'function') showNotification('Помилка генерації PDF', 'error'); return; }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `accounts_${new Date().toISOString().slice(0, 10)}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-    } catch { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
+    showNotification('PDF експорт паролів вимкнено: one-time credentials можна тільки скопіювати зараз.', 'warning');
 }
 
 // Excel import
@@ -1503,6 +1607,7 @@ async function initPage() {
 
     // Link modal
     document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);
+    document.getElementById('linkCreateAccountBtn')?.addEventListener('click', createAccountForLinkingStaff);
     document.getElementById('linkCancelBtn')?.addEventListener('click', closeLinkModal);
     document.getElementById('linkSearchInput')?.addEventListener('input', (e) => {
         renderLinkUsersList(e.target.value);

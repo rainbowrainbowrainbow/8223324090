@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.17">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.17">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.17">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.17">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.17">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.17">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.17">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.17">
+    <link rel="stylesheet" href="css/base.css?v=0.62.18">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.18">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.18">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.18">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.18">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.18">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.18">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.18">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1451,6 +1451,7 @@
             <div id="linkUsersList" style="max-height:240px;overflow-y:auto;margin:8px 0;border:1px solid var(--gray-200);border-radius:var(--radius-sm)"></div>
             <div class="modal-actions">
                 <button type="button" id="linkConfirmBtn" class="btn-page-primary" style="flex:1" disabled>Зв'язати</button>
+                <button type="button" id="linkCreateAccountBtn" class="btn-page-secondary" style="flex:1">Створити акаунт</button>
                 <button type="button" id="linkCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
         </div>
@@ -1463,8 +1464,8 @@
             <div id="bulkResultsBody"></div>
             <div class="modal-actions" style="margin-top:12px">
                 <button type="button" id="bulkCopyBtn" class="btn-page-secondary" style="flex:1">📋 Копіювати</button>
-                <button type="button" id="bulkCsvBtn" class="btn-page-secondary" style="flex:1">📥 CSV</button>
-                <button type="button" id="bulkPdfBtn" class="btn-page-secondary" style="flex:1">📄 PDF</button>
+                <button type="button" id="bulkCsvBtn" class="btn-page-secondary hidden" style="flex:1">📥 CSV</button>
+                <button type="button" id="bulkPdfBtn" class="btn-page-secondary hidden" style="flex:1">📄 PDF</button>
                 <button type="button" id="bulkCloseBtn" class="btn-page-primary" style="flex:1">Закрити</button>
             </div>
         </div>
@@ -1485,13 +1486,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.62.17"></script>
-    <script src="js/config.js?v=0.62.17"></script>
-    <script src="js/notification.js?v=0.62.17"></script>
-    <script src="js/api.js?v=0.62.17"></script>
-    <script src="js/auth.js?v=0.62.17"></script>
-    <script src="js/components/sidebar.js?v=0.62.17"></script>
+    <script src="js/ui.js?v=0.62.18"></script>
+    <script src="js/config.js?v=0.62.18"></script>
+    <script src="js/notification.js?v=0.62.18"></script>
+    <script src="js/api.js?v=0.62.18"></script>
+    <script src="js/auth.js?v=0.62.18"></script>
+    <script src="js/components/sidebar.js?v=0.62.18"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.62.17"></script><script src="js/alerts.js?v=0.62.17"></script>
+    <script src="js/staff-page.js?v=0.62.18"></script><script src="js/alerts.js?v=0.62.18"></script>
 </body>
 </html>

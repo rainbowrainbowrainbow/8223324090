@@ -75,6 +75,9 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(customersRoute, /function omitCustomerSocialIdentities/);
         assert.match(customersRoute, /retrying legacy customer insert/);
         assert.match(customersRoute, /retrying legacy payload/);
+        assert.match(customersRoute, /function isCustomerDuplicateError/);
+        assert.match(customersRoute, /status\(409\)/);
+        assert.match(customersRoute, /customer_duplicate/);
         assert.match(customersRoute, /Соц\. ідентичності/);
         assert.match(customersPage, /function parseSocialIdentitiesInput/);
         assert.match(customersPage, /renderSocialIdentities/);

@@ -2491,6 +2491,92 @@ body.dark-mode .login-form input::placeholder {
     color: var(--text-muted);
 }
 
+/* v0.61.56: global search must stay readable when the shared dark stylesheet wins. */
+body.dark-mode .search-overlay,
+html[data-theme="dark"] .search-overlay {
+    background: rgba(2, 6, 23, 0.72);
+}
+
+body.dark-mode .search-container,
+html[data-theme="dark"] .search-container {
+    border-color: rgba(94, 234, 212, 0.24);
+    background:
+        radial-gradient(320px 140px at 8% 0%, rgba(34, 211, 160, 0.13), transparent 70%),
+        #101827;
+    color: #E2E8F0;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.dark-mode .search-header,
+body.dark-mode .search-footer,
+html[data-theme="dark"] .search-header,
+html[data-theme="dark"] .search-footer {
+    border-color: rgba(148, 163, 184, 0.16);
+}
+
+body.dark-mode .search-header-icon,
+html[data-theme="dark"] .search-header-icon {
+    background: rgba(34, 211, 160, 0.16);
+    color: #5EEAD4;
+}
+
+body.dark-mode .search-input,
+body.dark-mode .search-result-title,
+html[data-theme="dark"] .search-input,
+html[data-theme="dark"] .search-result-title {
+    color: #F8FAFC;
+    opacity: 1;
+}
+
+body.dark-mode .search-input::placeholder,
+body.dark-mode .search-hint,
+body.dark-mode .search-empty,
+body.dark-mode .search-result-subtitle,
+body.dark-mode .search-footer,
+html[data-theme="dark"] .search-input::placeholder,
+html[data-theme="dark"] .search-hint,
+html[data-theme="dark"] .search-empty,
+html[data-theme="dark"] .search-result-subtitle,
+html[data-theme="dark"] .search-footer {
+    color: #CBD5E1;
+    opacity: 1;
+}
+
+body.dark-mode .search-group-label,
+html[data-theme="dark"] .search-group-label {
+    color: #94A3B8;
+}
+
+body.dark-mode .search-kbd,
+body.dark-mode .search-footer kbd,
+html[data-theme="dark"] .search-kbd,
+html[data-theme="dark"] .search-footer kbd {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(15, 23, 42, 0.62);
+    color: #CBD5E1;
+}
+
+body.dark-mode .search-result:hover,
+body.dark-mode .search-result--active,
+html[data-theme="dark"] .search-result:hover,
+html[data-theme="dark"] .search-result--active {
+    background: rgba(34, 211, 160, 0.11);
+}
+
+body.dark-mode .search-result-badge,
+html[data-theme="dark"] .search-result-badge {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.56);
+    color: #CBD5E1;
+    opacity: 1;
+}
+
+body.dark-mode .search-result-arrow,
+html[data-theme="dark"] .search-result-arrow {
+    color: #CBD5E1;
+    opacity: 1;
+}
+
 /* Status background CSS variables for dark mode */
 body.dark-mode {
     --status-confirmed-bg: rgba(16,185,129,0.15);

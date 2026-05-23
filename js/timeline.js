@@ -365,8 +365,8 @@ async function renderTimeline() {
 
     container.innerHTML = '';
 
-    // v8.6: Split afisha into unassigned (afisha line) and assigned (animator lines)
-    const allAfisha = afishaEvents || [];
+    // v0.61.56: contexts without Afisha must not render stale assigned Afisha blocks on staff lines.
+    const allAfisha = showAfisha ? (afishaEvents || []) : [];
     const unassignedAfisha = allAfisha.filter(ev => !ev.line_id);
     const assignedAfishaMap = {};
     allAfisha.filter(ev => ev.line_id).forEach(ev => {

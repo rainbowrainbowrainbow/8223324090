@@ -178,6 +178,25 @@ function isCustomerSocialIdentitiesStorageError(err) {
         && /(jsonb|json|type|cast|malformed|invalid input|schema cache|expression)/i.test(message);
 }
 
+function isCustomerDuplicateError(err) {
+    const message = [
+        err?.message,
+        err?.details,
+        err?.hint,
+        err?.code
+    ].filter(Boolean).join(' ');
+    return err?.code === '23505'
+        || /duplicate key|unique constraint|already exists|violates unique|duplicate value/i.test(message);
+}
+
+function sendCustomerDuplicateResponse(res) {
+    return res.status(409).json({
+        success: false,
+        code: 'customer_duplicate',
+        error: 'Клієнт з таким телефоном або Instagram вже існує'
+    });
+}
+
 function customerWritePayload(input, options = {}) {
     const payload = {
         business_context: input.businessContext || DEFAULT_BUSINESS_CONTEXT,
@@ -1526,6 +1545,7 @@ router.post('/', async (req, res) => {
                 log.warn('Supabase customers.social_identities unavailable during create; retrying legacy payload', { error: error.message });
                 ({ data, error } = await sb.from('customers').insert(omitCustomerSocialIdentities(payload)).select().single());
             }
+            if (error && isCustomerDuplicateError(error)) return sendCustomerDuplicateResponse(res);
             if (error) throw error;
             return res.json(mapCustomerRow(data));
         }
@@ -1533,6 +1553,7 @@ router.post('/', async (req, res) => {
         const result = await insertCustomerPg(input);
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {
+        if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
         log.error('Customer create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -1560,6 +1581,7 @@ router.put('/:id', async (req, res) => {
                 log.warn('Supabase customers.social_identities unavailable during update; retrying legacy payload', { error: error.message });
                 ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).eq('business_context', businessContext).select().single());
             }
+            if (error && isCustomerDuplicateError(error)) return sendCustomerDuplicateResponse(res);
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Клієнта не знайдено' });
             return res.json(mapCustomerRow(data));
@@ -1569,6 +1591,7 @@ router.put('/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {
+        if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
         log.error('Customer update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }

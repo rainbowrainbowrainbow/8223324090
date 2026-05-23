@@ -21,21 +21,21 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
 });
 
-test('Maysternya Doli access is creator or explicit page allowlist only', () => {
+test('Maysternya Doli access is creator-only', () => {
     assert.equal(canAccessTimelineContext({ role: 'creator' }, 'maysternya_doli'), true);
-    assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), true);
+    assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), false);
     assert.equal(canAccessTimelineContext({ role: 'manager' }, 'maysternya_doli'), false);
 });
 
-test('Maysternya Doli actions are role-scoped inside the allowed surface', () => {
+test('Maysternya Doli actions are creator-scoped inside the allowed surface', () => {
     const director = { role: 'director', pageAllowlist: ['/maysternya-doli'] };
     const managerWithExtraRole = { role: 'instructor', extraRoles: ['director'], pageAllowlist: ['/maysternya-doli'] };
     const creator = { role: 'creator' };
 
-    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), true);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), false);
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'delete'), false);
-    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), true);
-    assert.equal(canUseTimelineAction(managerWithExtraRole, 'maysternya_doli', 'edit'), true);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), false);
+    assert.equal(canUseTimelineAction(managerWithExtraRole, 'maysternya_doli', 'edit'), false);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'delete'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'sales'), false);
     assert.equal(canUseTimelineAction({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli', 'settings'), false);

@@ -552,7 +552,7 @@ const ROLE_SHELL_CONFIG = {
     creator: {
         startPage: '/dashboard',
         dashboardPreset: 'creator',
-        quickAccess: ['/dashboard', '/maysternya-doli', '/certificates/new', '/center', '/tasks', '/chat']
+        quickAccess: ['/dashboard', '/', '/certificates/new', '/center', '/tasks', '/chat']
     },
     director: {
         startPage: '/dashboard',
@@ -883,7 +883,7 @@ function _isPageAllowedForRole(page, role) {
 
 function canAccessPage(page) {
     const normalized = _normalizePagePath(page);
-    if (!getStoredPreviewRole() && normalized && getUserPageAllowlist().includes(normalized)) return true;
+    if (!getStoredPreviewRole() && normalized && normalized !== '/maysternya-doli' && getUserPageAllowlist().includes(normalized)) return true;
     return getUserRoles().some(role => _isPageAllowedForRole(page, role) === true);
 }
 

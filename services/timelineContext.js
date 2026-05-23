@@ -3,12 +3,12 @@ const DEFAULT_TIMELINE_CONTEXT = 'event_genix';
 const MAYSTERNYA_DOLI_PATH = '/maysternya-doli';
 const CONTEXT_ACTION_ROLES = {
     maysternya_doli: {
-        create: ['creator', 'director'],
-        edit: ['creator', 'director'],
+        create: ['creator'],
+        edit: ['creator'],
         delete: ['creator'],
-        export: ['creator', 'director'],
+        export: ['creator'],
         sales: [],
-        settings: ['creator', 'director']
+        settings: ['creator']
     }
 };
 
@@ -47,8 +47,7 @@ function canAccessTimelineContext(user, context) {
     const normalized = normalizeTimelineContext(context);
     if (normalized === DEFAULT_TIMELINE_CONTEXT) return Boolean(user);
     if (!user) return false;
-    if (userRoles(user).includes('creator')) return true;
-    return userPageAllowlist(user).includes(MAYSTERNYA_DOLI_PATH);
+    return userRoles(user).includes('creator');
 }
 
 function canUseTimelineAction(user, context, action) {

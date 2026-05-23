@@ -12,7 +12,8 @@
             path: '/',
             pageAccessPath: '/',
             title: 'Таймлайн ПАРК | Бронювання',
-            navLabel: 'Таймлайн ПАРК',
+            navLabel: 'Таймлайн',
+            switchLabel: 'Таймлайн ПАРК',
             productName: 'Таймлайн ПАРК',
             subtitle: 'AI First CRM',
             storagePrefix: 'pzp',
@@ -35,6 +36,7 @@
             pageAccessPath: '/maysternya-doli',
             title: 'Таймлайн МД | Записи',
             navLabel: 'Таймлайн МД',
+            switchLabel: 'Таймлайн МД',
             productName: 'Таймлайн МД',
             subtitle: 'Записи психолога',
             storagePrefix: 'md',
@@ -43,12 +45,12 @@
             showAfisha: false,
             defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification'],
             actionRoles: {
-                create: ['creator', 'director'],
-                edit: ['creator', 'director'],
+                create: ['creator'],
+                edit: ['creator'],
                 delete: ['creator'],
-                export: ['creator', 'director'],
+                export: ['creator'],
                 sales: [],
-                settings: ['creator', 'director']
+                settings: ['creator']
             }
         }
     };
@@ -88,8 +90,7 @@
     function canAccessContext(user, ctx = currentContext()) {
         if (!ctx?.isPrivateSurface) return Boolean(user);
         if (!user) return false;
-        if (userRoles(user).includes('creator')) return true;
-        return userPageAllowlist(user).includes(ctx.pageAccessPath);
+        return userRoles(user).includes('creator');
     }
 
     function canUseAction(action, user, ctx = currentContext()) {

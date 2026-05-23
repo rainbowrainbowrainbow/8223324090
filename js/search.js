@@ -98,7 +98,7 @@ const SEARCH_NAV_ALIASES = {
 
 const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/dashboard', icon: '⌂', label: 'Дашборд', access: 'all', group: 'today' },
-    { href: '/', icon: '◴', label: 'Таймлайн ПАРК', access: 'timeline', group: 'today' },
+    { href: '/', icon: '◴', label: 'Таймлайн', access: 'timeline', group: 'today' },
     { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
     { href: '/tasks', icon: '✓', label: 'Задачі', access: 'tasks', group: 'today' },
     { href: '/chat', icon: '⌁', label: 'Чат', access: 'chat', group: 'today' },

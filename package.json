@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.62.7",
+  "version": "0.62.8",
   "eventGenix": {
-    "releaseLabel": "Profile: фільтри задач"
+    "releaseLabel": "Таймлайн: Парк за замовченням"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

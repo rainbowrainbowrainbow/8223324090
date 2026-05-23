@@ -358,7 +358,7 @@
         if (!select || !api?.CONTEXTS) return;
 
         const contexts = Object.values(api.CONTEXTS).filter(ctx => canAccessContext(ctx));
-        select.innerHTML = contexts.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.navLabel || ctx.productName || ctx.key)}</option>`).join('');
+        select.innerHTML = contexts.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.switchLabel || ctx.navLabel || ctx.productName || ctx.key)}</option>`).join('');
         select.value = currentContext().key;
         const wrapper = document.getElementById('timelineBusinessSwitch');
         if (wrapper) wrapper.classList.toggle('hidden', contexts.length <= 1);

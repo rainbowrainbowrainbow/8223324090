@@ -120,14 +120,14 @@
         },
         {
             id: 'timeline.main',
-            title: 'Таймлайн ПАРК',
+            title: 'Таймлайн',
             href: '/',
             icon: '◴',
             access: 'timeline',
             group: 'today',
-            breadcrumb: 'Таймлайн ПАРК',
+            breadcrumb: 'Таймлайн',
             summary: 'Основний scheduler для бронювань, лінійок і подій дня.',
-            primaryAction: 'Відкрити Таймлайн ПАРК',
+            primaryAction: 'Відкрити Таймлайн',
             aliases: ['таймлайн парк', 'таймлайн парку', 'парк таймлайн', 'таймлайн', 'календар', 'розклад', 'бронювання', 'лінійки', 'timeline']
         },
         {

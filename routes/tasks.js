@@ -506,6 +506,27 @@ function taskDateOnly(value) {
     return d.toISOString().slice(0, 10);
 }
 
+function taskWorkloadDate(task = {}) {
+    return taskDateOnly(
+        task.scheduledStartAt ||
+        task.scheduled_start_at ||
+        task.schedule?.startAt ||
+        task.date ||
+        task.deadline ||
+        task.remindAt ||
+        task.remind_at
+    );
+}
+
+function taskWorkloadDateSql(alias = 't') {
+    return `COALESCE(
+        (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
+        CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
+        (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
+        (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
+    )`;
+}
+
 function todayKyivDate() {
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Europe/Kyiv',
@@ -1268,7 +1289,7 @@ router.get('/my-cabinet', async (req, res) => {
             inbox: []
         };
         rows.forEach(task => {
-            const dueDate = taskDateOnly(task.deadline || task.remindAt || task.date);
+            const dueDate = taskWorkloadDate(task);
             const workflow = task.workflowState || 'todo';
             const visibility = task.visibility || 'team';
             const mode = task.taskMode || 'work';
@@ -1277,21 +1298,31 @@ router.get('/my-cabinet', async (req, res) => {
             if (visibility === 'private' || mode === 'private') buckets.private.push(task);
             if (workflow === 'inbox') buckets.inbox.push(task);
             if (dueDate && dueDate < today) buckets.overdue.push(task);
-            if (dueDate === today || workflow === 'in_progress') buckets.today.push(task);
+            if (dueDate === today || !dueDate) buckets.today.push(task);
             if (dueDate && dueDate >= tomorrow && dueDate <= nextWeek) buckets.next.push(task);
         });
 
-        const doneParams = [];
-        const doneOwnerMatch = buildTaskOwnerMatch(req.user, doneParams, 't');
-        doneParams.push(today);
-        const doneResult = await pool.query(
-            `SELECT COUNT(*)::int AS done_today
+        const quickParams = [];
+        const quickOwnerMatch = buildTaskOwnerMatch(req.user, quickParams, 't');
+        quickParams.push(today);
+        const quickDateSql = taskWorkloadDateSql('t');
+        const quickResult = await pool.query(
+            `SELECT
+                    COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS done_total,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(t.status, 'todo') = 'done'
+                          AND t.completed_at IS NOT NULL
+                          AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
+                    )::int AS done_today,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+                          AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
+                    )::int AS remaining_today
              FROM tasks t
-             WHERE ${doneOwnerMatch}
-               AND COALESCE(t.status, 'todo') = 'done'
-               AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${doneParams.length}`,
-            doneParams
+             WHERE ${quickOwnerMatch}`,
+            quickParams
         );
+        const quickStats = quickResult.rows[0] || {};
         const prefs = await ensureTaskPreferences(userId);
         res.json({
             success: true,
@@ -1305,8 +1336,13 @@ router.get('/my-cabinet', async (req, res) => {
             all: rows,
             preferences: prefs,
             stats: {
-                todayDone: doneResult.rows[0]?.done_today || 0,
-                todayPlanned: buckets.today.length,
+                todayDone: quickStats.done_today || 0,
+                todayPlanned: quickStats.remaining_today || buckets.today.length,
+                taskQuick: {
+                    completed: quickStats.done_total || 0,
+                    remaining: quickStats.remaining_today || buckets.today.length,
+                    scope: 'today_or_undated'
+                },
                 waitingCount: buckets.waiting.length,
                 overdueCount: buckets.overdue.length,
                 privateCount: buckets.private.length,

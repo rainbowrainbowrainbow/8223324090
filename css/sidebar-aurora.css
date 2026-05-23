@@ -1580,6 +1580,68 @@ body.dark-mode .sidebar-nav {
   letter-spacing: 0;
 }
 
+.focus-chip--tasks .focus-chip-icon {
+  display: none;
+}
+
+.focus-chip-task-split {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.focus-chip-task-part {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 5px;
+  border-radius: 10px;
+}
+
+.focus-chip-task-part--done {
+  background: color-mix(in srgb, var(--sb-primary) 13%, transparent);
+  color: var(--sb-primary);
+}
+
+.focus-chip-task-part--remaining {
+  background: color-mix(in srgb, var(--sb-amber) 16%, transparent);
+  color: var(--sb-amber);
+}
+
+.focus-chip-task-mark {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.focus-chip-task-number {
+  color: var(--sb-text);
+  font: 900 15px/1 "Space Grotesk", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.focus-chip-task-divider {
+  width: 1px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sb-text) 16%, transparent);
+}
+
 .focus-chip-label {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -7342,6 +7404,22 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 .sidebar-nav:not(.collapsed) .focus-chip-value {
   color: var(--sb-enterprise-text) !important;
   font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-split {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-part {
+  padding: 4px 6px !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-number {
+  color: var(--sb-enterprise-text) !important;
+  font-size: 15px !important;
   font-weight: 900 !important;
   line-height: 1 !important;
 }

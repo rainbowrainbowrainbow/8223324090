@@ -1599,6 +1599,40 @@ function formatCabinetPulseCount(value) {
     return String(Math.floor(n));
 }
 
+function cabinetTaskQuickCounts(data = myCabinetData) {
+    const stats = data?.stats || {};
+    const quick = stats.taskQuick || stats.tasksQuick || {};
+    const completed = Number(quick.completed ?? stats.completedCount ?? stats.doneCount ?? stats.todayDone ?? 0);
+    const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? cabinetList('today').length ?? 0);
+    return {
+        completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
+        remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
+        scope: quick.scope || 'today_or_undated'
+    };
+}
+
+function renderCabinetTaskQuickSplit(counts = cabinetTaskQuickCounts()) {
+    return [
+        '<span class="cabinet-quick-split" aria-hidden="true">',
+        '<span class="cabinet-quick-half cabinet-quick-half--completed">',
+        '<span class="cabinet-quick-mini-icon">✓</span>',
+        '<span class="cabinet-quick-mini-copy">',
+        '<span class="cabinet-quick-mini-count">' + formatCabinetPulseCount(counts.completed) + '</span>',
+        '<span class="cabinet-quick-mini-label">виконано</span>',
+        '</span>',
+        '</span>',
+        '<span class="cabinet-quick-divider"></span>',
+        '<span class="cabinet-quick-half cabinet-quick-half--remaining">',
+        '<span class="cabinet-quick-mini-icon">!</span>',
+        '<span class="cabinet-quick-mini-copy">',
+        '<span class="cabinet-quick-mini-count">' + formatCabinetPulseCount(counts.remaining) + '</span>',
+        '<span class="cabinet-quick-mini-label">активні</span>',
+        '</span>',
+        '</span>',
+        '</span>'
+    ].join('');
+}
+
 function getCabinetQuickMode() {
     if (activeTab === 'mytasks') return 'tasks';
     const saved = localStorage.getItem('cabinetQuickMode');
@@ -1623,8 +1657,7 @@ function syncCabinetQuickMode(mode) {
 }
 
 function renderCabinetPulseCluster() {
-    const stats = myCabinetData?.stats || {};
-    const tasksCount = Number(stats.todayPlanned || stats.openCount || cabinetList('all').length || 0);
+    const taskQuick = cabinetTaskQuickCounts();
     const alertsCount = cabinetPulseCounts.alerts;
     const funnelCount = cabinetPulseCounts.funnel;
     const activeMode = getCabinetQuickMode();
@@ -1633,8 +1666,9 @@ function renderCabinetPulseCluster() {
             id: 'tasks',
             label: '\u0417\u0430\u0434\u0430\u0447\u0456',
             helper: 'Відкрити список задач',
-            count: formatCabinetPulseCount(tasksCount),
-            tone: tasksCount > 0 ? 'live' : 'zero',
+            count: `${formatCabinetPulseCount(taskQuick.completed)} виконано, ${formatCabinetPulseCount(taskQuick.remaining)} активні`,
+            splitHtml: renderCabinetTaskQuickSplit(taskQuick),
+            tone: taskQuick.remaining > 0 ? 'live' : 'zero',
             action: "switchTab('mytasks')"
         },
         {
@@ -1669,7 +1703,7 @@ function renderCabinetPulseCluster() {
             '<span class="cabinet-quick-body">',
             '<span class="cabinet-quick-label">' + escapeHtml(item.label) + '</span>',
             '<span class="cabinet-quick-hint">' + escapeHtml(item.helper) + '</span>',
-            '<span class="cabinet-quick-count">' + item.count + '</span>',
+            item.splitHtml || '<span class="cabinet-quick-count">' + item.count + '</span>',
             '</span>',
             '</button>'
         ].join('');

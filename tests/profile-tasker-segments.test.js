@@ -51,3 +51,37 @@ test('profile my day ordering keeps decomposed groups and sorts newest tasks fir
 
     assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [4, 3, 2, 1]);
 });
+
+test('profile quick task card uses completed and today-or-undated remaining counts', () => {
+    const ctx = loadProfileTaskerContext();
+    const counts = ctx.cabinetTaskQuickCounts({
+        stats: {
+            taskQuick: {
+                completed: 12,
+                remaining: 3,
+                scope: 'today_or_undated'
+            }
+        }
+    });
+
+    assert.equal(counts.completed, 12);
+    assert.equal(counts.remaining, 3);
+    assert.equal(counts.scope, 'today_or_undated');
+    const html = ctx.renderCabinetTaskQuickSplit(counts);
+    assert.match(html, /cabinet-quick-half--completed/);
+    assert.match(html, /cabinet-quick-half--remaining/);
+    assert.match(html, />12</);
+    assert.match(html, />3</);
+});
+
+test('my cabinet task projection counts scheduled workload by today or no date, not all active tasks', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
+
+    assert.match(source, /function taskWorkloadDateSql/);
+    assert.match(source, /taskQuick/);
+    assert.match(source, /remaining_today/);
+    assert.match(source, /scheduled_start_at/);
+    assert.match(source, /dueDate === today \|\| !dueDate/);
+    assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
+});

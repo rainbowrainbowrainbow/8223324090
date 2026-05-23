@@ -31,6 +31,7 @@ const Sidebar = (() => {
     };
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
+        tasksCompleted: 0,
         tasksOverdue: 0,
         alertsActive: 0,
         alertsUnread: 0,
@@ -928,6 +929,68 @@ const Sidebar = (() => {
         return count > 99 ? '99+' : String(Math.floor(count));
     }
 
+    function _formatTaskWidgetCount(value) {
+        const count = Number(value || 0);
+        if (!Number.isFinite(count) || count <= 0) return '0';
+        return count > 99 ? '99+' : String(Math.floor(count));
+    }
+
+    function _sidebarKyivToday() {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(new Date());
+        const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${map.year}-${map.month}-${map.day}`;
+    }
+
+    function _sidebarTaskDateOnly(value) {
+        if (!value) return '';
+        const raw = String(value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return raw.slice(0, 10);
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(d);
+        const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+        return `${map.year}-${map.month}-${map.day}`;
+    }
+
+    function _sidebarTaskWorkloadDate(task = {}) {
+        return _sidebarTaskDateOnly(
+            task.scheduledStartAt ||
+            task.scheduled_start_at ||
+            task.schedule?.startAt ||
+            task.date ||
+            task.deadline ||
+            task.remindAt ||
+            task.remind_at
+        );
+    }
+
+    function _isSidebarTaskTodayOrUndated(task = {}, today = _sidebarKyivToday()) {
+        const date = _sidebarTaskWorkloadDate(task);
+        return !date || date === today;
+    }
+
+    function _sidebarTaskQuickCountsFromCabinet(cabinet = {}) {
+        const stats = cabinet?.stats || {};
+        const quick = stats.taskQuick || stats.tasksQuick || {};
+        const completed = Number(quick.completed ?? stats.completedCount ?? stats.doneCount ?? stats.todayDone ?? 0);
+        const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? 0);
+        return {
+            completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
+            remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
+            overdue: Number(stats.overdueCount || 0) || 0
+        };
+    }
+
     function _syncGroupSignals() {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
@@ -1155,7 +1218,17 @@ const Sidebar = (() => {
                 <div class="sidebar-focus-deck" id="sidebarFocusDeck" aria-label="Операційний фокус">
                     <a href="/tasks?view=my" class="focus-chip focus-chip--tasks" id="focusChipTasks" data-metric-kind="tasks" aria-label="Мої задачі">
                         <span class="focus-chip-icon">${_renderStatusIcon('tasks')}</span>
-                        <span class="focus-chip-value" id="focusChipTasksValue">0</span>
+                        <span class="focus-chip-task-split" aria-hidden="true">
+                            <span class="focus-chip-task-part focus-chip-task-part--done">
+                                <span class="focus-chip-task-mark">✓</span>
+                                <span class="focus-chip-task-number" id="focusChipTasksDoneValue">0</span>
+                            </span>
+                            <span class="focus-chip-task-divider"></span>
+                            <span class="focus-chip-task-part focus-chip-task-part--remaining">
+                                <span class="focus-chip-task-mark">!</span>
+                                <span class="focus-chip-value focus-chip-task-number" id="focusChipTasksValue">0</span>
+                            </span>
+                        </span>
                         <span class="focus-chip-label">Задачі</span>
                         <span class="focus-chip-meta" id="focusChipTasksMeta">спокійно</span>
                     </a>
@@ -1647,15 +1720,17 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
-            const profile = await fetch('/api/auth/profile', {
+            const cabinet = await fetch('/api/tasks/my-cabinet', {
                 headers: { 'Authorization': 'Bearer ' + token }
             }).then(r => r.ok ? r.json() : null).catch(() => null);
+            let completedCount = 0;
             let activeCount = 0;
             let overdueCount = 0;
-            if (profile?.tasks) {
-                const tasks = profile.tasks || {};
-                activeCount = Number(tasks.assigned || 0) + Number(tasks.in_progress || 0);
-                overdueCount = Number(tasks.overdue || 0);
+            if (cabinet?.success) {
+                const quick = _sidebarTaskQuickCountsFromCabinet(cabinet);
+                completedCount = quick.completed;
+                activeCount = quick.remaining;
+                overdueCount = quick.overdue;
             } else {
                 const rows = await fetch('/api/tasks?limit=80', {
                     headers: { 'Authorization': 'Bearer ' + token }
@@ -1669,21 +1744,26 @@ const Sidebar = (() => {
                     if (ownerId) return false;
                     return tokens.has(String(task.assigned_to || task.assignedTo || '').trim()) || tokens.has(String(task.owner || '').trim());
                 }) : [];
-                activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status)).length;
+                const today = _sidebarKyivToday();
+                completedCount = mine.filter(task => task.status === 'done').length;
+                activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status) && _isSidebarTaskTodayOrUndated(task, today)).length;
                 overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
             }
+            const doneEl = document.getElementById('focusChipTasksDoneValue');
             const countEl = document.getElementById('focusChipTasksValue');
             const metaEl = document.getElementById('focusChipTasksMeta');
-            if (countEl) countEl.textContent = activeCount > 99 ? '99+' : String(activeCount);
+            if (doneEl) doneEl.textContent = _formatTaskWidgetCount(completedCount);
+            if (countEl) countEl.textContent = _formatTaskWidgetCount(activeCount);
             if (metaEl) {
-                const parts = ['актив.'];
+                const parts = ['сьогодні/без дати'];
                 if (overdueCount > 0) parts.push(`${overdueCount} простр.`);
                 metaEl.textContent = parts.join(' · ');
             }
             const taskTitle = overdueCount > 0
-                ? `Задачі: ${activeCount} активних, ${overdueCount} прострочених. Натисніть, щоб відкрити всі задачі.`
-                : `Задачі: ${activeCount} активних. Натисніть, щоб відкрити всі задачі.`;
+                ? `Задачі: ${completedCount} виконано, ${activeCount} активні на сьогодні або без дати, ${overdueCount} прострочені. Натисніть, щоб відкрити всі задачі.`
+                : `Задачі: ${completedCount} виконано, ${activeCount} активні на сьогодні або без дати. Натисніть, щоб відкрити всі задачі.`;
             _commandState.tasksActive = activeCount;
+            _commandState.tasksCompleted = completedCount;
             _commandState.tasksOverdue = overdueCount;
             _setCommandDescription(widget, taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);

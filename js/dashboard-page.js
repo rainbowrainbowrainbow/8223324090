@@ -6340,12 +6340,19 @@ const DashboardPage = (() => {
             ...availableWidgets.filter(([k]) => !activeWidgets.includes(k)),
         ];
 
+        const activeWidgetCount = activeWidgets.filter(k => availableWidgets.some(([wk]) => wk === k)).length;
         const widgetItems = sortedWidgets.map(([key, def]) => {
             const isActive = activeWidgets.includes(key);
-            return `<div class="settings-widget-item ${isActive ? 'active' : ''}" data-widget="${key}" draggable="true">
-                <span class="settings-drag-handle">⠿</span>
-                <span class="settings-widget-icon">${def.icon}</span>
-                <span class="settings-widget-name">${def.title}</span>
+            const order = isActive ? activeWidgets.indexOf(key) + 1 : '';
+            const accessLabel = def.minRole ? `Від ролі: ${roleDisplayName(def.minRole)}` : 'Доступно всім ролям';
+            return `<div class="settings-widget-item ${isActive ? 'active' : ''}" data-widget="${escapeHtml(key)}" data-widget-state="${isActive ? 'active' : 'inactive'}" data-widget-title="${escapeHtml(String(def.title || key).toLowerCase())}" data-widget-access="${escapeHtml(accessLabel)}" draggable="true">
+                <span class="settings-drag-handle" title="Перетягнути">⠿</span>
+                <span class="settings-widget-icon">${escapeHtml(def.icon || '◫')}</span>
+                <span class="settings-widget-main">
+                    <span class="settings-widget-name">${escapeHtml(def.title || key)}</span>
+                    <span class="settings-widget-meta">${isActive ? 'Показується на дашборді' : 'Приховано'} · ${escapeHtml(accessLabel)}</span>
+                </span>
+                <span class="settings-widget-order" ${order ? '' : 'hidden'}>${order}</span>
                 <label class="settings-toggle">
                     <input type="checkbox" ${isActive ? 'checked' : ''} onchange="DashboardPage.toggleSettingsWidget(this)">
                     <span class="settings-toggle-slider"></span>
@@ -6360,7 +6367,7 @@ const DashboardPage = (() => {
         }
 
         const overlay = document.createElement('div');
-        overlay.className = 'onboarding-overlay';
+        overlay.className = 'onboarding-overlay dashboard-settings-overlay';
         overlay.id = 'settingsOverlay';
         overlay.innerHTML = `
             <div class="settings-modal">
@@ -6441,20 +6448,160 @@ const DashboardPage = (() => {
         `;
 
         document.body.appendChild(overlay);
+        hydrateSettingsOverlayLayout(overlay, {
+            activeWidgetCount,
+            availableWidgetCount: availableWidgets.length
+        });
         _settingsOverlayInitialState = getSettingsOverlayState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay, {
             isDirty: isSettingsOverlayDirty
         });
         _initDragAndDrop();
+        _initSettingsWidgetFilters(overlay);
+        updateSettingsWidgetSummary();
+    }
+
+    function hydrateSettingsOverlayLayout(overlay, counts = {}) {
+        const modal = overlay?.querySelector?.('.settings-modal');
+        if (!modal || modal.dataset.settingsLayoutReady === '1') return;
+        modal.dataset.settingsLayoutReady = '1';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'settingsModalTitle');
+
+        const header = modal.querySelector('.settings-modal-header');
+        if (header) {
+            header.innerHTML = `
+                <div class="settings-modal-title">
+                    <span>Dashboard builder</span>
+                    <h2 id="settingsModalTitle">Налаштування дашборду</h2>
+                    <p>Зберіть робочий екран: сцена, board-поведінка, видимі віджети і порядок показу.</p>
+                </div>
+                <button type="button" class="settings-modal-close" onclick="DashboardPage.closeSettingsOverlay(false)" aria-label="Закрити">×</button>
+            `;
+        }
+
+        const cards = Array.from(modal.children).filter(child => child.classList?.contains('dashboard-settings-scene-card'));
+        const widgetList = modal.querySelector('#settingsWidgetList');
+        const footer = modal.querySelector('.settings-modal-footer');
+        if (!widgetList || !footer) return;
+
+        const body = document.createElement('div');
+        body.className = 'settings-modal-body';
+
+        const configColumn = document.createElement('section');
+        configColumn.className = 'settings-config-column';
+        configColumn.setAttribute('aria-label', 'Параметри сцени і дошки');
+        cards.forEach(card => configColumn.appendChild(card));
+
+        const widgetPanel = document.createElement('section');
+        widgetPanel.className = 'settings-widget-panel';
+        widgetPanel.setAttribute('aria-labelledby', 'settingsWidgetTitle');
+        widgetPanel.innerHTML = `
+            <div class="settings-widget-panel-head">
+                <div>
+                    <span>Каталог віджетів</span>
+                    <h3 id="settingsWidgetTitle">Віджети на дашборді</h3>
+                </div>
+                <strong id="settingsWidgetActiveCount">${Number(counts.activeWidgetCount || 0)}/${Number(counts.availableWidgetCount || 0)}</strong>
+            </div>
+            <div class="settings-widget-toolbar">
+                <label class="settings-widget-search">
+                    <span>Пошук</span>
+                    <input type="search" id="settingsWidgetSearch" placeholder="Назва віджета..." autocomplete="off">
+                </label>
+                <div class="settings-widget-filters" role="group" aria-label="Фільтр віджетів">
+                    <button type="button" class="settings-widget-filter active" data-settings-widget-filter="all">Усі</button>
+                    <button type="button" class="settings-widget-filter" data-settings-widget-filter="active">Увімкнені</button>
+                    <button type="button" class="settings-widget-filter" data-settings-widget-filter="inactive">Приховані</button>
+                </div>
+            </div>
+            <div class="settings-widget-empty-state" id="settingsWidgetEmptyState" hidden>Нічого не знайдено</div>
+        `;
+        widgetPanel.insertBefore(widgetList, widgetPanel.querySelector('#settingsWidgetEmptyState'));
+
+        body.append(configColumn, widgetPanel);
+        modal.insertBefore(body, footer);
+    }
+
+    function _initSettingsWidgetFilters(overlay = document.getElementById('settingsOverlay')) {
+        const search = overlay?.querySelector?.('#settingsWidgetSearch');
+        if (search && search.dataset.settingsSearchBound !== '1') {
+            search.dataset.settingsSearchBound = '1';
+            search.addEventListener('input', filterSettingsWidgets);
+        }
+
+        overlay?.querySelectorAll?.('[data-settings-widget-filter]').forEach(button => {
+            if (button.dataset.settingsFilterBound === '1') return;
+            button.dataset.settingsFilterBound = '1';
+            button.addEventListener('click', () => {
+                overlay.querySelectorAll('[data-settings-widget-filter]').forEach(item => item.classList.remove('active'));
+                button.classList.add('active');
+                filterSettingsWidgets();
+            });
+        });
+    }
+
+    function filterSettingsWidgets() {
+        const overlay = document.getElementById('settingsOverlay');
+        const list = document.getElementById('settingsWidgetList');
+        if (!overlay || !list) return;
+
+        const term = String(overlay.querySelector('#settingsWidgetSearch')?.value || '').trim().toLowerCase();
+        const filter = overlay.querySelector('[data-settings-widget-filter].active')?.dataset.settingsWidgetFilter || 'all';
+        let visible = 0;
+
+        list.querySelectorAll('.settings-widget-item').forEach(item => {
+            const title = String(item.dataset.widgetTitle || item.textContent || '').toLowerCase();
+            const state = item.classList.contains('active') ? 'active' : 'inactive';
+            const matchesSearch = !term || title.includes(term);
+            const matchesFilter = filter === 'all' || filter === state;
+            const show = matchesSearch && matchesFilter;
+            item.hidden = !show;
+            if (show) visible += 1;
+        });
+
+        const empty = document.getElementById('settingsWidgetEmptyState');
+        if (empty) empty.hidden = visible > 0;
+    }
+
+    function updateSettingsWidgetSummary() {
+        const list = document.getElementById('settingsWidgetList');
+        if (!list) return;
+        const items = Array.from(list.querySelectorAll('.settings-widget-item'));
+        const activeItems = items.filter(item => item.classList.contains('active'));
+        const count = document.getElementById('settingsWidgetActiveCount');
+        if (count) count.textContent = `${activeItems.length}/${items.length}`;
+
+        activeItems.forEach((item, index) => {
+            const badge = item.querySelector('.settings-widget-order');
+            if (!badge) return;
+            badge.hidden = false;
+            badge.textContent = String(index + 1);
+        });
+        items.filter(item => !item.classList.contains('active')).forEach(item => {
+            const badge = item.querySelector('.settings-widget-order');
+            if (badge) badge.hidden = true;
+        });
+
+        filterSettingsWidgets();
     }
 
     function toggleSettingsWidget(checkbox) {
         const item = checkbox.closest('.settings-widget-item');
         if (checkbox.checked) {
             item.classList.add('active');
+            item.dataset.widgetState = 'active';
         } else {
             item.classList.remove('active');
+            item.dataset.widgetState = 'inactive';
         }
+        const meta = item.querySelector('.settings-widget-meta');
+        if (meta) {
+            const access = item.dataset.widgetAccess || '';
+            meta.textContent = `${checkbox.checked ? 'Показується на дашборді' : 'Приховано'}${access ? ` · ${access}` : ''}`;
+        }
+        updateSettingsWidgetSummary();
     }
 
     function _initDragAndDrop() {
@@ -6474,6 +6621,7 @@ const DashboardPage = (() => {
             if (dragEl) dragEl.classList.remove('dragging');
             dragEl = null;
             list.querySelectorAll('.settings-widget-item').forEach(el => el.classList.remove('drag-over'));
+            updateSettingsWidgetSummary();
         });
 
         list.addEventListener('dragover', (e) => {
@@ -6496,6 +6644,7 @@ const DashboardPage = (() => {
 
         list.addEventListener('drop', (e) => {
             e.preventDefault();
+            updateSettingsWidgetSummary();
         });
     }
 

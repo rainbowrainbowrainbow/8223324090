@@ -270,8 +270,8 @@ function normalizeTimelineLinesForContext(lines = []) {
     const ctx = window.TimelineBusinessContext?.current?.();
     if (ctx?.key !== 'maysternya_doli') return lines;
     return lines.map(line => {
-        if (line?.id === 'md-consult-room' && line.name === 'Майстерня долі') {
-            return { ...line, name: 'Таймлайн МД' };
+        if (line?.id === 'md-consult-room' && ['Майстерня долі', 'Таймлайн МД'].includes(line.name)) {
+            return { ...line, name: 'Олександр' };
         }
         return line;
     });

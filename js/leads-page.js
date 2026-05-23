@@ -71,6 +71,7 @@ let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
 let currentDateFilter = '';
+let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let pipelineData = {};
 let usersData = [];
@@ -103,9 +104,43 @@ function getHeaders(json = true) {
     return h;
 }
 
+function leadBusinessContext() {
+    return window.CrmBusinessContext?.normalize?.(currentBusinessContext) || currentBusinessContext || 'event_genix';
+}
+
+function leadApiUrl(url) {
+    if (!/^\/api\/(leads|customers)\b/.test(String(url))) return url;
+    return window.CrmBusinessContext?.apiUrl
+        ? window.CrmBusinessContext.apiUrl(url, leadBusinessContext())
+        : url;
+}
+
+function leadPayload(payload = {}) {
+    return window.CrmBusinessContext?.payload
+        ? window.CrmBusinessContext.payload(payload, leadBusinessContext())
+        : { ...(payload || {}), businessContext: leadBusinessContext() };
+}
+
+function initLeadBusinessContext(user) {
+    const api = window.CrmBusinessContext;
+    currentBusinessContext = api?.set?.(api.current?.() || 'event_genix', { updateUrl: true }) || 'event_genix';
+    const select = document.getElementById('leadBusinessContext');
+    if (!select || !api?.options) return;
+    const options = api.options(user);
+    select.innerHTML = options.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.label)}</option>`).join('');
+    select.value = leadBusinessContext();
+    select.hidden = options.length <= 1;
+    select.addEventListener('change', async event => {
+        currentBusinessContext = api.set(event.target.value, { updateUrl: true });
+        workspaceLeadId = null;
+        closeLeadWorkspace({ pushState: false });
+        await loadLeads();
+    });
+}
+
 async function apiFetch(url, opts = {}) {
     opts.headers = { ...getHeaders(!!opts.body), ...opts.headers };
-    const res = await fetch(url, opts);
+    const res = await fetch(leadApiUrl(url), opts);
     if (res.status === 401 || res.status === 403) {
         window.location.href = '/';
         throw new Error('Unauthorized');
@@ -129,6 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedUser = localStorage.getItem('pzp_current_user');
         if (savedUser && typeof AppState !== 'undefined') AppState.currentUser = JSON.parse(savedUser);
     } catch {}
+    initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
 
     setupEvents();
     await loadUsers();

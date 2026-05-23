@@ -6,7 +6,16 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
-const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
+const {
+    DEFAULT_TIMELINE_CONTEXT,
+    timelineContextFromRequest,
+    requireTimelineContext
+} = require('../services/timelineContext');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    normalizeBusinessContext,
+    requireBusinessContext
+} = require('../services/businessContext');
 const log = createLogger('Search');
 
 function pushParam(params, value) {
@@ -27,6 +36,22 @@ function canAccessPage(user, path) {
     return Array.isArray(access) && roles.some(role => access.includes(role));
 }
 
+function scopedQueryPath(path, businessContext) {
+    const context = normalizeBusinessContext(businessContext);
+    if (context === DEFAULT_BUSINESS_CONTEXT) return path;
+    const joiner = path.includes('?') ? '&' : '?';
+    return `${path}${joiner}businessContext=${encodeURIComponent(context)}`;
+}
+
+function timelinePath(context, date, id) {
+    const base = context === 'maysternya_doli' ? '/maysternya-doli' : '/';
+    const params = new URLSearchParams();
+    if (date) params.set('date', String(date).slice(0, 10));
+    if (id) params.set('highlight', String(id));
+    const query = params.toString();
+    return query ? `${base}?${query}` : base;
+}
+
 // GET /api/search?q=text&limit=20
 router.get('/', async (req, res) => {
     try {
@@ -35,8 +60,12 @@ router.get('/', async (req, res) => {
 
         const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
         const pattern = `%${q}%`;
+        const timelineContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, timelineContext)) return;
+        const businessContext = normalizeBusinessContext(timelineContext);
+        if (!requireBusinessContext(req, res, businessContext)) return;
 
-        const bookingParams = [pattern, DEFAULT_TIMELINE_CONTEXT];
+        const bookingParams = [pattern, timelineContext || DEFAULT_TIMELINE_CONTEXT];
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookingLimitRef = pushParam(bookingParams, limit);
 
@@ -65,10 +94,11 @@ router.get('/', async (req, res) => {
                 SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday,
                        c.total_bookings, c.total_spent, c.last_visit
                 FROM customers c
-                WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.child_name ILIKE $1
+                WHERE COALESCE(c.business_context, $2) = $2
+                  AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.child_name ILIKE $1)
                 ORDER BY c.total_bookings DESC NULLS LAST, c.name ASC
-                LIMIT $2
-            `, [pattern, limit]) : Promise.resolve({ rows: [] }),
+                LIMIT $3
+            `, [pattern, businessContext, limit]) : Promise.resolve({ rows: [] }),
 
             pool.query(`
                 SELECT t.id, t.title, t.date, t.status, t.priority, t.assigned_to, t.category
@@ -85,9 +115,10 @@ router.get('/', async (req, res) => {
                 FROM products
                 WHERE (name ILIKE $1 OR label ILIKE $1 OR code ILIKE $1 OR description ILIKE $1)
                   AND is_active = true
+                  AND COALESCE(business_context, $2) = $2
                 ORDER BY sort_order ASC, name ASC
-                LIMIT $2
-            `, [pattern, limit]) : Promise.resolve({ rows: [] }),
+                LIMIT $3
+            `, [pattern, businessContext, limit]) : Promise.resolve({ rows: [] }),
 
             canSearchStaff ? pool.query(`
                 SELECT id, name, department, position, phone, role_type
@@ -109,10 +140,11 @@ router.get('/', async (req, res) => {
                     subtitle: `${r.date} ${r.time} | ${r.status === 'confirmed' ? 'Підтв.' : 'Попер.'} | ${r.price || 0} грн`,
                     date: r.date,
                     status: r.status,
-                    href: `/?date=${encodeURIComponent(String(r.date || '').slice(0, 10))}&highlight=${encodeURIComponent(r.id)}`,
+                    href: timelinePath(timelineContext, r.date, r.id),
                     meta: {
                         lineId: r.line_id,
                         groupName: r.group_name,
+                        businessContext: timelineContext,
                         visibilityScope: bookingScope.scopeSource
                     }
                 })),
@@ -125,8 +157,8 @@ router.get('/', async (req, res) => {
                         r.child_name ? `Дитина: ${r.child_name}` : null,
                         r.total_bookings ? `${r.total_bookings} бронювань` : null
                     ].filter(Boolean).join(' | '),
-                    href: `/customers?open=${encodeURIComponent(r.id)}`,
-                    meta: { phone: r.phone, instagram: r.instagram, totalSpent: r.total_spent, lastVisit: r.last_visit }
+                    href: scopedQueryPath(`/customers?open=${encodeURIComponent(r.id)}`, businessContext),
+                    meta: { phone: r.phone, instagram: r.instagram, totalSpent: r.total_spent, lastVisit: r.last_visit, businessContext }
                 })),
                 tasks: tasks.rows.map(r => ({
                     type: 'task',
@@ -142,8 +174,8 @@ router.get('/', async (req, res) => {
                     id: r.id,
                     title: `${r.label} - ${r.name}`,
                     subtitle: `${r.duration} хв | ${r.price} грн | ${r.category}`,
-                    href: `/programs?highlight=${encodeURIComponent(r.code || r.id)}`,
-                    meta: { code: r.code, category: r.category }
+                    href: scopedQueryPath(`/programs?highlight=${encodeURIComponent(r.code || r.id)}`, businessContext),
+                    meta: { code: r.code, category: r.category, businessContext }
                 })),
                 staff: staff.rows.map(r => ({
                     type: 'staff',
@@ -161,7 +193,8 @@ router.get('/', async (req, res) => {
                     scopeSource: bookingScope.scopeSource,
                     classification: bookingScope.classification
                 },
-                linkedRouteParity: 'exact-visible-result-or-no-result'
+                linkedRouteParity: 'exact-visible-result-or-no-result',
+                businessContext
             },
             total: bookings.rows.length + customers.rows.length + tasks.rows.length + products.rows.length + staff.rows.length
         });

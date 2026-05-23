@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.6 - МД: бізнес-контексти CRM
+
+### МД: бізнес-контексти CRM [codex]
+- **Business context** - клієнти, ліди, customer cards, mailing та глобальний пошук працюють з активним `business_context`, щоб МД не змішувалась із ПАРК.
+- **Бронювання → CRM** - non-park бронювання продовжують scoped customer/lead handoff через існуючий CRM pipeline без дублювання між бізнесами.
+- **Таймлайн** - конструктор видимості знову відкривається, має компактну gear-кнопку, серверне збереження налаштувань і ширший registry елементів.
+- **Звіти** - close-flow зберігає locked snapshot і покритий guardrail-ом на accountant handoff task, а не тільки на візуальний статус.
+- **Guardrail** - UI-smoke і timeline/booking unit tests перевіряють бізнес-контексти, пошук, constructor trigger і scoped lead handoff.
+
+---
+
 ## v0.62.5 - Profile: tasker cockpit
 
 ### Profile: tasker cockpit [codex]

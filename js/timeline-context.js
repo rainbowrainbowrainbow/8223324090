@@ -48,7 +48,7 @@
                 delete: ['creator'],
                 export: ['creator', 'director'],
                 sales: [],
-                settings: ['creator']
+                settings: ['creator', 'director']
             }
         }
     };

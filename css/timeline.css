@@ -1314,15 +1314,35 @@ body:not(.dark-mode) .mini-booking-block:hover {
 }
 
 .timeline-constructor-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
     border: 1px solid rgba(32, 201, 151, 0.42);
-    border-radius: 14px;
-    padding: 0 16px;
-    min-height: 48px;
+    border-radius: 12px;
+    padding: 0 11px;
+    min-width: 46px;
+    min-height: 46px;
     background: rgba(17, 24, 39, 0.82);
     color: var(--text-primary, #f8fafc);
     font-weight: 900;
     cursor: pointer;
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-constructor-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.timeline-constructor-btn-label {
+    font-size: 12px;
+    line-height: 1;
 }
 
 .timeline-constructor-btn:hover,
@@ -1544,6 +1564,10 @@ body.timeline-constructor-active .timeline-constructor-disabled {
         right: 10px;
         bottom: 10px;
         width: calc(100vw - 20px);
+    }
+
+    .timeline-constructor-btn-label {
+        display: none;
     }
 }
 

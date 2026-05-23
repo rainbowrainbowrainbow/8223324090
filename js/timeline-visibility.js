@@ -25,15 +25,18 @@
         { key: 'quickStats', label: 'Швидка статистика', selector: '#quickStatsBar', area: 'Робоча зона' },
         { key: 'assistantWidget', label: 'Помічник', selector: '#kleshnyaWidget', area: 'Робоча зона' },
         { key: 'warnings', label: 'Попередження', selector: '#warningBanner, #filterModeBanner', area: 'Робоча зона' },
+        { key: 'timelineScale', label: 'Шкала часу', selector: '#timeScale', area: 'Таймлайн' },
         { key: 'timelineGrid', label: 'Сітка таймлайну', selector: '#timelineScroll, #timelineLines', area: 'Таймлайн' },
         { key: 'addLine', label: 'Додати лінію / спеціаліста', selector: '#addLineBtn', area: 'Таймлайн' },
         { key: 'legend', label: 'Легенда', selector: '.legend', area: 'Таймлайн' },
         { key: 'minimap', label: 'Мінімапа', selector: '#minimapContainer', area: 'Таймлайн' },
         { key: 'roomLoadPanel', label: 'Панель навантаження кімнат', selector: '#roomLoadPanel', area: 'Таймлайн' },
         { key: 'bookingPanel', label: 'Панель бронювання', selector: '#bookingPanel', area: 'Форма бронювання' },
+        { key: 'bookingClose', label: 'Закрити панель бронювання', selector: '#closePanel', area: 'Форма бронювання' },
         { key: 'bookingSelectedInfo', label: 'Обрані дата / час / лінія', selector: '#bookingPanel .selected-info', area: 'Форма бронювання' },
         { key: 'bookingRoom', label: 'Кімната', selector: '#roomSelect', area: 'Форма бронювання', targetWrapper: true },
         { key: 'freeRooms', label: 'Вільні кімнати', selector: '#freeRoomsBtn', area: 'Форма бронювання' },
+        { key: 'freeRoomsPanel', label: 'Панель вільних кімнат', selector: '#freeRoomsPanel', area: 'Форма бронювання' },
         { key: 'costume', label: 'Костюм', selector: '#costumeSelect', area: 'Форма бронювання', targetWrapper: true },
         { key: 'extraHost', label: 'Додатковий ведучий', selector: '#extraHostSection', area: 'Форма бронювання' },
         { key: 'secondAnimator', label: 'Другий аніматор', selector: '#secondAnimatorSection', area: 'Форма бронювання' },
@@ -364,6 +367,7 @@
     function createConstructorButton() {
         if (document.getElementById('timelineConstructorBtn')) {
             state.toggleBtn = document.getElementById('timelineConstructorBtn');
+            bindConstructorButton(state.toggleBtn);
             return;
         }
         const actionButtons = document.querySelector('.action-buttons') || document.querySelector('.control-panel');
@@ -374,11 +378,22 @@
         button.id = 'timelineConstructorBtn';
         button.className = 'timeline-constructor-btn hidden';
         button.title = 'Налаштувати видимість елементів таймлайну';
+        button.setAttribute('aria-label', 'Налаштувати видимість елементів таймлайну');
         button.setAttribute('aria-pressed', 'false');
-        button.textContent = '⚙️ Конструктор';
-        button.addEventListener('click', () => toggleConstructorMode(!state.constructorActive));
+        button.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Видимість</span>';
+        bindConstructorButton(button);
         actionButtons.appendChild(button);
         state.toggleBtn = button;
+    }
+
+    function bindConstructorButton(button) {
+        if (!button || button.dataset.timelineConstructorBound === '1') return;
+        button.dataset.timelineConstructorBound = '1';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleConstructorMode(!state.constructorActive);
+        });
     }
 
     function createPanel() {
@@ -459,7 +474,13 @@
         document.body?.classList.toggle('timeline-constructor-active', state.constructorActive);
         state.toggleBtn?.classList.toggle('is-active', state.constructorActive);
         state.toggleBtn?.setAttribute('aria-pressed', String(state.constructorActive));
-        if (state.toggleBtn) state.toggleBtn.textContent = state.constructorActive ? '✓ Готово' : '⚙️ Конструктор';
+        if (state.toggleBtn) {
+            state.toggleBtn.title = state.constructorActive ? 'Завершити налаштування видимості' : 'Налаштувати видимість елементів таймлайну';
+            state.toggleBtn.setAttribute('aria-label', state.toggleBtn.title);
+            state.toggleBtn.innerHTML = state.constructorActive
+                ? '<span class="timeline-constructor-btn-icon" aria-hidden="true">✓</span><span class="timeline-constructor-btn-label">Готово</span>'
+                : '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Видимість</span>';
+        }
         state.panel?.classList.toggle('hidden', !state.constructorActive);
         renderPanelList();
         applyVisibility();

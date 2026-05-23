@@ -19,6 +19,105 @@ function timelineApiPayload(payload) {
     return payload;
 }
 
+const CRM_BUSINESS_CONTEXTS = Object.freeze({
+    event_genix: {
+        key: 'event_genix',
+        label: 'Event Genix',
+        pageAllowlist: null
+    },
+    maysternya_doli: {
+        key: 'maysternya_doli',
+        label: 'Майстерня Долі',
+        pageAllowlist: '/maysternya-doli'
+    }
+});
+
+function normalizeCrmBusinessContext(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return CRM_BUSINESS_CONTEXTS[key] ? key : 'event_genix';
+}
+
+function crmBusinessContextFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        return normalizeCrmBusinessContext(params.get('businessContext') || params.get('business_context'));
+    } catch {
+        return 'event_genix';
+    }
+}
+
+function crmBusinessContextFromStorage() {
+    try {
+        return normalizeCrmBusinessContext(localStorage.getItem('pzp_crm_business_context'));
+    } catch {
+        return 'event_genix';
+    }
+}
+
+function getCrmBusinessContext() {
+    const fromUrl = crmBusinessContextFromUrl();
+    if (fromUrl !== 'event_genix') return fromUrl;
+    return crmBusinessContextFromStorage();
+}
+
+function userCanAccessCrmBusinessContext(user, context) {
+    const key = normalizeCrmBusinessContext(context);
+    if (key === 'event_genix') return Boolean(user);
+    const roles = [user?.role]
+        .concat(Array.isArray(user?.roles) ? user.roles : [])
+        .concat(Array.isArray(user?.extraRoles) ? user.extraRoles : [])
+        .concat(Array.isArray(user?.extra_roles) ? user.extra_roles : [])
+        .filter(Boolean)
+        .map(String);
+    if (roles.includes('creator')) return true;
+    const pageAllowlist = []
+        .concat(Array.isArray(user?.pageAllowlist) ? user.pageAllowlist : [])
+        .concat(Array.isArray(user?.page_allowlist) ? user.page_allowlist : [])
+        .filter(Boolean)
+        .map(String);
+    return pageAllowlist.includes(CRM_BUSINESS_CONTEXTS[key]?.pageAllowlist);
+}
+
+function getCrmBusinessContextOptions(user) {
+    return Object.values(CRM_BUSINESS_CONTEXTS)
+        .filter(ctx => userCanAccessCrmBusinessContext(user, ctx.key));
+}
+
+function setCrmBusinessContext(context, options = {}) {
+    const key = normalizeCrmBusinessContext(context);
+    try { localStorage.setItem('pzp_crm_business_context', key); } catch {}
+    if (options.updateUrl !== false && typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (key === 'event_genix') url.searchParams.delete('businessContext');
+        else url.searchParams.set('businessContext', key);
+        window.history.replaceState(window.history.state || {}, '', url);
+    }
+    return key;
+}
+
+function crmBusinessApiUrl(url, context = getCrmBusinessContext()) {
+    const key = normalizeCrmBusinessContext(context);
+    const joiner = String(url).includes('?') ? '&' : '?';
+    return `${url}${joiner}businessContext=${encodeURIComponent(key)}`;
+}
+
+function crmBusinessPayload(payload, context = getCrmBusinessContext()) {
+    return { ...(payload || {}), businessContext: normalizeCrmBusinessContext(context) };
+}
+
+if (typeof window !== 'undefined') {
+    window.CrmBusinessContext = {
+        contexts: CRM_BUSINESS_CONTEXTS,
+        normalize: normalizeCrmBusinessContext,
+        current: getCrmBusinessContext,
+        set: setCrmBusinessContext,
+        canAccess: userCanAccessCrmBusinessContext,
+        options: getCrmBusinessContextOptions,
+        apiUrl: crmBusinessApiUrl,
+        payload: crmBusinessPayload
+    };
+}
+
 // v39.9: Global safe fetch wrapper — auto-checks response.ok, handles auth errors
 async function safeFetch(url, opts = {}) {
     if (!opts.headers) opts.headers = {};

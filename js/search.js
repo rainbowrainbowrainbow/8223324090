@@ -434,7 +434,13 @@ function onSearchInput(value) {
     searchDebounceTimer = setTimeout(async () => {
         try {
             const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders(false) : {};
-            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { headers });
+            let searchUrl = `/api/search?q=${encodeURIComponent(query)}&limit=10`;
+            if (window.TimelineBusinessContext?.appendApiContext) {
+                searchUrl = window.TimelineBusinessContext.appendApiContext(searchUrl);
+            } else if (window.CrmBusinessContext?.apiUrl) {
+                searchUrl = window.CrmBusinessContext.apiUrl(searchUrl);
+            }
+            const response = await fetch(searchUrl, { headers });
             if (!response.ok) throw new Error(`Search error ${response.status}`);
             const data = await response.json();
             if (runId !== searchApiRunId || query !== searchLastQuery) return;

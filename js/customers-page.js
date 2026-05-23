@@ -16,6 +16,7 @@ const CrmState = {
     customers: [],
     rfmData: null,
     stats: null,
+    businessContext: 'event_genix',
     page: 1,
     pages: 1,
     total: 0,
@@ -89,6 +90,40 @@ function formatDateTime(value) {
         month: '2-digit',
         hour: '2-digit',
         minute: '2-digit'
+    });
+}
+
+function customerBusinessContext() {
+    return window.CrmBusinessContext?.normalize?.(CrmState.businessContext) || CrmState.businessContext || 'event_genix';
+}
+
+function customerApiUrl(url) {
+    return window.CrmBusinessContext?.apiUrl
+        ? window.CrmBusinessContext.apiUrl(url, customerBusinessContext())
+        : url;
+}
+
+function customerPayload(payload = {}) {
+    return window.CrmBusinessContext?.payload
+        ? window.CrmBusinessContext.payload(payload, customerBusinessContext())
+        : { ...(payload || {}), businessContext: customerBusinessContext() };
+}
+
+function initCustomerBusinessContext(user) {
+    const api = window.CrmBusinessContext;
+    CrmState.businessContext = api?.set?.(api.current?.() || 'event_genix', { updateUrl: true }) || 'event_genix';
+    const select = document.getElementById('customerBusinessContext');
+    if (!select || !api?.options) return;
+    const options = api.options(user);
+    select.innerHTML = options.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.label)}</option>`).join('');
+    select.value = customerBusinessContext();
+    select.hidden = options.length <= 1;
+    select.addEventListener('change', async event => {
+        CrmState.businessContext = api.set(event.target.value, { updateUrl: true });
+        CrmState.page = 1;
+        CrmState.rfmData = null;
+        await refreshData();
+        openCustomerDeepLink();
     });
 }
 
@@ -410,7 +445,7 @@ async function fetchCustomers() {
     const tableBody = document.getElementById('crmTableBody');
     if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
 
-    const res = await fetch(`/api/customers?${params}`, {
+    const res = await fetch(customerApiUrl(`/api/customers?${params}`), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.status === 401 || res.status === 403) {
@@ -426,7 +461,7 @@ async function fetchCustomers() {
 
 async function fetchStats() {
     const token = localStorage.getItem('pzp_token');
-    const res = await fetch('/api/customers/stats', {
+    const res = await fetch(customerApiUrl('/api/customers/stats'), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     CrmState.stats = await res.json();
@@ -434,7 +469,7 @@ async function fetchStats() {
 
 async function fetchRFM() {
     const token = localStorage.getItem('pzp_token');
-    const res = await fetch('/api/customers/rfm', {
+    const res = await fetch(customerApiUrl('/api/customers/rfm'), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     CrmState.rfmData = await res.json();
@@ -442,7 +477,7 @@ async function fetchRFM() {
 
 async function fetchCustomerDetail(id) {
     const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/customers/${id}`, {
+    const res = await fetch(customerApiUrl(`/api/customers/${id}`), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     const payload = await res.json().catch(() => ({}));
@@ -454,7 +489,7 @@ async function fetchCustomerDetail(id) {
 
 async function fetchCustomerCommunicationContext(id) {
     const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/customers/${id}/communication-context`, {
+    const res = await fetch(customerApiUrl(`/api/customers/${id}/communication-context`), {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('communication context error');
@@ -469,13 +504,13 @@ async function saveCustomer(data) {
         : '/api/customers';
     const method = CrmState.editingId ? 'PUT' : 'POST';
 
-    const res = await fetch(url, {
+    const res = await fetch(customerApiUrl(url), {
         method,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(customerPayload(data))
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -486,7 +521,7 @@ async function saveCustomer(data) {
 
 async function deleteCustomer(id) {
     const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/customers/${id}`, {
+    const res = await fetch(customerApiUrl(`/api/customers/${id}`), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -937,7 +972,7 @@ window.confirmDeleteCustomer = async function(id) {
 window.removeTag = async function(customerId, tagId) {
     const token = localStorage.getItem('pzp_token');
     try {
-        await fetch(`/api/customers/${customerId}/tags/${tagId}`, {
+        await fetch(customerApiUrl(`/api/customers/${customerId}/tags/${tagId}`), {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
         });
         showCustomerDetail(customerId);
@@ -967,7 +1002,7 @@ window.showAddTagDropdown = function(customerId) {
 window.addTag = async function(customerId, tag, color) {
     const token = localStorage.getItem('pzp_token');
     try {
-        await fetch(`/api/customers/${customerId}/tags`, {
+        await fetch(customerApiUrl(`/api/customers/${customerId}/tags`), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag, color })
@@ -987,7 +1022,7 @@ window.addTag = async function(customerId, tag, color) {
 async function loadJourney() {
     const token = localStorage.getItem('pzp_token');
     try {
-        const res = await fetch('/api/customers/journey-stats', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch(customerApiUrl('/api/customers/journey-stats'), { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
         if (!data.success) return;
         const s = data.stats;
@@ -1027,7 +1062,7 @@ async function loadJourney() {
 async function loadDuplicates() {
     const token = localStorage.getItem('pzp_token');
     try {
-        const res = await fetch('/api/customers/duplicates', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch(customerApiUrl('/api/customers/duplicates'), { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
         const el = document.getElementById('tabDuplicates');
         if (!data.duplicates || data.duplicates.length === 0) {
@@ -1058,7 +1093,7 @@ window.mergeCustomers = async function(primaryId, duplicateId) {
     if (!await confirmModal(`Об'єднати клієнтів? Всі бронювання будуть перенесені до основного профілю.`, { type: 'warning', okText: "Об'єднати" })) return;
     const token = localStorage.getItem('pzp_token');
     try {
-        const res = await fetch(`/api/customers/${primaryId}/merge`, {
+        const res = await fetch(customerApiUrl(`/api/customers/${primaryId}/merge`), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ duplicateId })
@@ -1093,7 +1128,7 @@ async function loadCommunicationHub(customerId) {
 async function loadCommunications(customerId) {
     const token = localStorage.getItem('pzp_token');
     try {
-        const res = await fetch(`/api/customers/${customerId}/communications`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch(customerApiUrl(`/api/customers/${customerId}/communications`), { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
         return data.communications || [];
     } catch { return []; }
@@ -1103,7 +1138,7 @@ window.addCommunication = async function(customerId) {
     const summary = await promptModal('Нотатка:', { placeholder: 'Введіть нотатку...' });
     if (!summary) return;
     const token = localStorage.getItem('pzp_token');
-    await fetch(`/api/customers/${customerId}/communications`, {
+    await fetch(customerApiUrl(`/api/customers/${customerId}/communications`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'note', direction: 'internal', summary })
@@ -1119,7 +1154,7 @@ async function loadNps() {
     const token = localStorage.getItem('pzp_token');
     const el = document.getElementById('tabNps');
     try {
-        const res = await fetch('/api/customers/nps-stats', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch(customerApiUrl('/api/customers/nps-stats'), { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
         if (!data.success) { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Дані NPS недоступні</div></div>'; return; }
 
@@ -1212,10 +1247,10 @@ window.previewBulk = async function() {
     const template = document.getElementById('bulkTemplate')?.value;
     if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
     try {
-        const res = await fetch('/api/customers/bulk-message', {
+        const res = await fetch(customerApiUrl('/api/customers/bulk-message'), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filters, template, dryRun: true })
+            body: JSON.stringify(customerPayload({ filters, template, dryRun: true }))
         });
         const data = await res.json();
         const preview = document.getElementById('bulkPreview');
@@ -1241,10 +1276,10 @@ window.sendBulk = async function() {
         source: document.getElementById('bulkSourceFilter')?.value || undefined
     };
     try {
-        const res = await fetch('/api/customers/bulk-message', {
+        const res = await fetch(customerApiUrl('/api/customers/bulk-message'), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filters, template, dryRun: false })
+            body: JSON.stringify(customerPayload({ filters, template, dryRun: false }))
         });
         const data = await res.json();
         if (data.success) {
@@ -1265,7 +1300,7 @@ window.sendBulk = async function() {
 
 function exportVcf() {
     const token = localStorage.getItem('pzp_token');
-    fetch('/api/customers/export-vcf', {
+    fetch(customerApiUrl('/api/customers/export-vcf'), {
         headers: { 'Authorization': `Bearer ${token}` }
     }).then(res => res.blob()).then(blob => {
         const url = URL.createObjectURL(blob);
@@ -1285,7 +1320,7 @@ async function importVcf(file) {
     const formData = new FormData();
     formData.append('vcf', file);
     try {
-        const res = await fetch('/api/customers/import-vcf', {
+        const res = await fetch(customerApiUrl('/api/customers/import-vcf'), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
@@ -1345,7 +1380,7 @@ async function refreshData() {
 function downloadCSV() {
     const token = localStorage.getItem('pzp_token');
     // Use a hidden link to trigger download with auth
-    fetch('/api/customers/export', {
+    fetch(customerApiUrl('/api/customers/export'), {
         headers: { 'Authorization': `Bearer ${token}` }
     }).then(res => res.blob()).then(blob => {
         const url = URL.createObjectURL(blob);
@@ -1383,6 +1418,7 @@ async function initPage() {
 
     AppState.currentUser = user;
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
+    initCustomerBusinessContext(user);
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);

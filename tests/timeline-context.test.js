@@ -34,7 +34,9 @@ test('Maysternya Doli actions are role-scoped inside the allowed surface', () =>
 
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), true);
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'delete'), false);
+    assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), true);
     assert.equal(canUseTimelineAction(managerWithExtraRole, 'maysternya_doli', 'edit'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'delete'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'sales'), false);
+    assert.equal(canUseTimelineAction({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli', 'settings'), false);
 });

@@ -8,7 +8,7 @@ const CONTEXT_ACTION_ROLES = {
         delete: ['creator'],
         export: ['creator', 'director'],
         sales: [],
-        settings: ['creator']
+        settings: ['creator', 'director']
     }
 };
 

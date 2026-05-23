@@ -13,6 +13,7 @@ const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
 const log = createLogger('Certificates');
+const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
 
 // GET /api/certificates — List with filters
 // v39.8: Security — require authentication
@@ -230,7 +231,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
             return res.status(400).json({ error: 'Кількість має бути 5, 10, 15 або 20' });
         }
 
-        const typeText = req.body.typeText || 'на одноразовий вхід';
+        const typeText = BATCH_CERTIFICATE_TYPE_TEXT;
+        const eventName = typeof req.body.eventName === 'string' ? req.body.eventName.trim().slice(0, 200) : '';
         const validUntil = req.body.validUntil;
         const season = VALID_SEASONS.includes(req.body.season) ? req.body.season : getCurrentSeason();
 
@@ -259,7 +261,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
                     finalValidUntil,
                     req.user.id || null,
                     req.user.name || req.user.username,
-                    `Пакетна генерація (${quantity} шт.)`,
+                    `Пакетна генерація (${quantity} шт.)${eventName ? ` · ${eventName}` : ''}`,
                     season
                 ]
             );
@@ -271,6 +273,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
             ['certificate_batch', req.user.username, JSON.stringify({
                 quantity,
                 typeText,
+                eventName: eventName || undefined,
                 codes: created.map(c => c.certCode)
             })]
         );

@@ -9,14 +9,14 @@
     <title>Event Genix | Сертифікати</title>
     <meta name="description" content="Event Genix — сертифікати">
     <link rel="icon" type="image/png" href="/images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="/css/base.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/layout.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/pages.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/modals.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/dark-mode.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/responsive.css?v=0.62.11">
-    <link rel="stylesheet" href="/css/role-switcher.css?v=0.62.11">
+    <link rel="stylesheet" href="/css/base.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/layout.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/pages.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/modals.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/dark-mode.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/responsive.css?v=0.62.12">
+    <link rel="stylesheet" href="/css/role-switcher.css?v=0.62.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -72,7 +72,7 @@
                 <div class="cert-page-actions" aria-label="Навігація сертифікатів">
                     <a class="btn-page-secondary" href="/certificates">Реєстр</a>
                     <a class="btn-page-primary" href="/certificates/new">Видати сертифікат</a>
-                    <a class="btn-page-secondary" href="/certificates/batch">Пакет сертифікатів</a>
+                    <a class="btn-page-secondary" href="/certificates/batch">Пакет сертифікатів на одноразовий вхід</a>
                 </div>
             </section>
 
@@ -170,16 +170,15 @@
                                     <label><input type="radio" name="certPageBatchQty" value="20"> 20 шт.</label>
                                 </div>
                             </div>
-                            <label class="form-field">
+                            <div class="form-field cert-fixed-type-field">
                                 <span>Тип сертифіката</span>
-                                <select id="certPageBatchType">
-                                    <option value="на одноразовий вхід">На одноразовий вхід</option>
-                                    <option value="абонемент">Абонемент</option>
-                                </select>
-                            </label>
+                                <strong>На одноразовий вхід</strong>
+                                <small class="form-hint">Пакетна видача генерує тільки одноразові сертифікати.</small>
+                            </div>
                             <label class="form-field">
                                 <span>Назва події (опціонально)</span>
                                 <input type="text" id="certPageBatchEventName" maxlength="200" placeholder="напр. Вітання іменинників">
+                                <small class="form-hint">Збережеться у примітці пакета, тип не змінює.</small>
                             </label>
                             <div class="form-field">
                                 <span>Дійсний до</span>
@@ -227,14 +226,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="/js/ui.js?v=0.62.11"></script>
-    <script src="/js/config.js?v=0.62.11"></script>
-    <script src="/js/notification.js?v=0.62.11"></script>
-    <script src="/js/api.js?v=0.62.11"></script>
-    <script src="/js/auth.js?v=0.62.11"></script>
-    <script src="/js/components/sidebar.js?v=0.62.11"></script>
+    <script src="/js/ui.js?v=0.62.12"></script>
+    <script src="/js/config.js?v=0.62.12"></script>
+    <script src="/js/notification.js?v=0.62.12"></script>
+    <script src="/js/api.js?v=0.62.12"></script>
+    <script src="/js/auth.js?v=0.62.12"></script>
+    <script src="/js/components/sidebar.js?v=0.62.12"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="/js/certificates-page.js?v=0.62.11"></script>
-    <script src="/js/alerts.js?v=0.62.11"></script>
+    <script src="/js/certificates-page.js?v=0.62.12"></script>
+    <script src="/js/alerts.js?v=0.62.12"></script>
 </body>
 </html>

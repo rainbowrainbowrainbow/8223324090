@@ -2757,15 +2757,20 @@ async function handleBatchCertSubmit(event) {
     if (!qtyInput) return showNotification('Оберіть кількість', 'error');
     const quantity = parseInt(qtyInput.value);
     const eventName = (document.getElementById('batchCertEventName')?.value || '').trim();
-    const baseType = document.getElementById('batchCertType')?.value;
-    const typeText = eventName || baseType;
+    const typeText = 'на одноразовий вхід';
     const validUntil = document.getElementById('batchCertValidUntil')?.value || undefined;
     const season = document.getElementById('batchCertSeason')?.value || getCertCurrentSeason();
 
     btn.disabled = true;
     btn.textContent = `⏳ Генерація ${quantity} шт...`;
 
-    const result = await apiBatchCreateCertificates({ quantity, typeText, validUntil, season });
+    const result = await apiBatchCreateCertificates({
+        quantity,
+        typeText,
+        eventName: eventName || undefined,
+        validUntil,
+        season
+    });
     if (!result.success) {
         showNotification(result.error || 'Помилка генерації', 'error');
         btn.disabled = false;

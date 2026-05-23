@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.62.11">
-    <link rel="stylesheet" href="css/auth.css?v=0.62.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.11">
-    <link rel="stylesheet" href="css/timeline.css?v=0.62.11">
-    <link rel="stylesheet" href="css/panel.css?v=0.62.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.11">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.11">
-    <link rel="stylesheet" href="css/features.css?v=0.62.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.11">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.11">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.11">
+    <link rel="stylesheet" href="css/base.css?v=0.62.12">
+    <link rel="stylesheet" href="css/auth.css?v=0.62.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.12">
+    <link rel="stylesheet" href="css/timeline.css?v=0.62.12">
+    <link rel="stylesheet" href="css/panel.css?v=0.62.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.12">
+    <link rel="stylesheet" href="css/controls.css?v=0.62.12">
+    <link rel="stylesheet" href="css/features.css?v=0.62.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.12">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.12">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.62.11 Таймлайн: кімнати і видимість">✨ 0.62.11 Таймлайн: кімнати і видимість</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.62.12 Сертифікати: пакет одноразових">✨ 0.62.12 Сертифікати: пакет одноразових</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.62.11 — Таймлайн: кімнати і видимість</p>
+                <p class="tagline">AI First CRM v0.62.12 — Сертифікати: пакет одноразових</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.11: Таймлайн: кімнати і видимість</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.12: Сертифікати: пакет одноразових</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -663,7 +663,7 @@
                     <p class="empty-state">Натисніть кнопку, щоб завантажити</p>
                 </div>
                 <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
-                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">Пакет сертифікатів</button>
+                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">Пакет сертифікатів на одноразовий вхід</button>
             </div>
         </aside>
     </div>
@@ -981,11 +981,11 @@
     </div>
 
     <!-- v8.6: Модалка пакетної генерації сертифікатів -->
-    <div id="batchCertModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Пакет сертифікатів">
+    <div id="batchCertModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Пакет сертифікатів на одноразовий вхід">
         <div class="modal-content">
             <button type="button" class="modal-close" data-cert-modal-close="batchCertModal" aria-label="Закрити">&times;</button>
-            <h3>📦 Пакетна генерація сертифікатів</h3>
-            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">Генерує порожні сертифікати з випадковими кодами. ПІБ вписується ручкою.</p>
+            <h3>📦 Пакет сертифікатів на одноразовий вхід</h3>
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">Генерує порожні одноразові сертифікати з випадковими кодами. ПІБ вписується ручкою.</p>
             <form id="batchCertForm" onsubmit="handleBatchCertSubmit(event)">
                 <div class="form-group">
                     <label>Кількість</label>
@@ -997,16 +997,14 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="batchCertType">Тип сертифіката</label>
-                    <select id="batchCertType">
-                        <option value="на одноразовий вхід">На одноразовий вхід</option>
-                        <option value="абонемент">Абонемент</option>
-                    </select>
+                    <label>Тип сертифіката</label>
+                    <strong>На одноразовий вхід</strong>
+                    <small class="form-hint">Пакетна видача генерує тільки одноразові сертифікати.</small>
                 </div>
                 <div class="form-group">
                     <label for="batchCertEventName">Назва події (опціонально)</label>
                     <input type="text" id="batchCertEventName" maxlength="200" placeholder="напр. Вітання Іменинників">
-                    <small class="form-hint">Друкується на сертифікаті замість типу</small>
+                    <small class="form-hint">Збережеться у примітці пакета, тип не змінює.</small>
                 </div>
                 <div class="form-group" style="display:none">
                     <label>Сезон (візуал сертифіката)</label>
@@ -1266,6 +1264,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.62.12 — Сертифікати: пакет одноразових</h4>
+                    <ul>
+                        <li><b>Пакет сертифікатів</b> — сторінку перейменовано на <code>Пакет сертифікатів на одноразовий вхід</code>.</li>
+                        <li><b>UX</b> — з пакетної видачі прибрано вибір типу сертифіката; оператор бачить фіксований тип <code>На одноразовий вхід</code>.</li>
+                        <li><b>Backend</b> — <code>/api/certificates/batch</code> примусово зберігає batch-сертифікати як <code>на одноразовий вхід</code>, навіть якщо старий клієнт передасть інший тип.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.62.11 — Таймлайн: кімнати і видимість</h4>
                     <ul>
@@ -8903,28 +8909,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.62.11"></script>
-    <script src="js/timeline-visibility.js?v=0.62.11"></script>
-    <script src="js/config.js?v=0.62.11"></script>
-    <script src="js/api.js?v=0.62.11"></script>
-    <script src="js/ui.js?v=0.62.11"></script>
-    <script src="js/auth.js?v=0.62.11"></script>
-    <script src="js/timeline.js?v=0.62.11"></script>
-    <script src="js/booking.js?v=0.62.11"></script>
-    <script src="js/settings.js?v=0.62.11"></script>
-    <script src="js/booking-form.js?v=0.62.11"></script>
-    <script src="js/booking-linked.js?v=0.62.11"></script>
-    <script src="js/settings-dashboard.js?v=0.62.11"></script>
-    <script src="js/settings-history.js?v=0.62.11"></script>
-    <script src="js/settings-afisha.js?v=0.62.11"></script>
-    <script src="js/settings-certificates.js?v=0.62.11"></script>
-    <script src="js/offline.js?v=0.62.11"></script>
-    <script src="js/crm-feature-registry.js?v=0.62.11"></script>
-    <script src="js/search.js?v=0.62.11"></script>
-    <script src="js/ws.js?v=0.62.11"></script>
-    <script src="js/app.js?v=0.62.11"></script>
-    <script src="js/kleshnya-widget.js?v=0.62.11"></script>
-    <script src="js/components/sidebar.js?v=0.62.11"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.11"></script>
+    <script src="js/timeline-context.js?v=0.62.12"></script>
+    <script src="js/timeline-visibility.js?v=0.62.12"></script>
+    <script src="js/config.js?v=0.62.12"></script>
+    <script src="js/api.js?v=0.62.12"></script>
+    <script src="js/ui.js?v=0.62.12"></script>
+    <script src="js/auth.js?v=0.62.12"></script>
+    <script src="js/timeline.js?v=0.62.12"></script>
+    <script src="js/booking.js?v=0.62.12"></script>
+    <script src="js/settings.js?v=0.62.12"></script>
+    <script src="js/booking-form.js?v=0.62.12"></script>
+    <script src="js/booking-linked.js?v=0.62.12"></script>
+    <script src="js/settings-dashboard.js?v=0.62.12"></script>
+    <script src="js/settings-history.js?v=0.62.12"></script>
+    <script src="js/settings-afisha.js?v=0.62.12"></script>
+    <script src="js/settings-certificates.js?v=0.62.12"></script>
+    <script src="js/offline.js?v=0.62.12"></script>
+    <script src="js/crm-feature-registry.js?v=0.62.12"></script>
+    <script src="js/search.js?v=0.62.12"></script>
+    <script src="js/ws.js?v=0.62.12"></script>
+    <script src="js/app.js?v=0.62.12"></script>
+    <script src="js/kleshnya-widget.js?v=0.62.12"></script>
+    <script src="js/components/sidebar.js?v=0.62.12"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.12"></script>
 </body>
 </html>

@@ -237,14 +237,14 @@ describe('POST /api/certificates/batch — Batch generate', () => {
         assert.equal(res.status, 400);
     });
 
-    it('POST /api/certificates/batch — respects custom typeText', async () => {
+    it('POST /api/certificates/batch — forces one-time entry type', async () => {
         const res = await authRequest('POST', '/api/certificates/batch', {
             quantity: 5,
             typeText: 'VIP пропуск'
         });
         assert.equal(res.status, 201);
         for (const cert of res.data.certificates) {
-            assert.equal(cert.typeText, 'VIP пропуск');
+            assert.equal(cert.typeText, 'на одноразовий вхід');
             createdIds.push(cert.id);
         }
     });

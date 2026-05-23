@@ -2,6 +2,8 @@
  * js/certificates-page.js — standalone certificate list/create/batch page.
  */
 (function() {
+    const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
+
     const state = {
         mode: 'list',
         searchTimer: null,
@@ -93,7 +95,7 @@
         const titles = {
             list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі.'],
             new: ['Видати сертифікат', 'Окрема робоча сторінка для створення одного сертифіката.'],
-            batch: ['Пакет сертифікатів', 'Пакетна генерація кодів без вкладеної panel-модалки.']
+            batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.']
         };
         $('certificatePageTitle').textContent = titles[mode][0];
         $('certificatePageSubtitle').textContent = titles[mode][1];
@@ -262,7 +264,6 @@
         const original = btn?.textContent || 'Згенерувати пакет';
         const quantity = Number(document.querySelector('input[name="certPageBatchQty"]:checked')?.value || 0);
         const eventName = $('certPageBatchEventName')?.value.trim();
-        const baseType = $('certPageBatchType')?.value || 'на одноразовий вхід';
 
         if (!quantity) {
             notify('Оберіть кількість сертифікатів', 'error');
@@ -276,7 +277,8 @@
         try {
             const result = await apiBatchCreateCertificates({
                 quantity,
-                typeText: eventName || baseType,
+                typeText: BATCH_CERTIFICATE_TYPE_TEXT,
+                eventName: eventName || undefined,
                 validUntil: $('certPageBatchValidUntil')?.value || undefined,
                 season: $('certPageBatchSeason')?.value || currentSeason()
             });

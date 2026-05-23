@@ -2086,6 +2086,20 @@ body.dark-mode .operations-pack-bar select {
     outline: none;
 }
 
+.cert-fixed-type-field strong {
+    display: inline-flex;
+    align-items: center;
+    min-height: 42px;
+    width: 100%;
+    border: 1px solid rgba(20, 184, 166, 0.32);
+    border-radius: 12px;
+    background: rgba(20, 184, 166, 0.1);
+    color: #0f766e;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 900;
+}
+
 .cert-page-filters input:focus,
 .cert-page-filters select:focus,
 .cert-form-card input:focus,
@@ -2408,6 +2422,12 @@ body.dark-mode .cert-page-code,
 body.dark-mode .cert-result-kicker,
 body.dark-mode .page-kicker {
     color: #5eead4;
+}
+
+body.dark-mode .cert-fixed-type-field strong {
+    border-color: rgba(45, 212, 191, 0.36);
+    background: rgba(20, 184, 166, 0.16);
+    color: #99f6e4;
 }
 
 @media (max-width: 900px) {

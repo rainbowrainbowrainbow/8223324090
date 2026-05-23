@@ -12,6 +12,7 @@ const { requireRole } = require('../middleware/auth');
 const ExcelJS = require('exceljs');
 
 const log = createLogger('Reports');
+function getKleshnya() { return require('../services/kleshnya'); }
 
 // RBAC: Reports access — aligned with /reports page/sidebar visibility.
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'accountant'));
@@ -267,7 +268,7 @@ function mapDraftRow(r) {
 
 async function assignOnDutyAccountant(report) {
     const dutyAccountant = await pool.query(
-        'SELECT id, name, chat_id FROM accountants WHERE is_on_duty = true LIMIT 1'
+        'SELECT id, name, chat_id, staff_id FROM accountants WHERE is_on_duty = true LIMIT 1'
     );
     if (dutyAccountant.rows.length > 0) {
         await pool.query(
@@ -276,8 +277,51 @@ async function assignOnDutyAccountant(report) {
         );
         report.assignedTo = dutyAccountant.rows[0].id;
         report.accountantName = dutyAccountant.rows[0].name;
+        report.accountantStaffId = dutyAccountant.rows[0].staff_id || null;
     }
     return report;
+}
+
+async function createReportHandoffTask(report, req) {
+    if (!report?.id || report.lifecycleStatus !== 'closed') return null;
+    try {
+        const reportId = String(report.id);
+        const title = `Перевірити закритий звіт #${reportId}`;
+        const description = [
+            `Звіт: ${report.description || report.rawData?.reportTableTemplate?.title || report.category || 'табличний звіт'}`,
+            `Сума: ${Number(report.amount || 0).toLocaleString('uk-UA')} грн`,
+            `Закрив: ${report.closedByUsername || currentUsername(req)}`,
+            report.closedAt ? `Дата закриття: ${new Date(report.closedAt).toLocaleString('uk-UA')}` : null
+        ].filter(Boolean).join('\n');
+
+        const task = await getKleshnya().createTask({
+            title,
+            description,
+            date: new Date().toISOString().slice(0, 10),
+            priority: 'normal',
+            assigned_to: report.accountantName || 'Бухгалтер',
+            owner: report.accountantName || null,
+            created_by: currentUsername(req),
+            created_by_user_id: currentUserId(req),
+            category: 'finance',
+            source_type: 'report',
+            source_id: reportId,
+            source_entity_type: 'report',
+            source_entity_id: reportId,
+            related_entity_type: 'report',
+            related_entity_id: reportId,
+            source_module: 'reports',
+            task_mode: 'work',
+            task_kind: 'action',
+            visibility: 'team',
+            workflow_state: 'todo',
+            duplicateMode: 'skip'
+        });
+        return task?.id ? task : null;
+    } catch (err) {
+        log.warn('Report handoff task creation skipped', { reportId: report?.id, error: err.message });
+        return null;
+    }
 }
 
 async function createReportFromTablePayload(req, tablePayload, overrides = {}) {
@@ -975,6 +1019,11 @@ router.post('/table/close', async (req, res) => {
             closedByUsername: currentUsername(req),
             lockedSnapshot: lockedPayload
         };
+        const handoffTask = await createReportHandoffTask(report, req);
+        if (handoffTask?.id) {
+            report.handoffTaskId = handoffTask.id;
+            report.handoffDuplicateSkipped = Boolean(handoffTask.duplicateSkipped);
+        }
         res.status(reportId ? 200 : 201).json({ success: true, report });
     } catch (err) {
         log.error('POST /reports/table/close error', err);

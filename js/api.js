@@ -1611,7 +1611,9 @@ async function apiGetBudgetComparison(year, month) {
 // v15.1: CRM — Customer search (autocomplete)
 async function apiSearchCustomers(query) {
     try {
-        const response = await fetch(`${API_BASE}/customers/search?q=${encodeURIComponent(query)}`, { headers: getAuthHeaders(false) });
+        let url = `${API_BASE}/customers/search?q=${encodeURIComponent(query)}`;
+        url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -1623,7 +1625,9 @@ async function apiSearchCustomers(query) {
 
 async function apiGetCustomer(id) {
     try {
-        const response = await fetch(`${API_BASE}/customers/${id}`, { headers: getAuthHeaders(false) });
+        let url = `${API_BASE}/customers/${id}`;
+        url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();

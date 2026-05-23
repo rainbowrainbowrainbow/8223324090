@@ -71,7 +71,7 @@ const EVENT_GENIX_PROGRAMS = [
 
 const MAYSTERNYA_DOLI_PROGRAMS = [
     { id: 'md_demo_consult_15', code: 'Демо', label: 'Демо консультація(15)', name: 'Демо консультація', icon: '◇', category: 'custom', duration: 15, price: 0, hosts: 1, description: 'Коротка демо консультація на 15 хвилин.' },
-    { id: 'md_full_consult_40', code: 'Повна', label: 'Повна консультація(40)', name: 'Повна консультація', icon: '◆', category: 'custom', duration: 40, price: 0, hosts: 1, description: 'Повна консультація на 40 хвилин.' }
+    { id: 'md_full_consult_40', code: 'Повна', label: 'Повна консультація(90)', name: 'Повна консультація', icon: '◆', category: 'custom', duration: 90, price: 0, hosts: 1, description: 'Повна консультація на 90 хвилин.' }
 ];
 
 const IS_MAYSTERNYA_DOLI_TIMELINE = typeof window !== 'undefined'
@@ -274,6 +274,9 @@ Object.defineProperty(AppState, 'currentUser', {
         this._currentUser = user;
         if (user && typeof Sidebar !== 'undefined' && Sidebar.initUserCard) {
             Sidebar.initUserCard();
+        }
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('app:user-changed', { detail: { user } }));
         }
     },
     enumerable: true,

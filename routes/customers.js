@@ -12,6 +12,12 @@ const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
 const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest,
+    requireBusinessContext,
+    pushBusinessContextCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Customers');
 
@@ -132,6 +138,20 @@ function normalizeCustomerPayload(body = {}) {
     };
 }
 
+function requestBusinessContext(req) {
+    return businessContextFromRequest(req);
+}
+
+function ensureBusinessContext(req, res) {
+    const businessContext = requestBusinessContext(req);
+    if (!requireBusinessContext(req, res, businessContext)) return null;
+    return businessContext;
+}
+
+function customerContextCondition(params, businessContext, alias = '') {
+    return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
 let customerSocialIdentitiesColumnReady = false;
 
 function isMissingCustomerSocialIdentitiesColumnError(err) {
@@ -160,6 +180,7 @@ function isCustomerSocialIdentitiesStorageError(err) {
 
 function customerWritePayload(input, options = {}) {
     const payload = {
+        business_context: input.businessContext || DEFAULT_BUSINESS_CONTEXT,
         name: input.name,
         phone: input.phone,
         instagram: input.instagram,
@@ -213,6 +234,7 @@ async function canSearchCustomerSocialIdentities() {
 
 async function insertCustomerPg(input) {
     const params = [
+        input.businessContext || DEFAULT_BUSINESS_CONTEXT,
         input.name,
         input.phone,
         input.instagram,
@@ -226,17 +248,17 @@ async function insertCustomerPg(input) {
     try {
         await ensureCustomerSocialIdentitiesColumn();
         return await pool.query(
-            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING *`,
+            `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
             params
         );
     } catch (err) {
         if (!isCustomerSocialIdentitiesStorageError(err)) throw err;
         log.warn('customers.social_identities unavailable during create; retrying legacy customer insert', { error: err.message });
         return pool.query(
-            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            params.slice(0, 7)
+            `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            params.slice(0, 8)
         );
     }
 }
@@ -251,7 +273,8 @@ async function updateCustomerPg(id, input) {
         input.source,
         input.notes,
         JSON.stringify(input.socialIdentities),
-        parseInt(id)
+        parseInt(id),
+        input.businessContext || DEFAULT_BUSINESS_CONTEXT
     ];
 
     try {
@@ -259,7 +282,7 @@ async function updateCustomerPg(id, input) {
         return await pool.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, social_identities=$8::jsonb, updated_at=NOW()
-             WHERE id=$9 RETURNING *`,
+             WHERE id=$9 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10 RETURNING *`,
             params
         );
     } catch (err) {
@@ -268,13 +291,16 @@ async function updateCustomerPg(id, input) {
         return pool.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
-             WHERE id=$8 RETURNING *`,
-            [...params.slice(0, 7), parseInt(id)]
+             WHERE id=$8 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9 RETURNING *`,
+            [...params.slice(0, 7), parseInt(id), input.businessContext || DEFAULT_BUSINESS_CONTEXT]
         );
     }
 }
 
 function scopedBookingAggregateSql(user, params, alias = 'b') {
+    const businessContext = arguments.length >= 4 ? arguments[3] : DEFAULT_BUSINESS_CONTEXT;
+    params.push(businessContext || DEFAULT_BUSINESS_CONTEXT);
+    const businessRef = `$${params.length}`;
     const visibility = getVisibleBookingScope(user, params, alias);
     return {
         visibility,
@@ -286,6 +312,7 @@ function scopedBookingAggregateSql(user, params, alias = 'b') {
                    MAX(${alias}.date) AS real_last_visit
             FROM bookings ${alias}
             WHERE ${alias}.status != 'cancelled'
+              AND COALESCE(${alias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${businessRef}
               ${visibility.sql}
             GROUP BY ${alias}.customer_id
         `
@@ -295,6 +322,8 @@ function scopedBookingAggregateSql(user, params, alias = 'b') {
 // Autocomplete search (for booking form dropdown)
 router.get('/search', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const q = (req.query.q || '').trim();
         if (q.length < 2) return res.json([]);
 
@@ -303,6 +332,7 @@ router.get('/search', async (req, res) => {
             const pattern = `%${q}%`;
             const { data, error } = await sb.from('customers')
                 .select('id, name, phone, instagram, child_name, total_bookings')
+                .eq('business_context', businessContext)
                 .or(`name.ilike.${pattern},phone.ilike.${pattern},instagram.ilike.${pattern}`)
                 .order('last_visit', { ascending: false, nullsFirst: false })
                 .limit(10);
@@ -313,10 +343,11 @@ router.get('/search', async (req, res) => {
         // Fallback: Railway DB — v33.3: live aggregation from bookings
         const pattern = `%${q}%`;
         const params = [pattern];
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
         const socialIdentitySearch = await canSearchCustomerSocialIdentities()
             ? ' OR c.social_identities::text ILIKE $1'
             : '';
+        const contextSql = customerContextCondition(params, businessContext, 'c');
         const result = await pool.query(
             `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.total_bookings,
                     COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
@@ -324,7 +355,8 @@ router.get('/search', async (req, res) => {
                     b_agg.real_last_visit
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${socialIdentitySearch}
+             WHERE ${contextSql}
+               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${socialIdentitySearch})
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
             params
@@ -339,18 +371,22 @@ router.get('/search', async (req, res) => {
 // v15.1: RFM analytics
 router.get('/rfm', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         let rows;
         const sb = getSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers')
                 .select('id, name, phone, instagram, child_name, total_bookings, total_spent, first_visit, last_visit, created_at, updated_at')
+                .eq('business_context', businessContext)
                 .order('last_visit', { ascending: false, nullsFirst: false });
             if (error) throw error;
             rows = data || [];
         } else {
             // v32.1: JOIN bookings for real totals
             const params = [];
-            const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
+            const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+            const contextSql = customerContextCondition(params, businessContext, 'c');
             const result = await pool.query(`
                 SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                        COALESCE(b.cnt, 0) AS total_bookings,
@@ -363,6 +399,7 @@ router.get('/rfm', async (req, res) => {
                            real_first_visit AS first_visit, real_last_visit AS last_visit
                     FROM (${bookingAgg.sql}) scoped_bookings
                 ) b ON b.customer_id = c.id
+                WHERE ${contextSql}
                 ORDER BY b.last_visit DESC NULLS LAST
             `, params);
             rows = result.rows;
@@ -401,11 +438,14 @@ router.get('/rfm', async (req, res) => {
 // v32.1: Customer segments (simplified from RFM)
 router.get('/segments', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const now = new Date();
         const threeMonthsAgo = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const params = [threeMonthsAgo, oneMonthAgo];
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const contextSql = customerContextCondition(params, businessContext, 'c');
 
         const result = await pool.query(`
             SELECT
@@ -418,6 +458,7 @@ router.get('/segments', async (req, res) => {
                 SELECT customer_id, real_last_visit AS last_visit, booking_spent AS spent
                 FROM (${bookingAgg.sql}) scoped_bookings
             ) b ON b.customer_id = c.id
+            WHERE ${contextSql}
         `, params);
 
         const row = result.rows[0];
@@ -439,7 +480,11 @@ router.get('/segments', async (req, res) => {
 // v32.1: Upcoming birthdays (next N days)
 router.get('/birthdays', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const days = Math.min(90, Math.max(1, parseInt(req.query.days) || 30));
+        const params = [];
+        const contextSql = customerContextCondition(params, businessContext, 'c');
 
         // PostgreSQL: compare month-day to find upcoming birthdays (handles year wrap)
         const result = await pool.query(`
@@ -452,8 +497,9 @@ router.get('/birthdays', async (req, res) => {
                    END AS days_until_birthday
             FROM customers c
             WHERE c.child_birthday IS NOT NULL
+              AND ${contextSql}
             ORDER BY days_until_birthday ASC
-        `);
+        `, params);
 
         const filtered = result.rows
             .filter(r => parseInt(r.days_until_birthday) >= 0 && parseInt(r.days_until_birthday) <= days)
@@ -476,14 +522,18 @@ router.get('/birthdays', async (req, res) => {
 // v15.1: CSV export — v19.14: rate limited
 router.get('/export', exportLimiter, async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         let customerRows;
         const sb = getSupabase();
         if (sb) {
-            const { data, error } = await sb.from('customers').select('*').order('name');
+            const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
             if (error) throw error;
             customerRows = data || [];
         } else {
-            const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
+            const params = [];
+            const contextSql = customerContextCondition(params, businessContext);
+            const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
             customerRows = result.rows;
         }
 
@@ -533,14 +583,18 @@ router.get('/export', exportLimiter, async (req, res) => {
 // v17.0: Excel export — v19.14: rate limited
 router.get('/export-xlsx', exportLimiter, async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         let customerRows;
         const sb = getSupabase();
         if (sb) {
-            const { data, error } = await sb.from('customers').select('*').order('name');
+            const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
             if (error) throw error;
             customerRows = data || [];
         } else {
-            const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
+            const params = [];
+            const contextSql = customerContextCondition(params, businessContext);
+            const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
             customerRows = result.rows;
         }
 
@@ -607,13 +661,15 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
 // v15.1: Stats overview
 router.get('/stats', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const sb = getSupabase();
         if (sb) {
             // Total
-            const { count: total } = await sb.from('customers').select('*', { count: 'exact', head: true });
+            const { count: total } = await sb.from('customers').select('*', { count: 'exact', head: true }).eq('business_context', businessContext);
 
             // By source
-            const { data: allCustomers } = await sb.from('customers').select('source');
+            const { data: allCustomers } = await sb.from('customers').select('source').eq('business_context', businessContext);
             const sourceMap = {};
             for (const c of (allCustomers || [])) {
                 const s = c.source || 'unknown';
@@ -626,18 +682,21 @@ router.get('/stats', async (req, res) => {
             // Top by spent
             const { data: topData } = await sb.from('customers')
                 .select('id, name, total_bookings, total_spent, last_visit')
+                .eq('business_context', businessContext)
                 .order('total_spent', { ascending: false })
                 .limit(5);
 
             // Recent
             const { data: recentData } = await sb.from('customers')
                 .select('id, name, total_bookings, total_spent, created_at')
+                .eq('business_context', businessContext)
                 .order('created_at', { ascending: false })
                 .limit(5);
 
             // Averages
             const { data: avgData } = await sb.from('customers')
                 .select('total_bookings, total_spent')
+                .eq('business_context', businessContext)
                 .gt('total_bookings', 0);
             let avgBookings = 0, avgSpent = 0;
             if (avgData && avgData.length > 0) {
@@ -655,10 +714,13 @@ router.get('/stats', async (req, res) => {
         }
 
         // Fallback: Railway — v32.1: JOIN bookings for real stats
-        const totalResult = await pool.query('SELECT COUNT(*) FROM customers');
+        const totalParams = [];
+        const totalContextSql = customerContextCondition(totalParams, businessContext);
+        const totalResult = await pool.query(`SELECT COUNT(*) FROM customers WHERE ${totalContextSql}`, totalParams);
         const sourceResult = await pool.query(
             `SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS count
-             FROM customers GROUP BY source ORDER BY count DESC`
+             FROM customers WHERE ${totalContextSql} GROUP BY source ORDER BY count DESC`,
+            totalParams
         );
         const topResult = await pool.query(
             `SELECT c.id, c.name,
@@ -668,10 +730,11 @@ router.get('/stats', async (req, res) => {
              FROM customers c
              LEFT JOIN (
                  SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent, MAX(date) AS last_visit
-                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
              ) b ON b.customer_id = c.id
+             WHERE ${totalContextSql}
              ORDER BY COALESCE(b.spent, 0) DESC LIMIT 5`
-        );
+            , totalParams);
         const recentResult = await pool.query(
             `SELECT c.id, c.name,
                     COALESCE(b.cnt, 0) AS total_bookings,
@@ -680,19 +743,21 @@ router.get('/stats', async (req, res) => {
              FROM customers c
              LEFT JOIN (
                  SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
-                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
              ) b ON b.customer_id = c.id
+             WHERE ${totalContextSql}
              ORDER BY c.created_at DESC LIMIT 5`
-        );
+            , totalParams);
         const avgResult = await pool.query(
             `SELECT ROUND(AVG(b.cnt), 1) AS avg_bookings,
                     ROUND(AVG(b.spent), 0) AS avg_spent
              FROM customers c
              INNER JOIN (
                  SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
-                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
-             ) b ON b.customer_id = c.id`
-        );
+                 FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
+             ) b ON b.customer_id = c.id
+             WHERE ${totalContextSql}`
+            , totalParams);
 
         res.json({
             total: parseInt(totalResult.rows[0].count),
@@ -714,10 +779,16 @@ router.get('/stats', async (req, res) => {
 // List all unique tags (for filter dropdown)
 router.get('/tags', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(
             `SELECT tag, color, COUNT(*) AS count
-             FROM customer_tags WHERE customer_id IS NOT NULL
-             GROUP BY tag, color ORDER BY count DESC`
+             FROM customer_tags ct
+             JOIN customers c ON c.id = ct.customer_id
+             WHERE ct.customer_id IS NOT NULL
+               AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             GROUP BY tag, color ORDER BY count DESC`,
+            [businessContext]
         );
         res.json({ success: true, tags: result.rows, predefined: PREDEFINED_TAGS });
     } catch (err) {
@@ -729,9 +800,16 @@ router.get('/tags', async (req, res) => {
 // Add tag to customer
 router.post('/:id/tags', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const customerId = parseInt(req.params.id);
         const { tag, color } = req.body;
         if (!tag || !tag.trim()) return res.status(400).json({ error: 'Тег обовʼязковий' });
+        const customer = await pool.query(
+            `SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 LIMIT 1`,
+            [customerId, businessContext]
+        );
+        if (!customer.rows.length) return res.status(404).json({ error: 'РљР»С–С”РЅС‚Р° РЅРµ Р·РЅР°Р№РґРµРЅРѕ' });
         const tagColor = color || PREDEFINED_TAGS.find(p => p.tag === tag.trim())?.color || '#6B7280';
         const result = await pool.query(
             `INSERT INTO customer_tags (customer_id, tag, color, created_by)
@@ -749,8 +827,17 @@ router.post('/:id/tags', async (req, res) => {
 // Remove tag from customer
 router.delete('/:id/tags/:tagId', async (req, res) => {
     try {
-        await pool.query('DELETE FROM customer_tags WHERE id = $1 AND customer_id = $2',
-            [parseInt(req.params.tagId), parseInt(req.params.id)]);
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        await pool.query(
+            `DELETE FROM customer_tags ct
+             USING customers c
+             WHERE ct.id = $1
+               AND ct.customer_id = $2
+               AND c.id = ct.customer_id
+               AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+            [parseInt(req.params.tagId), parseInt(req.params.id), businessContext]
+        );
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /:id/tags error', err);
@@ -764,6 +851,8 @@ router.delete('/:id/tags/:tagId', async (req, res) => {
 
 router.get('/duplicates', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT c1.id AS id1, c1.name AS name1, c1.phone AS phone1, c1.instagram AS ig1,
                    c1.total_bookings AS bookings1, c1.total_spent AS spent1,
@@ -775,11 +864,15 @@ router.get('/duplicates', async (req, res) => {
                    END AS match_type
             FROM customers c1
             JOIN customers c2 ON c1.id < c2.id
-            WHERE (c1.phone IS NOT NULL AND c1.phone != '' AND LOWER(TRIM(c1.phone)) = LOWER(TRIM(c2.phone)))
-               OR (c1.instagram IS NOT NULL AND c1.instagram != '' AND LOWER(TRIM(c1.instagram)) = LOWER(TRIM(c2.instagram)))
+            WHERE COALESCE(c1.business_context, 'event_genix') = $1
+              AND COALESCE(c2.business_context, 'event_genix') = $1
+              AND (
+                (c1.phone IS NOT NULL AND c1.phone != '' AND LOWER(TRIM(c1.phone)) = LOWER(TRIM(c2.phone)))
+                OR (c1.instagram IS NOT NULL AND c1.instagram != '' AND LOWER(TRIM(c1.instagram)) = LOWER(TRIM(c2.instagram)))
+              )
             ORDER BY c1.id
             LIMIT 100
-        `);
+        `, [businessContext]);
         res.json({ success: true, duplicates: result.rows, count: result.rows.length });
     } catch (err) {
         log.error('GET /duplicates error', err);
@@ -790,6 +883,8 @@ router.get('/duplicates', async (req, res) => {
 router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const primaryId = parseInt(req.params.primaryId);
         const { duplicateId } = req.body;
         if (!duplicateId) return res.status(400).json({ error: 'duplicateId обовʼязковий' });
@@ -800,8 +895,8 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
 
         // Check both exist
         const [p, d] = await Promise.all([
-            client.query('SELECT * FROM customers WHERE id = $1', [primaryId]),
-            client.query('SELECT * FROM customers WHERE id = $1', [dupId])
+            client.query("SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2", [primaryId, businessContext]),
+            client.query("SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2", [dupId, businessContext])
         ]);
         if (p.rows.length === 0 || d.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -811,7 +906,7 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
         const dup = d.rows[0];
 
         // Move bookings, certificates, tags, communication logs
-        await client.query('UPDATE bookings SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]);
+        await client.query("UPDATE bookings SET customer_id = $1 WHERE customer_id = $2 AND COALESCE(business_context, 'event_genix') = $3", [primaryId, dupId, businessContext]);
         await client.query('UPDATE certificates SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
         await client.query('DELETE FROM customer_tags WHERE customer_id = $1 AND tag IN (SELECT tag FROM customer_tags WHERE customer_id = $2)', [dupId, primaryId]).catch(() => {});
         await client.query('UPDATE customer_tags SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
@@ -829,7 +924,11 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
         const aggResult = await client.query(
             `SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS total,
                     MIN(date) AS first, MAX(date) AS last
-             FROM bookings WHERE customer_id = $1 AND linked_to IS NULL`, [primaryId]
+             FROM bookings
+             WHERE customer_id = $1
+               AND linked_to IS NULL
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [primaryId, businessContext]
         );
         const agg = aggResult.rows[0];
         params.push(parseInt(agg.cnt)); updates.push(`total_bookings = $${params.length}`);
@@ -839,11 +938,21 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
 
         if (updates.length > 0) {
             params.push(primaryId);
-            await client.query(`UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`, params);
+            params.push(businessContext);
+            await client.query(
+                `UPDATE customers SET ${updates.join(', ')}, updated_at = NOW()
+                 WHERE id = $${params.length - 1}
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}`,
+                params
+            );
         }
 
         // Delete duplicate
-        await client.query('DELETE FROM customers WHERE id = $1', [dupId]);
+        await client.query(
+            `DELETE FROM customers
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [dupId, businessContext]
+        );
         await client.query('COMMIT');
 
         log.info(`Merged customer ${dupId} into ${primaryId} by ${req.user?.username}`);
@@ -863,6 +972,8 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
 
 router.get('/journey-stats', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT
                 COUNT(*) FILTER (WHERE total_bookings = 0) AS prospects,
@@ -870,8 +981,12 @@ router.get('/journey-stats', async (req, res) => {
                 COUNT(*) FILTER (WHERE total_bookings BETWEEN 2 AND 4) AS returning,
                 COUNT(*) FILTER (WHERE total_bookings >= 5) AS loyal
             FROM customers
-        `);
-        const leadsResult = await pool.query("SELECT COUNT(*) AS cnt FROM leads WHERE status = 'new'");
+            WHERE COALESCE(business_context, 'event_genix') = $1
+        `, [businessContext]);
+        const leadsResult = await pool.query(
+            "SELECT COUNT(*) AS cnt FROM leads WHERE status = 'new' AND COALESCE(business_context, 'event_genix') = $1",
+            [businessContext]
+        );
         const stats = result.rows[0];
         stats.leads = parseInt(leadsResult.rows[0].cnt);
         res.json({ success: true, stats });
@@ -887,11 +1002,13 @@ router.get('/journey-stats', async (req, res) => {
 
 router.get('/ltv', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT id, name, phone, total_bookings, total_spent, first_visit, last_visit
-            FROM customers WHERE total_bookings > 0
+            FROM customers WHERE total_bookings > 0 AND COALESCE(business_context, 'event_genix') = $1
             ORDER BY total_spent DESC LIMIT 100
-        `);
+        `, [businessContext]);
         const customers = result.rows.map(r => {
             const c = mapCustomerRow(r);
             c.ltv = calculateLTV(r);
@@ -934,8 +1051,17 @@ router.get('/nps-stats', async (req, res) => {
 
 router.get('/:id/communication-context', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const customerId = parseInt(req.params.id, 10);
-        const context = await getCustomerCommunicationContext(customerId);
+        const exists = await pool.query(
+            "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+            [customerId, businessContext]
+        );
+        if (!exists.rows.length) {
+            return res.status(404).json({ success: false, error: 'Customer not found in this business context' });
+        }
+        const context = await getCustomerCommunicationContext(customerId, { businessContext });
         if (!context) {
             return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
         }
@@ -948,13 +1074,16 @@ router.get('/:id/communication-context', async (req, res) => {
 
 router.get('/:id/communications', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const customerId = parseInt(req.params.id);
         const result = await pool.query(
             `SELECT cl.*, u.name AS created_by_name
              FROM communication_log cl
+             JOIN customers c ON c.id = cl.customer_id AND COALESCE(c.business_context, 'event_genix') = $2
              LEFT JOIN users u ON cl.created_by = u.id
              WHERE cl.customer_id = $1
-             ORDER BY cl.created_at DESC LIMIT 100`, [customerId]
+             ORDER BY cl.created_at DESC LIMIT 100`, [customerId, businessContext]
         );
         res.json({ success: true, communications: result.rows });
     } catch (err) {
@@ -965,9 +1094,16 @@ router.get('/:id/communications', async (req, res) => {
 
 router.post('/:id/communications', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const customerId = parseInt(req.params.id);
         const { type, direction, summary } = req.body;
         if (!type) return res.status(400).json({ error: 'Тип обовʼязковий' });
+        const exists = await pool.query(
+            "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+            [customerId, businessContext]
+        );
+        if (!exists.rows.length) return res.status(404).json({ error: 'Customer not found in this business context' });
         const result = await pool.query(
             `INSERT INTO communication_log (customer_id, type, direction, summary, created_by)
              VALUES ($1, $2, $3, $4, $5) RETURNING *`,
@@ -986,7 +1122,12 @@ router.post('/:id/communications', async (req, res) => {
 
 router.get('/export-vcf', exportLimiter, async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await pool.query(
+            "SELECT * FROM customers WHERE COALESCE(business_context, 'event_genix') = $1 ORDER BY name LIMIT 5000",
+            [businessContext]
+        );
         const vcards = result.rows.map(r => {
             const lines = [
                 'BEGIN:VCARD',
@@ -1015,6 +1156,8 @@ router.get('/export-vcf', exportLimiter, async (req, res) => {
 
 router.post('/import-vcf', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { vcfData } = req.body;
         if (!vcfData) return res.status(400).json({ error: 'vcfData обовʼязковий' });
         const cards = vcfData.split('END:VCARD').filter(c => c.includes('BEGIN:VCARD'));
@@ -1037,19 +1180,22 @@ router.post('/import-vcf', async (req, res) => {
             }
             // Try to find by phone
             if (phone) {
-                const existing = await pool.query('SELECT id FROM customers WHERE phone = $1 LIMIT 1', [phone]);
+                const existing = await pool.query(
+                    "SELECT id FROM customers WHERE phone = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                    [phone, businessContext]
+                );
                 if (existing.rows.length > 0) {
                     await pool.query(
-                        'UPDATE customers SET name = $1, instagram = COALESCE($2, instagram), updated_at = NOW() WHERE id = $3',
-                        [name, instagram, existing.rows[0].id]
+                        "UPDATE customers SET name = $1, instagram = COALESCE($2, instagram), updated_at = NOW() WHERE id = $3 AND COALESCE(business_context, 'event_genix') = $4",
+                        [name, instagram, existing.rows[0].id, businessContext]
                     );
                     updated++;
                     continue;
                 }
             }
             await pool.query(
-                'INSERT INTO customers (name, phone, instagram, child_birthday, notes) VALUES ($1, $2, $3, $4, $5)',
-                [name, phone, instagram, childBirthday, note]
+                'INSERT INTO customers (business_context, name, phone, instagram, child_birthday, notes) VALUES ($1, $2, $3, $4, $5, $6)',
+                [businessContext, name, phone, instagram, childBirthday, note]
             );
             created++;
         }
@@ -1066,12 +1212,15 @@ router.post('/import-vcf', async (req, res) => {
 
 router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { filters, template, dryRun } = req.body;
         if (!template) return res.status(400).json({ error: 'Шаблон повідомлення обовʼязковий' });
 
         // Build filter query
         const conditions = [];
         const params = [];
+        conditions.push(customerContextCondition(params, businessContext, 'c'));
         if (filters?.tags?.length) {
             params.push(filters.tags);
             conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = ANY($${params.length}))`);
@@ -1084,7 +1233,7 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             params.push(filters.source);
             conditions.push(`c.source = $${params.length}`);
         }
-        const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const where = 'WHERE ' + conditions.join(' AND ');
 
         // Get matching customers
         const result = await pool.query(
@@ -1126,6 +1275,8 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
 // List customers (with pagination, search, and filters)
 router.get('/', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
@@ -1141,6 +1292,7 @@ router.get('/', async (req, res) => {
         const sb = getSupabase();
         if (sb) {
             let query = sb.from('customers').select('*', { count: 'exact' });
+            query = query.eq('business_context', businessContext);
 
             if (search) {
                 const pattern = `%${search}%`;
@@ -1178,6 +1330,7 @@ router.get('/', async (req, res) => {
         // Fallback: Railway
         const conditions = [];
         const params = [];
+        conditions.push(customerContextCondition(params, businessContext));
 
         if (search) {
             params.push(`%${search}%`);
@@ -1204,7 +1357,7 @@ router.get('/', async (req, res) => {
         const countResult = await pool.query(`SELECT COUNT(*) FROM customers ${where}`, params);
         const total = parseInt(countResult.rows[0].count);
 
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
         const dataParams = [...params, limit, offset];
         // v32.1: JOIN bookings to compute real totalBookings/totalSpent/LTV
         const result = await pool.query(
@@ -1260,28 +1413,34 @@ router.get('/', async (req, res) => {
 // Get customer by ID (with booking history + certificates)
 router.get('/:id', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const numId = parseInt(id);
 
         let customer;
         const sb = getSupabase();
         if (sb) {
-            const { data, error } = await sb.from('customers').select('*').eq('id', numId).single();
+            const { data, error } = await sb.from('customers').select('*').eq('id', numId).eq('business_context', businessContext).single();
             if (error || !data) return res.status(404).json({ error: 'Клієнта не знайдено' });
             customer = mapCustomerRow(data);
         } else {
-            const result = await pool.query('SELECT * FROM customers WHERE id = $1', [numId]);
+            const result = await pool.query(
+                `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                [numId, businessContext]
+            );
             if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
             customer = mapCustomerRow(result.rows[0]);
         }
 
         // Bookings + certificates from Railway DB (they stay there)
-        const bookingParams = [numId];
+        const bookingParams = [numId, businessContext];
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
             `SELECT id, date, time, program_name, program_code, label, price, status, room, duration
              FROM bookings b
              WHERE b.customer_id = $1
+               AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
                AND b.linked_to IS NULL
                ${bookingVisibility.sql}
              ORDER BY b.date DESC LIMIT 50`,
@@ -1312,13 +1471,14 @@ router.get('/:id', async (req, res) => {
 
         // v33.8.0 Integration 5: Reviews + average_rating
         try {
-            const reviewParams = [numId];
+            const reviewParams = [numId, businessContext];
             const reviewVisibility = getVisibleBookingScope(req.user, reviewParams, 'b');
             const reviews = await pool.query(
                 `SELECT er.rating, er.comment, er.created_at, b.date, b.program_name
                  FROM event_reviews er
                  LEFT JOIN bookings b ON b.id = er.booking_id
                  WHERE er.customer_id = $1
+                   AND (er.booking_id IS NULL OR COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2)
                    AND (er.booking_id IS NULL OR ${reviewVisibility.condition})
                  ORDER BY er.created_at DESC LIMIT 10`,
                 reviewParams
@@ -1348,8 +1508,11 @@ router.get('/:id', async (req, res) => {
 // Create customer
 router.post('/', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
+        input.businessContext = businessContext;
         const { name } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
@@ -1378,9 +1541,12 @@ router.post('/', async (req, res) => {
 // Update customer
 router.put('/:id', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
+        input.businessContext = businessContext;
         const { name } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
@@ -1389,10 +1555,10 @@ router.put('/:id', async (req, res) => {
         const sb = getSupabase();
         if (sb) {
             const payload = customerWritePayload(input, { updatedAt: true });
-            let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).select().single();
+            let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).eq('business_context', businessContext).select().single();
             if (error && isCustomerSocialIdentitiesStorageError(error)) {
                 log.warn('Supabase customers.social_identities unavailable during update; retrying legacy payload', { error: error.message });
-                ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).select().single());
+                ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).eq('business_context', businessContext).select().single());
             }
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Клієнта не знайдено' });
@@ -1412,26 +1578,37 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const numId = parseInt(id);
 
         await client.query('BEGIN');
 
         // Unlink bookings and certificates within transaction
-        await client.query('UPDATE bookings SET customer_id = NULL WHERE customer_id = $1', [numId]);
+        await client.query(
+            `UPDATE bookings SET customer_id = NULL
+             WHERE customer_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [numId, businessContext]
+        );
         try {
             await client.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
         } catch { /* certificates may not have customer_id yet */ }
 
         const sb = getSupabase();
         if (sb) {
-            const { error } = await sb.from('customers').delete().eq('id', numId);
+            const { error } = await sb.from('customers').delete().eq('id', numId).eq('business_context', businessContext);
             if (error) { await client.query('ROLLBACK'); throw error; }
             await client.query('COMMIT');
             return res.json({ success: true });
         }
 
-        const result = await client.query('DELETE FROM customers WHERE id = $1 RETURNING id', [numId]);
+        const result = await client.query(
+            `DELETE FROM customers
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             RETURNING id`,
+            [numId, businessContext]
+        );
         if (result.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Клієнта не знайдено' }); }
         await client.query('COMMIT');
         res.json({ success: true });
@@ -1456,7 +1633,8 @@ router.post('/migrate-to-supabase', requireMinRole('director'), async (req, res)
         let migrated = 0;
         for (const row of result.rows) {
             const { error } = await sb.from('customers').upsert({
-                id: row.id, name: row.name, phone: row.phone, instagram: row.instagram,
+                id: row.id, business_context: row.business_context || DEFAULT_BUSINESS_CONTEXT,
+                name: row.name, phone: row.phone, instagram: row.instagram,
                 child_name: row.child_name, child_birthday: row.child_birthday,
                 source: row.source, notes: row.notes, total_bookings: row.total_bookings || 0,
                 total_spent: row.total_spent || 0, first_visit: row.first_visit,
@@ -1478,6 +1656,7 @@ router.post('/migrate-to-supabase', requireMinRole('director'), async (req, res)
 function mapCustomerRow(row) {
     return {
         id: row.id,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         name: row.name,
         phone: row.phone || null,
         instagram: row.instagram || null,

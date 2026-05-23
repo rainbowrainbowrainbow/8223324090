@@ -19,6 +19,7 @@
             apiValue: 'event_genix',
             isPrivateSurface: false,
             showAfisha: true,
+            defaultHiddenElements: [],
             actionRoles: {
                 create: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
                 edit: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
@@ -40,6 +41,7 @@
             apiValue: 'maysternya_doli',
             isPrivateSurface: true,
             showAfisha: false,
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification'],
             actionRoles: {
                 create: ['creator', 'director'],
                 edit: ['creator', 'director'],

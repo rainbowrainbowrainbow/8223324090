@@ -784,10 +784,16 @@ async function initDatabase() {
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
 
         // v15.1: CRM — customers indexes (table created earlier near certificates)
+        await safeQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery(`ALTER TABLE customer_cards ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery(`ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_instagram ON customers(instagram)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_child_name ON customers(child_name)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_business_phone ON customers(business_context, phone) WHERE phone IS NOT NULL');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_leads_business_status_created ON leads(business_context, status, created_at DESC)');
 
         // v15.1: CRM — link bookings to customers
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);

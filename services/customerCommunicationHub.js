@@ -5,6 +5,7 @@ const {
     deriveReplySlaState,
     isActiveWaitingReply
 } = require('./replySla');
+const { DEFAULT_BUSINESS_CONTEXT, normalizeBusinessContext } = require('./businessContext');
 
 const INBOUND_ONLY_CHANNELS = new Set(['binotel']);
 
@@ -41,10 +42,11 @@ function mapCustomer(row) {
 }
 
 async function fetchCustomerRow(db, id, options = {}) {
+    const businessContext = normalizeBusinessContext(options.businessContext);
     const hasExplicitSupabase = Object.prototype.hasOwnProperty.call(options, 'supabase');
     const sb = hasExplicitSupabase ? options.supabase : getSupabase();
     if (sb) {
-        const { data, error } = await sb.from('customers').select('*').eq('id', id).single();
+        const { data, error } = await sb.from('customers').select('*').eq('id', id).eq('business_context', businessContext).single();
         if (error) {
             if (error.code === 'PGRST116') return null;
             throw error;
@@ -52,7 +54,12 @@ async function fetchCustomerRow(db, id, options = {}) {
         return data || null;
     }
 
-    const customerResult = await db.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [id]);
+    const customerResult = await db.query(
+        `SELECT * FROM customers
+         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         LIMIT 1`,
+        [id, businessContext]
+    );
     return customerResult.rows[0] || null;
 }
 
@@ -173,6 +180,7 @@ function buildContextLinks({ customer, lead, primaryBooking, live }) {
 
 async function getCustomerCommunicationContext(customerId, options = {}) {
     const db = options.pool || defaultPool;
+    const businessContext = normalizeBusinessContext(options.businessContext);
     const id = Number.parseInt(customerId, 10);
     if (!Number.isInteger(id) || id <= 0) {
         throw new Error('Invalid customer id');
@@ -188,8 +196,9 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             WHERE l.id = $1
+              AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
             LIMIT 1
-        `, [customer.leadId]);
+        `, [customer.leadId, businessContext]);
         lead = mapLead(leadResult.rows[0]);
     }
 
@@ -197,10 +206,11 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
         SELECT id, date, time, status, program_name, program_code, label, room, price, customer_id
         FROM bookings
         WHERE customer_id = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
           AND NULLIF(linked_to, '') IS NULL
         ORDER BY date DESC NULLS LAST, time DESC NULLS LAST
         LIMIT 12
-    `, [id]);
+    `, [id, businessContext]);
     const bookings = bookingsResult.rows.map(mapBooking);
     const primaryBooking = pickPrimaryBooking(bookings);
 

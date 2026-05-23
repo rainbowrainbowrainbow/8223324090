@@ -126,8 +126,9 @@ function createFakePool() {
                 return {
                     rows: [{
                         id: 501,
-                        client_name: params[0],
-                        phone: params[1],
+                        business_context: params[0] || 'event_genix',
+                        client_name: params[1],
+                        phone: params[2],
                         source: 'landing',
                         status: 'new',
                         created_at: new Date('2026-05-11T00:00:00Z').toISOString()
@@ -212,7 +213,7 @@ function createFakePool() {
                     completed_at: '2099-05-02T12:05:00Z'
                 }] };
             }
-            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1 LIMIT 1/i.test(text)) {
+            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1(?: AND COALESCE\(l\.business_context, 'event_genix'\) = \$2)? LIMIT 1/i.test(text)) {
                 return {
                     rows: [{
                         id: params[0],
@@ -238,7 +239,7 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/FROM customer_cards WHERE lead_id = \$1 LIMIT 1/i.test(text)) {
+            if (/FROM customer_cards WHERE lead_id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? LIMIT 1/i.test(text)) {
                 return { rows: [{ lead_id: params[0], event_type: 'birthday', event_date: '2099-05-12', guest_count: 20, notes: 'Card note' }] };
             }
             if (/FROM customers c LEFT JOIN \( SELECT (?:b\.)?customer_id,/i.test(text)) {
@@ -259,7 +260,7 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/FROM bookings b WHERE \(b\.customer_id = \$1\) AND NULLIF\(b\.linked_to, ''\) IS NULL/i.test(text)) {
+            if (/FROM bookings b WHERE \(b\.customer_id = \$1\)(?: AND COALESCE\(b\.business_context, 'event_genix'\) = \$2)? AND NULLIF\(b\.linked_to, ''\) IS NULL/i.test(text)) {
                 return {
                     rows: [{
                         id: 'BK-WS',
@@ -353,10 +354,10 @@ function createFakePool() {
             if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
-            if (/UPDATE leads SET .* WHERE id = \$\d+ RETURNING \*/i.test(text)) {
+            if (/UPDATE leads SET .* WHERE id = \$\d+(?: AND COALESCE\(business_context, 'event_genix'\) = \$\d+)? RETURNING \*/i.test(text)) {
                 return {
                     rows: [{
-                        id: params[params.length - 1],
+                        id: params[params.length - 2] || params[params.length - 1],
                         client_name: 'Lead Smoke',
                         assigned_to: params[0] ?? null,
                         status: 'new'
@@ -738,7 +739,11 @@ describe('route-level API safety smoke', () => {
         assert.equal(valid.status, 200, JSON.stringify(valid.data));
         assert.equal(valid.data.success, true);
         assert.equal(valid.data.lead.assigned_to, 2);
-        assert.ok(queries.some(q => /UPDATE leads SET assigned_to = \$1 WHERE id = \$2 RETURNING \*/i.test(q.text) && q.params[0] === 2));
+        assert.ok(queries.some(q =>
+            /UPDATE leads SET assigned_to = \$1 WHERE id = \$2(?: AND COALESCE\(business_context, 'event_genix'\) = \$3)? RETURNING \*/i.test(q.text)
+            && q.params[0] === 2
+            && (q.params[2] === undefined || q.params[2] === 'event_genix')
+        ));
     });
 
     it('keeps analytics API access aligned to manager-up roles', async () => {

@@ -1275,6 +1275,279 @@ body:not(.dark-mode) .mini-booking-block:hover {
 }
 
 /* ==========================================
+   v0.61.50: Timeline business switch + visibility constructor
+   ========================================== */
+
+.timeline-hidden-by-config {
+    display: none !important;
+}
+
+.timeline-business-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 12px;
+    border: 1px solid rgba(32, 201, 151, 0.32);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.58);
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.timeline-business-switch select {
+    min-width: 142px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-primary, #f8fafc);
+    font-size: 15px;
+    font-weight: 900;
+}
+
+.timeline-business-switch option {
+    background: #111827;
+    color: #f8fafc;
+}
+
+.timeline-constructor-btn {
+    border: 1px solid rgba(32, 201, 151, 0.42);
+    border-radius: 14px;
+    padding: 0 16px;
+    min-height: 48px;
+    background: rgba(17, 24, 39, 0.82);
+    color: var(--text-primary, #f8fafc);
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-constructor-btn:hover,
+.timeline-constructor-btn.is-active {
+    background: linear-gradient(135deg, #14b8a6, #22c55e);
+    color: #04111d;
+    border-color: rgba(45, 212, 191, 0.9);
+}
+
+body.timeline-constructor-active .timeline-configurable-element {
+    position: relative;
+    outline: 2px dashed rgba(45, 212, 191, 0.62);
+    outline-offset: 3px;
+}
+
+body.timeline-constructor-active .timeline-constructor-disabled {
+    opacity: 0.42;
+    filter: grayscale(0.75);
+}
+
+.timeline-visibility-chip {
+    position: absolute;
+    z-index: 80;
+    right: 6px;
+    top: 6px;
+    min-height: 24px;
+    padding: 0 9px;
+    border: 1px solid rgba(45, 212, 191, 0.7);
+    border-radius: 999px;
+    background: rgba(4, 17, 29, 0.94);
+    color: #a7f3d0;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+}
+
+.timeline-visibility-chip.is-inline {
+    position: static;
+    align-self: center;
+    margin-left: 4px;
+}
+
+.timeline-constructor-panel {
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    z-index: 2200;
+    width: min(420px, calc(100vw - 28px));
+    max-height: min(680px, calc(100vh - 44px));
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.96);
+    color: #f8fafc;
+    box-shadow: 0 26px 72px rgba(0, 0, 0, 0.42);
+    overflow: hidden;
+}
+
+.timeline-constructor-panel.hidden {
+    display: none !important;
+}
+
+.timeline-constructor-panel-header,
+.timeline-constructor-panel-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.timeline-constructor-panel-header strong {
+    display: block;
+    font-size: 16px;
+}
+
+#timelineConstructorContext {
+    display: block;
+    margin-top: 2px;
+    color: #99f6e4;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.timeline-constructor-close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.85);
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.timeline-constructor-panel-body {
+    padding: 14px 16px;
+    overflow: auto;
+}
+
+.timeline-constructor-panel-body p {
+    margin: 0 0 12px;
+    color: #cbd5e1;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.timeline-constructor-list {
+    display: grid;
+    gap: 12px;
+}
+
+.timeline-constructor-group {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(30, 41, 59, 0.58);
+    overflow: hidden;
+}
+
+.timeline-constructor-group-title {
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    color: #99f6e4;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.timeline-constructor-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    color: #e5e7eb;
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.timeline-constructor-row + .timeline-constructor-row {
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.timeline-constructor-row input {
+    appearance: none;
+    width: 42px;
+    height: 24px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    background: rgba(15, 23, 42, 0.95);
+    cursor: pointer;
+    position: relative;
+}
+
+.timeline-constructor-row input::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #94a3b8;
+    transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.timeline-constructor-row input:checked {
+    background: rgba(20, 184, 166, 0.22);
+    border-color: rgba(45, 212, 191, 0.76);
+}
+
+.timeline-constructor-row input:checked::after {
+    transform: translateX(18px);
+    background: #2dd4bf;
+}
+
+.timeline-constructor-panel-actions {
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    border-bottom: 0;
+}
+
+.timeline-constructor-primary,
+.timeline-constructor-secondary {
+    min-height: 40px;
+    border-radius: 12px;
+    padding: 0 16px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.timeline-constructor-primary {
+    border: 0;
+    background: linear-gradient(135deg, #14b8a6, #22c55e);
+    color: #04111d;
+}
+
+.timeline-constructor-secondary {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.78);
+    color: #e2e8f0;
+}
+
+@media (max-width: 760px) {
+    .timeline-business-switch {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .timeline-business-switch select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .timeline-constructor-panel {
+        right: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+    }
+}
+
+/* ==========================================
    v30.3: PRINT STYLES FOR PDF EXPORT
    ========================================== */
 
@@ -1285,6 +1558,7 @@ body:not(.dark-mode) .mini-booking-block:hover {
     .modal, .toast-container, .v32-controls,
     .action-buttons, .date-controls,
     .bulk-action-bar, #kleshnyaWidget,
+    .timeline-business-switch, .timeline-constructor-btn, .timeline-constructor-panel,
     .agents-panel, .command-panel,
     .btn-fab, .status-filter-section {
         display: none !important;

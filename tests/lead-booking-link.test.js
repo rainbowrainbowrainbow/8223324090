@@ -36,8 +36,16 @@ describe('lead booking link repair', () => {
         assert.equal(result.leadId, 501);
         assert.equal(result.bookingId, 'BK-2099-0001');
         assert.equal(result.customerLinked, true);
-        assert.ok(queries.some(q => /UPDATE leads SET booking_id = \$1/i.test(q.text) && q.params[0] === 'BK-2099-0001'));
-        assert.ok(queries.some(q => /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(q.text) && q.params[0] === 501));
+        assert.ok(queries.some(q =>
+            /UPDATE leads SET booking_id = \$1/i.test(q.text)
+            && q.params[0] === 'BK-2099-0001'
+            && q.params[2] === 'event_genix'
+        ));
+        assert.ok(queries.some(q =>
+            /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(q.text)
+            && q.params[0] === 501
+            && q.params[2] === 'event_genix'
+        ));
     });
 
     it('does not touch bookings created without lead context', async () => {
@@ -49,5 +57,29 @@ describe('lead booking link repair', () => {
         const result = await attachLeadBookingLink(client, { leadId: null, bookingId: 'BK-2099-0002', customerId: 701 });
         assert.equal(result.attached, false);
         assert.equal(result.reason, 'missing_context');
+    });
+
+    it('scopes lead/customer linkage to the passed business context', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
+                    return { rows: [{ id: params[1], booking_id: params[0] }], rowCount: 1 };
+                }
+                return { rows: [], rowCount: 1 };
+            }
+        };
+
+        await attachLeadBookingLink(client, {
+            leadId: 9,
+            bookingId: 'MD-1',
+            customerId: 44,
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(queries.length, 2);
+        assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
     });
 });

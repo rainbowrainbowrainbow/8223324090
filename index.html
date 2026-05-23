@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.61.47">
-    <link rel="stylesheet" href="css/auth.css?v=0.61.47">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.47">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.47">
-    <link rel="stylesheet" href="css/timeline.css?v=0.61.47">
-    <link rel="stylesheet" href="css/panel.css?v=0.61.47">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.47">
-    <link rel="stylesheet" href="css/controls.css?v=0.61.47">
-    <link rel="stylesheet" href="css/features.css?v=0.61.47">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.47">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.47">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.47">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.47">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.47">
+    <link rel="stylesheet" href="css/base.css?v=0.61.51">
+    <link rel="stylesheet" href="css/auth.css?v=0.61.51">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.51">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.51">
+    <link rel="stylesheet" href="css/timeline.css?v=0.61.51">
+    <link rel="stylesheet" href="css/panel.css?v=0.61.51">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.51">
+    <link rel="stylesheet" href="css/controls.css?v=0.61.51">
+    <link rel="stylesheet" href="css/features.css?v=0.61.51">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.51">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.51">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.51">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.51">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.51">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.61.47 Reports: стандартний звіт + close flow">✨ 0.61.47 Reports: стандартний звіт + close flow</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.61.51 CRM: бізнес-контексти МД">✨ 0.61.51 CRM: бізнес-контексти МД</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.61.47 — Reports: стандартний звіт + close flow</p>
+                <p class="tagline">AI First CRM v0.61.51 — CRM: бізнес-контексти МД</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.47: Reports: стандартний звіт + close flow</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.51: CRM: бізнес-контексти МД</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1263,6 +1263,41 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.61.51 — CRM: бізнес-контексти МД</h4>
+                    <ul>
+                        <li><b>Business context</b> — ліди, клієнти, картки клієнта і mailing list тепер мають durable <code>business_context</code> для розділення ПАРК / МД.</li>
+                        <li><b>Бронювання → CRM</b> — non-park бронювання знову створюють і лінкують клієнтів/лідів у своєму бізнес-контексті без park-only finance/certificate/warehouse side effects.</li>
+                        <li><b>Конструктор видимості</b> — налаштування ключових елементів таймлайну зберігаються на сервері для бізнес-контексту, а <code>localStorage</code> лишається fallback-кешем.</li>
+                        <li><b>Звіти</b> — закритий звіт створює duplicate-safe задачу для бухгалтерського handoff, а не тільки lock-стан.</li>
+                        <li><b>Guardrails</b> — оновлено route-smoke і lead-link тести під scoped CRM SQL.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.50 — Таймлайн: бізнес-перемикач і конструктор видимості</h4>
+                    <ul>
+                        <li><b>Єдиний таймлайн</b> — додано компактний перемикач між <code>Таймлайн ПАРК</code> і <code>Таймлайн МД</code> для користувачів з доступом до обох просторів.</li>
+                        <li><b>Конструктор</b> — у таймлайні з'явився режим налаштування видимості: вимкнені кнопки й блоки зникають у звичайному режимі.</li>
+                        <li><b>Окремі бізнеси</b> — налаштування видимості зберігаються окремо для ПАРК і МД через контекст таймлайну.</li>
+                        <li><b>Guardrail</b> — UI smoke фіксує підключення конструктора, registry елементів і permission-gate для ролей налаштування.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.49 — Таймлайн: прибирання фантомних аніматорів</h4>
+                    <ul>
+                        <li><b>Графік аніматорів</b> — під час синхронізації зі Staff порожні legacy-лінії <code>Аніматор 1/2</code> більше не лишаються поруч із реальними працівниками.</li>
+                        <li><b>Збереження подій</b> — стару лінію не видаляємо, якщо на ній уже є активне бронювання або афіша, щоб не сховати реальний слот.</li>
+                        <li><b>Guardrail</b> — backoffice v2 контракт фіксує cleanup для legacy default/manual ліній після появи Staff-графіка.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.48 — Таймлайн МД: консультація 90 хв</h4>
+                    <ul>
+                        <li><b>Таймлайн МД</b> — повна консультація у Майстерні Долі тепер має тривалість <code>90 хв</code> замість <code>40 хв</code>.</li>
+                        <li><b>Бронювання</b> — label і опис програми оновлено до <code>Повна консультація(90)</code>, щоб права панель показувала правильну тривалість.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє, що консультаційний набір МД лишається тільки з демо <code>15 хв</code> і повною консультацією <code>90 хв</code>.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.61.47 — Reports: стандартний звіт + close flow</h4>
                     <ul>
@@ -8729,27 +8764,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.61.47"></script>
-    <script src="js/config.js?v=0.61.47"></script>
-    <script src="js/api.js?v=0.61.47"></script>
-    <script src="js/ui.js?v=0.61.47"></script>
-    <script src="js/auth.js?v=0.61.47"></script>
-    <script src="js/timeline.js?v=0.61.47"></script>
-    <script src="js/booking.js?v=0.61.47"></script>
-    <script src="js/settings.js?v=0.61.47"></script>
-    <script src="js/booking-form.js?v=0.61.47"></script>
-    <script src="js/booking-linked.js?v=0.61.47"></script>
-    <script src="js/settings-dashboard.js?v=0.61.47"></script>
-    <script src="js/settings-history.js?v=0.61.47"></script>
-    <script src="js/settings-afisha.js?v=0.61.47"></script>
-    <script src="js/settings-certificates.js?v=0.61.47"></script>
-    <script src="js/offline.js?v=0.61.47"></script>
-    <script src="js/crm-feature-registry.js?v=0.61.47"></script>
-    <script src="js/search.js?v=0.61.47"></script>
-    <script src="js/ws.js?v=0.61.47"></script>
-    <script src="js/app.js?v=0.61.47"></script>
-    <script src="js/kleshnya-widget.js?v=0.61.47"></script>
-    <script src="js/components/sidebar.js?v=0.61.47"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.47"></script>
+    <script src="js/timeline-context.js?v=0.61.51"></script>
+    <script src="js/timeline-visibility.js?v=0.61.51"></script>
+    <script src="js/config.js?v=0.61.51"></script>
+    <script src="js/api.js?v=0.61.51"></script>
+    <script src="js/ui.js?v=0.61.51"></script>
+    <script src="js/auth.js?v=0.61.51"></script>
+    <script src="js/timeline.js?v=0.61.51"></script>
+    <script src="js/booking.js?v=0.61.51"></script>
+    <script src="js/settings.js?v=0.61.51"></script>
+    <script src="js/booking-form.js?v=0.61.51"></script>
+    <script src="js/booking-linked.js?v=0.61.51"></script>
+    <script src="js/settings-dashboard.js?v=0.61.51"></script>
+    <script src="js/settings-history.js?v=0.61.51"></script>
+    <script src="js/settings-afisha.js?v=0.61.51"></script>
+    <script src="js/settings-certificates.js?v=0.61.51"></script>
+    <script src="js/offline.js?v=0.61.51"></script>
+    <script src="js/crm-feature-registry.js?v=0.61.51"></script>
+    <script src="js/search.js?v=0.61.51"></script>
+    <script src="js/ws.js?v=0.61.51"></script>
+    <script src="js/app.js?v=0.61.51"></script>
+    <script src="js/kleshnya-widget.js?v=0.61.51"></script>
+    <script src="js/components/sidebar.js?v=0.61.51"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.51"></script>
 </body>
 </html>

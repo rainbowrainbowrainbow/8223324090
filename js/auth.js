@@ -36,7 +36,7 @@ let profileModalPasswordBaseline = '';
         if (!document.querySelector('link[data-sidebar-smart-menu-css]')) {
             const link = document.createElement('link');
             link.rel = 'stylesheet';
-            link.href = 'css/sidebar-smart-menu.css' + suffix;
+            link.href = '/css/sidebar-smart-menu.css' + suffix;
             link.dataset.sidebarSmartMenuCss = 'true';
             document.head.appendChild(link);
         }
@@ -48,7 +48,7 @@ let profileModalPasswordBaseline = '';
 
         if (!document.querySelector('script[data-sidebar-smart-menu-js]')) {
             const script = document.createElement('script');
-            script.src = 'js/sidebar-smart-menu.js' + suffix;
+            script.src = '/js/sidebar-smart-menu.js' + suffix;
             script.defer = true;
             script.dataset.sidebarSmartMenuJs = 'true';
             script.onload = () => {
@@ -320,10 +320,10 @@ function ensureCrmAssistantRailAssets() {
 
     const version = getCurrentAssetVersion();
     const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
-    const railCssPath = 'css/assistant-rail.css';
-    const foundationJsPath = 'js/assistant-foundation.js';
-    const outputFormatJsPath = 'js/assistant-output-format.js';
-    const railJsPath = 'js/assistant-rail.js';
+    const railCssPath = '/css/assistant-rail.css';
+    const foundationJsPath = '/js/assistant-foundation.js';
+    const outputFormatJsPath = '/js/assistant-output-format.js';
+    const railJsPath = '/js/assistant-rail.js';
     if (!document.querySelector('link[data-crm-assistant-rail-css]')) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
@@ -976,6 +976,10 @@ function showMainApp() {
         document.getElementById('addLineBtn')?.classList.toggle('hidden', !canUse('settings'));
         document.getElementById('exportTimelineBtn')?.classList.toggle('hidden', !canUse('export'));
         document.getElementById('productSalesBtn')?.classList.add('hidden');
+    }
+    if (window.TimelineVisibility) {
+        window.TimelineVisibility.refreshAccess?.();
+        window.TimelineVisibility.applyVisibility?.();
     }
 
     // Dark mode toggle
@@ -2051,7 +2055,7 @@ function ensureCrmFeatureRegistryScript() {
 
     _globalFeatureRegistryScriptPromise = new Promise(resolve => {
         const script = document.createElement('script');
-        script.src = `js/crm-feature-registry.js${_sharedAssetSuffixFromAuth()}`;
+        script.src = `/js/crm-feature-registry.js${_sharedAssetSuffixFromAuth()}`;
         script.dataset.crmFeatureRegistry = 'true';
         script.onload = () => resolve(Boolean(window.CrmFeatureRegistry));
         script.onerror = () => resolve(false);
@@ -2082,7 +2086,7 @@ function ensureGlobalSearchScript() {
 
     _globalHeaderSearchScriptPromise = ensureCrmFeatureRegistryScript().then(() => new Promise(resolve => {
         const script = document.createElement('script');
-        script.src = `js/search.js${_sharedAssetSuffixFromAuth()}`;
+        script.src = `/js/search.js${_sharedAssetSuffixFromAuth()}`;
         script.dataset.globalHeaderSearch = 'true';
         script.onload = () => resolve(typeof window.openSearch === 'function');
         script.onerror = () => resolve(false);

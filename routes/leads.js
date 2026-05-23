@@ -32,6 +32,13 @@ const {
     deriveReplySlaState,
     isActiveWaitingReply
 } = require('../services/replySla');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    normalizeBusinessContext,
+    businessContextFromRequest,
+    requireBusinessContext,
+    pushBusinessContextCondition
+} = require('../services/businessContext');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
@@ -56,6 +63,26 @@ const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
 
 const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
+
+function ensureBusinessContext(req, res) {
+    const businessContext = businessContextFromRequest(req);
+    if (!requireBusinessContext(req, res, businessContext)) return null;
+    return businessContext;
+}
+
+function leadContextCondition(params, businessContext, alias = 'l') {
+    return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
+function publicBusinessContext(req) {
+    return normalizeBusinessContext(
+        req?.body?.businessContext
+        || req?.body?.business_context
+        || req?.query?.businessContext
+        || req?.query?.business_context
+        || req?.headers?.['x-business-context']
+    );
+}
 
 function parseOptionalPositiveInt(value, fieldName) {
     if (value === undefined) return { provided: false };
@@ -218,6 +245,7 @@ function mapWorkspaceLead(row) {
     const stage = row.pipeline_stage || 'new';
     return {
         id: row.id,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         clientName: row.client_name,
         phone: row.phone,
         instagram: row.instagram,
@@ -251,6 +279,7 @@ function mapWorkspaceCustomer(row) {
     if (!row) return null;
     return {
         id: row.id,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         name: row.name,
         phone: row.phone,
         instagram: row.instagram,
@@ -320,16 +349,17 @@ const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 // POST /api/leads/landing — public endpoint for landing page form (no auth required)
 router.post('/landing', async (req, res) => {
     try {
+        const businessContext = publicBusinessContext(req);
         const { name, phone, package: pkg } = req.body;
         if (!name && !phone) {
             return res.status(400).json({ success: false, error: 'Ім\'я або телефон обов\'язкові' });
         }
         const notes = pkg ? `Пакет: ${pkg}` : 'Заявка з лендінгу';
         const result = await pool.query(`
-            INSERT INTO leads (client_name, phone, source, notes, status)
-            VALUES ($1, $2, 'landing', $3, 'new')
-            RETURNING id, client_name, phone, source, status, created_at
-        `, [name || 'Невідомий', phone || null, notes]);
+            INSERT INTO leads (business_context, client_name, phone, source, notes, status)
+            VALUES ($1, $2, $3, 'landing', $4, 'new')
+            RETURNING id, business_context, client_name, phone, source, status, created_at
+        `, [businessContext, name || 'Невідомий', phone || null, notes]);
 
         const lead = result.rows[0];
         log.info(`Landing lead created: ${lead.client_name} (${lead.phone})`);
@@ -384,9 +414,12 @@ router.get('/assignees', async (req, res) => {
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type } = req.query;
         const conditions = [];
         const params = [];
+        conditions.push(leadContextCondition(params, businessContext, 'l'));
 
         if (pipeline_stage) {
             params.push(pipeline_stage);
@@ -446,6 +479,8 @@ router.get('/', async (req, res) => {
 // GET /api/leads/hot — leads that need attention (24h+ since creation, still 'new')
 router.get('/hot', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT l.*, u.name AS assigned_name, p.label AS program_name,
                    EXTRACT(EPOCH FROM (NOW() - l.created_at)) / 3600 AS hours_waiting
@@ -453,10 +488,11 @@ router.get('/hot', async (req, res) => {
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
             WHERE l.status = 'new'
+              AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
               AND l.created_at < NOW() - INTERVAL '24 hours'
             ORDER BY l.created_at ASC
             LIMIT 50
-        `);
+        `, [businessContext]);
         res.json({ success: true, leads: result.rows });
     } catch (err) {
         log.error('GET /leads/hot error', err);
@@ -467,6 +503,8 @@ router.get('/hot', async (req, res) => {
 // GET /api/leads/stats — funnel statistics (by status + type + pipeline)
 router.get('/stats', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { period } = req.query; // today, week, month, all
         let dateFilter = '';
         if (period === 'today') dateFilter = "AND created_at >= CURRENT_DATE";
@@ -474,9 +512,9 @@ router.get('/stats', async (req, res) => {
         else if (period === 'month') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
 
         const [byStatus, byType, byStage] = await Promise.all([
-            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY status`),
-            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY lead_type`),
-            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY pipeline_stage`),
+            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY status`, [businessContext]),
+            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY lead_type`, [businessContext]),
+            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY pipeline_stage`, [businessContext]),
         ]);
 
         const stats = {};
@@ -499,6 +537,8 @@ router.get('/stats', async (req, res) => {
 // POST /api/leads — create new lead
 router.post('/', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants } = req.body;
         if (!client_name) {
             return res.status(400).json({ success: false, error: "Ім'я клієнта обов'язкове" });
@@ -512,10 +552,10 @@ router.post('/', async (req, res) => {
         }
         const normalizedCelebrants = normalizeCelebrants(celebrants);
         const result = await pool.query(`
-            INSERT INTO leads (client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+            INSERT INTO leads (business_context, client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
             RETURNING *
-        `, [client_name, phone || null, telegram_id || null, instagram || null, source || null,
+        `, [businessContext, client_name, phone || null, telegram_id || null, instagram || null, source || null,
             program_id || null, event_date || null,
             children_count || null, child_age || null, notes || null,
             assignedTo.provided ? assignedTo.value : null,
@@ -532,6 +572,8 @@ router.post('/', async (req, res) => {
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, celebrants, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const updates = [];
         const params = [];
@@ -590,8 +632,12 @@ router.patch('/:id', async (req, res) => {
         }
 
         params.push(parseInt(req.params.id));
+        params.push(businessContext);
         const result = await pool.query(
-            `UPDATE leads SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+            `UPDATE leads SET ${updates.join(', ')}
+             WHERE id = $${params.length - 1}
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}
+             RETURNING *`,
             params
         );
         if (result.rows.length === 0) {
@@ -605,7 +651,11 @@ router.patch('/:id', async (req, res) => {
         if (['completed', 'deal', 'closed'].includes(newStatus) && updatedLead.booking_id) {
             setImmediate(async () => {
                 try {
-                    const bk = await pool.query('SELECT customer_id FROM bookings WHERE id = $1', [updatedLead.booking_id]);
+                    const bk = await pool.query(
+                        `SELECT customer_id FROM bookings
+                         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                        [updatedLead.booking_id, businessContext]
+                    );
                     const custId = bk.rows[0]?.customer_id;
                     if (!custId) return;
                     await pool.query(
@@ -613,10 +663,12 @@ router.patch('/:id', async (req, res) => {
                          SET source = COALESCE(NULLIF(source, ''), $1),
                              lead_id = COALESCE(lead_id, $2),
                              notes = CONCAT_WS(E'\n', notes, $3)
-                         WHERE id = $4 AND (source IS NULL OR source = '')`,
+                         WHERE id = $4
+                           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+                           AND (source IS NULL OR source = '')`,
                         [updatedLead.source || 'lead', updatedLead.id,
                          `Конвертований з ліду #${updatedLead.id} (${updatedLead.source || 'невідоме джерело'})`,
-                         custId]
+                         custId, businessContext]
                     );
                     log.info(`[Lead→Customer] Lead ${updatedLead.id} → customer ${custId}, source: ${updatedLead.source}`);
                 } catch (e) { log.warn('[LeadConvert] Error:', e.message); }
@@ -651,11 +703,16 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const leadId = parseInt(req.params.id, 10);
         const requestedCustomerId = req.body?.customerId ?? req.body?.customer_id;
         const createNew = req.body?.createNew === true || req.body?.create_new === true;
 
-        const leadResult = await client.query('SELECT * FROM leads WHERE id = $1 LIMIT 1', [leadId]);
+        const leadResult = await client.query(
+            `SELECT * FROM leads WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 LIMIT 1`,
+            [leadId, businessContext]
+        );
         if (!leadResult.rows.length) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
@@ -671,7 +728,10 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, error: 'customerId має бути додатним числом' });
             }
-            const existing = await client.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [customerId]);
+            const existing = await client.query(
+                `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2 LIMIT 1`,
+                [customerId, businessContext]
+            );
             if (!existing.rows.length) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
@@ -685,6 +745,7 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                      social_identities = $6::jsonb,
                      updated_at = NOW()
                  WHERE id = $5
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $7
                  RETURNING *`,
                 [
                     leadId,
@@ -692,16 +753,18 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                     normalizeInstagram(lead.instagram) || null,
                     lead.source || 'lead',
                     customerId,
-                    JSON.stringify(mergeLeadSocialIdentities(existing.rows[0].social_identities, lead))
+                    JSON.stringify(mergeLeadSocialIdentities(existing.rows[0].social_identities, lead)),
+                    businessContext
                 ]
             );
             customer = updated.rows[0];
         } else if (createNew) {
             const inserted = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, source, notes, lead_id, social_identities)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                `INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                  RETURNING *`,
                 [
+                    businessContext,
                     lead.client_name || `Lead #${leadId}`,
                     lead.phone || null,
                     normalizeInstagram(lead.instagram) || null,
@@ -723,13 +786,14 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
             SELECT id, name, phone, instagram
             FROM customers
             WHERE id <> $1
+              AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
               AND (
                 ($2 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2)
                 OR ($3 <> '' AND lower(regexp_replace(COALESCE(instagram, ''), '^@+', '', 'g')) = $3)
               )
             ORDER BY updated_at DESC NULLS LAST, id DESC
             LIMIT 5
-        `, [customer.id, normalizeDigits(customer.phone || lead.phone), normalizeInstagram(customer.instagram || lead.instagram)]);
+        `, [customer.id, normalizeDigits(customer.phone || lead.phone), normalizeInstagram(customer.instagram || lead.instagram), businessContext]);
 
         await client.query('COMMIT');
         res.json({
@@ -752,11 +816,14 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
 // Stages: new → contacted → info_sent → deal → deposit_received → waiting → completed → closed / lost
 router.get('/pipeline', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT pipeline_stage, lead_type, COUNT(*) AS count
             FROM leads
+            WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
             GROUP BY pipeline_stage, lead_type
-        `);
+        `, [businessContext]);
 
         const stages = {};
         const stageOrder = ['new', 'contacted', 'info_sent', 'deal', 'deposit_received', 'waiting', 'completed', 'closed', 'lost'];
@@ -772,10 +839,11 @@ router.get('/pipeline', async (req, res) => {
                    l.pipeline_stage, l.event_date, l.created_at, l.source_channel,
                    EXTRACT(EPOCH FROM (NOW() - COALESCE(l.last_contact_at, l.created_at))) / 3600 AS hours_idle
             FROM leads l
-            WHERE l.lead_type NOT IN ('spam')
+            WHERE COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+              AND l.lead_type NOT IN ('spam')
             ORDER BY l.created_at DESC
             LIMIT 300
-        `);
+        `, [businessContext]);
 
         res.json({ success: true, pipeline: stages, leads: leadsResult.rows });
     } catch (err) {
@@ -787,6 +855,8 @@ router.get('/pipeline', async (req, res) => {
 // GET /api/leads/:id/workspace — unified manager workspace case composition
 router.get('/:id/workspace', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const leadId = parseInt(req.params.id, 10);
         if (!Number.isInteger(leadId) || leadId <= 0) {
             return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
@@ -799,8 +869,9 @@ router.get('/:id/workspace', async (req, res) => {
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
             WHERE l.id = $1
+              AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
             LIMIT 1
-        `, [leadId]);
+        `, [leadId, businessContext]);
 
         if (leadResult.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
@@ -812,16 +883,21 @@ router.get('/:id/workspace', async (req, res) => {
         const cardResult = await optionalWorkspaceQuery(`
             SELECT * FROM customer_cards
             WHERE lead_id = $1
+              AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
             LIMIT 1
-        `, [leadId]);
+        `, [leadId, businessContext]);
         const customerCard = cardResult.rows[0] || null;
 
         let bookingCustomerId = null;
         if (lead.bookingId) {
-            const bookingLinkParams = [lead.bookingId];
+            const bookingLinkParams = [lead.bookingId, businessContext];
             const bookingLinkScope = getVisibleBookingScope(req.user, bookingLinkParams, 'b');
             const bookingLinkResult = await pool.query(
-                `SELECT b.customer_id FROM bookings b WHERE b.id = $1 ${bookingLinkScope.sql} LIMIT 1`,
+                `SELECT b.customer_id FROM bookings b
+                 WHERE b.id = $1
+                   AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                   ${bookingLinkScope.sql}
+                 LIMIT 1`,
                 bookingLinkParams
             );
             bookingCustomerId = bookingLinkResult.rows[0]?.customer_id || null;
@@ -829,7 +905,7 @@ router.get('/:id/workspace', async (req, res) => {
 
         const phoneDigits = normalizeDigits(lead.phone || customerCard?.phone);
         const instagramKey = normalizeInstagram(lead.instagram);
-        const customerLookupParams = [bookingCustomerId, leadId, phoneDigits, instagramKey];
+        const customerLookupParams = [bookingCustomerId, leadId, phoneDigits, instagramKey, businessContext];
         const customerBookingScope = getVisibleBookingScope(req.user, customerLookupParams, 'b');
         const customerResult = await optionalWorkspaceQuery(`
             SELECT c.*,
@@ -846,13 +922,18 @@ router.get('/:id/workspace', async (req, res) => {
                        MAX(b.date) AS real_last_visit
                 FROM bookings b
                 WHERE b.status != 'cancelled'
+                  AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
                   ${customerBookingScope.sql}
                 GROUP BY b.customer_id
             ) b_agg ON b_agg.customer_id = c.id
-            WHERE ($1::integer IS NOT NULL AND c.id = $1)
-               OR c.lead_id = $2
-               OR ($3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3)
-               OR ($4 <> '' AND lower(regexp_replace(COALESCE(c.instagram, ''), '^@+', '', 'g')) = $4)
+            WHERE COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+              AND (
+                   ($1::integer IS NOT NULL AND c.id = $1)
+                   OR
+                   c.lead_id = $2
+                   OR ($3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3)
+                   OR ($4 <> '' AND lower(regexp_replace(COALESCE(c.instagram, ''), '^@+', '', 'g')) = $4)
+              )
             ORDER BY
                 CASE
                     WHEN $1::integer IS NOT NULL AND c.id = $1 THEN 0
@@ -877,12 +958,15 @@ router.get('/:id/workspace', async (req, res) => {
             bookingParams.push(String(lead.bookingId));
             bookingConditions.push(`b.id = $${bookingParams.length}`);
         }
+        bookingParams.push(businessContext);
+        const bookingBusinessRef = `$${bookingParams.length}`;
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookingsResult = bookingConditions.length > 0
             ? await pool.query(`
                 SELECT b.*
                 FROM bookings b
                 WHERE (${bookingConditions.join(' OR ')})
+                  AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${bookingBusinessRef}
                   AND NULLIF(b.linked_to, '') IS NULL
                   ${bookingVisibility.sql}
                 ORDER BY b.date DESC NULLS LAST, b.time DESC NULLS LAST
@@ -1065,12 +1149,17 @@ router.get('/:id/workspace', async (req, res) => {
 // GET /api/leads/mailing — get mailing list
 router.get('/mailing', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT m.*, l.client_name AS lead_name
             FROM mailing_list m
-            LEFT JOIN leads l ON m.lead_id = l.id
+            LEFT JOIN leads l
+              ON m.lead_id = l.id
+             AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+            WHERE COALESCE(m.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
             ORDER BY m.created_at DESC LIMIT 500
-        `);
+        `, [businessContext]);
         res.json({ success: true, list: result.rows });
     } catch (err) {
         log.error('GET /leads/mailing error', err);
@@ -1081,20 +1170,22 @@ router.get('/mailing', async (req, res) => {
 // POST /api/leads/mailing — add contact to mailing list
 router.post('/mailing', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const { name, phone, email, source_channel, contact_value, lead_id, notes } = req.body;
         if (!name && !phone) {
             return res.status(400).json({ success: false, error: "Ім'я або телефон обов'язкові" });
         }
         const result = await pool.query(`
-            INSERT INTO mailing_list (name, phone, email, source_channel, contact_value, lead_id, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (phone) WHERE phone IS NOT NULL DO UPDATE SET
+            INSERT INTO mailing_list (business_context, name, phone, email, source_channel, contact_value, lead_id, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (business_context, phone) WHERE phone IS NOT NULL DO UPDATE SET
                 name = COALESCE(EXCLUDED.name, mailing_list.name),
                 email = COALESCE(EXCLUDED.email, mailing_list.email),
                 source_channel = COALESCE(EXCLUDED.source_channel, mailing_list.source_channel),
                 notes = COALESCE(EXCLUDED.notes, mailing_list.notes)
             RETURNING *
-        `, [name || null, phone || null, email || null, source_channel || null,
+        `, [businessContext, name || null, phone || null, email || null, source_channel || null,
             contact_value || null, lead_id || null, notes || null]);
 
         res.json({ success: true, entry: result.rows[0] });
@@ -1107,7 +1198,14 @@ router.post('/mailing', async (req, res) => {
 // DELETE /api/leads/mailing/:id — remove from mailing list
 router.delete('/mailing/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM mailing_list WHERE id = $1 RETURNING id', [req.params.id]);
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await pool.query(
+            `DELETE FROM mailing_list
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             RETURNING id`,
+            [req.params.id, businessContext]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Запис не знайдено' });
         }
@@ -1121,7 +1219,14 @@ router.delete('/mailing/:id', async (req, res) => {
 // DELETE /api/leads/:id
 router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM leads WHERE id = $1 RETURNING id', [req.params.id]);
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await pool.query(
+            `DELETE FROM leads
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             RETURNING id`,
+            [req.params.id, businessContext]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
@@ -1138,22 +1243,29 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
 
 /** Helper: create lead from webhook data, dedup by phone or external_id */
 async function createLeadFromWebhook({ client_name, phone, telegram_id, instagram,
-                                       notes, source_channel, external_id, raw_payload }) {
+                                       notes, source_channel, external_id, raw_payload,
+                                       businessContext = DEFAULT_BUSINESS_CONTEXT }) {
+    businessContext = normalizeBusinessContext(businessContext);
     const isTestMode = process.env.TEST_MODE === 'true';
     if (isTestMode && client_name) client_name = `[TEST] ${client_name}`;
     // Dedup by phone
     if (phone) {
         const dup = await pool.query(
-            `SELECT id FROM leads WHERE phone = $1 AND status NOT IN ('booked','closed','lost') LIMIT 1`,
-            [phone]
+            `SELECT id FROM leads
+             WHERE phone = $1
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+               AND status NOT IN ('booked','closed','lost')
+             LIMIT 1`,
+            [phone, businessContext]
         );
         if (dup.rows.length > 0) {
             await pool.query(
                 `UPDATE leads
                    SET notes = COALESCE(notes,'') || E'\n[' || $1 || '] ' || COALESCE($2,''),
                        last_contact_at = NOW()
-                 WHERE id = $3`,
-                [source_channel, notes, dup.rows[0].id]
+                 WHERE id = $3
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+                [source_channel, notes, dup.rows[0].id, businessContext]
             );
             return null;
         }
@@ -1161,13 +1273,14 @@ async function createLeadFromWebhook({ client_name, phone, telegram_id, instagra
 
     const result = await pool.query(
         `INSERT INTO leads
-           (client_name, phone, telegram_id, instagram,
+           (business_context, client_name, phone, telegram_id, instagram,
             source, source_channel, external_id, notes, raw_payload, status)
-         VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,'new')
-         ON CONFLICT (source_channel, external_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,'new')
+         ON CONFLICT (business_context, source_channel, external_id)
            WHERE external_id IS NOT NULL DO NOTHING
          RETURNING *`,
         [
+            businessContext,
             client_name || null,
             phone       || null,
             telegram_id || null,
@@ -1192,6 +1305,7 @@ router.post('/webhook/universal', async (req, res) => {
         }
 
         const source_channel = (req.query.source || 'universal').toLowerCase().slice(0, 50);
+        const businessContext = publicBusinessContext(req);
         const { name, phone, message, instagram, external_id } = req.body;
 
         if (!name && !phone) {
@@ -1204,6 +1318,7 @@ router.post('/webhook/universal', async (req, res) => {
             instagram,
             notes:          message,
             source_channel,
+            businessContext,
             external_id:    external_id || (phone ? `${source_channel}_${phone}` : null),
             raw_payload:    req.body,
         });
@@ -1265,6 +1380,7 @@ router.post('/webhook/facebook', async (req, res) => {
                     instagram:      fields.instagram || null,
                     notes:          `Facebook Lead Ad | ${fbData.ad_name || leadgenId}`,
                     source_channel: 'facebook',
+                    businessContext: publicBusinessContext(req),
                     external_id:    `fb_${leadgenId}`,
                     raw_payload:    fbData,
                 });
@@ -1304,6 +1420,7 @@ router.post('/webhook/instagram', async (req, res) => {
                     client_name:    `IG_${senderId}`,
                     notes:          text.slice(0, 500),
                     source_channel: 'instagram',
+                    businessContext: publicBusinessContext(req),
                     external_id:    `ig_${senderId}`,
                     raw_payload:    messaging,
                 });
@@ -1346,6 +1463,7 @@ router.post('/webhook/viber', async (req, res) => {
             client_name:    sender?.name || `Viber_${sender?.id}`,
             notes:          message?.text?.slice(0, 500) || 'Нове звернення через Viber',
             source_channel: 'viber',
+            businessContext: publicBusinessContext(req),
             external_id:    `viber_${sender?.id}`,
             raw_payload:    req.body,
         });
@@ -1384,9 +1502,13 @@ router.get('/webhook/status', (req, res) => {
 // GET /api/leads/:id/card — get customer card for lead
 router.get('/:id/card', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(
-            'SELECT * FROM customer_cards WHERE lead_id = $1 LIMIT 1',
-            [req.params.id]
+            `SELECT * FROM customer_cards
+             WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             LIMIT 1`,
+            [req.params.id, businessContext]
         );
         res.json({ success: true, card: result.rows[0] || null });
     } catch (err) {
@@ -1398,17 +1520,26 @@ router.get('/:id/card', async (req, res) => {
 // POST /api/leads/:id/card — create/update customer card
 router.post('/:id/card', async (req, res) => {
     try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
         const leadId = parseInt(req.params.id);
         const { event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes } = req.body;
 
         // Check lead exists
-        const lead = await pool.query('SELECT id FROM leads WHERE id = $1', [leadId]);
+        const lead = await pool.query(
+            `SELECT id FROM leads WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [leadId, businessContext]
+        );
         if (lead.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
 
         // Upsert
-        const existing = await pool.query('SELECT id FROM customer_cards WHERE lead_id = $1', [leadId]);
+        const existing = await pool.query(
+            `SELECT id FROM customer_cards
+             WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [leadId, businessContext]
+        );
         let result;
         if (existing.rows.length > 0) {
             result = await pool.query(`
@@ -1416,15 +1547,16 @@ router.post('/:id/card', async (req, res) => {
                     event_type = $2, event_date = $3, guest_count = $4, children_count = $5,
                     budget_approx = $6, how_found = $7, email = $8, channel = $9, notes = $10,
                     updated_at = NOW()
-                WHERE lead_id = $1 RETURNING *
+                WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $11
+                RETURNING *
             `, [leadId, event_type || null, event_date || null, guest_count || null,
                 children_count || null, budget_approx || null, how_found || null,
-                email || null, channel || null, notes || null]);
+                email || null, channel || null, notes || null, businessContext]);
         } else {
             result = await pool.query(`
-                INSERT INTO customer_cards (lead_id, event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *
-            `, [leadId, event_type || null, event_date || null, guest_count || null,
+                INSERT INTO customer_cards (business_context, lead_id, event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *
+            `, [businessContext, leadId, event_type || null, event_date || null, guest_count || null,
                 children_count || null, budget_approx || null, how_found || null,
                 email || null, channel || null, notes || null]);
         }
@@ -1532,12 +1664,13 @@ async function logStageChange(leadId, newStage, userId) {
 // Auto-add to mailing list
 async function addToMailingIfNeeded(lead) {
     if (!lead.phone && !lead.client_name) return;
+    const businessContext = normalizeBusinessContext(lead.business_context || lead.businessContext);
     try {
         await pool.query(`
-            INSERT INTO mailing_list (name, phone, source_channel, lead_id, notes)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT ON CONSTRAINT idx_mailing_phone DO NOTHING
-        `, [lead.client_name, lead.phone, lead.source_channel || 'unknown', lead.id,
+            INSERT INTO mailing_list (business_context, name, phone, source_channel, lead_id, notes)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (business_context, phone) WHERE phone IS NOT NULL DO NOTHING
+        `, [businessContext, lead.client_name, lead.phone, lead.source_channel || 'unknown', lead.id,
             lead.lead_type === 'informational' ? 'Інформаційний запит' : 'Втрачений клієнт']);
     } catch (e) { /* dedup */ }
 }
@@ -1545,7 +1678,15 @@ async function addToMailingIfNeeded(lead) {
 // GET /api/leads/new-count — count new leads (for sidebar badge)
 router.get('/new-count', async (req, res) => {
     try {
-        const r = await pool.query("SELECT COUNT(*)::int AS count FROM leads WHERE status = 'new'");
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const r = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM leads
+             WHERE status = 'new'
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+            [businessContext]
+        );
         res.json({ count: r.rows[0].count });
     } catch (err) { res.json({ count: 0 }); }
 });

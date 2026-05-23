@@ -17,6 +17,10 @@ const {
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
+    DEFAULT_BUSINESS_CONTEXT,
+    normalizeBusinessContext
+} = require('../services/businessContext');
+const {
     bookingAccessDeniedPayload,
     buildBookingVisibilityScope,
     canEditBooking,
@@ -40,8 +44,16 @@ function sendBookingDenied(req, res, booking) {
     return res.status(403).json({ success: false, error: 'Insufficient booking permissions' });
 }
 
-function sideEffectsAllowedForContext(context) {
+function crmSideEffectsAllowedForContext(context) {
+    return Boolean(normalizeBusinessContext(context || DEFAULT_BUSINESS_CONTEXT));
+}
+
+function parkSideEffectsAllowedForContext(context) {
     return (context || DEFAULT_TIMELINE_CONTEXT) === DEFAULT_TIMELINE_CONTEXT;
+}
+
+function sideEffectsAllowedForContext(context) {
+    return crmSideEffectsAllowedForContext(context);
 }
 
 // Resolve animator line name for notifications
@@ -140,7 +152,7 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
     const notifyPayload = bookingNotificationPayload(row);
     const notifyCatch = err => log.error(`Telegram notify failed (confirm): ${err.message}`);
 
-    getLineName(booking.lineId, booking.date)
+    getLineName(booking.lineId, booking.date, booking.businessContext || DEFAULT_TIMELINE_CONTEXT)
         .then(lineName => notifyTelegram('create', notifyPayload, { username, bookingId: booking.id, lineName }).catch(notifyCatch))
         .catch(notifyCatch);
 
@@ -156,6 +168,7 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
 
     publishEvent('booking.confirmed', {
         booking_id: booking.id,
+        business_context: booking.businessContext || DEFAULT_TIMELINE_CONTEXT,
         date: booking.date,
         time: booking.time,
         room: booking.room,
@@ -383,7 +396,6 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
     b.businessContext = businessContext;
-    if (!sideEffectsAllowedForContext(businessContext)) b.skipNotification = true;
     if (!b.date || !b.time || !b.lineId) {
         return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
     }
@@ -455,14 +467,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
-        if (!sideEffectsAllowedForContext(businessContext)) customerId = null;
         if (sideEffectsAllowedForContext(businessContext) && b.customer && b.customer.name && !customerId) {
             const c = b.customer;
             // v30.4: Try to find existing customer by phone first
             if (c.phone && c.phone.trim()) {
                 const existing = await client.query(
-                    'SELECT id FROM customers WHERE phone = $1 LIMIT 1',
-                    [c.phone.trim()]
+                    "SELECT id FROM customers WHERE phone = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                    [c.phone.trim(), businessContext]
                 );
                 if (existing.rows.length > 0) {
                     customerId = existing.rows[0].id;
@@ -471,9 +482,9 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             // Create new customer only if not found
             if (!customerId) {
                 const custResult = await client.query(
-                    `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                    [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                    `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
                 );
                 customerId = custResult.rows[0].id;
             }
@@ -485,7 +496,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
         let certificateId = null;
-        if (sideEffectsAllowedForContext(businessContext) && b.certificateCode) {
+        if (parkSideEffectsAllowedForContext(businessContext) && b.certificateCode) {
             const certRow = await client.query(
                 `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
                 [String(b.certificateCode).toUpperCase()]
@@ -526,7 +537,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await attachLeadBookingLink(client, {
                 leadId: b.leadId,
                 bookingId: b.id,
-                customerId
+                customerId,
+                businessContext
             });
         }
 
@@ -536,7 +548,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         );
 
         // v19.10: Finance auto-record INSIDE transaction for consistency
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
+        if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
             try {
                 await client.query(
                     `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
@@ -550,7 +562,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v33.8.0 Integration 6: Certificate payment finance record
-        if (sideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
+        if (parkSideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
             try {
                 await client.query(
                     `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
@@ -590,7 +602,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         // v19.1: Publish to event queue
         if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
             publishEvent('booking.created', {
-                booking_id: b.id, date: b.date, time: b.time, room: b.room,
+                booking_id: b.id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
                 program_code: b.programCode, program_name: b.programName,
                 status: b.status || 'confirmed', price: b.price || 0,
                 kids_count: b.kidsCount, created_by: b.createdBy
@@ -602,7 +614,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         // ==========================================
 
         // Integration 1: Warehouse stock deduction
-        if (sideEffectsAllowedForContext(businessContext) && b.programId) {
+        if (parkSideEffectsAllowedForContext(businessContext) && b.programId) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -790,7 +802,6 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
         }
         main.businessContext = businessContext;
-        if (!sideEffectsAllowedForContext(businessContext)) main.skipNotification = true;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
         const mainPinataFields = applyPinataNormalization(main);
@@ -830,15 +841,23 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer
         let customerId = main.customerId ? parseInt(main.customerId) : null;
-        if (!sideEffectsAllowedForContext(businessContext)) customerId = null;
         if (sideEffectsAllowedForContext(businessContext) && main.customer && main.customer.name && !customerId) {
             const c = main.customer;
-            const custResult = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
-            );
-            customerId = custResult.rows[0].id;
+            if (c.phone && c.phone.trim()) {
+                const existing = await client.query(
+                    "SELECT id FROM customers WHERE phone = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                    [c.phone.trim(), businessContext]
+                );
+                if (existing.rows.length > 0) customerId = existing.rows[0].id;
+            }
+            if (!customerId) {
+                const custResult = await client.query(
+                    `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                );
+                customerId = custResult.rows[0].id;
+            }
         }
 
         if (!main.id || !/^BK-\d{4}-\d{4,}$/.test(main.id)) {
@@ -867,7 +886,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             await attachLeadBookingLink(client, {
                 leadId: main.leadId,
                 bookingId: main.id,
-                customerId
+                customerId,
+                businessContext
             });
         }
 
@@ -925,7 +945,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         // v19.1: Publish to event queue
         if (sideEffectsAllowedForContext(businessContext)) {
             publishEvent('booking.created', {
-                booking_id: main.id, date: main.date, time: main.time, room: main.room,
+                booking_id: main.id, business_context: businessContext, date: main.date, time: main.time, room: main.room,
                 program_code: main.programCode, program_name: main.programName,
                 status: main.status || 'confirmed', price: main.price || 0,
                 kids_count: main.kidsCount, created_by: main.createdBy,
@@ -991,7 +1011,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
 
         // v19.10: Remove auto-recorded finance transaction inside transaction
-        if (sideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
+        if (parkSideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
             try {
                 await client.query(
                     'DELETE FROM finance_transactions WHERE booking_id = $1',
@@ -1013,7 +1033,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         await client.query('COMMIT');
 
         // v33.8.0: Restore stock on cancel (fire-and-forget — non-critical)
-        if (sideEffectsAllowedForContext(businessContext) && booking.program_id) {
+        if (parkSideEffectsAllowedForContext(businessContext) && booking.program_id) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -1048,6 +1068,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             publishEvent('booking.cancelled', {
                 booking_id: id,
                 booking_number: booking.booking_number || booking.id,
+                business_context: businessContext,
                 date: booking.date,
                 time: booking.time || '',
                 room: booking.room,
@@ -1391,7 +1412,6 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
     b.businessContext = businessContext;
-    if (!sideEffectsAllowedForContext(businessContext)) b.skipNotification = true;
     if (!canEditBooking(req.user, old)) {
         return sendBookingDenied(req, res, old);
     }
@@ -1534,6 +1554,16 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         const updateCustomerId = sideEffectsAllowedForContext(businessContext)
             ? (b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null))
             : null;
+        if (updateCustomerId) {
+            const scopedCustomer = await client.query(
+                "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                [updateCustomerId, businessContext]
+            );
+            if (!scopedCustomer.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Customer does not belong to this business context' });
+            }
+        }
 
         let updateResult;
         if (clientUpdatedAt) {
@@ -1710,7 +1740,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (sideEffectsAllowedForContext(businessContext) && statusChanged) {
             const eventType = newStatus === 'confirmed' ? 'booking.confirmed' : `booking.status_changed`;
             publishEvent(eventType, {
-                booking_id: id, date: b.date, time: b.time, room: b.room,
+                booking_id: id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
                 program_code: b.programCode, old_status: oldBooking.status,
                 new_status: newStatus, updated_by: req.user?.username
             }, `booking_status_${id}_${Date.now()}`);

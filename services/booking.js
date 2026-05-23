@@ -255,11 +255,24 @@ async function syncScheduledAnimatorLines(date, db = pool) {
         );
     }
 
-    await db.query(
+    await cleanupLegacyDefaultAnimatorLines(date, db);
+
+    return { source: 'staff_schedule', count: scheduledLines.length };
+}
+
+async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
+    return db.query(
         `DELETE FROM lines_by_date l
          WHERE l.date = $1
-           AND l.business_context = $4
-           AND l.line_id IN ($2, $3)
+           AND l.business_context = $2
+           AND l.from_sheet IS DISTINCT FROM true
+           AND (
+                l.line_id IN ('line1', 'line2', 'line1_' || $1, 'line2_' || $1)
+                OR (
+                    l.line_id ~ ('^line[0-9]+(_' || $1 || ')?$')
+                    AND LOWER(TRIM(l.name)) ~ '^аніматор[[:space:]]+[0-9]+$'
+                )
+           )
            AND NOT EXISTS (
                 SELECT 1 FROM bookings b
                 WHERE b.date = l.date
@@ -272,10 +285,8 @@ async function syncScheduledAnimatorLines(date, db = pool) {
                 WHERE a.date = l.date
                   AND a.line_id = l.line_id
            )`,
-        [date, `line1_${date}`, `line2_${date}`, DEFAULT_TIMELINE_CONTEXT]
+        [date, DEFAULT_TIMELINE_CONTEXT]
     );
-
-    return { source: 'staff_schedule', count: scheduledLines.length };
 }
 
 // --- Default lines ---
@@ -321,6 +332,6 @@ module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS,
     checkRoomConflict, checkServerConflicts, checkServerDuplicate,
-    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines,
+    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

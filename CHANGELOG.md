@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.55 - Bookings: CRM handoff МД
+
+### Bookings: CRM handoff МД [codex]
+- **Бронювання МД** - non-park бронювання без `leadId` тепер idempotent створюють або підхоплюють lead у тому ж `business_context`.
+- **CRM-зв'язок** - після створення консультації система лінкує `leads.booking_id` і `customers.lead_id`, щоб клієнт і воронка МД не розходились.
+- **Воронка** - підтверджені консультації потрапляють у `deposit_received`, попередні - у `waiting`, зі статусом `booked`.
+- **Guardrail** - `lead-booking-link` unit test покриває створення нового scoped lead і повторне використання існуючого lead.
+
+---
+
 ## v0.61.54 - Timeline: продукти з каталогу
 
 ### Timeline: продукти з каталогу [codex]

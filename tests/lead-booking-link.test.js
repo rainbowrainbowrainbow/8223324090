@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseLeadId, attachLeadBookingLink } = require('../services/leadBookingLink');
+const { parseLeadId, attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 
 describe('lead booking link repair', () => {
     it('parses only positive lead ids', () => {
@@ -80,6 +80,94 @@ describe('lead booking link repair', () => {
         });
 
         assert.equal(queries.length, 2);
+        assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
+    });
+
+    it('creates a scoped lead for non-park booking CRM handoff', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/SELECT id FROM leads WHERE/i.test(text)) {
+                    return { rows: [], rowCount: 0 };
+                }
+                if (/INSERT INTO leads/i.test(text)) {
+                    return { rows: [{ id: 77 }], rowCount: 1 };
+                }
+                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                throw new Error(`Unexpected query: ${text}`);
+            }
+        };
+
+        const result = await ensureLeadForBooking(client, {
+            booking: {
+                id: 'BK-2099-0101',
+                status: 'confirmed',
+                date: '2099-05-23',
+                time: '14:00',
+                programId: 'md_full_consult_40',
+                programName: 'Повна консультація',
+                kidsCount: 1,
+                customer: {
+                    name: 'Тест МД',
+                    phone: '+380991111111',
+                    instagram: '@mdtest'
+                }
+            },
+            customerId: 701,
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(result.attached, true);
+        assert.equal(result.created, true);
+        assert.equal(result.leadId, 77);
+        assert.equal(result.customerLinked, true);
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[4], 'BK-2099-0101');
+        assert.equal(insert.params[9], 'booked');
+        assert.equal(insert.params[10], 'deposit_received');
+    });
+
+    it('reuses an existing scoped lead for booking CRM handoff', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/SELECT id FROM leads WHERE/i.test(text)) {
+                    return { rows: [{ id: 88 }], rowCount: 1 };
+                }
+                if (/UPDATE leads SET booking_id = COALESCE\(booking_id, \$1\)/i.test(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                throw new Error(`Unexpected query: ${text}`);
+            }
+        };
+
+        const result = await ensureLeadForBooking(client, {
+            booking: {
+                id: 'BK-2099-0102',
+                status: 'preliminary',
+                date: '2099-05-24',
+                customer: { name: 'Існуючий лід', phone: '+380992222222' }
+            },
+            customerId: 702,
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(result.attached, true);
+        assert.equal(result.created, false);
+        assert.equal(result.leadId, 88);
+        assert.ok(!queries.some(q => /INSERT INTO leads/i.test(q.text)));
+        assert.ok(queries.some(q => /booking_id IS NULL/i.test(q.text)));
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
     });
 });

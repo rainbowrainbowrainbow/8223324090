@@ -7,7 +7,7 @@ const { validateDate, validateTime, validateId, mapBookingRow, checkServerConfli
 const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
-const { attachLeadBookingLink } = require('../services/leadBookingLink');
+const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
 const {
@@ -54,6 +54,20 @@ function parkSideEffectsAllowedForContext(context) {
 
 function sideEffectsAllowedForContext(context) {
     return crmSideEffectsAllowedForContext(context);
+}
+
+function bookingLeadAutoCreateAllowedForContext(context) {
+    return sideEffectsAllowedForContext(context) && (context || DEFAULT_TIMELINE_CONTEXT) !== DEFAULT_TIMELINE_CONTEXT;
+}
+
+function hasBookingLeadIdentity(booking, customerId) {
+    const customer = booking?.customer || {};
+    return Boolean(
+        customerId
+        || String(customer.name || '').trim()
+        || String(customer.phone || '').trim()
+        || String(customer.instagram || '').trim()
+    );
 }
 
 // Resolve animator line name for notifications
@@ -540,6 +554,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 customerId,
                 businessContext
             });
+        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && !b.linkedTo && hasBookingLeadIdentity(b, customerId)) {
+            const leadLink = await ensureLeadForBooking(client, {
+                booking: b,
+                customerId,
+                businessContext
+            });
+            if (leadLink.attached) {
+                b.leadId = leadLink.leadId;
+            }
         }
 
         await client.query(
@@ -889,6 +912,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 customerId,
                 businessContext
             });
+        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && hasBookingLeadIdentity(main, customerId)) {
+            const leadLink = await ensureLeadForBooking(client, {
+                booking: main,
+                customerId,
+                businessContext
+            });
+            if (leadLink.attached) {
+                main.leadId = leadLink.leadId;
+            }
         }
 
         const linkedRows = [];

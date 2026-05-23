@@ -4,6 +4,16 @@
 
 ---
 
+## v0.62.5 - Profile: tasker cockpit
+
+### Profile: tasker cockpit [codex]
+- **Мої задачі** - вкладка профілю отримала повноцінний daily cockpit із видимим створенням задачі, кращою ієрархією і читабельнішими рядками.
+- **Категорії** - chips `Всі мої`, `Особисті`, `Приватні`, `Робочі`, `Чекаю` та `Ідеї` мають реальні count-и і фільтруються через ту саму семантику, що Tasks page.
+- **Створення** - Profile більше не має окремого локального create-шляху: payload будується через shared `TaskCreate` adapter і йде у canonical `/api/tasks`.
+- **Guardrail** - UI-smoke перевіряє shared adapter, composer, truthful segment counts і нову структуру Profile tasker.
+
+---
+
 ## v0.62.4 - Changelog: логічна історія релізів
 
 ### Changelog: логічна історія релізів [codex]

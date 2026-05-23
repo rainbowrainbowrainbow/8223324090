@@ -23,6 +23,7 @@ let leaderboardSort = 'xp';
 let activeTab = 'profile';
 let myCabinetData = null;
 let myTasksSegment = 'all';
+let cabinetCreateDuePreset = 'today';
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
 let cabinetUndoToastTimer = null;
@@ -41,6 +42,26 @@ let monthlyMonth = new Date().getMonth() + 1;
 let leaderboardMode = 'overall'; // 'overall' or 'monthly'
 let rewardClaimPending = new Set();
 let achievementCheckPending = false;
+
+const CABINET_TASK_SEGMENTS = [
+    { id: 'all', label: 'Всі мої', hint: 'Усі активні задачі, де ви власник або виконавець' },
+    { id: 'personal', label: 'Особисті', hint: 'Ваші особисті задачі і задачі категорії personal' },
+    { id: 'private', label: 'Приватні', hint: 'Задачі з приватною видимістю тільки для вас' },
+    { id: 'work', label: 'Робочі', hint: 'Командні та операційні задачі' },
+    { id: 'waiting', label: 'Чекаю', hint: 'Задачі, що очікують сигналу або відповіді' },
+    { id: 'idea', label: 'Ідеї', hint: 'Ідеї та записи для подальшого розбору' }
+];
+
+const CABINET_TASK_CATEGORIES = [
+    ['admin', 'Адмін'],
+    ['event', 'Івент'],
+    ['purchase', 'Закупівлі'],
+    ['orders', 'Замовлення'],
+    ['trampoline', 'Батути'],
+    ['personal', 'Особисті'],
+    ['improvement', 'Покращення'],
+    ['checklist', 'Чек-лісти']
+];
 
 // ==========================================
 // UTILITIES
@@ -1004,6 +1025,122 @@ function cabinetList(name) {
     return Array.isArray(list) ? list : [];
 }
 
+function cabinetTaskMode(task = {}) {
+    return task.taskMode || task.task_mode || 'work';
+}
+
+function cabinetTaskKind(task = {}) {
+    return task.taskKind || task.task_kind || 'action';
+}
+
+function cabinetTaskWorkflow(task = {}) {
+    return task.workflowState || task.workflow_state || 'todo';
+}
+
+function cabinetTaskVisibility(task = {}) {
+    return task.visibility || 'team';
+}
+
+function isCabinetWaitingTask(task = {}) {
+    return cabinetTaskWorkflow(task) === 'waiting' || cabinetTaskKind(task) === 'waiting';
+}
+
+function isCabinetPrivateTask(task = {}) {
+    return cabinetTaskVisibility(task) === 'private' || cabinetTaskMode(task) === 'private';
+}
+
+function isCabinetIdeaTask(task = {}) {
+    return cabinetTaskKind(task) === 'idea';
+}
+
+function cabinetTaskMatchesSegment(task = {}, segment = myTasksSegment) {
+    switch (segment) {
+        case 'personal':
+            return cabinetTaskMode(task) === 'personal' || (task.category || '') === 'personal';
+        case 'private':
+            return isCabinetPrivateTask(task);
+        case 'work':
+            return cabinetTaskMode(task) === 'work';
+        case 'waiting':
+            return isCabinetWaitingTask(task);
+        case 'idea':
+            return isCabinetIdeaTask(task);
+        case 'all':
+        default:
+            return true;
+    }
+}
+
+function cabinetSegmentCounts(tasks = cabinetList('all')) {
+    return CABINET_TASK_SEGMENTS.reduce((acc, segment) => {
+        acc[segment.id] = tasks.filter(task => cabinetTaskMatchesSegment(task, segment.id)).length;
+        return acc;
+    }, {});
+}
+
+function cabinetSegmentConfig(segment = myTasksSegment) {
+    return CABINET_TASK_SEGMENTS.find(item => item.id === segment) || CABINET_TASK_SEGMENTS[0];
+}
+
+function cabinetCreateDefaultsForSegment(segment = myTasksSegment, modeOverride = '') {
+    const defaults = {
+        category: 'admin',
+        mode: 'work',
+        kind: 'action',
+        visibility: 'team',
+        placeholder: 'Що треба зробити?'
+    };
+    if (segment === 'personal' || modeOverride === 'personal') {
+        return { ...defaults, category: 'personal', mode: 'personal', visibility: 'me_only', placeholder: 'Особиста задача для себе' };
+    }
+    if (segment === 'private' || modeOverride === 'private') {
+        return { ...defaults, category: 'personal', mode: 'private', visibility: 'private', placeholder: 'Приватна задача тільки для мене' };
+    }
+    if (segment === 'waiting') {
+        return { ...defaults, kind: 'waiting', placeholder: 'Що чекає відповіді або сигналу?' };
+    }
+    if (segment === 'idea') {
+        return { ...defaults, category: 'improvement', kind: 'idea', placeholder: 'Ідея, яку треба не загубити' };
+    }
+    return defaults;
+}
+
+function cabinetDueDateForPreset(preset = cabinetCreateDuePreset) {
+    if (window.TaskCreate?.dateForDuePresetValue) {
+        return window.TaskCreate.dateForDuePresetValue(preset, document.getElementById('cabinetTaskDate')?.value || '');
+    }
+    if (preset === 'no_date') return '';
+    const d = new Date();
+    if (preset === 'tomorrow') d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function setCabinetDuePreset(preset = 'today') {
+    cabinetCreateDuePreset = ['today', 'tomorrow', 'no_date', 'custom'].includes(preset) ? preset : 'today';
+    const date = document.getElementById('cabinetTaskDate');
+    if (date && cabinetCreateDuePreset !== 'custom') date.value = cabinetDueDateForPreset(cabinetCreateDuePreset);
+    document.querySelectorAll('[data-cabinet-due-preset]').forEach(btn => {
+        const active = btn.dataset.cabinetDuePreset === cabinetCreateDuePreset;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (cabinetCreateDuePreset === 'custom') date?.focus();
+}
+
+function syncCabinetTaskCreateMode() {
+    const mode = document.getElementById('cabinetTaskMode')?.value || 'work';
+    const visibility = document.getElementById('cabinetTaskVisibility');
+    const category = document.getElementById('cabinetTaskCategory');
+    if (visibility && window.TaskCreate?.defaultVisibilityForTaskMode) {
+        visibility.value = window.TaskCreate.defaultVisibilityForTaskMode(mode, visibility.value);
+    } else if (visibility) {
+        visibility.value = mode === 'private' ? 'private' : (mode === 'personal' ? 'me_only' : 'team');
+    }
+    if (category && (mode === 'personal' || mode === 'private') && category.value === 'admin') {
+        category.value = 'personal';
+    }
+}
+
 function syncCabinetPulseCounts(alertsData, funnelData) {
     const alerts = Array.isArray(alertsData?.alerts) ? alertsData.alerts : [];
     const readIds = (() => {
@@ -1127,12 +1264,12 @@ function openCabinetFunnel() {
 }
 
 function taskModeLabel(task) {
-    const mode = task?.taskMode || task?.task_mode || 'work';
+    const mode = cabinetTaskMode(task);
     return { work: 'Робоча', personal: 'Особиста', private: 'Приватна', system: 'Системна' }[mode] || mode;
 }
 
 function taskKindLabel(task) {
-    const kind = task?.taskKind || task?.task_kind || 'action';
+    const kind = cabinetTaskKind(task);
     return {
         action: 'Дія',
         reminder: 'Нагадування',
@@ -1231,6 +1368,8 @@ function renderCabinetTaskCard(task, compact = false) {
     const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
     const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
     const taskStatus = task.status || 'todo';
+    const priority = task.priority || 'normal';
+    const priorityLabel = { high: 'Високий', critical: 'Критично', low: 'Низький', normal: 'Звичайний' }[priority] || priority;
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
     const doneActionLabel = 'Виконати задачу';
@@ -1242,6 +1381,7 @@ function renderCabinetTaskCard(task, compact = false) {
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
                     <span class="cabinet-task-due-badge cabinet-task-due-badge--${escapeHtml(dueState.key)}">${escapeHtml(dueState.label)}${dueState.detail ? ` · ${escapeHtml(dueState.detail)}` : ''}</span>
+                    <span class="cabinet-task-priority cabinet-task-priority--${escapeHtml(priority)}">${escapeHtml(priorityLabel)}</span>
                     ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
                     <span>${taskKindLabel(task)}</span>
@@ -1271,6 +1411,87 @@ function renderCabinetSection(title, list, emptyText, compact = false) {
         </section>`;
 }
 
+function renderCabinetTaskComposer(options = {}) {
+    const segment = options.segment || myTasksSegment || 'all';
+    const defaults = cabinetCreateDefaultsForSegment(segment, options.mode || '');
+    const dateValue = window.TaskCreate?.dateForDuePresetValue
+        ? window.TaskCreate.dateForDuePresetValue(cabinetCreateDuePreset, '')
+        : cabinetDueDateForPreset(cabinetCreateDuePreset);
+    const categories = CABINET_TASK_CATEGORIES.map(([value, label]) =>
+        `<option value="${value}" ${defaults.category === value ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    ).join('');
+    const duePresets = [
+        ['today', 'Сьогодні'],
+        ['tomorrow', 'Завтра'],
+        ['no_date', 'Без дати'],
+        ['custom', 'Інша дата']
+    ].map(([value, label]) => `
+        <button type="button" class="cabinet-due-chip ${cabinetCreateDuePreset === value ? 'active' : ''}" data-cabinet-due-preset="${value}" aria-pressed="${cabinetCreateDuePreset === value ? 'true' : 'false'}">${escapeHtml(label)}</button>
+    `).join('');
+
+    return `
+        <form class="cabinet-capture cabinet-task-composer" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
+            <div class="cabinet-task-composer-head">
+                <div>
+                    <span class="cabinet-kicker">Нова задача</span>
+                    <h3>Додати в мій cockpit</h3>
+                </div>
+                <button type="submit" class="cabinet-task-create-submit">Створити задачу</button>
+            </div>
+            <div class="cabinet-task-composer-main">
+                <label class="cabinet-task-title-field" for="cabinetTaskTitle">
+                    <span>Назва</span>
+                    <input id="cabinetTaskTitle" autocomplete="off" placeholder="${escapeHtml(defaults.placeholder)}">
+                </label>
+                <label for="cabinetTaskCategory">
+                    <span>Категорія</span>
+                    <select id="cabinetTaskCategory">${categories}</select>
+                </label>
+                <label for="cabinetTaskMode">
+                    <span>Режим</span>
+                    <select id="cabinetTaskMode" onchange="syncCabinetTaskCreateMode()">
+                        <option value="work" ${defaults.mode === 'work' ? 'selected' : ''}>Робоча</option>
+                        <option value="personal" ${defaults.mode === 'personal' ? 'selected' : ''}>Особиста</option>
+                        <option value="private" ${defaults.mode === 'private' ? 'selected' : ''}>Приватна</option>
+                    </select>
+                </label>
+                <label for="cabinetTaskKind">
+                    <span>Тип</span>
+                    <select id="cabinetTaskKind">
+                        <option value="action" ${defaults.kind === 'action' ? 'selected' : ''}>Дія</option>
+                        <option value="reminder" ${defaults.kind === 'reminder' ? 'selected' : ''}>Нагадування</option>
+                        <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Follow-up</option>
+                        <option value="waiting" ${defaults.kind === 'waiting' ? 'selected' : ''}>Чекаю</option>
+                        <option value="idea" ${defaults.kind === 'idea' ? 'selected' : ''}>Ідея</option>
+                    </select>
+                </label>
+            </div>
+            <div class="cabinet-task-composer-meta">
+                <div class="cabinet-due-presets" role="group" aria-label="Коли виконати">${duePresets}</div>
+                <label for="cabinetTaskDate">
+                    <span>Дата</span>
+                    <input id="cabinetTaskDate" type="date" value="${escapeHtml(dateValue)}">
+                </label>
+                <label for="cabinetTaskPriority">
+                    <span>Пріоритет</span>
+                    <select id="cabinetTaskPriority">
+                        <option value="normal">Звичайний</option>
+                        <option value="high">Високий</option>
+                        <option value="low">Низький</option>
+                    </select>
+                </label>
+                <label for="cabinetTaskVisibility">
+                    <span>Видимість</span>
+                    <select id="cabinetTaskVisibility">
+                        <option value="team" ${defaults.visibility === 'team' ? 'selected' : ''}>Командна</option>
+                        <option value="me_only" ${defaults.visibility === 'me_only' ? 'selected' : ''}>Тільки мені</option>
+                        <option value="private" ${defaults.visibility === 'private' ? 'selected' : ''}>Приватна</option>
+                    </select>
+                </label>
+            </div>
+        </form>`;
+}
+
 function renderMyDayTab() {
     const today = cabinetList('today');
     const overdue = cabinetList('overdue');
@@ -1287,19 +1508,7 @@ function renderMyDayTab() {
             </div>
             ${renderCabinetPulseCluster()}
             ${renderCabinetTaskActionLegend()}
-            <form class="cabinet-capture" onsubmit="createCabinetTask(event, 'personal')">
-                <input id="cabinetTaskTitle" placeholder="Швидко зафіксувати задачу собі">
-                <select id="cabinetTaskKind">
-                    <option value="action">Дія</option>
-                    <option value="reminder">Нагадування</option>
-                    <option value="followup">Follow-up</option>
-                    <option value="deep_work">Deep work</option>
-                    <option value="waiting">Чекаю</option>
-                    <option value="idea">Ідея</option>
-                </select>
-                <button type="submit">Додати</button>
-                <button type="button" onclick="createCabinetTask(event, 'private')">Приватна</button>
-            </form>
+            ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
                 ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.')}
                 ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', true)}
@@ -1319,42 +1528,45 @@ function renderMyDayTab() {
 
 function renderMyTasksTab() {
     const all = cabinetList('all');
-    const segments = [
-        ['all', 'Всі мої'],
-        ['personal', 'Особисті'],
-        ['private', 'Приватні'],
-        ['work', 'Робочі'],
-        ['waiting', 'Чекаю'],
-        ['idea', 'Ідеї']
-    ];
-    const filtered = all.filter(task => {
-        if (myTasksSegment === 'all') return true;
-        if (myTasksSegment === 'waiting') return (task.workflowState || task.workflow_state) === 'waiting' || (task.taskKind || task.task_kind) === 'waiting';
-        if (myTasksSegment === 'idea') return (task.taskKind || task.task_kind) === 'idea';
-        return (task.taskMode || task.task_mode || 'work') === myTasksSegment || (task.visibility === myTasksSegment);
-    });
+    const counts = cabinetSegmentCounts(all);
+    const activeSegment = cabinetSegmentConfig(myTasksSegment);
+    const filtered = all.filter(task => cabinetTaskMatchesSegment(task, myTasksSegment));
     return `
         <div class="cabinet-shell">
-            <div class="cabinet-toolbar">
+            <div class="cabinet-toolbar cabinet-toolbar--tasker">
                 <div>
                     <div class="cabinet-kicker">Personal projection</div>
                     <h2>Мої задачі</h2>
+                    <p>Єдина персональна проекція з canonical Tasks: створення, фільтри, виконання і відкладання працюють з тими самими API.</p>
                 </div>
                 <a href="/tasks?view=my" class="cabinet-link-btn">Повний Tasks</a>
             </div>
             ${renderCabinetPulseCluster()}
+            ${renderCabinetTaskComposer({ segment: myTasksSegment })}
             <div class="cabinet-segments">
-                ${segments.map(([id, label]) => `<button class="${myTasksSegment === id ? 'active' : ''}" onclick="setMyTasksSegment('${id}')">${label}</button>`).join('')}
+                ${CABINET_TASK_SEGMENTS.map(segment => `
+                    <button type="button" class="${myTasksSegment === segment.id ? 'active' : ''}" onclick="setMyTasksSegment('${segment.id}')" aria-pressed="${myTasksSegment === segment.id ? 'true' : 'false'}" title="${escapeHtml(segment.hint)}">
+                        <span>${escapeHtml(segment.label)}</span>
+                        <b>${counts[segment.id] || 0}</b>
+                    </button>
+                `).join('')}
             </div>
             ${renderCabinetTaskActionLegend()}
-            <div class="cabinet-list">
-                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : '<div class="cabinet-empty">У цьому сегменті поки немає задач.</div>'}
+            <div class="cabinet-list" data-cabinet-active-segment="${escapeHtml(myTasksSegment)}">
+                <div class="cabinet-list-head">
+                    <div>
+                        <h3>${escapeHtml(activeSegment.label)}</h3>
+                        <p>${escapeHtml(activeSegment.hint)}</p>
+                    </div>
+                    <span>${filtered.length} / ${all.length}</span>
+                </div>
+                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : `<div class="cabinet-empty">У сегменті "${escapeHtml(activeSegment.label)}" поки немає задач. Створіть задачу вище — вона одразу з'явиться тут, якщо відповідає фільтру.</div>`}
             </div>
         </div>`;
 }
 
 function setMyTasksSegment(segment) {
-    myTasksSegment = segment;
+    myTasksSegment = CABINET_TASK_SEGMENTS.some(item => item.id === segment) ? segment : 'all';
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
         tabContent.innerHTML = renderTabContent();
@@ -1527,22 +1739,66 @@ async function createCabinetTask(event, mode) {
     event.preventDefault();
     const input = document.getElementById('cabinetTaskTitle');
     const title = String(input?.value || '').trim();
-    if (!title) return;
+    if (!title) {
+        input?.focus();
+        if (typeof showNotification === 'function') showNotification('Заповніть назву задачі', 'error');
+        return;
+    }
     const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
+    const selectedMode = mode || document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
+    const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
-    await apiPost('/tasks', {
+    const draft = {
         title,
         ownerUserId: current.id || current.user_id,
-        task_mode: mode === 'private' ? 'private' : 'personal',
-        task_kind: kind,
-        visibility: mode === 'private' ? 'private' : 'me_only',
-        workflow_state: 'inbox',
-        schedule: { date: new Date().toISOString().slice(0, 10), slot: 'morning', durationMinutes: 30 },
-        effort_minutes: 30,
-        source_type: 'profile',
-        source_module: 'my_cabinet'
-    });
+        category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
+        priority: document.getElementById('cabinetTaskPriority')?.value || 'normal',
+        taskType: 'human',
+        mode: selectedMode,
+        kind,
+        visibility: document.getElementById('cabinetTaskVisibility')?.value || (selectedMode === 'private' ? 'private' : (selectedMode === 'personal' ? 'me_only' : 'team')),
+        workflowState: kind === 'waiting' ? 'waiting' : 'inbox',
+        duePreset: cabinetCreateDuePreset,
+        scheduleDate: selectedDate,
+        durationMinutes: 30,
+        scheduleSlot: 'morning',
+        sourceType: 'manual',
+        sourceModule: 'profile_my_cabinet',
+        sourceSurface: 'profile_my_cabinet',
+        captureIntent: { waiting: kind === 'waiting' }
+    };
+    const payload = window.TaskCreate?.buildPayload
+        ? window.TaskCreate.buildPayload(draft, { sourceModule: 'profile_my_cabinet', sourceSurface: 'profile_my_cabinet', scheduleSlot: 'morning' })
+        : {
+            title,
+            ownerUserId: draft.ownerUserId,
+            category: draft.category,
+            priority: draft.priority,
+            task_mode: draft.mode,
+            task_kind: draft.kind,
+            visibility: draft.visibility,
+            workflow_state: draft.workflowState,
+            date: selectedDate || new Date().toISOString().slice(0, 10),
+            schedule: { date: selectedDate || new Date().toISOString().slice(0, 10), slot: 'morning', durationMinutes: 30 },
+            effort_minutes: 30,
+            source_type: 'manual',
+            source_module: 'profile_my_cabinet'
+        };
+    const result = window.TaskCreate?.createTask
+        ? await window.TaskCreate.createTask(payload, {
+            onDuplicate: err => {
+                if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
+            }
+        })
+        : await apiPost('/tasks', payload);
+    if (!result?.success) {
+        if (!result?.duplicate && typeof showNotification === 'function') {
+            showNotification(result?.error || 'Не вдалося створити задачу', 'error');
+        }
+        return;
+    }
     if (input) input.value = '';
+    if (typeof showNotification === 'function') showNotification('Задачу створено в canonical Tasks', 'success');
     await refreshMyCabinetTab();
 }
 
@@ -2006,6 +2262,17 @@ function attachProfileListeners() {
         button.dataset.cabinetActionBound = 'true';
         button.addEventListener('click', handleCabinetTaskActionClick);
     });
+
+    document.querySelectorAll('[data-cabinet-due-preset]').forEach(button => {
+        if (button.dataset.cabinetDueBound === 'true') return;
+        button.dataset.cabinetDueBound = 'true';
+        button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset));
+    });
+    const cabinetDate = document.getElementById('cabinetTaskDate');
+    if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
+        cabinetDate.dataset.cabinetDateBound = 'true';
+        cabinetDate.addEventListener('change', () => setCabinetDuePreset('custom'));
+    }
 
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {

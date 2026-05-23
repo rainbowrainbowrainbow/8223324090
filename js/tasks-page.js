@@ -841,6 +841,11 @@ async function apiGetTasks(filters = {}) {
 }
 
 async function apiCreateTask(data) {
+    if (window.TaskCreate?.createTask) {
+        return await window.TaskCreate.createTask(data, {
+            onDuplicate: (err) => showNotification(err.message || 'Активний дубль не створено', 'warning')
+        });
+    }
     try {
         const response = await fetch(`${API_BASE}/tasks`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
@@ -2240,6 +2245,13 @@ function taskDraftFromBatchItem(item = {}) {
 }
 
 function buildTaskCreatePayload(draft = {}) {
+    if (window.TaskCreate?.buildPayload) {
+        return window.TaskCreate.buildPayload(draft, {
+            sourceModule: 'tasks',
+            scheduleSlot: draft.scheduleSlot || quickScheduleSlot,
+            getChecklistTemplateKey: normalizeChecklistTemplateKey
+        });
+    }
     const category = draft.category || 'admin';
     const subcategory = draft.subcategory || null;
     const dueDate = dateForDuePresetValue(draft.duePreset || 'today', draft.scheduleDate || draft.dueDate || '');

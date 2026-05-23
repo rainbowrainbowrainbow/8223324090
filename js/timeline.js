@@ -2833,30 +2833,50 @@ function initRoomLoadPanel() {
     const closeBtn = document.getElementById('roomLoadClose');
     if (!btn || !panel) return;
 
+    btn.setAttribute('aria-controls', 'roomLoadPanel');
+    btn.setAttribute('aria-expanded', 'false');
+
+    const closeRoomLoadPanel = () => {
+        panel.classList.remove('visible');
+        panel.setAttribute('aria-hidden', 'true');
+        btn.classList.remove('active');
+        btn.setAttribute('aria-expanded', 'false');
+        window.setTimeout(() => {
+            if (!panel.classList.contains('visible')) panel.classList.add('hidden');
+        }, 260);
+    };
+
+    const openRoomLoadPanel = () => {
+        panel.classList.remove('hidden');
+        panel.setAttribute('aria-hidden', 'false');
+        // Force reflow before adding visible class for animation.
+        panel.offsetHeight;
+        panel.classList.add('visible');
+        btn.classList.add('active');
+        btn.setAttribute('aria-expanded', 'true');
+        const dateStr = formatDate(AppState.selectedDate);
+        const cached = AppState.cachedBookings[dateStr];
+        if (cached) updateRoomLoadPanel(cached.data, AppState.selectedDate);
+    };
+
     btn.addEventListener('click', () => {
-        const isVisible = panel.classList.contains('visible');
-        if (isVisible) {
-            panel.classList.remove('visible');
-            btn.classList.remove('active');
-        } else {
-            panel.classList.remove('hidden');
-            // Force reflow before adding visible class for animation
-            panel.offsetHeight;
-            panel.classList.add('visible');
-            btn.classList.add('active');
-            // Trigger update with current bookings
-            const dateStr = formatDate(AppState.selectedDate);
-            const cached = AppState.cachedBookings[dateStr];
-            if (cached) updateRoomLoadPanel(cached.data, AppState.selectedDate);
-        }
+        if (panel.classList.contains('visible')) closeRoomLoadPanel();
+        else openRoomLoadPanel();
     });
 
     if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            panel.classList.remove('visible');
-            btn.classList.remove('active');
-        });
+        closeBtn.addEventListener('click', closeRoomLoadPanel);
     }
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && panel.classList.contains('visible')) closeRoomLoadPanel();
+    });
+
+    document.addEventListener('click', event => {
+        if (!panel.classList.contains('visible')) return;
+        if (panel.contains(event.target) || btn.contains(event.target)) return;
+        closeRoomLoadPanel();
+    });
 }
 
 function getRoomLoadClass(pct) {

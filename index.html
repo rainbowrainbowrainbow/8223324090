@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.62.10">
-    <link rel="stylesheet" href="css/auth.css?v=0.62.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.10">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.10">
-    <link rel="stylesheet" href="css/timeline.css?v=0.62.10">
-    <link rel="stylesheet" href="css/panel.css?v=0.62.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.10">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.10">
-    <link rel="stylesheet" href="css/features.css?v=0.62.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.10">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.10">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.10">
+    <link rel="stylesheet" href="css/base.css?v=0.62.11">
+    <link rel="stylesheet" href="css/auth.css?v=0.62.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.11">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.11">
+    <link rel="stylesheet" href="css/timeline.css?v=0.62.11">
+    <link rel="stylesheet" href="css/panel.css?v=0.62.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.11">
+    <link rel="stylesheet" href="css/controls.css?v=0.62.11">
+    <link rel="stylesheet" href="css/features.css?v=0.62.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.11">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.11">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.62.10 МД: лінія Олександр">✨ 0.62.10 МД: лінія Олександр</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.62.11 Таймлайн: кімнати і видимість">✨ 0.62.11 Таймлайн: кімнати і видимість</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.62.10 — МД: лінія Олександр</p>
+                <p class="tagline">AI First CRM v0.62.11 — Таймлайн: кімнати і видимість</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.10: МД: лінія Олександр</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.11: Таймлайн: кімнати і видимість</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -290,11 +290,14 @@
             </div>
 
             <!-- v19.11: Room Load Panel -->
-            <div id="roomLoadPanel" class="room-load-panel hidden">
+            <div id="roomLoadPanel" class="room-load-panel hidden" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="roomLoadTitle">
                 <div class="room-load-header">
-                    <h4>🏠 Кімнати</h4>
+                    <h4 id="roomLoadTitle">🏠 Кімнати</h4>
                     <span id="roomLoadSummary" class="room-load-summary"></span>
-                    <button id="roomLoadClose" class="room-load-close" title="Закрити">✕</button>
+                    <button id="roomLoadClose" class="room-load-close" type="button" title="Закрити панель кімнат" aria-label="Закрити панель кімнат">
+                        <span aria-hidden="true">✕</span>
+                        <span class="room-load-close-label">Закрити</span>
+                    </button>
                 </div>
                 <div id="roomLoadList" class="room-load-list"></div>
             </div>
@@ -1263,6 +1266,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.62.11 — Таймлайн: кімнати і видимість</h4>
+                    <ul>
+                        <li><b>Кімнати</b> — панель навантаження кімнат тепер відкривається у темному стилі CRM, без білого drawer у dark theme.</li>
+                        <li><b>Закриття</b> — у панелі кімнат додано явну кнопку <code>Закрити</code>, підтримку <code>Esc</code> і закриття кліком поза панеллю.</li>
+                        <li><b>Видимість</b> — <code>Продажі</code> та <code>Експорт</code> більше не конфліктують між auth-permission і конструктором видимості.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.62.10 — МД: лінія Олександр</h4>
                     <ul>
@@ -8892,28 +8903,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.62.10"></script>
-    <script src="js/timeline-visibility.js?v=0.62.10"></script>
-    <script src="js/config.js?v=0.62.10"></script>
-    <script src="js/api.js?v=0.62.10"></script>
-    <script src="js/ui.js?v=0.62.10"></script>
-    <script src="js/auth.js?v=0.62.10"></script>
-    <script src="js/timeline.js?v=0.62.10"></script>
-    <script src="js/booking.js?v=0.62.10"></script>
-    <script src="js/settings.js?v=0.62.10"></script>
-    <script src="js/booking-form.js?v=0.62.10"></script>
-    <script src="js/booking-linked.js?v=0.62.10"></script>
-    <script src="js/settings-dashboard.js?v=0.62.10"></script>
-    <script src="js/settings-history.js?v=0.62.10"></script>
-    <script src="js/settings-afisha.js?v=0.62.10"></script>
-    <script src="js/settings-certificates.js?v=0.62.10"></script>
-    <script src="js/offline.js?v=0.62.10"></script>
-    <script src="js/crm-feature-registry.js?v=0.62.10"></script>
-    <script src="js/search.js?v=0.62.10"></script>
-    <script src="js/ws.js?v=0.62.10"></script>
-    <script src="js/app.js?v=0.62.10"></script>
-    <script src="js/kleshnya-widget.js?v=0.62.10"></script>
-    <script src="js/components/sidebar.js?v=0.62.10"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.10"></script>
+    <script src="js/timeline-context.js?v=0.62.11"></script>
+    <script src="js/timeline-visibility.js?v=0.62.11"></script>
+    <script src="js/config.js?v=0.62.11"></script>
+    <script src="js/api.js?v=0.62.11"></script>
+    <script src="js/ui.js?v=0.62.11"></script>
+    <script src="js/auth.js?v=0.62.11"></script>
+    <script src="js/timeline.js?v=0.62.11"></script>
+    <script src="js/booking.js?v=0.62.11"></script>
+    <script src="js/settings.js?v=0.62.11"></script>
+    <script src="js/booking-form.js?v=0.62.11"></script>
+    <script src="js/booking-linked.js?v=0.62.11"></script>
+    <script src="js/settings-dashboard.js?v=0.62.11"></script>
+    <script src="js/settings-history.js?v=0.62.11"></script>
+    <script src="js/settings-afisha.js?v=0.62.11"></script>
+    <script src="js/settings-certificates.js?v=0.62.11"></script>
+    <script src="js/offline.js?v=0.62.11"></script>
+    <script src="js/crm-feature-registry.js?v=0.62.11"></script>
+    <script src="js/search.js?v=0.62.11"></script>
+    <script src="js/ws.js?v=0.62.11"></script>
+    <script src="js/app.js?v=0.62.11"></script>
+    <script src="js/kleshnya-widget.js?v=0.62.11"></script>
+    <script src="js/components/sidebar.js?v=0.62.11"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.11"></script>
 </body>
 </html>

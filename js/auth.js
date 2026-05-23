@@ -887,6 +887,20 @@ function canAccessPage(page) {
     return getUserRoles().some(role => _isPageAllowedForRole(page, role) === true);
 }
 
+function setTimelinePermissionHidden(elementOrId, hidden) {
+    const el = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+    if (!el) return;
+    const shouldHide = Boolean(hidden);
+    el.classList.toggle('timeline-permission-hidden', shouldHide);
+    el.toggleAttribute('data-timeline-permission-hidden', shouldHide);
+    if (shouldHide) {
+        el.classList.add('hidden');
+    } else {
+        el.classList.remove('hidden');
+        el.style.display = '';
+    }
+}
+
 function isViewer() {
     const role = getUserRole();
     const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
@@ -959,23 +973,16 @@ function showMainApp() {
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
         el.classList.toggle('hidden', isViewer());
     });
-    // v20.1.0: Hide booking creation buttons for roles that can't create
-    if (!canAccess('create_booking')) {
-        const addLineBtn = document.getElementById('addLineBtn');
-        if (addLineBtn) addLineBtn.style.display = 'none';
-        const exportBtn = document.getElementById('exportTimelineBtn');
-        if (exportBtn) exportBtn.style.display = 'none';
-    }
-    const productSalesBtn = document.getElementById('productSalesBtn');
-    if (productSalesBtn) {
-        productSalesBtn.classList.toggle('hidden', !canAccess('export_data'));
-    }
+    // Permission visibility is separate from the visual constructor state.
+    setTimelinePermissionHidden('addLineBtn', !canAccess('create_booking'));
+    setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'));
+    setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'));
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
         const canUse = action => window.TimelineBusinessContext.canUseAction(action, AppState.currentUser);
-        document.getElementById('addLineBtn')?.classList.toggle('hidden', !canUse('settings'));
-        document.getElementById('exportTimelineBtn')?.classList.toggle('hidden', !canUse('export'));
-        document.getElementById('productSalesBtn')?.classList.add('hidden');
+        setTimelinePermissionHidden('addLineBtn', !canUse('settings'));
+        setTimelinePermissionHidden('exportTimelineBtn', !canUse('export'));
+        setTimelinePermissionHidden('productSalesBtn', true);
     }
     if (window.TimelineVisibility) {
         window.TimelineVisibility.refreshAccess?.();

@@ -1282,6 +1282,10 @@ body:not(.dark-mode) .mini-booking-block:hover {
     display: none !important;
 }
 
+.timeline-permission-hidden {
+    display: none !important;
+}
+
 .timeline-business-switch {
     display: inline-flex;
     align-items: center;

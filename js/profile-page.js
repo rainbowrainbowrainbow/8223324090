@@ -1025,24 +1025,47 @@ function cabinetList(name) {
     return Array.isArray(list) ? list : [];
 }
 
+function normalizedCabinetTaskToken(value, fallback = '') {
+    const token = String(value ?? '').trim().toLowerCase();
+    return token || fallback;
+}
+
 function cabinetTaskMode(task = {}) {
-    return task.taskMode || task.task_mode || 'work';
+    return normalizedCabinetTaskToken(task.taskMode || task.task_mode || task.mode, 'work');
 }
 
 function cabinetTaskKind(task = {}) {
-    return task.taskKind || task.task_kind || 'action';
+    return normalizedCabinetTaskToken(task.taskKind || task.task_kind || task.kind, 'action');
 }
 
 function cabinetTaskWorkflow(task = {}) {
-    return task.workflowState || task.workflow_state || 'todo';
+    return normalizedCabinetTaskToken(task.workflowState || task.workflow_state || task.workflow, 'todo');
 }
 
 function cabinetTaskVisibility(task = {}) {
-    return task.visibility || 'team';
+    return normalizedCabinetTaskToken(task.visibility, cabinetTaskMode(task) === 'private' ? 'private' : 'team');
+}
+
+function cabinetTaskCategory(task = {}) {
+    return normalizedCabinetTaskToken(task.category || task.taskCategory || task.task_category);
+}
+
+function cabinetTaskStatus(task = {}) {
+    return normalizedCabinetTaskToken(task.status);
+}
+
+function isCabinetPersonalTask(task = {}) {
+    const visibility = cabinetTaskVisibility(task);
+    return cabinetTaskMode(task) === 'personal'
+        || visibility === 'me_only'
+        || cabinetTaskCategory(task) === 'personal';
 }
 
 function isCabinetWaitingTask(task = {}) {
-    return cabinetTaskWorkflow(task) === 'waiting' || cabinetTaskKind(task) === 'waiting';
+    return cabinetTaskWorkflow(task) === 'waiting'
+        || cabinetTaskKind(task) === 'waiting'
+        || cabinetTaskStatus(task) === 'waiting'
+        || task.waiting === true;
 }
 
 function isCabinetPrivateTask(task = {}) {
@@ -1050,13 +1073,18 @@ function isCabinetPrivateTask(task = {}) {
 }
 
 function isCabinetIdeaTask(task = {}) {
-    return cabinetTaskKind(task) === 'idea';
+    const category = cabinetTaskCategory(task);
+    return cabinetTaskKind(task) === 'idea'
+        || category === 'idea'
+        || category === 'ideas'
+        || category === 'improvement'
+        || task.idea === true;
 }
 
 function cabinetTaskMatchesSegment(task = {}, segment = myTasksSegment) {
     switch (segment) {
         case 'personal':
-            return cabinetTaskMode(task) === 'personal' || (task.category || '') === 'personal';
+            return isCabinetPersonalTask(task);
         case 'private':
             return isCabinetPrivateTask(task);
         case 'work':

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.62.7 - Profile: фільтри задач
+
+### Profile: фільтри задач [codex]
+- **Мої задачі** - фільтри `Особисті`, `Приватні`, `Чекаю` та `Ідеї` тепер читають canonical task fields ширше і не гублять задачі.
+- **Сегменти** - `me_only` входить в особисті, `waiting` працює через workflow/kind/status, а `improvement` входить в ідеї.
+- **Guardrail** - додано `tests/profile-tasker-segments.test.js`, який прямо перевіряє всі profile tasker chips.
+
+---
+
 ## v0.62.6 - МД: бізнес-контексти CRM
 
 ### МД: бізнес-контексти CRM [codex]

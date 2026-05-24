@@ -12,17 +12,17 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.12">
-    <link rel="stylesheet" href="css/auth.css?v=0.63.12">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.12">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.12">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.12">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.12">
-    <link rel="stylesheet" href="css/dashboard.css?v=0.63.12">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.12">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.12">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.12">
-    <link rel="stylesheet" href="css/decision-screen.css?v=0.63.12">
+    <link rel="stylesheet" href="css/base.css?v=0.63.13">
+    <link rel="stylesheet" href="css/auth.css?v=0.63.13">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.13">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.13">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.13">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.13">
+    <link rel="stylesheet" href="css/dashboard.css?v=0.63.13">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.13">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.13">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.13">
+    <link rel="stylesheet" href="css/decision-screen.css?v=0.63.13">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -38,9 +38,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.63.12</p>
+                <p class="tagline">AI First CRM v0.63.13</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.12</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.13</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -124,8 +124,8 @@
                         <button type="button" id="dashboardBoardModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setDashboardMode('workspace')">Сцена</button>
                         <div class="dashboard-workspace-title">
                             <span>Workshop dashboard</span>
-                            <strong>Спокійна сцена + режим планування</strong>
-                            <em>Перегляд лишає dashboard чистим. Планування показує слоти, віджети і навмисно пусті зони.</em>
+                            <strong>Єдина sandbox-сцена</strong>
+                            <em>Віджети лишаються живими, а фігури, зв’язки й блоки можна рухати без окремого режиму редагування.</em>
                         </div>
                     </div>
                     <div class="board-tool-options board-palette-group" id="boardToolOptions" aria-live="polite"></div>
@@ -133,9 +133,8 @@
 
                 <div class="dashboard-workspace-stage">
                     <div class="board-edit-controls board-pro-palette board-tool-rail" id="boardEditControls" role="toolbar" aria-label="Інструменти робочої сцени">
-                        <div class="dashboard-mode-toggle compact board-palette-group board-tool-family" data-board-tool-family="interaction" data-board-tool-family-label="Режим" role="group" aria-label="Режим роботи з дошкою">
-                            <button type="button" id="boardViewModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setBoardInteractionMode('view')" title="Перегляд" aria-label="Перегляд">Перегляд</button>
-                            <button type="button" id="boardEditModeBtn" class="dashboard-mode-btn" onclick="DashboardPage.setBoardInteractionMode('edit')" title="Планувати" aria-label="Планувати">Планувати</button>
+                        <div class="dashboard-mode-toggle compact board-palette-group board-tool-family board-unified-mode-chip" data-board-tool-family="interaction" data-board-tool-family-label="Режим" role="group" aria-label="Єдиний режим роботи з дошкою">
+                            <span class="dashboard-mode-btn active" id="boardUnifiedModeLabel">Єдиний режим</span>
                         </div>
                         <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="navigate" data-board-tool-family-label="Навігація" role="group" aria-label="Інструменти навігації">
                             <button type="button" class="dashboard-btn" data-board-tool="select" onclick="DashboardPage.setBoardTool('select')" title="Вибір" aria-label="Вибір">Вибір</button>
@@ -270,17 +269,17 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=0.63.12"></script>
-    <script src="js/notification.js?v=0.63.12"></script>
-    <script src="js/api.js?v=0.63.12"></script>
-    <script src="js/assistant-output-format.js?v=0.63.12"></script>
-    <script src="js/auth.js?v=0.63.12"></script>
-    <script src="js/components/sidebar.js?v=0.63.12"></script>
+    <script src="js/config.js?v=0.63.13"></script>
+    <script src="js/notification.js?v=0.63.13"></script>
+    <script src="js/api.js?v=0.63.13"></script>
+    <script src="js/assistant-output-format.js?v=0.63.13"></script>
+    <script src="js/auth.js?v=0.63.13"></script>
+    <script src="js/components/sidebar.js?v=0.63.13"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/decision-screen.js?v=0.63.12"></script>
-    <script src="js/dashboard-page.js?v=0.63.12"></script>
-    <script src="js/ui.js?v=0.63.12"></script>
-    <script src="js/catalogs.js?v=0.63.12"></script>
+    <script src="js/decision-screen.js?v=0.63.13"></script>
+    <script src="js/dashboard-page.js?v=0.63.13"></script>
+    <script src="js/ui.js?v=0.63.13"></script>
+    <script src="js/catalogs.js?v=0.63.13"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -320,7 +319,7 @@
         window.location.href = '/';
     })();
     </script>
-    <script src="js/alerts.js?v=0.63.12"></script><!-- Decision Screen overlay -->
+    <script src="js/alerts.js?v=0.63.13"></script><!-- Decision Screen overlay -->
     <div id="decisionScreen" class="hidden"
          role="dialog" aria-modal="true"
          aria-label="Центр прийняття рішень" aria-hidden="true">

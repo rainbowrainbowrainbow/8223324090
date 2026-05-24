@@ -90,6 +90,7 @@ const DashboardPage = (() => {
         ellipse: 'Клік на сцені поставить еліпс.',
         diamond: 'Клік на сцені поставить ромб.'
     };
+    const BOARD_INTERACTION_MODE = 'unified';
     const BOARD_MODE_LABELS = {
         'board:view': 'Перегляд',
         'board:edit': 'Редагування',
@@ -372,10 +373,10 @@ const DashboardPage = (() => {
     let _config = createDefaultDashboardConfig();
     let _widgetData = {};
     let _personalTaskerView = 'assigned_to_me';
-    let _boardInteractionMode = 'view';
+    let _boardInteractionMode = BOARD_INTERACTION_MODE;
     let _boardSelectedId = null;
     let _boardSelectedConnectorId = null;
-    let _boardWorkspaceMode = 'board:view';
+    let _boardWorkspaceMode = 'board:edit';
     let _boardConnectorDraft = null;
     let _boardObjectEditing = null;
     let _boardWidgetInspectId = null;
@@ -589,7 +590,7 @@ const DashboardPage = (() => {
     }
 
     function normalizeBoardWorkspaceMode(mode) {
-        return BOARD_WORKSPACE_MODES.has(mode) ? mode : 'board:view';
+        return BOARD_WORKSPACE_MODES.has(mode) ? mode : 'board:edit';
     }
 
     function normalizeBoardStroke(stroke, index = 0) {
@@ -956,8 +957,6 @@ const DashboardPage = (() => {
         const boardBtn = document.getElementById('dashboardBoardModeBtn');
         const controls = document.getElementById('boardEditControls');
         const toolOptions = document.getElementById('boardToolOptions');
-        const viewBtn = document.getElementById('boardViewModeBtn');
-        const editBtn = document.getElementById('boardEditModeBtn');
         const status = document.getElementById('boardSaveStatus');
         const undoBtn = document.getElementById('boardUndoBtn');
         const redoBtn = document.getElementById('boardRedoBtn');
@@ -994,8 +993,6 @@ const DashboardPage = (() => {
             stage.dataset.activeTool = activeTool;
             stage.dataset.activeToolFamily = activeFamily;
         }
-        viewBtn?.classList.toggle('active', _boardWorkspaceMode === 'board:view');
-        editBtn?.classList.toggle('active', _boardWorkspaceMode !== 'board:view');
         document.querySelectorAll('[data-board-tool]').forEach(btn => {
             const buttonTool = normalizeBoardTool(btn.dataset.boardTool || 'select');
             const active = buttonTool === activeTool;
@@ -1030,22 +1027,6 @@ const DashboardPage = (() => {
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
         const prefs = safeObject(_config?.boardState?.preferences, {});
         const mode = getBoardWorkspaceMode();
-        if (_boardInteractionMode === 'view' || mode === 'board:view') {
-            const itemCount = getBoardItems().filter(item => !item.hidden).length;
-            const spaceCount = getBoardItems().filter(item => item.type === 'space' && !item.hidden).length;
-            return `
-                <div class="board-tool-current board-operate-summary">
-                    <span>Режим роботи</span>
-                    <strong>Спокійний dashboard</strong>
-                    <em>${itemCount} блоків на сцені${spaceCount ? ` · ${spaceCount} порожніх зон` : ''}. Для композиції відкрийте планування.</em>
-                </div>
-                <div class="board-builder-quick-add board-operate-actions" aria-label="Швидкі дії dashboard">
-                    <button type="button" class="board-tool-snap active" onclick="DashboardPage.setBoardInteractionMode('edit')">Планувати layout</button>
-                    <button type="button" class="board-tool-snap" onclick="DashboardPage.openWidgetManager()">Віджети</button>
-                    <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
-                </div>
-            `;
-        }
         const label = BOARD_TOOL_LABELS[tool] || tool;
         const modeHint = BOARD_TOOL_HINTS[tool] || 'Перемикайте інструменти як у редакторі.';
         const family = getBoardToolFamily(tool);
@@ -3472,7 +3453,7 @@ const DashboardPage = (() => {
         if (BOARD_DRAW_TOOLS.has(tool) || tool === 'eraser') return 'board:draw';
         if (BOARD_CREATE_TOOLS.has(tool)) return 'board:create';
         if (BOARD_SHAPE_TOOLS.has(tool)) return 'board:shape';
-        return _boardInteractionMode === 'edit' ? 'board:edit' : 'board:view';
+        return 'board:edit';
     }
 
     function syncBoardWorkspaceMode() {
@@ -3481,7 +3462,6 @@ const DashboardPage = (() => {
     }
 
     function renderBoardCanvasHint(items = [], drawings = [], connectors = []) {
-        if (_boardInteractionMode !== 'edit') return '';
         const draftStart = getBoardConnectorDraftStart();
         if (!draftStart && (_boardSelectedId || _boardSelectedConnectorId || _boardObjectEditing || _boardWidgetInspectId)) return '';
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
@@ -3736,7 +3716,7 @@ const DashboardPage = (() => {
 
     function renderBoardPlanningLayer(items = []) {
         const prefs = safeObject(_config?.boardState?.preferences, {});
-        if (_boardInteractionMode !== 'edit' || prefs.showPlanner === false) return '';
+        if (prefs.showPlanner === false) return '';
         const zones = BOARD_PLANNING_ZONES.map(zone => {
             const occupants = items.filter(item => item.type !== 'space' && boardRectIntersectsZone(item, zone)).length;
             const reserved = items.some(item => item.type === 'space' && (item.zoneId === zone.id || boardRectIntersectsZone(item, zone)));
@@ -3785,7 +3765,7 @@ const DashboardPage = (() => {
     }
 
     function renderBoardItem(item) {
-        if (item.hidden && _boardInteractionMode !== 'edit') return '';
+        if (item.hidden && _boardInteractionMode !== BOARD_INTERACTION_MODE) return '';
         if (isBoardPrimitiveShapeItem(item)) return renderBoardPrimitiveShapeItem(item);
         const def = item.type === 'widget' ? WIDGET_DEFS[item.widgetType] : null;
         const selected = _boardSelectedId === item.id ? ' selected' : '';
@@ -3853,7 +3833,7 @@ const DashboardPage = (() => {
     }
 
     function renderBoardResizeHandles(item) {
-        if (!item || item.locked || item.hidden || _boardInteractionMode !== 'edit' || _boardSelectedId !== item.id) return '';
+        if (!item || item.locked || item.hidden || _boardSelectedId !== item.id) return '';
         if (isBoardThinGeometryItem(item)) return '';
         const handles = isBoardEquilateralShapeItem(item)
             ? ['ne', 'se', 'sw', 'nw']
@@ -3898,12 +3878,7 @@ const DashboardPage = (() => {
         }
         if (item.type === 'shape') {
             if (isBoardThinGeometryItem(item)) {
-                return `
-                    <div class="board-shape board-shape-${escapeHtml(item.shape || 'line')}" data-board-shape>
-                        <button type="button" class="board-line-endpoint endpoint-start" data-board-line-endpoint="start" aria-label="Move line start"></button>
-                        <button type="button" class="board-line-endpoint endpoint-end" data-board-line-endpoint="end" aria-label="Move line end"></button>
-                    </div>
-                `;
+                return `<div class="board-shape board-shape-${escapeHtml(item.shape || 'line')}" data-board-shape></div>`;
             }
             return `<div class="board-shape board-shape-${escapeHtml(item.shape || 'rect')}" data-board-shape></div>`;
         }
@@ -3916,7 +3891,7 @@ const DashboardPage = (() => {
                     <span>${item.zoneKind === 'breathing' ? 'breathing room' : 'reserved space'}</span>
                     <strong>${escapeHtml(item.title || 'Порожня зона')}</strong>
                     <p>${escapeHtml(item.text || 'Це місце навмисно лишене вільним для композиції або майбутнього віджета.')}</p>
-                    ${_boardInteractionMode === 'edit' ? '<em>Можна пересунути, змінити розмір або перетворити на віджет пізніше.</em>' : ''}
+                    <em>Можна пересунути, змінити розмір або перетворити на віджет пізніше.</em>
                 </div>
             `;
         }
@@ -3936,7 +3911,6 @@ const DashboardPage = (() => {
     }
 
     function renderBoardMiniInspector() {
-        if (_boardInteractionMode === 'view') return '';
         const item = _boardSelectedId ? findBoardItem(_boardSelectedId) : null;
         const connector = _boardSelectedConnectorId ? getBoardConnectors().find(conn => conn.id === _boardSelectedConnectorId) : null;
         const prefs = safeObject(_config?.boardState?.preferences, {});
@@ -4024,7 +3998,6 @@ const DashboardPage = (() => {
         if (!canvas) return;
         canvas.querySelectorAll('.dashboard-board-item').forEach(el => {
             el.addEventListener('click', event => {
-                if (_boardInteractionMode !== 'edit') return;
                 if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) {
                     if (isBoardInteractiveTarget(event.target)) {
                         event.stopPropagation();
@@ -4051,7 +4024,7 @@ const DashboardPage = (() => {
             if (el.dataset.directDragBound === 'true') return;
             el.dataset.directDragBound = 'true';
             el.addEventListener('pointerdown', event => {
-                if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+                if (event.button !== 0) return;
                 if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) {
                     event.stopPropagation();
                     return;
@@ -4069,12 +4042,12 @@ const DashboardPage = (() => {
             widgetEl.addEventListener('pointerdown', event => {
                 event.stopPropagation();
                 const itemEl = widgetEl.closest('.dashboard-board-item');
-                if (itemEl && _boardInteractionMode === 'edit') selectBoardItem(itemEl.dataset.boardItemId, { render: false });
+                if (itemEl) selectBoardItem(itemEl.dataset.boardItemId, { render: false });
             });
             widgetEl.addEventListener('click', event => {
                 event.stopPropagation();
                 const itemEl = widgetEl.closest('.dashboard-board-item');
-                if (itemEl && _boardInteractionMode === 'edit') selectBoardItem(itemEl.dataset.boardItemId, { render: false });
+                if (itemEl) selectBoardItem(itemEl.dataset.boardItemId, { render: false });
             });
         });
         canvas.querySelectorAll('[data-board-resize-handle]').forEach(handle => {
@@ -4089,7 +4062,6 @@ const DashboardPage = (() => {
             textEl.addEventListener('click', event => {
                 event.stopPropagation();
                 selectBoardItem(textEl.dataset.boardText, { render: false });
-                if (_boardInteractionMode === 'view' && typeof textEl.focus === 'function') textEl.focus();
             });
             textEl.addEventListener('focus', () => {
                 textEl.dataset.originalText = boardTextValue(textEl);
@@ -4114,7 +4086,6 @@ const DashboardPage = (() => {
         if (!canvas) return;
         canvas.querySelectorAll('[data-board-connector-id]').forEach(el => {
             el.addEventListener('click', event => {
-                if (_boardInteractionMode !== 'edit') return;
                 event.preventDefault();
                 event.stopPropagation();
                 _boardSelectedId = null;
@@ -4140,7 +4111,7 @@ const DashboardPage = (() => {
                 return;
             }
             if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
-            if (_boardInteractionMode === 'edit' && event.target === canvas) selectBoardItem(null);
+            if (event.target === canvas) selectBoardItem(null);
         };
     }
 
@@ -4192,7 +4163,7 @@ const DashboardPage = (() => {
             beginBoardPan(event);
             return;
         }
-        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.button !== 0) return;
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
         if (isBoardConnectorTool(tool)) {
             if (isBoardInteractiveTarget(event.target)) return;
@@ -4220,7 +4191,7 @@ const DashboardPage = (() => {
     }
 
     function handleBoardCanvasPointerMove(event) {
-        if (_boardInteractionMode !== 'edit' || !_boardConnectorDraft) return;
+        if (!_boardConnectorDraft) return;
         if (!isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
         updateBoardConnectorDraftPreview(boardPointFromEvent(event));
     }
@@ -4390,8 +4361,42 @@ const DashboardPage = (() => {
         });
     }
 
+    function syncBoardItemDomGeometry(id) {
+        const item = findBoardItem(id);
+        const itemId = String(id || '');
+        const el = Array.from(document.querySelectorAll('.dashboard-board-item')).find(node => node.dataset.boardItemId === itemId);
+        if (!item || !el) return;
+        el.style.left = `${Number(item.x || 0)}px`;
+        el.style.top = `${Number(item.y || 0)}px`;
+        el.style.width = `${Number(item.w || 280)}px`;
+        el.style.height = `${Number(item.h || 160)}px`;
+        el.style.zIndex = `${Number(item.z || 1)}`;
+    }
+
+    function refreshBoardMiniInspectorNode() {
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        if (!canvas) return;
+        const current = canvas.querySelector('.board-mini-inspector');
+        const next = renderBoardMiniInspector();
+        if (current && next) {
+            current.outerHTML = next;
+        } else if (current) {
+            current.remove();
+        } else if (next) {
+            canvas.insertAdjacentHTML('beforeend', next);
+        }
+    }
+
+    function finishBoardGeometryCommit(id) {
+        syncBoardItemDomGeometry(id);
+        syncBoardSelectionClasses();
+        syncBoardWidgetRuntime();
+        refreshBoardConnectorLayerForItem(id);
+        refreshBoardMiniInspectorNode();
+    }
+
     function beginBoardDrag(event, element) {
-        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.button !== 0) return;
         if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
         if (isBoardInteractiveTarget(event.target)) return;
         const id = element.dataset.boardItemId;
@@ -4415,6 +4420,7 @@ const DashboardPage = (() => {
         captureBoardPointerSafely(element, event);
         document.addEventListener('pointermove', handleBoardDragMove);
         document.addEventListener('pointerup', endBoardDrag, { once: true });
+        syncBoardWidgetRuntime();
     }
 
     function handleBoardDragMove(event) {
@@ -4440,18 +4446,21 @@ const DashboardPage = (() => {
         if (!_boardDrag) return;
         const drag = _boardDrag;
         _boardDrag = null;
-        if (!drag.moved) return;
+        if (!drag.moved) {
+            syncBoardWidgetRuntime();
+            return;
+        }
         const item = findBoardItem(drag.id);
         if (!item) return;
         pushBoardUndo('move');
         item.x = safeNumber(drag.nextX, item.x, -10000, 10000);
         item.y = safeNumber(drag.nextY, item.y, -10000, 10000);
+        finishBoardGeometryCommit(drag.id);
         markBoardDirty('move');
-        renderBoard();
     }
 
     function beginBoardResize(event, handle) {
-        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.button !== 0) return;
         const element = handle.closest('.dashboard-board-item');
         const id = element?.dataset.boardItemId;
         const item = findBoardItem(id);
@@ -4555,12 +4564,12 @@ const DashboardPage = (() => {
         item.y = safeNumber(resize.nextY, item.y, -10000, 10000);
         item.w = safeNumber(resize.nextW, item.w, 80, 1200);
         item.h = safeNumber(resize.nextH, item.h, 60, 900);
+        finishBoardGeometryCommit(resize.id);
         markBoardDirty('resize');
-        renderBoard();
     }
 
     function beginBoardLineEndpointDrag(event, handle) {
-        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.button !== 0) return;
         const element = handle.closest('.dashboard-board-item');
         const id = element?.dataset.boardItemId;
         const item = findBoardItem(id);
@@ -4621,12 +4630,12 @@ const DashboardPage = (() => {
         pushBoardUndo('line-endpoint');
         item.x = safeNumber(drag.nextX, item.x, -10000, 10000);
         item.w = safeNumber(drag.nextW, item.w, 64, 1200);
+        finishBoardGeometryCommit(drag.id);
         markBoardDirty('line-endpoint');
-        renderBoard();
     }
 
     function beginBoardConnectorEndpointDrag(event, handle) {
-        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.button !== 0) return;
         const group = handle.closest('[data-board-connector-id]');
         const connectorId = group?.dataset.boardConnectorId;
         const connector = getBoardConnectors().find(conn => conn.id === connectorId);
@@ -5338,7 +5347,7 @@ const DashboardPage = (() => {
         if (!item || item.type !== 'widget') return;
         _boardWidgetInspectId = id;
         _boardObjectEditing = { id, kind: 'widget' };
-        _boardInteractionMode = 'edit';
+        _boardInteractionMode = BOARD_INTERACTION_MODE;
         selectBoardItem(id, { render: false });
         renderBoard();
     }
@@ -5372,7 +5381,7 @@ const DashboardPage = (() => {
         _boardDrag = null;
         if (options.selectTool === true && _config?.boardState) {
             _config.boardState.activeTool = 'select';
-            _boardInteractionMode = 'edit';
+            _boardInteractionMode = BOARD_INTERACTION_MODE;
             markBoardDirty('tool');
         }
         syncBoardWorkspaceMode();
@@ -5530,15 +5539,27 @@ const DashboardPage = (() => {
     }
 
     function setBoardInteractionMode(mode) {
-        setBoardWorkspaceMode(mode === 'edit' ? 'board:edit' : 'board:view');
+        _boardInteractionMode = BOARD_INTERACTION_MODE;
+        if (_config?.boardState) {
+            const legacyMode = String(mode || '').toLowerCase();
+            if (legacyMode === 'view') _config.boardState.activeTool = 'hand';
+            if (legacyMode === 'edit') _config.boardState.activeTool = 'select';
+        }
+        _boardConnectorDraft = null;
+        _boardObjectEditing = null;
+        _boardWidgetInspectId = null;
+        _boardResize = null;
+        syncBoardWorkspaceMode();
+        syncBoardToolbar();
+        renderBoard();
     }
 
     function setBoardTool(tool) {
         if (!_config?.boardState) return;
         const nextTool = normalizeBoardTool(tool);
+        _boardInteractionMode = BOARD_INTERACTION_MODE;
         _config.boardState.activeTool = nextTool;
         if (isBoardConnectorTool(nextTool)) {
-            _boardInteractionMode = 'edit';
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
             _boardSelectedConnectorId = null;
@@ -5549,19 +5570,16 @@ const DashboardPage = (() => {
                 if (_boardConnectorDraft) _boardConnectorDraft.style = 'arrow';
             }
         } else if (BOARD_DRAW_TOOLS.has(nextTool) || nextTool === 'eraser' || BOARD_CREATE_TOOLS.has(nextTool) || BOARD_SHAPE_TOOLS.has(nextTool)) {
-            _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
             _boardSelectedId = null;
             _boardSelectedConnectorId = null;
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
         } else if (nextTool === 'select') {
-            _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
         } else if (nextTool === 'hand') {
-            _boardInteractionMode = 'view';
             _boardSelectedId = null;
             _boardSelectedConnectorId = null;
             _boardConnectorDraft = null;
@@ -5574,38 +5592,26 @@ const DashboardPage = (() => {
     }
 
     function setBoardWorkspaceMode(mode, payload = {}) {
-        const nextMode = normalizeBoardWorkspaceMode(mode);
+        let nextMode = normalizeBoardWorkspaceMode(mode);
+        _boardInteractionMode = BOARD_INTERACTION_MODE;
+        if (nextMode === 'board:view') nextMode = 'board:edit';
         _boardWorkspaceMode = nextMode;
-        if (nextMode === 'board:view') {
-            _boardInteractionMode = 'view';
-            _boardSelectedId = null;
-            _boardSelectedConnectorId = null;
-            _boardConnectorDraft = null;
-            _boardObjectEditing = null;
-            _boardWidgetInspectId = null;
-            _boardResize = null;
-            if (_config?.boardState) _config.boardState.activeTool = 'hand';
-        } else if (nextMode === 'board:edit') {
-            _boardInteractionMode = 'edit';
+        if (nextMode === 'board:edit') {
             _boardConnectorDraft = null;
             _boardObjectEditing = null;
             _boardWidgetInspectId = null;
             _boardResize = null;
             if (_config?.boardState) _config.boardState.activeTool = 'select';
         } else if (nextMode === 'board:connect') {
-            _boardInteractionMode = 'edit';
             _boardObjectEditing = null;
             _boardWidgetInspectId = null;
             if (_config?.boardState) _config.boardState.activeTool = 'connector';
         } else if (nextMode === 'board:draw') {
-            _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
             if (_config?.boardState) _config.boardState.activeTool = normalizeBoardTool(payload.tool || _config.boardState.activeTool || 'brush');
         } else if (nextMode === 'object:text-edit') {
-            _boardInteractionMode = 'edit';
             _boardObjectEditing = { id: payload.id || _boardSelectedId, kind: 'text' };
         } else if (nextMode === 'object:widget-inspect') {
-            _boardInteractionMode = 'edit';
             _boardWidgetInspectId = payload.id || _boardSelectedId;
             _boardObjectEditing = { id: _boardWidgetInspectId, kind: 'widget' };
         }
@@ -5735,7 +5741,7 @@ const DashboardPage = (() => {
                     return;
                 }
             }
-            if (!editable && _boardInteractionMode === 'edit' && (event.key === 'Delete' || event.key === 'Backspace')) {
+            if (!editable && (event.key === 'Delete' || event.key === 'Backspace')) {
                 event.preventDefault();
                 if (_boardSelectedConnectorId) deleteBoardConnector(_boardSelectedConnectorId);
                 else deleteBoardItem(_boardSelectedId);

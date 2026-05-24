@@ -1539,11 +1539,16 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     touch-action: none;
 }
 
+.board-unified-mode-chip .dashboard-mode-btn {
+    cursor: default;
+    user-select: none;
+}
+
 .dashboard-board-item.board-primitive-shape:not(.thin-geometry).selected .board-shape {
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12), 0 10px 24px rgba(15, 23, 42, 0.10);
 }
 
-.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.board-primitive-shape:not(.thin-geometry):hover .board-shape {
+.dashboard-board-item.board-primitive-shape:not(.thin-geometry):hover .board-shape {
     border-color: rgba(16, 185, 129, 0.68);
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08);
 }
@@ -1568,12 +1573,11 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     touch-action: none;
 }
 
-.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item-frame {
+.dashboard-board-item-frame {
     cursor: grab;
 }
 
-.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.type-shape:not(.thin-geometry) .dashboard-board-item-content,
-.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.type-frame .dashboard-board-item-content {
+.dashboard-board-item.type-frame .dashboard-board-item-content {
     cursor: grab;
     touch-action: none;
 }
@@ -1600,7 +1604,8 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     gap: 4px;
 }
 
-.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item-actions {
+.dashboard-board-item:hover .dashboard-board-item-actions,
+.dashboard-board-item.selected .dashboard-board-item-actions {
     display: flex;
 }
 
@@ -1613,10 +1618,6 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     color: #475569;
     cursor: pointer;
     font-weight: 800;
-}
-
-.dashboard-board-canvas[data-interaction-mode="view"] .dashboard-board-item-frame {
-    opacity: 0.88;
 }
 
 .dashboard-board-item-content {
@@ -2403,10 +2404,6 @@ body.dark-mode .board-frame-label {
     margin-bottom: 16px;
 }
 
-.dashboard-workspace-stage[data-interaction-mode="view"] {
-    grid-template-columns: 52px minmax(0, 1fr);
-}
-
 .dashboard-workspace-stage .dashboard-board-shell {
     min-width: 0;
     margin-bottom: 0;
@@ -2433,27 +2430,6 @@ body.dark-mode .board-frame-label {
     box-shadow: 0 18px 48px rgba(15, 23, 42, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.82);
     -ms-overflow-style: none;
     scrollbar-width: none;
-}
-
-.board-pro-palette.board-tool-rail[data-interaction-mode="view"] {
-    width: 52px;
-    padding: 6px 5px;
-    max-height: 156px;
-}
-
-.board-pro-palette.board-tool-rail[data-interaction-mode="view"] .board-palette-group:not([data-board-tool-family="interaction"]) {
-    display: none !important;
-}
-
-.dashboard-workspace-toolbar[data-interaction-mode="view"] {
-    grid-template-columns: minmax(240px, 420px) minmax(0, 1fr) !important;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.78)),
-        radial-gradient(circle at 8% 0%, rgba(16, 185, 129, 0.10), transparent 36%);
-}
-
-.dashboard-workspace-toolbar[data-interaction-mode="view"] .board-tool-options {
-    overflow: hidden;
 }
 
 .board-operate-summary strong {
@@ -2558,12 +2534,8 @@ body.dark-mode .board-frame-label {
     content: attr(data-tool-label);
 }
 
-.board-tool-rail #boardViewModeBtn::after {
-    content: 'Перегляд';
-}
-
-.board-tool-rail #boardEditModeBtn::after {
-    content: 'Планування';
+.board-tool-rail #boardUnifiedModeLabel::after {
+    content: 'Єдиний режим';
 }
 
 .board-tool-rail .dashboard-btn:hover::after,
@@ -2602,8 +2574,7 @@ body.dark-mode .board-frame-label {
     line-height: 1;
 }
 
-.board-tool-rail #boardViewModeBtn::before { content: '◉'; }
-.board-tool-rail #boardEditModeBtn::before { content: '✣'; }
+.board-tool-rail #boardUnifiedModeLabel::before { content: '✣'; }
 .board-tool-rail [data-board-action="expand"]::before { content: '✦'; }
 .board-tool-rail [data-board-action="mood-pack"]::before { content: '☾'; }
 .board-tool-rail [data-board-action="cluster"]::before { content: '▦'; }

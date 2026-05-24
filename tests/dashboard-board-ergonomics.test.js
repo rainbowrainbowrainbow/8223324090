@@ -19,20 +19,35 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
     assert.match(pageJs, /function isBoardDragBlockedTarget/);
     assert.match(pageJs, /function beginBoardPan/);
     assert.match(pageJs, /function shouldStartBoardPan/);
-    assert.match(pageJs, /data-board-line-endpoint="start"/);
-    assert.match(pageJs, /function beginBoardLineEndpointDrag/);
     assert.match(pageJs, /function beginBoardConnectorEndpointDrag/);
     assert.match(pageJs, /function findNearestBoardAnchor/);
     assert.match(pageJs, /function boardItemTransientBounds/);
     assert.match(pageJs, /function refreshBoardConnectorLayerForItem/);
+    assert.match(pageJs, /function finishBoardGeometryCommit/);
     assert.match(pageJs, /if \(item\.type === 'widget' \|\| item\.type === 'note' \|\| item\.type === 'text'\) return false/);
+    assert.doesNotMatch(pageJs, /data-board-line-endpoint="start"/);
     assert.match(css, /\.dashboard-board-shell\.is-panning/);
     assert.match(css, /\.dashboard-board-item\.thin-geometry/);
     assert.match(css, /\.dashboard-board-item\.equilateral-geometry \.board-resize-n/);
     assert.match(css, /\.dashboard-planner-layer[\s\S]*z-index: 0;/);
-    assert.match(css, /\.board-line-endpoint/);
     assert.match(css, /\.board-connector-endpoint/);
     assert.match(css, /box-shadow: 0 0 0 1px var\(--workspace-selection-ring/);
+});
+
+test('dashboard board uses one unified interaction mode instead of forced view/edit', () => {
+    const pageJs = read('js/dashboard-page.js');
+    const html = read('dashboard.html');
+    const css = read('css/dashboard.css');
+
+    assert.match(pageJs, /const BOARD_INTERACTION_MODE = 'unified'/);
+    assert.match(pageJs, /let _boardInteractionMode = BOARD_INTERACTION_MODE/);
+    assert.doesNotMatch(pageJs, /_boardInteractionMode !== 'edit'/);
+    assert.doesNotMatch(pageJs, /_boardInteractionMode === 'view'/);
+    assert.doesNotMatch(pageJs, /_boardInteractionMode = 'edit'/);
+    assert.doesNotMatch(pageJs, /_boardInteractionMode = 'view'/);
+    assert.match(html, /boardUnifiedModeLabel/);
+    assert.doesNotMatch(html, /boardViewModeBtn|boardEditModeBtn/);
+    assert.doesNotMatch(css, /data-interaction-mode="edit"|data-interaction-mode="view"|boardViewModeBtn|boardEditModeBtn/);
 });
 
 test('dashboard board Android openability has guarded init, viewport, and touch fallbacks', () => {
@@ -85,8 +100,7 @@ function loadDashboardHarness(options = {}) {
             </div>
             <div id="boardToolOptions"></div>
             <button id="dashboardBoardModeBtn"></button>
-            <button id="boardViewModeBtn"></button>
-            <button id="boardEditModeBtn"></button>
+            <span id="boardUnifiedModeLabel"></span>
             <button id="boardUndoBtn"></button>
             <button id="boardRedoBtn"></button>
             <span id="boardSaveStatus"></span>
@@ -203,6 +217,92 @@ test('dashboard primitive shapes create as scene-native objects, while notes kee
     assert.equal(squareEl.style.width, squareEl.style.height);
     assert.ok(noteEl?.classList.contains('workspace-module'));
     assert.ok(noteEl?.querySelector('.dashboard-board-item-frame'));
+});
+
+test('dashboard legacy line and arrow shapes are unframed scene geometry and drag freely in 2D', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const line = DashboardPage.addBoardShape('line', [220, 220]);
+    const arrow = DashboardPage.addBoardShape('arrow', [520, 220]);
+    DashboardPage.setBoardTool('select');
+
+    const doc = dom.window.document;
+    for (const item of [line, arrow]) {
+        const el = doc.querySelector(`[data-board-item-id="${item.id}"]`);
+        assert.ok(el?.classList.contains('board-primitive-shape'));
+        assert.ok(el?.classList.contains('thin-geometry'));
+        assert.equal(el.classList.contains('workspace-module'), false);
+        assert.equal(el.querySelector('.dashboard-board-item-frame'), null);
+        assert.equal(el.querySelector('[data-board-line-endpoint]'), null);
+    }
+
+    const arrowEl = doc.querySelector(`[data-board-item-id="${arrow.id}"]`);
+    const dragHandle = arrowEl.querySelector('[data-board-drag-handle]');
+    dragHandle.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 100,
+        clientY: 100
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 164,
+        clientY: 147
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 164,
+        clientY: 147
+    }));
+
+    assert.equal(arrow.x, Number(arrowEl.style.left.replace('px', '')));
+    assert.equal(arrow.y, Number(arrowEl.style.top.replace('px', '')));
+    assert.ok(arrow.x > 390);
+    assert.ok(arrow.y > 220);
+});
+
+test('dashboard widget movement commits without remounting the live widget subtree', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const widget = DashboardPage.addBoardWidgetByType('tasks', [360, 260]);
+    DashboardPage.setBoardTool('select');
+
+    const doc = dom.window.document;
+    const widgetEl = doc.querySelector(`[data-board-item-id="${widget.id}"]`);
+    const liveBefore = widgetEl.querySelector('.board-widget-live');
+    const frame = widgetEl.querySelector('.dashboard-board-item-frame');
+
+    frame.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 100,
+        clientY: 100
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 142,
+        clientY: 136
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 142,
+        clientY: 136
+    }));
+
+    const widgetAfter = doc.querySelector(`[data-board-item-id="${widget.id}"]`);
+    assert.equal(widgetAfter, widgetEl);
+    assert.equal(widgetAfter.querySelector('.board-widget-live'), liveBefore);
+    assert.equal(widget.x, Number(widgetAfter.style.left.replace('px', '')));
+    assert.equal(widget.y, Number(widgetAfter.style.top.replace('px', '')));
+    assert.equal(widgetAfter.dataset.widgetRuntime, 'live');
 });
 
 test('dashboard circle and square resize through freeform corner handles without drifting from equal bounds', () => {

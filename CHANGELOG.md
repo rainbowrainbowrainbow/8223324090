@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.13 - CRM 63.13: Вільний Dashboard Board
+
+### Dashboard Board / residual shapes and movement [codex]
+- **Line/arrow прибрано з framed chrome** - legacy thin-geometry shapes більше не рендерять службову card-панель над фігурою і залишаються чистою сценовою геометрією.
+- **Arrow рухається вільно у 2D** - static arrow/line shape більше не перехоплюється горизонтальними endpoint-кнопками, тому drag переносить об'єкт по X і Y.
+- **Drag/resize без remount віджетів** - завершення move/resize підтверджує DOM geometry локально, оновлює connectors/inspector і не викликає повний `renderBoard()`, який змушував live widgets блимати.
+- **Один interaction model замість view/edit split** - прибрано видимі кнопки `Перегляд/Планувати`; дошка лишається читабельною і водночас маніпульованою через active tool, selection, hover і handles.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` перевіряє unified mode, unframed line/arrow, 2D arrow movement і стабільну DOM-ідентичність widget subtree після drag.
+
+---
+
 ## v0.63.12 - CRM 63.12: Чистий selector сертифікатів
 
 ### Сертифікати / batch quantity selector [codex]

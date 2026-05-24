@@ -872,8 +872,19 @@ const ReportsPage = (() => {
         const saveBtn = document.getElementById('reportTemplateSaveBtn');
         if (saveBtn) saveBtn.textContent = _editingTableReportId ? 'Оновити звіт з таблиці' : 'Створити звіт з таблиці';
 
+        const finalHandoff = document.getElementById('reportFinalHandoff');
+        if (finalHandoff) {
+            finalHandoff.classList.toggle('is-locked', locked);
+            finalHandoff.classList.toggle('is-busy', _reportTableBusy);
+        }
+
         const closeBtn = document.getElementById('reportTemplateCloseBtn');
-        if (closeBtn) closeBtn.textContent = locked ? 'Звіт закрито' : 'Закрити і передати бухгалтеру';
+        if (closeBtn) {
+            closeBtn.classList.toggle('is-locked', locked);
+            closeBtn.innerHTML = locked
+                ? '<span>Звіт закрито</span><small>Передано на перевірку бухгалтеру</small>'
+                : '<span>Закрити і передати бухгалтеру</span><small>Останній крок роботи зі звітом</small>';
+        }
 
         [
             'reportTemplateUploadBtn',
@@ -1615,7 +1626,7 @@ const ReportsPage = (() => {
         if (typeof confirmModal === 'function') {
             const ok = await confirmModal(
                 'Закрити звіт і передати бухгалтеру?\n\nПісля закриття таблиця стане доступною лише для перегляду. Редагування рядків, колонок і суми буде заблоковано.',
-                { type: 'warning', okText: 'Закрити звіт', cancelText: 'Скасувати' }
+                { type: 'warning', okText: 'Так, передати бухгалтеру', cancelText: 'Скасувати' }
             );
             if (!ok) return;
         }

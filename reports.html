@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.24">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.24">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.24">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.24">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.24">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.24">
+    <link rel="stylesheet" href="css/base.css?v=0.63.25">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.25">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.25">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.25">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.25">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.25">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -424,6 +424,106 @@
             -webkit-overflow-scrolling: touch;
             background: #FFFFFF;
         }
+        .rpt-final-handoff {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+            gap: 16px;
+            align-items: center;
+            padding: 18px;
+            border-top: 1px solid rgba(16,185,129,0.28);
+            background:
+                linear-gradient(135deg, rgba(16,185,129,0.14), rgba(14,165,233,0.08)),
+                rgba(248,250,252,0.88);
+        }
+        .rpt-final-handoff-copy {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+        }
+        .rpt-final-eyebrow {
+            width: fit-content;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(16,185,129,0.14);
+            color: #047857;
+            font-size: 10px;
+            font-weight: 950;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+        .rpt-final-handoff-copy strong {
+            color: #0F172A;
+            font-size: 18px;
+            font-weight: 950;
+            line-height: 1.2;
+        }
+        .rpt-final-handoff-copy p {
+            margin: 0;
+            max-width: 760px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.45;
+            font-weight: 750;
+        }
+        .rpt-final-handoff-btn {
+            width: 100%;
+            min-height: 76px;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            border: 0;
+            border-radius: 18px;
+            padding: 14px 18px;
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: #FFFFFF;
+            box-shadow: 0 18px 34px rgba(5,150,105,0.26);
+            cursor: pointer;
+            font: inherit;
+            text-align: center;
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease, opacity .15s ease;
+        }
+        .rpt-final-handoff-btn span {
+            font-size: 16px;
+            font-weight: 950;
+            line-height: 1.2;
+        }
+        .rpt-final-handoff-btn small {
+            color: rgba(255,255,255,0.84);
+            font-size: 11px;
+            font-weight: 850;
+            line-height: 1.25;
+        }
+        .rpt-final-handoff-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 22px 42px rgba(5,150,105,0.34);
+            filter: saturate(1.04);
+        }
+        .rpt-final-handoff-btn:focus-visible {
+            outline: 3px solid rgba(16,185,129,0.26);
+            outline-offset: 4px;
+        }
+        .rpt-final-handoff-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.62;
+            transform: none;
+            box-shadow: none;
+            filter: grayscale(0.12);
+        }
+        .rpt-final-handoff.is-locked {
+            border-top-color: rgba(99,102,241,0.28);
+            background:
+                linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.08)),
+                rgba(248,250,252,0.88);
+        }
+        .rpt-final-handoff.is-locked .rpt-final-eyebrow {
+            background: rgba(99,102,241,0.12);
+            color: #4F46E5;
+        }
+        .rpt-final-handoff.is-locked .rpt-final-handoff-btn {
+            background: linear-gradient(135deg, #64748B, #475569);
+        }
         .rpt-sheet-summary {
             display: flex;
             flex-wrap: wrap;
@@ -650,6 +750,32 @@
         body.dark-mode .rpt-sheet-table-wrap,
         body.dark-mode .rpt-raw-table-preview {
             background: #0F172A;
+        }
+        body.dark-mode .rpt-final-handoff {
+            border-top-color: rgba(52,211,153,0.26);
+            background:
+                linear-gradient(135deg, rgba(16,185,129,0.16), rgba(14,165,233,0.08)),
+                rgba(15,23,42,0.88);
+        }
+        body.dark-mode .rpt-final-eyebrow {
+            background: rgba(16,185,129,0.18);
+            color: #6EE7B7;
+        }
+        body.dark-mode .rpt-final-handoff-copy strong {
+            color: #F8FAFC;
+        }
+        body.dark-mode .rpt-final-handoff-copy p {
+            color: #CBD5E1;
+        }
+        body.dark-mode .rpt-final-handoff.is-locked {
+            border-top-color: rgba(129,140,248,0.24);
+            background:
+                linear-gradient(135deg, rgba(99,102,241,0.14), rgba(16,185,129,0.08)),
+                rgba(15,23,42,0.88);
+        }
+        body.dark-mode .rpt-final-handoff.is-locked .rpt-final-eyebrow {
+            background: rgba(129,140,248,0.16);
+            color: #C4B5FD;
         }
         body.dark-mode .rpt-sheet-summary {
             background: rgba(15,23,42,0.62);
@@ -1301,6 +1427,13 @@
             .rpt-sheet-title-row {
                 grid-template-columns: 1fr;
             }
+            .rpt-final-handoff {
+                grid-template-columns: 1fr;
+                padding: 16px;
+            }
+            .rpt-final-handoff-btn {
+                min-height: 70px;
+            }
         }
     </style>
 </head>
@@ -1410,7 +1543,6 @@
                         <button type="button" class="rpt-template-action" id="reportTemplateResetBtn">Скинути таблицю</button>
                         <button type="button" class="rpt-template-action" id="reportTemplateDraftBtn">Зберегти чернетку</button>
                         <button type="button" class="rpt-template-action primary" id="reportTemplateSaveBtn">Створити звіт з таблиці</button>
-                        <button type="button" class="rpt-template-action danger" id="reportTemplateCloseBtn">Закрити і передати бухгалтеру</button>
                     </div>
                 </div>
 
@@ -1448,6 +1580,17 @@
                     <div class="rpt-sheet-summary hidden" id="reportSheetSummary" aria-live="polite"></div>
                     <div class="rpt-sheet-table-wrap">
                         <table class="rpt-sheet-table" id="reportSheetTable" aria-label="Редагована таблиця звіту"></table>
+                    </div>
+                    <div class="rpt-final-handoff" id="reportFinalHandoff">
+                        <div class="rpt-final-handoff-copy">
+                            <span class="rpt-final-eyebrow">Фінальний етап</span>
+                            <strong>Закрий звіт і передай бухгалтеру</strong>
+                            <p>Після цього таблиця блокується для редагування, створюється задача на перевірку, а стан погодження видно у загальному списку звітів.</p>
+                        </div>
+                        <button type="button" class="rpt-final-handoff-btn" id="reportTemplateCloseBtn">
+                            <span>Закрити і передати бухгалтеру</span>
+                            <small>Останній крок роботи зі звітом</small>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -1644,13 +1787,13 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=0.63.24"></script>
-    <script src="js/notification.js?v=0.63.24"></script>
-    <script src="js/api.js?v=0.63.24"></script>
-    <script src="js/auth.js?v=0.63.24"></script>
-    <script src="js/components/sidebar.js?v=0.63.24"></script>
+    <script src="js/config.js?v=0.63.25"></script>
+    <script src="js/notification.js?v=0.63.25"></script>
+    <script src="js/api.js?v=0.63.25"></script>
+    <script src="js/auth.js?v=0.63.25"></script>
+    <script src="js/components/sidebar.js?v=0.63.25"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/reports-page.js?v=0.63.24"></script><script src="js/ui.js?v=0.63.24"></script>
-    <script src="js/alerts.js?v=0.63.24"></script>
+    <script src="js/reports-page.js?v=0.63.25"></script><script src="js/ui.js?v=0.63.25"></script>
+    <script src="js/alerts.js?v=0.63.25"></script>
 </body>
 </html>

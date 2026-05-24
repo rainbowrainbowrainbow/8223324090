@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.4 - CRM 63.4: Android таймлайн
+
+### Timeline / Android responsive density [codex]
+- **Таймлайн знову стискається на Android** - `applyTimelineResponsiveDensity()` тепер читає реальний lexical `CONFIG`, а не `window.CONFIG`, тому JS-геометрія клітинок запускається на мобільних браузерах.
+- **Бронювання видно без ручного пошуку** - на вузькому Android viewport клітинки переходять до мобільної щільності, і перші блоки бронювань не від'їжджають за межу першого видимого екрана.
+- **Viewport реагує на Android address bar** - responsive resize тепер слухає `visualViewport.resize` і `visualViewport.scroll`, щоб таймлайн перераховував ширину після зміни мобільної панелі браузера.
+- **Guardrail** - `tests/ui-check.js` перевіряє, що timeline density більше не залежить від `window.CONFIG` і має visualViewport hooks.
+
+---
+
 ## v0.63.3 - CRM 63.3: Dashboard для Android
 
 ### Dashboard Board / Android openability hardening [codex]

@@ -1186,7 +1186,7 @@ function _timelineResponsiveHeaderWidth() {
 }
 
 function applyTimelineResponsiveDensity() {
-    if (!window.CONFIG || !CONFIG.TIMELINE) return false;
+    if (typeof CONFIG === 'undefined' || !CONFIG.TIMELINE) return false;
     const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
     const compact = !!AppState.compactMode;
     const nextHeaderWidth = _timelineResponsiveHeaderWidth();
@@ -1217,14 +1217,17 @@ function initTimelineResponsiveResize() {
     if (window.__timelineResponsiveResizeBound) return;
     window.__timelineResponsiveResizeBound = true;
     let resizeTimer = null;
-    window.addEventListener('resize', () => {
+    const handleResize = () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             const changed = applyTimelineResponsiveDensity();
             if (changed && typeof renderTimeline === 'function') renderTimeline();
             if (typeof renderNowLine === 'function') renderNowLine();
         }, 120);
-    });
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+    window.visualViewport?.addEventListener?.('resize', handleResize, { passive: true });
+    window.visualViewport?.addEventListener?.('scroll', handleResize, { passive: true });
 }
 
 function toggleCompactMode(event) {

@@ -250,6 +250,7 @@ checkPage('afisha.html', (doc, html) => {
     check('Afisha page exposes import/export and recurring templates', !!doc.getElementById('afishaImportText') && !!doc.getElementById('afishaTemplateForm') && !!doc.getElementById('afishaTemplateList'));
     check('Afisha page uses API-backed event CRUD without timeline modal dependency', afishaPageCode.includes("api('POST', '/afisha'") && afishaPageCode.includes("api('PUT', `/afisha/") && afishaPageCode.includes("api('DELETE', `/afisha/") && !html.includes('id="afishaModal"'));
     check('Afisha page includes shared shell and dedicated script', html.includes('sidebarLinks') && html.includes('js/afisha-page.js') && html.includes('data-page="afisha"'));
+    check('Afisha standalone page verifies auth before showing shell', afishaPageCode.includes('bootstrapAfishaShell') && afishaPageCode.includes('apiVerifyToken()') && afishaPageCode.includes('showAuthenticatedPageShell()') && afishaPageCode.includes("window.location.href = '/'") && afishaPageCode.indexOf('bootstrapAfishaShell') < afishaPageCode.indexOf('initDefaults();'));
     check('Afisha destructive actions use CRM confirm modal helper', afishaPageCode.includes('function confirmAfishaAction') && afishaPageCode.includes('await confirmAfishaAction') && !afishaPageCode.includes("if (!confirm('"));
 });
 

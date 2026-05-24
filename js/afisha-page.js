@@ -437,6 +437,34 @@
         });
     }
 
+    async function bootstrapAfishaShell() {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) {
+            window.location.href = '/';
+            return false;
+        }
+
+        try {
+            const user = await apiVerifyToken();
+            if (!user) throw new Error('Auth check failed');
+            if (typeof AppState !== 'undefined') AppState.currentUser = user;
+            if (typeof showAuthenticatedPageShell === 'function') {
+                showAuthenticatedPageShell();
+            } else {
+                $('mainApp')?.classList.remove('hidden');
+                if (window.Sidebar && typeof window.Sidebar.markShellReady === 'function') {
+                    window.Sidebar.markShellReady();
+                }
+            }
+            return true;
+        } catch (err) {
+            console.error('[afisha-page] auth bootstrap failed', err);
+            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+            window.location.href = '/';
+            return false;
+        }
+    }
+
     function initDefaults() {
         const date = queryParam('date') || todayIso();
         const time = queryParam('time') || '12:00';
@@ -447,12 +475,11 @@
         syncTypeUi();
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        const shellReady = await bootstrapAfishaShell();
+        if (!shellReady) return;
         initDefaults();
         bindEvents();
         loadData();
-        if (window.Sidebar && typeof window.Sidebar.markShellReady === 'function') {
-            window.Sidebar.markShellReady();
-        }
     });
 })();

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.27 - CRM 63.27: відновлена сторінка Афіші
+
+### Афіша / standalone shell [codex]
+- **Виправлено чорний екран `/afisha`** - сторінка більше не лишає `mainApp` прихованим після завантаження.
+- **Підключено стандартний auth bootstrap** - Afisha тепер перевіряє користувача через `apiVerifyToken()`, записує його в `AppState.currentUser` і відкриває CRM shell через `showAuthenticatedPageShell()`.
+- **Прибрано хибний shell-ready сценарій** - сторінка більше не викликає тільки `Sidebar.markShellReady()` без реального відкриття основного застосунку.
+- **Guardrail** - UI smoke перевіряє, що Afisha як standalone-сторінка має auth bootstrap перед рендером робочої поверхні.
+
+---
+
 ## v0.63.26 - CRM 63.26: стабільні embedded-вкладки Art
 
 ### Art / Випускний / embedded shell [codex]

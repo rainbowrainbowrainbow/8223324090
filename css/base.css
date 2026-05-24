@@ -583,6 +583,17 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.7; filter: grayscale(0.3); }
 .empty-state-text { font-size: var(--font-md); font-weight: 600; color: var(--gray-500); margin-bottom: 4px; }
 .empty-state-hint { font-size: var(--font-sm); color: var(--gray-400); }
+.crm-ui-state {
+    width: 100%;
+}
+.crm-ui-state--error {
+    border-style: solid;
+    border-color: rgba(239, 68, 68, 0.34);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(245, 158, 11, 0.04));
+}
+.crm-ui-state-retry {
+    margin-top: 12px;
+}
 
 /* ── Alert Bell (v33.5) ───────────────── */
 .alert-bell-btn {

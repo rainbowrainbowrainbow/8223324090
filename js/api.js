@@ -5,6 +5,31 @@
 
 const API_BASE = '/api';
 
+function formatApiErrorPayload(payload = {}, fallback = 'API error') {
+    if (typeof window !== 'undefined' && window.CrmApiErrors) {
+        return window.CrmApiErrors.format(payload, fallback);
+    }
+    const requestId = payload?.requestId || payload?.request_id || '';
+    const message = payload?.error || payload?.message || fallback;
+    return `${message}${requestId ? ` · код: ${requestId}` : ''}`;
+}
+
+function apiErrorFromPayload(payload = {}, fallback = 'API error') {
+    if (typeof window !== 'undefined' && window.CrmApiErrors) {
+        return window.CrmApiErrors.toError(payload, fallback);
+    }
+    const error = new Error(payload?.error || payload?.message || fallback);
+    error.requestId = payload?.requestId || payload?.request_id || '';
+    error.status = payload?.status || null;
+    error.payload = payload || {};
+    return error;
+}
+
+async function apiErrorFromResponse(response, fallback = 'API error') {
+    const payload = await response.json().catch(() => ({}));
+    return apiErrorFromPayload({ ...payload, status: response.status }, fallback);
+}
+
 function timelineApiUrl(url) {
     if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
         return window.TimelineBusinessContext.appendApiContext(url);
@@ -131,8 +156,7 @@ async function safeFetch(url, opts = {}) {
         return null;
     }
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        throw await apiErrorFromResponse(res, `HTTP ${res.status}`);
     }
     return res;
 }
@@ -186,7 +210,12 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
         if (raw) return response;
         if (!response.ok) {
             const errBody = await response.json().catch(() => ({}));
-            return { success: false, error: errBody.error || 'API error', status: response.status };
+            return {
+                success: false,
+                error: formatApiErrorPayload(errBody, 'API error'),
+                requestId: errBody.requestId || errBody.request_id || null,
+                status: response.status
+            };
         }
         return await response.json();
     } catch (err) {

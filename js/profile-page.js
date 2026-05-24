@@ -427,7 +427,16 @@ async function apiPost(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body) });
         if (handleAuthError(r)) return null;
-        return await r.json();
+        const payload = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            return {
+                success: false,
+                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
+                requestId: payload.requestId || payload.request_id || null,
+                status: r.status
+            };
+        }
+        return payload;
     } catch (e) { console.error('API POST', path, e); return null; }
 }
 
@@ -435,7 +444,16 @@ async function apiPut(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(body) });
         if (handleAuthError(r)) return null;
-        return await r.json();
+        const payload = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            return {
+                success: false,
+                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
+                requestId: payload.requestId || payload.request_id || null,
+                status: r.status
+            };
+        }
+        return payload;
     } catch (e) { console.error('API PUT', path, e); return null; }
 }
 
@@ -443,7 +461,16 @@ async function apiPatch(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify(body) });
         if (handleAuthError(r)) return null;
-        return await r.json();
+        const payload = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            return {
+                success: false,
+                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
+                requestId: payload.requestId || payload.request_id || null,
+                status: r.status
+            };
+        }
+        return payload;
     } catch (e) { console.error('API PATCH', path, e); return null; }
 }
 
@@ -451,7 +478,16 @@ async function apiDelete(path) {
     try {
         const r = await fetch(`/api${path}`, { method: 'DELETE', headers: getAuthHeaders(false) });
         if (handleAuthError(r)) return null;
-        return await r.json();
+        const payload = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            return {
+                success: false,
+                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
+                requestId: payload.requestId || payload.request_id || null,
+                status: r.status
+            };
+        }
+        return payload;
     } catch (e) { console.error('API DELETE', path, e); return null; }
 }
 

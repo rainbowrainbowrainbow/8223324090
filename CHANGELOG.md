@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.31 - CRM 63.31: зрозумілі системні помилки
+
+### Системна якість / error UX / frontend guardrails [codex]
+- **API-помилки стали зрозумілішими для оператора** - спільний `CrmApiErrors` нормалізує `error`, `message`, `status` і `requestId`, щоб замість голого `Internal server error` у UI можна було бачити робочий текст і код звернення.
+- **Notification-шар показує trace code** - `showNotification()` тепер приймає `Error` або JSON-помилку й додає `код: requestId`, коли бекенд повертає метадані для розслідування.
+- **Додано спільні стани loading/error/empty** - `CrmUiState` дає єдиний HTML-контракт для помилок, порожніх станів і повторної спроби, щоб нові модулі не збирали різні випадкові error-блоки.
+- **Reports і Profile краще зберігають бекенд-помилки** - локальні API wrappers більше не викидають `requestId` при невдалих запитах і можуть показати зрозумілу помилку у звітах та профільному cockpit.
+- **Guardrail** - UI smoke перевіряє наявність requestId-aware error kit, shared UI-state renderer і збереження metadata у shared API wrappers.
+
+---
+
 ## v0.63.30 - CRM 63.30: системні guardrails
 
 ### Системна якість / UX guardrails / API traceability [codex]

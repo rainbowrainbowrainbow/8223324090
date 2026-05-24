@@ -177,8 +177,13 @@ const ReportsPage = (() => {
         throw new Error('Unauthorized');
         }
         if (!res.ok) {
+            if (window.CrmApiErrors?.fromResponse) {
+                throw await window.CrmApiErrors.fromResponse(res, 'Request failed');
+            }
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Request failed');
+            const error = new Error(err.error || 'Request failed');
+            error.requestId = err.requestId || err.request_id || '';
+            throw error;
         }
         return res.json();
     }
@@ -187,7 +192,7 @@ const ReportsPage = (() => {
         const el = document.getElementById('notification');
         const text = document.getElementById('notificationText');
         if (!el || !text) return;
-        text.textContent = msg;
+        text.textContent = window.CrmApiErrors?.format?.(msg) || String(msg || '');
         el.className = `notification ${type}`;
         el.classList.remove('hidden');
         setTimeout(() => el.classList.add('hidden'), 3000);

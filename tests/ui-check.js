@@ -427,6 +427,7 @@ const contentCss = fs.readFileSync(path.join(ROOT, 'css', 'content.css'), 'utf8'
 const achievementsCss = fs.readFileSync(path.join(ROOT, 'css', 'achievements.css'), 'utf8');
 const profilePageHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
 const profileCode = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+const reportsPageCode = fs.readFileSync(path.join(ROOT, 'js', 'reports-page.js'), 'utf8');
 const authRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf8');
 const taskCreateCode = fs.readFileSync(path.join(ROOT, 'js', 'task-create.js'), 'utf8');
 const profilePagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
@@ -574,6 +575,7 @@ const featureRegistryCode = fs.readFileSync(path.join(ROOT, 'js/crm-feature-regi
 const sidebarAuroraCss = fs.readFileSync(path.join(ROOT, 'css/sidebar-aurora.css'), 'utf8');
 const responsiveCss = fs.readFileSync(path.join(ROOT, 'css/responsive.css'), 'utf8');
 const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
+const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
@@ -944,6 +946,21 @@ check('Omni page separates inbox from channel setup and health workspaces', omni
 check('Omni channel setup is not embedded in the conversation sidebar', omniHtml.indexOf('id="omniAccountsPanel"') > omniHtml.indexOf('id="omniChannelsWorkspace"') && !omniHtml.includes('omni-chat-empty-icon">Om'));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
+check('CRM system UI exposes requestId-aware errors and shared state renderers',
+    uiCode.includes('window.CrmApiErrors')
+    && uiCode.includes('fromResponse(response')
+    && uiCode.includes('window.CrmUiState')
+    && uiCode.includes('renderError(error')
+    && uiCode.includes('код: ${requestId}')
+    && baseCss.includes('.crm-ui-state--error')
+    && darkModeCss.includes('body.dark-mode .crm-ui-state--error'));
+check('Reports API surfaces requestId-aware backend errors to users',
+    reportsPageCode.includes('window.CrmApiErrors?.fromResponse')
+    && reportsPageCode.includes('window.CrmApiErrors?.format?.(msg)'));
+check('Shared API wrappers preserve backend requestId metadata',
+    apiCode.includes('function apiErrorFromResponse')
+    && apiCode.includes('formatApiErrorPayload')
+    && apiCode.includes('requestId: errBody.requestId || errBody.request_id || null'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));

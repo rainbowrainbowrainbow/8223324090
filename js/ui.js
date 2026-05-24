@@ -165,6 +165,100 @@ if (!window.Explainability) {
 }
 
 // ==========================================
+// CRM SYSTEM UI STATE + API ERROR KIT
+// ==========================================
+if (!window.CrmApiErrors) {
+    window.CrmApiErrors = (() => {
+        function normalize(payload = {}, fallback = 'Помилка запиту') {
+            const source = payload && typeof payload === 'object' ? payload : {};
+            const message = source.error || source.message || fallback;
+            const requestId = source.requestId || source.request_id || source.traceId || source.trace_id || '';
+            return {
+                message: String(message || fallback),
+                requestId: requestId ? String(requestId) : '',
+                status: source.status || null,
+                payload: source
+            };
+        }
+
+        function format(error, fallback = 'Помилка запиту') {
+            if (error instanceof Error) {
+                const requestId = error.requestId || error.request_id || '';
+                return `${error.message || fallback}${requestId ? ` · код: ${requestId}` : ''}`;
+            }
+            const normalized = normalize(error, fallback);
+            return `${normalized.message}${normalized.requestId ? ` · код: ${normalized.requestId}` : ''}`;
+        }
+
+        function toError(payload = {}, fallback = 'Помилка запиту') {
+            const normalized = normalize(payload, fallback);
+            const error = new Error(normalized.message);
+            error.requestId = normalized.requestId;
+            error.status = normalized.status;
+            error.payload = normalized.payload;
+            return error;
+        }
+
+        async function fromResponse(response, fallback = 'Помилка запиту') {
+            const payload = await response.json().catch(() => ({}));
+            return toError({ ...payload, status: response.status }, fallback);
+        }
+
+        return { normalize, format, toError, fromResponse };
+    })();
+}
+
+if (!window.CrmUiState) {
+    window.CrmUiState = (() => {
+        const esc = window.escapeHtml || (value => String(value ?? ''));
+
+        function renderLoading(message = 'Завантаження...') {
+            return `<div class="empty-state crm-ui-state crm-ui-state--loading" role="status" aria-live="polite">
+                <div class="skeleton skeleton-text short"></div>
+                <div class="empty-state-text">${esc(message)}</div>
+            </div>`;
+        }
+
+        function renderError(error, options = {}) {
+            const message = window.CrmApiErrors?.format?.(error, options.message || 'Не вдалося виконати дію') || String(error || options.message || 'Не вдалося виконати дію');
+            const retry = options.retryAction
+                ? `<button type="button" class="btn-secondary crm-ui-state-retry" data-crm-ui-retry="${esc(options.retryAction)}">${esc(options.retryLabel || 'Спробувати ще раз')}</button>`
+                : '';
+            return `<div class="empty-state crm-ui-state crm-ui-state--error" role="alert">
+                <div class="empty-state-icon">⚠️</div>
+                <div class="empty-state-text">${esc(options.title || 'Є помилка')}</div>
+                <div class="empty-state-hint">${esc(message)}</div>
+                ${retry}
+            </div>`;
+        }
+
+        function renderEmpty(options = {}) {
+            if (window.Explainability?.renderEmptyState) {
+                return window.Explainability.renderEmptyState({
+                    icon: options.icon || '∅',
+                    title: options.title || 'Немає даних',
+                    message: options.message || '',
+                    clearAction: options.clearAction,
+                    clearLabel: options.clearLabel
+                });
+            }
+            return `<div class="empty-state crm-ui-state crm-ui-state--empty">
+                <div class="empty-state-text">${esc(options.title || 'Немає даних')}</div>
+                ${options.message ? `<div class="empty-state-hint">${esc(options.message)}</div>` : ''}
+            </div>`;
+        }
+
+        function apply(target, html) {
+            const el = typeof target === 'string' ? document.getElementById(target) : target;
+            if (!el) return;
+            el.innerHTML = html || '';
+        }
+
+        return { renderLoading, renderError, renderEmpty, apply };
+    })();
+}
+
+// ==========================================
 // STAFF ACCOUNT BADGE (v39.8.0)
 // ==========================================
 let _staffLinkCache = null;
@@ -887,7 +981,11 @@ function formModal(title, fields, options = {}) {
 }
 
 function showNotification(message, type = '') {
-    const normalizedMessage = String(message ?? '');
+    const normalizedMessage = message instanceof Error
+        ? (window.CrmApiErrors?.format?.(message) || message.message || 'Помилка')
+        : (message && typeof message === 'object' && (message.error || message.message || message.requestId)
+            ? (window.CrmApiErrors?.format?.(message) || String(message.error || message.message || 'Помилка'))
+            : String(message ?? ''));
     const dedupeKey = `${type || 'info'}:${normalizedMessage}`;
     const now = Date.now();
     const recentAt = _toastRecent.get(dedupeKey) || 0;

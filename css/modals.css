@@ -2157,6 +2157,68 @@ body.dark-mode .fin-check-hint,
     font-weight: 600;
 }
 
+.prof-reschedule-wrap {
+    position: relative;
+    display: inline-flex;
+    width: max-content;
+    max-width: 100%;
+}
+
+.prof-overdue-trigger {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: color var(--speed-fast), opacity var(--speed-fast);
+}
+
+.prof-overdue-trigger span {
+    margin-left: 6px;
+    color: var(--danger);
+    font-weight: 800;
+}
+
+.prof-overdue-trigger:hover,
+.prof-overdue-trigger[aria-expanded="true"] {
+    color: var(--danger);
+}
+
+.prof-reschedule-menu {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 30;
+    min-width: 160px;
+    display: grid;
+    gap: 3px;
+    padding: 6px;
+    border: 1px solid rgba(239,68,68,0.16);
+    border-radius: 10px;
+    background: var(--white);
+    box-shadow: 0 18px 38px rgba(15,23,42,0.18);
+}
+
+.prof-reschedule-menu button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: left;
+    padding: 0 10px;
+}
+
+.prof-reschedule-menu button:hover,
+.prof-reschedule-menu button:focus-visible {
+    outline: none;
+    background: rgba(239,68,68,0.10);
+    color: var(--danger);
+}
+
 .prof-inbox-actions {
     display: flex;
     gap: 4px;

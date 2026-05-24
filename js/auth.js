@@ -1105,6 +1105,132 @@ function _profileProgressRing(done, total) {
     </div>`;
 }
 
+function profileKyivDate(offsetDays = 0) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date()).reduce((acc, part) => {
+        if (part.type !== 'literal') acc[part.type] = Number(part.value);
+        return acc;
+    }, {});
+    const { year, month, day } = parts;
+    const shifted = new Date(Date.UTC(year, month - 1, day + Number(offsetDays || 0), 12, 0, 0));
+    return shifted.toISOString().slice(0, 10);
+}
+
+function profileCurrentKyivHour() {
+    const hour = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Kyiv',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    }).format(new Date());
+    return Number(hour) || 0;
+}
+
+function profileBuildQuickSchedulePayload(option) {
+    const today = profileKyivDate(0);
+    const tomorrow = profileKyivDate(1);
+    if (option === 'tomorrow') {
+        return { schedule: { date: tomorrow, slot: 'morning', durationMinutes: 30 } };
+    }
+    if (option === 'evening') {
+        return { schedule: { date: profileCurrentKyivHour() >= 21 ? tomorrow : today, slot: 'evening', durationMinutes: 30 } };
+    }
+    const start = new Date(Date.now() + 45 * 60 * 1000);
+    const rounded = new Date(Math.ceil(start.getTime() / (15 * 60 * 1000)) * 15 * 60 * 1000);
+    const end = new Date(rounded.getTime() + 30 * 60 * 1000);
+    return {
+        schedule: {
+            scheduledStartAt: rounded.toISOString(),
+            scheduledEndAt: end.toISOString(),
+            durationMinutes: 30
+        }
+    };
+}
+
+function profileCloseRescheduleMenus() {
+    let closed = false;
+    document.querySelectorAll('.prof-reschedule-menu:not(.hidden)').forEach(menu => {
+        menu.classList.add('hidden');
+        closed = true;
+    });
+    document.querySelectorAll('.prof-overdue-trigger[aria-expanded="true"]').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+    return closed;
+}
+
+function profileToggleRescheduleMenu(taskId, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const menu = document.getElementById(`profRescheduleMenu-${taskId}`);
+    const trigger = event?.currentTarget;
+    const shouldOpen = menu?.classList.contains('hidden');
+    profileCloseRescheduleMenus();
+    if (!menu || !shouldOpen) return;
+    menu.classList.remove('hidden');
+    trigger?.setAttribute?.('aria-expanded', 'true');
+}
+
+async function profileQuickReschedule(taskId, option, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const btn = event?.currentTarget;
+    const originalText = btn?.textContent || '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Переносимо...';
+    }
+    try {
+        let payload;
+        if (option === 'custom') {
+            const selectedDate = typeof promptModal === 'function'
+                ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: profileKyivDate(1) })
+                : window.prompt('Нова дата для задачі:', profileKyivDate(1));
+            if (!selectedDate) return;
+            payload = { schedule: { date: selectedDate, slot: 'morning', durationMinutes: 30 } };
+        } else {
+            payload = profileBuildQuickSchedulePayload(option);
+        }
+        const headers = typeof getAuthHeaders === 'function'
+            ? getAuthHeaders()
+            : { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('pzp_token') || ''}` };
+        const response = await fetch(`/api/tasks/${taskId}/reschedule`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ ...payload, sourceSurface: 'profile_today_overdue_menu' })
+        });
+        if (typeof handleAuthError === 'function' && handleAuthError(response)) return;
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        if (typeof apiLogAction === 'function') apiLogAction('profile_task_reschedule', `task_${taskId}`, { option });
+        if (typeof showNotification === 'function') showNotification('Задачу перенесено', 'success');
+        await profileRefreshActiveTab('today');
+    } catch (err) {
+        console.error('[profile] quick reschedule failed:', err);
+        if (typeof showNotification === 'function') showNotification('Не вдалося перенести задачу', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+        profileCloseRescheduleMenus();
+    }
+}
+
+async function profileRefreshActiveTab(fallbackTab = 'today') {
+    const data = await apiGetProfile();
+    if (!data) return;
+    window._profileData = data;
+    const activeTab = document.querySelector('.prof-tab.active')?.dataset?.tab || fallbackTab;
+    _profileRenderTab(activeTab, data, _achievementDefs);
+}
+
 async function openProfileModal() {
     const modal = document.getElementById('profileModal');
     const content = document.getElementById('profileContent');
@@ -1195,7 +1321,7 @@ async function openProfileModal() {
             if (!(await confirmProfileModalDiscardIfDirty())) return;
             content.querySelectorAll('.prof-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            _profileRenderTab(btn.dataset.tab, data, achDefs);
+            _profileRenderTab(btn.dataset.tab, window._profileData || data, achDefs);
             rememberProfileModalState();
             if (typeof apiLogAction === 'function') apiLogAction('profile_tab', btn.dataset.tab);
         });
@@ -1259,8 +1385,16 @@ function _profileTabToday(data) {
             inboxItems.push(`<div class="prof-inbox-item danger" data-task-id="${t.id}">
                 <span class="prof-inbox-icon">!</span>
                 <div class="prof-inbox-body">
-                    <div class="prof-inbox-title">${t.title}</div>
-                    <div class="prof-inbox-meta">Прострочено ${ago} год</div>
+                    <div class="prof-inbox-title">${_escHtml(t.title)}</div>
+                    <div class="prof-reschedule-wrap">
+                        <button class="prof-inbox-meta prof-overdue-trigger" type="button" aria-haspopup="menu" aria-expanded="false" onclick="profileToggleRescheduleMenu(${t.id}, event)">Прострочено ${ago} год <span>Перенести</span></button>
+                        <div class="prof-reschedule-menu hidden" id="profRescheduleMenu-${t.id}" role="menu" aria-label="Перенести прострочену задачу">
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'today', event)">На сьогодні</button>
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'tomorrow', event)">На завтра</button>
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'evening', event)">На вечір</button>
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'custom', event)">На іншу дату</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="prof-inbox-actions">
                     <button class="prof-inbox-btn done" onclick="profileQuickStatus(${t.id},'done')" title="Готово">&#10003;</button>
@@ -1277,7 +1411,7 @@ function _profileTabToday(data) {
             inboxItems.push(`<div class="prof-inbox-item warning" data-task-id="${t.id}">
                 <span class="prof-inbox-icon">&#9202;</span>
                 <div class="prof-inbox-body">
-                    <div class="prof-inbox-title">${t.title}</div>
+                    <div class="prof-inbox-title">${_escHtml(t.title)}</div>
                     <div class="prof-inbox-meta">Дедлайн через ${timeStr}</div>
                 </div>
                 <div class="prof-inbox-actions">
@@ -2182,8 +2316,20 @@ function initProfileHandler() {
         profileModal.addEventListener('click', (e) => {
             if (e.target === profileModal) closeProfileModal(false);
         });
+        if (!window.__profileRescheduleMenuBound) {
+            window.__profileRescheduleMenuBound = true;
+            document.addEventListener('click', (e) => {
+                if (e.target?.closest?.('.prof-reschedule-wrap')) return;
+                profileCloseRescheduleMenus();
+            });
+        }
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !profileModal.classList.contains('hidden')) {
+                if (profileCloseRescheduleMenus()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 closeProfileModal(false);
             }
         });

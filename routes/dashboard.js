@@ -168,6 +168,19 @@ const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
 const BOARD_ALLOWED_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
 const DASHBOARD_WORKSPACE_MODE = 'workspace';
 const BOARD_SNAP_MODES = new Set(['strict', 'soft', 'freeform']);
+const DASHBOARD_CONFIG_PERSISTENCE = Object.freeze({
+    source: 'postgres',
+    table: 'dashboard_configs',
+    endpoint: '/api/dashboard/config',
+    boardStatePath: 'layout.boardState'
+});
+const DASHBOARD_CONFIG_SELECT_SQL = `SELECT layout, widgets, theme FROM ${DASHBOARD_CONFIG_PERSISTENCE.table} WHERE user_id = $1`;
+const DASHBOARD_CONFIG_UPSERT_SQL = `
+            INSERT INTO ${DASHBOARD_CONFIG_PERSISTENCE.table} (user_id, layout, widgets, theme, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (user_id)
+            DO UPDATE SET layout = $2, widgets = $3, theme = $4, updated_at = NOW()
+        `;
 
 function parseJsonObject(value, fallback = {}) {
     if (!value) return { ...fallback };
@@ -570,7 +583,7 @@ async function buildEventRiskSummary(user) {
 router.get('/config', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT layout, widgets, theme FROM dashboard_configs WHERE user_id = $1',
+            DASHBOARD_CONFIG_SELECT_SQL,
             [req.user.id]
         );
 
@@ -601,7 +614,7 @@ router.get('/config', async (req, res) => {
 router.put('/config', async (req, res) => {
     try {
         const existingResult = await pool.query(
-            'SELECT layout, widgets, theme FROM dashboard_configs WHERE user_id = $1',
+            DASHBOARD_CONFIG_SELECT_SQL,
             [req.user.id]
         );
         const existingRaw = existingResult.rows[0] || {
@@ -610,12 +623,7 @@ router.put('/config', async (req, res) => {
             theme: 'default'
         };
         const nextConfig = buildPersistedDashboardConfig(existingRaw, req.body || {}, req.user.role);
-        await pool.query(`
-            INSERT INTO dashboard_configs (user_id, layout, widgets, theme, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id)
-            DO UPDATE SET layout = $2, widgets = $3, theme = $4, updated_at = NOW()
-        `, [req.user.id, JSON.stringify(nextConfig.layout), JSON.stringify(nextConfig.widgets), nextConfig.theme || 'default']);
+        await pool.query(DASHBOARD_CONFIG_UPSERT_SQL, [req.user.id, JSON.stringify(nextConfig.layout), JSON.stringify(nextConfig.widgets), nextConfig.theme || 'default']);
 
         res.json({ success: true, config: normalizeDashboardConfig(nextConfig, req.user.role) });
     } catch (err) {
@@ -1681,5 +1689,6 @@ module.exports.triggerAlertBroadcast = triggerAlertBroadcast;
 module.exports.__boardTest = {
     buildPersistedDashboardConfig,
     normalizeDashboardConfig,
+    persistenceContract: DASHBOARD_CONFIG_PERSISTENCE,
     sanitizeBoardState
 };

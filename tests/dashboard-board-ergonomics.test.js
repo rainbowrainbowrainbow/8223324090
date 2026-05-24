@@ -274,6 +274,12 @@ test('dashboard board persistence normalizes legacy and modern saved content con
     const routeTest = dashboardRoute.__boardTest;
     assert.equal(typeof routeTest?.sanitizeBoardState, 'function');
     assert.equal(typeof routeTest?.buildPersistedDashboardConfig, 'function');
+    assert.deepEqual(routeTest.persistenceContract, {
+        source: 'postgres',
+        table: 'dashboard_configs',
+        endpoint: '/api/dashboard/config',
+        boardStatePath: 'layout.boardState'
+    });
 
     const fixture = createBoardCompatibilityFixture();
     const backendState = routeTest.sanitizeBoardState(fixture, 'creator');
@@ -342,6 +348,31 @@ test('dashboard board persistence normalizes legacy and modern saved content con
     assert.equal(secondSave.boardState.connectors.length, 2);
     assert.equal(secondItems['modern-circle'].w, secondItems['modern-circle'].h);
     assert.equal(secondItems['widget-snapshot'].depth, 'snapshot-static');
+});
+
+test('dashboard board persistence path stays canonical Postgres and excludes Supabase', () => {
+    const routeJs = read('routes/dashboard.js');
+    const pageJs = read('js/dashboard-page.js');
+    const migration = read('db/migrations/038_dashboard_and_roles.sql');
+
+    assert.match(routeJs, /const \{ pool \} = require\('\.\.\/db'\)/);
+    assert.match(routeJs, /DASHBOARD_CONFIG_PERSISTENCE = Object\.freeze/);
+    assert.match(routeJs, /source: 'postgres'/);
+    assert.match(routeJs, /table: 'dashboard_configs'/);
+    assert.match(routeJs, /boardStatePath: 'layout\.boardState'/);
+    assert.match(routeJs, /DASHBOARD_CONFIG_SELECT_SQL/);
+    assert.match(routeJs, /DASHBOARD_CONFIG_UPSERT_SQL/);
+    assert.match(migration, /CREATE TABLE IF NOT EXISTS dashboard_configs/);
+    assert.match(migration, /layout JSONB DEFAULT '\{\}'/);
+    assert.match(pageJs, /fetch\('\/api\/dashboard\/config'/);
+    assert.match(pageJs, /layout:\s*\{[\s\S]*boardState: patch\.boardState \|\| _config\.boardState/);
+
+    for (const source of [routeJs, pageJs]) {
+        assert.doesNotMatch(source, /@supabase\/supabase-js/);
+        assert.doesNotMatch(source, /require\(['"]\.\.\/db\/supabase['"]\)/);
+        assert.doesNotMatch(source, /\bgetSupabase\b/);
+        assert.doesNotMatch(source, /\bsupabase\b/i);
+    }
 });
 
 test('dashboard arrow tool creates an anchor connector draft instead of inserting a static arrow shape', () => {

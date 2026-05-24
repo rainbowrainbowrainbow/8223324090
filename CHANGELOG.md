@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.7 - CRM 63.7: Dashboard Board Postgres
+
+### Dashboard Board / canonical Postgres persistence [codex]
+- **Джерело правди зафіксовано** - board state офіційно лишається у `dashboard_configs.layout.boardState` через `/api/dashboard/config`, без окремої Supabase-гілки.
+- **Supabase не в live board path** - перевірено `routes/dashboard.js` і `js/dashboard-page.js`: вони не імпортують `db/supabase`, не викликають `getSupabase` і не створюють паралельний source of truth.
+- **Postgres contract став явним** - `routes/dashboard.js` має `DASHBOARD_CONFIG_PERSISTENCE` і єдині SQL-константи для read/upsert `dashboard_configs`.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` перевіряє canonical Postgres path, `/api/dashboard/config`, JSONB `layout`, save/reload нормалізацію і відсутність Supabase у touched path.
+
+---
+
 ## v0.63.6 - CRM 63.6: Мобільний таймлайн live
 
 ### Release / git deploy [codex]

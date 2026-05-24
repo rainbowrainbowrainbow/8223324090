@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.16 - CRM 63.16: Клієнтська воронка з drill-down
+
+### Клієнти / journey funnel [codex]
+- **Воронка перестала бути декоративною** - вкладка `Клієнти -> Воронка` тепер рендерить стадії як повноцінні clickable/focusable controls з hover/focus станом.
+- **Ліди ведуть у робочу Sales Funnel поверхню** - стадія `Ліди` відкриває `/sales-funnel?view=kanban&pipeline_stage=new`, а сторінка лідів читає query-параметри й застосовує pipeline-фільтр.
+- **Lifecycle-сегменти лишилися в Customers** - `Нові`, `Повторні`, `Лояльні` та `Перспективні` відкривають список клієнтів із точними visit-bound фільтрами, а не міксуються з pipeline-stage лідів.
+- **Prospects стали видимими** - прихований backend-сегмент `prospects` оформлено як `Перспективні (0 візитів)` із drill-down на `minVisits=0&maxVisits=0`.
+- **Фільтр візитів підтримує нуль** - `/api/customers` більше не викидає `0` через `parseInt(...) || 0`; fallback Postgres-шлях фільтрує через реальний `booking_count`.
+- **Guardrail** - UI smoke перевіряє clickable journey contract, prospects-сегмент, zero-visit filter і query-driven Sales Funnel drill-down.
+
+---
+
 ## v0.63.15 - CRM 63.15: Профільний cockpit огляду
 
 ### Профіль / Overview cockpit [codex]

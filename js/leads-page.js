@@ -71,6 +71,7 @@ let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
 let currentDateFilter = '';
+let currentPipelineStage = '';
 let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let pipelineData = {};
@@ -169,6 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
 
     setupEvents();
+    applyLeadQueryParams();
     await loadUsers();
     await loadLeads();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -219,6 +221,7 @@ async function loadLeads() {
         if (currentFilter) params.set('status', currentFilter);
         if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
         if (currentDateFilter) params.set('event_date', currentDateFilter);
+        if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
         params.set('limit', '200');
@@ -335,9 +338,39 @@ function leadDateFilterLabel(value) {
     return value;
 }
 
+function leadPipelineStageLabel(value) {
+    return PIPELINE_STAGES.find(stage => stage.key === value)?.label || value;
+}
+
+function applyLeadQueryParams() {
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get('view');
+    if (['table', 'kanban', 'mailing'].includes(requestedView)) currentView = requestedView;
+    const requestedStage = params.get('pipeline_stage') || '';
+    currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
+    currentFilter = params.get('status') || currentFilter;
+    currentTypeFilter = params.get('lead_type') || currentTypeFilter;
+    currentDateFilter = params.get('event_date') || currentDateFilter;
+    const search = document.getElementById('leadsSearch');
+    if (search && params.get('search')) search.value = params.get('search');
+
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === currentView);
+    });
+    document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.status || '') === currentFilter);
+    });
+    document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => {
+        const dateKey = btn.dataset.date;
+        const expected = dateKey === 'tomorrow' ? todayKyiv(1) : todayKyiv(0);
+        btn.classList.toggle('active', currentDateFilter === expected);
+    });
+}
+
 function getLeadFilterSummary() {
     const search = document.getElementById('leadsSearch')?.value?.trim();
     return [
+        currentPipelineStage ? { label: 'Етап воронки', value: leadPipelineStageLabel(currentPipelineStage) } : null,
         currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
         currentTypeFilter ? { label: 'Тип', value: LEAD_TYPE_MAP[currentTypeFilter]?.label || currentTypeFilter } : null,
         currentDateFilter ? { label: 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
@@ -360,6 +393,7 @@ function resetLeadFilters() {
     currentFilter = '';
     currentTypeFilter = '';
     currentDateFilter = '';
+    currentPipelineStage = '';
     const search = document.getElementById('leadsSearch');
     if (search) search.value = '';
     document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => btn.classList.toggle('active', !btn.dataset.status));
@@ -1682,6 +1716,7 @@ function setupEvents() {
             btn.classList.add('active');
             currentFilter = btn.dataset.status;
             currentTypeFilter = '';
+            currentPipelineStage = '';
             loadLeads();
         });
     });

@@ -844,11 +844,15 @@ check('Lead kanban funnel renders into footer summary slot', leadsCode.includes(
 check('Lead kanban action buttons do not bubble into opening the workspace card', leadsCode.includes('data-kanban-actions') && leadsCode.includes("control.addEventListener('pointerdown'") && leadsCode.includes('event.stopPropagation(); editLead'));
 
 const customersCode = fs.readFileSync(path.join(ROOT, 'js/customers-page.js'), 'utf8');
+const customersRouteCode = fs.readFileSync(path.join(ROOT, 'routes/customers.js'), 'utf8');
 const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');
 const centerCode = fs.readFileSync(path.join(ROOT, 'js/center-page.js'), 'utf8');
 const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
 const pagesCss = fs.readFileSync(path.join(ROOT, 'css/pages.css'), 'utf8');
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
+check('Customers journey funnel exposes clickable stage drill-down contract', customersCode.includes('JOURNEY_STAGES') && customersCode.includes('data-journey-stage') && customersCode.includes('handleJourneyStageAction') && customersCode.includes('/sales-funnel?view=kanban&pipeline_stage=new') && htmlContains('customers.html', '.journey-stage-action'));
+check('Customers journey resolves prospects as visible zero-visit lifecycle segment', customersCode.includes("id: 'prospects'") && customersCode.includes('maxVisits: 0') && customersRouteCode.includes('parseCustomerVisitBound') && customersRouteCode.includes('maxVisits !== null') && customersRouteCode.includes('COALESCE(b_agg.booking_count, c.total_bookings, 0)'));
+check('Sales funnel accepts query-driven kanban pipeline drilldown', leadsCode.includes('currentPipelineStage') && leadsCode.includes("params.set('pipeline_stage', currentPipelineStage)") && leadsCode.includes('applyLeadQueryParams') && leadsCode.includes("params.get('view')"));
 check('Customer card exposes communication hub context', customersCode.includes('fetchCustomerCommunicationContext') && customersCode.includes('/communication-context') && customersCode.includes('renderCustomerCommunicationHub') && customersCode.includes('customerCommHub'));
 check('Customer communication hub has exact/suggested/unavailable styling', htmlContains('customers.html', '.customer-hub-pill.exact') && htmlContains('customers.html', '.customer-hub-pill.suggested') && htmlContains('customers.html', '.customer-hub-pill.unavailable'));
 check('Customer create modal has styled source select and linking tools', htmlContains('customers.html', 'customer-edit-select-wrap') && htmlContains('customers.html', 'customer-edit-link-panel') && htmlContains('customers.html', 'data-customer-identity-add="telegram"') && customersCode.includes('bindCustomerIdentityTools'));

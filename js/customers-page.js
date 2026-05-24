@@ -28,7 +28,11 @@ const CrmState = {
         sortBy: 'updated_at',
         dateFrom: '',
         dateTo: '',
-        tag: ''
+        tag: '',
+        minVisits: null,
+        maxVisits: null,
+        journeySegment: '',
+        journeyLabel: ''
     }
 };
 
@@ -55,6 +59,63 @@ const RFM_SEGMENTS = {
     at_risk: { label: 'Під загрозою', icon: '⚠️', color: '#DC2626' },
     lost: { label: 'Втрачені', icon: '💤', color: '#64748B' }
 };
+
+const JOURNEY_STAGES = [
+    {
+        id: 'leads',
+        label: 'Ліди',
+        countKey: 'leads',
+        color: '#64748B',
+        icon: '📋',
+        kind: 'leads',
+        actionLabel: 'Відкрити воронку лідів',
+        href: '/sales-funnel?view=kanban&pipeline_stage=new'
+    },
+    {
+        id: 'prospects',
+        label: 'Перспективні (0 візитів)',
+        countKey: 'prospects',
+        color: '#7C3AED',
+        icon: '◎',
+        kind: 'customers',
+        minVisits: 0,
+        maxVisits: 0,
+        actionLabel: 'Показати клієнтів без візитів'
+    },
+    {
+        id: 'first_timers',
+        label: 'Нові (1 візит)',
+        countKey: 'first_timers',
+        color: '#3B82F6',
+        icon: '🆕',
+        kind: 'customers',
+        minVisits: 1,
+        maxVisits: 1,
+        actionLabel: 'Показати нових клієнтів'
+    },
+    {
+        id: 'returning',
+        label: 'Повторні (2-4)',
+        countKey: 'returning',
+        color: '#10B981',
+        icon: '↻',
+        kind: 'customers',
+        minVisits: 2,
+        maxVisits: 4,
+        actionLabel: 'Показати повторних клієнтів'
+    },
+    {
+        id: 'loyal',
+        label: 'Лояльні (5+)',
+        countKey: 'loyal',
+        color: '#F59E0B',
+        icon: '★',
+        kind: 'customers',
+        minVisits: 5,
+        maxVisits: null,
+        actionLabel: 'Показати лояльних клієнтів'
+    }
+];
 
 // ==========================================
 // HELPERS
@@ -361,9 +422,112 @@ function openCustomerDeepLink() {
     requestAnimationFrame(() => highlightCustomerRow(customerId));
 }
 
+function getJourneyStage(stageId) {
+    return JOURNEY_STAGES.find(stage => stage.id === stageId) || null;
+}
+
+function hasVisitBound(value) {
+    return value !== null && value !== undefined && value !== '';
+}
+
+function parseJourneyVisitBound(value) {
+    if (!hasVisitBound(value)) return null;
+    const parsed = parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function setCustomerFilterInputsFromState() {
+    const fields = {
+        searchInput: CrmState.filters.search || '',
+        sourceFilter: CrmState.filters.source || '',
+        sortFilter: CrmState.filters.sortBy || 'updated_at',
+        dateFromFilter: CrmState.filters.dateFrom || '',
+        dateToFilter: CrmState.filters.dateTo || '',
+        tagFilter: CrmState.filters.tag || ''
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    });
+}
+
+function customerJourneyUrl(stage) {
+    const url = new URL('/customers', window.location.origin);
+    url.searchParams.set('tab', 'list');
+    url.searchParams.set('journey', stage.id);
+    if (customerBusinessContext() !== 'event_genix') url.searchParams.set('businessContext', customerBusinessContext());
+    if (hasVisitBound(stage.minVisits)) url.searchParams.set('minVisits', stage.minVisits);
+    if (hasVisitBound(stage.maxVisits)) url.searchParams.set('maxVisits', stage.maxVisits);
+    return url;
+}
+
+function syncCustomerJourneyUrl(stage) {
+    if (!window.history?.replaceState || !stage) return;
+    const url = customerJourneyUrl(stage);
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+}
+
+function applyCustomerJourneyStage(stage, options = {}) {
+    if (!stage || stage.kind !== 'customers') return false;
+    CrmState.filters = {
+        ...CrmState.filters,
+        search: '',
+        source: '',
+        sortBy: 'total_bookings',
+        dateFrom: '',
+        dateTo: '',
+        tag: '',
+        minVisits: hasVisitBound(stage.minVisits) ? stage.minVisits : null,
+        maxVisits: hasVisitBound(stage.maxVisits) ? stage.maxVisits : null,
+        journeySegment: stage.id,
+        journeyLabel: stage.label
+    };
+    CrmState.page = 1;
+    setCustomerFilterInputsFromState();
+    if (!options.skipUrl) syncCustomerJourneyUrl(stage);
+    return true;
+}
+
+function applyInitialCustomerQueryParams() {
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get('tab') || '';
+    const requestedJourney = params.get('journey') || '';
+    const stage = getJourneyStage(requestedJourney);
+    if (stage?.kind === 'customers') {
+        applyCustomerJourneyStage(stage, { skipUrl: true });
+        return 'list';
+    }
+    const minVisits = params.get('minVisits');
+    const maxVisits = params.get('maxVisits');
+    if (hasVisitBound(minVisits) || hasVisitBound(maxVisits)) {
+        CrmState.filters.minVisits = parseJourneyVisitBound(minVisits);
+        CrmState.filters.maxVisits = parseJourneyVisitBound(maxVisits);
+        CrmState.filters.sortBy = 'total_bookings';
+        setCustomerFilterInputsFromState();
+    }
+    return ['list', 'rfm', 'journey', 'duplicates', 'nps', 'bulk'].includes(requestedTab) ? requestedTab : '';
+}
+
+async function handleJourneyStageAction(stageId) {
+    const stage = getJourneyStage(stageId);
+    if (!stage) return;
+    if (stage.kind === 'leads') {
+        const url = new URL(stage.href, window.location.origin);
+        if (customerBusinessContext() !== 'event_genix') url.searchParams.set('businessContext', customerBusinessContext());
+        window.location.href = `${url.pathname}${url.search}`;
+        return;
+    }
+    applyCustomerJourneyStage(stage);
+    switchTab('list');
+    await fetchCustomers();
+    renderCustomerTable();
+    renderPagination();
+}
+
 function getCustomerFilterSummary() {
     const f = CrmState.filters;
     return [
+        f.journeyLabel ? { label: 'Сегмент воронки', value: f.journeyLabel } : null,
         f.search ? { label: 'Пошук', value: f.search } : null,
         f.tag ? { label: 'Тег', value: f.tag } : null,
         f.source ? { label: 'Джерело', value: SOURCE_LABELS[f.source] || f.source } : null,
@@ -390,7 +554,11 @@ async function resetCustomerFilters() {
         sortBy: 'updated_at',
         dateFrom: '',
         dateTo: '',
-        tag: ''
+        tag: '',
+        minVisits: null,
+        maxVisits: null,
+        journeySegment: '',
+        journeyLabel: ''
     };
     CrmState.page = 1;
     const fields = {
@@ -441,6 +609,8 @@ async function fetchCustomers() {
     if (CrmState.filters.dateFrom) params.set('dateFrom', CrmState.filters.dateFrom);
     if (CrmState.filters.dateTo) params.set('dateTo', CrmState.filters.dateTo);
     if (CrmState.filters.tag) params.set('tag', CrmState.filters.tag);
+    if (hasVisitBound(CrmState.filters.minVisits)) params.set('minVisits', CrmState.filters.minVisits);
+    if (hasVisitBound(CrmState.filters.maxVisits)) params.set('maxVisits', CrmState.filters.maxVisits);
 
     const tableBody = document.getElementById('crmTableBody');
     if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
@@ -1026,15 +1196,12 @@ async function loadJourney() {
         const data = await res.json();
         if (!data.success) return;
         const s = data.stats;
-        const total = (parseInt(s.leads) || 0) + (parseInt(s.prospects) || 0) + (parseInt(s.first_timers) || 0) + (parseInt(s.returning) || 0) + (parseInt(s.loyal) || 0);
-        const maxWidth = Math.max(1, parseInt(s.leads) || 0, parseInt(s.prospects) || 0, parseInt(s.first_timers) || 0, parseInt(s.returning) || 0, parseInt(s.loyal) || 0);
-
-        const stages = [
-            { label: 'Ліди', count: parseInt(s.leads) || 0, color: '#94A3B8', icon: '📋' },
-            { label: 'Нові (1 візит)', count: parseInt(s.first_timers) || 0, color: '#3B82F6', icon: '🆕' },
-            { label: 'Повторні (2-4)', count: parseInt(s.returning) || 0, color: '#10B981', icon: '🔄' },
-            { label: 'Лояльні (5+)', count: parseInt(s.loyal) || 0, color: '#F59E0B', icon: '⭐' }
-        ];
+        const stages = JOURNEY_STAGES.map(stage => ({
+            ...stage,
+            count: parseInt(s[stage.countKey], 10) || 0
+        }));
+        const total = stages.reduce((sum, stage) => sum + stage.count, 0);
+        const maxWidth = Math.max(1, ...stages.map(stage => stage.count));
 
         const el = document.getElementById('tabJourney');
         el.innerHTML = `<div class="journey-funnel">
@@ -1042,16 +1209,29 @@ async function loadJourney() {
             ${stages.map(st => {
                 const pct = total > 0 ? Math.round(st.count / total * 100) : 0;
                 const width = Math.max(20, Math.round(st.count / maxWidth * 100));
+                const stageTarget = st.kind === 'leads'
+                    ? 'Воронка лідів'
+                    : 'Список клієнтів';
                 return `<div class="journey-stage">
-                    <div class="journey-bar" style="width:${width}%;background:${st.color}">
+                    <button type="button"
+                        class="journey-stage-action"
+                        data-journey-stage="${escapeHtml(st.id)}"
+                        aria-label="${escapeHtml(`${st.label}: ${st.count}. ${st.actionLabel}`)}"
+                        title="${escapeHtml(st.actionLabel)}">
+                    <div class="journey-bar" style="--journey-width:${width}%;background:${st.color}">
                         <span class="journey-icon">${st.icon}</span>
                         <span class="journey-label">${st.label}</span>
                         <span class="journey-count">${st.count} (${pct}%)</span>
+                        <span class="journey-action">${stageTarget} →</span>
                     </div>
+                    </button>
                 </div>`;
             }).join('')}
-            <div style="margin-top:12px;font-size:12px;color:var(--gray-400)">Всього: ${total}</div>
+            <div class="journey-total">Всього у видимій воронці: ${total}</div>
         </div>`;
+        el.querySelectorAll('[data-journey-stage]').forEach(button => {
+            button.addEventListener('click', () => handleJourneyStageAction(button.dataset.journeyStage));
+        });
     } catch { /* journey load failed */ }
 }
 
@@ -1419,6 +1599,7 @@ async function initPage() {
     AppState.currentUser = user;
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     initCustomerBusinessContext(user);
+    const initialTab = applyInitialCustomerQueryParams();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
@@ -1534,6 +1715,7 @@ async function initPage() {
 
     // Load initial data
     await refreshData();
+    if (initialTab && initialTab !== 'list') switchTab(initialTab);
     openCustomerDeepLink();
 }
 

@@ -152,6 +152,12 @@ function customerContextCondition(params, businessContext, alias = '') {
     return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
 }
 
+function parseCustomerVisitBound(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 let customerSocialIdentitiesColumnReady = false;
 
 function isMissingCustomerSocialIdentitiesColumnError(err) {
@@ -1301,8 +1307,8 @@ router.get('/', async (req, res) => {
         const offset = (page - 1) * limit;
         const search = (req.query.search || '').trim();
         const source = (req.query.source || '').trim();
-        const minVisits = parseInt(req.query.minVisits) || 0;
-        const maxVisits = parseInt(req.query.maxVisits) || 0;
+        const minVisits = parseCustomerVisitBound(req.query.minVisits);
+        const maxVisits = parseCustomerVisitBound(req.query.maxVisits);
         const dateFrom = (req.query.dateFrom || '').trim();
         const dateTo = (req.query.dateTo || '').trim();
         const sortBy = (req.query.sortBy || 'updated_at').trim();
@@ -1318,8 +1324,8 @@ router.get('/', async (req, res) => {
                 query = query.or(`name.ilike.${pattern},phone.ilike.${pattern},instagram.ilike.${pattern},child_name.ilike.${pattern}`);
             }
             if (source) query = query.eq('source', source);
-            if (minVisits > 0) query = query.gte('total_bookings', minVisits);
-            if (maxVisits > 0) query = query.lte('total_bookings', maxVisits);
+            if (minVisits !== null) query = query.gte('total_bookings', minVisits);
+            if (maxVisits !== null) query = query.lte('total_bookings', maxVisits);
             if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) query = query.gte('last_visit', dateFrom);
             if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) query = query.lte('last_visit', dateTo);
 
@@ -1349,34 +1355,42 @@ router.get('/', async (req, res) => {
         // Fallback: Railway
         const conditions = [];
         const params = [];
-        conditions.push(customerContextCondition(params, businessContext));
+        conditions.push(customerContextCondition(params, businessContext, 'c'));
 
         if (search) {
             params.push(`%${search}%`);
             const socialIdentitySearch = await canSearchCustomerSocialIdentities()
-                ? ` OR social_identities::text ILIKE $${params.length}`
+                ? ` OR c.social_identities::text ILIKE $${params.length}`
                 : '';
-            conditions.push(`(name ILIKE $${params.length} OR phone ILIKE $${params.length} OR instagram ILIKE $${params.length} OR child_name ILIKE $${params.length}${socialIdentitySearch})`);
+            conditions.push(`(c.name ILIKE $${params.length} OR c.phone ILIKE $${params.length} OR c.instagram ILIKE $${params.length} OR c.child_name ILIKE $${params.length}${socialIdentitySearch})`);
         }
-        if (source) { params.push(source); conditions.push(`source = $${params.length}`); }
-        if (minVisits > 0) { params.push(minVisits); conditions.push(`total_bookings >= $${params.length}`); }
-        if (maxVisits > 0) { params.push(maxVisits); conditions.push(`total_bookings <= $${params.length}`); }
-        if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`last_visit >= $${params.length}::date`); }
-        if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`last_visit <= $${params.length}::date`); }
-        if (tag) { params.push(tag); conditions.push(`id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
+        if (source) { params.push(source); conditions.push(`c.source = $${params.length}`); }
+        if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`c.last_visit >= $${params.length}::date`); }
+        if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`c.last_visit <= $${params.length}::date`); }
+        if (tag) { params.push(tag); conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
+
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const visitCountExpr = 'COALESCE(b_agg.booking_count, c.total_bookings, 0)';
+        if (minVisits !== null) { params.push(minVisits); conditions.push(`${visitCountExpr} >= $${params.length}`); }
+        if (maxVisits !== null) { params.push(maxVisits); conditions.push(`${visitCountExpr} <= $${params.length}`); }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const allowedSorts = {
-            'updated_at': 'updated_at DESC', 'name': 'name ASC',
-            'total_bookings': 'total_bookings DESC', 'total_spent': 'total_spent DESC',
-            'last_visit': 'last_visit DESC NULLS LAST', 'created_at': 'created_at DESC'
+            'updated_at': 'c.updated_at DESC', 'name': 'c.name ASC',
+            'total_bookings': `${visitCountExpr} DESC`, 'total_spent': 'COALESCE(b_agg.booking_spent, c.total_spent, 0) DESC',
+            'last_visit': 'COALESCE(b_agg.real_last_visit, c.last_visit) DESC NULLS LAST', 'created_at': 'c.created_at DESC'
         };
-        const orderBy = allowedSorts[sortBy] || 'updated_at DESC';
+        const orderBy = allowedSorts[sortBy] || allowedSorts.updated_at;
 
-        const countResult = await pool.query(`SELECT COUNT(*) FROM customers ${where}`, params);
+        const countResult = await pool.query(
+            `SELECT COUNT(*)
+             FROM customers c
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
+             ${where}`,
+            params
+        );
         const total = parseInt(countResult.rows[0].count);
 
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
         const dataParams = [...params, limit, offset];
         // v32.1: JOIN bookings to compute real totalBookings/totalSpent/LTV
         const result = await pool.query(
@@ -1387,7 +1401,7 @@ router.get('/', async (req, res) => {
                     b_agg.real_first_visit
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             ${where ? where.replace(/WHERE/i, 'WHERE') : ''}
+             ${where}
              ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             dataParams
         );

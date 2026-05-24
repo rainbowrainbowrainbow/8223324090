@@ -240,21 +240,43 @@
     /* Sidebar: narrower overlay on tablet */
     .sidebar-nav {
         width: 200px !important;
+        min-width: 200px !important;
+        max-width: 200px !important;
     }
 
     .sidebar-nav.collapsed {
         width: 56px !important;
+        min-width: 56px !important;
+        max-width: 56px !important;
     }
 
     /* Main content: adapt to narrower sidebar */
+    .header,
     .main-content,
     .page-container {
         margin-left: 200px !important;
+        width: calc(100vw - 200px) !important;
+        max-width: calc(100vw - 200px) !important;
+        box-sizing: border-box;
     }
 
+    .sidebar-nav.collapsed ~ .header,
+    .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+    .sidebar-nav.collapsed ~ .header ~ .main-content,
+    .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content,
+    .sidebar-nav.collapsed ~ .header ~ .page-container,
+    .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
     .sidebar-nav.collapsed ~ .main-content,
     .sidebar-nav.collapsed ~ .page-container {
         margin-left: 56px !important;
+        width: calc(100vw - 56px) !important;
+        max-width: calc(100vw - 56px) !important;
+    }
+
+    body.timeline-dashboard-page,
+    body.timeline-dashboard-page .main-content {
+        max-width: 100vw;
+        overflow-x: hidden;
     }
 
     /* Timeline columns: narrower on tablet */
@@ -286,6 +308,48 @@
     /* Grid adjustments for dashboard */
     .dashboard-grid { grid-template-columns: repeat(3, 1fr); }
     .points-boards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* v0.63.5: iPad/tablet timeline shell must not create page-level horizontal overflow. */
+@media (min-width: 769px) and (max-width: 1180px) {
+    html.timeline-dashboard-root {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
+    body.timeline-dashboard-page {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
+    body.timeline-dashboard-page .main-content {
+        min-width: 0 !important;
+        max-width: 100vw !important;
+        box-sizing: border-box;
+        overflow-x: hidden;
+    }
+
+    body.timeline-dashboard-page .timeline-container,
+    body.timeline-dashboard-page .control-panel {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+}
+
+@media (min-width: 1024px) and (max-width: 1180px) {
+    body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header,
+    body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header,
+    body.timeline-dashboard-page[data-page-group] .sidebar-nav:not(.collapsed) ~ .header,
+    body.timeline-dashboard-page[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header,
+    body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header ~ .main-content,
+    body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .main-content,
+    body.timeline-dashboard-page[data-page-group] .sidebar-nav:not(.collapsed) ~ .header ~ .main-content,
+    body.timeline-dashboard-page[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .main-content {
+        margin-left: var(--eg-claude-sidebar-w, 248px) !important;
+        width: calc(100vw - var(--eg-claude-sidebar-w, 248px)) !important;
+        max-width: calc(100vw - var(--eg-claude-sidebar-w, 248px)) !important;
+        box-sizing: border-box;
+    }
 }
 
 /* ==========================================
@@ -545,7 +609,17 @@
         min-height: 44px;
     }
 
-    .timeline-scroll { padding: 12px; }
+    body.timeline-dashboard-page .timeline-container {
+        max-height: clamp(420px, calc(var(--eg-viewport-height, 100dvh) - 224px), 68dvh);
+        max-width: 100%;
+    }
+
+    .timeline-scroll {
+        padding: var(--timeline-scroll-pad, 12px);
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x pan-y;
+    }
     .time-scale { margin-left: 90px; }
     .line-header { width: 90px; min-width: 90px; }
     .line-name { font-size: 12px; }
@@ -881,6 +955,10 @@
    ========================================== */
 
 @media (max-width: 480px) {
+    body.timeline-dashboard-page .timeline-container {
+        max-height: clamp(390px, calc(var(--eg-viewport-height, 100dvh) - 210px), 66dvh);
+    }
+
     .main-content { padding: 8px; }
 
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -953,7 +1031,7 @@
     .program-icon .name { font-size: 8px; }
 
     /* v5.34: Timeline compact */
-    .timeline-scroll { padding: 8px; }
+    .timeline-scroll { padding: var(--timeline-scroll-pad, 8px); }
     .time-scale { margin-left: 70px; }
     .line-header { width: 70px; min-width: 70px; }
     .line-name { font-size: 11px; }
@@ -1270,6 +1348,24 @@
    ========================================== */
 @media (max-width: 480px) {
     /* Timeline: bigger booking blocks for touch */
+    .timeline-line {
+        min-height: var(--timeline-line-min-h, 54px);
+    }
+
+    .line-header {
+        padding: 8px 8px !important;
+    }
+
+    .line-header .line-name {
+        font-size: 11px;
+        line-height: 1.15;
+    }
+
+    .line-header .line-sub {
+        font-size: 8px;
+        line-height: 1.05;
+    }
+
     .booking-block {
         min-height: 36px;
         padding: 4px 6px;

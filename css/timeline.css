@@ -1035,6 +1035,7 @@ body.dragging-active {
 /* v0.56.5: timeline compact fit-screen density. */
 .timeline-container {
     max-height: clamp(430px, calc(100vh - 246px), 72vh);
+    max-height: clamp(430px, calc(var(--eg-viewport-height, 100vh) - 246px), 72vh);
     display: flex;
     flex-direction: column;
 }
@@ -1046,6 +1047,7 @@ body.dragging-active {
     padding: var(--timeline-scroll-pad, 20px);
     overflow: auto;
     scrollbar-gutter: stable both-edges;
+    touch-action: pan-x pan-y;
 }
 
 .timeline-line {
@@ -1054,6 +1056,7 @@ body.dragging-active {
 
 .timeline-container.compact {
     max-height: clamp(380px, calc(100vh - 214px), 68vh);
+    max-height: clamp(380px, calc(var(--eg-viewport-height, 100vh) - 214px), 68vh);
 }
 
 .timeline-container.compact .timeline-scroll {
@@ -1174,10 +1177,33 @@ body.dragging-active {
 @media (max-height: 760px) and (min-width: 769px) {
     .timeline-container {
         max-height: calc(100vh - 210px);
+        max-height: calc(var(--eg-viewport-height, 100vh) - 210px);
     }
 
     .timeline-container.compact {
         max-height: calc(100vh - 188px);
+        max-height: calc(var(--eg-viewport-height, 100vh) - 188px);
+    }
+}
+
+@supports (height: 100dvh) {
+    .timeline-container {
+        max-height: clamp(430px, calc(var(--eg-viewport-height, 100dvh) - 246px), 72dvh);
+    }
+
+    .timeline-container.compact {
+        max-height: clamp(380px, calc(var(--eg-viewport-height, 100dvh) - 214px), 68dvh);
+    }
+}
+
+@supports (-webkit-touch-callout: none) {
+    .timeline-container {
+        max-width: 100%;
+    }
+
+    .timeline-scroll {
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
     }
 }
 

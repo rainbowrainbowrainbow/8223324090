@@ -1131,6 +1131,25 @@ function _timelineBaseCellWidth(level, compact) {
     return level === 15 ? 50 : level === 30 ? 80 : 120;
 }
 
+function _timelineViewportWidth() {
+    const visualWidth = Number(window.visualViewport?.width || 0);
+    return Math.round(visualWidth || window.innerWidth || document.documentElement?.clientWidth || 1440);
+}
+
+function _timelineViewportHeight() {
+    const visualHeight = Number(window.visualViewport?.height || 0);
+    return Math.round(visualHeight || window.innerHeight || document.documentElement?.clientHeight || 900);
+}
+
+function syncTimelineViewportMetrics() {
+    const width = _timelineViewportWidth();
+    const height = _timelineViewportHeight();
+    const timelinePage = document.body?.classList?.contains('timeline-dashboard-page');
+    document.documentElement.classList.toggle('timeline-dashboard-root', !!timelinePage);
+    if (width > 0) document.documentElement.style.setProperty('--eg-viewport-width', `${width}px`);
+    if (height > 0) document.documentElement.style.setProperty('--eg-viewport-height', `${height}px`);
+}
+
 function _timelineActiveTimeRange() {
     if (typeof getTimeRange === 'function') {
         try {
@@ -1163,7 +1182,7 @@ function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
 
 function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding) {
     const base = _timelineBaseCellWidth(level, compact);
-    const viewportWidth = window.innerWidth || 1440;
+    const viewportWidth = _timelineViewportWidth();
     if (compact || viewportWidth <= 768) {
         const fitted = _timelineFitCellWidth(level, headerWidth, scrollPadding);
         return Math.max(18, Math.min(base, fitted || base));
@@ -1175,7 +1194,7 @@ function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding
 }
 
 function _timelineResponsiveHeaderWidth() {
-    const viewportWidth = window.innerWidth || 1440;
+    const viewportWidth = _timelineViewportWidth();
     if (viewportWidth <= 375) return 45;
     if (viewportWidth <= 480) return 70;
     if (viewportWidth <= 768) return 90;
@@ -1187,10 +1206,12 @@ function _timelineResponsiveHeaderWidth() {
 
 function applyTimelineResponsiveDensity() {
     if (typeof CONFIG === 'undefined' || !CONFIG.TIMELINE) return false;
+    syncTimelineViewportMetrics();
     const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
     const compact = !!AppState.compactMode;
+    const viewportWidth = _timelineViewportWidth();
     const nextHeaderWidth = _timelineResponsiveHeaderWidth();
-    const nextScrollPadding = compact ? ((window.innerWidth || 1440) <= 768 ? 8 : 10) : ((window.innerWidth || 1440) <= 1536 ? 14 : 20);
+    const nextScrollPadding = compact ? (viewportWidth <= 768 ? 8 : 10) : (viewportWidth <= 1536 ? 14 : 20);
     const nextCellWidth = _timelineResponsiveCellWidth(level, compact, nextHeaderWidth, nextScrollPadding);
     const nextLineHeight = compact ? (level === 15 ? 42 : level === 30 ? 48 : 54) : (level === 15 ? 64 : level === 30 ? 72 : 80);
     const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
@@ -1206,7 +1227,7 @@ function applyTimelineResponsiveDensity() {
     if (container) {
         container.classList.toggle('compact', compact);
         container.dataset.zoom = level;
-        container.dataset.timelineDensity = (window.innerWidth || 1440) <= 1536 ? 'tight' : 'regular';
+        container.dataset.timelineDensity = viewportWidth <= 1536 ? 'tight' : 'regular';
         container.dataset.fitScreen = compact ? 'true' : 'bounded';
     }
 
@@ -1218,6 +1239,7 @@ function initTimelineResponsiveResize() {
     window.__timelineResponsiveResizeBound = true;
     let resizeTimer = null;
     const handleResize = () => {
+        syncTimelineViewportMetrics();
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             const changed = applyTimelineResponsiveDensity();

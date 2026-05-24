@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.5 - CRM 63.5: iOS та iPad таймлайн
+
+### Timeline / iOS та iPad responsive hardening [codex]
+- **iPhone 11 та інші iPhone тримають мобільну геометрію** - таймлайн синхронізує `--eg-viewport-width` і `--eg-viewport-height` з `visualViewport` / `innerWidth`, тому Safari address bar не залишає старі розміри клітинок.
+- **iPad не розтягує всю сторінку вправо** - root timeline отримав `timeline-dashboard-root`, а tablet CSS ховає тільки page-level overflow; внутрішній горизонтальний скрол таймлайну лишився в `.timeline-scroll`.
+- **Touch-safe прокрутка для iOS/iPadOS** - timeline scroll має явні `touch-action`, `-webkit-overflow-scrolling` та dynamic viewport height fallback.
+- **Guardrail** - `tests/ui-check.js` перевіряє iOS/iPad viewport hardening, root class і tablet shell overflow guards.
+
+---
+
 ## v0.63.4 - CRM 63.4: Android таймлайн
 
 ### Timeline / Android responsive density [codex]

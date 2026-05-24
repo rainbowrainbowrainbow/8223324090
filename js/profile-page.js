@@ -33,6 +33,8 @@ let cabinetDecompositionSuggestions = [];
 let cabinetSuggestionTimer = null;
 let lastCabinetSuggestionKey = '';
 let lastCabinetCreatedTaskId = null;
+let profileWidgetConfig = [];
+let profileWidgetSettingsOpen = false;
 const expandedCabinetSubtaskIds = new Set();
 const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
@@ -70,6 +72,75 @@ const CABINET_TASK_CATEGORIES = [
     ['personal', 'Особисті'],
     ['improvement', 'Покращення'],
     ['checklist', 'Чек-лісти']
+];
+
+const PROFILE_COCKPIT_DEFAULT_WIDGETS = [
+    'active_tasks',
+    'today_progress',
+    'next_shift',
+    'attention',
+    'bookings_today',
+    'certificates',
+    'achievements'
+];
+
+const PROFILE_COCKPIT_WIDGETS = [
+    {
+        id: 'active_tasks',
+        group: 'priority',
+        label: 'Мої активні задачі',
+        target: '/tasks?view=my',
+        icon: '✓',
+        hint: 'Активні задачі, де ви власник або виконавець. Натисніть, щоб відкрити персональний список задач.'
+    },
+    {
+        id: 'today_progress',
+        group: 'today',
+        label: 'На сьогодні',
+        target: '/profile?tab=myday',
+        icon: '◷',
+        hint: 'Скільки задач на сьогодні вже закрито і скільки ще залишилось у вашому робочому зрізі.'
+    },
+    {
+        id: 'next_shift',
+        group: 'today',
+        label: 'Наступна зміна',
+        target: '/hr?tab=schedule',
+        icon: '⏱',
+        hint: 'Найближча запланована зміна зі staff schedule. Натисніть, щоб відкрити графік.'
+    },
+    {
+        id: 'attention',
+        group: 'priority',
+        label: 'Потребують уваги',
+        target: '/tasks?view=overdue',
+        icon: '!',
+        hint: 'Прострочені задачі з вашого персонального зрізу. Картка показується тільки коли є реальний борг.'
+    },
+    {
+        id: 'bookings_today',
+        group: 'business',
+        label: 'Бронювання сьогодні',
+        target: '/',
+        icon: '◫',
+        hint: 'Кількість активних бронювань на сьогодні з CRM timeline.'
+    },
+    {
+        id: 'certificates',
+        group: 'business',
+        label: 'Сертифікати / видачі',
+        target: '/certificates',
+        icon: '◇',
+        hint: 'Сертифікати, видані від вашого імені. Натисніть, щоб перейти до реєстру.'
+    },
+    {
+        id: 'achievements',
+        group: 'growth',
+        label: 'Досягнення',
+        target: '/profile?tab=achievements',
+        icon: '★',
+        hint: 'Ваш прогрес у досягненнях і streak. Натисніть, щоб відкрити розділ досягнень.'
+    }
 ];
 
 // ==========================================
@@ -454,6 +525,209 @@ async function loadProfileData(userId) {
     myCabinetData = results[9];
     syncCabinetPulseCounts(results[10], results[11]);
     profileSecurityData = results[12];
+    profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
+}
+
+function profileCockpitWidgetDef(id) {
+    return PROFILE_COCKPIT_WIDGETS.find(widget => widget.id === id) || null;
+}
+
+function normalizeProfileCockpitWidgets(value) {
+    const allowed = new Set(PROFILE_COCKPIT_WIDGETS.map(widget => widget.id));
+    const source = Array.isArray(value) ? value : [];
+    const selected = [];
+    source.forEach(id => {
+        const key = String(id || '').trim();
+        if (allowed.has(key) && !selected.includes(key)) selected.push(key);
+    });
+    return selected.length ? selected : [...PROFILE_COCKPIT_DEFAULT_WIDGETS];
+}
+
+function profileTodayDateString() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function profileFormatShortDate(value) {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return String(value);
+    return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+}
+
+function profileShiftValue(shift) {
+    if (!shift) return 'Зміна не призначена';
+    const day = shift.date ? profileFormatShortDate(shift.date) : 'сьогодні';
+    const time = `${shift.start || ''}${shift.end ? ' - ' + shift.end : ''}`.trim();
+    return `${day}${time ? ' · ' + time : ''}`;
+}
+
+function profileShiftMeta(shift) {
+    if (!shift) return 'Сьогодні без зміни';
+    return shift.position || shift.department || shift.status || 'графік роботи';
+}
+
+function profileOverviewHref(target) {
+    if (target === '/') return `/?date=${encodeURIComponent(profileTodayDateString())}`;
+    return target || '/profile';
+}
+
+function profileOverviewWidgetData(id) {
+    const p = profileData || {};
+    const tasks = p.tasks || {};
+    const day = p.dayProgress || {};
+    const activeTasks = Number(tasks.assigned || 0) + Number(tasks.in_progress || 0);
+    const overdueCount = Number(tasks.overdue || 0);
+    const completedToday = Number(day.tasksDoneToday || 0);
+    const remainingToday = Number(day.tasksRemaining || 0);
+    const todayTotal = completedToday + remainingToday;
+    const completedAch = myAchievements.filter(a => a.completed);
+    const totalAch = myAchievements.filter(a => !a.isSecret || a.completed).length;
+    const nextShift = p.nextShift || null;
+    const streakCurrent = p.streak?.current || p.currentStreak || 0;
+    const def = profileCockpitWidgetDef(id);
+    if (!def) return null;
+    const base = {
+        ...def,
+        href: profileOverviewHref(def.target),
+        tone: '',
+        meta: '',
+        value: '0',
+        hidden: false
+    };
+    switch (id) {
+        case 'active_tasks':
+            return {
+                ...base,
+                value: activeTasks,
+                meta: overdueCount > 0 ? `${overdueCount} прострочено` : 'у фокусі',
+                tone: overdueCount > 0 ? 'warning' : 'focus'
+            };
+        case 'today_progress':
+            return {
+                ...base,
+                value: `${completedToday}/${todayTotal || 0}`,
+                meta: todayTotal ? 'закрито / всього' : 'задач на сьогодні немає',
+                tone: todayTotal > 0 && completedToday >= todayTotal ? 'ok' : 'focus'
+            };
+        case 'next_shift':
+            return {
+                ...base,
+                value: profileShiftValue(nextShift),
+                meta: profileShiftMeta(nextShift),
+                tone: nextShift ? 'schedule' : 'muted'
+            };
+        case 'attention':
+            return {
+                ...base,
+                value: overdueCount,
+                meta: overdueCount > 0 ? 'відкрити борги' : 'немає прострочених',
+                tone: overdueCount > 0 ? 'danger' : 'ok',
+                hidden: overdueCount <= 0
+            };
+        case 'bookings_today':
+            return {
+                ...base,
+                value: Number(day.bookingsToday || 0),
+                meta: 'timeline сьогодні',
+                tone: 'business'
+            };
+        case 'certificates':
+            return {
+                ...base,
+                value: Number(p.certificates?.total || 0),
+                meta: 'видано від вашого імені',
+                tone: 'business'
+            };
+        case 'achievements':
+            return {
+                ...base,
+                value: `${completedAch.length}/${totalAch || 0}`,
+                meta: streakCurrent ? `${streakCurrent} днів streak` : 'прогрес і нагороди',
+                tone: 'growth'
+            };
+        default:
+            return base;
+    }
+}
+
+function profileVisibleCockpitWidgets(options = {}) {
+    const limit = Number(options.limit || 0);
+    const selected = normalizeProfileCockpitWidgets(profileWidgetConfig);
+    const widgets = selected
+        .map(profileOverviewWidgetData)
+        .filter(Boolean)
+        .filter(widget => !widget.hidden);
+    const fallback = PROFILE_COCKPIT_DEFAULT_WIDGETS.map(profileOverviewWidgetData).filter(Boolean).filter(widget => !widget.hidden);
+    const usable = widgets.length ? widgets : (fallback.length ? fallback : [profileOverviewWidgetData('active_tasks')].filter(Boolean));
+    return limit > 0 ? usable.slice(0, limit) : usable;
+}
+
+function renderProfileCockpitWidget(widget, context = 'overview') {
+    const hint = widget.hint || '';
+    const classes = ['profile-cockpit-widget', `profile-cockpit-widget--${widget.group}`, `profile-cockpit-widget--${widget.tone || 'neutral'}`].join(' ');
+    return `
+        <article class="${classes}" role="link" tabindex="0" data-profile-widget-target="${escapeHtml(widget.href)}" data-profile-widget-id="${escapeHtml(widget.id)}" data-profile-widget-context="${escapeHtml(context)}" aria-label="${escapeHtml(`${widget.label}: ${widget.value}. ${hint}`)}">
+            <div class="profile-cockpit-widget-top">
+                <span class="profile-cockpit-widget-icon">${escapeHtml(widget.icon || '•')}</span>
+                <span class="profile-cockpit-widget-label">${escapeHtml(widget.label)}</span>
+                <button type="button" class="profile-cockpit-widget-info" data-profile-tooltip-toggle aria-expanded="false" aria-label="Пояснення віджета">i</button>
+            </div>
+            <b>${escapeHtml(widget.value)}</b>
+            <small>${escapeHtml(widget.meta || '')}</small>
+            <span class="profile-cockpit-tooltip" role="tooltip">${escapeHtml(hint)} ${widget.href ? 'Перехід: ' + escapeHtml(widget.href) : ''}</span>
+        </article>`;
+}
+
+function renderProfileCockpitWidgetStrip(options = {}) {
+    const context = options.context || 'overview';
+    const widgets = profileVisibleCockpitWidgets({ limit: options.limit || 0 });
+    return `
+        <div class="profile-cockpit-strip profile-cockpit-strip--${escapeHtml(context)}" data-profile-cockpit-strip="${escapeHtml(context)}">
+            ${widgets.map(widget => renderProfileCockpitWidget(widget, context)).join('')}
+        </div>`;
+}
+
+function renderProfileWidgetSettingsPanel() {
+    if (!isOwnProfile) return '';
+    const selected = normalizeProfileCockpitWidgets(profileWidgetConfig);
+    const selectedSet = new Set(selected);
+    const sorted = [
+        ...selected.map(profileCockpitWidgetDef).filter(Boolean),
+        ...PROFILE_COCKPIT_WIDGETS.filter(widget => !selectedSet.has(widget.id))
+    ];
+    const body = sorted.map((widget, index) => {
+        const checked = selectedSet.has(widget.id);
+        return `
+            <div class="profile-widget-config-item ${checked ? 'is-active' : ''}" data-profile-widget-config-item data-widget-id="${escapeHtml(widget.id)}">
+                <label>
+                    <input type="checkbox" ${checked ? 'checked' : ''} data-profile-widget-config-check>
+                    <span>
+                        <b>${escapeHtml(widget.label)}</b>
+                        <small>${escapeHtml(widget.hint)}</small>
+                    </span>
+                </label>
+                <div class="profile-widget-config-actions">
+                    <button type="button" data-profile-widget-move="up" ${index === 0 ? 'disabled' : ''} aria-label="Підняти">↑</button>
+                    <button type="button" data-profile-widget-move="down" ${index === sorted.length - 1 ? 'disabled' : ''} aria-label="Опустити">↓</button>
+                </div>
+            </div>`;
+    }).join('');
+    return `
+        <section class="profile-widget-config-panel ${profileWidgetSettingsOpen ? 'is-open' : ''}" id="profileWidgetConfigPanel" ${profileWidgetSettingsOpen ? '' : 'hidden'}>
+            <div class="profile-widget-config-head">
+                <div>
+                    <span class="profile-kicker">Налаштування cockpit</span>
+                    <h3>Віджети огляду</h3>
+                    <p>Увімкніть потрібні картки й підніміть найважливіші вгору. Порядок збережеться у вашому профілі.</p>
+                </div>
+                <button type="button" data-profile-widget-config-reset>Скинути</button>
+            </div>
+            <div class="profile-widget-config-list">${body}</div>
+            <div class="profile-widget-config-footer">
+                <button type="button" class="profile-widget-config-save" data-profile-widget-config-save>Зберегти набір</button>
+            </div>
+        </section>`;
 }
 
 // ==========================================
@@ -470,16 +744,6 @@ function renderProfile() {
     const username = profileUsername(p);
     const role = profileRole(p);
     const roleLabel = profileRoleLabel(role);
-    const completedAch = myAchievements.filter(a => a.completed);
-    const totalAch = myAchievements.filter(a => !a.isSecret || a.completed).length;
-    const activeTasks = Number(p.tasks?.assigned || 0) + Number(p.tasks?.in_progress || 0);
-    const overdueTasks = Number(p.tasks?.overdue || 0);
-    const doneToday = Number(p.dayProgress?.tasksDoneToday || 0);
-    const remainingToday = Number(p.dayProgress?.tasksRemaining || 0);
-    const shift = p.todayShift;
-    const shiftLabel = shift
-        ? `${escapeHtml(shift.start || '')}${shift.end ? ' - ' + escapeHtml(shift.end) : ''}`
-        : 'Сьогодні без зміни';
 
     // Active title
     const activeTitleDef = titlesData?.titles?.find(t => t.code === titlesData.activeTitle);
@@ -512,24 +776,7 @@ function renderProfile() {
                 </div>
             </div>
 
-            <div class="profile-work-summary">
-                <div class="profile-work-stat ${overdueTasks > 0 ? 'danger' : ''}">
-                    <b>${activeTasks}</b>
-                    <span>активних задач</span>
-                </div>
-                <div class="profile-work-stat">
-                    <b>${doneToday}/${doneToday + remainingToday}</b>
-                    <span>сьогодні</span>
-                </div>
-                <div class="profile-work-stat">
-                    <b>${completedAch.length}/${totalAch || 0}</b>
-                    <span>досягнення</span>
-                </div>
-                <div class="profile-work-stat wide">
-                    <b>${shiftLabel}</b>
-                    <span>${shift?.department || shift?.position || 'робочий графік'}</span>
-                </div>
-            </div>
+            ${renderProfileCockpitWidgetStrip({ context: 'header', limit: 4 })}
         </div>
 
         <!-- TABS -->
@@ -613,33 +860,23 @@ function renderTabContent() {
 function renderWorkProfileOverview() {
     const p = profileData || {};
     const tasks = p.tasks || {};
-    const day = p.dayProgress || {};
-    const shift = p.todayShift;
     const myTasks = Array.isArray(p.myTasks) ? p.myTasks : [];
     const overdue = Array.isArray(tasks.overdueList) ? tasks.overdueList : [];
     const upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
     const recentActivity = Array.isArray(p.recentActivity) ? p.recentActivity.slice(0, 6) : [];
-    const pointTotal = p.points?.permanentTotal || p.points?.permanentThisMonth || walletData?.coins || 0;
-    const streakCurrent = p.streak?.current || p.currentStreak || 0;
-    const completedToday = Number(day.tasksDoneToday || 0);
-    const remainingToday = Number(day.tasksRemaining || 0);
 
     return `
         <div class="profile-work-overview">
             <section class="profile-work-panel profile-work-panel-primary">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Сьогодні</span>
-                        <h2>Робочий стан</h2>
+                        <span class="profile-kicker">Cockpit</span>
+                        <h2>Особистий фокус</h2>
                     </div>
-                    <a href="/tasks?view=today">Відкрити задачі</a>
+                    ${isOwnProfile ? '<button type="button" class="profile-widget-config-toggle" data-profile-widget-config-toggle>Налаштувати</button>' : '<a href="/tasks?view=today">Відкрити задачі</a>'}
                 </div>
-                <div class="profile-status-grid">
-                    ${profileOverviewMetric('Задачі сьогодні', `${completedToday}/${completedToday + remainingToday}`, 'закрито / всього')}
-                    ${profileOverviewMetric('У роботі', Number(tasks.in_progress || 0), 'активний execution')}
-                    ${profileOverviewMetric('Прострочено', Number(tasks.overdue || 0), 'потребує уваги', Number(tasks.overdue || 0) > 0 ? 'danger' : 'ok')}
-                    ${profileOverviewMetric('Зміна', shift ? `${shift.start || ''}${shift.end ? ' - ' + shift.end : ''}` : 'Без зміни', shift?.position || shift?.department || 'графік')}
-                </div>
+                ${renderProfileCockpitWidgetStrip({ context: 'overview' })}
+                ${renderProfileWidgetSettingsPanel()}
             </section>
 
             <section class="profile-work-panel profile-work-panel-tasks">
@@ -674,14 +911,15 @@ function renderWorkProfileOverview() {
             <section class="profile-work-panel profile-work-panel-compact profile-work-panel-progress">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Поведінка</span>
-                        <h2>Прогрес</h2>
+                        <span class="profile-kicker">Маршрути</span>
+                        <h2>Швидкі переходи</h2>
                     </div>
                 </div>
-                <div class="profile-compact-metrics">
-                    ${profileOverviewMetric('Баланс', formatCoins(pointTotal), 'внутрішні бали')}
-                    ${profileOverviewMetric('Streak', streakCurrent, 'днів активності')}
-                    ${profileOverviewMetric('Бронювання', Number(p.bookings?.total || 0), 'створено')}
+                <div class="profile-quick-link-stack">
+                    <a href="/profile?tab=myday">Мій день <span>сьогоднішній зріз</span></a>
+                    <a href="/tasks?view=my">Мої задачі <span>повний список</span></a>
+                    <a href="/hr?tab=schedule">Графік <span>зміни команди</span></a>
+                    <a href="/certificates">Сертифікати <span>реєстр видач</span></a>
                 </div>
             </section>
 
@@ -3326,16 +3564,143 @@ function renderMiniAvatar(equipped, name) {
 // ==========================================
 // ACTIONS
 // ==========================================
+function closeProfileWidgetTooltips(except = null) {
+    document.querySelectorAll('.profile-cockpit-widget.is-tooltip-open').forEach(card => {
+        if (card === except) return;
+        card.classList.remove('is-tooltip-open');
+        card.querySelector('[data-profile-tooltip-toggle]')?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function navigateProfileWidget(target) {
+    const href = String(target || '').trim();
+    if (!href) return;
+    const url = new URL(href, window.location.origin);
+    if (url.pathname === '/profile' && url.searchParams.get('tab')) {
+        const tab = url.searchParams.get('tab');
+        history.replaceState(null, '', `/profile?tab=${encodeURIComponent(tab)}`);
+        switchTab(tab);
+        return;
+    }
+    window.location.href = url.pathname + url.search + url.hash;
+}
+
+function moveProfileWidgetConfigItem(item, direction) {
+    if (!item) return;
+    const list = item.closest('.profile-widget-config-list');
+    if (!list) return;
+    if (direction === 'up' && item.previousElementSibling) {
+        list.insertBefore(item, item.previousElementSibling);
+    } else if (direction === 'down' && item.nextElementSibling) {
+        list.insertBefore(item.nextElementSibling, item);
+    }
+    Array.from(list.querySelectorAll('[data-profile-widget-config-item]')).forEach((row, index, rows) => {
+        row.querySelector('[data-profile-widget-move="up"]')?.toggleAttribute('disabled', index === 0);
+        row.querySelector('[data-profile-widget-move="down"]')?.toggleAttribute('disabled', index === rows.length - 1);
+    });
+}
+
+function readProfileWidgetConfigFromPanel() {
+    const panel = document.getElementById('profileWidgetConfigPanel');
+    if (!panel) return normalizeProfileCockpitWidgets(profileWidgetConfig);
+    const ids = [];
+    panel.querySelectorAll('[data-profile-widget-config-item]').forEach(row => {
+        const checked = row.querySelector('[data-profile-widget-config-check]')?.checked;
+        const id = row.dataset.widgetId;
+        if (checked && id) ids.push(id);
+    });
+    return normalizeProfileCockpitWidgets(ids);
+}
+
+async function saveProfileWidgetConfig(ids = null) {
+    const widgets = normalizeProfileCockpitWidgets(ids || readProfileWidgetConfigFromPanel());
+    const result = await apiPatch('/auth/profile/cockpit-widgets', { widgets });
+    if (!result?.success) {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося зберегти віджети профілю', 'error');
+        return;
+    }
+    profileWidgetConfig = normalizeProfileCockpitWidgets(result.widgets || widgets);
+    if (profileData) {
+        profileData.profilePreferences = {
+            ...(profileData.profilePreferences || {}),
+            cockpitWidgets: profileWidgetConfig
+        };
+    }
+    profileWidgetSettingsOpen = false;
+    renderProfile();
+    if (typeof showNotification === 'function') showNotification('Віджети огляду збережено', 'success');
+}
+
 function attachProfileListeners() {
     if (!cabinetSnoozeOutsideBound) {
         cabinetSnoozeOutsideBound = true;
         document.addEventListener('click', event => {
             if (!event.target.closest('.cabinet-task-actions, .cabinet-reschedule-wrap')) closeCabinetSnoozeMenus();
+            if (!event.target.closest('.profile-cockpit-widget')) closeProfileWidgetTooltips();
         });
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') closeCabinetSnoozeMenus();
+            if (event.key === 'Escape') closeProfileWidgetTooltips();
         });
     }
+
+    document.querySelectorAll('[data-profile-widget-target]').forEach(card => {
+        if (card.dataset.profileWidgetBound === 'true') return;
+        card.dataset.profileWidgetBound = 'true';
+        card.addEventListener('click', event => {
+            if (event.target.closest('[data-profile-tooltip-toggle]')) return;
+            navigateProfileWidget(card.dataset.profileWidgetTarget);
+        });
+        card.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            if (event.target.closest('[data-profile-tooltip-toggle]')) return;
+            event.preventDefault();
+            navigateProfileWidget(card.dataset.profileWidgetTarget);
+        });
+    });
+
+    document.querySelectorAll('[data-profile-tooltip-toggle]').forEach(button => {
+        if (button.dataset.profileTooltipBound === 'true') return;
+        button.dataset.profileTooltipBound = 'true';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const card = button.closest('.profile-cockpit-widget');
+            const open = !card?.classList.contains('is-tooltip-open');
+            closeProfileWidgetTooltips(open ? card : null);
+            card?.classList.toggle('is-tooltip-open', open);
+            button.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+    });
+
+    document.querySelectorAll('[data-profile-widget-config-toggle]').forEach(button => {
+        if (button.dataset.profileWidgetConfigBound === 'true') return;
+        button.dataset.profileWidgetConfigBound = 'true';
+        button.addEventListener('click', () => {
+            profileWidgetSettingsOpen = !profileWidgetSettingsOpen;
+            const tabContent = document.getElementById('tabContent');
+            if (tabContent) {
+                tabContent.innerHTML = renderTabContent();
+                attachProfileListeners();
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-profile-widget-move]').forEach(button => {
+        if (button.dataset.profileWidgetMoveBound === 'true') return;
+        button.dataset.profileWidgetMoveBound = 'true';
+        button.addEventListener('click', () => moveProfileWidgetConfigItem(button.closest('[data-profile-widget-config-item]'), button.dataset.profileWidgetMove));
+    });
+
+    document.querySelectorAll('[data-profile-widget-config-check]').forEach(input => {
+        if (input.dataset.profileWidgetInputBound === 'true') return;
+        input.dataset.profileWidgetInputBound = 'true';
+        input.addEventListener('change', () => {
+            input.closest('[data-profile-widget-config-item]')?.classList.toggle('is-active', input.checked);
+        });
+    });
+
+    document.querySelector('[data-profile-widget-config-save]')?.addEventListener('click', () => saveProfileWidgetConfig());
+    document.querySelector('[data-profile-widget-config-reset]')?.addEventListener('click', () => saveProfileWidgetConfig(PROFILE_COCKPIT_DEFAULT_WIDGETS));
 
     document.querySelectorAll('[data-cabinet-task-action]').forEach(button => {
         if (button.dataset.cabinetActionBound === 'true') return;

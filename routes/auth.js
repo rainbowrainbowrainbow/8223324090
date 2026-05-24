@@ -31,6 +31,24 @@ const {
 } = require('../services/accountSecurity');
 
 const log = createLogger('Auth');
+const PROFILE_COCKPIT_WIDGET_IDS = Object.freeze([
+    'active_tasks',
+    'today_progress',
+    'next_shift',
+    'attention',
+    'bookings_today',
+    'certificates',
+    'achievements'
+]);
+const DEFAULT_PROFILE_COCKPIT_WIDGETS = Object.freeze([
+    'active_tasks',
+    'today_progress',
+    'next_shift',
+    'attention',
+    'bookings_today',
+    'certificates',
+    'achievements'
+]);
 
 const profileAvatarUpload = multer({
     storage: multer.memoryStorage(),
@@ -62,6 +80,30 @@ function userAvatarPayload(row = {}) {
         avatar_color: row.avatar_color || null,
         avatarColor: row.avatar_color || null
     };
+}
+
+function parseJsonValue(value, fallback) {
+    if (value && typeof value === 'object') return value;
+    if (typeof value !== 'string') return fallback;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return fallback;
+    }
+}
+
+function normalizeProfileCockpitWidgets(value) {
+    const source = parseJsonValue(value, value);
+    const rawList = Array.isArray(source)
+        ? source
+        : (Array.isArray(source?.widgets) ? source.widgets : []);
+    const seen = new Set();
+    rawList.forEach(id => {
+        const key = String(id || '').trim();
+        if (PROFILE_COCKPIT_WIDGET_IDS.includes(key)) seen.add(key);
+    });
+    const selected = Array.from(seen);
+    return selected.length ? selected : [...DEFAULT_PROFILE_COCKPIT_WIDGETS];
 }
 
 function profileTaskOwnerWhere(user, alias = '') {
@@ -206,7 +248,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // User info (including telegram status)
         const userResult = await pool.query(
             `SELECT u.id, u.username, u.name, u.role, u.created_at, u.last_seen_at, u.password_changed_at, u.session_revoked_at, u.telegram_chat_id,
-                    u.avatar_emoji, u.avatar_color, upe.display_name, upe.bio, upe.avatar_url
+                    u.avatar_emoji, u.avatar_color, upe.display_name, upe.bio, upe.avatar_url, upe.profile_cockpit_widgets
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1`,
@@ -411,6 +453,25 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  FROM tasks WHERE ${ownerWhere}
                  AND (date = $${ownerParams.length + 1} OR (deadline IS NOT NULL AND deadline::date = CURRENT_DATE) OR date IS NULL)`,
                 [...ownerParams, today]
+            ),
+            // 23: Next scheduled working shift for this employee
+            pool.query(
+                `SELECT ss.date, ss.shift_start, ss.shift_end, ss.status, ss.note, s.name, s.department, s.position
+                 FROM staff_schedule ss JOIN staff s ON ss.staff_id = s.id
+                 WHERE s.name = $1
+                   AND ss.date::date >= $2::date
+                   AND COALESCE(ss.status, 'working') NOT IN ('day_off', 'vacation', 'sick', 'absent', 'no_show')
+                   AND ss.shift_start IS NOT NULL
+                 ORDER BY ss.date::date ASC, ss.shift_start ASC
+                 LIMIT 1`,
+                [user.name, today]
+            ),
+            // 24: Certificate total for profile cockpit, not just the recent list size
+            pool.query(
+                `SELECT COUNT(*)::int AS total
+                 FROM certificates
+                 WHERE issued_by_name = $1`,
+                [username]
             )
         ]);
 
@@ -497,6 +558,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 status: r.status, validUntil: r.valid_until, usedAt: r.used_at
             }));
         }
+        const certTotalR = get(24);
+        if (certTotalR && certTotalR.rows[0]) {
+            certificates.total = Number(certTotalR.rows[0].total || 0);
+        }
 
         // Recent activity
         const histR = get(11);
@@ -540,12 +605,24 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // Today's shift
         const shiftR = get(15);
         const todayShift = shiftR && shiftR.rows.length > 0 ? {
+            date: today,
             start: shiftR.rows[0].shift_start,
             end: shiftR.rows[0].shift_end,
             status: shiftR.rows[0].status,
             note: shiftR.rows[0].note,
             department: shiftR.rows[0].department,
             position: shiftR.rows[0].position
+        } : null;
+
+        const nextShiftR = get(23);
+        const nextShift = nextShiftR && nextShiftR.rows.length > 0 ? {
+            date: nextShiftR.rows[0].date,
+            start: nextShiftR.rows[0].shift_start,
+            end: nextShiftR.rows[0].shift_end,
+            status: nextShiftR.rows[0].status,
+            note: nextShiftR.rows[0].note,
+            department: nextShiftR.rows[0].department,
+            position: nextShiftR.rows[0].position
         } : null;
 
         // Achievements
@@ -614,11 +691,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
             certificates,
             recentActivity,
             todayShift,
+            nextShift,
             achievements: unlockedAchievements,
             streak,
             deltas,
             team: isAdminRole ? team : [],
             dayProgress,
+            profilePreferences: {
+                cockpitWidgets: normalizeProfileCockpitWidgets(user.profile_cockpit_widgets)
+            },
             showRevenue: isAdminRole
         });
     } catch (err) {
@@ -685,6 +766,30 @@ router.patch('/profile/avatar', authenticateToken, async (req, res) => {
         });
     } catch (err) {
         log.error('Update profile avatar error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.patch('/profile/cockpit-widgets', authenticateToken, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username) return res.status(401).json({ error: 'Unauthenticated' });
+        const widgets = normalizeProfileCockpitWidgets(req.body?.widgets);
+        const { rows: [profile] } = await pool.query(
+            `INSERT INTO user_profiles_ext (username, profile_cockpit_widgets)
+             VALUES ($1, $2::jsonb)
+             ON CONFLICT (username)
+             DO UPDATE SET profile_cockpit_widgets = EXCLUDED.profile_cockpit_widgets,
+                           updated_at = NOW()
+             RETURNING profile_cockpit_widgets`,
+            [username, JSON.stringify(widgets)]
+        );
+        res.json({
+            success: true,
+            widgets: normalizeProfileCockpitWidgets(profile?.profile_cockpit_widgets)
+        });
+    } catch (err) {
+        log.error('Profile cockpit widget preferences update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

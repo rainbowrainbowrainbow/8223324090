@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.15 - CRM 63.15: Профільний cockpit огляду
+
+### Профіль / Overview cockpit [codex]
+- **Огляд став особистим cockpit** - top strip і вкладка `Огляд` тепер рендерять згруповані картки фокусу, сьогоднішнього виконання, графіка, бронювань, сертифікатів і досягнень.
+- **Прибрано розмитий "Робочий стан"** - головний блок перейменовано в `Особистий фокус`, а слабкий shift-state замінено на конкретну картку `Наступна зміна`.
+- **Next shift читає реальний staff schedule** - `/api/auth/profile` повертає `nextShift`, відфільтрований від day-off/vacation/sick станів, а сертифікати отримали точний total-запит замість розміру recent-list.
+- **Віджети стали клікабельними й пояснюваними** - кожна картка має hover/focus tooltip, touch-кнопку `i` і веде у відповідний CRM-розділ: tasks, my day, HR schedule, timeline, certificates або achievements.
+- **Набір віджетів налаштовується** - додано `user_profiles_ext.profile_cockpit_widgets` і endpoint `PATCH /api/auth/profile/cockpit-widgets`, щоб користувач міг зберігати видимість і порядок карток.
+- **Guardrail** - UI smoke перевіряє configurable cockpit widgets, tooltip contract, відсутність старого `Робочий стан` і backend-поля `profile_cockpit_widgets` / `nextShift`.
+
+---
+
 ## v0.63.14 - CRM 63.14: Банкетні зв'язки таймлайну
 
 ### Таймлайн / банкетні зв'язки та toolbar [codex]

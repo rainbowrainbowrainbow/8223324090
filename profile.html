@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.14">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.14">
+    <link rel="stylesheet" href="css/base.css?v=0.63.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.15">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.15">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1202,6 +1202,277 @@
             letter-spacing: 0.04em;
         }
 
+        .profile-cockpit-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .profile-cockpit-strip--header {
+            align-self: stretch;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .profile-cockpit-strip--overview {
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px;
+        }
+
+        .profile-cockpit-widget {
+            min-width: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 13px 14px;
+            border-radius: 14px;
+            background:
+                linear-gradient(145deg, rgba(255,255,255,0.88), rgba(241,245,249,0.84)),
+                #f8fafc;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
+            cursor: pointer;
+            outline: none;
+            overflow: visible;
+            transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+        }
+
+        .profile-cockpit-widget::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            top: 0;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(16, 185, 129, 0.76), transparent);
+            opacity: 0.55;
+        }
+
+        .profile-cockpit-widget:hover,
+        .profile-cockpit-widget:focus-visible {
+            transform: translateY(-1px);
+            border-color: rgba(16, 185, 129, 0.34);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 12px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .profile-cockpit-widget--danger {
+            background:
+                linear-gradient(145deg, rgba(127, 29, 29, 0.12), rgba(254, 242, 242, 0.78)),
+                #fff7ed;
+            border-color: rgba(248, 113, 113, 0.36);
+        }
+
+        .profile-cockpit-widget--ok {
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.10), rgba(236, 253, 245, 0.84));
+            border-color: rgba(16, 185, 129, 0.24);
+        }
+
+        .profile-cockpit-widget--schedule {
+            background: linear-gradient(145deg, rgba(59, 130, 246, 0.10), rgba(239, 246, 255, 0.88));
+            border-color: rgba(59, 130, 246, 0.22);
+        }
+
+        .profile-cockpit-widget-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .profile-cockpit-widget-icon {
+            flex: 0 0 auto;
+            width: 24px;
+            height: 24px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(16, 185, 129, 0.10);
+            color: #047857;
+            font-size: 13px;
+            font-weight: 900;
+        }
+
+        .profile-cockpit-widget-label {
+            flex: 1;
+            min-width: 0;
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-cockpit-widget-info {
+            flex: 0 0 auto;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            background: rgba(255,255,255,0.72);
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .profile-cockpit-widget b {
+            display: block;
+            color: var(--gray-900);
+            font-size: clamp(18px, 1.35vw, 24px);
+            line-height: 1.14;
+            font-weight: 900;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .profile-cockpit-widget small {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .profile-cockpit-tooltip {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: calc(100% + 8px);
+            z-index: var(--z-tooltip, 51000);
+            display: block;
+            padding: 9px 10px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.95);
+            color: #F8FAFC;
+            font-size: 12px;
+            line-height: 1.35;
+            box-shadow: 0 14px 28px rgba(15,23,42,0.22);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(4px);
+            pointer-events: none;
+            transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+        }
+
+        .profile-cockpit-widget:hover .profile-cockpit-tooltip,
+        .profile-cockpit-widget:focus-visible .profile-cockpit-tooltip,
+        .profile-cockpit-widget.is-tooltip-open .profile-cockpit-tooltip {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .profile-widget-config-toggle,
+        .profile-widget-config-head button,
+        .profile-widget-config-save,
+        .profile-widget-config-actions button {
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            background: rgba(255,255,255,0.78);
+            color: var(--gray-700);
+            border-radius: 999px;
+            padding: 7px 11px;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .profile-widget-config-panel {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(248, 250, 252, 0.88);
+            border: 1px dashed rgba(148, 163, 184, 0.36);
+        }
+
+        .profile-widget-config-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .profile-widget-config-head h3 {
+            margin: 2px 0 4px;
+            font-size: 16px;
+            color: var(--gray-900);
+        }
+
+        .profile-widget-config-head p {
+            margin: 0;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.45;
+        }
+
+        .profile-widget-config-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .profile-widget-config-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 12px;
+            background: var(--white);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+        }
+
+        .profile-widget-config-item label {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .profile-widget-config-item b,
+        .profile-widget-config-item small {
+            display: block;
+        }
+
+        .profile-widget-config-item b {
+            color: var(--gray-800);
+            font-size: 13px;
+        }
+
+        .profile-widget-config-item small {
+            color: var(--gray-500);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        .profile-widget-config-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .profile-widget-config-actions button {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+        }
+
+        .profile-widget-config-footer {
+            margin-top: 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .profile-widget-config-save {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
         .profile-work-tabs {
             margin-bottom: 18px;
         }
@@ -1388,6 +1659,39 @@
             font-size: 13px;
             font-weight: 700;
             text-align: center;
+        }
+
+        .profile-quick-link-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .profile-quick-link-stack a {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 11px 12px;
+            border-radius: 12px;
+            background: var(--gray-50);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            color: var(--gray-800);
+            font-size: 13px;
+            font-weight: 900;
+            text-decoration: none;
+        }
+
+        .profile-quick-link-stack a:hover {
+            border-color: rgba(16, 185, 129, 0.30);
+            color: var(--primary);
+        }
+
+        .profile-quick-link-stack span {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+            text-align: right;
         }
 
         .profile-settings-shell {
@@ -1824,6 +2128,10 @@
         body.dark-mode .profile-work-panel h2,
         body.dark-mode .profile-panel-head h2,
         body.dark-mode .profile-work-stat b,
+        body.dark-mode .profile-cockpit-widget b,
+        body.dark-mode .profile-widget-config-head h3,
+        body.dark-mode .profile-widget-config-item b,
+        body.dark-mode .profile-quick-link-stack a,
         body.dark-mode .profile-overview-metric b,
         body.dark-mode .profile-task-row b,
         body.dark-mode .profile-activity-row b,
@@ -1840,6 +2148,11 @@
         }
 
         body.dark-mode .profile-work-stat span,
+        body.dark-mode .profile-cockpit-widget-label,
+        body.dark-mode .profile-cockpit-widget small,
+        body.dark-mode .profile-widget-config-head p,
+        body.dark-mode .profile-widget-config-item small,
+        body.dark-mode .profile-quick-link-stack span,
         body.dark-mode .profile-overview-metric small,
         body.dark-mode .profile-task-row span,
         body.dark-mode .profile-task-row small,
@@ -1875,6 +2188,10 @@
         }
 
         body.dark-mode .profile-work-stat,
+        body.dark-mode .profile-cockpit-widget,
+        body.dark-mode .profile-widget-config-panel,
+        body.dark-mode .profile-widget-config-item,
+        body.dark-mode .profile-quick-link-stack a,
         body.dark-mode .profile-overview-metric,
         body.dark-mode .profile-task-row,
         body.dark-mode .profile-activity-row,
@@ -1894,6 +2211,7 @@
         }
 
         body.dark-mode .profile-work-stat.danger,
+        body.dark-mode .profile-cockpit-widget--danger,
         body.dark-mode .profile-overview-metric.danger,
         body.dark-mode .profile-task-row.is-overdue,
         body.dark-mode .profile-security-metric.danger {
@@ -1902,9 +2220,30 @@
         }
 
         body.dark-mode .profile-overview-metric.ok,
+        body.dark-mode .profile-cockpit-widget--ok,
         body.dark-mode .profile-security-metric.ok {
             background: rgba(6, 78, 59, 0.30);
             border-color: rgba(52, 211, 153, 0.28);
+        }
+
+        body.dark-mode .profile-cockpit-widget--schedule {
+            background: rgba(30, 64, 175, 0.28);
+            border-color: rgba(96, 165, 250, 0.28);
+        }
+
+        body.dark-mode .profile-cockpit-widget-info,
+        body.dark-mode .profile-widget-config-toggle,
+        body.dark-mode .profile-widget-config-head button,
+        body.dark-mode .profile-widget-config-actions button {
+            background: rgba(15, 23, 42, 0.72);
+            border-color: var(--profile-dark-border);
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-widget-config-save {
+            background: #10B981;
+            border-color: #10B981;
+            color: #052e1f;
         }
 
         body.dark-mode .profile-primary-tabs {
@@ -2788,6 +3127,10 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
+            .profile-cockpit-strip--header {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
             .profile-security-grid,
             .profile-security-columns {
                 grid-template-columns: 1fr;
@@ -2826,10 +3169,17 @@
             }
 
             .profile-work-summary,
+            .profile-cockpit-strip,
             .profile-status-grid,
             .profile-compact-metrics,
             .profile-work-overview {
                 grid-template-columns: 1fr;
+            }
+
+            .profile-widget-config-list,
+            .profile-widget-config-head {
+                grid-template-columns: 1fr;
+                display: grid;
             }
 
             .profile-work-panel-primary,
@@ -3041,16 +3391,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.14"></script>
-    <script src="js/notification.js?v=0.63.14"></script>
-    <script src="js/api.js?v=0.63.14"></script>
-    <script src="js/auth.js?v=0.63.14"></script>
-    <script src="js/components/sidebar.js?v=0.63.14"></script>
+    <script src="js/config.js?v=0.63.15"></script>
+    <script src="js/notification.js?v=0.63.15"></script>
+    <script src="js/api.js?v=0.63.15"></script>
+    <script src="js/auth.js?v=0.63.15"></script>
+    <script src="js/components/sidebar.js?v=0.63.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.63.14"></script>
-    <script src="js/achievement-popup.js?v=0.63.14"></script>
-    <script src="js/task-create.js?v=0.63.14"></script>
-    <script src="js/profile-page.js?v=0.63.14"></script>
-    <script src="js/alerts.js?v=0.63.14"></script>
+    <script src="js/ui.js?v=0.63.15"></script>
+    <script src="js/achievement-popup.js?v=0.63.15"></script>
+    <script src="js/task-create.js?v=0.63.15"></script>
+    <script src="js/profile-page.js?v=0.63.15"></script>
+    <script src="js/alerts.js?v=0.63.15"></script>
 </body>
 </html>

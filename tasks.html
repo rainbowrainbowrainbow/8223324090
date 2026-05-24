@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.32">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.32">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.32">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.32">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.32">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.32">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.32">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.32">
+    <link rel="stylesheet" href="css/base.css?v=0.63.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -798,6 +798,50 @@
             font-size: 12px;
             font-weight: 700;
         }
+        .task-overdue-wrap {
+            position: relative;
+            display: inline-flex;
+        }
+        .task-overdue-trigger {
+            border: 1px solid rgba(244,63,94,0.28);
+            cursor: pointer;
+            font: inherit;
+        }
+        .task-overdue-trigger[aria-expanded="true"] {
+            box-shadow: 0 0 0 3px rgba(244,63,94,0.12);
+        }
+        .task-reschedule-menu {
+            position: absolute;
+            left: 0;
+            top: calc(100% + 6px);
+            z-index: 40;
+            display: grid;
+            min-width: 156px;
+            gap: 4px;
+            padding: 6px;
+            border: 1px solid rgba(148,163,184,0.24);
+            border-radius: 12px;
+            background: rgba(15,23,42,0.98);
+            box-shadow: 0 16px 34px rgba(15,23,42,0.24);
+        }
+        .task-reschedule-menu[hidden] {
+            display: none !important;
+        }
+        .task-reschedule-menu button {
+            width: 100%;
+            min-height: 30px;
+            justify-content: flex-start;
+            border-color: transparent;
+            background: transparent;
+            color: #f8fafc;
+            padding: 7px 9px;
+            text-align: left;
+        }
+        .task-reschedule-menu button:hover,
+        .task-reschedule-menu button:focus-visible {
+            background: rgba(20,184,166,0.18);
+            color: #ccfbf1;
+        }
         .task-composer-label {
             grid-column: 1 / -1;
             font-size: 10px;
@@ -806,11 +850,37 @@
             letter-spacing: 0.08em;
             color: var(--gray-500);
         }
+        .task-composer-toggle {
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(100,116,139,0.16);
+            border-radius: 10px;
+            background: rgba(248,250,252,0.84);
+            padding: 0 10px;
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .task-composer-toggle input {
+            width: 16px;
+            height: 16px;
+            min-height: 16px !important;
+            padding: 0 !important;
+        }
         .task-composer-group select,
         .task-composer-group input {
             min-height: 40px !important;
             padding: 8px 10px !important;
             font-size: 13px !important;
+        }
+        .task-composer-group .task-composer-toggle input {
+            width: 16px;
+            height: 16px;
+            min-height: 16px !important;
+            padding: 0 !important;
         }
         .task-chip {
             padding: 0 10px;
@@ -1762,6 +1832,10 @@
                             <option value="me_only">Тільки мені</option>
                             <option value="private">Приватна</option>
                         </select>
+                        <label class="task-composer-toggle" for="taskAllowReschedule">
+                            <input id="taskAllowReschedule" type="checkbox" checked>
+                            <span>Дозволити перенесення</span>
+                        </label>
                         <button class="task-chip" type="button" data-capture-chip="personal">Особиста</button>
                         <button class="task-chip" type="button" data-capture-chip="private">Приватна</button>
                         <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
@@ -1891,14 +1965,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.32"></script>
-    <script src="js/notification.js?v=0.62.32"></script>
-    <script src="js/api.js?v=0.62.32"></script>
-    <script src="js/auth.js?v=0.62.32"></script>
-    <script src="js/components/sidebar.js?v=0.62.32"></script>
+    <script src="js/config.js?v=0.63.0"></script>
+    <script src="js/notification.js?v=0.63.0"></script>
+    <script src="js/api.js?v=0.63.0"></script>
+    <script src="js/auth.js?v=0.63.0"></script>
+    <script src="js/components/sidebar.js?v=0.63.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.62.32"></script>
-    <script src="js/tasks-page.js?v=0.62.32"></script>
-    <script src="js/alerts.js?v=0.62.32"></script><script src="js/ui.js?v=0.62.32"></script>
+    <script src="js/task-create.js?v=0.63.0"></script>
+    <script src="js/tasks-page.js?v=0.63.0"></script>
+    <script src="js/alerts.js?v=0.63.0"></script><script src="js/ui.js?v=0.63.0"></script>
 </body>
 </html>

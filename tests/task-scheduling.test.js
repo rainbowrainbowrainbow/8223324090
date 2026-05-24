@@ -1,8 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const scheduling = require('../services/taskScheduling');
 const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
+const { canRescheduleTask } = require('../services/taskPolicy');
 
 test('task scheduling policy exposes four fixed global slots and default duration', () => {
     const policy = scheduling.getSchedulePolicy();
@@ -48,4 +51,19 @@ test('schedule history action taxonomy includes durable scheduling events', () =
     assert.equal(TASK_ACTION_TYPES.SCHEDULE_PROPOSAL_CREATED, 'task_schedule_proposal_created');
     assert.equal(TASK_ACTION_TYPES.SLOT_MISSED, 'task_slot_missed');
     assert.equal(TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED, 'task_discipline_penalty_applied');
+});
+
+test('rescheduling policy honors explicit canReschedule control metadata', () => {
+    const actor = { id: 10, role: 'admin', username: 'admin' };
+    assert.equal(canRescheduleTask(actor, { id: 1, owner_user_id: 10, control_meta: {} }), true);
+    assert.equal(canRescheduleTask(actor, { id: 2, owner_user_id: 10, control_meta: { canReschedule: false } }), false);
+    assert.equal(canRescheduleTask(actor, { id: 3, owner_user_id: 10, control_meta: JSON.stringify({ allowReschedule: false }) }), false);
+});
+
+test('deadline reschedule updates stale due date and clears snooze state', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'taskExecution.js'), 'utf8');
+    assert.match(source, /date = CASE/);
+    assert.match(source, /AT TIME ZONE 'Europe\/Kyiv'\)::date::text/);
+    assert.match(source, /snoozed_until = NULL/);
+    assert.match(source, /remind_at = NULL/);
 });

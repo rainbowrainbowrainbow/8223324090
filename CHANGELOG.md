@@ -4,14 +4,14 @@
 
 ---
 
-## v0.62.32 - Dashboard Board: persistence hardening
+## v0.63.0 - CRM 63: Новий дашборд задач
 
-### Dashboard Board / persistence hardening [codex]
-- **Єдиний boardState contract** - frontend і backend тепер однаково нормалізують `schemaVersion`, widget depth aliases, endpoints connector-ів та orphan-зв’язки.
-- **Сумісність старих дошок** - legacy ellipse/generic shape, статичні `shape: "arrow"` записи, stringified connector endpoints і старі widget depth значення лишаються читабельними.
-- **Стабільний save/reload** - `layout.boardState` і top-level `boardState` знову синхронізуються після sanitize, reload, edit і повторного save.
-- **Безпечні malformed states** - connector-и з відсутніми item endpoints відкидаються без очищення всієї дошки, а некоректні числа/параметри clamp-ляться до контрактних меж.
-- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` отримав mixed fixture для legacy + modern board content і перевіряє save -> reload -> edit -> re-save стабільність.
+### CRM 63 / задачі, підзадачі та перенесення [codex]
+- **Підзадачі прямо в картці** - `Tasks` і `Profile / My Cabinet` тепер отримують реальні subtask rows у спискових API-відповідях, тому декомпозовані задачі відкривають підпункти inline без полювання за дрібним toggle.
+- **Клікабельне `Прострочено`** - overdue-бейдж `Прострочено · дата` став дією у задачах і профілі: меню пропонує `Завтра`, `Післязавтра` або власну дату.
+- **Чесний дозвіл на перенесення** - у створенні задач додано прапорець `Дозволити перенесення`; backend зберігає це в `control_meta` і блокує reschedule/schedule, якщо дозвіл вимкнено.
+- **Стабільне перенесення** - canonical reschedule оновлює не тільки `deadline`, а й робочу `date`, скидає snooze/reminder і виводить задачу зі старого overdue bucket після reload.
+- **Guardrail** - додано фокусні тести для inline підзадач, profile overdue menu, `canReschedule` policy, list projection з subtask rows та UI guardrails для нових кнопок.
 
 ---
 

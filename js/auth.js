@@ -1131,24 +1131,8 @@ function profileCurrentKyivHour() {
 }
 
 function profileBuildQuickSchedulePayload(option) {
-    const today = profileKyivDate(0);
-    const tomorrow = profileKyivDate(1);
-    if (option === 'tomorrow') {
-        return { schedule: { date: tomorrow, slot: 'morning', durationMinutes: 30 } };
-    }
-    if (option === 'evening') {
-        return { schedule: { date: profileCurrentKyivHour() >= 21 ? tomorrow : today, slot: 'evening', durationMinutes: 30 } };
-    }
-    const start = new Date(Date.now() + 45 * 60 * 1000);
-    const rounded = new Date(Math.ceil(start.getTime() / (15 * 60 * 1000)) * 15 * 60 * 1000);
-    const end = new Date(rounded.getTime() + 30 * 60 * 1000);
-    return {
-        schedule: {
-            scheduledStartAt: rounded.toISOString(),
-            scheduledEndAt: end.toISOString(),
-            durationMinutes: 30
-        }
-    };
+    const date = option === 'day_after' ? profileKyivDate(2) : profileKyivDate(1);
+    return { deadline: `${date}T18:00:00` };
 }
 
 function profileCloseRescheduleMenus() {
@@ -1191,7 +1175,7 @@ async function profileQuickReschedule(taskId, option, event) {
                 ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: profileKyivDate(1) })
                 : window.prompt('Нова дата для задачі:', profileKyivDate(1));
             if (!selectedDate) return;
-            payload = { schedule: { date: selectedDate, slot: 'morning', durationMinutes: 30 } };
+            payload = { deadline: `${selectedDate}T18:00:00` };
         } else {
             payload = profileBuildQuickSchedulePayload(option);
         }
@@ -1389,10 +1373,9 @@ function _profileTabToday(data) {
                     <div class="prof-reschedule-wrap">
                         <button class="prof-inbox-meta prof-overdue-trigger" type="button" aria-haspopup="menu" aria-expanded="false" onclick="profileToggleRescheduleMenu(${t.id}, event)">Прострочено ${ago} год <span>Перенести</span></button>
                         <div class="prof-reschedule-menu hidden" id="profRescheduleMenu-${t.id}" role="menu" aria-label="Перенести прострочену задачу">
-                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'today', event)">На сьогодні</button>
                             <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'tomorrow', event)">На завтра</button>
-                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'evening', event)">На вечір</button>
-                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'custom', event)">На іншу дату</button>
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'day_after', event)">На післязавтра</button>
+                            <button type="button" role="menuitem" onclick="profileQuickReschedule(${t.id}, 'custom', event)">Обрати дату</button>
                         </div>
                     </div>
                 </div>

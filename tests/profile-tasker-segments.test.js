@@ -74,6 +74,46 @@ test('profile quick task card uses completed and today-or-undated remaining coun
     assert.match(html, />3</);
 });
 
+test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {
+    const ctx = loadProfileTaskerContext();
+    const task = {
+        id: 44,
+        title: 'Overdue decomposed task',
+        deadline: '2000-01-01T09:00:00.000Z',
+        priority: 'high',
+        subtask_count: 2,
+        subtask_done_count: 1,
+        subtasks: [
+            { id: 1, title: 'First', is_done: true },
+            { id: 2, title: 'Second', is_done: false }
+        ],
+        controlMeta: { canReschedule: true }
+    };
+
+    const html = ctx.renderCabinetTaskCard(task);
+    assert.match(html, /data-cabinet-task-action="reschedule-overdue-menu"/);
+    assert.match(html, /data-reschedule-option="tomorrow"/);
+    assert.match(html, /data-reschedule-option="day_after"/);
+    assert.match(html, /data-reschedule-option="custom"/);
+    assert.match(html, /data-cabinet-subtasks-panel="44"/);
+    assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(html, /data-cabinet-subtask-done/);
+});
+
+test('profile task cards respect disabled rescheduling control meta', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetTaskCard({
+        id: 45,
+        title: 'Locked overdue task',
+        deadline: '2000-01-01T09:00:00.000Z',
+        controlMeta: { canReschedule: false }
+    });
+
+    assert.match(html, /data-cabinet-task-action="reschedule-overdue-menu"/);
+    assert.match(html, /disabled/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="reschedule-overdue"/);
+});
+
 test('my cabinet task projection counts scheduled workload by today or no date, not all active tasks', () => {
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
@@ -83,5 +123,6 @@ test('my cabinet task projection counts scheduled workload by today or no date, 
     assert.match(source, /remaining_today/);
     assert.match(source, /scheduled_start_at/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
+    assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
 });

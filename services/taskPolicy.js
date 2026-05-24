@@ -159,7 +159,25 @@ function canReassignTask(user, task = {}) {
     return perms.canAssignAnyone === true || perms.taskVisibility === 'all' || perms.taskVisibility === 'department';
 }
 
+function taskControlMeta(task = {}) {
+    const value = task.control_meta || task.controlMeta || {};
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function isExplicitFalse(value) {
+    return value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
+}
+
 function canRescheduleTask(user, task = {}) {
+    const meta = taskControlMeta(task);
+    if (isExplicitFalse(meta.canReschedule) || isExplicitFalse(meta.allowReschedule) || isExplicitFalse(meta.rescheduleAllowed)) return false;
     return canMutateTask(user, task);
 }
 

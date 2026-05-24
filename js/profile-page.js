@@ -34,6 +34,7 @@ let cabinetSuggestionTimer = null;
 let lastCabinetSuggestionKey = '';
 let lastCabinetCreatedTaskId = null;
 const expandedCabinetSubtaskIds = new Set();
+const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
 
@@ -159,6 +160,16 @@ function formatDate(d) {
     if (!d) return '';
     const dt = new Date(d);
     return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function profileDateOffsetStr(days = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(days || 0));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function profileDeadlineForDate(dateText) {
+    return dateText ? `${dateText}T18:00:00` : null;
 }
 
 function profileFormatTime(value) {
@@ -1882,6 +1893,53 @@ function renderCabinetSnoozeMenu(taskIdAttr) {
         </div>`;
 }
 
+function cabinetControlMeta(task = {}) {
+    const value = task.controlMeta || task.control_meta || {};
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function cabinetTaskAllowsReschedule(task = {}) {
+    const meta = cabinetControlMeta(task);
+    const explicitFalse = value => value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
+    return !explicitFalse(task.canReschedule)
+        && !explicitFalse(task.allowReschedule)
+        && !explicitFalse(meta.canReschedule)
+        && !explicitFalse(meta.allowReschedule)
+        && !explicitFalse(meta.rescheduleAllowed);
+}
+
+function renderCabinetRescheduleMenu(taskIdAttr) {
+    const options = [
+        ['tomorrow', 'Завтра'],
+        ['day_after', 'Післязавтра'],
+        ['custom', 'Обрати дату']
+    ];
+    return `
+        <div class="cabinet-snooze-menu cabinet-reschedule-menu" role="menu" hidden>
+            ${options.map(([option, label]) => `<button type="button" role="menuitem" data-cabinet-task-action="reschedule-overdue" data-task-id="${taskIdAttr}" data-reschedule-option="${option}" ${taskIdAttr ? '' : 'disabled'}>${escapeHtml(label)}</button>`).join('')}
+        </div>`;
+}
+
+function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}) {
+    const label = `${dueState.label || ''}${dueState.detail ? ` · ${dueState.detail}` : ''}`;
+    const className = `cabinet-task-due-badge cabinet-task-due-badge--${escapeHtml(dueState.key || 'none')}`;
+    if (dueState.key !== 'overdue' || !taskIdAttr) {
+        return `<span class="${className}">${escapeHtml(label)}</span>`;
+    }
+    const canReschedule = cabinetTaskAllowsReschedule(task);
+    return `<span class="cabinet-reschedule-wrap">
+        <button type="button" class="${className} cabinet-task-due-action" data-cabinet-task-action="reschedule-overdue-menu" data-task-id="${taskIdAttr}" aria-haspopup="menu" aria-expanded="false" ${canReschedule ? '' : 'disabled'} title="${canReschedule ? 'Перенести прострочену задачу' : 'Перенесення вимкнено для цієї задачі'}">${escapeHtml(label)}</button>
+        ${canReschedule ? renderCabinetRescheduleMenu(taskIdAttr) : ''}
+    </span>`;
+}
+
 function cabinetTaskReportBadge(task = {}) {
     const gate = window.TaskReportGate;
     const required = gate?.taskRequiresReport ? gate.taskRequiresReport(task) : Boolean(task.reportRequired || task.requiresReport);
@@ -1991,6 +2049,14 @@ function cachedCabinetSubtasks(taskId, task = {}) {
     return null;
 }
 
+function isCabinetSubtasksExpanded(taskId, task = {}) {
+    const id = Number(taskId);
+    if (!id) return false;
+    if (collapsedCabinetSubtaskIds.has(id)) return false;
+    if (expandedCabinetSubtaskIds.has(id)) return true;
+    return Array.isArray(cachedCabinetSubtasks(id, task));
+}
+
 function updateCabinetTaskSubtaskSummary(taskId, subtasks = []) {
     const id = Number(taskId);
     const total = subtasks.length;
@@ -2025,7 +2091,7 @@ function renderCabinetSubtaskProgress(task = {}) {
 function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '') {
     const summary = cabinetSubtaskSummary(task);
     if (!summary.total || !taskIdAttr) return '';
-    const expanded = expandedCabinetSubtaskIds.has(Number(taskIdAttr));
+    const expanded = isCabinetSubtasksExpanded(Number(taskIdAttr), task);
     return `<button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${expanded ? 'true' : 'false'}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
         Пункти ${summary.done}/${summary.total}
     </button>`;
@@ -2035,7 +2101,7 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '') {
     const summary = cabinetSubtaskSummary(task);
     const taskId = Number(taskIdAttr || 0);
     if (!summary.total || !taskId) return '';
-    const expanded = expandedCabinetSubtaskIds.has(taskId);
+    const expanded = isCabinetSubtasksExpanded(taskId, task);
     const subtasks = cachedCabinetSubtasks(taskId, task);
     let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
     if (expanded && loadingCabinetSubtaskIds.has(taskId)) {
@@ -2081,7 +2147,7 @@ function renderCabinetTaskCard(task, compact = false) {
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
-                    <span class="cabinet-task-due-badge cabinet-task-due-badge--${escapeHtml(dueState.key)}">${escapeHtml(dueState.label)}${dueState.detail ? ` · ${escapeHtml(dueState.detail)}` : ''}</span>
+                    ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     <span class="cabinet-task-priority cabinet-task-priority--${escapeHtml(priority)}">${escapeHtml(priorityLabel)}</span>
                     ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
@@ -2196,6 +2262,10 @@ function renderCabinetTaskComposer(options = {}) {
                 <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
                     <input id="cabinetTaskReportRequired" type="checkbox">
                     <span>Потрібен звіт перед виконанням</span>
+                </label>
+                <label class="cabinet-task-report-toggle" for="cabinetTaskAllowReschedule">
+                    <input id="cabinetTaskAllowReschedule" type="checkbox" checked>
+                    <span>Дозволити перенесення</span>
                 </label>
             </div>
             <div class="cabinet-task-subtasks">
@@ -2353,13 +2423,16 @@ async function loadCabinetTaskSubtasks(taskId) {
 async function toggleCabinetTaskSubtasks(taskId) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) return;
-    if (expandedCabinetSubtaskIds.has(id)) {
+    const task = findCabinetTask(id) || {};
+    if (isCabinetSubtasksExpanded(id, task)) {
         expandedCabinetSubtaskIds.delete(id);
+        collapsedCabinetSubtaskIds.add(id);
         rerenderCabinetTaskTabs();
         return;
     }
+    collapsedCabinetSubtaskIds.delete(id);
     expandedCabinetSubtaskIds.add(id);
-    if (!cabinetSubtaskCache.has(id)) {
+    if (!cabinetSubtaskCache.has(id) && !Array.isArray(task.subtasks)) {
         await loadCabinetTaskSubtasks(id);
         return;
     }
@@ -2380,13 +2453,13 @@ async function updateCabinetSubtaskDone(input) {
         if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
         return;
     }
-    const cached = cabinetSubtaskCache.get(taskId) || [];
+    const task = findCabinetTask(taskId) || {};
+    const cached = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || [];
     const updated = cached.map(item => Number(item.id) === subtaskId
         ? normalizeCabinetSubtask(result.subtask)
         : normalizeCabinetSubtask(item));
     cabinetSubtaskCache.set(taskId, updated);
     updateCabinetTaskSubtaskSummary(taskId, updated);
-    const task = findCabinetTask(taskId) || {};
     const summary = cabinetSubtaskSummary(task);
     if (summary.total && summary.done >= summary.total && typeof showNotification === 'function') {
         showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
@@ -2409,6 +2482,16 @@ function closeCabinetSnoozeMenus(exceptWrap = null) {
             menu.hidden = true;
         });
     });
+    document.querySelectorAll('.cabinet-reschedule-wrap.is-open').forEach(wrap => {
+        if (exceptWrap && wrap === exceptWrap) return;
+        wrap.classList.remove('is-open');
+        wrap.querySelectorAll('[data-cabinet-task-action="reschedule-overdue-menu"]').forEach(btn => {
+            btn.setAttribute('aria-expanded', 'false');
+        });
+        wrap.querySelectorAll('.cabinet-reschedule-menu').forEach(menu => {
+            menu.hidden = true;
+        });
+    });
 }
 
 function toggleCabinetSnoozeMenu(button) {
@@ -2419,6 +2502,17 @@ function toggleCabinetSnoozeMenu(button) {
     const willOpen = menu.hidden;
     closeCabinetSnoozeMenus(wrap);
     actions.classList.toggle('is-snooze-open', willOpen);
+    menu.hidden = !willOpen;
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+
+function toggleCabinetRescheduleMenu(button) {
+    const wrap = button.closest('.cabinet-reschedule-wrap');
+    const menu = wrap?.querySelector('.cabinet-reschedule-menu');
+    if (!wrap || !menu) return;
+    const willOpen = menu.hidden;
+    closeCabinetSnoozeMenus(wrap);
+    wrap.classList.toggle('is-open', willOpen);
     menu.hidden = !willOpen;
     button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 }
@@ -2470,6 +2564,11 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
+    if (action === 'reschedule-overdue-menu') {
+        toggleCabinetRescheduleMenu(button);
+        return;
+    }
+
     if (action === 'open') {
         window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
         return;
@@ -2507,6 +2606,9 @@ async function handleCabinetTaskActionClick(event) {
                 minutes = raw;
             }
             await snoozeCabinetTask(taskId, minutes);
+        } else if (action === 'reschedule-overdue') {
+            closeCabinetSnoozeMenus();
+            await rescheduleCabinetTask(taskId, button.dataset.rescheduleOption || 'tomorrow');
         }
     } catch (error) {
         console.error('Profile cabinet task action failed', error);
@@ -2572,6 +2674,29 @@ async function snoozeCabinetTask(taskId, minutes) {
     await refreshMyCabinetTab();
 }
 
+async function rescheduleCabinetTask(taskId, option = 'tomorrow') {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    let dateText = '';
+    if (option === 'day_after') {
+        dateText = profileDateOffsetStr(2);
+    } else if (option === 'custom') {
+        dateText = typeof promptModal === 'function'
+            ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: profileDateOffsetStr(1) })
+            : window.prompt('Нова дата для задачі:', profileDateOffsetStr(1));
+    } else {
+        dateText = profileDateOffsetStr(1);
+    }
+    if (!dateText) return;
+    const result = await apiPost(`/tasks/${id}/reschedule`, {
+        deadline: profileDeadlineForDate(dateText),
+        sourceSurface: 'profile_my_cabinet_overdue_badge'
+    });
+    if (!result?.success) throw new Error(result?.error || 'Task reschedule failed');
+    if (typeof showNotification === 'function') showNotification(`Задачу перенесено на ${dateText}`, 'success');
+    await refreshMyCabinetTab();
+}
+
 async function createCabinetTask(event, mode) {
     event.preventDefault();
     const input = document.getElementById('cabinetTaskTitle');
@@ -2604,6 +2729,7 @@ async function createCabinetTask(event, mode) {
         sourceSurface: 'profile_my_cabinet',
         subtasks: readCabinetSubtasks(),
         reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
+        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
     const payload = window.TaskCreate?.buildPayload
@@ -2622,7 +2748,12 @@ async function createCabinetTask(event, mode) {
             effort_minutes: 30,
             source_type: 'manual',
             source_module: 'profile_my_cabinet',
-            subtasks: draft.subtasks
+            subtasks: draft.subtasks,
+            allowReschedule: draft.allowReschedule,
+            controlMeta: {
+                canReschedule: draft.allowReschedule,
+                allowReschedule: draft.allowReschedule
+            }
         };
     const result = window.TaskCreate?.createTask
         ? await window.TaskCreate.createTask(payload, {
@@ -3102,7 +3233,10 @@ function attachProfileListeners() {
     if (!cabinetSnoozeOutsideBound) {
         cabinetSnoozeOutsideBound = true;
         document.addEventListener('click', event => {
-            if (!event.target.closest('.cabinet-task-actions')) closeCabinetSnoozeMenus();
+            if (!event.target.closest('.cabinet-task-actions, .cabinet-reschedule-wrap')) closeCabinetSnoozeMenus();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeCabinetSnoozeMenus();
         });
     }
 

@@ -125,6 +125,7 @@ let taskDecompositionSuggestions = [];
 let taskSuggestionTimer = null;
 let lastTaskSuggestionKey = '';
 const expandedTaskSubtaskIds = new Set();
+const collapsedTaskSubtaskIds = new Set();
 const taskCardSubtaskCache = new Map();
 const loadingTaskSubtaskIds = new Set();
 
@@ -241,6 +242,19 @@ function getTodayStr() {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+}
+
+function getDateOffsetStr(days = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(days || 0));
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function deadlineForDate(dateText) {
+    return dateText ? `${dateText}T18:00:00` : null;
 }
 
 function getWeekRange() {
@@ -1994,6 +2008,14 @@ function cachedTaskSubtasks(taskId, task = {}) {
     return null;
 }
 
+function isTaskSubtasksExpanded(taskId, task = {}) {
+    const id = Number(taskId);
+    if (!id) return false;
+    if (collapsedTaskSubtaskIds.has(id)) return false;
+    if (expandedTaskSubtaskIds.has(id)) return true;
+    return Array.isArray(cachedTaskSubtasks(id, task));
+}
+
 function taskSubtaskCompletionTitle(task = {}) {
     const summary = taskSubtaskSummary(task);
     if (!summary.total) return '';
@@ -2006,7 +2028,7 @@ function renderTaskCardSubtasksPanel(task = {}) {
     const summary = taskSubtaskSummary(task);
     if (!summary.total) return '';
     const taskId = Number(task.id || 0);
-    const expanded = expandedTaskSubtaskIds.has(taskId);
+    const expanded = isTaskSubtasksExpanded(taskId, task);
     const subtasks = cachedTaskSubtasks(taskId, task);
     let body = '<div class="task-card-subtasks-empty">Розгорніть, щоб виконувати підпункти прямо тут.</div>';
     if (expanded && loadingTaskSubtaskIds.has(taskId)) {
@@ -2031,6 +2053,64 @@ function renderTaskCardSubtasksPanel(task = {}) {
     </div>`;
 }
 
+function taskControlMeta(task = {}) {
+    const value = task.controlMeta || task.control_meta || {};
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function taskAllowsReschedule(task = {}) {
+    const meta = taskControlMeta(task);
+    const explicitFalse = value => value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
+    return !explicitFalse(task.canReschedule)
+        && !explicitFalse(task.allowReschedule)
+        && !explicitFalse(meta.canReschedule)
+        && !explicitFalse(meta.allowReschedule)
+        && !explicitFalse(meta.rescheduleAllowed);
+}
+
+function renderTaskRescheduleMenu(taskId) {
+    const id = Number(taskId || 0);
+    if (!id) return '';
+    const options = [
+        ['tomorrow', 'Завтра'],
+        ['day_after', 'Післязавтра'],
+        ['custom', 'Обрати дату']
+    ];
+    return `<div class="task-reschedule-menu" role="menu" hidden>
+        ${options.map(([option, label]) => `<button type="button" role="menuitem" data-task-action="reschedule-overdue" data-task-id="${id}" data-reschedule-option="${option}">${escapeHtml(label)}</button>`).join('')}
+    </div>`;
+}
+
+function renderTaskDeadlineBadge(task = {}) {
+    if (!task.deadline) return '';
+    const dl = new Date(task.deadline);
+    if (Number.isNaN(dl.getTime())) return '';
+    const now = new Date();
+    const diffMin = (dl - now) / (1000 * 60);
+    let dlClass = 'deadline-ok';
+    if (diffMin < 0) dlClass = 'deadline-overdue';
+    else if (diffMin < 60) dlClass = 'deadline-soon';
+    const taskId = Number(task.id || 0);
+    const canReschedule = taskAllowsReschedule(task);
+    if (diffMin < 0 && taskId) {
+        const dlDate = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric' });
+        return `<span class="task-overdue-wrap">
+            <button type="button" class="task-card-deadline ${dlClass} task-overdue-trigger" data-task-action="reschedule-overdue-menu" data-task-id="${taskId}" aria-haspopup="menu" aria-expanded="false" ${canReschedule ? '' : 'disabled'} title="${canReschedule ? 'Перенести прострочену задачу' : 'Перенесення вимкнено для цієї задачі'}">Прострочено · ${escapeHtml(dlDate)}</button>
+            ${canReschedule ? renderTaskRescheduleMenu(taskId) : ''}
+        </span>`;
+    }
+    const dlTime = dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+    const dlDate = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
+    return `<span class="task-card-deadline ${dlClass}">${dlDate} ${dlTime}</span>`;
+}
+
 function renderTaskCard(t) {
     const cat = t.category || 'admin';
     const catInfo = getCategoryConfig(cat);
@@ -2052,7 +2132,7 @@ function renderTaskCard(t) {
     const subtaskCount = Number(t.subtask_count || t.subtaskCount || 0);
     const subtaskDone = Number(t.subtask_done_count || t.subtaskDoneCount || 0);
     const hasSubtasks = subtaskCount > 0;
-    const subtaskExpanded = expandedTaskSubtaskIds.has(Number(t.id || 0));
+    const subtaskExpanded = isTaskSubtasksExpanded(Number(t.id || 0), t);
     const completionBlockedBySubtasks = nextStatus === 'done' && hasSubtasks && subtaskDone < subtaskCount;
     const subtaskBadge = hasSubtasks
         ? `<button type="button" class="task-os-badge checklist task-card-subtasks-toggle" data-task-action="subtasks-toggle" data-task-id="${t.id}" aria-expanded="${subtaskExpanded ? 'true' : 'false'}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}">Пункти ${subtaskDone}/${subtaskCount}</button>`
@@ -2071,18 +2151,7 @@ function renderTaskCard(t) {
         : '';
 
     // v10.0: Deadline display
-    let deadlineHtml = '';
-    if (t.deadline) {
-        const dl = new Date(t.deadline);
-        const now = new Date();
-        const diffMin = (dl - now) / (1000 * 60);
-        let dlClass = 'deadline-ok';
-        if (diffMin < 0) dlClass = 'deadline-overdue';
-        else if (diffMin < 60) dlClass = 'deadline-soon';
-        const dlTime = dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
-        const dlDate = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
-        deadlineHtml = `<span class="task-card-deadline ${dlClass}">${dlDate} ${dlTime}</span>`;
-    }
+    const deadlineHtml = renderTaskDeadlineBadge(t);
 
     // v10.0: Escalation indicator
     const escLevel = t.escalation_level || 0;
@@ -2185,13 +2254,16 @@ async function loadTaskCardSubtasks(taskId) {
 async function toggleTaskCardSubtasks(taskId) {
     const id = Number(taskId);
     if (!id) return;
-    if (expandedTaskSubtaskIds.has(id)) {
+    const task = allTasks.find(item => Number(item.id) === id) || {};
+    if (isTaskSubtasksExpanded(id, task)) {
         expandedTaskSubtaskIds.delete(id);
+        collapsedTaskSubtaskIds.add(id);
         renderBoard();
         return;
     }
+    collapsedTaskSubtaskIds.delete(id);
     expandedTaskSubtaskIds.add(id);
-    if (!taskCardSubtaskCache.has(id)) {
+    if (!taskCardSubtaskCache.has(id) && !Array.isArray(task.subtasks)) {
         await loadTaskCardSubtasks(id);
         return;
     }
@@ -2212,7 +2284,8 @@ async function updateTaskCardSubtaskDone(input) {
         showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
         return;
     }
-    const cached = taskCardSubtaskCache.get(taskId) || [];
+    const task = allTasks.find(item => Number(item.id) === taskId) || {};
+    const cached = taskCardSubtaskCache.get(taskId) || cachedTaskSubtasks(taskId, task) || [];
     const updated = cached.map(item => Number(item.id) === subtaskId
         ? normalizeTaskCardSubtask(result.subtask)
         : normalizeTaskCardSubtask(item));
@@ -2713,6 +2786,7 @@ function readTaskComposerDraft() {
         durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
         scheduleSlot: quickScheduleSlot,
         subtasks: readTaskComposerSubtasks(),
+        allowReschedule: document.getElementById('taskAllowReschedule')?.checked !== false,
         captureIntent: { ...captureIntent }
     };
 }
@@ -2728,6 +2802,7 @@ function cloneTaskBatchSettings(source = {}) {
         kind: source.kind || 'action',
         visibility: source.visibility || 'team',
         scheduleSlot: source.scheduleSlot || quickScheduleSlot || 'morning',
+        allowReschedule: source.allowReschedule !== false,
         captureIntent: { ...(source.captureIntent || {}) }
     };
 }
@@ -2877,7 +2952,12 @@ function buildTaskCreatePayload(draft = {}) {
         subcategory,
         checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
         source_type: 'manual',
-        source_module: 'tasks'
+        source_module: 'tasks',
+        allowReschedule: draft.allowReschedule !== false,
+        controlMeta: {
+            canReschedule: draft.allowReschedule !== false,
+            allowReschedule: draft.allowReschedule !== false
+        }
     };
     if (draft.ownerUserId) data.ownerUserId = draft.ownerUserId;
     if (dueDate) {
@@ -2920,6 +3000,7 @@ function resetTaskComposerAfterCreate() {
     if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
     if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
     if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
+    if (document.getElementById('taskAllowReschedule')) document.getElementById('taskAllowReschedule').checked = true;
     quickTaskBatchItems = [];
     renderQuickTaskBatchItems();
     resetTaskComposerSubtasks();
@@ -3158,16 +3239,68 @@ async function runTaskAction(button, action) {
     }
 }
 
+function closeTaskRescheduleMenus(exceptWrap = null) {
+    document.querySelectorAll('.task-overdue-wrap.is-open').forEach(wrap => {
+        if (exceptWrap && wrap === exceptWrap) return;
+        wrap.classList.remove('is-open');
+        wrap.querySelectorAll('.task-overdue-trigger[aria-expanded="true"]').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
+        wrap.querySelectorAll('.task-reschedule-menu').forEach(menu => { menu.hidden = true; });
+    });
+}
+
+function toggleTaskRescheduleMenu(button) {
+    const wrap = button.closest('.task-overdue-wrap');
+    const menu = wrap?.querySelector('.task-reschedule-menu');
+    if (!wrap || !menu) return;
+    const willOpen = menu.hidden;
+    closeTaskRescheduleMenus(wrap);
+    wrap.classList.toggle('is-open', willOpen);
+    menu.hidden = !willOpen;
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+
+async function rescheduleOverdueTask(taskId, option = 'tomorrow') {
+    const id = Number(taskId || 0);
+    if (!id) return;
+    let dateText = '';
+    if (option === 'day_after') {
+        dateText = getDateOffsetStr(2);
+    } else if (option === 'custom') {
+        dateText = typeof promptModal === 'function'
+            ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: getDateOffsetStr(1) })
+            : window.prompt('Нова дата для задачі:', getDateOffsetStr(1));
+    } else {
+        dateText = getDateOffsetStr(1);
+    }
+    if (!dateText) return;
+    const result = await apiRescheduleTask(id, {
+        deadline: deadlineForDate(dateText),
+        sourceSurface: 'task_page_overdue_badge'
+    });
+    if (result?.success) {
+        closeTaskRescheduleMenus();
+        showNotification(`Задачу перенесено на ${dateText}`, 'success');
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося перенести задачу', 'error');
+}
+
 async function handleTaskActionButton(button) {
     const taskId = Number(button.dataset.taskId || 0);
     const action = button.dataset.taskAction || '';
     if (!taskId || !action) return;
+    if (action === 'reschedule-overdue-menu') {
+        toggleTaskRescheduleMenu(button);
+        return;
+    }
     await runTaskAction(button, async () => {
         if (action === 'subtasks-toggle') await toggleTaskCardSubtasks(taskId);
         if (action === 'status') await cycleStatus(taskId, button.dataset.nextStatus || 'done');
         if (action === 'waiting') await markTaskWaiting(taskId);
         if (action === 'schedule') await quickScheduleTask(taskId, button.dataset.scheduleSlotAction || quickScheduleSlot);
         if (action === 'snooze') await snoozeTaskQuick(taskId, Number(button.dataset.minutes || 60));
+        if (action === 'reschedule-overdue') await rescheduleOverdueTask(taskId, button.dataset.rescheduleOption || 'tomorrow');
         if (action === 'delete') await deleteTask(taskId);
         if (action === 'restore') await restoreTask(taskId);
     });
@@ -3324,6 +3457,15 @@ function setupTaskActionDelegation() {
     if (!board || board.dataset.taskActionDelegationBound === 'true') return;
     board.dataset.taskActionDelegationBound = 'true';
     setupTaskKanbanDragAndDrop(board);
+    if (!document.body.dataset.taskRescheduleMenuBound) {
+        document.body.dataset.taskRescheduleMenuBound = 'true';
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.task-overdue-wrap')) closeTaskRescheduleMenus();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeTaskRescheduleMenus();
+        });
+    }
 
     board.addEventListener('click', async (event) => {
         if (Date.now() - lastKanbanDragEndedAt < 300) {

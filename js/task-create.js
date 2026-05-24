@@ -248,12 +248,20 @@
         if (draft.sourceSurface || draft.source_surface || options.sourceSurface) {
             data.source_surface = draft.sourceSurface || draft.source_surface || options.sourceSurface;
         }
+        const controlMeta = { ...(draft.controlMeta || draft.control_meta || {}) };
+        const rescheduleRaw = draft.allowReschedule ?? draft.allow_reschedule ?? draft.canReschedule ?? draft.can_reschedule;
+        if (rescheduleRaw !== undefined) {
+            const allowReschedule = !(rescheduleRaw === false || rescheduleRaw === 'false' || rescheduleRaw === '0' || rescheduleRaw === 0 || rescheduleRaw === 'off');
+            controlMeta.canReschedule = allowReschedule;
+            controlMeta.allowReschedule = allowReschedule;
+            data.allowReschedule = allowReschedule;
+        }
         if (draft.reportRequired || draft.requiresReport || draft.report_required) {
             data.reportRequired = true;
-            data.controlMeta = {
-                ...(draft.controlMeta || draft.control_meta || {}),
-                reportRequired: true
-            };
+            controlMeta.reportRequired = true;
+        }
+        if (Object.keys(controlMeta).length) {
+            data.controlMeta = controlMeta;
         }
 
         if (dueDate) {

@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.62.32">
-    <link rel="stylesheet" href="css/auth.css?v=0.62.32">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.32">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.32">
-    <link rel="stylesheet" href="css/timeline.css?v=0.62.32">
-    <link rel="stylesheet" href="css/panel.css?v=0.62.32">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.32">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.32">
-    <link rel="stylesheet" href="css/features.css?v=0.62.32">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.32">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.32">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.32">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.62.32">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.32">
+    <link rel="stylesheet" href="css/base.css?v=0.63.0">
+    <link rel="stylesheet" href="css/auth.css?v=0.63.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.0">
+    <link rel="stylesheet" href="css/timeline.css?v=0.63.0">
+    <link rel="stylesheet" href="css/panel.css?v=0.63.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.0">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.0">
+    <link rel="stylesheet" href="css/features.css?v=0.63.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.62.32 Dashboard Board: persistence hardening">✨ 0.62.32 Dashboard Board: persistence hardening</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.63.0 CRM 63: Новий дашборд задач">✨ 0.63.0 CRM 63: Новий дашборд задач</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.62.32 — Dashboard Board: persistence hardening</p>
+                <p class="tagline">AI First CRM v0.63.0 — CRM 63: Новий дашборд задач</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.62.32: Dashboard Board: persistence hardening</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.0: CRM 63: Новий дашборд задач</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1265,12 +1265,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.62.32 — Dashboard Board: persistence hardening</h4>
+                    <h4>v0.63.0 — CRM 63: Новий дашборд задач</h4>
                     <ul>
-                        <li><b>Стабільний contract</b> — <code>boardState</code> отримав явний <code>schemaVersion</code>, а backend і frontend нормалізують дані однаково.</li>
-                        <li><b>Сумісність legacy board</b> — старі ellipse/generic shape, статичні arrow-фігури, stringified endpoints і старі widget depth значення лишаються читабельними.</li>
-                        <li><b>Чисті connector-и</b> — orphan endpoints більше не зберігаються як тиха поламана геометрія, але валідні зв’язки переживають reload і edit.</li>
-                        <li><b>Save/reload guardrail</b> — додано mixed fixture, що перевіряє legacy + modern content через normalize, save, reload, edit і повторний save.</li>
+                        <li><b>Підзадачі в картці</b> — декомпозовані задачі у <code>Tasks</code> і <code>Profile / My Cabinet</code> показують усі підпункти прямо на місці.</li>
+                        <li><b>Прострочено як дія</b> — бейдж <code>Прострочено · дата</code> відкриває меню перенесення на завтра, післязавтра або власну дату.</li>
+                        <li><b>Дозвіл на перенесення</b> — при створенні задачі є прапорець <code>Дозволити перенесення</code>, який зберігається в backend policy.</li>
+                        <li><b>Стабільний reload</b> — reschedule оновлює <code>deadline</code>, робочу дату та очищує snooze/reminder, щоб задача не поверталась у overdue bucket.</li>
+                        <li><b>Guardrails</b> — додано тести для subtask rows, overdue menu, <code>canReschedule</code> і profile/task UI контрактів.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9039,28 +9040,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.62.32"></script>
-    <script src="js/timeline-visibility.js?v=0.62.32"></script>
-    <script src="js/config.js?v=0.62.32"></script>
-    <script src="js/api.js?v=0.62.32"></script>
-    <script src="js/ui.js?v=0.62.32"></script>
-    <script src="js/auth.js?v=0.62.32"></script>
-    <script src="js/timeline.js?v=0.62.32"></script>
-    <script src="js/booking.js?v=0.62.32"></script>
-    <script src="js/settings.js?v=0.62.32"></script>
-    <script src="js/booking-form.js?v=0.62.32"></script>
-    <script src="js/booking-linked.js?v=0.62.32"></script>
-    <script src="js/settings-dashboard.js?v=0.62.32"></script>
-    <script src="js/settings-history.js?v=0.62.32"></script>
-    <script src="js/settings-afisha.js?v=0.62.32"></script>
-    <script src="js/settings-certificates.js?v=0.62.32"></script>
-    <script src="js/offline.js?v=0.62.32"></script>
-    <script src="js/crm-feature-registry.js?v=0.62.32"></script>
-    <script src="js/search.js?v=0.62.32"></script>
-    <script src="js/ws.js?v=0.62.32"></script>
-    <script src="js/app.js?v=0.62.32"></script>
-    <script src="js/kleshnya-widget.js?v=0.62.32"></script>
-    <script src="js/components/sidebar.js?v=0.62.32"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.62.32"></script>
+    <script src="js/timeline-context.js?v=0.63.0"></script>
+    <script src="js/timeline-visibility.js?v=0.63.0"></script>
+    <script src="js/config.js?v=0.63.0"></script>
+    <script src="js/api.js?v=0.63.0"></script>
+    <script src="js/ui.js?v=0.63.0"></script>
+    <script src="js/auth.js?v=0.63.0"></script>
+    <script src="js/timeline.js?v=0.63.0"></script>
+    <script src="js/booking.js?v=0.63.0"></script>
+    <script src="js/settings.js?v=0.63.0"></script>
+    <script src="js/booking-form.js?v=0.63.0"></script>
+    <script src="js/booking-linked.js?v=0.63.0"></script>
+    <script src="js/settings-dashboard.js?v=0.63.0"></script>
+    <script src="js/settings-history.js?v=0.63.0"></script>
+    <script src="js/settings-afisha.js?v=0.63.0"></script>
+    <script src="js/settings-certificates.js?v=0.63.0"></script>
+    <script src="js/offline.js?v=0.63.0"></script>
+    <script src="js/crm-feature-registry.js?v=0.63.0"></script>
+    <script src="js/search.js?v=0.63.0"></script>
+    <script src="js/ws.js?v=0.63.0"></script>
+    <script src="js/app.js?v=0.63.0"></script>
+    <script src="js/kleshnya-widget.js?v=0.63.0"></script>
+    <script src="js/components/sidebar.js?v=0.63.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.0"></script>
 </body>
 </html>

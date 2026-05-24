@@ -437,6 +437,14 @@ async function rescheduleTask(taskId, deadline, actor, options = {}) {
         const result = await query.query(
             `UPDATE tasks
              SET deadline = $2,
+                 date = CASE
+                    WHEN $2::timestamptz IS NULL THEN date
+                    ELSE ($2::timestamptz AT TIME ZONE 'Europe/Kyiv')::date::text
+                 END,
+                 status = CASE WHEN COALESCE(status, 'todo') = 'overdue' THEN 'todo' ELSE status END,
+                 workflow_state = CASE WHEN COALESCE(workflow_state, 'todo') = 'overdue' THEN 'todo' ELSE workflow_state END,
+                 snoozed_until = NULL,
+                 remind_at = NULL,
                  updated_at = NOW(),
              version = COALESCE(version, 1) + 1
          WHERE id = $1

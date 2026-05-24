@@ -192,6 +192,17 @@ function normalizeTaskControlMeta(body = {}, oldTask = {}) {
                 : (hasOwn(body, 'requires_report') ? body.requires_report : undefined)));
     if (reportRequiredRaw !== undefined) meta.reportRequired = isTruthy(reportRequiredRaw);
 
+    const rescheduleRaw = hasOwn(body, 'allowReschedule')
+        ? body.allowReschedule
+        : (hasOwn(body, 'allow_reschedule') ? body.allow_reschedule
+            : (hasOwn(body, 'canReschedule') ? body.canReschedule
+                : (hasOwn(body, 'can_reschedule') ? body.can_reschedule : undefined)));
+    if (rescheduleRaw !== undefined) {
+        const allowed = isTruthy(rescheduleRaw);
+        meta.canReschedule = allowed;
+        meta.allowReschedule = allowed;
+    }
+
     const reportIdRaw = body.reportId || body.report_id || meta.reportId || meta.report_id;
     const reportId = optionalInteger(reportIdRaw);
     if (reportId) meta.reportId = reportId;
@@ -573,6 +584,10 @@ function normalizeTaskPayload(row) {
     const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
     const workflowState = row.workflow_state || workflowFromStatus(status);
     const controlMeta = taskControlMeta(row);
+    const explicitRescheduleFalse = value => value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
+    const canReschedule = !explicitRescheduleFalse(controlMeta.canReschedule)
+        && !explicitRescheduleFalse(controlMeta.allowReschedule)
+        && !explicitRescheduleFalse(controlMeta.rescheduleAllowed);
     const reportId = taskCompletionReportId(row);
     const reportRequired = taskRequiresCompletionReport(row);
     const subtaskCount = Number(row.subtask_count || 0);
@@ -619,6 +634,8 @@ function normalizeTaskPayload(row) {
         controlMode: row.control_mode || 'normal',
         criticalReason: row.critical_reason || null,
         controlMeta,
+        canReschedule,
+        allowReschedule: canReschedule,
         reportRequired,
         requiresReport: reportRequired,
         reportId,
@@ -856,6 +873,7 @@ router.get('/', async (req, res) => {
                           AND viewer_tob.user_id = $${viewerUserIdParam}
                         LIMIT 1
                     ) AS viewer_observer_access_level,
+                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
                     COALESCE(st.total, 0)::int AS subtask_count,
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
@@ -870,6 +888,22 @@ router.get('/', async (req, res) => {
                 FROM task_subtasks
                 GROUP BY task_id
              ) st ON st.task_id = t.id
+             LEFT JOIN (
+                SELECT task_id,
+                       json_agg(json_build_object(
+                           'id', id,
+                           'task_id', task_id,
+                           'title', title,
+                           'is_done', is_done,
+                           'sort_order', sort_order,
+                           'source_type', COALESCE(source_type, 'manual'),
+                           'created_at', created_at,
+                           'completed_at', completed_at,
+                           'updated_at', updated_at
+                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                FROM task_subtasks
+                GROUP BY task_id
+             ) subtask_rows ON subtask_rows.task_id = t.id
              LEFT JOIN (
                 SELECT d.task_id,
                        COUNT(*)::int AS total,
@@ -1253,6 +1287,7 @@ router.get('/my-cabinet', async (req, res) => {
 
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
                     COALESCE(st.total, 0)::int AS subtask_count,
                     COALESCE(st.done, 0)::int AS subtask_done_count
              FROM tasks t
@@ -1264,6 +1299,22 @@ router.get('/my-cabinet', async (req, res) => {
                 FROM task_subtasks
                 GROUP BY task_id
              ) st ON st.task_id = t.id
+             LEFT JOIN (
+                SELECT task_id,
+                       json_agg(json_build_object(
+                           'id', id,
+                           'task_id', task_id,
+                           'title', title,
+                           'is_done', is_done,
+                           'sort_order', sort_order,
+                           'source_type', COALESCE(source_type, 'manual'),
+                           'created_at', created_at,
+                           'completed_at', completed_at,
+                           'updated_at', updated_at
+                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                FROM task_subtasks
+                GROUP BY task_id
+             ) subtask_rows ON subtask_rows.task_id = t.id
              WHERE ${ownMatch}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
               ORDER BY

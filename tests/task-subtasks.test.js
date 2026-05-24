@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     hasSubtaskPayload,
@@ -68,4 +70,11 @@ test('reports whether a decomposed parent can be completed', () => {
 test('rejects blank subtask titles during normalization', () => {
     assert.equal(normalizeSubtaskInput({ title: '   ' }), null);
     assert.equal(normalizeSubtaskInput('Named part')?.title, 'Named part');
+});
+
+test('list projections carry concrete subtask rows for clickable decomposed cards', () => {
+    const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tasks.js'), 'utf8');
+    const projectionCount = (route.match(/COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/g) || []).length;
+    assert.ok(projectionCount >= 2, 'tasks list and my-cabinet projection should include subtask arrays');
+    assert.match(route, /json_agg\(json_build_object\(\s*'id', id,\s*'task_id', task_id,\s*'title', title,/);
 });

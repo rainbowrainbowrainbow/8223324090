@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.32 - CRM 63.32: чистіший Помічник у шапці
+
+### Помічник / topbar / avatar polish [codex]
+- **Виправлено avatar/control shell Помічника** - верхній `CrmAssistantRail` отримав чистіший glass-шар, акуратніший avatar-core і спокійніший border/background у темній та світлій темі.
+- **Прибрано поганий hover/focus halo** - великий кільцевий `box-shadow` з presence-контейнера більше не з'являється при наведенні або `focus-within`.
+- **Focus залишився доступним, але став контрольованим** - keyboard focus тепер показується маленьким нижнім акцентом на avatar-кнопці та компактним inset-станом на кнопках керування, без грубого зовнішнього кільця.
+- **Legacy assistant не оживлявся** - зміна лишається на canonical shared rail, а старий `kleshnya-widget` продовжує бути bridge до `CrmAssistantRail`.
+- **Guardrail** - UI smoke перевіряє новий polish-блок, відключення avatar halo і наявність компактного focus ownership.
+
+---
+
 ## v0.63.31 - CRM 63.31: зрозумілі системні помилки
 
 ### Системна якість / error UX / frontend guardrails [codex]

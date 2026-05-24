@@ -7777,3 +7777,179 @@ html[data-theme="light"] .crm-assistant-disclosure {
         grid-template-columns: 1fr !important;
     }
 }
+
+/* v0.63.32: assistant avatar polish and hover-ring fix */
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail-host .crm-assistant-rail {
+    --assistant-avatar-focus: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 58%, #0f172a 42%);
+    border-color: rgba(148, 163, 184, 0.16) !important;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(248, 250, 252, 0.72)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 4%, transparent) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.82),
+        0 14px 34px rgba(15, 23, 42, 0.065) !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+body.dark-mode .crm-assistant-rail-host .crm-assistant-rail {
+    --assistant-avatar-focus: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 66%, #e2e8f0 34%);
+    border-color: rgba(148, 163, 184, 0.13) !important;
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(2, 6, 23, 0.62)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 7%, transparent) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-presence,
+.crm-assistant-rail .assistant-rail-presence {
+    border-color: rgba(148, 163, 184, 0.15) !important;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(248, 250, 252, 0.62)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 5%, transparent) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74) !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-presence,
+body.dark-mode .crm-assistant-rail .assistant-rail-presence {
+    border-color: rgba(148, 163, 184, 0.12) !important;
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.68), rgba(2, 6, 23, 0.50)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 8%, transparent) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+.crm-assistant-rail:hover .assistant-rail-presence,
+.crm-assistant-rail:focus-within .assistant-rail-presence {
+    transform: none !important;
+    border-color: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 28%, rgba(148, 163, 184, 0.18)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62) !important;
+}
+
+body.dark-mode .crm-assistant-rail:hover .assistant-rail-presence,
+body.dark-mode .crm-assistant-rail:focus-within .assistant-rail-presence {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+.assistant-rail-avatar-btn,
+.crm-assistant-rail .assistant-rail-avatar {
+    position: relative !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 12px !important;
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 19%, transparent), rgba(255, 255, 255, 0.08)),
+        rgba(255, 255, 255, 0.42) !important;
+    border: 1px solid color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 24%, rgba(148, 163, 184, 0.22)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54) !important;
+    outline: 0 !important;
+    overflow: hidden !important;
+    transform: none !important;
+}
+
+body.dark-mode .assistant-rail-avatar-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-avatar {
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 24%, transparent), rgba(15, 23, 42, 0.44)),
+        rgba(15, 23, 42, 0.48) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+.crm-assistant-rail:hover .assistant-rail-avatar,
+.crm-assistant-rail:focus-within .assistant-rail-avatar,
+.assistant-rail-avatar-btn:hover,
+.assistant-rail-avatar-btn:focus-visible {
+    transform: none !important;
+    border-color: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 42%, rgba(148, 163, 184, 0.22)) !important;
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 24%, transparent), rgba(255, 255, 255, 0.10)),
+        rgba(255, 255, 255, 0.50) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.62),
+        inset 0 -2px 0 color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 44%, transparent) !important;
+}
+
+body.dark-mode .assistant-rail-avatar-btn:hover,
+body.dark-mode .assistant-rail-avatar-btn:focus-visible {
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 28%, transparent), rgba(15, 23, 42, 0.50)),
+        rgba(15, 23, 42, 0.58) !important;
+}
+
+.assistant-rail-avatar-btn:focus-visible::after {
+    content: "" !important;
+    position: absolute !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 5px !important;
+    height: 2px !important;
+    border-radius: 999px !important;
+    background: var(--assistant-avatar-focus, var(--assistant-presence-current, #14b8a6)) !important;
+    pointer-events: none !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar-core,
+.crm-assistant-rail .assistant-rail-avatar-core,
+.timeline-dashboard-page .assistant-rail-avatar-core,
+html[data-theme="light"] .assistant-rail-avatar-core,
+body:not(.dark-mode) .assistant-rail-avatar-core {
+    width: 29px !important;
+    height: 29px !important;
+    border-radius: 10px !important;
+    background:
+        linear-gradient(155deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.02)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 14%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 22%, transparent) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    overflow: hidden !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-avatar-core,
+body.dark-mode .crm-assistant-rail .assistant-rail-avatar-core {
+    background:
+        linear-gradient(155deg, rgba(255, 255, 255, 0.08), rgba(15, 23, 42, 0.18)),
+        color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 18%, transparent) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar-core::before,
+.crm-assistant-rail .assistant-rail-avatar-core::before {
+    content: none !important;
+    animation: none !important;
+}
+
+.assistant-rail-avatar-screen {
+    width: 20px !important;
+    height: 16px !important;
+    border-radius: 6px !important;
+    transform: none !important;
+    background: rgba(15, 23, 42, 0.16) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 18%, transparent) !important;
+}
+
+body.dark-mode .assistant-rail-avatar-screen {
+    background: rgba(2, 6, 23, 0.36) !important;
+}
+
+.assistant-rail-avatar-eye,
+.assistant-rail-avatar-mouth {
+    background: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 82%, #ffffff 18%) !important;
+    box-shadow: 0 0 5px color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 20%, transparent) !important;
+}
+
+.assistant-rail-btn:focus-visible,
+.timeline-dashboard-page .assistant-rail-btn:focus-visible {
+    outline: 0 !important;
+    transform: none !important;
+    border-color: color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 42%, rgba(148, 163, 184, 0.22)) !important;
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 18%, transparent),
+        inset 0 -2px 0 color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 52%, transparent) !important;
+}
+
+.assistant-rail-btn:hover,
+.timeline-dashboard-page .assistant-rail-btn:hover {
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--assistant-presence-current, #14b8a6) 26%, transparent) !important;
+}

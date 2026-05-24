@@ -3068,6 +3068,7 @@ body.dark-mode .cert-fixed-type-field strong {
 .art-shell .kanban-column,
 .art-shell .template-card,
 .art-shell .brand-item,
+.art-shell .art-costume-card,
 .art-shell .recent-item,
 .art-shell .overview-stat {
     border: 1px solid rgba(148, 163, 184, 0.18);
@@ -3264,6 +3265,105 @@ body.dark-mode .cert-fixed-type-field strong {
     border-radius: 14px;
 }
 
+.art-shell .artdir-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.art-shell .artdir-section-head .artdir-section-title {
+    margin-bottom: 4px;
+}
+
+.art-shell .artdir-section-subtitle {
+    margin: 0;
+    max-width: 620px;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.art-shell .art-costume-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.art-shell .art-costume-card {
+    display: grid;
+    gap: 10px;
+    min-height: 132px;
+    padding: 15px;
+    border-radius: 16px;
+}
+
+.art-shell .art-costume-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.art-shell .art-costume-card-head strong {
+    min-width: 0;
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 950;
+    overflow-wrap: anywhere;
+}
+
+.art-shell .art-costume-condition {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: #4f46e5;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.art-shell .art-costume-condition[data-condition="new"] {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.art-shell .art-costume-condition[data-condition="worn"] {
+    background: rgba(245, 158, 11, 0.16);
+    color: #b45309;
+}
+
+.art-shell .art-costume-condition[data-condition="damaged"] {
+    background: rgba(239, 68, 68, 0.14);
+    color: #b91c1c;
+}
+
+.art-shell .art-costume-condition[data-condition="retired"] {
+    background: rgba(100, 116, 139, 0.14);
+    color: #475569;
+}
+
+.art-shell .art-costume-meta {
+    display: grid;
+    gap: 4px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.art-shell .art-costume-card p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.art-shell .art-costume-empty {
+    grid-column: 1 / -1;
+}
+
 .art-shell .artdir-embed-frame {
     min-height: calc(100vh - 230px);
     border: 1px solid rgba(148, 163, 184, 0.18);
@@ -3279,6 +3379,7 @@ body.dark-mode .art-shell .pipeline-toolbar,
 body.dark-mode .art-shell .kanban-column,
 body.dark-mode .art-shell .template-card,
 body.dark-mode .art-shell .brand-item,
+body.dark-mode .art-shell .art-costume-card,
 body.dark-mode .art-shell .recent-item,
 body.dark-mode .art-shell .overview-stat {
     border-color: rgba(148, 163, 184, 0.2);
@@ -3290,6 +3391,7 @@ body.dark-mode .art-page-hero h1,
 body.dark-mode .art-shell .artdir-section-title,
 body.dark-mode .art-shell .template-card-name,
 body.dark-mode .art-shell .brand-item-title,
+body.dark-mode .art-shell .art-costume-card-head strong,
 body.dark-mode .art-shell .recent-item-title,
 body.dark-mode .art-shell .kanban-card-title {
     color: #f8fafc;
@@ -3302,7 +3404,10 @@ body.dark-mode .art-shell .kanban-card-meta,
 body.dark-mode .art-shell .template-card-desc,
 body.dark-mode .art-shell .template-card-meta,
 body.dark-mode .art-shell .template-card-use,
-body.dark-mode .art-shell .brand-item-desc {
+body.dark-mode .art-shell .brand-item-desc,
+body.dark-mode .art-shell .artdir-section-subtitle,
+body.dark-mode .art-shell .art-costume-meta,
+body.dark-mode .art-shell .art-costume-card p {
     color: #cbd5e1;
 }
 
@@ -3374,6 +3479,14 @@ body.dark-mode .art-shell .artdir-embed-frame {
 
     .art-shell .pipeline-toolbar {
         align-items: stretch;
+    }
+
+    .art-shell .artdir-section-head {
+        display: grid;
+    }
+
+    .art-shell .artdir-section-head .btn-create {
+        width: 100%;
     }
 }
 

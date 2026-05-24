@@ -95,13 +95,16 @@ function clearModules() {
         '../routes/tasks',
         '../routes/users',
         '../routes/designs',
+        '../routes/art-director',
+        '../routes/hr',
         '../routes/music',
         '../routes/reports',
         '../routes/dashboard',
         '../routes/analytics',
         '../routes/chat',
         '../routes/report-bot',
-        '../routes/telegram'
+        '../routes/telegram',
+        '../services/costumeInventory'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
@@ -396,6 +399,34 @@ function createFakePool() {
             if (/SELECT tag, COUNT\(\*\) as count FROM design_tags GROUP BY tag ORDER BY count DESC, tag ASC/i.test(text)) {
                 return { rows: [] };
             }
+            if (/FROM costumes c LEFT JOIN staff s ON s\.id = c\.assigned_to ORDER BY c\.name/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 301,
+                        name: 'Пірат Джек',
+                        category: 'піратський',
+                        size: 'M',
+                        condition: 'good',
+                        assigned_to: null,
+                        assigned_name: null,
+                        notes: null
+                    }]
+                };
+            }
+            if (/INSERT INTO costumes \(name, category, size, condition, assigned_to, assigned_at, notes\)/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 302,
+                        name: params[0],
+                        category: params[1],
+                        size: params[2],
+                        condition: params[3],
+                        assigned_to: params[4],
+                        assigned_at: params[5],
+                        notes: params[6]
+                    }]
+                };
+            }
             if (/FROM announcements/i.test(text) && /total_plays/i.test(text)) {
                 return { rows: [{ active: 0, draft: 0, scheduled: 0, total_plays: 0 }] };
             }
@@ -572,6 +603,8 @@ describe('route-level API safety smoke', () => {
         app.use('/api/tasks', require('../routes/tasks'));
         app.use('/api/users', require('../routes/users'));
         app.use('/api/designs', require('../routes/designs'));
+        app.use('/api/art-director', require('../routes/art-director'));
+        app.use('/api/hr', require('../routes/hr'));
         app.use('/api/music', require('../routes/music'));
         app.use('/api/reports', require('../routes/reports'));
         app.use('/api/dashboard', require('../routes/dashboard'));
@@ -864,6 +897,19 @@ describe('route-level API safety smoke', () => {
         const artDesigns = await request('GET', '/api/designs/tags', undefined, withAuth({}, 'art_director'));
         assert.equal(artDesigns.status, 200, JSON.stringify(artDesigns.data));
         assert.deepEqual(artDesigns.data, []);
+
+        const waiterCostumes = await request('GET', '/api/art-director/costumes', undefined, withAuth({}, 'waiter'));
+        assert.equal(waiterCostumes.status, 403, JSON.stringify(waiterCostumes.data));
+        const artCostumes = await request('GET', '/api/art-director/costumes', undefined, withAuth({}, 'art_director'));
+        assert.equal(artCostumes.status, 200, JSON.stringify(artCostumes.data));
+        assert.equal(artCostumes.data.success, true);
+        assert.equal(artCostumes.data.data[0].name, 'Пірат Джек');
+        const createdCostume = await request('POST', '/api/art-director/costumes', { name: 'Космонавт', category: 'sci-fi', size: 'L' }, withAuth({}, 'art_director'));
+        assert.equal(createdCostume.status, 200, JSON.stringify(createdCostume.data));
+        assert.equal(createdCostume.data.data.name, 'Космонавт');
+        const hrCostumesCompatibility = await request('GET', '/api/hr/costumes', undefined, withAuth({}, 'art_director'));
+        assert.equal(hrCostumesCompatibility.status, 200, JSON.stringify(hrCostumesCompatibility.data));
+        assert.equal(hrCostumesCompatibility.data.data[0].name, 'Пірат Джек');
 
         const waiterMusic = await request('GET', '/api/music/overview', undefined, withAuth({}, 'waiter'));
         assert.equal(waiterMusic.status, 403, JSON.stringify(waiterMusic.data));

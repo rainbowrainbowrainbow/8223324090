@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.8 - CRM 63.8: Костюмерна в Арті
+
+### Art / перенесення костюмерної [codex]
+- **Костюмерна переїхала в Art Director** - `/art` отримав окрему вкладку `Костюмерна` з native Art surface, кнопкою додавання і списком костюмів.
+- **HR більше не володіє видимим модулем** - з HR прибрано top-level tab, старий `costumes` deep-link мʼяко веде на `/art?tab=costumes`.
+- **Data flow не зламано** - таблиця `costumes` і старий `/api/hr/costumes` залишились сумісними, а новий `/api/art-director/costumes` використовує спільний `services/costumeInventory.js`.
+- **Доступ вирівняно з Art** - `art_director` і `marketer` можуть відкривати Art workspace та працювати з костюмерною без доступу до HR-сторінки.
+- **Guardrail** - UI smoke перевіряє відсутність HR tab, наявність Art tab, handoff deep-link, а route smoke перевіряє list/create через Art API.
+
+---
+
 ## v0.63.7 - CRM 63.7: Dashboard Board Postgres
 
 ### Dashboard Board / canonical Postgres persistence [codex]

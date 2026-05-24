@@ -7,7 +7,9 @@ let overviewData = null;
 let contentItems = [];
 let templates = [];
 let brandGuidelines = [];
+let costumes = [];
 let isAdminUser = false;
+let canAccessArtWorkspace = false;
 let activeTab = 'overview';
 let templateCategoryFilter = '';
 let editingContentId = null;
@@ -163,6 +165,7 @@ function activateArtTab(tabName, options = {}) {
     if (tabName === 'pipeline') loadPipeline();
     if (tabName === 'templates') loadTemplates();
     if (tabName === 'brand') loadBrand();
+    if (tabName === 'costumes') loadCostumes();
 
     return true;
 }
@@ -178,6 +181,7 @@ function setupTabs() {
             activateArtTab(trigger.dataset.artTabTarget);
         });
     });
+    document.getElementById('btnArtAddCostume')?.addEventListener('click', showAddCostume);
 }
 
 // Lazy-load iframes: set src from data-src only when tab is activated
@@ -836,6 +840,87 @@ async function handleBrandSubmit(e) {
 }
 
 // ==========================================
+// COSTUMES TAB
+// ==========================================
+
+const COSTUME_CONDITION_LABELS = {
+    new: 'Новий',
+    good: 'Добрий',
+    worn: 'Потертий',
+    damaged: 'Пошкоджений',
+    retired: 'Списаний'
+};
+
+function costumeText(value) {
+    return escapeHtml(String(value || ''));
+}
+
+async function loadCostumes() {
+    const container = document.getElementById('artCostumesList');
+    if (!container) return;
+    container.innerHTML = '<div class="artdir-loading">Завантаження...</div>';
+    const data = await apiGet('/costumes');
+    if (!data || !data.success) {
+        container.innerHTML = '<div class="artdir-empty">Не вдалося завантажити костюмерну</div>';
+        return;
+    }
+    costumes = Array.isArray(data.data) ? data.data : [];
+    renderCostumes(costumes);
+}
+
+function renderCostumes(items) {
+    const container = document.getElementById('artCostumesList');
+    if (!container) return;
+    if (!items.length) {
+        container.innerHTML = `
+            <div class="artdir-empty art-costume-empty">
+                <span>Костюми ще не додані</span>
+                <p>Додайте перший костюм, щоб Art Director бачив творчий інвентар поруч із програмами та дизайнами.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        const condition = String(item.condition || 'good');
+        const conditionLabel = COSTUME_CONDITION_LABELS[condition] || condition;
+        return `
+            <article class="art-costume-card" data-costume-id="${costumeText(item.id)}">
+                <div class="art-costume-card-head">
+                    <strong>${costumeText(item.name)}</strong>
+                    <span class="art-costume-condition" data-condition="${costumeText(condition)}">${costumeText(conditionLabel)}</span>
+                </div>
+                <div class="art-costume-meta">
+                    ${item.category ? `<span>Категорія: <b>${costumeText(item.category)}</b></span>` : ''}
+                    ${item.size ? `<span>Розмір: <b>${costumeText(item.size)}</b></span>` : ''}
+                    <span>${item.assigned_name ? `Призначено: <b>${costumeText(item.assigned_name)}</b>` : 'Не призначено'}</span>
+                </div>
+                ${item.notes ? `<p>${costumeText(item.notes)}</p>` : ''}
+            </article>
+        `;
+    }).join('');
+}
+
+async function showAddCostume() {
+    const result = await formModal('Додати костюм', [
+        { key: 'name', label: 'Назва костюму', required: true, placeholder: 'Наприклад: Пірат Джек' },
+        { key: 'category', label: 'Категорія', placeholder: 'піратський, казковий, спортивний', defaultValue: 'general' },
+        { key: 'size', label: 'Розмір', placeholder: 'S / M / L або 42-44' }
+    ], { icon: '🧵' });
+    if (!result) return;
+    const data = await apiPost('/costumes', {
+        name: result.name,
+        category: result.category || 'general',
+        size: result.size || ''
+    });
+    if (data?.success) {
+        showNotification('Костюм додано', 'success');
+        await loadCostumes();
+    } else {
+        showNotification(data?.error || 'Не вдалося додати костюм', 'error');
+    }
+}
+
+// ==========================================
 // SIDEBAR + AUTH
 // ==========================================
 
@@ -872,8 +957,10 @@ async function initAuth() {
     AppState.currentUser = user;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    isAdminUser = ADMIN_ROLES.includes(user.role);
+    const ART_WORKSPACE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'art_director', 'marketer'];
+    const ART_ADMIN_ACTION_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    canAccessArtWorkspace = ART_WORKSPACE_ROLES.includes(user.role);
+    isAdminUser = ART_ADMIN_ACTION_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
@@ -989,14 +1076,14 @@ async function initArtDirectorPage() {
     const authed = await initAuth();
     if (!authed) return;
 
-    if (!isAdminUser) {
+    if (!canAccessArtWorkspace) {
         const artdirPage = document.querySelector('.artdir-page');
         if (!artdirPage) return;
         artdirPage.innerHTML = `
             <div class="artdir-empty" style="padding:60px">
                 <span style="font-size:48px">🔒</span>
                 <h2>Доступ обмежено</h2>
-                <p>Ця сторінка доступна тільки адміністраторам</p>
+                <p>Ця сторінка доступна ролям Art, маркетингу та керівникам</p>
                 <a href="/" style="color:var(--primary);font-weight:700">← Повернутись на таймлайн</a>
             </div>`;
         return;

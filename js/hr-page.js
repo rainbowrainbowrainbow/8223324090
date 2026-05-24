@@ -229,7 +229,6 @@ function initNewTabs() {
     document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
-    document.getElementById('btnAddCostume')?.addEventListener('click', showAddCostume);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
     initCompanyOrgChart();
 }
@@ -253,6 +252,10 @@ function getInitialHrTab() {
     const hashTab = window.location.hash ? window.location.hash.slice(1) : '';
     const queryTab = new URLSearchParams(window.location.search).get('tab') || '';
     const target = queryTab || hashTab || 'today';
+    if (target === 'costumes') {
+        window.location.replace('/art?tab=costumes');
+        return 'today';
+    }
     return document.getElementById(`tab-${target}`) ? target : 'today';
 }
 
@@ -272,7 +275,7 @@ async function activateHrTab(target, options = {}) {
         today: loadToday, schedule: loadSchedule, team: loadTeam, structure: loadCompanyStructure,
         reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
         salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
-        costumes: loadCostumes, vacancies: loadVacancies, reserve: loadReservePool,
+        vacancies: loadVacancies, reserve: loadReservePool,
         blacklist: loadBlacklist, accounts: loadAccountCenter
     };
     await loaders[target]?.();
@@ -2614,44 +2617,6 @@ window.showStartOnboarding = async function() {
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
 
-// ==========================================
-// TAB 10: COSTUMES (#8)
-// ==========================================
-
-async function loadCostumes() {
-    const data = await hrFetch('/costumes');
-    if (!data || !data.success) return;
-    renderCostumes(data.data);
-}
-
-function renderCostumes(costumes) {
-    const el = document.getElementById('costumesList');
-    if (!costumes.length) {
-        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає костюмів</div>';
-        return;
-    }
-
-    const condLabels = { new: 'Новий', good: 'Добрий', worn: 'Потертий', damaged: 'Пошкоджений', retired: 'Списаний' };
-    const condColors = { new: '#10B981', good: '#6366F1', worn: '#F59E0B', damaged: '#EF4444', retired: '#9CA3AF' };
-
-    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
-        ${costumes.map(c => `
-            <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-xs);">
-                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
-                    <strong style="font-size:14px;">${escapeHtml(c.name)}</strong>
-                    <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${condColors[c.condition] || '#9CA3AF'}20;color:${condColors[c.condition] || '#9CA3AF'};">${condLabels[c.condition] || c.condition}</span>
-                </div>
-                ${c.category ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Категорія: ${escapeHtml(c.category)}</div>` : ''}
-                ${c.size ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Розмір: ${escapeHtml(c.size)}</div>` : ''}
-                <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">
-                    ${c.assigned_name ? `Призначено: <strong>${escapeHtml(c.assigned_name)}</strong>` : '<span style="color:var(--gray-400);">Не призначено</span>'}
-                </div>
-                ${c.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:4px;">${escapeHtml(c.notes)}</div>` : ''}
-            </div>
-        `).join('')}
-    </div>`;
-}
-
 // v39.8: commitSalaries — was missing, button existed but function didn't
 window.commitSalaries = async function() {
     const month = document.getElementById('salaryMonth')?.value;
@@ -2664,17 +2629,6 @@ window.commitSalaries = async function() {
     } else {
         showNotification(data?.error || 'Помилка нарахування', 'error');
     }
-};
-
-window.showAddCostume = async function() {
-    const result = await formModal('Додати костюм', [
-        { key: 'name', label: 'Назва костюму', required: true, placeholder: 'Наприклад: Пірат Джек' },
-        { key: 'category', label: 'Категорія', placeholder: 'піратський, казковий, спортивний', defaultValue: 'general' },
-        { key: 'size', label: 'Розмір', placeholder: 'S / M / L або 42-44' }
-    ], { icon: '🦸' });
-    if (!result) return;
-    const data = await hrFetch('/costumes', 'POST', { name: result.name, category: result.category || 'general', size: result.size || '' });
-    if (data?.success) { showNotification('Костюм додано', 'success'); loadCostumes(); }
 };
 
 // ==========================================

@@ -9,6 +9,7 @@ const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const costumeInventory = require('../services/costumeInventory');
 const { requireRole } = require('../middleware/auth');
 
 // RBAC: HR module — management + HR + security + admin + manager
@@ -1745,13 +1746,8 @@ router.get('/salary/adjustments', async (req, res) => {
 // GET /api/hr/costumes
 router.get('/costumes', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT c.*, s.name AS assigned_name
-            FROM costumes c
-            LEFT JOIN staff s ON s.id = c.assigned_to
-            ORDER BY c.name
-        `);
-        res.json({ success: true, data: result.rows });
+        const data = await costumeInventory.listCostumes();
+        res.json({ success: true, data });
     } catch (err) {
         log.error('GET /hr/costumes error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1761,56 +1757,29 @@ router.get('/costumes', async (req, res) => {
 // POST /api/hr/costumes
 router.post('/costumes', async (req, res) => {
     try {
-        const { name, category, size, condition, assigned_to, notes } = req.body;
-        if (!name) return res.status(400).json({ success: false, error: 'Потрібна назва' });
-        const result = await pool.query(
-            `INSERT INTO costumes (name, category, size, condition, assigned_to, assigned_at, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [name, category, size, condition || 'good', assigned_to, assigned_to ? new Date().toISOString() : null, notes]
-        );
-        res.json({ success: true, data: result.rows[0] });
+        const data = await costumeInventory.createCostume(req.body);
+        res.json({ success: true, data });
     } catch (err) {
         log.error('POST /hr/costumes error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
 // PUT /api/hr/costumes/:id
 router.put('/costumes/:id', async (req, res) => {
     try {
-        const { name, category, size, condition, assigned_to, notes } = req.body;
-        const assignedVal = assigned_to !== undefined ? (assigned_to || null) : undefined;
-        let sql, params;
-        if (assignedVal !== undefined) {
-            sql = `UPDATE costumes SET
-                name = COALESCE($1, name), category = COALESCE($2, category),
-                size = COALESCE($3, size), condition = COALESCE($4, condition),
-                assigned_to = $5, assigned_at = CASE WHEN $5::int IS NOT NULL THEN NOW() ELSE assigned_at END,
-                notes = COALESCE($6, notes)
-             WHERE id = $7 RETURNING *`;
-            params = [name, category, size, condition, assignedVal, notes, req.params.id];
-        } else {
-            sql = `UPDATE costumes SET
-                name = COALESCE($1, name), category = COALESCE($2, category),
-                size = COALESCE($3, size), condition = COALESCE($4, condition),
-                notes = COALESCE($5, notes)
-             WHERE id = $6 RETURNING *`;
-            params = [name, category, size, condition, notes, req.params.id];
-        }
-        const result = await pool.query(sql, params
-        );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        res.json({ success: true, data: result.rows[0] });
+        const data = await costumeInventory.updateCostume(req.params.id, req.body);
+        res.json({ success: true, data });
     } catch (err) {
         log.error('PUT /hr/costumes/:id error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
 // DELETE /api/hr/costumes/:id
 router.delete('/costumes/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM costumes WHERE id = $1', [req.params.id]);
+        await costumeInventory.deleteCostume(req.params.id);
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /hr/costumes/:id error', err);

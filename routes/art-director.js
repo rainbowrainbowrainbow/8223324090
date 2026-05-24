@@ -5,9 +5,11 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
+const costumeInventory = require('../services/costumeInventory');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ArtDirector');
+const ART_COSTUME_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'art_director', 'marketer'];
 
 // ==========================================
 // BRAND GUIDELINES
@@ -438,6 +440,29 @@ router.delete('/content/:id', requireRole('admin'), async (req, res) => {
     } catch (err) {
         log.error('DELETE /content/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка видалення' });
+    }
+});
+
+// ==========================================
+// COSTUMES — creative inventory, shared data source
+// ==========================================
+router.get('/costumes', requireRole(...ART_COSTUME_ROLES), async (req, res) => {
+    try {
+        const data = await costumeInventory.listCostumes();
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('GET /costumes error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження костюмів' });
+    }
+});
+
+router.post('/costumes', requireRole(...ART_COSTUME_ROLES), async (req, res) => {
+    try {
+        const data = await costumeInventory.createCostume(req.body);
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('POST /costumes error', err);
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка створення костюму' });
     }
 });
 

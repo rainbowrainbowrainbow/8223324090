@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.18">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.18">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.18">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.18">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.18">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.18">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.18">
+    <link rel="stylesheet" href="css/base.css?v=0.63.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.19">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -128,6 +128,48 @@
             font-size: 12px;
             font-weight: 900;
         }
+        .hr-org-tools {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 0 0 14px;
+        }
+        .hr-org-tool-btn {
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.82);
+            color: var(--gray-700);
+            padding: 9px 12px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .hr-org-tool-btn:hover:not(:disabled),
+        .hr-org-tool-btn:focus-visible {
+            outline: none;
+            border-color: rgba(20,184,166,0.52);
+            color: #0F766E;
+            box-shadow: 0 0 0 3px rgba(20,184,166,0.12);
+        }
+        .hr-org-tool-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .hr-org-link-status {
+            margin-left: auto;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .hr-org-link-status.is-active {
+            padding: 7px 10px;
+            border: 1px solid rgba(245,158,11,0.30);
+            border-radius: 999px;
+            background: rgba(245,158,11,0.12);
+            color: #B45309;
+        }
         .hr-org-layout {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
@@ -135,13 +177,22 @@
             align-items: start;
         }
         .hr-org-canvas {
-            min-width: 980px;
-            padding: 12px 10px 6px;
-            overflow-x: auto;
+            min-width: 0;
+            min-height: 620px;
+            padding: 14px;
+            overflow: auto;
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 20px;
+            background:
+                radial-gradient(circle at 18px 18px, rgba(148,163,184,0.18) 1px, transparent 1px),
+                linear-gradient(180deg, rgba(248,250,252,0.80), rgba(241,245,249,0.48));
+            background-size: 32px 32px, auto;
         }
         .hr-org-stage {
-            width: 980px;
-            margin: 0 auto;
+            position: relative;
+            width: 1280px;
+            min-height: 900px;
+            margin: 0;
         }
         .hr-org-loading {
             padding: 36px;
@@ -151,44 +202,39 @@
             border-radius: 14px;
             background: var(--gray-50);
         }
-        .hr-org-row {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            gap: 14px;
-            position: relative;
+        .hr-org-link-layer,
+        .hr-org-node-plane {
+            position: absolute;
+            inset: 0;
         }
-        .hr-org-row + .hr-org-row { margin-top: 24px; }
-        .hr-org-row.hr-org-row--branches,
-        .hr-org-row.hr-org-row--operations {
-            justify-content: space-between;
-            gap: 12px;
+        .hr-org-link-layer {
+            z-index: 1;
+            overflow: visible;
+            pointer-events: none;
         }
-        .hr-org-row.hr-org-row--support {
-            justify-content: center;
-            gap: 20px;
-            margin-top: 34px;
+        .hr-org-node-plane {
+            z-index: 2;
         }
-        .hr-org-stack {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            min-width: 140px;
+        .hr-org-link {
+            fill: none;
+            stroke: rgba(100,116,139,0.78);
+            stroke-width: 3;
+            stroke-linecap: round;
+            filter: drop-shadow(0 4px 8px rgba(15,23,42,0.14));
         }
-        .hr-org-subrow {
-            display: flex;
-            justify-content: center;
-            gap: 14px;
-            align-items: flex-start;
+        .hr-org-link.is-active {
+            stroke: rgba(20,184,166,0.95);
+            stroke-width: 4;
         }
         .hr-org-node-shell {
-            position: relative;
+            position: absolute;
             display: inline-flex;
-            min-width: 134px;
+            min-width: 168px;
+            touch-action: none;
         }
         .hr-org-node-shell .hr-org-node {
             width: 100%;
+            height: 100%;
         }
         .hr-org-node {
             position: relative;
@@ -197,9 +243,9 @@
             align-items: center;
             justify-content: center;
             gap: 5px;
-            min-width: 134px;
-            min-height: 72px;
-            padding: 12px 34px 12px 14px;
+            min-width: 168px;
+            min-height: 78px;
+            padding: 12px 62px 12px 14px;
             border-radius: 10px;
             border: 1px solid var(--gray-200);
             background: var(--white);
@@ -211,16 +257,29 @@
             text-align: center;
             text-transform: none;
             letter-spacing: 0;
-            cursor: pointer;
+            cursor: grab;
+            user-select: none;
             box-shadow: 0 10px 24px rgba(15,23,42,0.08);
             transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
         }
         .hr-org-node:hover,
         .hr-org-node.is-active {
-            transform: translateY(-2px);
+            transform: none;
             border-color: rgba(16,185,129,0.62);
             box-shadow: 0 18px 34px rgba(15,23,42,0.14), 0 0 0 3px rgba(16,185,129,0.12);
             background: #F8FFFB;
+        }
+        .hr-org-node-shell.is-dragging .hr-org-node {
+            cursor: grabbing;
+            border-color: rgba(20,184,166,0.84);
+            box-shadow: 0 22px 46px rgba(15,23,42,0.22), 0 0 0 4px rgba(20,184,166,0.18);
+        }
+        .hr-org-node-shell.is-link-source .hr-org-node {
+            border-color: rgba(245,158,11,0.84);
+            box-shadow: 0 18px 34px rgba(245,158,11,0.16), 0 0 0 4px rgba(245,158,11,0.18);
+        }
+        .hr-org-stage.is-linking .hr-org-node:not(.is-active) {
+            cursor: crosshair;
         }
         .hr-org-node:focus-visible {
             outline: none;
@@ -254,9 +313,25 @@
             font-size: 12px;
             cursor: pointer;
         }
+        .hr-org-node-link {
+            position: absolute;
+            right: 36px;
+            top: 8px;
+            width: 22px;
+            height: 22px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(20,184,166,0.30);
+            border-radius: 999px;
+            background: rgba(20,184,166,0.12);
+            color: #0F766E;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
         .hr-org-node--gold {
             min-width: 220px;
-            min-height: 88px;
+            min-height: 98px;
             color: #78350F;
             font-size: 18px;
             border-color: rgba(217,119,6,0.36);
@@ -415,6 +490,31 @@
             background: rgba(255,255,255,0.04);
             border-color: rgba(255,255,255,0.12);
         }
+        body.dark-mode .hr-org-canvas {
+            background:
+                radial-gradient(circle at 18px 18px, rgba(148,163,184,0.16) 1px, transparent 1px),
+                linear-gradient(180deg, rgba(15,23,42,0.42), rgba(15,15,38,0.54));
+            background-size: 32px 32px, auto;
+            border-color: rgba(148,163,184,0.16);
+        }
+        body.dark-mode .hr-org-link {
+            stroke: rgba(148,163,184,0.70);
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.28));
+        }
+        body.dark-mode .hr-org-link.is-active {
+            stroke: rgba(45,212,191,0.95);
+        }
+        body.dark-mode .hr-org-tool-btn {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.12);
+            color: #E5E7EB;
+        }
+        body.dark-mode .hr-org-link-status { color: #CBD5E1; }
+        body.dark-mode .hr-org-link-status.is-active {
+            background: rgba(245,158,11,0.16);
+            border-color: rgba(245,158,11,0.30);
+            color: #FDE68A;
+        }
         body.dark-mode .hr-org-node {
             background: rgba(255,255,255,0.06);
             border-color: rgba(148,163,184,0.22);
@@ -435,6 +535,7 @@
         body.dark-mode .hr-org-node--purple { background: rgba(168,85,247,0.12); color: #E9D5FF; }
         body.dark-mode .hr-org-node--violet { background: rgba(124,58,237,0.14); color: #DDD6FE; }
         body.dark-mode .hr-org-node-edit,
+        body.dark-mode .hr-org-node-link,
         body.dark-mode .hr-org-detail-meta span,
         body.dark-mode .hr-org-node-form input,
         body.dark-mode .hr-org-node-form textarea,
@@ -1897,9 +1998,15 @@
                         <div class="hr-org-chart-head">
                             <div>
                                 <h3>Структура компанії</h3>
-                                <p>Інтерактивна схема за затвердженою ієрархією: натисніть на роль, щоб побачити зону відповідальності.</p>
+                                <p>Жива схема кадрів: перетягуйте ролі по полотну, а лінії підпорядкування змінюйте системно через обраний вузол.</p>
                             </div>
-                            <span class="hr-org-chart-badge">Редагована структура</span>
+                            <span class="hr-org-chart-badge">Редагована карта</span>
+                        </div>
+                        <div class="hr-org-tools" aria-label="Інструменти структури компанії">
+                            <button type="button" id="hrOrgAutoLayoutBtn" class="hr-org-tool-btn">Авто-впорядкувати</button>
+                            <button type="button" id="hrOrgRelinkSelectedBtn" class="hr-org-tool-btn">Змінити лінію</button>
+                            <button type="button" id="hrOrgClearParentBtn" class="hr-org-tool-btn">Прибрати лінію</button>
+                            <span id="hrOrgLinkStatus" class="hr-org-link-status">Перетягуйте вузли або змінюйте лінії підпорядкування</span>
                         </div>
                         <div class="hr-org-layout">
                             <div class="hr-org-canvas" aria-label="Інтерактивна організаційна структура компанії">
@@ -2045,16 +2152,6 @@
                 </div>
             </div>
 
-            <!-- ─── Shifts Summary (v33.5) ─── -->
-            <div class="page-section" id="shiftsSummarySection">
-              <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h3 style="margin:0;">📊 Зміни аніматорів</h3>
-                <input type="month" id="shiftsMonthPicker"
-                       style="padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:16px;"
-                       onchange="loadShiftsSummary()">
-              </div>
-              <div id="shiftsSummaryContainer"></div>
-            </div>
         </main>
     </div>
 
@@ -2244,51 +2341,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.63.18"></script>
-    <script src="js/config.js?v=0.63.18"></script>
-    <script src="js/notification.js?v=0.63.18"></script>
-    <script src="js/api.js?v=0.63.18"></script>
-    <script src="js/auth.js?v=0.63.18"></script>
-    <script src="js/components/sidebar.js?v=0.63.18"></script>
+    <script src="js/ui.js?v=0.63.19"></script>
+    <script src="js/config.js?v=0.63.19"></script>
+    <script src="js/notification.js?v=0.63.19"></script>
+    <script src="js/api.js?v=0.63.19"></script>
+    <script src="js/auth.js?v=0.63.19"></script>
+    <script src="js/components/sidebar.js?v=0.63.19"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.63.18"></script>
-    <script src="js/alerts.js?v=0.63.18"></script><script>
-    // ─── Shifts Summary (v33.5) ──────────
-    async function loadShiftsSummary() {
-        const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);
-        const container = document.getElementById('shiftsSummaryContainer');
-        if (!container) return;
-        container.innerHTML = '<p style="color:var(--gray-400)">Завантаження...</p>';
-        try {
-            const token = localStorage.getItem('pzp_token');
-            const res = await fetch(`/api/hr/shifts-summary?month=${month}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const { summary = [], period } = await res.json();
-            if (!summary.length) {
-                container.innerHTML = '<p style="color:var(--gray-400); font-size:13px;">Немає даних.<br>Додайте <b>display_name</b> аніматорам (як вписують в бронюваннях).</p>';
-                return;
-            }
-            container.innerHTML = `
-                <p style="font-size:12px;color:var(--gray-400);margin:0 0 12px">${period.from} — ${period.to}</p>
-                <table class="data-table" style="width:100%">
-                  <thead><tr><th>Аніматор</th><th style="text-align:center">Всього</th><th style="text-align:center">Ведучий</th><th style="text-align:center">Другий</th></tr></thead>
-                  <tbody>${summary.map(s => `
-                    <tr>
-                      <td><strong>${s.name}</strong> <span style="font-size:12px;color:var(--gray-400);margin-left:6px;">(${s.displayName})</span></td>
-                      <td style="text-align:center"><strong>${s.total}</strong></td>
-                      <td style="text-align:center">${s.asHost}</td>
-                      <td style="text-align:center">${s.asSecond}</td>
-                    </tr>`).join('')}
-                  </tbody>
-                </table>`;
-        } catch (e) { container.innerHTML = `<p style="color:#ef4444">❌ ${e.message}</p>`; }
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-        const picker = document.getElementById('shiftsMonthPicker');
-        if (picker) { picker.value = new Date().toISOString().slice(0,7); loadShiftsSummary(); }
-    });
-
+    <script src="js/hr-page.js?v=0.63.19"></script>
+    <script src="js/alerts.js?v=0.63.19"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

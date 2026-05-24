@@ -165,6 +165,8 @@ function sanitizeCompanyStructureNodes(nodes) {
         const tone = COMPANY_STRUCTURE_ALLOWED_TONES.has(source.tone) ? source.tone : 'blue';
         const lane = COMPANY_STRUCTURE_ALLOWED_LANES.has(source.lane) ? source.lane : 'leadership';
         const order = Number.isFinite(Number(source.order)) ? Number(source.order) : index;
+        const x = Number.isFinite(Number(source.x)) ? Math.max(0, Math.min(5000, Number(source.x))) : null;
+        const y = Number.isFinite(Number(source.y)) ? Math.max(0, Math.min(5000, Number(source.y))) : null;
         return {
             id,
             title: sanitizeCompanyStructureString(source.title, 80) || 'Роль',
@@ -174,14 +176,30 @@ function sanitizeCompanyStructureNodes(nodes) {
             parentId: sanitizeCompanyStructureString(source.parentId, 64) || null,
             stack: sanitizeCompanyStructureString(source.stack, 64) || null,
             order,
+            x,
+            y,
             meta: sanitizeCompanyStructureString(source.meta, 80) || null
         };
     });
     const ids = new Set(normalized.map(node => node.id));
-    return normalized.map(node => ({
-        ...node,
-        parentId: node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null
-    }));
+    const byId = new Map(normalized.map(node => [node.id, node]));
+    return normalized.map(node => {
+        let parentId = node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null;
+        const visited = new Set([node.id]);
+        let cursor = parentId;
+        while (cursor) {
+            if (visited.has(cursor)) {
+                parentId = null;
+                break;
+            }
+            visited.add(cursor);
+            cursor = byId.get(cursor)?.parentId || null;
+        }
+        return {
+            ...node,
+            parentId
+        };
+    });
 }
 
 function normalizeCompanyStructurePayload(value) {

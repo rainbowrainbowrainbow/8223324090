@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.18",
+  "version": "0.63.19",
   "eventGenix": {
-    "releaseLabel": "CRM 63.18: SQL замість Supabase runtime"
+    "releaseLabel": "CRM 63.19: інтерактивна HR структура"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

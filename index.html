@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.63.18">
-    <link rel="stylesheet" href="css/auth.css?v=0.63.18">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.18">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.18">
-    <link rel="stylesheet" href="css/timeline.css?v=0.63.18">
-    <link rel="stylesheet" href="css/panel.css?v=0.63.18">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.18">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.18">
-    <link rel="stylesheet" href="css/features.css?v=0.63.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.18">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.18">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.18">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.18">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.18">
+    <link rel="stylesheet" href="css/base.css?v=0.63.19">
+    <link rel="stylesheet" href="css/auth.css?v=0.63.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.19">
+    <link rel="stylesheet" href="css/timeline.css?v=0.63.19">
+    <link rel="stylesheet" href="css/panel.css?v=0.63.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.19">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.19">
+    <link rel="stylesheet" href="css/features.css?v=0.63.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.19">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.19">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.63.18 CRM 63.18: SQL замість Supabase runtime">✨ 0.63.18 CRM 63.18: SQL замість Supabase runtime</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.63.19 CRM 63.19: інтерактивна HR структура">✨ 0.63.19 CRM 63.19: інтерактивна HR структура</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.63.18 — CRM 63.18: SQL замість Supabase runtime</p>
+                <p class="tagline">AI First CRM v0.63.19 — CRM 63.19: інтерактивна HR структура</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.18: CRM 63.18: SQL замість Supabase runtime</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.19: CRM 63.19: інтерактивна HR структура</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1265,13 +1265,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.63.18 — CRM 63.18: SQL замість Supabase runtime</h4>
+                    <h4>v0.63.19 — CRM 63.19: інтерактивна HR структура</h4>
                     <ul>
-                        <li><b>Supabase SDK прибрано з runtime</b> — залежність <code>@supabase/supabase-js</code> видалена, а спільний <code>db/supabase.js</code> більше не використовується.</li>
-                        <li><b>Клієнти лишились у Postgres</b> — Customers CRUD і communication hub працюють через канонічний SQL/Postgres шлях без legacy Supabase migration.</li>
-                        <li><b>Uploads перейшли на CRM storage surface</b> — chat файли, аудіо, аватари профілю та catalog images зберігаються під <code>/uploads</code>, а метадані лишаються у Postgres.</li>
-                        <li><b>Storage governance оновлено</b> — <code>config/storageSurface.js</code>, <code>docs/STORAGE_SURFACE.md</code> і <code>check:storage-surface</code> тепер показують 5 локальних upload paths і 0 remote buckets.</li>
-                        <li><b>Guardrail</b> — focused storage tests і UI smoke блокують повернення Supabase runtime у клієнтський та upload-шляхи.</li>
+                        <li><b>Структура стала редагованою картою</b> — ролі у HR → Кадри → Структура можна перетягувати по полотну, а позиції зберігаються.</li>
+                        <li><b>Лінії підпорядкування системні</b> — зв’язки будуються через SVG-шар із <code>parentId</code>, їх можна змінити, прибрати або авто-впорядкувати.</li>
+                        <li><b>Сумісне збереження</b> — <code>/api/hr/company-structure</code> тепер приймає координати <code>x/y</code>, санітизує цикли та читає старі структури без координат.</li>
+                        <li><b>Прибрано глюк під структурою</b> — legacy блок “Зміни аніматорів” більше не з’являється внизу вкладки.</li>
+                        <li><b>Guardrail</b> — UI smoke і route-smoke перевіряють рухомі вузли, редаговані лінії та persistence координат.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9105,28 +9105,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.63.18"></script>
-    <script src="js/timeline-visibility.js?v=0.63.18"></script>
-    <script src="js/config.js?v=0.63.18"></script>
-    <script src="js/api.js?v=0.63.18"></script>
-    <script src="js/ui.js?v=0.63.18"></script>
-    <script src="js/auth.js?v=0.63.18"></script>
-    <script src="js/timeline.js?v=0.63.18"></script>
-    <script src="js/booking.js?v=0.63.18"></script>
-    <script src="js/settings.js?v=0.63.18"></script>
-    <script src="js/booking-form.js?v=0.63.18"></script>
-    <script src="js/booking-linked.js?v=0.63.18"></script>
-    <script src="js/settings-dashboard.js?v=0.63.18"></script>
-    <script src="js/settings-history.js?v=0.63.18"></script>
-    <script src="js/settings-afisha.js?v=0.63.18"></script>
-    <script src="js/settings-certificates.js?v=0.63.18"></script>
-    <script src="js/offline.js?v=0.63.18"></script>
-    <script src="js/crm-feature-registry.js?v=0.63.18"></script>
-    <script src="js/search.js?v=0.63.18"></script>
-    <script src="js/ws.js?v=0.63.18"></script>
-    <script src="js/app.js?v=0.63.18"></script>
-    <script src="js/kleshnya-widget.js?v=0.63.18"></script>
-    <script src="js/components/sidebar.js?v=0.63.18"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.18"></script>
+    <script src="js/timeline-context.js?v=0.63.19"></script>
+    <script src="js/timeline-visibility.js?v=0.63.19"></script>
+    <script src="js/config.js?v=0.63.19"></script>
+    <script src="js/api.js?v=0.63.19"></script>
+    <script src="js/ui.js?v=0.63.19"></script>
+    <script src="js/auth.js?v=0.63.19"></script>
+    <script src="js/timeline.js?v=0.63.19"></script>
+    <script src="js/booking.js?v=0.63.19"></script>
+    <script src="js/settings.js?v=0.63.19"></script>
+    <script src="js/booking-form.js?v=0.63.19"></script>
+    <script src="js/booking-linked.js?v=0.63.19"></script>
+    <script src="js/settings-dashboard.js?v=0.63.19"></script>
+    <script src="js/settings-history.js?v=0.63.19"></script>
+    <script src="js/settings-afisha.js?v=0.63.19"></script>
+    <script src="js/settings-certificates.js?v=0.63.19"></script>
+    <script src="js/offline.js?v=0.63.19"></script>
+    <script src="js/crm-feature-registry.js?v=0.63.19"></script>
+    <script src="js/search.js?v=0.63.19"></script>
+    <script src="js/ws.js?v=0.63.19"></script>
+    <script src="js/app.js?v=0.63.19"></script>
+    <script src="js/kleshnya-widget.js?v=0.63.19"></script>
+    <script src="js/components/sidebar.js?v=0.63.19"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.19"></script>
 </body>
 </html>

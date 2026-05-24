@@ -1059,8 +1059,8 @@ describe('route-level API safety smoke', () => {
             structure: 'оновлені нотатки',
             instructions: 'нова інструкція',
             nodes: [
-                { id: 'director', title: 'Директор без корони', description: 'Root', tone: 'gold', lane: 'root', order: 1 },
-                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', order: 2 }
+                { id: 'director', title: 'Директор без корони', description: 'Root', tone: 'gold', lane: 'root', order: 1, x: 180, y: 40 },
+                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', order: 2, x: 340, y: 210 }
             ]
         }, withAuth());
         assert.equal(saved.status, 200, JSON.stringify(saved.data));
@@ -1071,6 +1071,10 @@ describe('route-level API safety smoke', () => {
         assert.equal(saved.data.data.nodes[1].tone, 'blue');
         assert.equal(saved.data.data.nodes[1].lane, 'leadership');
         assert.equal(saved.data.data.nodes[1].parentId, 'director');
+        assert.equal(saved.data.data.nodes[0].x, 180);
+        assert.equal(saved.data.data.nodes[0].y, 40);
+        assert.equal(saved.data.data.nodes[1].x, 340);
+        assert.equal(saved.data.data.nodes[1].y, 210);
         assert.ok(queries.some(q => /INSERT INTO settings \(key, value\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text)));
     });

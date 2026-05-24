@@ -238,6 +238,7 @@ function initNewTabs() {
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
+    document.getElementById('hrOrgAutoLayoutBtn')?.addEventListener('click', autoArrangeCompanyOrgChart);
     initCompanyOrgChart();
 }
 
@@ -1662,6 +1663,41 @@ const ORG_LANE_LABELS = {
 
 const ORG_ALLOWED_TONES = Object.keys(ORG_TONE_LABELS);
 const ORG_ALLOWED_LANES = Object.keys(ORG_LANE_LABELS);
+const ORG_CANVAS_MIN_WIDTH = 1280;
+const ORG_CANVAS_MIN_HEIGHT = 900;
+const ORG_CANVAS_PADDING = 72;
+const ORG_NODE_WIDTH = 168;
+const ORG_NODE_HEIGHT = 78;
+const ORG_ROOT_NODE_WIDTH = 220;
+const ORG_ROOT_NODE_HEIGHT = 98;
+const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
+    director: { x: 530, y: 24 },
+    deputy_director: { x: 555, y: 158 },
+    top_manager: { x: 210, y: 300 },
+    managers: { x: 210, y: 438 },
+    hr: { x: 390, y: 300 },
+    accountant: { x: 570, y: 300 },
+    art_director: { x: 750, y: 300 },
+    admins: { x: 750, y: 438 },
+    marketer: { x: 930, y: 300 },
+    it_specialist: { x: 1110, y: 300 },
+    senior_trampoline: { x: 260, y: 575 },
+    trampoline_instructors: { x: 245, y: 710 },
+    animators: { x: 455, y: 575 },
+    waiters: { x: 655, y: 575 },
+    barista: { x: 855, y: 575 },
+    reception: { x: 1055, y: 575 },
+    chef: { x: 300, y: 815 },
+    cooks: { x: 210, y: 940 },
+    dishwash: { x: 390, y: 940 },
+    pastry_chef: { x: 605, y: 815 },
+    pastry_team: { x: 525, y: 940 },
+    pastry_wash: { x: 705, y: 940 },
+    technical_staff: { x: 910, y: 815 },
+    wardrobe: { x: 830, y: 940 },
+    cleaning: { x: 1010, y: 940 },
+    facilities: { x: 1190, y: 940 }
+};
 
 const DEFAULT_COMPANY_STRUCTURE_NODES = [
     { id: 'director', title: 'Директор', description: 'Фінальне рішення, стратегія, ресурси і правила роботи компанії.', tone: 'gold', lane: 'root', parentId: null, stack: null, order: 10, meta: 'центр рішень' },
@@ -1694,6 +1730,11 @@ const DEFAULT_COMPANY_STRUCTURE_NODES = [
 
 let companyStructureNodes = [];
 let selectedCompanyStructureNodeId = 'director';
+let companyOrgLinkingNodeId = null;
+let companyOrgDragState = null;
+let companyOrgSaveTimer = null;
+let companyOrgKeyboardBound = false;
+let companyOrgSuppressNextClick = false;
 
 function cloneCompanyStructureNodes(nodes) {
     return (nodes || []).map(node => ({ ...node }));
@@ -1705,6 +1746,31 @@ function normalizeCompanyStructureNodeId(value, fallback) {
         .replace(/[^a-zA-Z0-9_-]/g, '_')
         .replace(/_{2,}/g, '_')
         .slice(0, 64) || fallback;
+}
+
+function clampCompanyOrgCoord(value, max) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.max(0, Math.min(max, Math.round(numeric)));
+}
+
+function companyOrgNodeSize(node = {}) {
+    return node.tone === 'gold'
+        ? { width: ORG_ROOT_NODE_WIDTH, height: ORG_ROOT_NODE_HEIGHT }
+        : { width: ORG_NODE_WIDTH, height: ORG_NODE_HEIGHT };
+}
+
+function companyOrgDefaultPosition(node, index) {
+    if (node?.id && DEFAULT_COMPANY_STRUCTURE_POSITIONS[node.id]) {
+        return DEFAULT_COMPANY_STRUCTURE_POSITIONS[node.id];
+    }
+    const laneIndex = Math.max(0, ORG_ALLOWED_LANES.indexOf(node?.lane || 'leadership'));
+    const column = index % 6;
+    const row = Math.floor(index / 6);
+    return {
+        x: 80 + column * 190,
+        y: 80 + laneIndex * 170 + row * 110
+    };
 }
 
 function normalizeCompanyStructureNodes(nodes) {
@@ -1724,6 +1790,7 @@ function normalizeCompanyStructureNodes(nodes) {
         const tone = ORG_ALLOWED_TONES.includes(raw.tone) ? raw.tone : 'blue';
         const lane = ORG_ALLOWED_LANES.includes(raw.lane) ? raw.lane : 'leadership';
         const order = Number.isFinite(Number(raw.order)) ? Number(raw.order) : index;
+        const fallbackPosition = companyOrgDefaultPosition({ id, lane, tone }, index);
         return {
             id,
             title: String(raw.title || 'Роль').trim().slice(0, 80) || 'Роль',
@@ -1733,14 +1800,33 @@ function normalizeCompanyStructureNodes(nodes) {
             parentId: raw.parentId ? normalizeCompanyStructureNodeId(raw.parentId, '') : null,
             stack: raw.stack ? String(raw.stack).trim().slice(0, 64) : null,
             order,
+            x: clampCompanyOrgCoord(raw.x, 5000) ?? fallbackPosition.x,
+            y: clampCompanyOrgCoord(raw.y, 5000) ?? fallbackPosition.y,
             meta: raw.meta ? String(raw.meta).trim().slice(0, 80) : null
         };
     });
     const ids = new Set(normalized.map(node => node.id));
-    return normalized.map(node => ({
-        ...node,
-        parentId: node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null
-    }));
+    const byId = new Map(normalized.map(node => [node.id, node]));
+    return normalized.map((node, index) => {
+        const fallbackPosition = companyOrgDefaultPosition(node, index);
+        let parentId = node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null;
+        const visited = new Set([node.id]);
+        let cursor = parentId;
+        while (cursor) {
+            if (visited.has(cursor)) {
+                parentId = null;
+                break;
+            }
+            visited.add(cursor);
+            cursor = byId.get(cursor)?.parentId || null;
+        }
+        return {
+            ...node,
+            parentId,
+            x: clampCompanyOrgCoord(node.x, 5000) ?? fallbackPosition.x,
+            y: clampCompanyOrgCoord(node.y, 5000) ?? fallbackPosition.y
+        };
+    });
 }
 
 function sortCompanyStructureNodes(nodes) {
@@ -1770,69 +1856,99 @@ function syncCompanyStructureText() {
     }
 }
 
+function companyOrgStageSize() {
+    const bounds = companyStructureNodes.reduce((max, node) => {
+        const size = companyOrgNodeSize(node);
+        return {
+            width: Math.max(max.width, Number(node.x || 0) + size.width + ORG_CANVAS_PADDING),
+            height: Math.max(max.height, Number(node.y || 0) + size.height + ORG_CANVAS_PADDING)
+        };
+    }, { width: ORG_CANVAS_MIN_WIDTH, height: ORG_CANVAS_MIN_HEIGHT });
+    return {
+        width: Math.ceil(bounds.width),
+        height: Math.ceil(bounds.height)
+    };
+}
+
+function companyOrgNodeAnchor(node, edge = 'center') {
+    const size = companyOrgNodeSize(node);
+    const x = Number(node.x || 0);
+    const y = Number(node.y || 0);
+    if (edge === 'top') return { x: x + size.width / 2, y };
+    if (edge === 'bottom') return { x: x + size.width / 2, y: y + size.height };
+    return { x: x + size.width / 2, y: y + size.height / 2 };
+}
+
+function companyOrgLinkPath(parent, child) {
+    const start = companyOrgNodeAnchor(parent, 'bottom');
+    const end = companyOrgNodeAnchor(child, 'top');
+    const midY = Math.round((start.y + end.y) / 2);
+    return `M ${Math.round(start.x)} ${Math.round(start.y)} C ${Math.round(start.x)} ${midY}, ${Math.round(end.x)} ${midY}, ${Math.round(end.x)} ${Math.round(end.y)}`;
+}
+
+function renderCompanyOrgLinks() {
+    const stage = document.getElementById('companyOrgChart');
+    const layer = stage?.querySelector('.hr-org-link-layer');
+    if (!stage || !layer) return;
+    const { width, height } = companyOrgStageSize();
+    layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    layer.setAttribute('width', String(width));
+    layer.setAttribute('height', String(height));
+    const byId = new Map(companyStructureNodes.map(node => [node.id, node]));
+    layer.innerHTML = companyStructureNodes.map(node => {
+        const parent = node.parentId ? byId.get(node.parentId) : null;
+        if (!parent) return '';
+        const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
+        return `<path class="hr-org-link${active}" data-org-link-child="${escapeHtml(node.id)}" d="${companyOrgLinkPath(parent, node)}"></path>`;
+    }).join('');
+}
+
 function renderCompanyOrgNode(node) {
     const tone = ORG_ALLOWED_TONES.includes(node.tone) ? node.tone : 'blue';
     const meta = node.meta || ORG_TONE_LABELS[tone] || '';
     const active = node.id === selectedCompanyStructureNodeId ? ' is-active' : '';
+    const linking = node.id === companyOrgLinkingNodeId ? ' is-link-source' : '';
+    const size = companyOrgNodeSize(node);
     return `
-        <span class="hr-org-node-shell">
-            <button type="button" class="hr-org-node hr-org-node--${tone}${active}" data-org-node-id="${escapeHtml(node.id)}">
+        <span class="hr-org-node-shell${linking}" data-org-node-shell="${escapeHtml(node.id)}" style="left:${Number(node.x || 0)}px;top:${Number(node.y || 0)}px;width:${size.width}px;height:${size.height}px;">
+            <button type="button" class="hr-org-node hr-org-node--${tone}${active}" data-org-node-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(node.title)}. Перетягніть, щоб змінити місце.">
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
                 <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
             </button>
+            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити лінію для ${escapeHtml(node.title)}">↕</button>
             <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
         </span>`;
 }
 
-function renderCompanyOrgStack(nodes, stackId) {
-    const sorted = sortCompanyStructureNodes(nodes);
-    const [head, ...children] = sorted;
-    if (!head) return '';
-    return `
-        <div class="hr-org-stack" data-org-stack="${escapeHtml(stackId || head.id)}">
-            ${renderCompanyOrgNode(head)}
-            ${children.length ? `
-                <div class="hr-org-line" aria-hidden="true"></div>
-                <div class="hr-org-subrow">${children.map(renderCompanyOrgNode).join('')}</div>
-            ` : ''}
-        </div>`;
-}
-
-function renderCompanyOrgGroups(nodes) {
-    const sorted = sortCompanyStructureNodes(nodes);
-    const stackCounts = sorted.reduce((map, node) => {
-        if (node.stack) map.set(node.stack, (map.get(node.stack) || 0) + 1);
-        return map;
-    }, new Map());
-    const rendered = [];
-    const used = new Set();
-    sorted.forEach(node => {
-        if (used.has(node.id)) return;
-        if (node.stack && stackCounts.get(node.stack) > 1) {
-            const group = sorted.filter(item => item.stack === node.stack);
-            group.forEach(item => used.add(item.id));
-            rendered.push(renderCompanyOrgStack(group, node.stack));
-            return;
-        }
-        used.add(node.id);
-        rendered.push(renderCompanyOrgNode(node));
-    });
-    return rendered.join('');
-}
-
-function renderCompanyOrgRow(rowClass, nodes) {
-    if (!nodes.length) return '';
-    return `<div class="hr-org-row ${rowClass}">${renderCompanyOrgGroups(nodes)}</div>`;
-}
-
 function bindCompanyOrgChartEvents(stage) {
     stage.querySelectorAll('[data-org-node-id]').forEach(node => {
-        node.addEventListener('click', () => selectCompanyOrgNodeById(node.dataset.orgNodeId));
+        node.addEventListener('click', event => {
+            if (companyOrgSuppressNextClick) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            const nodeId = node.dataset.orgNodeId;
+            if (companyOrgLinkingNodeId) {
+                event.preventDefault();
+                event.stopPropagation();
+                completeCompanyOrgLink(nodeId);
+                return;
+            }
+            selectCompanyOrgNodeById(nodeId);
+        });
+        node.addEventListener('pointerdown', event => startCompanyOrgDrag(event, node.dataset.orgNodeId));
     });
     stage.querySelectorAll('[data-org-edit]').forEach(button => {
         button.addEventListener('click', event => {
             event.stopPropagation();
             openCompanyOrgNodeEditor(button.dataset.orgEdit);
+        });
+    });
+    stage.querySelectorAll('[data-org-link-source]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            startCompanyOrgLinkMode(button.dataset.orgLinkSource);
         });
     });
 }
@@ -1843,24 +1959,201 @@ function renderCompanyOrgChart() {
     if (!companyStructureNodes.length) {
         companyStructureNodes = cloneCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
     }
-    const rootNodes = companyStructureNodesByLane('root');
-    const deputyNodes = companyStructureNodesByLane('deputy');
-    const leadershipNodes = companyStructureNodesByLane('leadership');
-    const operationNodes = companyStructureNodesByLane('operations');
-    const supportNodes = companyStructureNodesByLane('support');
-    const html = [
-        renderCompanyOrgRow('hr-org-row--root', rootNodes.length ? rootNodes : companyStructureNodes.slice(0, 1)),
-        deputyNodes.length ? '<div class="hr-org-line" aria-hidden="true"></div>' : '',
-        renderCompanyOrgRow('hr-org-row--deputy', deputyNodes),
-        leadershipNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
-        renderCompanyOrgRow('hr-org-row--branches', leadershipNodes),
-        operationNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
-        renderCompanyOrgRow('hr-org-row--operations', operationNodes),
-        supportNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
-        renderCompanyOrgRow('hr-org-row--support', supportNodes)
-    ].filter(Boolean).join('');
-    stage.innerHTML = html || '<div class="hr-org-loading">Немає вузлів структури</div>';
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    const { width, height } = companyOrgStageSize();
+    stage.style.width = `${width}px`;
+    stage.style.minHeight = `${height}px`;
+    stage.classList.toggle('is-linking', Boolean(companyOrgLinkingNodeId));
+    stage.innerHTML = companyStructureNodes.length ? `
+        <svg class="hr-org-link-layer" aria-hidden="true" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>
+        <div class="hr-org-node-plane">
+            ${sortCompanyStructureNodes(companyStructureNodes).map(renderCompanyOrgNode).join('')}
+        </div>
+    ` : '<div class="hr-org-loading">Немає вузлів структури</div>';
     bindCompanyOrgChartEvents(stage);
+    renderCompanyOrgLinks();
+    updateCompanyOrgLinkStatus();
+    bindCompanyOrgKeyboard();
+}
+
+function startCompanyOrgDrag(event, nodeId) {
+    if (companyOrgLinkingNodeId) return;
+    if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-source]')) return;
+    const node = companyStructureNodeById(nodeId);
+    const shell = event.currentTarget.closest('[data-org-node-shell]');
+    if (!node || !shell) return;
+    selectCompanyOrgNodeById(nodeId);
+    companyOrgDragState = {
+        nodeId,
+        startPointerX: event.clientX,
+        startPointerY: event.clientY,
+        startX: Number(node.x || 0),
+        startY: Number(node.y || 0),
+        moved: false,
+        shell
+    };
+    shell.classList.add('is-dragging');
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', moveCompanyOrgDrag);
+    window.addEventListener('pointerup', endCompanyOrgDrag, { once: true });
+}
+
+function moveCompanyOrgDrag(event) {
+    if (!companyOrgDragState) return;
+    const node = companyStructureNodeById(companyOrgDragState.nodeId);
+    if (!node) return;
+    const dx = event.clientX - companyOrgDragState.startPointerX;
+    const dy = event.clientY - companyOrgDragState.startPointerY;
+    const nextX = clampCompanyOrgCoord(companyOrgDragState.startX + dx, 5000) ?? 0;
+    const nextY = clampCompanyOrgCoord(companyOrgDragState.startY + dy, 5000) ?? 0;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) companyOrgDragState.moved = true;
+    node.x = nextX;
+    node.y = nextY;
+    companyOrgDragState.shell.style.left = `${nextX}px`;
+    companyOrgDragState.shell.style.top = `${nextY}px`;
+    renderCompanyOrgLinks();
+}
+
+function endCompanyOrgDrag() {
+    if (!companyOrgDragState) return;
+    const moved = companyOrgDragState.moved;
+    companyOrgDragState.shell?.classList.remove('is-dragging');
+    companyOrgDragState = null;
+    window.removeEventListener('pointermove', moveCompanyOrgDrag);
+    if (moved) {
+        companyOrgSuppressNextClick = true;
+        window.setTimeout(() => {
+            companyOrgSuppressNextClick = false;
+        }, 0);
+        syncCompanyStructureText();
+        scheduleCompanyStructureAutosave();
+    }
+}
+
+function scheduleCompanyStructureAutosave() {
+    window.clearTimeout(companyOrgSaveTimer);
+    companyOrgSaveTimer = window.setTimeout(() => {
+        saveCompanyStructure({ silent: true, preserveRender: true });
+    }, 650);
+}
+
+function companyOrgWouldCreateCycle(childId, parentId) {
+    if (!childId || !parentId) return false;
+    let cursor = parentId;
+    const guard = new Set();
+    while (cursor && !guard.has(cursor)) {
+        if (cursor === childId) return true;
+        guard.add(cursor);
+        cursor = companyStructureNodeById(cursor)?.parentId;
+    }
+    return false;
+}
+
+function startCompanyOrgLinkMode(nodeId = selectedCompanyStructureNodeId) {
+    const node = companyStructureNodeById(nodeId);
+    if (!node) return;
+    selectedCompanyStructureNodeId = node.id;
+    companyOrgLinkingNodeId = node.id;
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(node.id);
+}
+
+function cancelCompanyOrgLinkMode() {
+    if (!companyOrgLinkingNodeId) return;
+    companyOrgLinkingNodeId = null;
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+}
+
+function completeCompanyOrgLink(parentId) {
+    const childId = companyOrgLinkingNodeId;
+    if (!childId) return;
+    const child = companyStructureNodeById(childId);
+    const parent = companyStructureNodeById(parentId);
+    if (!child || !parent) return cancelCompanyOrgLinkMode();
+    if (child.id === parent.id) {
+        showNotification('Вузол не може бути підпорядкований самому собі', 'warning');
+        return;
+    }
+    if (companyOrgWouldCreateCycle(child.id, parent.id)) {
+        showNotification('Таке з’єднання створить цикл у структурі', 'warning');
+        return;
+    }
+    child.parentId = parent.id;
+    companyOrgLinkingNodeId = null;
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(child.id);
+    saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
+        if (saved) showNotification('Лінію підпорядкування оновлено', 'success');
+    });
+}
+
+function clearSelectedCompanyOrgParent() {
+    const node = companyStructureNodeById(selectedCompanyStructureNodeId);
+    if (!node || !node.parentId) return;
+    node.parentId = null;
+    companyOrgLinkingNodeId = null;
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(node.id);
+    saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
+        if (saved) showNotification('Лінію прибрано', 'success');
+    });
+}
+
+function autoArrangeCompanyOrgChart() {
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes).map((node, index) => {
+        const position = companyOrgDefaultPosition(node, index);
+        return {
+            ...node,
+            x: position.x,
+            y: position.y
+        };
+    });
+    companyOrgLinkingNodeId = null;
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+    saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
+        if (saved) showNotification('Структуру впорядковано', 'success');
+    });
+}
+
+function updateCompanyOrgLinkStatus() {
+    const status = document.getElementById('hrOrgLinkStatus');
+    const relinkButton = document.getElementById('hrOrgRelinkSelectedBtn');
+    const clearButton = document.getElementById('hrOrgClearParentBtn');
+    const node = companyStructureNodeById(selectedCompanyStructureNodeId);
+    if (status) {
+        if (companyOrgLinkingNodeId) {
+            const source = companyStructureNodeById(companyOrgLinkingNodeId);
+            status.textContent = source ? `Оберіть керівника для: ${source.title}` : 'Оберіть керівника';
+            status.classList.add('is-active');
+        } else {
+            status.textContent = 'Перетягуйте вузли або змінюйте лінії підпорядкування';
+            status.classList.remove('is-active');
+        }
+    }
+    if (relinkButton) {
+        relinkButton.disabled = !node;
+        relinkButton.onclick = () => node && startCompanyOrgLinkMode(node.id);
+    }
+    if (clearButton) {
+        clearButton.disabled = !node || !node.parentId;
+        clearButton.onclick = clearSelectedCompanyOrgParent;
+    }
+}
+
+function bindCompanyOrgKeyboard() {
+    if (companyOrgKeyboardBound) return;
+    companyOrgKeyboardBound = true;
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && companyOrgLinkingNodeId) {
+            cancelCompanyOrgLinkMode();
+        }
+    });
 }
 
 function ensureCompanyOrgDetailMeta() {
@@ -1894,6 +2187,7 @@ function updateCompanyOrgDetail(node) {
         editButton.disabled = !node;
         editButton.onclick = () => node && openCompanyOrgNodeEditor(node.id);
     }
+    updateCompanyOrgLinkStatus();
 }
 
 function selectCompanyOrgNodeById(id) {
@@ -1905,6 +2199,7 @@ function selectCompanyOrgNodeById(id) {
         if (item.dataset.orgNodeId === node.id) item.classList.add('is-active');
     });
     updateCompanyOrgDetail(node);
+    renderCompanyOrgLinks();
 }
 
 function selectCompanyOrgNode(node) {
@@ -2009,6 +2304,10 @@ async function saveCompanyOrgNodeFromEditor(event) {
     const formData = new FormData(form);
     const order = Number(formData.get('order'));
     const parentId = String(formData.get('parentId') || '').trim();
+    if (parentId && companyOrgWouldCreateCycle(nodeId, parentId)) {
+        showNotification('Таке підпорядкування створить цикл у структурі', 'warning');
+        return;
+    }
     const nextNode = {
         ...companyStructureNodes[index],
         title: String(formData.get('title') || '').trim().slice(0, 80) || 'Роль',
@@ -2071,6 +2370,7 @@ async function loadCompanyStructure() {
 
 async function saveCompanyStructure(options = {}) {
     const notes = document.getElementById('companyStructureNotes')?.value || '';
+    window.clearTimeout(companyOrgSaveTimer);
     syncCompanyStructureText();
     const payload = {
         schemaVersion: 1,
@@ -2086,8 +2386,13 @@ async function saveCompanyStructure(options = {}) {
         const saved = data.data || payload;
         companyStructureNodes = normalizeCompanyStructureNodes(saved.nodes);
         syncCompanyStructureText();
-        renderCompanyOrgChart();
-        selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+        if (!options.preserveRender) {
+            renderCompanyOrgChart();
+            selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+        } else {
+            renderCompanyOrgLinks();
+            updateCompanyOrgLinkStatus();
+        }
         updateCompanyStructureStatus(saved.updatedAt);
         if (!options.silent) showNotification('Структуру та інструкції збережено', 'success');
         return true;

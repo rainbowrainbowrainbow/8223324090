@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.9">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.9">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.9">
+    <link rel="stylesheet" href="css/base.css?v=0.63.10">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.10">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.10">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.10">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.10">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.10">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.10">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -135,13 +135,21 @@
             align-items: start;
         }
         .hr-org-canvas {
-            min-width: 920px;
-            padding: 10px 8px 4px;
+            min-width: 980px;
+            padding: 12px 10px 6px;
             overflow-x: auto;
         }
         .hr-org-stage {
-            width: 920px;
+            width: 980px;
             margin: 0 auto;
+        }
+        .hr-org-loading {
+            padding: 36px;
+            text-align: center;
+            color: var(--gray-400);
+            border: 1px dashed var(--gray-200);
+            border-radius: 14px;
+            background: var(--gray-50);
         }
         .hr-org-row {
             display: flex;
@@ -151,12 +159,13 @@
             position: relative;
         }
         .hr-org-row + .hr-org-row { margin-top: 24px; }
-        .hr-org-row.hr-org-row--branches {
+        .hr-org-row.hr-org-row--branches,
+        .hr-org-row.hr-org-row--operations {
             justify-content: space-between;
             gap: 12px;
         }
         .hr-org-row.hr-org-row--support {
-            justify-content: flex-start;
+            justify-content: center;
             gap: 20px;
             margin-top: 34px;
         }
@@ -165,7 +174,7 @@
             flex-direction: column;
             align-items: center;
             gap: 14px;
-            min-width: 132px;
+            min-width: 140px;
         }
         .hr-org-subrow {
             display: flex;
@@ -173,56 +182,114 @@
             gap: 14px;
             align-items: flex-start;
         }
+        .hr-org-node-shell {
+            position: relative;
+            display: inline-flex;
+            min-width: 134px;
+        }
+        .hr-org-node-shell .hr-org-node {
+            width: 100%;
+        }
         .hr-org-node {
-            min-width: 122px;
-            min-height: 52px;
-            padding: 10px 14px;
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.18);
-            color: #F8FAFC;
+            position: relative;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            min-width: 134px;
+            min-height: 72px;
+            padding: 12px 34px 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            color: var(--gray-900);
             font-family: inherit;
-            font-size: 12px;
-            font-weight: 900;
-            line-height: 1.18;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.22;
             text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
+            text-transform: none;
+            letter-spacing: 0;
             cursor: pointer;
-            box-shadow: 0 14px 28px rgba(2,6,23,0.18), inset 0 1px 0 rgba(255,255,255,0.22);
-            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, filter .16s ease;
+            box-shadow: 0 10px 24px rgba(15,23,42,0.08);
+            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
         }
         .hr-org-node:hover,
         .hr-org-node.is-active {
             transform: translateY(-2px);
-            border-color: rgba(255,255,255,0.38);
-            box-shadow: 0 20px 34px rgba(2,6,23,0.25), 0 0 0 3px rgba(16,185,129,0.14), inset 0 1px 0 rgba(255,255,255,0.26);
-            filter: saturate(1.08);
+            border-color: rgba(16,185,129,0.62);
+            box-shadow: 0 18px 34px rgba(15,23,42,0.14), 0 0 0 3px rgba(16,185,129,0.12);
+            background: #F8FFFB;
         }
         .hr-org-node:focus-visible {
             outline: none;
-            box-shadow: 0 0 0 3px rgba(16,185,129,0.28), 0 16px 30px rgba(2,6,23,0.22);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.28), 0 16px 30px rgba(15,23,42,0.14);
+        }
+        .hr-org-node-title {
+            display: block;
+            max-width: 170px;
+            overflow-wrap: anywhere;
+        }
+        .hr-org-node-meta {
+            display: block;
+            color: var(--gray-500);
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+        .hr-org-node-edit {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 22px;
+            height: 22px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--gray-200);
+            border-radius: 7px;
+            background: var(--gray-50);
+            color: var(--gray-600);
+            font-size: 12px;
+            cursor: pointer;
         }
         .hr-org-node--gold {
             min-width: 220px;
-            min-height: 76px;
-            color: #111827;
-            font-size: 23px;
-            background: linear-gradient(135deg, #FDE68A 0%, #D8A626 48%, #FBBF24 100%);
+            min-height: 88px;
+            color: #78350F;
+            font-size: 18px;
+            border-color: rgba(217,119,6,0.36);
+            background: linear-gradient(180deg, #FFF7ED 0%, #FEF3C7 100%);
+            box-shadow: 0 18px 34px rgba(120,53,15,0.12);
         }
-        .hr-org-node--gold .hr-org-crown {
-            display: block;
-            font-size: 27px;
-            line-height: 1;
-            margin-bottom: 4px;
+        .hr-org-node--gold::before {
+            content: "⚙";
+            width: 30px;
+            height: 30px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 2px;
+            border-radius: 10px;
+            background: #F59E0B;
+            color: #111827;
+            font-size: 17px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
         }
         .hr-org-node--blue {
-            background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%);
+            border-color: rgba(14,165,233,0.28);
+            background: #F0F9FF;
+            color: #0C4A6E;
         }
         .hr-org-node--purple {
-            background: linear-gradient(135deg, #A855F7 0%, #6D28D9 100%);
+            border-color: rgba(168,85,247,0.24);
+            background: #FAF5FF;
+            color: #581C87;
         }
         .hr-org-node--violet {
-            background: linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%);
+            border-color: rgba(124,58,237,0.24);
+            background: #F5F3FF;
+            color: #4C1D95;
         }
         .hr-org-line {
             width: 2px;
@@ -268,6 +335,70 @@
             line-height: 1.5;
             font-size: var(--font-sm);
         }
+        .hr-org-detail-meta {
+            margin: 10px 0 12px;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .hr-org-detail-meta span {
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .hr-org-detail-edit {
+            margin-top: 14px;
+            width: 100%;
+            border: 1px solid rgba(16,185,129,0.34);
+            border-radius: 10px;
+            background: rgba(16,185,129,0.10);
+            color: #047857;
+            padding: 10px 12px;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .hr-org-node-modal {
+            width: min(640px, calc(100vw - 28px));
+        }
+        .hr-org-node-form {
+            display: grid;
+            gap: 12px;
+        }
+        .hr-org-node-form label {
+            display: grid;
+            gap: 6px;
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .hr-org-node-form input,
+        .hr-org-node-form textarea,
+        .hr-org-node-form select {
+            width: 100%;
+            min-width: 0;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: var(--white);
+            color: var(--gray-900);
+            font: inherit;
+        }
+        .hr-org-node-form-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 12px;
+        }
+        .hr-org-node-form-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 4px;
+        }
         .hr-org-notes {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -280,6 +411,38 @@
         body.dark-mode .hr-org-detail h4 { color: #F8FAFC; }
         body.dark-mode .hr-org-chart-head p,
         body.dark-mode .hr-org-detail p { color: #CBD5E1; }
+        body.dark-mode .hr-org-loading {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.12);
+        }
+        body.dark-mode .hr-org-node {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(148,163,184,0.22);
+            color: #F8FAFC;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.24);
+        }
+        body.dark-mode .hr-org-node:hover,
+        body.dark-mode .hr-org-node.is-active {
+            background: rgba(16,185,129,0.12);
+            border-color: rgba(16,185,129,0.46);
+        }
+        body.dark-mode .hr-org-node--gold {
+            background: rgba(245,158,11,0.16);
+            border-color: rgba(245,158,11,0.38);
+            color: #FDE68A;
+        }
+        body.dark-mode .hr-org-node--blue { background: rgba(14,165,233,0.12); color: #BAE6FD; }
+        body.dark-mode .hr-org-node--purple { background: rgba(168,85,247,0.12); color: #E9D5FF; }
+        body.dark-mode .hr-org-node--violet { background: rgba(124,58,237,0.14); color: #DDD6FE; }
+        body.dark-mode .hr-org-node-edit,
+        body.dark-mode .hr-org-detail-meta span,
+        body.dark-mode .hr-org-node-form input,
+        body.dark-mode .hr-org-node-form textarea,
+        body.dark-mode .hr-org-node-form select {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.12);
+            color: #E5E7EB;
+        }
         body.dark-mode .hr-org-chart-badge {
             background: rgba(16,185,129,0.16);
             border-color: rgba(16,185,129,0.28);
@@ -297,6 +460,7 @@
         @media (max-width: 900px) {
             .hr-foundation-grid { grid-template-columns: 1fr; }
             .hr-org-notes { grid-template-columns: 1fr; }
+            .hr-org-node-form-row { grid-template-columns: 1fr; }
         }
 
         /* ==========================================
@@ -1735,80 +1899,19 @@
                                 <h3>Структура компанії</h3>
                                 <p>Інтерактивна схема за затвердженою ієрархією: натисніть на роль, щоб побачити зону відповідальності.</p>
                             </div>
-                            <span class="hr-org-chart-badge">Ієрархія v5</span>
+                            <span class="hr-org-chart-badge">Редагована структура</span>
                         </div>
                         <div class="hr-org-layout">
                             <div class="hr-org-canvas" aria-label="Інтерактивна організаційна структура компанії">
-                                <div class="hr-org-stage">
-                                    <div class="hr-org-row">
-                                        <button type="button" class="hr-org-node hr-org-node--gold is-active" data-org-role="Директор" data-org-desc="Фінальна відповідальність за бізнес, фінанси, команду, стандарти й стратегічні рішення.">
-                                            <span class="hr-org-crown">♛</span>Директор
-                                        </button>
-                                    </div>
-                                    <div class="hr-org-line"></div>
-                                    <div class="hr-org-row">
-                                        <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Заступник директора" data-org-desc="Операційне управління, контроль керівників напрямів, виконання рішень директора й щоденна координація.">Заступник<br>директора</button>
-                                    </div>
-                                    <div class="hr-org-branch-line"></div>
-                                    <div class="hr-org-row hr-org-row--branches">
-                                        <div class="hr-org-stack">
-                                            <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Топ-менеджер" data-org-desc="Координація менеджерів, контроль зміни, сервісу, продажів і операційної дисципліни.">Топ-менеджер</button>
-                                            <div class="hr-org-line"></div>
-                                            <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Менеджери" data-org-desc="Ведення змін, бронювання, клієнтські питання, контроль персоналу на майданчику.">Менеджер(и)</button>
-                                        </div>
-                                        <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="HR" data-org-desc="Підбір, адаптація, графіки, кадрові процеси, резерв і дисципліна персоналу.">HR</button>
-                                        <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Бухгалтер" data-org-desc="Облік, зарплата, фінансові документи, контроль виплат і звітності.">Бухгалтер</button>
-                                        <div class="hr-org-stack">
-                                            <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Арт-директор" data-org-desc="Контент, програми, сценарії, якість творчої частини та координація адміністраторів.">Арт-директор</button>
-                                            <div class="hr-org-line"></div>
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Адміністратори" data-org-desc="Адміністративний контур залу, комунікація з командою, порядок, сервіс і виконання стандартів.">Адміністратори</button>
-                                        </div>
-                                        <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="Маркетолог" data-org-desc="Реклама, ліди, соцмережі, кампанії, афіші та комунікація бренду.">Маркетолог</button>
-                                        <button type="button" class="hr-org-node hr-org-node--blue" data-org-role="IT-спеціаліст" data-org-desc="CRM, технічна підтримка, інтеграції, обладнання та цифрова інфраструктура.">IT-спеціаліст</button>
-                                    </div>
-                                    <div class="hr-org-row">
-                                        <div class="hr-org-subrow">
-                                            <div class="hr-org-stack">
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Старший батутіст" data-org-desc="Контроль батутної зони, безпека, наставництво батутістів та інструкторів.">Старший<br>батутіст</button>
-                                                <div class="hr-org-line"></div>
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Батутісти / інструктори" data-org-desc="Безпека гостей, правила на батутах, інструктаж і контроль активностей.">Батутісти /<br>інструктори</button>
-                                            </div>
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Аніматори" data-org-desc="Проведення свят, програми, взаємодія з дітьми, емоційний сервіс і сценарії.">Аніматори</button>
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Офіціанти" data-org-desc="Обслуговування гостей, подача, чистота столів і підтримка банкетів.">Офіціанти</button>
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Бариста" data-org-desc="Бар, напої, касова дисципліна в барній зоні та швидкість сервісу.">Бариста</button>
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Рецепція" data-org-desc="Перший контакт з гостями, записи, оплати, навігація й базова комунікація.">Рецепція</button>
-                                        </div>
-                                    </div>
-                                    <div class="hr-org-row hr-org-row--support">
-                                        <div class="hr-org-stack">
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Шеф-кухар" data-org-desc="Кухня, меню, якість страв, процеси приготування і контроль кухарів.">Шеф-кухар</button>
-                                            <div class="hr-org-subrow">
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Кухарі" data-org-desc="Приготування страв, заготовки, санітарія й виконання кухонних стандартів.">Кухарі</button>
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Мийка" data-org-desc="Посуд, чистота кухонної зони й підтримка потоку сервісу.">Мийка</button>
-                                            </div>
-                                        </div>
-                                        <div class="hr-org-stack">
-                                            <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Шеф-кондитер" data-org-desc="Десерти, кондитерський цех, якість солодкої продукції та контроль процесів.">Шеф-кондитер</button>
-                                            <div class="hr-org-subrow">
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Кондитери" data-org-desc="Виготовлення десертів, декор, заготовки і стабільність якості.">Кондитери</button>
-                                                <button type="button" class="hr-org-node hr-org-node--purple" data-org-role="Мийка цех" data-org-desc="Чистота кондитерського цеху, інвентар і підтримка виробничого порядку.">Мийка цех</button>
-                                            </div>
-                                        </div>
-                                        <div class="hr-org-stack">
-                                            <button type="button" class="hr-org-node hr-org-node--violet" data-org-role="Технічний персонал" data-org-desc="Технічний стан, чистота, господарські задачі та підтримка безпечного середовища.">Технічний персонал</button>
-                                            <div class="hr-org-subrow">
-                                                <button type="button" class="hr-org-node hr-org-node--violet" data-org-role="Гардероб" data-org-desc="Речі гостей, порядок у гардеробі й акуратний сервіс на вході.">Гардероб</button>
-                                                <button type="button" class="hr-org-node hr-org-node--violet" data-org-role="Прибирання" data-org-desc="Чистота залів, санвузлів, проходів і швидке реагування на забруднення.">Прибирання</button>
-                                                <button type="button" class="hr-org-node hr-org-node--violet" data-org-role="Завгосп" data-org-desc="Господарські питання, запаси, дрібний ремонт, інвентар і технічні доручення.">Завгосп</button>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div class="hr-org-stage" id="companyOrgChart" aria-live="polite">
+                                    <div class="hr-org-loading">Завантаження структури...</div>
                                 </div>
                             </div>
                             <aside class="hr-org-detail" aria-live="polite">
                                 <div class="hr-org-detail-kicker">Обрана роль</div>
                                 <h4 id="hrOrgDetailTitle">Директор</h4>
                                 <p id="hrOrgDetailText">Фінальна відповідальність за бізнес, фінанси, команду, стандарти й стратегічні рішення.</p>
+                                <button type="button" id="hrOrgEditSelectedBtn" class="hr-org-detail-edit">Редагувати вузол</button>
                             </aside>
                         </div>
                         <textarea id="companyStructureText" aria-label="Текстова версія структури компанії" style="display:none;"></textarea>
@@ -2141,15 +2244,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.63.9"></script>
-    <script src="js/config.js?v=0.63.9"></script>
-    <script src="js/notification.js?v=0.63.9"></script>
-    <script src="js/api.js?v=0.63.9"></script>
-    <script src="js/auth.js?v=0.63.9"></script>
-    <script src="js/components/sidebar.js?v=0.63.9"></script>
+    <script src="js/ui.js?v=0.63.10"></script>
+    <script src="js/config.js?v=0.63.10"></script>
+    <script src="js/notification.js?v=0.63.10"></script>
+    <script src="js/api.js?v=0.63.10"></script>
+    <script src="js/auth.js?v=0.63.10"></script>
+    <script src="js/components/sidebar.js?v=0.63.10"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.63.9"></script>
-    <script src="js/alerts.js?v=0.63.9"></script><script>
+    <script src="js/hr-page.js?v=0.63.10"></script>
+    <script src="js/alerts.js?v=0.63.10"></script><script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {
         const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);

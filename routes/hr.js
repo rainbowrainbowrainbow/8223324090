@@ -21,6 +21,11 @@ router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) 
 
 const log = createLogger('HR');
 
+const COMPANY_STRUCTURE_SCHEMA_VERSION = 1;
+const COMPANY_STRUCTURE_NODE_LIMIT = 60;
+const COMPANY_STRUCTURE_ALLOWED_TONES = new Set(['gold', 'blue', 'purple', 'violet']);
+const COMPANY_STRUCTURE_ALLOWED_LANES = new Set(['root', 'deputy', 'leadership', 'operations', 'support']);
+
 const RESUME_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
 const RESUME_UPLOAD_LIMIT_FILES = 3;
 const RESUME_TEXT_LIMIT = 50000;
@@ -127,6 +132,74 @@ function resumeFileMeta(row) {
         uploaded_by: row.uploaded_by || null,
         created_at: row.created_at,
         download_url: `/api/hr/applications/${row.application_id}/resume-files/${row.id}/download`
+    };
+}
+
+function sanitizeCompanyStructureString(value, limit) {
+    return String(value || '').replace(/\u0000/g, '').trim().slice(0, limit);
+}
+
+function normalizeCompanyStructureId(value, fallback, usedIds) {
+    const base = String(value || fallback || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_{2,}/g, '_')
+        .slice(0, 64) || fallback;
+    let id = base;
+    const suffixBase = (base || fallback || 'node').slice(0, 58);
+    let suffix = 2;
+    while (usedIds.has(id)) {
+        id = `${suffixBase}_${suffix}`.slice(0, 64);
+        suffix += 1;
+    }
+    usedIds.add(id);
+    return id;
+}
+
+function sanitizeCompanyStructureNodes(nodes) {
+    if (!Array.isArray(nodes)) return [];
+    const usedIds = new Set();
+    const normalized = nodes.slice(0, COMPANY_STRUCTURE_NODE_LIMIT).map((node, index) => {
+        const source = node && typeof node === 'object' ? node : {};
+        const id = normalizeCompanyStructureId(source.id, `node_${index + 1}`, usedIds);
+        const tone = COMPANY_STRUCTURE_ALLOWED_TONES.has(source.tone) ? source.tone : 'blue';
+        const lane = COMPANY_STRUCTURE_ALLOWED_LANES.has(source.lane) ? source.lane : 'leadership';
+        const order = Number.isFinite(Number(source.order)) ? Number(source.order) : index;
+        return {
+            id,
+            title: sanitizeCompanyStructureString(source.title, 80) || 'Роль',
+            description: sanitizeCompanyStructureString(source.description, 1200),
+            tone,
+            lane,
+            parentId: sanitizeCompanyStructureString(source.parentId, 64) || null,
+            stack: sanitizeCompanyStructureString(source.stack, 64) || null,
+            order,
+            meta: sanitizeCompanyStructureString(source.meta, 80) || null
+        };
+    });
+    const ids = new Set(normalized.map(node => node.id));
+    return normalized.map(node => ({
+        ...node,
+        parentId: node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null
+    }));
+}
+
+function normalizeCompanyStructurePayload(value) {
+    let source = value && typeof value === 'object' ? value : {};
+    if (typeof value === 'string') {
+        try {
+            source = JSON.parse(value);
+        } catch {
+            source = { instructions: value };
+        }
+    }
+    return {
+        schemaVersion: COMPANY_STRUCTURE_SCHEMA_VERSION,
+        structure: sanitizeCompanyStructureString(source.structure || source.structure_text, 20000),
+        instructions: sanitizeCompanyStructureString(source.instructions || source.instructions_text, 20000),
+        nodes: sanitizeCompanyStructureNodes(source.nodes),
+        updatedBy: source.updatedBy || null,
+        updatedAt: source.updatedAt || null
     };
 }
 
@@ -407,11 +480,7 @@ router.put('/staff/:id/pool-status', async (req, res) => {
 router.get('/company-structure', async (req, res) => {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'");
-        let payload = { structure: '', instructions: '' };
-        if (result.rows[0]?.value) {
-            try { payload = { ...payload, ...JSON.parse(result.rows[0].value) }; }
-            catch { payload.instructions = result.rows[0].value; }
-        }
+        const payload = normalizeCompanyStructurePayload(result.rows[0]?.value || {});
         res.json({ success: true, data: payload });
     } catch (err) {
         log.error('GET /hr/company-structure error', err);
@@ -422,8 +491,7 @@ router.get('/company-structure', async (req, res) => {
 router.put('/company-structure', async (req, res) => {
     try {
         const payload = {
-            structure: String(req.body.structure || '').slice(0, 20000),
-            instructions: String(req.body.instructions || '').slice(0, 20000),
+            ...normalizeCompanyStructurePayload(req.body || {}),
             updatedBy: req.user?.username || null,
             updatedAt: new Date().toISOString()
         };
@@ -433,7 +501,7 @@ router.put('/company-structure', async (req, res) => {
              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
             [JSON.stringify(payload)]
         );
-        await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt }, req.ip);
+        await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt, nodes: payload.nodes.length }, req.ip);
         res.json({ success: true, data: payload });
     } catch (err) {
         log.error('PUT /hr/company-structure error', err);

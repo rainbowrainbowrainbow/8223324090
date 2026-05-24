@@ -523,6 +523,36 @@ function createFakePool() {
                     }]
                 };
             }
+            if (/SELECT value FROM settings WHERE key = 'hr_company_structure'/i.test(text)) {
+                return {
+                    rows: [{
+                        value: JSON.stringify({
+                            schemaVersion: 1,
+                            structure: 'Saved structure notes',
+                            instructions: 'Saved HR instructions',
+                            nodes: [
+                                {
+                                    id: 'director',
+                                    title: 'Директор',
+                                    description: 'Root node',
+                                    tone: 'gold',
+                                    lane: 'root',
+                                    parentId: null,
+                                    order: 1,
+                                    meta: 'center'
+                                }
+                            ],
+                            updatedAt: '2099-05-02T12:00:00Z'
+                        })
+                    }]
+                };
+            }
+            if (/INSERT INTO settings \(key, value\) VALUES \('hr_company_structure', \$1\)/i.test(text)) {
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO hr_audit_log \(action, staff_id, performed_by, details, ip_address\)/i.test(text)) {
+                return { rows: [], rowCount: 1 };
+            }
             if (/FROM announcements/i.test(text) && /total_plays/i.test(text)) {
                 return { rows: [{ active: 0, draft: 0, scheduled: 0, total_plays: 0 }] };
             }
@@ -1014,6 +1044,35 @@ describe('route-level API safety smoke', () => {
         assert.equal(download.status, 200);
         assert.match(download.headers.get('content-disposition') || '', /filename=/);
         assert.equal(await download.text(), 'resume text content');
+    });
+
+    it('persists HR company structure as editable org chart nodes', async () => {
+        const loaded = await request('GET', '/api/hr/company-structure', undefined, withAuth());
+        assert.equal(loaded.status, 200, JSON.stringify(loaded.data));
+        assert.equal(loaded.data.success, true);
+        assert.equal(loaded.data.data.schemaVersion, 1);
+        assert.equal(loaded.data.data.nodes[0].id, 'director');
+        assert.equal(loaded.data.data.nodes[0].tone, 'gold');
+
+        const saved = await request('PUT', '/api/hr/company-structure', {
+            schemaVersion: 1,
+            structure: 'оновлені нотатки',
+            instructions: 'нова інструкція',
+            nodes: [
+                { id: 'director', title: 'Директор без корони', description: 'Root', tone: 'gold', lane: 'root', order: 1 },
+                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', order: 2 }
+            ]
+        }, withAuth());
+        assert.equal(saved.status, 200, JSON.stringify(saved.data));
+        assert.equal(saved.data.success, true);
+        assert.equal(saved.data.data.schemaVersion, 1);
+        assert.equal(saved.data.data.nodes.length, 2);
+        assert.equal(saved.data.data.nodes[0].title, 'Директор без корони');
+        assert.equal(saved.data.data.nodes[1].tone, 'blue');
+        assert.equal(saved.data.data.nodes[1].lane, 'leadership');
+        assert.equal(saved.data.data.nodes[1].parentId, 'director');
+        assert.ok(queries.some(q => /INSERT INTO settings \(key, value\)/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text)));
     });
 
     it('keeps exposed module APIs aligned with page-level role access', async () => {

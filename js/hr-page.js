@@ -1645,34 +1645,406 @@ const DEFAULT_COMPANY_STRUCTURE_TEXT = [
     '  Технічний персонал -> Гардероб, Прибирання, Завгосп'
 ].join('\n');
 
-function initCompanyOrgChart() {
-    const nodes = document.querySelectorAll('.hr-org-node');
-    if (!nodes.length) return;
+const ORG_TONE_LABELS = {
+    gold: 'Керівництво',
+    blue: 'Управління',
+    purple: 'Операції',
+    violet: 'Підтримка'
+};
 
-    nodes.forEach(node => {
-        if (node.dataset.orgBound === '1') return;
-        node.dataset.orgBound = '1';
-        node.addEventListener('click', () => selectCompanyOrgNode(node));
+const ORG_LANE_LABELS = {
+    root: 'Верхній рівень',
+    deputy: 'Заступник',
+    leadership: 'Керівний контур',
+    operations: 'Операційний контур',
+    support: 'Підтримка'
+};
+
+const ORG_ALLOWED_TONES = Object.keys(ORG_TONE_LABELS);
+const ORG_ALLOWED_LANES = Object.keys(ORG_LANE_LABELS);
+
+const DEFAULT_COMPANY_STRUCTURE_NODES = [
+    { id: 'director', title: 'Директор', description: 'Фінальне рішення, стратегія, ресурси і правила роботи компанії.', tone: 'gold', lane: 'root', parentId: null, stack: null, order: 10, meta: 'центр рішень' },
+    { id: 'deputy_director', title: 'Заступник директора', description: 'Тримає операційний контур, контролює виконання рішень і синхронізує керівників напрямів.', tone: 'blue', lane: 'deputy', parentId: 'director', stack: null, order: 20, meta: 'операційне керування' },
+    { id: 'top_manager', title: 'Топ-менеджер', description: 'Веде менеджерський блок, контролює продажі, бронювання і якість сервісного циклу.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: 'management', order: 30, meta: 'менеджмент' },
+    { id: 'managers', title: 'Менеджер(и)', description: 'Працюють із клієнтами, лідами, бронюваннями і щоденними задачами.', tone: 'blue', lane: 'leadership', parentId: 'top_manager', stack: 'management', order: 31, meta: 'оператори CRM' },
+    { id: 'hr', title: 'HR', description: 'Набір, структура команди, зміни, onboarding, дисципліна і кадровий контур.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 40, meta: 'люди' },
+    { id: 'accountant', title: 'Бухгалтер', description: 'Фінансові документи, зарплати, звірки і контроль обліку.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 50, meta: 'фінанси' },
+    { id: 'art_director', title: 'Арт-директор', description: 'Керує творчим виробництвом, програмами, костюмами, дизайнами і випускними матеріалами.', tone: 'purple', lane: 'leadership', parentId: 'deputy_director', stack: 'art', order: 60, meta: 'креатив' },
+    { id: 'admins', title: 'Адміністратори', description: 'Підтримують зал, комунікацію з гостями, порядок і операційне закриття змін.', tone: 'purple', lane: 'leadership', parentId: 'art_director', stack: 'art', order: 61, meta: 'зал' },
+    { id: 'marketer', title: 'Маркетолог', description: 'Маркетинг, комунікації, контент і кампанії для залучення клієнтів.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 70, meta: 'попит' },
+    { id: 'it_specialist', title: 'IT-спеціаліст', description: 'Підтримує CRM, технічні інтеграції, обладнання і цифрові процеси.', tone: 'violet', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 80, meta: 'системи' },
+    { id: 'senior_trampoline', title: 'Старший батутіст', description: 'Відповідає за батутну зону, інструкторів, безпеку і якість активностей.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: 'trampoline', order: 90, meta: 'батутна зона' },
+    { id: 'trampoline_instructors', title: 'Батутісти-інструктори', description: 'Проводять активності, стежать за безпекою дітей і підтримують правила зони.', tone: 'purple', lane: 'operations', parentId: 'senior_trampoline', stack: 'trampoline', order: 91, meta: 'інструктори' },
+    { id: 'animators', title: 'Аніматори', description: 'Проводять програми, інтерактиви та дитячі свята згідно зі сценарієм.', tone: 'purple', lane: 'operations', parentId: 'art_director', stack: null, order: 100, meta: 'програми' },
+    { id: 'waiters', title: 'Офіціанти', description: 'Сервіс столів, подача, комунікація з гостями і підтримка банкетів.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 110, meta: 'сервіс' },
+    { id: 'barista', title: 'Бариста', description: 'Кавовий бар, напої, швидкість видачі і якість продукту.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 120, meta: 'бар' },
+    { id: 'reception', title: 'Рецепція', description: 'Перша точка контакту гостей, вхідний потік, оплати і навігація.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 130, meta: 'вхід' },
+    { id: 'chef', title: 'Шеф-кухар', description: 'Керує кухнею, меню, якістю страв, закупками і кухонною дисципліною.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'kitchen', order: 140, meta: 'кухня' },
+    { id: 'cooks', title: 'Кухарі', description: 'Готують страви, тримають стандарти та швидкість видачі.', tone: 'violet', lane: 'support', parentId: 'chef', stack: 'kitchen', order: 141, meta: 'виробництво' },
+    { id: 'dishwash', title: 'Мийка', description: 'Посуд, чистота кухонного циклу і санітарна підтримка.', tone: 'violet', lane: 'support', parentId: 'chef', stack: 'kitchen', order: 142, meta: 'санітарія' },
+    { id: 'pastry_chef', title: 'Шеф-кондитер', description: 'Керує кондитерським напрямом, виробництвом десертів і стандартами якості.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'pastry', order: 150, meta: 'кондитерка' },
+    { id: 'pastry_team', title: 'Кондитери', description: 'Виготовляють десерти, декор і кондитерські позиції для подій.', tone: 'violet', lane: 'support', parentId: 'pastry_chef', stack: 'pastry', order: 151, meta: 'виробництво' },
+    { id: 'pastry_wash', title: 'Мийка цех', description: 'Підтримує чистоту і порядок у кондитерському цеху.', tone: 'violet', lane: 'support', parentId: 'pastry_chef', stack: 'pastry', order: 152, meta: 'санітарія' },
+    { id: 'technical_staff', title: 'Технічний персонал', description: 'Технічна готовність простору, ремонт, обладнання і господарські задачі.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'technical', order: 160, meta: 'інфраструктура' },
+    { id: 'wardrobe', title: 'Гардероб', description: 'Одяг гостей, контроль речей і порядок у гардеробній зоні.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 161, meta: 'гості' },
+    { id: 'cleaning', title: 'Прибирання', description: 'Чистота залу, санвузлів, службових зон і підтримка стандартів протягом дня.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 162, meta: 'чистота' },
+    { id: 'facilities', title: 'Завгосп', description: 'Господарський запас, дрібний ремонт, закупки і побутова підтримка.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 163, meta: 'господарство' }
+];
+
+let companyStructureNodes = [];
+let selectedCompanyStructureNodeId = 'director';
+
+function cloneCompanyStructureNodes(nodes) {
+    return (nodes || []).map(node => ({ ...node }));
+}
+
+function normalizeCompanyStructureNodeId(value, fallback) {
+    return String(value || fallback || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_{2,}/g, '_')
+        .slice(0, 64) || fallback;
+}
+
+function normalizeCompanyStructureNodes(nodes) {
+    const source = Array.isArray(nodes) && nodes.length ? nodes : DEFAULT_COMPANY_STRUCTURE_NODES;
+    const seen = new Set();
+    const normalized = source.map((node, index) => {
+        const raw = node && typeof node === 'object' ? node : {};
+        const baseId = normalizeCompanyStructureNodeId(raw.id, `node_${index + 1}`);
+        let id = baseId;
+        const suffixBase = (baseId || `node_${index + 1}`).slice(0, 58);
+        let suffix = 2;
+        while (seen.has(id)) {
+            id = `${suffixBase}_${suffix}`.slice(0, 64);
+            suffix += 1;
+        }
+        seen.add(id);
+        const tone = ORG_ALLOWED_TONES.includes(raw.tone) ? raw.tone : 'blue';
+        const lane = ORG_ALLOWED_LANES.includes(raw.lane) ? raw.lane : 'leadership';
+        const order = Number.isFinite(Number(raw.order)) ? Number(raw.order) : index;
+        return {
+            id,
+            title: String(raw.title || 'Роль').trim().slice(0, 80) || 'Роль',
+            description: String(raw.description || 'Роль у структурі компанії.').trim().slice(0, 1200),
+            tone,
+            lane,
+            parentId: raw.parentId ? normalizeCompanyStructureNodeId(raw.parentId, '') : null,
+            stack: raw.stack ? String(raw.stack).trim().slice(0, 64) : null,
+            order,
+            meta: raw.meta ? String(raw.meta).trim().slice(0, 80) : null
+        };
     });
+    const ids = new Set(normalized.map(node => node.id));
+    return normalized.map(node => ({
+        ...node,
+        parentId: node.parentId && ids.has(node.parentId) && node.parentId !== node.id ? node.parentId : null
+    }));
+}
 
-    const active = document.querySelector('.hr-org-node.is-active') || nodes[0];
-    if (active) selectCompanyOrgNode(active);
+function sortCompanyStructureNodes(nodes) {
+    return [...(nodes || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.title).localeCompare(String(b.title), 'uk'));
+}
 
+function companyStructureNodeById(id) {
+    return companyStructureNodes.find(node => node.id === id) || null;
+}
+
+function companyStructureNodesByLane(lane) {
+    return sortCompanyStructureNodes(companyStructureNodes.filter(node => node.lane === lane));
+}
+
+function companyStructureTextFromNodes(nodes) {
+    const byId = new Map((nodes || []).map(node => [node.id, node]));
+    return sortCompanyStructureNodes(nodes).map(node => {
+        const parent = node.parentId ? byId.get(node.parentId) : null;
+        return parent ? `${node.title} <- ${parent.title}` : node.title;
+    }).join('\n');
+}
+
+function syncCompanyStructureText() {
     const structureText = document.getElementById('companyStructureText');
-    if (structureText && !structureText.value.trim()) {
-        structureText.value = DEFAULT_COMPANY_STRUCTURE_TEXT;
+    if (structureText) {
+        structureText.value = companyStructureTextFromNodes(companyStructureNodes) || DEFAULT_COMPANY_STRUCTURE_TEXT;
     }
 }
 
-function selectCompanyOrgNode(node) {
-    if (!node) return;
-    document.querySelectorAll('.hr-org-node.is-active').forEach(item => item.classList.remove('is-active'));
-    node.classList.add('is-active');
+function renderCompanyOrgNode(node) {
+    const tone = ORG_ALLOWED_TONES.includes(node.tone) ? node.tone : 'blue';
+    const meta = node.meta || ORG_TONE_LABELS[tone] || '';
+    const active = node.id === selectedCompanyStructureNodeId ? ' is-active' : '';
+    return `
+        <span class="hr-org-node-shell">
+            <button type="button" class="hr-org-node hr-org-node--${tone}${active}" data-org-node-id="${escapeHtml(node.id)}">
+                <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
+                <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
+            </button>
+            <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
+        </span>`;
+}
 
+function renderCompanyOrgStack(nodes, stackId) {
+    const sorted = sortCompanyStructureNodes(nodes);
+    const [head, ...children] = sorted;
+    if (!head) return '';
+    return `
+        <div class="hr-org-stack" data-org-stack="${escapeHtml(stackId || head.id)}">
+            ${renderCompanyOrgNode(head)}
+            ${children.length ? `
+                <div class="hr-org-line" aria-hidden="true"></div>
+                <div class="hr-org-subrow">${children.map(renderCompanyOrgNode).join('')}</div>
+            ` : ''}
+        </div>`;
+}
+
+function renderCompanyOrgGroups(nodes) {
+    const sorted = sortCompanyStructureNodes(nodes);
+    const stackCounts = sorted.reduce((map, node) => {
+        if (node.stack) map.set(node.stack, (map.get(node.stack) || 0) + 1);
+        return map;
+    }, new Map());
+    const rendered = [];
+    const used = new Set();
+    sorted.forEach(node => {
+        if (used.has(node.id)) return;
+        if (node.stack && stackCounts.get(node.stack) > 1) {
+            const group = sorted.filter(item => item.stack === node.stack);
+            group.forEach(item => used.add(item.id));
+            rendered.push(renderCompanyOrgStack(group, node.stack));
+            return;
+        }
+        used.add(node.id);
+        rendered.push(renderCompanyOrgNode(node));
+    });
+    return rendered.join('');
+}
+
+function renderCompanyOrgRow(rowClass, nodes) {
+    if (!nodes.length) return '';
+    return `<div class="hr-org-row ${rowClass}">${renderCompanyOrgGroups(nodes)}</div>`;
+}
+
+function bindCompanyOrgChartEvents(stage) {
+    stage.querySelectorAll('[data-org-node-id]').forEach(node => {
+        node.addEventListener('click', () => selectCompanyOrgNodeById(node.dataset.orgNodeId));
+    });
+    stage.querySelectorAll('[data-org-edit]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            openCompanyOrgNodeEditor(button.dataset.orgEdit);
+        });
+    });
+}
+
+function renderCompanyOrgChart() {
+    const stage = document.getElementById('companyOrgChart');
+    if (!stage) return;
+    if (!companyStructureNodes.length) {
+        companyStructureNodes = cloneCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
+    }
+    const rootNodes = companyStructureNodesByLane('root');
+    const deputyNodes = companyStructureNodesByLane('deputy');
+    const leadershipNodes = companyStructureNodesByLane('leadership');
+    const operationNodes = companyStructureNodesByLane('operations');
+    const supportNodes = companyStructureNodesByLane('support');
+    const html = [
+        renderCompanyOrgRow('hr-org-row--root', rootNodes.length ? rootNodes : companyStructureNodes.slice(0, 1)),
+        deputyNodes.length ? '<div class="hr-org-line" aria-hidden="true"></div>' : '',
+        renderCompanyOrgRow('hr-org-row--deputy', deputyNodes),
+        leadershipNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
+        renderCompanyOrgRow('hr-org-row--branches', leadershipNodes),
+        operationNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
+        renderCompanyOrgRow('hr-org-row--operations', operationNodes),
+        supportNodes.length ? '<div class="hr-org-branch-line" aria-hidden="true"></div>' : '',
+        renderCompanyOrgRow('hr-org-row--support', supportNodes)
+    ].filter(Boolean).join('');
+    stage.innerHTML = html || '<div class="hr-org-loading">Немає вузлів структури</div>';
+    bindCompanyOrgChartEvents(stage);
+}
+
+function ensureCompanyOrgDetailMeta() {
+    let meta = document.getElementById('hrOrgDetailMeta');
+    const title = document.getElementById('hrOrgDetailTitle');
+    if (!meta && title) {
+        meta = document.createElement('div');
+        meta.id = 'hrOrgDetailMeta';
+        meta.className = 'hr-org-detail-meta';
+        title.insertAdjacentElement('afterend', meta);
+    }
+    return meta;
+}
+
+function updateCompanyOrgDetail(node) {
     const title = document.getElementById('hrOrgDetailTitle');
     const text = document.getElementById('hrOrgDetailText');
-    if (title) title.textContent = node.dataset.orgRole || node.textContent.trim();
-    if (text) text.textContent = node.dataset.orgDesc || 'Роль у структурі компанії.';
+    const meta = ensureCompanyOrgDetailMeta();
+    const editButton = document.getElementById('hrOrgEditSelectedBtn');
+    if (title) title.textContent = node?.title || 'Роль';
+    if (text) text.textContent = node?.description || 'Роль у структурі компанії.';
+    if (meta) {
+        const parent = node?.parentId ? companyStructureNodeById(node.parentId) : null;
+        meta.innerHTML = node ? `
+            <span>${escapeHtml(ORG_LANE_LABELS[node.lane] || 'Рівень')}</span>
+            <span>${escapeHtml(ORG_TONE_LABELS[node.tone] || 'Тип')}</span>
+            ${parent ? `<span>Підпорядкування: ${escapeHtml(parent.title)}</span>` : '<span>Кореневий вузол</span>'}
+        ` : '';
+    }
+    if (editButton) {
+        editButton.disabled = !node;
+        editButton.onclick = () => node && openCompanyOrgNodeEditor(node.id);
+    }
+}
+
+function selectCompanyOrgNodeById(id) {
+    const node = companyStructureNodeById(id) || companyStructureNodes[0] || null;
+    if (!node) return;
+    selectedCompanyStructureNodeId = node.id;
+    document.querySelectorAll('.hr-org-node.is-active').forEach(item => item.classList.remove('is-active'));
+    document.querySelectorAll('[data-org-node-id]').forEach(item => {
+        if (item.dataset.orgNodeId === node.id) item.classList.add('is-active');
+    });
+    updateCompanyOrgDetail(node);
+}
+
+function selectCompanyOrgNode(node) {
+    const id = typeof node === 'string' ? node : node?.dataset?.orgNodeId;
+    selectCompanyOrgNodeById(id);
+}
+
+function closeCompanyOrgNodeEditor() {
+    document.getElementById('hrOrgNodeEditorOverlay')?.remove();
+}
+
+function companyOrgNodeEditorOptions(source, selectedValue, labels) {
+    return source.map(value => `<option value="${escapeHtml(value)}"${value === selectedValue ? ' selected' : ''}>${escapeHtml(labels[value] || value)}</option>`).join('');
+}
+
+function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
+    const node = companyStructureNodeById(nodeId);
+    if (!node) return;
+    closeCompanyOrgNodeEditor();
+    const parentOptions = [
+        '<option value="">Без батьківського вузла</option>',
+        ...sortCompanyStructureNodes(companyStructureNodes)
+            .filter(item => item.id !== node.id)
+            .map(item => `<option value="${escapeHtml(item.id)}"${item.id === node.parentId ? ' selected' : ''}>${escapeHtml(item.title)}</option>`)
+    ].join('');
+    const overlay = document.createElement('div');
+    overlay.id = 'hrOrgNodeEditorOverlay';
+    overlay.className = 'candidate-detail-overlay';
+    overlay.innerHTML = `
+        <div class="candidate-detail-modal hr-org-node-modal" role="dialog" aria-modal="true" aria-labelledby="hrOrgNodeEditorTitle">
+            <form id="hrOrgNodeForm" class="hr-org-node-form" data-node-id="${escapeHtml(node.id)}">
+                <div class="candidate-detail-head">
+                    <div>
+                        <div class="candidate-detail-kicker">Оргструктура</div>
+                        <h3 id="hrOrgNodeEditorTitle">Редагувати вузол</h3>
+                    </div>
+                    <button type="button" class="candidate-detail-close" id="hrOrgNodeEditorClose" aria-label="Закрити">×</button>
+                </div>
+                <label>
+                    Назва ролі
+                    <input type="text" name="title" maxlength="80" required value="${escapeHtml(node.title)}">
+                </label>
+                <label>
+                    Опис / відповідальність
+                    <textarea name="description" rows="4" maxlength="1200">${escapeHtml(node.description)}</textarea>
+                </label>
+                <div class="hr-org-node-form-row">
+                    <label>
+                        Візуальний тип
+                        <select name="tone">${companyOrgNodeEditorOptions(ORG_ALLOWED_TONES, node.tone, ORG_TONE_LABELS)}</select>
+                    </label>
+                    <label>
+                        Рівень
+                        <select name="lane">${companyOrgNodeEditorOptions(ORG_ALLOWED_LANES, node.lane, ORG_LANE_LABELS)}</select>
+                    </label>
+                </div>
+                <div class="hr-org-node-form-row">
+                    <label>
+                        Батьківський вузол
+                        <select name="parentId">${parentOptions}</select>
+                    </label>
+                    <label>
+                        Порядок
+                        <input type="number" name="order" step="1" value="${Number(node.order) || 0}">
+                    </label>
+                </div>
+                <div class="hr-org-node-form-row">
+                    <label>
+                        Група / стек
+                        <input type="text" name="stack" maxlength="64" value="${escapeHtml(node.stack || '')}" placeholder="Напр. kitchen">
+                    </label>
+                    <label>
+                        Підпис
+                        <input type="text" name="meta" maxlength="80" value="${escapeHtml(node.meta || '')}" placeholder="Напр. сервіс">
+                    </label>
+                </div>
+                <div class="hr-org-node-form-actions">
+                    <button type="button" class="btn-secondary" id="hrOrgNodeEditorCancel">Скасувати</button>
+                    <button type="submit" class="btn-primary">Зберегти вузол</button>
+                </div>
+            </form>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeCompanyOrgNodeEditor();
+    });
+    overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeCompanyOrgNodeEditor();
+    });
+    document.getElementById('hrOrgNodeEditorClose')?.addEventListener('click', closeCompanyOrgNodeEditor);
+    document.getElementById('hrOrgNodeEditorCancel')?.addEventListener('click', closeCompanyOrgNodeEditor);
+    document.getElementById('hrOrgNodeForm')?.addEventListener('submit', saveCompanyOrgNodeFromEditor);
+    overlay.querySelector('input[name="title"]')?.focus();
+}
+
+async function saveCompanyOrgNodeFromEditor(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const nodeId = form.dataset.nodeId;
+    const index = companyStructureNodes.findIndex(node => node.id === nodeId);
+    if (index === -1) return;
+    const formData = new FormData(form);
+    const order = Number(formData.get('order'));
+    const parentId = String(formData.get('parentId') || '').trim();
+    const nextNode = {
+        ...companyStructureNodes[index],
+        title: String(formData.get('title') || '').trim().slice(0, 80) || 'Роль',
+        description: String(formData.get('description') || '').trim().slice(0, 1200) || 'Роль у структурі компанії.',
+        tone: ORG_ALLOWED_TONES.includes(String(formData.get('tone'))) ? String(formData.get('tone')) : 'blue',
+        lane: ORG_ALLOWED_LANES.includes(String(formData.get('lane'))) ? String(formData.get('lane')) : 'leadership',
+        parentId: parentId && parentId !== nodeId ? parentId : null,
+        stack: String(formData.get('stack') || '').trim().slice(0, 64) || null,
+        order: Number.isFinite(order) ? order : companyStructureNodes[index].order,
+        meta: String(formData.get('meta') || '').trim().slice(0, 80) || null
+    };
+    companyStructureNodes[index] = nextNode;
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    selectedCompanyStructureNodeId = nextNode.id;
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(nextNode.id);
+    closeCompanyOrgNodeEditor();
+    const saved = await saveCompanyStructure({ silent: true });
+    if (saved) showNotification('Вузол структури збережено', 'success');
+}
+
+function updateCompanyStructureStatus(updatedAt) {
+    const statusEl = document.getElementById('companyStructureStatus');
+    if (!statusEl) return;
+    statusEl.textContent = updatedAt ? `Оновлено: ${new Date(updatedAt).toLocaleString('uk-UA')}` : '';
+}
+
+function initCompanyOrgChart() {
+    if (!companyStructureNodes.length) {
+        companyStructureNodes = cloneCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
+    }
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
 }
 
 async function loadCompanyStructure() {
@@ -1684,33 +2056,44 @@ async function loadCompanyStructure() {
         return;
     }
     const structure = data.data || data.structure || {};
-    const structureText = document.getElementById('companyStructureText');
     const notesText = document.getElementById('companyStructureNotes');
     const instructionsText = document.getElementById('companyInstructionsText');
     const savedStructure = structure.structure || structure.structure_text || '';
-    if (structureText) structureText.value = DEFAULT_COMPANY_STRUCTURE_TEXT;
-    if (notesText) notesText.value = savedStructure && savedStructure !== DEFAULT_COMPANY_STRUCTURE_TEXT ? savedStructure : '';
+    companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    const generatedStructure = companyStructureTextFromNodes(companyStructureNodes);
+    if (notesText) notesText.value = savedStructure && savedStructure !== DEFAULT_COMPANY_STRUCTURE_TEXT && savedStructure !== generatedStructure ? savedStructure : '';
     if (instructionsText) instructionsText.value = structure.instructions || structure.instructions_text || '';
-    if (statusEl) statusEl.textContent = structure.updatedAt ? `Оновлено: ${new Date(structure.updatedAt).toLocaleString('uk-UA')}` : '';
-    initCompanyOrgChart();
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+    updateCompanyStructureStatus(structure.updatedAt);
 }
 
-async function saveCompanyStructure() {
+async function saveCompanyStructure(options = {}) {
     const notes = document.getElementById('companyStructureNotes')?.value || '';
+    syncCompanyStructureText();
     const payload = {
+        schemaVersion: 1,
         structure: notes.trim() || document.getElementById('companyStructureText')?.value || DEFAULT_COMPANY_STRUCTURE_TEXT,
-        instructions: document.getElementById('companyInstructionsText')?.value || ''
+        instructions: document.getElementById('companyInstructionsText')?.value || '',
+        nodes: normalizeCompanyStructureNodes(companyStructureNodes)
     };
     const data = await hrFetch('/company-structure', {
         method: 'PUT',
         body: JSON.stringify(payload)
     });
     if (data?.success) {
-        showNotification('Структуру та інструкції збережено', 'success');
-        await loadCompanyStructure();
-    } else {
-        showNotification(data?.error || 'Не вдалося зберегти', 'error');
+        const saved = data.data || payload;
+        companyStructureNodes = normalizeCompanyStructureNodes(saved.nodes);
+        syncCompanyStructureText();
+        renderCompanyOrgChart();
+        selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+        updateCompanyStructureStatus(saved.updatedAt);
+        if (!options.silent) showNotification('Структуру та інструкції збережено', 'success');
+        return true;
     }
+    showNotification(data?.error || 'Не вдалося зберегти', 'error');
+    return false;
 }
 
 async function loadReservePool() {

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.1 - CRM 63.1: Оновлений арт-модуль
+
+### Art / standalone shell refresh [codex]
+- **Shell без зайвого лівого зазору** - `/art` отримав окремий `art-shell`: внутрішній `.artdir-page` більше не центрується як стара плита всередині `page-container`, тому контент сидить рівно в CRM workspace.
+- **Сучасний верх модуля** - голий `h1` замінено на компактний module hero з `page-kicker`, описом і швидкими діями для конвеєра та афіші.
+- **Оновлені tabs і surfaces** - навігація стала `tablist` з `aria-selected`, а overview, recent changes, pipeline, templates, Brand Book і iframe-tabs отримали чистіші standalone surfaces.
+- **Сумісність iframe-вкладок** - `/programs?embedded=1`, `/designs?embedded=1` і `/graduation?embedded=1` лишилися lazy-loaded через наявний `data-src` контракт.
+- **Нормалізація назв** - у sidebar сторінка тепер називається `Арт`, а роль показується як `Арт-директор`.
+- **Guardrail** - `tests/ui-check.js` перевіряє `art-shell`, hero, accessible tabs, iframe contracts, breakpoint guards і відсутність старого sidebar label.
+
+---
+
 ## v0.63.0 - CRM 63: Новий дашборд задач
 
 ### CRM 63 / задачі, підзадачі та перенесення [codex]

@@ -133,31 +133,49 @@ function escapeHtml(str) {
 // TAB SWITCHING
 // ==========================================
 
+function activateArtTab(tabName, options = {}) {
+    const tab = document.querySelector(`.artdir-tab[data-tab="${tabName}"]`);
+    const panel = document.getElementById(`tab-${tabName}`);
+    if (!tab || !panel) return false;
+    if (tabName === activeTab && options.force !== true) return true;
+
+    document.querySelectorAll('.artdir-tab').forEach(t => {
+        const isActive = t === tab;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    document.querySelectorAll('.artdir-tab-content').forEach(c => {
+        c.classList.toggle('active', c === panel);
+    });
+
+    activeTab = tabName;
+
+    if (options.updateUrl !== false) {
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tabName);
+        history.replaceState(null, '', url);
+    }
+
+    // Lazy-load iframe tabs (programs, designs, graduation)
+    lazyLoadIframe(tabName);
+
+    // Lazy-load tab data
+    if (tabName === 'pipeline') loadPipeline();
+    if (tabName === 'templates') loadTemplates();
+    if (tabName === 'brand') loadBrand();
+
+    return true;
+}
+
 function setupTabs() {
     document.querySelectorAll('.artdir-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            if (tabName === activeTab) return;
-
-            document.querySelectorAll('.artdir-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.artdir-tab-content').forEach(c => c.classList.remove('active'));
-
-            tab.classList.add('active');
-            document.getElementById(`tab-${tabName}`)?.classList.add('active');
-            activeTab = tabName;
-
-            // Persist tab in URL for refresh
-            const url = new URL(window.location);
-            url.searchParams.set('tab', tabName);
-            history.replaceState(null, '', url);
-
-            // Lazy-load iframe tabs (programs, designs, graduation)
-            lazyLoadIframe(tabName);
-
-            // Lazy-load tab data
-            if (tabName === 'pipeline') loadPipeline();
-            if (tabName === 'templates') loadTemplates();
-            if (tabName === 'brand') loadBrand();
+            activateArtTab(tab.dataset.tab);
+        });
+    });
+    document.querySelectorAll('[data-art-tab-target]').forEach(trigger => {
+        trigger.addEventListener('click', () => {
+            activateArtTab(trigger.dataset.artTabTarget);
         });
     });
 }
@@ -990,8 +1008,7 @@ async function initArtDirectorPage() {
     // v20.8.0: Handle ?tab= URL parameter (for programs/designs deep-link)
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     if (urlTab) {
-        const tabBtn = document.querySelector(`.artdir-tab[data-tab="${urlTab}"]`);
-        if (tabBtn) tabBtn.click();
+        activateArtTab(urlTab);
     }
 
     // Load initial data

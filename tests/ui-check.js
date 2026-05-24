@@ -156,8 +156,17 @@ checkPage('designs.html', (doc, html) => {
 });
 
 checkPage('art-director.html', (doc, html) => {
+    const pagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
     check('tabs exist', doc.querySelectorAll('.artdir-tab').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
+    check('Art page uses modern standalone shell class', doc.getElementById('main-content')?.classList.contains('art-shell'));
+    check('Art page has page hero instead of bare legacy H1', !!doc.getElementById('artPageTitle') && !!doc.querySelector('.art-page-hero .page-kicker'));
+    check('Art tabs are accessible tablist controls', doc.getElementById('artdirTabs')?.getAttribute('role') === 'tablist' && doc.querySelector('.artdir-tab[aria-selected="true"]')?.dataset.tab === 'overview');
+    check('Art iframe tabs keep embedded source contracts', html.includes('/programs?embedded=1') && html.includes('/designs?embedded=1') && html.includes('/graduation?embedded=1'));
+    check('Art shell removes centered slab wrapper at CSS level', pagesCss.includes('.page-container.art-shell') && pagesCss.includes('.art-shell .artdir-page') && pagesCss.includes('max-width: none') && pagesCss.includes('margin: 0;'));
+    check('Art shell has tablet and mobile breakpoint guards', pagesCss.includes('@media (max-width: 1023px)') && pagesCss.includes('@media (max-width: 560px)') && pagesCss.includes('.art-page-actions > *'));
+    check('Sidebar art label is normalized', sidebarCode.includes("href: '/art'") && sidebarCode.includes("label: 'Арт'") && !sidebarCode.includes("label: 'Арт директор'"));
     check('Art director content due date exists', doc.getElementById('contentDueDate')?.type === 'date');
     check('Art director content modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px'));
     check('Art director modal controls are bounded', html.includes('id="contentDueDate" style="width:100%; min-width:0; max-width:100%;'));

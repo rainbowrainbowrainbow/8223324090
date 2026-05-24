@@ -217,7 +217,7 @@ function profileRoleLabel(role) {
         accountant: 'Бухгалтер',
         animator: 'Аніматор',
         instructor: 'Інструктор',
-        art_director: 'Арт директор'
+        art_director: 'Арт-директор'
     };
     return labels[role] || role || 'Працівник';
 }

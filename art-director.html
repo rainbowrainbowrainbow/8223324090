@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.0">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.0">
+    <link rel="stylesheet" href="css/base.css?v=0.63.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.1">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -341,38 +341,48 @@
             </div>
         </header>
 
-        <main id="main-content" class="page-container">
-            <div class="artdir-page">
-                <h1>Арт</h1>
+        <main id="main-content" class="page-container art-shell">
+            <div class="artdir-page art-workspace">
+                <section class="art-page-hero" aria-labelledby="artPageTitle">
+                    <div>
+                        <div class="page-kicker">Продуктова студія</div>
+                        <h1 id="artPageTitle">Арт</h1>
+                        <p>Контент-конвеєр, бренд-правила і дизайн-матеріали для подій Event Genix.</p>
+                    </div>
+                    <div class="art-page-actions" aria-label="Швидкі дії арт-модуля">
+                        <button type="button" class="btn-page-primary" data-art-tab-target="pipeline">Конвеєр</button>
+                        <a class="btn-page-secondary" href="/afisha">Афіша подій</a>
+                    </div>
+                </section>
 
                 <!-- Tabs -->
-                <div class="artdir-tabs" id="artdirTabs">
-                    <button type="button" class="artdir-tab active" data-tab="overview">Огляд</button>
-                    <button type="button" class="artdir-tab" data-tab="pipeline">Конвеєр</button>
-                    <button type="button" class="artdir-tab" data-tab="templates">Шаблони</button>
-                    <button type="button" class="artdir-tab" data-tab="brand">Brand Book</button>
-                    <button type="button" class="artdir-tab" data-tab="programs">Програми</button>
-                    <button type="button" class="artdir-tab" data-tab="designs">Дизайни</button>
-                    <button type="button" class="artdir-tab" data-tab="graduation">Випускний</button>
-                </div>
+                <nav class="artdir-tabs" id="artdirTabs" role="tablist" aria-label="Розділи арт-модуля">
+                    <button type="button" class="artdir-tab active" id="art-tab-overview" data-tab="overview" role="tab" aria-selected="true" aria-controls="tab-overview">Огляд</button>
+                    <button type="button" class="artdir-tab" id="art-tab-pipeline" data-tab="pipeline" role="tab" aria-selected="false" aria-controls="tab-pipeline">Конвеєр</button>
+                    <button type="button" class="artdir-tab" id="art-tab-templates" data-tab="templates" role="tab" aria-selected="false" aria-controls="tab-templates">Шаблони</button>
+                    <button type="button" class="artdir-tab" id="art-tab-brand" data-tab="brand" role="tab" aria-selected="false" aria-controls="tab-brand">Brand Book</button>
+                    <button type="button" class="artdir-tab" id="art-tab-programs" data-tab="programs" role="tab" aria-selected="false" aria-controls="tab-programs">Програми</button>
+                    <button type="button" class="artdir-tab" id="art-tab-designs" data-tab="designs" role="tab" aria-selected="false" aria-controls="tab-designs">Дизайни</button>
+                    <button type="button" class="artdir-tab" id="art-tab-graduation" data-tab="graduation" role="tab" aria-selected="false" aria-controls="tab-graduation">Випускний</button>
+                </nav>
 
                 <!-- Tab: Programs (read-only catalog) -->
-                <div class="artdir-tab-content" id="tab-programs">
+                <div class="artdir-tab-content" id="tab-programs" role="tabpanel" aria-labelledby="art-tab-programs" tabindex="0">
                     <iframe data-src="/programs?embedded=1" class="artdir-embed-frame" title="Каталог програм"></iframe>
                 </div>
 
                 <!-- Tab: Designs (full functionality) -->
-                <div class="artdir-tab-content" id="tab-designs">
+                <div class="artdir-tab-content" id="tab-designs" role="tabpanel" aria-labelledby="art-tab-designs" tabindex="0">
                     <iframe data-src="/designs?embedded=1" class="artdir-embed-frame" title="Дизайни"></iframe>
                 </div>
 
                 <!-- Tab: Graduation (v30.0.0) -->
-                <div class="artdir-tab-content" id="tab-graduation">
+                <div class="artdir-tab-content" id="tab-graduation" role="tabpanel" aria-labelledby="art-tab-graduation" tabindex="0">
                     <iframe data-src="/graduation?embedded=1" class="artdir-embed-frame" title="Конструктор випускного"></iframe>
                 </div>
 
                 <!-- Tab: Overview -->
-                <div class="artdir-tab-content active" id="tab-overview">
+                <div class="artdir-tab-content active" id="tab-overview" role="tabpanel" aria-labelledby="art-tab-overview" tabindex="0">
                     <div class="artdir-section">
                         <div class="artdir-section-title">
                             <span class="section-icon"></span> Стан конвеєра
@@ -393,7 +403,7 @@
                 </div>
 
                 <!-- Tab: Pipeline (Kanban) -->
-                <div class="artdir-tab-content" id="tab-pipeline">
+                <div class="artdir-tab-content" id="tab-pipeline" role="tabpanel" aria-labelledby="art-tab-pipeline" tabindex="0">
                     <div class="pipeline-toolbar" id="pipelineToolbar">
                         <select id="pipelineCategoryFilter">
                             <option value="">Всі категорії</option>
@@ -420,7 +430,7 @@
                 </div>
 
                 <!-- Tab: Templates -->
-                <div class="artdir-tab-content" id="tab-templates">
+                <div class="artdir-tab-content" id="tab-templates" role="tabpanel" aria-labelledby="art-tab-templates" tabindex="0">
                     <div class="template-categories" id="templateCategories">
                         <button type="button" class="template-cat-chip active" data-cat="">Всі</button>
                         <button type="button" class="template-cat-chip" data-cat="poster">Макети афіш</button>
@@ -435,7 +445,7 @@
                 </div>
 
                 <!-- Tab: Brand Book -->
-                <div class="artdir-tab-content" id="tab-brand">
+                <div class="artdir-tab-content" id="tab-brand" role="tabpanel" aria-labelledby="art-tab-brand" tabindex="0">
                     <div class="artdir-section" id="brandSection">
                         <div class="artdir-section-title">
                             <span class="section-icon"></span> Brand Guidelines
@@ -573,13 +583,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.63.0"></script>
-    <script src="js/config.js?v=0.63.0"></script>
-    <script src="js/notification.js?v=0.63.0"></script>
-    <script src="js/api.js?v=0.63.0"></script>
-    <script src="js/auth.js?v=0.63.0"></script>
-    <script src="js/components/sidebar.js?v=0.63.0"></script>
+    <script src="js/ui.js?v=0.63.1"></script>
+    <script src="js/config.js?v=0.63.1"></script>
+    <script src="js/notification.js?v=0.63.1"></script>
+    <script src="js/api.js?v=0.63.1"></script>
+    <script src="js/auth.js?v=0.63.1"></script>
+    <script src="js/components/sidebar.js?v=0.63.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/art-director-page.js?v=0.63.0"></script><script src="js/alerts.js?v=0.63.0"></script>
+    <script src="js/art-director-page.js?v=0.63.1"></script><script src="js/alerts.js?v=0.63.1"></script>
 </body>
 </html>

@@ -77,7 +77,7 @@ const Sidebar = (() => {
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
         { href: '/programs',     icon: '🎪', label: 'Продукти', access: 'programs', group: 'product' },
         { href: '/content',      icon: '📱', label: 'Контент',       access: 'content',        group: 'product' },
-        { href: '/art',          icon: '🎨', label: 'Арт директор',  access: 'art',            group: 'product' },
+        { href: '/art',          icon: '🎨', label: 'Арт',           access: 'art',            group: 'product' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',     access: 'graduation',     group: 'product' },
         { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',   access: 'art',            group: 'product' },
         { href: '/programs#catalogs', icon: '📂', label: 'Каталоги', access: 'programs',       group: 'product' },
@@ -1137,7 +1137,7 @@ const Sidebar = (() => {
             bartender: 'Бармен',
             cook: 'Кухар',
             head_cook: 'Шеф-кухар',
-            art_director: 'Арт директор',
+            art_director: 'Арт-директор',
             designer: 'Дизайнер',
             sound: 'Звук',
             warehouse: 'Склад'

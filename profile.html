@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.22">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.22">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.22">
+    <link rel="stylesheet" href="css/base.css?v=0.62.23">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.23">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.23">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.23">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.23">
+    <link rel="stylesheet" href="css/controls.css?v=0.62.23">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.23">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.23">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -27,9 +27,10 @@
            ========================================== */
 
         .profile-page {
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 20px 16px 80px;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: 24px clamp(18px, 2vw, 34px) 88px;
         }
 
         /* --- Header Card --- */
@@ -184,13 +185,13 @@
         .profile-primary-tabs {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 9px;
             padding: 10px;
-            margin: 0 0 22px;
-            border-radius: 18px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.66));
-            border: 1px solid rgba(148,163,184,0.16);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), 0 12px 30px rgba(15,23,42,0.06);
+            margin: 0 0 24px;
+            border-radius: 20px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(248,250,252,0.72));
+            border: 1px solid rgba(148,163,184,0.18);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 34px rgba(15,23,42,0.07);
         }
 
         .profile-primary-tab {
@@ -198,8 +199,8 @@
             border: 1px solid transparent;
             background: transparent;
             color: var(--gray-600);
-            border-radius: 12px;
-            padding: 10px 14px;
+            border-radius: 14px;
+            padding: 11px 16px;
             font-size: 13px;
             font-weight: 800;
             cursor: pointer;
@@ -217,7 +218,7 @@
             background: var(--white);
             color: var(--gray-900);
             border-color: rgba(148,163,184,0.18);
-            box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 10px 20px rgba(15,23,42,0.06);
+            box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 12px 24px rgba(15,23,42,0.08);
         }
 
         .profile-secondary-tabs {
@@ -859,18 +860,23 @@
            Professional profile shell
            ========================================== */
         .profile-page.profile-work-mode {
-            max-width: min(1360px, calc(100vw - 320px));
-            margin-left: 0;
-            margin-right: auto;
-            padding-top: 16px;
+            width: min(100%, 1760px);
+            max-width: none;
+            min-height: calc(100vh - 64px);
+            margin: 0 auto;
+            padding: 18px clamp(18px, 2vw, 32px) 92px;
+            background:
+                linear-gradient(180deg, rgba(15, 23, 42, 0.025), rgba(15, 23, 42, 0) 360px),
+                linear-gradient(135deg, rgba(16,185,129,0.035), transparent 34%),
+                transparent;
         }
 
         .profile-page-head {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 14px;
+            gap: 16px;
+            margin-bottom: 18px;
             color: var(--gray-500);
             font-size: 13px;
             font-weight: 700;
@@ -887,26 +893,26 @@
 
         .profile-work-header {
             display: grid;
-            grid-template-columns: minmax(280px, 0.92fr) minmax(520px, 1fr);
-            gap: 14px;
+            grid-template-columns: minmax(360px, 1.1fr) minmax(620px, 1.55fr);
+            gap: 20px;
             align-items: stretch;
             background:
                 linear-gradient(135deg, rgba(16, 185, 129, 0.045), transparent 28%),
                 linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.9));
             color: var(--gray-900);
             border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 18px;
-            box-shadow: 0 16px 38px rgba(15, 23, 42, 0.055), inset 0 1px 0 rgba(255,255,255,0.92);
-            padding: 16px;
-            margin-bottom: 12px;
+            border-radius: 22px;
+            box-shadow: 0 20px 48px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255,255,255,0.92);
+            padding: 22px;
+            margin-bottom: 18px;
         }
 
         .profile-work-header::before {
             content: '';
             display: block;
             position: absolute;
-            inset: 10px;
-            border-radius: 14px;
+            inset: 12px;
+            border-radius: 17px;
             border: 1px solid rgba(16, 185, 129, 0.09);
             pointer-events: none;
         }
@@ -915,9 +921,9 @@
             content: '';
             display: block;
             position: absolute;
-            top: 16px;
-            right: 16px;
-            width: 64px;
+            top: 20px;
+            right: 20px;
+            width: 88px;
             height: 1px;
             border-radius: 999px;
             background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.58));
@@ -927,21 +933,21 @@
         .profile-identity-block {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 18px;
             min-width: 0;
         }
 
         .profile-work-avatar {
-            width: 66px;
-            height: 66px;
-            border-radius: 15px;
+            width: 76px;
+            height: 76px;
+            border-radius: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
             background: linear-gradient(135deg, #111827, #334155);
             color: #fff;
-            font-size: 30px;
+            font-size: 34px;
             font-weight: 900;
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.13), 0 12px 26px rgba(15,23,42,0.12);
             overflow: hidden;
@@ -1001,7 +1007,7 @@
         }
 
         .profile-identity-copy h1 {
-            font-size: 25px;
+            font-size: clamp(26px, 2vw, 34px);
             line-height: 1.12;
         }
 
@@ -1039,15 +1045,15 @@
         .profile-work-summary {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 8px;
+            gap: 10px;
             align-items: stretch;
         }
 
         .profile-work-stat {
             min-width: 0;
             position: relative;
-            padding: 10px 12px;
-            border-radius: 12px;
+            padding: 13px 14px;
+            border-radius: 14px;
             background:
                 linear-gradient(145deg, rgba(255,255,255,0.86), rgba(241,245,249,0.82)),
                 #f8fafc;
@@ -1089,7 +1095,7 @@
         .profile-work-stat b {
             display: block;
             color: var(--gray-900);
-            font-size: 19px;
+            font-size: 21px;
             font-weight: 900;
             white-space: nowrap;
             overflow: hidden;
@@ -1107,13 +1113,14 @@
         }
 
         .profile-work-tabs {
-            margin-bottom: 12px;
+            margin-bottom: 18px;
         }
 
         .profile-work-overview {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 16px;
+            align-items: start;
         }
 
         .profile-work-panel {
@@ -1122,12 +1129,31 @@
                 linear-gradient(135deg, rgba(16,185,129,0.025), transparent 38%),
                 var(--white);
             border: 1px solid rgba(148, 163, 184, 0.20);
-            border-radius: 14px;
-            padding: 13px;
-            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.035);
+            border-radius: 18px;
+            padding: 16px;
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.045);
         }
 
-        .profile-work-panel-primary,
+        .profile-work-panel-primary {
+            grid-column: span 8;
+        }
+
+        .profile-work-panel-tasks {
+            grid-column: span 4;
+        }
+
+        .profile-work-panel-risks {
+            grid-column: span 5;
+        }
+
+        .profile-work-panel-progress {
+            grid-column: span 3;
+        }
+
+        .profile-work-panel-activity {
+            grid-column: span 4;
+        }
+
         .profile-work-panel-wide {
             grid-column: 1 / -1;
         }
@@ -1137,7 +1163,7 @@
             align-items: flex-start;
             justify-content: space-between;
             gap: 10px;
-            margin-bottom: 9px;
+            margin-bottom: 12px;
         }
 
         .profile-panel-head h2 {
@@ -1160,7 +1186,7 @@
         .profile-compact-metrics {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 8px;
+            gap: 10px;
         }
 
         .profile-compact-metrics {
@@ -1171,7 +1197,7 @@
             min-width: 0;
             position: relative;
             padding: 10px;
-            border-radius: 11px;
+            border-radius: 13px;
             background: #f8fafc;
             border: 1px solid rgba(148, 163, 184, 0.22);
             transition: transform 0.16s ease, border-color 0.16s ease;
@@ -1229,8 +1255,8 @@
             justify-content: space-between;
             gap: 12px;
             min-width: 0;
-            padding: 10px 11px;
-            border-radius: 8px;
+            padding: 11px 12px;
+            border-radius: 12px;
             background: var(--gray-50);
             border: 1px solid transparent;
         }
@@ -1266,7 +1292,7 @@
 
         .profile-empty-professional {
             padding: 18px;
-            border-radius: 8px;
+            border-radius: 12px;
             background: var(--gray-50);
             color: var(--gray-500);
             font-size: 13px;
@@ -1279,7 +1305,18 @@
         }
 
         .profile-settings-panel {
-            max-width: 920px;
+            max-width: min(1180px, 100%);
+        }
+
+        .profile-page.profile-work-mode .achievements-grid,
+        .profile-page.profile-work-mode .inventory-grid,
+        .profile-page.profile-work-mode .shop-grid,
+        .profile-page.profile-work-mode .teams-grid {
+            gap: 16px;
+        }
+
+        .profile-page.profile-work-mode #tabContent {
+            min-width: 0;
         }
 
         .profile-avatar-editor {
@@ -1615,6 +1652,10 @@
             --profile-dark-surface-soft: rgba(30, 41, 59, 0.78);
             --profile-dark-surface-raised: rgba(51, 65, 85, 0.70);
             --profile-dark-border: rgba(148, 163, 184, 0.22);
+            background:
+                linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0) 380px),
+                linear-gradient(135deg, rgba(16,185,129,0.10), transparent 34%),
+                transparent;
             color: var(--profile-dark-secondary);
         }
 
@@ -2517,13 +2558,48 @@
         }
 
         /* --- Responsive --- */
-        @media (max-width: 980px) {
+        @media (max-width: 1320px) {
             .profile-page.profile-work-mode {
-                max-width: 100%;
+                width: 100%;
+                padding-left: 18px;
+                padding-right: 18px;
             }
 
             .profile-work-header {
                 grid-template-columns: 1fr;
+            }
+
+            .profile-work-overview {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .profile-work-panel-primary,
+            .profile-work-panel-tasks,
+            .profile-work-panel-risks,
+            .profile-work-panel-progress,
+            .profile-work-panel-activity,
+            .profile-work-panel-wide {
+                grid-column: auto;
+            }
+
+            .profile-work-panel-primary {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 980px) {
+            .profile-page.profile-work-mode {
+                max-width: none;
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .profile-work-header {
+                grid-template-columns: 1fr;
+            }
+
+            .profile-work-overview {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             .profile-work-summary {
@@ -2537,6 +2613,16 @@
         }
 
         @media (max-width: 600px) {
+            .profile-page {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+
+            .profile-page.profile-work-mode {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+
             .profile-work-header {
                 grid-template-columns: 1fr;
                 padding: 16px;
@@ -2562,6 +2648,15 @@
             .profile-compact-metrics,
             .profile-work-overview {
                 grid-template-columns: 1fr;
+            }
+
+            .profile-work-panel-primary,
+            .profile-work-panel-tasks,
+            .profile-work-panel-risks,
+            .profile-work-panel-progress,
+            .profile-work-panel-activity,
+            .profile-work-panel-wide {
+                grid-column: 1 / -1;
             }
 
             .profile-work-tabs {
@@ -2740,16 +2835,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.22"></script>
-    <script src="js/notification.js?v=0.62.22"></script>
-    <script src="js/api.js?v=0.62.22"></script>
-    <script src="js/auth.js?v=0.62.22"></script>
-    <script src="js/components/sidebar.js?v=0.62.22"></script>
+    <script src="js/config.js?v=0.62.23"></script>
+    <script src="js/notification.js?v=0.62.23"></script>
+    <script src="js/api.js?v=0.62.23"></script>
+    <script src="js/auth.js?v=0.62.23"></script>
+    <script src="js/components/sidebar.js?v=0.62.23"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.62.22"></script>
-    <script src="js/achievement-popup.js?v=0.62.22"></script>
-    <script src="js/task-create.js?v=0.62.22"></script>
-    <script src="js/profile-page.js?v=0.62.22"></script>
-    <script src="js/alerts.js?v=0.62.22"></script>
+    <script src="js/ui.js?v=0.62.23"></script>
+    <script src="js/achievement-popup.js?v=0.62.23"></script>
+    <script src="js/task-create.js?v=0.62.23"></script>
+    <script src="js/profile-page.js?v=0.62.23"></script>
+    <script src="js/alerts.js?v=0.62.23"></script>
 </body>
 </html>

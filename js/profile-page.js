@@ -540,7 +540,7 @@ function renderWorkProfileOverview() {
                 </div>
             </section>
 
-            <section class="profile-work-panel">
+            <section class="profile-work-panel profile-work-panel-tasks">
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Execution</span>
@@ -553,7 +553,7 @@ function renderWorkProfileOverview() {
                     : '<div class="profile-empty-professional">Активних задач немає.</div>'}
             </section>
 
-            <section class="profile-work-panel">
+            <section class="profile-work-panel profile-work-panel-risks">
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Контроль</span>
@@ -569,7 +569,7 @@ function renderWorkProfileOverview() {
                     : '<div class="profile-empty-professional">Критичних дедлайнів поруч немає.</div>'}
             </section>
 
-            <section class="profile-work-panel profile-work-panel-compact">
+            <section class="profile-work-panel profile-work-panel-compact profile-work-panel-progress">
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Поведінка</span>
@@ -583,7 +583,7 @@ function renderWorkProfileOverview() {
                 </div>
             </section>
 
-            <section class="profile-work-panel profile-work-panel-compact">
+            <section class="profile-work-panel profile-work-panel-compact profile-work-panel-activity">
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Audit</span>

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.63.6 - CRM 63.6: Мобільний таймлайн live
+
+### Release / git deploy [codex]
+- **Окремий git-deploy реліз** - піднято видиму версію до `0.63.6`, оновлено cache-bust посилання, service worker cache і `/api/version`, щоб live точно віддавав найсвіжіший мобільний таймлайн.
+- **Зміни зібрані в одному live-маркері** - реліз включає попередні hardening-и для Android, iPhone 11, інших iPhone та iPad без додаткового переписування логіки бронювань.
+- **Що перевірено перед деплоєм** - version sync, UI smoke і повний локальний baseline мають підтвердити, що таймлайн і release metadata не роз'їхались.
+
+---
+
 ## v0.63.5 - CRM 63.5: iOS та iPad таймлайн
 
 ### Timeline / iOS та iPad responsive hardening [codex]

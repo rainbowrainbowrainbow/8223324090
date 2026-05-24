@@ -157,9 +157,9 @@ const BOARD_MAX_ITEMS = 120;
 const BOARD_MAX_DRAWINGS = 500;
 const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
 const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
-const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
-const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
 const BOARD_ALLOWED_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
 const DASHBOARD_WORKSPACE_MODE = 'workspace';
@@ -191,6 +191,16 @@ function normalizeBoardTool(value) {
 
 function normalizeBoardShape(value) {
     return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
+}
+
+function isBoardEquilateralShape(shape) {
+    return shape === 'circle' || shape === 'square';
+}
+
+function normalizeBoardShapeDimensions(shape, width, height) {
+    if (!isBoardEquilateralShape(shape)) return { w: width, h: height };
+    const size = safeNumber(Math.max(Number(width || 0), Number(height || 0)), 150, 80, 900);
+    return { w: size, h: size };
 }
 
 function normalizeBoardConnectorStyle(value) {
@@ -328,6 +338,11 @@ function sanitizeBoardItem(item, role) {
         safe.title = String(item.title || item.label || '').slice(0, 120);
         safe.color = String(item.color || '').slice(0, 40);
         safe.shape = normalizeBoardShape(item.shape || 'rect');
+        if (type === 'shape') {
+            const dimensions = normalizeBoardShapeDimensions(safe.shape, safe.w, safe.h);
+            safe.w = dimensions.w;
+            safe.h = dimensions.h;
+        }
         if (type === 'space') {
             safe.zoneId = String(item.zoneId || '').slice(0, 80);
             safe.zoneKind = String(item.zoneKind || 'reserved').slice(0, 40);

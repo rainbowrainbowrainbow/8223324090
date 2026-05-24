@@ -10,9 +10,9 @@ const DashboardPage = (() => {
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
-    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'space', 'widget']);
-    const BOARD_SHAPE_TOOLS = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_SHAPE_TOOLS = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
     const BOARD_TOOL_LABELS = {
         select: 'Вибір',
@@ -29,6 +29,8 @@ const DashboardPage = (() => {
         line: 'Лінія',
         arrow: 'Стрілка',
         rect: 'Прямокутник',
+        square: 'Квадрат',
+        circle: 'Коло',
         'round-rect': 'Скруглений блок',
         ellipse: 'Еліпс',
         diamond: 'Ромб'
@@ -47,7 +49,9 @@ const DashboardPage = (() => {
         widget: 'Натисніть на дошці, щоб додати віджет.',
         line: 'Натисніть на дошці, щоб поставити лінію.',
         arrow: 'Натисніть на дошці, щоб поставити стрілку.',
-        rect: 'Натисніть на дошці, щоб поставити блок.',
+        rect: 'Натисніть на дошці, щоб поставити прямокутник.',
+        square: 'Натисніть на дошці, щоб поставити квадрат з рівними сторонами.',
+        circle: 'Натисніть на дошці, щоб поставити справжнє коло з рівною шириною і висотою.',
         'round-rect': 'Натисніть на дошці, щоб поставити м’який блок.',
         ellipse: 'Натисніть на дошці, щоб поставити еліпс.',
         diamond: 'Натисніть на дошці, щоб поставити ромб.'
@@ -133,7 +137,7 @@ const DashboardPage = (() => {
         bottom: 'низ',
         left: 'ліворуч'
     };
-    const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
     const BOARD_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
     const BOARD_WORKSPACE_MODES = new Set(['board:view', 'board:edit', 'board:draw', 'board:connect', 'board:create', 'board:shape', 'object:text-edit', 'object:widget-inspect']);
@@ -480,6 +484,19 @@ const DashboardPage = (() => {
         return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
     }
 
+    function isBoardEquilateralShape(shape) {
+        return shape === 'circle' || shape === 'square';
+    }
+
+    function normalizeBoardShapeDimensions(shape, width, height) {
+        const safeShape = normalizeBoardShape(shape);
+        if (!isBoardEquilateralShape(safeShape)) {
+            return { w: width, h: height };
+        }
+        const size = safeNumber(Math.max(Number(width || 0), Number(height || 0)), 150, 80, 900);
+        return { w: size, h: size };
+    }
+
     function normalizeBoardConnectorStyle(value) {
         return BOARD_CONNECTOR_STYLES.has(value) ? value : 'arrow';
     }
@@ -607,6 +624,11 @@ const DashboardPage = (() => {
             safe.title = String(item.title || item.label || '').slice(0, 120);
             safe.color = String(item.color || '').slice(0, 40);
             safe.shape = normalizeBoardShape(item.shape || 'rect');
+            if (type === 'shape') {
+                const dimensions = normalizeBoardShapeDimensions(safe.shape, safe.w, safe.h);
+                safe.w = dimensions.w;
+                safe.h = dimensions.h;
+            }
             if (type === 'space') {
                 safe.title = String(item.title || 'Порожня зона').slice(0, 120);
                 safe.zoneId = String(item.zoneId || '').slice(0, 80);
@@ -3428,8 +3450,17 @@ const DashboardPage = (() => {
         return item?.type === 'shape' && ['line', 'arrow'].includes(item.shape);
     }
 
+    function isBoardPrimitiveShapeItem(item) {
+        return item?.type === 'shape';
+    }
+
+    function isBoardEquilateralShapeItem(item) {
+        return isBoardPrimitiveShapeItem(item) && isBoardEquilateralShape(item.shape);
+    }
+
     function renderBoardItem(item) {
         if (item.hidden && _boardInteractionMode !== 'edit') return '';
+        if (isBoardPrimitiveShapeItem(item)) return renderBoardPrimitiveShapeItem(item);
         const def = item.type === 'widget' ? WIDGET_DEFS[item.widgetType] : null;
         const selected = _boardSelectedId === item.id ? ' selected' : '';
         const editing = _boardObjectEditing?.id === item.id ? ' editing' : '';
@@ -3461,6 +3492,25 @@ const DashboardPage = (() => {
                     </div>
                 </div>
                 <div class="dashboard-board-item-content">
+                    ${renderBoardItemContent(item)}
+                </div>
+                ${renderBoardResizeHandles(item)}
+                ${renderBoardAnchors(item)}
+            </section>
+        `;
+    }
+
+    function renderBoardPrimitiveShapeItem(item) {
+        const selected = _boardSelectedId === item.id ? ' selected' : '';
+        const locked = item.locked ? ' locked' : '';
+        const hidden = item.hidden ? ' hidden-object' : '';
+        const geometry = isBoardThinGeometryItem(item) ? ' thin-geometry' : '';
+        const equilateral = isBoardEquilateralShapeItem(item) ? ' equilateral-geometry' : '';
+        const style = `left:${Number(item.x || 0)}px;top:${Number(item.y || 0)}px;width:${Number(item.w || 150)}px;height:${Number(item.h || 150)}px;z-index:${Number(item.z || 1)}`;
+        const idAttr = escapeHtml(item.id);
+        return `
+            <section class="dashboard-board-item board-primitive-shape type-shape shape-${escapeHtml(item.shape || 'rect')}${selected}${locked}${hidden}${geometry}${equilateral}" data-board-primitive-shape="true" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || 'rect')}" style="${style}">
+                <div class="dashboard-board-item-content board-primitive-shape-content" data-board-drag-handle>
                     ${renderBoardItemContent(item)}
                 </div>
                 ${renderBoardResizeHandles(item)}
@@ -3648,9 +3698,12 @@ const DashboardPage = (() => {
                 selectBoardItem(el.dataset.boardItemId);
             });
             const handle = el.querySelector('[data-board-drag-handle]');
-            if (!handle || handle.dataset.dragBound === 'true') return;
-            handle.dataset.dragBound = 'true';
-            handle.addEventListener('pointerdown', event => beginBoardDrag(event, el));
+            if (handle && handle.dataset.dragBound !== 'true') {
+                handle.dataset.dragBound = 'true';
+                handle.addEventListener('pointerdown', event => beginBoardDrag(event, el));
+            }
+            if (el.dataset.directDragBound === 'true') return;
+            el.dataset.directDragBound = 'true';
             el.addEventListener('pointerdown', event => {
                 if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
                 if (!canStartDirectBoardDrag(findBoardItem(el.dataset.boardItemId), event.target)) return;
@@ -4057,6 +4110,7 @@ const DashboardPage = (() => {
         if (item?.type === 'widget') return { w: 210, h: 150 };
         if (item?.type === 'frame') return { w: 180, h: 120 };
         if (isBoardThinGeometryItem(item)) return { w: 64, h: 42 };
+        if (isBoardEquilateralShapeItem(item)) return { w: 80, h: 80 };
         return { w: 120, h: 82 };
     }
 
@@ -4085,6 +4139,11 @@ const DashboardPage = (() => {
         }
         nextW = Math.max(minSize.w, Math.min(1200, Math.round(nextW / snap) * snap));
         nextH = Math.max(minSize.h, Math.min(900, Math.round(nextH / snap) * snap));
+        if (isBoardEquilateralShapeItem(item)) {
+            const size = Math.max(minSize.w, Math.min(900, dir.length === 1 && (dir === 'n' || dir === 's') ? nextH : dir.length === 1 ? nextW : Math.max(nextW, nextH)));
+            nextW = size;
+            nextH = size;
+        }
         if (dir.includes('w')) nextX = resize.itemX + resize.itemW - nextW;
         if (dir.includes('n')) nextY = resize.itemY + resize.itemH - nextH;
         nextX = Math.round(nextX / snap) * snap;
@@ -4459,15 +4518,24 @@ const DashboardPage = (() => {
             line: 'Line',
             arrow: 'Arrow',
             rect: 'Rectangle',
+            square: 'Square',
+            circle: 'Circle',
             'round-rect': 'Rounded Rectangle',
             ellipse: 'Ellipse',
             diamond: 'Diamond'
         };
-        const size = {
-            w: safeShape === 'line' || safeShape === 'arrow' ? 260 : 220,
-            h: safeShape === 'line' || safeShape === 'arrow' ? 70 : 120
+        const shapeSizes = {
+            line: { w: 260, h: 70 },
+            arrow: { w: 260, h: 70 },
+            rect: { w: 220, h: 120 },
+            square: { w: 150, h: 150 },
+            circle: { w: 150, h: 150 },
+            'round-rect': { w: 220, h: 120 },
+            ellipse: { w: 220, h: 120 },
+            diamond: { w: 150, h: 150 }
         };
-        addBoardItem({
+        const size = shapeSizes[safeShape] || shapeSizes.rect;
+        return addBoardItem({
             type: 'shape',
             ...boardPointForNewItem(point, size.w, size.h),
             ...size,
@@ -5144,6 +5212,7 @@ const DashboardPage = (() => {
                     b: () => setBoardTool('brush'),
                     e: () => setBoardTool('eraser'),
                     r: () => runBoardCreateAction('rect'),
+                    s: () => runBoardCreateAction('square'),
                     o: () => runBoardCreateAction('ellipse'),
                     a: () => runBoardCreateAction('arrow'),
                     l: () => runBoardCreateAction('line'),

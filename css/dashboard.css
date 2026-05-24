@@ -1014,6 +1014,8 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .dashboard-btn[data-board-tool="line"]::before { content: '╱'; }
 .dashboard-btn[data-board-tool="arrow"]::before { content: '↗'; }
 .dashboard-btn[data-board-tool="rect"]::before { content: '□'; }
+.dashboard-btn[data-board-tool="square"]::before { content: '■'; }
+.dashboard-btn[data-board-tool="circle"]::before { content: '●'; }
 .dashboard-btn[data-board-tool="ellipse"]::before { content: '○'; }
 .dashboard-btn[data-board-tool="connector"]::before { content: '⟷'; }
 
@@ -1394,6 +1396,38 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     box-shadow: 0 0 0 2px var(--workspace-active-ring, rgba(59, 130, 246, 0.34)), 0 18px 42px rgba(15, 23, 42, 0.16);
 }
 
+.dashboard-board-item.board-primitive-shape {
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.dashboard-board-item.board-primitive-shape:hover,
+.dashboard-board-item.board-primitive-shape.selected {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.dashboard-board-item.board-primitive-shape .dashboard-board-item-content {
+    padding: 0;
+    overflow: visible;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    cursor: grab;
+}
+
+.dashboard-board-item.board-primitive-shape:not(.thin-geometry).selected .board-shape {
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12), 0 10px 24px rgba(15, 23, 42, 0.10);
+}
+
+.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.board-primitive-shape:not(.thin-geometry):hover .board-shape {
+    border-color: rgba(16, 185, 129, 0.68);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08);
+}
+
 .dashboard-board-item.locked {
     opacity: 0.82;
 }
@@ -1684,17 +1718,28 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .board-shape {
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
     border: 2px solid rgba(16, 185, 129, 0.45);
-    border-radius: 10px;
+    border-radius: 6px;
     background: rgba(16, 185, 129, 0.08);
 }
 
 .board-shape-rect {
-    border-radius: 10px;
+    border-radius: 6px;
+}
+
+.board-shape-square {
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
 }
 
 .board-shape-round-rect {
     border-radius: 24px;
+}
+
+.board-shape-circle {
+    aspect-ratio: 1 / 1;
+    border-radius: 999px;
 }
 
 .board-shape-ellipse {
@@ -1706,7 +1751,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     height: 70%;
     margin: 7% auto 0;
     transform: rotate(45deg);
-    border-radius: 10px;
+    border-radius: 6px;
 }
 
 .board-shape-line,

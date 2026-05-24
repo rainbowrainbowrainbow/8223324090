@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.29 - Dashboard Board: сценові фігури
+
+### Dashboard Board / scene-native primitives [codex]
+- **Фігури без карткової оболонки** - `shape`-обʼєкти тепер мають окремий primitive renderer без `workspace-module`, title bar і widget-style actions; widgets, notes і text лишаються на своєму framed-шляху.
+- **Справжнє коло** - додано явний shape/tool `circle`, створення й нормалізація тримають рівні `w`/`h`, тому коло не є CSS-овалом на прямокутних bounds.
+- **Справжній квадрат** - додано явний shape/tool `square` з рівними сторонами за замовчуванням і ratio-safe resize/normalization.
+- **Сумісність board state** - backend/frontend sanitizer продовжує приймати старі `rect` та `ellipse`, а `circle`/`square` додано як вузьке розширення поточного JSON-контракту.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` перевіряє scene-native DOM path для primitives, рівні розміри circle/square і збереження framed shell для notes.
+
+---
+
 ## v0.62.28 - Профіль: фото і сесії без шуму
 
 ### Profile / налаштування акаунта [codex]

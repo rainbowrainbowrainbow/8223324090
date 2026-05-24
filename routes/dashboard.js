@@ -156,7 +156,11 @@ const BOARD_SCHEMA_VERSION = 1;
 const BOARD_MAX_ITEMS = 120;
 const BOARD_MAX_DRAWINGS = 500;
 const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
-const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
+const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
+const BOARD_WIDGET_DEPTH_ALIASES = {
+    'live-expanded': 'live-compact',
+    'snapshot-card': 'snapshot-static'
+};
 const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
 const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
@@ -187,6 +191,12 @@ function safeNumber(value, fallback, min, max) {
 
 function normalizeBoardTool(value) {
     return BOARD_ALLOWED_TOOLS.has(value) ? value : 'select';
+}
+
+function normalizeBoardWidgetDepth(value) {
+    const depth = String(value || '').trim();
+    if (BOARD_ALLOWED_WIDGET_DEPTHS.has(depth)) return depth;
+    return BOARD_WIDGET_DEPTH_ALIASES[depth] || 'live-compact';
 }
 
 function normalizeBoardShape(value) {
@@ -283,6 +293,7 @@ function defaultBoardMeta(overrides = {}) {
 
 function defaultBoardState(overrides = {}) {
     return {
+        schemaVersion: BOARD_SCHEMA_VERSION,
         viewport: { x: 0, y: 0, zoom: 1 },
         items: [],
         drawings: [],
@@ -330,7 +341,7 @@ function sanitizeBoardItem(item, role) {
         const widgetType = String(item.widgetType || item.widget || '').trim();
         if (!widgetType || canAccessDashboardWidget(role, widgetType, ROLE_LEVEL) === false) return null;
         safe.widgetType = widgetType;
-        safe.depth = BOARD_ALLOWED_WIDGET_DEPTHS.has(item.depth) ? item.depth : 'live-compact';
+        safe.depth = normalizeBoardWidgetDepth(item.depth);
         safe.title = String(item.title || '').slice(0, 120);
     } else {
         const legacyText = item.text ?? item.content ?? item.body ?? item.noteText ?? item.label ?? '';
@@ -362,11 +373,14 @@ function sanitizeBoardState(input, role) {
     const drawings = Array.isArray(source.drawings)
         ? source.drawings.slice(0, BOARD_MAX_DRAWINGS).map(sanitizeBoardStroke).filter(Boolean)
         : [];
+    const itemIds = new Set(items.map(item => item.id));
     const connectors = Array.isArray(source.connectors)
         ? source.connectors.slice(0, 300).map(sanitizeBoardConnector).filter(Boolean)
+            .filter(connector => itemIds.has(connector.from.itemId) && itemIds.has(connector.to.itemId))
         : [];
 
     return defaultBoardState({
+        schemaVersion: BOARD_SCHEMA_VERSION,
         viewport: {
             x: safeNumber(viewportSource.x, 0, -10000, 10000),
             y: safeNumber(viewportSource.y, 0, -10000, 10000),
@@ -1664,3 +1678,8 @@ function triggerAlertBroadcast() {
 module.exports = router;
 module.exports.startAlertBroadcaster = startAlertBroadcaster;
 module.exports.triggerAlertBroadcast = triggerAlertBroadcast;
+module.exports.__boardTest = {
+    buildPersistedDashboardConfig,
+    normalizeDashboardConfig,
+    sanitizeBoardState
+};

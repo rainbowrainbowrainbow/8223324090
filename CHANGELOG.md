@@ -4,6 +4,17 @@
 
 ---
 
+## v0.62.32 - Dashboard Board: persistence hardening
+
+### Dashboard Board / persistence hardening [codex]
+- **Єдиний boardState contract** - frontend і backend тепер однаково нормалізують `schemaVersion`, widget depth aliases, endpoints connector-ів та orphan-зв’язки.
+- **Сумісність старих дошок** - legacy ellipse/generic shape, статичні `shape: "arrow"` записи, stringified connector endpoints і старі widget depth значення лишаються читабельними.
+- **Стабільний save/reload** - `layout.boardState` і top-level `boardState` знову синхронізуються після sanitize, reload, edit і повторного save.
+- **Безпечні malformed states** - connector-и з відсутніми item endpoints відкидаються без очищення всієї дошки, а некоректні числа/параметри clamp-ляться до контрактних меж.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` отримав mixed fixture для legacy + modern board content і перевіряє save -> reload -> edit -> re-save стабільність.
+
+---
+
 ## v0.62.31 - Dashboard Board: sandbox UX
 
 ### Dashboard Board / sandbox usability [codex]

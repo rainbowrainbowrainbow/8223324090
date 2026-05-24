@@ -10,6 +10,10 @@ const DashboardPage = (() => {
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
+    const BOARD_DEPTH_ALIASES = {
+        'live-expanded': 'live-compact',
+        'snapshot-card': 'snapshot-static'
+    };
     const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'space', 'widget']);
     const BOARD_CONNECTOR_TOOLS = new Set(['connector', 'arrow']);
@@ -452,6 +456,7 @@ const DashboardPage = (() => {
                 collaboration: 'personal'
             },
             boardState: {
+                schemaVersion: BOARD_SCHEMA_VERSION,
                 viewport: { x: 0, y: 0, zoom: 1 },
                 items: [],
                 drawings: [],
@@ -484,6 +489,20 @@ const DashboardPage = (() => {
         return fallback;
     }
 
+    function parseJsonObject(value, fallback = {}) {
+        if (!value) return { ...fallback };
+        if (value && typeof value === 'object' && !Array.isArray(value)) return { ...fallback, ...value };
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    return { ...fallback, ...parsed };
+                }
+            } catch {}
+        }
+        return { ...fallback };
+    }
+
     function safeNumber(value, fallback, min, max) {
         const number = Number(value);
         if (!Number.isFinite(number)) return fallback;
@@ -508,6 +527,12 @@ const DashboardPage = (() => {
 
     function normalizeBoardTool(value) {
         return BOARD_TOOLS.has(value) ? value : 'select';
+    }
+
+    function normalizeBoardWidgetDepth(value) {
+        const depth = String(value || '').trim();
+        if (BOARD_ALLOWED_DEPTHS.has(depth)) return depth;
+        return BOARD_DEPTH_ALIASES[depth] || 'live-compact';
     }
 
     function isBoardConnectorTool(value) {
@@ -592,8 +617,11 @@ const DashboardPage = (() => {
 
     function normalizeBoardConnector(connector, index = 0) {
         if (!connector || typeof connector !== 'object') return null;
-        const from = safeObject(connector.from, {});
-        const to = safeObject(connector.to, {});
+        const from = parseJsonObject(connector.from, {});
+        const to = parseJsonObject(connector.to, {});
+        if (typeof connector.from === 'string' || typeof connector.to === 'string') {
+            _boardLegacyUpgradePending = true;
+        }
         const fromItemId = String(from.itemId || '').slice(0, 90);
         const toItemId = String(to.itemId || '').slice(0, 90);
         if (!fromItemId || !toItemId || fromItemId === toItemId) return null;
@@ -668,7 +696,8 @@ const DashboardPage = (() => {
             const widgetType = String(item.widgetType || item.widget || '').trim();
             if (!widgetType || !canUseWidget(widgetType)) return null;
             safe.widgetType = widgetType;
-            safe.depth = BOARD_ALLOWED_DEPTHS.has(item.depth) ? item.depth : 'live-compact';
+            safe.depth = normalizeBoardWidgetDepth(item.depth);
+            if (safe.depth !== item.depth) _boardLegacyUpgradePending = true;
             safe.title = String(item.title || WIDGET_DEFS[widgetType]?.title || widgetType).slice(0, 120);
         } else {
             const legacyText = item.text ?? item.content ?? item.body ?? item.noteText ?? item.label ?? '';
@@ -691,25 +720,39 @@ const DashboardPage = (() => {
     }
 
     function normalizeBoardState(input) {
-        if (input && (typeof input !== 'object' || Array.isArray(input))) _boardConfigCorrupt = true;
-        const source = safeObject(input, {});
-        const viewport = safeObject(source.viewport, {});
-        const preferences = safeObject(source.preferences, {});
+        if (typeof input === 'string') {
+            _boardLegacyUpgradePending = true;
+        } else if (input && (typeof input !== 'object' || Array.isArray(input))) {
+            _boardConfigCorrupt = true;
+        }
+        const source = parseJsonObject(input, {});
+        if (source.schemaVersion && Number(source.schemaVersion) > BOARD_SCHEMA_VERSION) _boardConfigCorrupt = true;
+        const viewport = parseJsonObject(source.viewport, {});
+        const preferences = parseJsonObject(source.preferences, {});
         const itemsRaw = Array.isArray(source.items) ? source.items : [];
         const drawingsRaw = Array.isArray(source.drawings) ? source.drawings : [];
         const connectorsRaw = Array.isArray(source.connectors) ? source.connectors : [];
         if (source.items && !Array.isArray(source.items)) _boardConfigCorrupt = true;
         if (source.drawings && !Array.isArray(source.drawings)) _boardConfigCorrupt = true;
         if (source.connectors && !Array.isArray(source.connectors)) _boardConfigCorrupt = true;
+        const items = itemsRaw.slice(0, 120).map(normalizeBoardItem).filter(Boolean);
+        const itemIds = new Set(items.map(item => item.id));
+        const normalizedConnectors = connectorsRaw.slice(0, 300).map(normalizeBoardConnector).filter(Boolean);
+        const connectors = normalizedConnectors
+            .filter(connector => itemIds.has(connector.from.itemId) && itemIds.has(connector.to.itemId));
+        if (connectors.length !== normalizedConnectors.length) {
+            _boardLegacyUpgradePending = true;
+        }
         return {
+            schemaVersion: BOARD_SCHEMA_VERSION,
             viewport: {
                 x: safeNumber(viewport.x, 0, -10000, 10000),
                 y: safeNumber(viewport.y, 0, -10000, 10000),
                 zoom: safeNumber(viewport.zoom, 1, 0.25, 2)
             },
-            items: itemsRaw.slice(0, 120).map(normalizeBoardItem).filter(Boolean),
+            items,
             drawings: drawingsRaw.slice(0, 500).map(normalizeBoardStroke).filter(Boolean),
-            connectors: connectorsRaw.slice(0, 300).map(normalizeBoardConnector).filter(Boolean),
+            connectors,
             activeTool: normalizeBoardTool(source.activeTool),
             preferences: {
                 snapToGrid: preferences.snapToGrid !== false,

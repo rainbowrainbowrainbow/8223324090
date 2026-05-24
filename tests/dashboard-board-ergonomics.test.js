@@ -31,8 +31,15 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
     assert.match(css, /box-shadow: 0 0 0 1px var\(--workspace-selection-ring/);
 });
 
-function loadDashboardHarness() {
-    const pageJs = read('js/dashboard-page.js');
+function loadDashboardHarness(options = {}) {
+    let pageJs = read('js/dashboard-page.js');
+    if (options.exposeBoardInternals) {
+        pageJs = pageJs.replace(
+            /    return \{\r?\n        init,/,
+            '    window.__boardTest = { normalizeDashboardConfig, normalizeBoardState };\n\n    return {\n        init,'
+        );
+        assert.ok(pageJs.includes('window.__boardTest'), 'dashboard board internals hook was not installed');
+    }
     const dom = new JSDOM(`<!doctype html>
         <main>
             <div id="dashboardGrid"></div>
@@ -80,8 +87,67 @@ function loadDashboardHarness() {
     vm.runInContext(pageJs, dom.getInternalVMContext());
     return {
         dom,
-        DashboardPage: vm.runInContext('DashboardPage', dom.getInternalVMContext())
+        DashboardPage: vm.runInContext('DashboardPage', dom.getInternalVMContext()),
+        boardTest: vm.runInContext('window.__boardTest', dom.getInternalVMContext())
     };
+}
+
+function createBoardCompatibilityFixture() {
+    return {
+        schemaVersion: 0,
+        viewport: { x: '22', y: -12, zoom: '1.25' },
+        items: [
+            { id: 'legacy-ellipse', type: 'shape', shape: 'ellipse', x: 40, y: 50, w: 260, h: 130, label: 'Legacy ellipse' },
+            { id: 'legacy-generic', kind: 'shape', x: 360, y: 60, w: 220, h: 130, content: 'Generic legacy shape' },
+            { id: 'legacy-static-arrow', type: 'shape', shape: 'arrow', x: 80, y: 260, w: 260, h: 42 },
+            { id: 'modern-circle', type: 'shape', shape: 'circle', x: 460, y: 260, w: 260, h: 120 },
+            { id: 'widget-snapshot', type: 'widget', widgetType: 'tasks', depth: 'snapshot-card', x: 80, y: 390 },
+            { id: 'widget-expanded', type: 'widget', widgetType: 'weather', depth: 'live-expanded', x: 430, y: 390 },
+            { id: 'legacy-note', noteText: 'Legacy note body', x: 780, y: 80 }
+        ],
+        drawings: [
+            { id: 'stroke-1', tool: 'brush', color: '#111827', width: 3, points: [[10, 10], [30, 40], [60, 42]] }
+        ],
+        connectors: [
+            {
+                id: 'conn-json',
+                from: JSON.stringify({ itemId: 'widget-snapshot', anchor: 'right' }),
+                to: JSON.stringify({ itemId: 'modern-circle', anchor: 'left' }),
+                style: 'arrow',
+                relationType: 'depends',
+                width: 3
+            },
+            {
+                id: 'conn-modern',
+                from: { itemId: 'legacy-ellipse', anchor: 'bottom' },
+                to: { itemId: 'legacy-generic', anchor: 'top' },
+                style: 'curve',
+                relationType: 'feeds'
+            },
+            {
+                id: 'conn-orphan',
+                from: { itemId: 'missing-item', anchor: 'right' },
+                to: { itemId: 'widget-snapshot', anchor: 'left' }
+            },
+            {
+                id: 'conn-self',
+                from: { itemId: 'widget-snapshot', anchor: 'right' },
+                to: { itemId: 'widget-snapshot', anchor: 'left' }
+            }
+        ],
+        activeTool: 'arrow',
+        preferences: {
+            snapToGrid: false,
+            maxLiveWidgets: 99,
+            strokeWidth: 99,
+            connectorStyle: 'curve',
+            relationType: 'blocks'
+        }
+    };
+}
+
+function byId(items) {
+    return Object.fromEntries(items.map(item => [item.id, item]));
 }
 
 test('dashboard primitive shapes create as scene-native objects, while notes keep the framed shell', () => {
@@ -135,6 +201,74 @@ test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse whi
     assert.match(html, /data-board-tool="circle"/);
     assert.match(css, /\.board-shape-circle/);
     assert.match(css, /\.board-shape-square/);
+});
+
+test('dashboard board persistence normalizes legacy and modern saved content consistently', () => {
+    const dashboardRoute = require(path.join(ROOT, 'routes/dashboard'));
+    const routeTest = dashboardRoute.__boardTest;
+    assert.equal(typeof routeTest?.sanitizeBoardState, 'function');
+    assert.equal(typeof routeTest?.buildPersistedDashboardConfig, 'function');
+
+    const fixture = createBoardCompatibilityFixture();
+    const backendState = routeTest.sanitizeBoardState(fixture, 'creator');
+    const { boardTest } = loadDashboardHarness({ exposeBoardInternals: true });
+    const frontendState = boardTest.normalizeBoardState(fixture);
+    const backendItems = byId(backendState.items);
+    const frontendItems = byId(frontendState.items);
+
+    for (const state of [backendState, frontendState]) {
+        assert.equal(state.schemaVersion, 1);
+        assert.equal(state.viewport.x, 22);
+        assert.equal(state.preferences.snapMode, 'freeform');
+        assert.equal(state.preferences.maxLiveWidgets, 24);
+        assert.equal(state.preferences.strokeWidth, 12);
+        assert.deepEqual(state.connectors.map(conn => conn.id).sort(), ['conn-json', 'conn-modern']);
+    }
+
+    for (const items of [backendItems, frontendItems]) {
+        assert.equal(items['legacy-ellipse'].shape, 'ellipse');
+        assert.equal(items['legacy-generic'].shape, 'rect');
+        assert.equal(items['legacy-static-arrow'].shape, 'arrow');
+        assert.equal(items['modern-circle'].w, items['modern-circle'].h);
+        assert.equal(items['widget-snapshot'].depth, 'snapshot-static');
+        assert.equal(items['widget-expanded'].depth, 'live-compact');
+        assert.equal(items['legacy-note'].type, 'note');
+        assert.equal(items['legacy-note'].text, 'Legacy note body');
+    }
+
+    const firstSave = routeTest.buildPersistedDashboardConfig({
+        layout: { boardState: fixture },
+        widgets: ['tasks'],
+        theme: 'default'
+    }, {
+        boardState: fixture,
+        widgets: ['tasks']
+    }, 'creator');
+
+    assert.deepEqual(firstSave.layout.boardState, firstSave.boardState);
+    assert.equal(firstSave.boardState.connectors.length, 2);
+
+    const editedState = {
+        ...firstSave.boardState,
+        items: firstSave.boardState.items.map(item => item.id === 'modern-circle'
+            ? { ...item, w: item.w + 90, h: item.h }
+            : item),
+        connectors: [
+            ...firstSave.boardState.connectors,
+            { id: 'conn-after-reload-orphan', from: { itemId: 'missing', anchor: 'right' }, to: { itemId: 'modern-circle', anchor: 'left' } }
+        ]
+    };
+    const secondSave = routeTest.buildPersistedDashboardConfig(firstSave, {
+        boardState: editedState,
+        widgets: firstSave.widgets
+    }, 'creator');
+    const secondItems = byId(secondSave.boardState.items);
+
+    assert.deepEqual(secondSave.layout.boardState, secondSave.boardState);
+    assert.equal(secondSave.boardState.schemaVersion, 1);
+    assert.equal(secondSave.boardState.connectors.length, 2);
+    assert.equal(secondItems['modern-circle'].w, secondItems['modern-circle'].h);
+    assert.equal(secondItems['widget-snapshot'].depth, 'snapshot-static');
 });
 
 test('dashboard arrow tool creates an anchor connector draft instead of inserting a static arrow shape', () => {

@@ -12,7 +12,7 @@ let searchLastQuery = '';
 let searchApiError = '';
 let searchApiRunId = 0;
 
-const SEARCH_ENTITY_ORDER = ['assistant', 'navigation', 'bookings', 'customers', 'tasks', 'programs', 'staff'];
+const SEARCH_ENTITY_ORDER = ['assistant', 'navigation', 'bookings', 'customers', 'tasks', 'staff'];
 
 const SEARCH_GROUP_LABELS = {
     assistant: 'Помічник',
@@ -20,7 +20,6 @@ const SEARCH_GROUP_LABELS = {
     bookings: 'Бронювання',
     customers: 'Клієнти',
     tasks: 'Задачі',
-    programs: 'Програми',
     staff: 'Команда'
 };
 
@@ -31,7 +30,6 @@ const SEARCH_TYPE_LABELS = {
     booking: 'Бронювання',
     customer: 'Клієнти',
     task: 'Задачі',
-    program: 'Програми',
     staff: 'Команда'
 };
 
@@ -42,7 +40,6 @@ const SEARCH_TYPE_COLORS = {
     booking: 'var(--primary)',
     customer: '#8B5CF6',
     task: '#F59E0B',
-    program: '#3B82F6',
     staff: '#10B981'
 };
 
@@ -72,7 +69,6 @@ const SEARCH_NAV_ALIASES = {
     '/hr#team': ['команда hr', 'hr team', 'список команди'],
     '/training': ['навчання', 'training', 'тести', 'прогрес'],
     '/checkin': ['check-in', 'чекін', 'фото', 'присутність'],
-    '/programs': ['програми', 'programs', 'послуги', 'пакети'],
     '/content': ['контент', 'content', 'соцмережі', 'пости'],
     '/art': ['арт директор', 'art director', 'арт', 'креатив'],
     '/graduation': ['випускний', 'graduation', 'випускні'],
@@ -109,7 +105,6 @@ const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/finance', icon: '₴', label: 'Фінанси', access: 'finance', group: 'sales' },
     { href: '/staff', icon: '◷', label: 'Графік', access: 'schedule_daily', group: 'team' },
     { href: '/hr', icon: '☷', label: 'Кадри', access: 'hr_page', group: 'team' },
-    { href: '/programs', icon: '✦', label: 'Програми', access: 'programs', group: 'product' },
     { href: '/afisha', icon: '🎭', label: 'Афіша', access: 'afisha', group: 'product' },
     { href: '/certificates', icon: '🎫', label: 'Сертифікати', access: 'certificates', group: 'product' },
     { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product' },
@@ -121,7 +116,6 @@ const SEARCH_GROUP_SHORTCUTS = [
     { href: '/dashboard', icon: '⌂', label: 'Сьогодні', group: 'today', aliases: ['сьогодні', 'today', 'поточний день'] },
     { href: '/sales-funnel', icon: '◇', label: 'Продажі', group: 'sales', aliases: ['продажі', 'sales', 'ліди', 'клієнти'] },
     { href: '/staff', icon: '◷', label: 'Команда', group: 'team', aliases: ['команда', 'team', 'графік', 'кадри'] },
-    { href: '/programs', icon: '✦', label: 'Продукт', group: 'product', aliases: ['продукт', 'product', 'програми', 'контент'] },
     { href: '/center', icon: '☷', label: 'Система', group: 'system', aliases: ['система', 'system', 'центр', 'налаштування'] }
 ];
 
@@ -349,7 +343,6 @@ function normalizeApiResults(results) {
         bookings: Array.isArray(results.bookings) ? results.bookings : [],
         customers: Array.isArray(results.customers) ? results.customers : [],
         tasks: Array.isArray(results.tasks) ? results.tasks : [],
-        programs: Array.isArray(results.programs) ? results.programs : [],
         staff: Array.isArray(results.staff) ? results.staff : []
     };
 }
@@ -468,7 +461,7 @@ function buildFlatResults() {
         const items = searchResults[key];
         if (Array.isArray(items)) searchFlatResults.push(...items);
     }
-    const order = ['bookings', 'customers', 'tasks', 'programs', 'staff'];
+    const order = ['bookings', 'customers', 'tasks', 'staff'];
     for (const key of order) {
         const items = searchResults[key];
         if (Array.isArray(items)) searchFlatResults.push(...items);
@@ -627,9 +620,6 @@ async function navigateToResult(item) {
             break;
         case 'task':
             window.location.href = `/tasks?highlight=${encodeURIComponent(item.id)}`;
-            break;
-        case 'program':
-            window.location.href = `/programs?highlight=${encodeURIComponent(item.meta?.code || item.id)}`;
             break;
         case 'staff':
             window.location.href = `/staff?highlight=${encodeURIComponent(item.id)}`;

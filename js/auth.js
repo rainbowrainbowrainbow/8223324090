@@ -587,7 +587,7 @@ const ROLE_SHELL_CONFIG = {
     animator: {
         startPage: '/tasks',
         dashboardPreset: 'animator',
-        quickAccess: ['/afisha', '/', '/tasks', '/programs', '/chat', '/training']
+        quickAccess: ['/afisha', '/', '/tasks', '/chat', '/training']
     },
     instructor: {
         startPage: '/tasks',
@@ -600,9 +600,9 @@ const ROLE_SHELL_CONFIG = {
         quickAccess: ['/tasks', '/', '/training', '/staff', '/chat']
     },
     art_director: {
-        startPage: '/programs',
+        startPage: '/art',
         dashboardPreset: 'art_director',
-        quickAccess: ['/dashboard', '/programs', '/art', '/designs', '/chat']
+        quickAccess: ['/dashboard', '/art', '/designs', '/chat']
     },
     marketer: {
         startPage: '/sales-funnel',
@@ -627,22 +627,22 @@ const ROLE_SHELL_CONFIG = {
     head_chef: {
         startPage: '/tasks',
         dashboardPreset: 'head_chef',
-        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+        quickAccess: ['/tasks', '/warehouse', '/chat']
     },
     cook: {
         startPage: '/tasks',
         dashboardPreset: 'cook',
-        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+        quickAccess: ['/tasks', '/warehouse', '/chat']
     },
     head_pastry: {
         startPage: '/tasks',
         dashboardPreset: 'head_pastry',
-        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+        quickAccess: ['/tasks', '/warehouse', '/chat']
     },
     pastry_chef: {
         startPage: '/tasks',
         dashboardPreset: 'pastry_chef',
-        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+        quickAccess: ['/tasks', '/warehouse', '/chat']
     },
     barista: {
         startPage: '/tasks',
@@ -950,13 +950,6 @@ function showMainApp() {
         && !window.TimelineBusinessContext.canAccessContext(AppState.currentUser)) {
         window.location.href = '/dashboard';
         return;
-    }
-
-    // v0.61.22: Timeline dropdown no longer owns sidebar navigation entries.
-    // Показати кнопку "Розважальні програми"
-    const programsTabBtn = document.getElementById('programsTabBtn');
-    if (programsTabBtn) {
-        programsTabBtn.classList.remove('hidden');
     }
 
     // v20.1.0: Sidebar role-based visibility via page access matrix

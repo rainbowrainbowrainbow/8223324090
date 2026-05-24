@@ -74,11 +74,10 @@ router.get('/', async (req, res) => {
         const taskLimitRef = pushParam(taskParams, limit);
 
         const canSearchCustomers = canAccessPage(req.user, '/customers');
-        const canSearchPrograms = canAccessPage(req.user, '/programs');
         const canSearchStaff = canAccessPage(req.user, '/staff');
 
         // Search across visible bookings/tasks and page-authorized CRM surfaces.
-        const [bookings, customers, tasks, products, staff] = await Promise.all([
+        const [bookings, customers, tasks, staff] = await Promise.all([
             pool.query(`
                 SELECT b.id, b.date, b.time, b.label, b.program_name, b.status, b.line_id, b.group_name, b.price
                 FROM bookings b
@@ -109,16 +108,6 @@ router.get('/', async (req, res) => {
                 ORDER BY t.date DESC NULLS LAST
                 LIMIT ${taskLimitRef}
             `, taskParams),
-
-            canSearchPrograms ? pool.query(`
-                SELECT id, code, label, name, category, duration, price, is_active
-                FROM products
-                WHERE (name ILIKE $1 OR label ILIKE $1 OR code ILIKE $1 OR description ILIKE $1)
-                  AND is_active = true
-                  AND COALESCE(business_context, $2) = $2
-                ORDER BY sort_order ASC, name ASC
-                LIMIT $3
-            `, [pattern, businessContext, limit]) : Promise.resolve({ rows: [] }),
 
             canSearchStaff ? pool.query(`
                 SELECT id, name, department, position, phone, role_type
@@ -169,14 +158,6 @@ router.get('/', async (req, res) => {
                     href: `/tasks?open=${encodeURIComponent(r.id)}`,
                     meta: { priority: r.priority, category: r.category }
                 })),
-                programs: products.rows.map(r => ({
-                    type: 'program',
-                    id: r.id,
-                    title: `${r.label} - ${r.name}`,
-                    subtitle: `${r.duration} хв | ${r.price} грн | ${r.category}`,
-                    href: scopedQueryPath(`/programs?highlight=${encodeURIComponent(r.code || r.id)}`, businessContext),
-                    meta: { code: r.code, category: r.category, businessContext }
-                })),
                 staff: staff.rows.map(r => ({
                     type: 'staff',
                     id: r.id,
@@ -196,7 +177,7 @@ router.get('/', async (req, res) => {
                 linkedRouteParity: 'exact-visible-result-or-no-result',
                 businessContext
             },
-            total: bookings.rows.length + customers.rows.length + tasks.rows.length + products.rows.length + staff.rows.length
+            total: bookings.rows.length + customers.rows.length + tasks.rows.length + staff.rows.length
         });
     } catch (err) {
         log.error('Search error:', err.message);

@@ -143,30 +143,6 @@
             aliases: ['таймлайн мд', 'мд таймлайн', 'майстерня долі', 'майстерня', 'записи психолога']
         },
         {
-            id: 'products.programs',
-            title: 'Розважальні програми',
-            href: '/programs',
-            icon: '🎪',
-            access: 'programs',
-            group: 'product',
-            breadcrumb: 'Продукт -> Розважальні програми',
-            summary: 'Продуктові картки програм і послуг.',
-            primaryAction: 'Відкрити програми',
-            aliases: ['програми', 'послуги', 'розважальні програми', 'programs', 'products']
-        },
-        {
-            id: 'products.catalogs',
-            title: 'Каталоги продуктів',
-            href: '/programs#catalogs',
-            icon: '📂',
-            access: 'programs',
-            group: 'product',
-            breadcrumb: 'Продукт -> Каталоги',
-            summary: 'Єдина точка входу для готових каталогів: випускні, піньяти та інші.',
-            primaryAction: 'Відкрити каталоги',
-            aliases: ['каталоги', 'каталог', 'піньяти каталог', 'випускні каталог', 'catalogs']
-        },
-        {
             id: 'graduation.diplomas',
             title: 'Дипломи випускного',
             href: '/graduation#diplomas',

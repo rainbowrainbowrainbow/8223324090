@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.23 - CRM 63.23: без окремої вкладки Програми
+
+### UI / навігація / Programs compatibility [codex]
+- **Прибрано окрему вкладку `Програми` з Art Director** - Art більше не показує самостійний tab `Програми` і не монтує embedded iframe `/programs?embedded=1`.
+- **Sidebar більше не промотує `/programs` як модуль** - з продуктової групи прибрано прямі входи `Продукти` та `Каталоги`, без видалення сумісного маршруту.
+- **Глобальний пошук не веде в standalone Programs** - Cmd+K, feature registry і API search більше не повертають результатів/shortcut-ів з переходом на `/programs`.
+- **Role quick access очищено** - ролі, які мали `/programs` у швидких діях або стартовій сторінці, тепер ведуть у чинні CRM-поверхні на кшталт `/art`, `/tasks` і `/warehouse`.
+- **Compatibility guardrail** - `programs.html`, `/programs`, `/embed/programs`, product API та статистика програм залишені для старих посилань і бізнес-даних.
+
+---
+
 ## v0.63.22 - CRM 63.22: контентна sandbox-дошка
 
 ### Dashboard Board / sandbox workspace [codex]

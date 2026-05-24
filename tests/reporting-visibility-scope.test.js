@@ -62,7 +62,8 @@ test('cross-entity search and workspace shortcuts cannot bypass booking/task vis
     assert.match(search, /staff: staff\.rows\.map/, 'staff results should remain inside the typed results payload');
 
     const searchClient = read('js/search.js');
-    assert.match(searchClient, /const order = \['bookings', 'customers', 'tasks', 'programs', 'staff'\]/, 'frontend search should include staff results only when API returns them');
+    assert.match(searchClient, /const order = \['bookings', 'customers', 'tasks', 'staff'\]/, 'frontend search should include staff results only when API returns them');
+    assert.doesNotMatch(search, /\/programs\?highlight=/, 'global search should not promote the standalone Programs page');
     assert.match(searchClient, /if \(item\.href\)/, 'frontend search should honor server-provided safe route targets');
 
     const customers = read('routes/customers.js');

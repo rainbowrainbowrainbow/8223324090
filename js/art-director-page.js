@@ -158,7 +158,7 @@ function activateArtTab(tabName, options = {}) {
         history.replaceState(null, '', url);
     }
 
-    // Lazy-load iframe tabs (programs, designs, graduation)
+    // Lazy-load iframe tabs (designs, graduation)
     lazyLoadIframe(tabName);
 
     // Lazy-load tab data
@@ -1092,10 +1092,10 @@ async function initArtDirectorPage() {
     setupTabs();
     setupModals();
 
-    // v20.8.0: Handle ?tab= URL parameter (for programs/designs deep-link)
+    // v20.8.0: Handle ?tab= URL parameter (for embedded/deep-link tabs)
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     if (urlTab) {
-        activateArtTab(urlTab);
+        activateArtTab(urlTab) || activateArtTab('overview', { updateUrl: false });
     }
 
     // Load initial data

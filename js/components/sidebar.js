@@ -75,12 +75,10 @@ const Sidebar = (() => {
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
-        { href: '/programs',     icon: '🎪', label: 'Продукти', access: 'programs', group: 'product' },
         { href: '/content',      icon: '📱', label: 'Контент',       access: 'content',        group: 'product' },
         { href: '/art',          icon: '🎨', label: 'Арт',           access: 'art',            group: 'product' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',     access: 'graduation',     group: 'product' },
         { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',   access: 'art',            group: 'product' },
-        { href: '/programs#catalogs', icon: '📂', label: 'Каталоги', access: 'programs',       group: 'product' },
         { href: '/designer',     icon: '📖', label: 'Стайлгайд',     access: 'art',            group: 'product' },
         { href: '/sound#projects',      icon: '🎬', label: 'Звук',   access: 'sound',          group: 'product' },
         { href: '/sound#library',       icon: '🎵', label: 'Бібліотека звуку', access: 'sound', group: 'product' },

@@ -9,7 +9,7 @@ function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 }
 
-test('products page exposes business-aware products IA', () => {
+test('products compatibility page keeps business-aware products IA without sidebar promotion', () => {
     const html = read('programs.html');
     const sidebar = read('js/components/sidebar.js');
 
@@ -38,8 +38,8 @@ test('products page exposes business-aware products IA', () => {
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
-    assert.match(sidebar, /label: 'Продукти'/);
-    assert.match(sidebar, /href: '\/programs#catalogs'/);
+    assert.doesNotMatch(sidebar, /href: '\/programs'/);
+    assert.doesNotMatch(sidebar, /href: '\/programs#catalogs'/);
 });
 
 test('products frontend wires document linkage and catalog entry points', () => {

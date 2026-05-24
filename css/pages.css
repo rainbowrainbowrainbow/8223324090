@@ -1041,35 +1041,6 @@ body.dark-mode .cabinet-segments button b {
     background: rgba(255, 255, 255, 0.10);
 }
 
-.cabinet-action-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin: -4px 0 2px;
-    color: var(--gray-500, #6b7280);
-    font-size: 12px;
-    font-weight: 800;
-}
-
-.cabinet-action-legend span {
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.62);
-    padding: 5px 8px;
-}
-
-.cabinet-action-legend b {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    color: #0f766e;
-}
-
 .cabinet-capture {
     display: grid;
     grid-template-columns: minmax(180px, 1fr) 160px auto auto;
@@ -1929,19 +1900,6 @@ body.dark-mode .cabinet-task-priority--critical {
     background: rgba(127, 29, 29, 0.32);
     border-color: rgba(248, 113, 113, 0.26);
     color: #fecdd3;
-}
-
-body.dark-mode .cabinet-action-legend {
-    color: var(--profile-dark-secondary, #cbd5e1);
-}
-
-body.dark-mode .cabinet-action-legend span {
-    border-color: rgba(148, 163, 184, 0.16);
-    background: rgba(15, 23, 42, 0.56);
-}
-
-body.dark-mode .cabinet-action-legend b {
-    color: #5eead4;
 }
 
 .cabinet-task-undo-toast {

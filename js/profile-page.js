@@ -2198,15 +2198,6 @@ function getCabinetTaskRelationLabel(task) {
     return '';
 }
 
-function renderCabinetTaskActionLegend() {
-    return `
-        <div class="cabinet-action-legend" aria-label="Підказки дій із задачами">
-            <span><b>✓</b> Виконати</span>
-            <span><b>⏰</b> Відкласти</span>
-            <span><b>↗</b> Відкрити</span>
-        </div>`;
-}
-
 function renderCabinetSnoozeMenu(taskIdAttr) {
     const options = [
         ['15', '15 хв'],
@@ -2649,7 +2640,6 @@ function renderMyDayTab() {
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
-            ${renderCabinetTaskActionLegend()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
                 ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.')}
@@ -2693,7 +2683,6 @@ function renderMyTasksTab() {
                     </button>
                 `).join('')}
             </div>
-            ${renderCabinetTaskActionLegend()}
             <div class="cabinet-list" data-cabinet-active-segment="${escapeHtml(myTasksSegment)}">
                 <div class="cabinet-list-head">
                     <div>

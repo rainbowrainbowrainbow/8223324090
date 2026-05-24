@@ -120,11 +120,11 @@ function fakeChatUploadStorage() {
         async uploadChatFileWithFallback(file, options) {
             state.uploads.push({ originalname: file.originalname, mimetype: file.mimetype, channelId: options.channelId });
             return {
-                provider: 'supabase',
-                bucket: 'chat-uploads',
+                provider: 'local',
+                bucket: null,
                 key: `channels/${options.channelId}/photo.png`,
                 path: `channels/${options.channelId}/photo.png`,
-                publicUrl: `https://example.supabase.co/storage/v1/object/public/chat-uploads/channels/${options.channelId}/photo.png`,
+                publicUrl: `/uploads/chat/channels/${options.channelId}/photo.png`,
                 contentType: 'image/png',
                 kind: 'image'
             };
@@ -178,10 +178,10 @@ describe('chat upload route storage and safety', () => {
         assert.equal(state.uploads.length, 1);
         assert.equal(state.uploads[0].channelId, 1);
         assert.equal(state.sentFiles.length, 1);
-        assert.equal(state.sentFiles[0].metadata.file.storageProvider, 'supabase');
-        assert.equal(state.sentFiles[0].metadata.file.storageBucket, 'chat-uploads');
+        assert.equal(state.sentFiles[0].metadata.file.storageProvider, 'local');
+        assert.equal(state.sentFiles[0].metadata.file.storageBucket, null);
         assert.equal(state.sentFiles[0].metadata.file.storageKey, 'channels/1/photo.png');
-        assert.equal(state.sentFiles[0].metadata.file.url, 'https://example.supabase.co/storage/v1/object/public/chat-uploads/channels/1/photo.png');
+        assert.equal(state.sentFiles[0].metadata.file.url, '/uploads/chat/channels/1/photo.png');
         assert.equal(state.broadcasts[0][1], 'chat:message');
     });
 

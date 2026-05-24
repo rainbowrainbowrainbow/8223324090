@@ -1,18 +1,13 @@
-/**
+﻿/**
  * services/profileAvatarStorage.js - Durable profile avatar uploads.
  *
- * Profile photos prefer Supabase Storage and fall back to local uploads when
- * Supabase is not configured. SVG is intentionally blocked.
+ * Profile photos are stored under /uploads/profile-avatars and referenced from
+ * Postgres profile rows. SVG is intentionally blocked.
  */
 const crypto = require('crypto');
 const fsp = require('fs/promises');
 const path = require('path');
-const { getSupabase } = require('../db/supabase');
-const { createLogger } = require('../utils/logger');
 
-const log = createLogger('ProfileAvatarStorage');
-
-const BUCKET = process.env.SUPABASE_PROFILE_AVATAR_BUCKET || 'profile-avatars';
 const DEFAULT_LOCAL_DIR = path.join(__dirname, '..', 'uploads', 'profile-avatars');
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
@@ -52,28 +47,28 @@ function _safeOriginalName(filename, ext) {
 function validateProfileAvatarFile(file) {
     const ext = _extensionOf(file?.originalname);
     if (!ext || ext === 'svg') {
-        const err = new Error('Підтримуються тільки JPG, PNG, WebP або GIF');
+        const err = new Error('РџС–РґС‚СЂРёРјСѓСЋС‚СЊСЃСЏ С‚С–Р»СЊРєРё JPG, PNG, WebP Р°Р±Рѕ GIF');
         err.statusCode = 400;
         throw err;
     }
 
     const policy = PROFILE_AVATAR_TYPES[ext];
     if (!policy) {
-        const err = new Error('Підтримуються тільки JPG, PNG, WebP або GIF');
+        const err = new Error('РџС–РґС‚СЂРёРјСѓСЋС‚СЊСЃСЏ С‚С–Р»СЊРєРё JPG, PNG, WebP Р°Р±Рѕ GIF');
         err.statusCode = 400;
         throw err;
     }
 
     const size = Number(file?.size || file?.buffer?.length || 0);
     if (size > MAX_AVATAR_BYTES) {
-        const err = new Error('Фото профілю має бути до 5 МБ');
+        const err = new Error('Р¤РѕС‚Рѕ РїСЂРѕС„С–Р»СЋ РјР°С” Р±СѓС‚Рё РґРѕ 5 РњР‘');
         err.statusCode = 413;
         throw err;
     }
 
     const mimeType = _normalizeMime(file?.mimetype);
     if (mimeType && !policy.mimes.includes(mimeType)) {
-        const err = new Error('Тип файлу не збігається з розширенням');
+        const err = new Error('РўРёРї С„Р°Р№Р»Сѓ РЅРµ Р·Р±С–РіР°С”С‚СЊСЃСЏ Р· СЂРѕР·С€РёСЂРµРЅРЅСЏРј');
         err.statusCode = 400;
         throw err;
     }
@@ -91,73 +86,10 @@ function _storageKey(file, policy, options = {}) {
     return `users/${userPart}/${unique}-${safeName}`;
 }
 
-function _isMissingBucketError(error) {
-    const msg = String(error?.message || '').toLowerCase();
-    return error?.statusCode === 404 || msg.includes('not found') || msg.includes('bucket');
-}
-
-async function uploadProfileAvatarToSupabase(file, options = {}) {
-    const policy = validateProfileAvatarFile(file);
-    const supabase = getSupabase();
-    if (!supabase) {
-        log.warn('Supabase not configured - keeping profile avatar upload local');
-        return null;
-    }
-    if (!file?.buffer || file.buffer.length === 0) {
-        const err = new Error('Порожній файл');
-        err.statusCode = 400;
-        throw err;
-    }
-
-    const bucket = options.bucket || BUCKET;
-    const key = _storageKey(file, policy, options);
-    const uploadOptions = {
-        contentType: policy.contentType,
-        upsert: false
-    };
-
-    try {
-        const { error } = await supabase.storage.from(bucket).upload(key, file.buffer, uploadOptions);
-        if (error) {
-            if (_isMissingBucketError(error)) {
-                await supabase.storage.createBucket(bucket, { public: true });
-                const retry = await supabase.storage.from(bucket).upload(key, file.buffer, uploadOptions);
-                if (retry.error) {
-                    log.warn(`Supabase profile avatar retry failed: ${retry.error.message}`);
-                    return null;
-                }
-            } else {
-                log.warn(`Supabase profile avatar upload failed: ${error.message}`);
-                return null;
-            }
-        }
-
-        const { data } = supabase.storage.from(bucket).getPublicUrl(key);
-        const publicUrl = data?.publicUrl;
-        if (!publicUrl) {
-            log.warn('Supabase profile avatar upload returned no public URL');
-            return null;
-        }
-
-        return {
-            provider: 'supabase',
-            bucket,
-            key,
-            path: key,
-            publicUrl,
-            filename: path.basename(key),
-            contentType: policy.contentType
-        };
-    } catch (err) {
-        log.warn(`Supabase profile avatar upload error: ${err.message}`);
-        return null;
-    }
-}
-
 async function saveProfileAvatarLocally(file, options = {}) {
     const policy = validateProfileAvatarFile(file);
     if (!file?.buffer || file.buffer.length === 0) {
-        const err = new Error('Порожній файл');
+        const err = new Error('РџРѕСЂРѕР¶РЅС–Р№ С„Р°Р№Р»');
         err.statusCode = 400;
         throw err;
     }
@@ -182,18 +114,14 @@ async function saveProfileAvatarLocally(file, options = {}) {
 }
 
 async function uploadProfileAvatarWithFallback(file, options = {}) {
-    const remote = await uploadProfileAvatarToSupabase(file, options);
-    if (remote) return remote;
     return saveProfileAvatarLocally(file, options);
 }
 
 module.exports = {
-    BUCKET,
     DEFAULT_LOCAL_DIR,
     MAX_AVATAR_BYTES,
     PROFILE_AVATAR_TYPES,
     validateProfileAvatarFile,
-    uploadProfileAvatarToSupabase,
     saveProfileAvatarLocally,
     uploadProfileAvatarWithFallback
 };

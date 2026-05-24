@@ -1,32 +1,11 @@
-const { describe, it } = require('node:test');
+const { describe, it, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
-const http = require('http');
-
-function loadImageStorageWithSupabase(supabase) {
-    const imageStoragePath = require.resolve('../services/imageStorage');
-    const supabasePath = require.resolve('../db/supabase');
-    const previousImageStorage = require.cache[imageStoragePath];
-    const previousSupabase = require.cache[supabasePath];
-
-    delete require.cache[imageStoragePath];
-    require.cache[supabasePath] = {
-        id: supabasePath,
-        filename: supabasePath,
-        loaded: true,
-        exports: { getSupabase: () => supabase }
-    };
-
-    const imageStorage = require('../services/imageStorage');
-    return {
-        imageStorage,
-        restore() {
-            if (previousImageStorage) require.cache[imageStoragePath] = previousImageStorage;
-            else delete require.cache[imageStoragePath];
-            if (previousSupabase) require.cache[supabasePath] = previousSupabase;
-            else delete require.cache[supabasePath];
-        }
-    };
-}
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
+const { uploadFromUrl, safeImageFilename } = require('../services/imageStorage');
 
 function startImageServer(buffer) {
     const server = http.createServer((req, res) => {
@@ -45,52 +24,32 @@ function startImageServer(buffer) {
     });
 }
 
-describe('imageStorage Supabase metadata', () => {
-    it('uploads generated catalog images to the catalog-images bucket', async () => {
-        const uploads = [];
+describe('imageStorage local CRM upload metadata', () => {
+    const tempDirs = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.map(dir => fsp.rm(dir, { recursive: true, force: true })));
+        tempDirs.length = 0;
+    });
+
+    it('stores generated catalog images under the catalog upload surface', async () => {
         const image = Buffer.from('png');
         const server = await startImageServer(image);
-        const supabase = {
-            storage: {
-                from(bucket) {
-                    return {
-                        async upload(storagePath, buffer, options) {
-                            uploads.push({ bucket, storagePath, buffer, options });
-                            return { data: { path: storagePath }, error: null };
-                        },
-                        getPublicUrl(storagePath) {
-                            return { data: { publicUrl: `https://example.supabase.co/storage/v1/object/public/${bucket}/${storagePath}` } };
-                        }
-                    };
-                },
-                async createBucket() {
-                    return { data: {}, error: null };
-                }
-            }
-        };
-        const { imageStorage, restore } = loadImageStorageWithSupabase(supabase);
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-catalog-images-'));
+        tempDirs.push(tempDir);
         try {
-            const publicUrl = await imageStorage.uploadFromUrl(server.url, 'catalog-item.png');
-            assert.equal(publicUrl, 'https://example.supabase.co/storage/v1/object/public/catalog-images/items/catalog-item.png');
-            assert.equal(uploads.length, 1);
-            assert.equal(uploads[0].bucket, 'catalog-images');
-            assert.equal(uploads[0].storagePath, 'items/catalog-item.png');
-            assert.deepEqual(uploads[0].buffer, image);
-            assert.equal(uploads[0].options.contentType, 'image/png');
-            assert.equal(uploads[0].options.upsert, true);
+            const publicUrl = await uploadFromUrl(server.url, 'catalog-item.png', { localDir: tempDir });
+
+            assert.equal(publicUrl, '/uploads/catalog-images/items/catalog-item.png');
+            assert.equal(fs.existsSync(path.join(tempDir, 'catalog-item.png')), true);
+            assert.deepEqual(await fsp.readFile(path.join(tempDir, 'catalog-item.png')), image);
         } finally {
-            restore();
             await server.close();
         }
     });
 
-    it('returns null without Supabase so callers can keep the source URL', async () => {
-        const { imageStorage, restore } = loadImageStorageWithSupabase(null);
-        try {
-            const publicUrl = await imageStorage.uploadFromUrl('http://127.0.0.1/not-called.png', 'catalog-item.png');
-            assert.equal(publicUrl, null);
-        } finally {
-            restore();
-        }
+    it('normalizes unsafe image filenames before writing', () => {
+        assert.equal(safeImageFilename('../bad name.svg'), 'bad-name.png');
+        assert.equal(safeImageFilename('cover.webp'), 'cover.webp');
     });
 });

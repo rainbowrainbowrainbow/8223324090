@@ -51,8 +51,8 @@ function _writeLegacySoundFile(filename, buffer) {
 async function _cleanupStoredSound(stored) {
     try {
         if (!stored) return;
-        if (stored.provider === 'supabase' && stored.storageKey) {
-            await removeAudioObject(stored.storageKey, stored.storageBucket);
+        if (stored.provider === 'local' && stored.storageKey) {
+            await removeAudioObject(stored.storageKey);
         } else if (stored.provider === 'local' && stored.localPath && fs.existsSync(stored.localPath)) {
             fs.unlinkSync(stored.localPath);
         }
@@ -369,7 +369,7 @@ router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
 
         if (remote) {
             stored = {
-                provider: 'supabase',
+                provider: remote.provider || 'local',
                 filename: remote.filename || filename,
                 filePath: remote.publicUrl,
                 publicUrl: remote.publicUrl,
@@ -385,7 +385,7 @@ router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
                 name, filename, file_path, url, category, file_size, uploaded_by,
                 storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $8 = 'supabase' THEN NOW() ELSE NULL END)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $8 IN ('local', 'external') THEN NOW() ELSE NULL END)
              RETURNING id`,
             [
                 displayName,
@@ -421,8 +421,8 @@ router.delete('/library/:id', requireRole('admin', 'director'), async (req, res)
         const r = await pool.query('SELECT * FROM sounds WHERE id=$1', [req.params.id]);
         if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
         const sound = r.rows[0];
-        if (sound.storage_provider === 'supabase' && sound.storage_key) {
-            await removeAudioObject(sound.storage_key, sound.storage_bucket);
+        if (sound.storage_provider === 'local' && sound.storage_key) {
+            await removeAudioObject(sound.storage_key);
         } else if (sound.filename && sound.file_path?.startsWith('/uploads/sounds/')) {
             const fp = path.join(__dirname, '../uploads/sounds', sound.filename);
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
@@ -470,7 +470,7 @@ router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res
 });
 
 // ============================================
-// v39.8: TTS Creation (ElevenLabs via Kie.ai) + Supabase storage
+// v39.8: TTS Creation (ElevenLabs via Kie.ai) + CRM upload storage
 // ============================================
 
 router.post('/library/generate-tts', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
@@ -540,7 +540,7 @@ router.post('/library/generate-music', requireRole('admin', 'creator', 'director
     });
 });
 
-// v39.8: Poll generation status + save to Supabase
+// v39.8: Poll generation status + save to CRM uploads
 router.get('/library/generate-status/:taskId', async (req, res) => {
     try {
         const KIE_KEY = process.env.KIE_API_KEY;
@@ -565,7 +565,7 @@ router.get('/library/generate-status/:taskId', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// v39.8: Apply generated audio — save to Supabase + DB
+// v39.8: Apply generated audio — save to CRM uploads + DB
 router.post('/library/apply-generated', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     const { audioUrl, name, category, provider } = req.body;
     if (!audioUrl) return res.status(400).json({ error: 'audioUrl required' });

@@ -668,8 +668,8 @@ async function deleteMessage(messageId, userId, isAdmin) {
     const deleted = result.rows[0] || null;
     // v38.4.0: Clean up uploaded file on message delete
     const file = deleted?.metadata?.file;
-    if (file?.storageProvider === 'supabase' && file?.storageKey) {
-        await removeChatUploadObject(file.storageKey, file.storageBucket);
+    if (file?.storageProvider === 'local' && file?.storageKey) {
+        await removeChatUploadObject(file.storageKey);
     } else if (file?.url) {
         try {
             removeLegacyLocalChatFile(file.url);

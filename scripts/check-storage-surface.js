@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 /**
- * Upload and Supabase Storage surface guard.
+ * Upload storage surface guard.
  *
- * This check keeps local /uploads paths, Supabase buckets, docs, tests, and
- * ignore rules aligned. It is structural; route behavior remains covered by
- * focused service and route tests.
+ * This check keeps local /uploads paths, docs, tests, and ignore rules aligned.
+ * It is structural; route behavior remains covered by focused service and route tests.
  */
 
 const fs = require('fs');
@@ -12,7 +11,6 @@ const path = require('path');
 const {
     LOCAL_UPLOAD_SURFACE,
     REMOTE_STORAGE_SURFACE,
-    SUPABASE_CLIENT_SURFACE,
     UPLOAD_STATIC_MOUNTS
 } = require('../config/storageSurface');
 
@@ -22,8 +20,8 @@ const SERVER_PATH = path.join(ROOT, 'server.js');
 const GITIGNORE_PATH = path.join(ROOT, '.gitignore');
 const failures = [];
 
-const LOCAL_PERSISTENCE = new Set(['supabase-preferred-local-fallback', 'local-only-legacy']);
-const REMOTE_PROVIDERS = new Set(['supabase-storage']);
+const LOCAL_PERSISTENCE = new Set(['local-postgres-metadata', 'local-only-legacy']);
+const REMOTE_PROVIDERS = new Set();
 const SOURCE_DIRS = ['routes', 'services', 'js', 'css'];
 const SOURCE_ROOT_FILES = ['server.js', 'sw.js'];
 const SOURCE_EXTENSIONS = new Set(['.js', '.html', '.css']);
@@ -189,17 +187,15 @@ for (const entry of LOCAL_UPLOAD_SURFACE) {
         fail(`${label}: no route/service/frontend reference found for ${entry.urlPrefix} or ${entry.localDir}`);
     }
 
-    if (entry.persistence === 'supabase-preferred-local-fallback') {
-        if (!entry.remoteBucket || !entry.envBucket) fail(`${label}: Supabase fallback entries require remoteBucket and envBucket`);
+    if (entry.persistence === 'local-postgres-metadata') {
+        if (entry.remoteBucket || entry.envBucket) fail(`${label}: local Postgres metadata entries must not declare remote bucket/env`);
         if (entry.serviceFile && exists(entry.serviceFile)) {
             const service = read(entry.serviceFile);
-            if (!service.includes('getSupabase')) fail(`${label}: service must use getSupabase`);
-            if (!service.includes('.storage.from(')) fail(`${label}: service must upload through Supabase Storage`);
-            if (!service.includes('getPublicUrl')) fail(`${label}: service must expose a public URL`);
-            if (!service.includes(entry.remoteBucket)) fail(`${label}: service must mention bucket ${entry.remoteBucket}`);
+            if (service.includes('getSupabase') || service.includes('@supabase') || service.includes('.storage.from(')) {
+                fail(`${label}: local storage service must not use Supabase runtime APIs`);
+            }
+            if (!service.includes(entry.urlPrefix)) fail(`${label}: service must expose public URL prefix ${entry.urlPrefix}`);
         }
-        ensureDocMentions(doc, entry.remoteBucket, label);
-        ensureDocMentions(doc, entry.envBucket, label);
     }
 
     if (entry.persistence === 'local-only-legacy' && entry.routeFile && exists(entry.routeFile)) {
@@ -210,7 +206,6 @@ for (const entry of LOCAL_UPLOAD_SURFACE) {
 
 compareSets('source /uploads segments', collectUploadSegments(), manifestSegments);
 
-const remoteBuckets = new Set();
 for (const entry of REMOTE_STORAGE_SURFACE) {
     const label = `remote storage ${entry.bucket}`;
     if (!entry.bucket || !entry.owner || !REMOTE_PROVIDERS.has(entry.provider)) {
@@ -226,27 +221,12 @@ for (const entry of REMOTE_STORAGE_SURFACE) {
         ensureDocMentions(doc, entry.localFallback, label);
     }
 
-    remoteBuckets.add(entry.bucket);
     if (entry.serviceFile && exists(entry.serviceFile)) {
         const service = read(entry.serviceFile);
-        if (!service.includes('getSupabase')) fail(`${label}: service must use getSupabase`);
-        if (!service.includes('.storage.from(')) fail(`${label}: service must use Supabase Storage`);
+        if (!service.includes('.storage.from(')) fail(`${label}: service must use remote storage API`);
         if (!service.includes('getPublicUrl')) fail(`${label}: service must return or derive a public URL`);
         if (!service.includes(entry.bucket)) fail(`${label}: service must mention bucket ${entry.bucket}`);
     }
-}
-
-for (const entry of LOCAL_UPLOAD_SURFACE) {
-    if (entry.remoteBucket && !remoteBuckets.has(entry.remoteBucket)) {
-        fail(`${entry.urlPrefix}: remoteBucket ${entry.remoteBucket} is not listed in REMOTE_STORAGE_SURFACE`);
-    }
-}
-
-const supabaseClient = read(SUPABASE_CLIENT_SURFACE.file);
-ensureDocMentions(doc, SUPABASE_CLIENT_SURFACE.file, 'Supabase client');
-for (const envName of SUPABASE_CLIENT_SURFACE.env) {
-    if (!supabaseClient.includes(envName)) fail(`Supabase client: ${envName} missing from ${SUPABASE_CLIENT_SURFACE.file}`);
-    ensureDocMentions(doc, envName, 'Supabase client');
 }
 
 if (failures.length) {
@@ -255,4 +235,4 @@ if (failures.length) {
     process.exit(1);
 }
 
-console.log(`Storage surface check passed: ${LOCAL_UPLOAD_SURFACE.length} local upload paths, ${REMOTE_STORAGE_SURFACE.length} Supabase buckets, ${UPLOAD_STATIC_MOUNTS.length} static mounts.`);
+console.log(`Storage surface check passed: ${LOCAL_UPLOAD_SURFACE.length} local upload paths, ${REMOTE_STORAGE_SURFACE.length} remote buckets, ${UPLOAD_STATIC_MOUNTS.length} static mounts.`);

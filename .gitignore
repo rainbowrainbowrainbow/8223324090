@@ -3,6 +3,7 @@ node_modules/
 .env.*
 !.env.example
 uploads/chat/
+uploads/catalog-images/
 uploads/designs/
 uploads/profile-avatars/
 uploads/sounds/

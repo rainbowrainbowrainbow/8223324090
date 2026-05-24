@@ -349,7 +349,7 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         const kieUrl = parseKieImageUrl(r?.data);
         if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
 
-        // v38.11: Upload to Supabase Storage (permanent) instead of keeping Kie.ai temp URL (14 days)
+        // v38.11: Store generated image permanently instead of keeping Kie.ai temp URL (14 days)
         const item = await pool.query('SELECT name, catalog_id FROM catalog_items WHERE id = $1', [itemId]);
         const itemName = item.rows[0]?.name || 'item';
         const catalogId = item.rows[0]?.catalog_id || 'misc';
@@ -357,7 +357,7 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         log.info(`apply-image: downloading ${kieUrl.substring(0, 50)}... → ${filename}`);
         const permanentUrl = await uploadFromUrl(kieUrl, filename);
         const finalUrl = permanentUrl || kieUrl;
-        log.info(`apply-image: saved as ${permanentUrl ? 'SUPABASE' : 'KIE.AI fallback'}: ${finalUrl.substring(0, 60)}`);
+        log.info(`apply-image: saved as ${permanentUrl ? 'CRM upload' : 'KIE.AI fallback'}: ${finalUrl.substring(0, 60)}`);
 
 
         await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [finalUrl, itemId]);

@@ -1,4 +1,4 @@
-const { describe, it } = require('node:test');
+﻿const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,7 +38,6 @@ function makePool(state) {
 describe('customer communication hub context', () => {
     it('prefers exact conversations and builds lead/booking handoffs', async () => {
         const context = await getCustomerCommunicationContext(701, {
-            supabase: null,
             pool: makePool({
                 customer: {
                     id: 701,
@@ -106,7 +105,6 @@ describe('customer communication hub context', () => {
 
     it('labels fallback conversation matches as suggested, not exact', async () => {
         const context = await getCustomerCommunicationContext(702, {
-            supabase: null,
             pool: makePool({
                 customer: {
                     id: 702,
@@ -138,7 +136,6 @@ describe('customer communication hub context', () => {
 
     it('does not surface waiting reply after a later inbound cleared it', async () => {
         const context = await getCustomerCommunicationContext(706, {
-            supabase: null,
             pool: makePool({
                 customer: {
                     id: 706,
@@ -172,7 +169,6 @@ describe('customer communication hub context', () => {
 
     it('keeps unavailable live context honest and falls back to Omni search only', async () => {
         const context = await getCustomerCommunicationContext(703, {
-            supabase: null,
             pool: makePool({
                 customer: {
                     id: 703,
@@ -195,7 +191,6 @@ describe('customer communication hub context', () => {
 
     it('marks inbound-only channels as not send-capable', async () => {
         const context = await getCustomerCommunicationContext(704, {
-            supabase: null,
             pool: makePool({
                 customer: {
                     id: 704,

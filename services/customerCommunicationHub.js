@@ -1,5 +1,4 @@
 const { pool: defaultPool } = require('../db');
-const { getSupabase } = require('../db/supabase');
 const {
     booleanValue,
     deriveReplySlaState,
@@ -43,16 +42,6 @@ function mapCustomer(row) {
 
 async function fetchCustomerRow(db, id, options = {}) {
     const businessContext = normalizeBusinessContext(options.businessContext);
-    const hasExplicitSupabase = Object.prototype.hasOwnProperty.call(options, 'supabase');
-    const sb = hasExplicitSupabase ? options.supabase : getSupabase();
-    if (sb) {
-        const { data, error } = await sb.from('customers').select('*').eq('id', id).eq('business_context', businessContext).single();
-        if (error) {
-            if (error.code === 'PGRST116') return null;
-            throw error;
-        }
-        return data || null;
-    }
 
     const customerResult = await db.query(
         `SELECT * FROM customers

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.17",
+  "version": "0.63.18",
   "eventGenix": {
-    "releaseLabel": "CRM 63.17: Збереження нових клієнтів через Postgres"
+    "releaseLabel": "CRM 63.18: SQL замість Supabase runtime"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -39,7 +39,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",
-    "@supabase/supabase-js": "^2.98.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
     "compression": "^1.8.1",

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.18 - CRM 63.18: SQL замість Supabase runtime
+
+### Архітектура / Postgres та upload storage [codex]
+- **Supabase SDK прибрано з runtime** - залежність `@supabase/supabase-js` видалена з `package.json` / `package-lock.json`, а спільний `db/supabase.js` вилучено.
+- **Клієнти остаточно читаються з Postgres** - customer communication hub і Customers CRUD більше не мають server-side Supabase-клієнта або міграційного шляху в Supabase.
+- **Uploads переведені на CRM `/uploads` + Postgres metadata** - chat файли, аудіо, профільні аватари та catalog images більше не намагаються писати у Supabase Storage.
+- **Storage governance оновлено** - `config/storageSurface.js`, `docs/STORAGE_SURFACE.md` і `check:storage-surface` тепер описують локальні upload paths з Postgres-метаданими та 0 remote buckets.
+- **Guardrail** - focused storage тести перевіряють local metadata для chat/audio/avatar/catalog image, а UI smoke фіксує Postgres-only шлях клієнтів без legacy Supabase migration.
+
+---
+
 ## v0.63.17 - CRM 63.17: Збереження нових клієнтів через Postgres
 
 ### Клієнти / створення та CRUD [codex]

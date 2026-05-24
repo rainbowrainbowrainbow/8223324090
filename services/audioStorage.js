@@ -1,14 +1,17 @@
 /**
- * services/audioStorage.js — Upload audio to Supabase Storage
- * v39.8.0: TTS + music files stored permanently in Supabase
+ * services/audioStorage.js — Store audio on the CRM upload surface.
+ * v0.63.18: Remote storage removed; audio is stored under /uploads/sounds.
  */
 const https = require('https');
 const http = require('http');
-const { getSupabase } = require('../db/supabase');
+const fs = require('fs');
+const fsp = require('fs/promises');
+const path = require('path');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('AudioStorage');
-const BUCKET = process.env.SUPABASE_AUDIO_BUCKET || 'audio-library';
+const DEFAULT_LOCAL_DIR = path.join(__dirname, '..', 'uploads', 'sounds');
+const PUBLIC_PREFIX = '/uploads/sounds';
 const DEFAULT_FOLDER = 'sounds';
 const AUDIO_CONTENT_TYPES = {
     mp3: 'audio/mpeg',
@@ -51,63 +54,39 @@ function _safeFilename(filename) {
     return safe || makeAudioFilename('general', 'audio');
 }
 
-function _isMissingBucketError(error) {
-    const msg = String(error?.message || '').toLowerCase();
-    return error?.statusCode === 404 || msg.includes('not found') || msg.includes('bucket');
-}
-
 async function _uploadAudioBufferToStorage(buffer, filename, options = {}) {
-    const supabase = getSupabase();
-    if (!supabase) {
-        log.warn('Supabase not configured — keeping local/original audio path');
-        return null;
-    }
     if (!buffer || buffer.length === 0) {
         log.error('Empty audio buffer');
         return null;
     }
 
     const safeFilename = _safeFilename(filename);
-    const storagePath = `${_safeFolder(options.folder)}/${safeFilename}`;
+    const folder = _safeFolder(options.folder);
+    const storagePath = `${folder}/${safeFilename}`;
     const contentType = _contentTypeFor(safeFilename, options.contentType);
-    const uploadOptions = {
-        contentType,
-        upsert: options.upsert !== false
-    };
 
     try {
-        const bucket = options.bucket || BUCKET;
-        const { error } = await supabase.storage.from(bucket).upload(storagePath, buffer, uploadOptions);
-        if (error) {
-            if (_isMissingBucketError(error)) {
-                await supabase.storage.createBucket(bucket, { public: true });
-                const retry = await supabase.storage.from(bucket).upload(storagePath, buffer, uploadOptions);
-                if (retry.error) {
-                    log.error('Retry upload failed:', retry.error.message);
-                    return null;
-                }
-            } else {
-                log.error('Upload error:', error.message);
-                return null;
-            }
-        }
-
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-        const publicUrl = urlData?.publicUrl;
-        if (!publicUrl) {
-            log.error('Supabase upload returned no public URL');
+        const localRoot = options.localDir || DEFAULT_LOCAL_DIR;
+        const localDir = path.join(localRoot, folder);
+        await fsp.mkdir(localDir, { recursive: true });
+        const fullPath = path.join(localDir, safeFilename);
+        if (options.upsert === false && fs.existsSync(fullPath)) {
+            log.error(`Audio file already exists: ${fullPath}`);
             return null;
         }
+        await fsp.writeFile(fullPath, buffer);
 
-        log.info(`Audio uploaded: ${safeFilename} → ${publicUrl}`);
+        const publicUrl = `${PUBLIC_PREFIX}/${storagePath.split('/').map(encodeURIComponent).join('/')}`;
+        log.info(`Audio stored: ${safeFilename} → ${publicUrl}`);
         return {
-            provider: 'supabase',
-            bucket,
+            provider: 'local',
+            bucket: null,
             path: storagePath,
             key: storagePath,
             publicUrl,
             filename: safeFilename,
-            contentType
+            contentType,
+            localPath: fullPath
         };
     } catch (err) {
         log.error('uploadAudioBufferToStorage error:', err.message);
@@ -135,19 +114,17 @@ async function uploadAudioBufferWithMetadata(buffer, filename, options = {}) {
     return _uploadAudioBufferToStorage(buffer, filename, options);
 }
 
-async function removeAudioObject(storageKey, bucket = BUCKET) {
+async function removeAudioObject(storageKey) {
     if (!storageKey) return false;
-    const supabase = getSupabase();
-    if (!supabase) return false;
     try {
-        const { error } = await supabase.storage.from(bucket || BUCKET).remove([storageKey]);
-        if (error) {
-            log.warn(`Supabase audio delete failed for ${storageKey}: ${error.message}`);
-            return false;
-        }
+        const relative = String(storageKey).replace(/^\/+/, '').replace(/^uploads\/sounds\//, '');
+        const fullPath = path.join(DEFAULT_LOCAL_DIR, relative);
+        if (!fullPath.startsWith(DEFAULT_LOCAL_DIR)) return false;
+        if (!fs.existsSync(fullPath)) return false;
+        await fsp.unlink(fullPath);
         return true;
     } catch (err) {
-        log.warn(`Supabase audio delete error for ${storageKey}: ${err.message}`);
+        log.warn(`Audio delete error for ${storageKey}: ${err.message}`);
         return false;
     }
 }

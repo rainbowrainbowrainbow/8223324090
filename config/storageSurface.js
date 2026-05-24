@@ -12,40 +12,53 @@ const LOCAL_UPLOAD_SURFACE = [
         urlPrefix: '/uploads/chat',
         localDir: 'uploads/chat',
         owner: 'chat',
-        persistence: 'supabase-preferred-local-fallback',
+        persistence: 'local-postgres-metadata',
         routeFile: 'routes/chat.js',
         serviceFile: 'services/chatUploadStorage.js',
         frontendFiles: ['js/chat-page.js'],
         tests: ['tests/chat-upload-storage.test.js', 'tests/chat-upload-route.test.js'],
-        remoteBucket: 'chat-uploads',
-        envBucket: 'SUPABASE_CHAT_BUCKET',
-        reason: 'Chat attachments prefer Supabase Storage; local files are only a legacy fallback when Supabase is unavailable.'
+        remoteBucket: null,
+        envBucket: null,
+        reason: 'Chat attachments are stored under /uploads/chat with file metadata persisted on chat messages in Postgres.'
     },
     {
         urlPrefix: '/uploads/sounds',
         localDir: 'uploads/sounds',
         owner: 'sound',
-        persistence: 'supabase-preferred-local-fallback',
+        persistence: 'local-postgres-metadata',
         routeFile: 'routes/music.js',
         serviceFile: 'services/audioStorage.js',
         frontendFiles: ['js/sound-page.js'],
         tests: ['tests/audio-storage.test.js'],
-        remoteBucket: 'audio-library',
-        envBucket: 'SUPABASE_AUDIO_BUCKET',
-        reason: 'Manual and generated sounds prefer Supabase Storage; local files are retained as a rollout fallback.'
+        remoteBucket: null,
+        envBucket: null,
+        reason: 'Manual and generated sounds are stored under /uploads/sounds with metadata persisted in the Postgres sounds table.'
     },
     {
         urlPrefix: '/uploads/profile-avatars',
         localDir: 'uploads/profile-avatars',
         owner: 'profile',
-        persistence: 'supabase-preferred-local-fallback',
+        persistence: 'local-postgres-metadata',
         routeFile: 'routes/auth.js',
         serviceFile: 'services/profileAvatarStorage.js',
         frontendFiles: ['profile.html', 'js/profile-page.js'],
         tests: ['tests/profile-avatar-storage.test.js'],
-        remoteBucket: 'profile-avatars',
-        envBucket: 'SUPABASE_PROFILE_AVATAR_BUCKET',
-        reason: 'User profile photos prefer Supabase Storage; local files are a fallback for environments without Supabase.'
+        remoteBucket: null,
+        envBucket: null,
+        reason: 'User profile photos are stored under /uploads/profile-avatars and referenced from user_profiles_ext in Postgres.'
+    },
+    {
+        urlPrefix: '/uploads/catalog-images',
+        localDir: 'uploads/catalog-images',
+        owner: 'catalogs',
+        persistence: 'local-postgres-metadata',
+        routeFile: 'routes/catalogs.js',
+        serviceFile: 'services/imageStorage.js',
+        frontendFiles: ['js/art-director-page.js'],
+        tests: ['tests/image-storage.test.js'],
+        remoteBucket: null,
+        envBucket: null,
+        reason: 'Generated catalog images are stored under /uploads/catalog-images and saved as catalog item URLs in Postgres-backed catalogs.'
     },
     {
         urlPrefix: '/uploads/designs',
@@ -62,63 +75,10 @@ const LOCAL_UPLOAD_SURFACE = [
     }
 ];
 
-const REMOTE_STORAGE_SURFACE = [
-    {
-        bucket: 'chat-uploads',
-        envBucket: 'SUPABASE_CHAT_BUCKET',
-        owner: 'chat',
-        provider: 'supabase-storage',
-        serviceFile: 'services/chatUploadStorage.js',
-        routeFiles: ['routes/chat.js'],
-        tests: ['tests/chat-upload-storage.test.js', 'tests/chat-upload-route.test.js'],
-        localFallback: '/uploads/chat',
-        reason: 'Durable chat upload objects with provider, bucket, key, and public URL metadata on messages.'
-    },
-    {
-        bucket: 'audio-library',
-        envBucket: 'SUPABASE_AUDIO_BUCKET',
-        owner: 'sound',
-        provider: 'supabase-storage',
-        serviceFile: 'services/audioStorage.js',
-        routeFiles: ['routes/music.js'],
-        tests: ['tests/audio-storage.test.js'],
-        localFallback: '/uploads/sounds',
-        reason: 'Durable sound library audio for manual uploads and generated audio.'
-    },
-    {
-        bucket: 'profile-avatars',
-        envBucket: 'SUPABASE_PROFILE_AVATAR_BUCKET',
-        owner: 'profile',
-        provider: 'supabase-storage',
-        serviceFile: 'services/profileAvatarStorage.js',
-        routeFiles: ['routes/auth.js'],
-        tests: ['tests/profile-avatar-storage.test.js'],
-        localFallback: '/uploads/profile-avatars',
-        reason: 'Durable user profile photos uploaded from desktop or mobile devices.'
-    },
-    {
-        bucket: 'catalog-images',
-        envBucket: null,
-        owner: 'catalogs',
-        provider: 'supabase-storage',
-        serviceFile: 'services/imageStorage.js',
-        routeFiles: ['routes/catalogs.js'],
-        tests: ['tests/image-storage.test.js'],
-        localFallback: null,
-        reason: 'Permanent catalog image storage for generated item and cover images.'
-    }
-];
-
-const SUPABASE_CLIENT_SURFACE = {
-    file: 'db/supabase.js',
-    env: ['SUPABASE_URL', 'SUPABASE_KEY', 'SUPABASE_SECRET_KEY'],
-    owner: 'supabase-client',
-    reason: 'Shared server-side Supabase client used by storage services and legacy customer fallback code.'
-};
+const REMOTE_STORAGE_SURFACE = [];
 
 module.exports = {
     LOCAL_UPLOAD_SURFACE,
     REMOTE_STORAGE_SURFACE,
-    SUPABASE_CLIENT_SURFACE,
     UPLOAD_STATIC_MOUNTS
 };

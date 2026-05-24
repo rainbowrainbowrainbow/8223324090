@@ -1,19 +1,14 @@
 /**
- * services/chatUploadStorage.js - Durable chat upload storage.
+ * services/chatUploadStorage.js - Durable chat upload storage on the CRM upload surface.
  *
- * New uploads prefer Supabase Storage and fall back to legacy local files when
- * Supabase is not configured or temporarily unavailable.
+ * Chat uploads are stored under /uploads/chat and referenced from Postgres
+ * message metadata. Remote object storage is intentionally not used.
  */
 const crypto = require('crypto');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
-const { getSupabase } = require('../db/supabase');
-const { createLogger } = require('../utils/logger');
 
-const log = createLogger('ChatUploadStorage');
-
-const BUCKET = process.env.SUPABASE_CHAT_BUCKET || 'chat-uploads';
 const DEFAULT_LOCAL_DIR = path.join(__dirname, '..', 'uploads', 'chat');
 
 const CHAT_UPLOAD_TYPES = {
@@ -101,70 +96,6 @@ function _makeStorageKey(file, policy, channelId) {
     return `channels/${_safeChannelPart(channelId)}/${unique}-${safeName}`;
 }
 
-function _isMissingBucketError(error) {
-    const msg = String(error?.message || '').toLowerCase();
-    return error?.statusCode === 404 || msg.includes('not found') || msg.includes('bucket');
-}
-
-async function uploadChatFileToSupabase(file, options = {}) {
-    const policy = validateChatUploadFile(file);
-    const supabase = getSupabase();
-    if (!supabase) {
-        log.warn('Supabase not configured - keeping chat upload local');
-        return null;
-    }
-    if (!file?.buffer || file.buffer.length === 0) {
-        const err = new Error('Empty upload');
-        err.statusCode = 400;
-        throw err;
-    }
-
-    const bucket = options.bucket || BUCKET;
-    const storageKey = _makeStorageKey(file, policy, options.channelId);
-    const uploadOptions = {
-        contentType: policy.contentType,
-        upsert: false
-    };
-
-    try {
-        const { error } = await supabase.storage.from(bucket).upload(storageKey, file.buffer, uploadOptions);
-        if (error) {
-            if (_isMissingBucketError(error)) {
-                await supabase.storage.createBucket(bucket, { public: true });
-                const retry = await supabase.storage.from(bucket).upload(storageKey, file.buffer, uploadOptions);
-                if (retry.error) {
-                    log.warn(`Supabase chat upload retry failed: ${retry.error.message}`);
-                    return null;
-                }
-            } else {
-                log.warn(`Supabase chat upload failed: ${error.message}`);
-                return null;
-            }
-        }
-
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storageKey);
-        const publicUrl = urlData?.publicUrl;
-        if (!publicUrl) {
-            log.warn('Supabase chat upload returned no public URL');
-            return null;
-        }
-
-        return {
-            provider: 'supabase',
-            bucket,
-            key: storageKey,
-            path: storageKey,
-            publicUrl,
-            filename: path.basename(storageKey),
-            contentType: policy.contentType,
-            kind: policy.kind
-        };
-    } catch (err) {
-        log.warn(`Supabase chat upload error: ${err.message}`);
-        return null;
-    }
-}
-
 async function saveChatFileLocally(file, options = {}) {
     const policy = validateChatUploadFile(file);
     if (!file?.buffer || file.buffer.length === 0) {
@@ -174,52 +105,46 @@ async function saveChatFileLocally(file, options = {}) {
     }
 
     const localDir = options.localDir || DEFAULT_LOCAL_DIR;
-    await fsp.mkdir(localDir, { recursive: true });
-    const safeName = _safeOriginalName(file.originalname, policy.ext);
-    const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${safeName}`;
-    const fullPath = path.join(localDir, filename);
+    const storageKey = _makeStorageKey(file, policy, options.channelId);
+    const fullPath = path.join(localDir, storageKey);
+    await fsp.mkdir(path.dirname(fullPath), { recursive: true });
     await fsp.writeFile(fullPath, file.buffer);
 
     return {
         provider: 'local',
         bucket: null,
-        key: filename,
+        key: storageKey,
         path: fullPath,
-        publicUrl: `/uploads/chat/${filename}`,
-        filename,
+        publicUrl: `/uploads/chat/${storageKey.split('/').map(encodeURIComponent).join('/')}`,
+        filename: path.basename(storageKey),
         contentType: policy.contentType,
         kind: policy.kind
     };
 }
 
 async function uploadChatFileWithFallback(file, options = {}) {
-    const remote = await uploadChatFileToSupabase(file, options);
-    if (remote) return remote;
     return saveChatFileLocally(file, options);
 }
 
-async function removeChatUploadObject(storageKey, bucket = BUCKET) {
+async function removeChatUploadObject(storageKey) {
     if (!storageKey) return false;
-    const supabase = getSupabase();
-    if (!supabase) return false;
 
     try {
-        const { error } = await supabase.storage.from(bucket || BUCKET).remove([storageKey]);
-        if (error) {
-            log.warn(`Supabase chat upload delete failed for ${storageKey}: ${error.message}`);
-            return false;
-        }
+        const fullPath = path.resolve(DEFAULT_LOCAL_DIR, String(storageKey).replace(/^\/+/, '').replace(/^uploads\/chat\//, ''));
+        if (!fullPath.startsWith(path.resolve(DEFAULT_LOCAL_DIR))) return false;
+        if (!fs.existsSync(fullPath)) return false;
+        await fsp.unlink(fullPath);
         return true;
     } catch (err) {
-        log.warn(`Supabase chat upload delete error for ${storageKey}: ${err.message}`);
         return false;
     }
 }
 
 function removeLegacyLocalChatFile(fileUrl, localDir = DEFAULT_LOCAL_DIR) {
     if (!fileUrl || !String(fileUrl).startsWith('/uploads/chat/')) return false;
-    const filename = path.basename(String(fileUrl));
-    const fullPath = path.join(localDir, filename);
+    const relative = decodeURIComponent(String(fileUrl).replace(/^\/uploads\/chat\/?/, ''));
+    const fullPath = path.resolve(localDir, relative);
+    if (!fullPath.startsWith(path.resolve(localDir))) return false;
     try {
         if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
@@ -233,9 +158,7 @@ function removeLegacyLocalChatFile(fileUrl, localDir = DEFAULT_LOCAL_DIR) {
 
 module.exports = {
     CHAT_UPLOAD_TYPES,
-    BUCKET,
     validateChatUploadFile,
-    uploadChatFileToSupabase,
     uploadChatFileWithFallback,
     saveChatFileLocally,
     removeChatUploadObject,

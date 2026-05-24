@@ -1,12 +1,11 @@
 /**
  * routes/customers.js — CRM Customer CRUD + search + filters + RFM + export
  * v15.1: Phase 2 — filters, RFM analytics, CSV export, certificate link
- * v20.9.12: Supabase migration — customers read/write via Supabase, fallback to Railway
+ * v20.9.12: legacy remote customers path retired; customers use Postgres.
  * v30.4.0: Tags, duplicates, merge, LTV, journey, communications, NPS, vCard, bulk
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { getSupabase } = require('../db/supabase');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
@@ -35,17 +34,6 @@ const PREDEFINED_TAGS = [
     { tag: 'Рекомендація', color: '#10B981' },
     { tag: 'Постійний', color: '#8B5CF6' }
 ];
-
-const CUSTOMER_SUPABASE_ENABLED = String(process.env.CUSTOMERS_SUPABASE_ENABLED || '').toLowerCase() === 'true';
-
-// Helper: check if the legacy customers Supabase table is explicitly enabled.
-function useSupabase() {
-    return CUSTOMER_SUPABASE_ENABLED && !!getSupabase();
-}
-
-function getCustomerSupabase() {
-    return useSupabase() ? getSupabase() : null;
-}
 
 function cleanText(value) {
     if (value === undefined || value === null) return null;
@@ -174,8 +162,7 @@ function isMissingCustomerSocialIdentitiesColumnError(err) {
         err?.code
     ].filter(Boolean).join(' ');
     return err?.code === '42703'
-        || err?.code === 'PGRST204'
-        || (/social_identities/i.test(message) && /(column|schema cache|does not exist|could not find)/i.test(message));
+        || (/social_identities/i.test(message) && /(column|does not exist|could not find)/i.test(message));
 }
 
 function isCustomerSocialIdentitiesStorageError(err) {
@@ -187,7 +174,7 @@ function isCustomerSocialIdentitiesStorageError(err) {
         err?.code
     ].filter(Boolean).join(' ');
     return /social_identities/i.test(message)
-        && /(jsonb|json|type|cast|malformed|invalid input|schema cache|expression)/i.test(message);
+        && /(jsonb|json|type|cast|malformed|invalid input|expression)/i.test(message);
 }
 
 function isCustomerDuplicateError(err) {
@@ -358,20 +345,8 @@ router.get('/search', async (req, res) => {
         const q = (req.query.q || '').trim();
         if (q.length < 2) return res.json([]);
 
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const pattern = `%${q}%`;
-            const { data, error } = await sb.from('customers')
-                .select('id, name, phone, instagram, child_name, total_bookings')
-                .eq('business_context', businessContext)
-                .or(`name.ilike.${pattern},phone.ilike.${pattern},instagram.ilike.${pattern}`)
-                .order('last_visit', { ascending: false, nullsFirst: false })
-                .limit(10);
-            if (error) throw error;
-            return res.json((data || []).map(mapCustomerRow));
-        }
 
-        // Fallback: Railway DB — v33.3: live aggregation from bookings
+        // PostgreSQL: live aggregation from bookings
         const pattern = `%${q}%`;
         const params = [pattern];
         const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
@@ -405,36 +380,26 @@ router.get('/rfm', async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let rows;
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const { data, error } = await sb.from('customers')
-                .select('id, name, phone, instagram, child_name, total_bookings, total_spent, first_visit, last_visit, created_at, updated_at')
-                .eq('business_context', businessContext)
-                .order('last_visit', { ascending: false, nullsFirst: false });
-            if (error) throw error;
-            rows = data || [];
-        } else {
-            // v32.1: JOIN bookings for real totals
-            const params = [];
-            const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
-            const contextSql = customerContextCondition(params, businessContext, 'c');
-            const result = await pool.query(`
-                SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
-                       COALESCE(b.cnt, 0) AS total_bookings,
-                       COALESCE(b.spent, 0) AS total_spent,
-                       b.first_visit, b.last_visit,
-                       c.created_at, c.updated_at
-                FROM customers c
-                LEFT JOIN (
-                    SELECT customer_id, booking_count AS cnt, booking_spent AS spent,
-                           real_first_visit AS first_visit, real_last_visit AS last_visit
-                    FROM (${bookingAgg.sql}) scoped_bookings
-                ) b ON b.customer_id = c.id
-                WHERE ${contextSql}
-                ORDER BY b.last_visit DESC NULLS LAST
-            `, params);
-            rows = result.rows;
-        }
+        // v32.1: JOIN bookings for real totals
+        const params = [];
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const contextSql = customerContextCondition(params, businessContext, 'c');
+        const result = await pool.query(`
+            SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
+                   COALESCE(b.cnt, 0) AS total_bookings,
+                   COALESCE(b.spent, 0) AS total_spent,
+                   b.first_visit, b.last_visit,
+                   c.created_at, c.updated_at
+            FROM customers c
+            LEFT JOIN (
+                SELECT customer_id, booking_count AS cnt, booking_spent AS spent,
+                       real_first_visit AS first_visit, real_last_visit AS last_visit
+                FROM (${bookingAgg.sql}) scoped_bookings
+            ) b ON b.customer_id = c.id
+            WHERE ${contextSql}
+            ORDER BY b.last_visit DESC NULLS LAST
+        `, params);
+        rows = result.rows;
 
         const today = new Date();
         const customers = rows.map(row => {
@@ -556,19 +521,12 @@ router.get('/export', exportLimiter, async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let customerRows;
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
-            if (error) throw error;
-            customerRows = data || [];
-        } else {
-            const params = [];
-            const contextSql = customerContextCondition(params, businessContext);
-            const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
-            customerRows = result.rows;
-        }
+        const params = [];
+        const contextSql = customerContextCondition(params, businessContext);
+        const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
+        customerRows = result.rows;
 
-        // Get cert counts from Railway (certificates stay there)
+        // Get cert counts from PostgreSQL
         const certResult = await pool.query(
             'SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id'
         );
@@ -617,17 +575,10 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let customerRows;
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
-            if (error) throw error;
-            customerRows = data || [];
-        } else {
-            const params = [];
-            const contextSql = customerContextCondition(params, businessContext);
-            const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
-            customerRows = result.rows;
-        }
+        const params = [];
+        const contextSql = customerContextCondition(params, businessContext);
+        const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
+        customerRows = result.rows;
 
         const certResult = await pool.query(
             'SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id'
@@ -694,57 +645,8 @@ router.get('/stats', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const sb = getCustomerSupabase();
-        if (sb) {
-            // Total
-            const { count: total } = await sb.from('customers').select('*', { count: 'exact', head: true }).eq('business_context', businessContext);
 
-            // By source
-            const { data: allCustomers } = await sb.from('customers').select('source').eq('business_context', businessContext);
-            const sourceMap = {};
-            for (const c of (allCustomers || [])) {
-                const s = c.source || 'unknown';
-                sourceMap[s] = (sourceMap[s] || 0) + 1;
-            }
-            const bySource = Object.entries(sourceMap)
-                .map(([source, count]) => ({ source, count }))
-                .sort((a, b) => b.count - a.count);
-
-            // Top by spent
-            const { data: topData } = await sb.from('customers')
-                .select('id, name, total_bookings, total_spent, last_visit')
-                .eq('business_context', businessContext)
-                .order('total_spent', { ascending: false })
-                .limit(5);
-
-            // Recent
-            const { data: recentData } = await sb.from('customers')
-                .select('id, name, total_bookings, total_spent, created_at')
-                .eq('business_context', businessContext)
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            // Averages
-            const { data: avgData } = await sb.from('customers')
-                .select('total_bookings, total_spent')
-                .eq('business_context', businessContext)
-                .gt('total_bookings', 0);
-            let avgBookings = 0, avgSpent = 0;
-            if (avgData && avgData.length > 0) {
-                avgBookings = Math.round(avgData.reduce((s, c) => s + (c.total_bookings || 0), 0) / avgData.length * 10) / 10;
-                avgSpent = Math.round(avgData.reduce((s, c) => s + (c.total_spent || 0), 0) / avgData.length);
-            }
-
-            return res.json({
-                total: total || 0,
-                bySource,
-                topBySpent: (topData || []).map(mapCustomerRow),
-                recentCustomers: (recentData || []).map(mapCustomerRow),
-                averages: { avg_bookings: avgBookings, avg_spent: avgSpent }
-            });
-        }
-
-        // Fallback: Railway — v32.1: JOIN bookings for real stats
+        // PostgreSQL: JOIN bookings for real stats
         const totalParams = [];
         const totalContextSql = customerContextCondition(totalParams, businessContext);
         const totalResult = await pool.query(`SELECT COUNT(*) FROM customers WHERE ${totalContextSql}`, totalParams);
@@ -1320,45 +1222,8 @@ router.get('/', async (req, res) => {
         const sortBy = (req.query.sortBy || 'updated_at').trim();
         const tag = (req.query.tag || '').trim();
 
-        const sb = getCustomerSupabase();
-        if (sb) {
-            let query = sb.from('customers').select('*', { count: 'exact' });
-            query = query.eq('business_context', businessContext);
 
-            if (search) {
-                const pattern = `%${search}%`;
-                query = query.or(`name.ilike.${pattern},phone.ilike.${pattern},instagram.ilike.${pattern},child_name.ilike.${pattern}`);
-            }
-            if (source) query = query.eq('source', source);
-            if (minVisits !== null) query = query.gte('total_bookings', minVisits);
-            if (maxVisits !== null) query = query.lte('total_bookings', maxVisits);
-            if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) query = query.gte('last_visit', dateFrom);
-            if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) query = query.lte('last_visit', dateTo);
-
-            const sortMap = {
-                'updated_at': { column: 'updated_at', ascending: false },
-                'name': { column: 'name', ascending: true },
-                'total_bookings': { column: 'total_bookings', ascending: false },
-                'total_spent': { column: 'total_spent', ascending: false },
-                'last_visit': { column: 'last_visit', ascending: false },
-                'created_at': { column: 'created_at', ascending: false }
-            };
-            const sort = sortMap[sortBy] || sortMap['updated_at'];
-            query = query.order(sort.column, { ascending: sort.ascending, nullsFirst: false });
-            query = query.range(offset, offset + limit - 1);
-
-            const { data, error, count } = await query;
-            if (error) throw error;
-
-            return res.json({
-                customers: (data || []).map(mapCustomerRow),
-                total: count || 0,
-                page,
-                pages: Math.ceil((count || 0) / limit)
-            });
-        }
-
-        // Fallback: Railway
+        // PostgreSQL
         const conditions = [];
         const params = [];
         conditions.push(customerContextCondition(params, businessContext, 'c'));
@@ -1458,21 +1323,14 @@ router.get('/:id', async (req, res) => {
         const numId = parseInt(id);
 
         let customer;
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const { data, error } = await sb.from('customers').select('*').eq('id', numId).eq('business_context', businessContext).single();
-            if (error || !data) return res.status(404).json({ error: 'Клієнта не знайдено' });
-            customer = mapCustomerRow(data);
-        } else {
-            const result = await pool.query(
-                `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-                [numId, businessContext]
-            );
-            if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
-            customer = mapCustomerRow(result.rows[0]);
-        }
+        const result = await pool.query(
+            `SELECT * FROM customers WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [numId, businessContext]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
+        customer = mapCustomerRow(result.rows[0]);
 
-        // Bookings + certificates from Railway DB (they stay there)
+        // Bookings + certificates from PostgreSQL
         const bookingParams = [numId, businessContext];
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
@@ -1557,18 +1415,6 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const payload = customerWritePayload(input);
-            let { data, error } = await sb.from('customers').insert(payload).select().single();
-            if (error && isCustomerSocialIdentitiesStorageError(error)) {
-                log.warn('Supabase customers.social_identities unavailable during create; retrying legacy payload', { error: error.message });
-                ({ data, error } = await sb.from('customers').insert(omitCustomerSocialIdentities(payload)).select().single());
-            }
-            if (error && isCustomerDuplicateError(error)) return sendCustomerDuplicateResponse(res);
-            if (error) throw error;
-            return res.json(mapCustomerRow(data));
-        }
 
         const result = await insertCustomerPg(input);
         res.json(mapCustomerRow(result.rows[0]));
@@ -1593,19 +1439,6 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const payload = customerWritePayload(input, { updatedAt: true });
-            let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).eq('business_context', businessContext).select().single();
-            if (error && isCustomerSocialIdentitiesStorageError(error)) {
-                log.warn('Supabase customers.social_identities unavailable during update; retrying legacy payload', { error: error.message });
-                ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).eq('business_context', businessContext).select().single());
-            }
-            if (error && isCustomerDuplicateError(error)) return sendCustomerDuplicateResponse(res);
-            if (error) throw error;
-            if (!data) return res.status(404).json({ error: 'Клієнта не знайдено' });
-            return res.json(mapCustomerRow(data));
-        }
 
         const result = await updateCustomerPg(id, input);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
@@ -1638,13 +1471,6 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
             await client.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
         } catch { /* certificates may not have customer_id yet */ }
 
-        const sb = getCustomerSupabase();
-        if (sb) {
-            const { error } = await sb.from('customers').delete().eq('id', numId).eq('business_context', businessContext);
-            if (error) { await client.query('ROLLBACK'); throw error; }
-            await client.query('COMMIT');
-            return res.json({ success: true });
-        }
 
         const result = await client.query(
             `DELETE FROM customers
@@ -1664,36 +1490,6 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     }
 });
 
-// v20.9.12: Migration endpoint — copy customers from Railway to Supabase
-router.post('/migrate-to-supabase', requireMinRole('director'), async (req, res) => {
-    try {
-        const sb = getSupabase();
-        if (!sb) return res.status(400).json({ error: 'Supabase not configured' });
-
-        const result = await pool.query('SELECT * FROM customers ORDER BY id LIMIT 5000');
-        if (result.rows.length === 0) return res.json({ success: true, migrated: 0 });
-
-        let migrated = 0;
-        for (const row of result.rows) {
-            const { error } = await sb.from('customers').upsert({
-                id: row.id, business_context: row.business_context || DEFAULT_BUSINESS_CONTEXT,
-                name: row.name, phone: row.phone, instagram: row.instagram,
-                child_name: row.child_name, child_birthday: row.child_birthday,
-                source: row.source, notes: row.notes, total_bookings: row.total_bookings || 0,
-                total_spent: row.total_spent || 0, first_visit: row.first_visit,
-                last_visit: row.last_visit, created_at: row.created_at, updated_at: row.updated_at
-            }, { onConflict: 'id' });
-            if (!error) migrated++;
-            else log.warn(`Migration failed for customer ${row.id}: ${error.message}`);
-        }
-
-        log.info(`Migrated ${migrated}/${result.rows.length} customers to Supabase`);
-        res.json({ success: true, migrated, total: result.rows.length });
-    } catch (err) {
-        log.error('Customer migration error', err);
-        res.status(500).json({ error: 'Migration failed' });
-    }
-});
 
 // Row mapper (snake_case → camelCase)
 function mapCustomerRow(row) {

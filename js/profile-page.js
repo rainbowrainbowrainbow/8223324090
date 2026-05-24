@@ -2204,12 +2204,12 @@ function formatCabinetPulseCount(value) {
 function cabinetTaskQuickCounts(data = myCabinetData) {
     const stats = data?.stats || {};
     const quick = stats.taskQuick || stats.tasksQuick || {};
-    const completed = Number(quick.completed ?? stats.completedCount ?? stats.doneCount ?? stats.todayDone ?? 0);
+    const completed = Number(quick.completedToday ?? stats.todayDone ?? quick.completed ?? stats.completedCount ?? stats.doneCount ?? 0);
     const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? cabinetList('today').length ?? 0);
     return {
         completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
         remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
-        scope: quick.scope || 'today_or_undated'
+        scope: quick.scope || 'completed_today_and_active_today_or_undated'
     };
 }
 
@@ -2220,7 +2220,7 @@ function renderCabinetTaskQuickSplit(counts = cabinetTaskQuickCounts()) {
         '<span class="cabinet-quick-mini-icon">✓</span>',
         '<span class="cabinet-quick-mini-copy">',
         '<span class="cabinet-quick-mini-count">' + formatCabinetPulseCount(counts.completed) + '</span>',
-        '<span class="cabinet-quick-mini-label">виконано</span>',
+        '<span class="cabinet-quick-mini-label">виконано сьогодні</span>',
         '</span>',
         '</span>',
         '<span class="cabinet-quick-divider"></span>',
@@ -2233,6 +2233,26 @@ function renderCabinetTaskQuickSplit(counts = cabinetTaskQuickCounts()) {
         '</span>',
         '</span>'
     ].join('');
+}
+
+function cabinetAlertQuickState(count = 0) {
+    const safeCount = Math.max(0, Math.floor(Number(count || 0)));
+    if (safeCount >= 10) {
+        return {
+            helper: 'Критичні алерти потребують уваги',
+            tone: 'critical'
+        };
+    }
+    if (safeCount > 0) {
+        return {
+            helper: 'Є активні алерти для перевірки',
+            tone: 'hot'
+        };
+    }
+    return {
+        helper: 'Критичних алертів немає',
+        tone: 'zero'
+    };
 }
 
 function getCabinetQuickMode() {
@@ -2261,14 +2281,15 @@ function syncCabinetQuickMode(mode) {
 function renderCabinetPulseCluster() {
     const taskQuick = cabinetTaskQuickCounts();
     const alertsCount = cabinetPulseCounts.alerts;
+    const alertState = cabinetAlertQuickState(alertsCount);
     const funnelCount = cabinetPulseCounts.funnel;
     const activeMode = getCabinetQuickMode();
     const items = [
         {
             id: 'tasks',
             label: '\u0417\u0430\u0434\u0430\u0447\u0456',
-            helper: 'Відкрити список задач',
-            count: `${formatCabinetPulseCount(taskQuick.completed)} виконано, ${formatCabinetPulseCount(taskQuick.remaining)} активні`,
+            helper: 'Сьогодні виконано / активні задачі',
+            count: `${formatCabinetPulseCount(taskQuick.completed)} виконано сьогодні, ${formatCabinetPulseCount(taskQuick.remaining)} активні`,
             splitHtml: renderCabinetTaskQuickSplit(taskQuick),
             tone: taskQuick.remaining > 0 ? 'live' : 'zero',
             action: "switchTab('mytasks')"
@@ -2276,9 +2297,9 @@ function renderCabinetPulseCluster() {
         {
             id: 'alerts',
             label: '\u0410\u043b\u0435\u0440\u0442\u0438',
-            helper: 'Показати критичні алерти',
+            helper: alertState.helper,
             count: formatCabinetPulseCount(alertsCount),
-            tone: alertsCount >= 10 ? 'critical' : alertsCount > 0 ? 'hot' : 'zero',
+            tone: alertState.tone,
             action: 'openCabinetAlerts(event)'
         },
         {

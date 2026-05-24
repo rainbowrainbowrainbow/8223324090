@@ -1390,9 +1390,11 @@ router.get('/my-cabinet', async (req, res) => {
                 todayDone: quickStats.done_today || 0,
                 todayPlanned: quickStats.remaining_today || buckets.today.length,
                 taskQuick: {
-                    completed: quickStats.done_total || 0,
+                    completed: quickStats.done_today || 0,
+                    completedToday: quickStats.done_today || 0,
+                    completedTotal: quickStats.done_total || 0,
                     remaining: quickStats.remaining_today || buckets.today.length,
-                    scope: 'today_or_undated'
+                    scope: 'completed_today_and_active_today_or_undated'
                 },
                 waitingCount: buckets.waiting.length,
                 overdueCount: buckets.overdue.length,

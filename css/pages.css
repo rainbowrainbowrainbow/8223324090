@@ -876,6 +876,16 @@ body.dark-mode .page-fatal-error {
     background: linear-gradient(180deg, #fb7185, #e11d48);
 }
 
+.cabinet-quick-segment--alerts.cabinet-quick-segment--zero .cabinet-quick-plate {
+    border-color: rgba(16, 185, 129, 0.18);
+    background: linear-gradient(180deg, rgba(236,253,245,0.98), rgba(209,250,229,0.88));
+}
+
+.cabinet-quick-segment--alerts.cabinet-quick-segment--zero .cabinet-quick-count {
+    background: linear-gradient(180deg, #34d399, #10b981);
+    color: #052e2b;
+}
+
 .cabinet-quick-segment--funnel .cabinet-quick-plate {
     background: linear-gradient(180deg, rgba(255,247,221,0.98), rgba(255,232,178,0.90));
 }
@@ -961,6 +971,16 @@ body.dark-mode .cabinet-quick-segment--tasks .cabinet-quick-plate {
 body.dark-mode .cabinet-quick-segment--alerts .cabinet-quick-plate {
     border-color: rgba(251,113,133,0.22);
     background: linear-gradient(180deg, rgba(127,29,29,0.94), rgba(159,18,57,0.84));
+}
+
+body.dark-mode .cabinet-quick-segment--alerts.cabinet-quick-segment--zero .cabinet-quick-plate {
+    border-color: rgba(52,211,153,0.22);
+    background: linear-gradient(180deg, rgba(6,95,70,0.92), rgba(15,118,110,0.74));
+}
+
+body.dark-mode .cabinet-quick-segment--alerts.cabinet-quick-segment--zero .cabinet-quick-count {
+    background: linear-gradient(180deg, #34d399, #0f766e);
+    color: #ecfdf5;
 }
 
 body.dark-mode .cabinet-quick-segment--funnel .cabinet-quick-plate {

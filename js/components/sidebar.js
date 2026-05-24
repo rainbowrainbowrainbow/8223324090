@@ -977,10 +977,16 @@ const Sidebar = (() => {
         return !date || date === today;
     }
 
+    function _isSidebarTaskCompletedToday(task = {}, today = _sidebarKyivToday()) {
+        if (task.status !== 'done') return false;
+        const completedDate = _sidebarTaskDateOnly(task.completedAt || task.completed_at);
+        return Boolean(completedDate && completedDate === today);
+    }
+
     function _sidebarTaskQuickCountsFromCabinet(cabinet = {}) {
         const stats = cabinet?.stats || {};
         const quick = stats.taskQuick || stats.tasksQuick || {};
-        const completed = Number(quick.completed ?? stats.completedCount ?? stats.doneCount ?? stats.todayDone ?? 0);
+        const completed = Number(quick.completedToday ?? stats.todayDone ?? quick.completed ?? stats.completedCount ?? stats.doneCount ?? 0);
         const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? 0);
         return {
             completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
@@ -1743,7 +1749,7 @@ const Sidebar = (() => {
                     return tokens.has(String(task.assigned_to || task.assignedTo || '').trim()) || tokens.has(String(task.owner || '').trim());
                 }) : [];
                 const today = _sidebarKyivToday();
-                completedCount = mine.filter(task => task.status === 'done').length;
+                completedCount = mine.filter(task => _isSidebarTaskCompletedToday(task, today)).length;
                 activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status) && _isSidebarTaskTodayOrUndated(task, today)).length;
                 overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
             }
@@ -1758,8 +1764,8 @@ const Sidebar = (() => {
                 metaEl.textContent = parts.join(' · ');
             }
             const taskTitle = overdueCount > 0
-                ? `Задачі: ${completedCount} виконано, ${activeCount} активні на сьогодні або без дати, ${overdueCount} прострочені. Натисніть, щоб відкрити всі задачі.`
-                : `Задачі: ${completedCount} виконано, ${activeCount} активні на сьогодні або без дати. Натисніть, щоб відкрити всі задачі.`;
+                ? `Задачі: ${completedCount} виконано сьогодні, ${activeCount} активні на сьогодні або без дати, ${overdueCount} прострочені. Натисніть, щоб відкрити всі задачі.`
+                : `Задачі: ${completedCount} виконано сьогодні, ${activeCount} активні на сьогодні або без дати. Натисніть, щоб відкрити всі задачі.`;
             _commandState.tasksActive = activeCount;
             _commandState.tasksCompleted = completedCount;
             _commandState.tasksOverdue = overdueCount;

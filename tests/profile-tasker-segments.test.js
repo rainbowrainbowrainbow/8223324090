@@ -52,26 +52,28 @@ test('profile my day ordering keeps decomposed groups and sorts newest tasks fir
     assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [4, 3, 2, 1]);
 });
 
-test('profile quick task card uses completed and today-or-undated remaining counts', () => {
+test('profile quick task card uses completed-today and today-or-undated remaining counts', () => {
     const ctx = loadProfileTaskerContext();
     const counts = ctx.cabinetTaskQuickCounts({
         stats: {
             taskQuick: {
-                completed: 12,
+                completed: 99,
+                completedToday: 12,
                 remaining: 3,
-                scope: 'today_or_undated'
+                scope: 'completed_today_and_active_today_or_undated'
             }
         }
     });
 
     assert.equal(counts.completed, 12);
     assert.equal(counts.remaining, 3);
-    assert.equal(counts.scope, 'today_or_undated');
+    assert.equal(counts.scope, 'completed_today_and_active_today_or_undated');
     const html = ctx.renderCabinetTaskQuickSplit(counts);
     assert.match(html, /cabinet-quick-half--completed/);
     assert.match(html, /cabinet-quick-half--remaining/);
     assert.match(html, />12</);
     assert.match(html, />3</);
+    assert.match(html, /виконано сьогодні/);
 });
 
 test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {
@@ -152,6 +154,9 @@ test('my cabinet task projection counts scheduled workload by today or no date, 
 
     assert.match(source, /function taskWorkloadDateSql/);
     assert.match(source, /taskQuick/);
+    assert.match(source, /completed:\s*quickStats\.done_today/);
+    assert.match(source, /completedToday:\s*quickStats\.done_today/);
+    assert.match(source, /completedTotal:\s*quickStats\.done_total/);
     assert.match(source, /remaining_today/);
     assert.match(source, /scheduled_start_at/);
     assert.match(source, /dueDate === today \|\| !dueDate/);

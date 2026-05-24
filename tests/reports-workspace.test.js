@@ -55,6 +55,14 @@ async function setupReportsDom() {
                 { hashtag: 'visible-ops', total: 50, count: 1, activeCount: 1, inactiveCount: 0 }
             ]);
         }
+        if (target.startsWith('/api/reports/workflow-settings')) {
+            return jsonResponse({
+                approvalAssigneeUserId: 2,
+                approvalAssigneeLabel: 'Бухгалтер',
+                users: [{ id: 2, username: 'accountant', name: 'Бухгалтер', role: 'accountant', label: 'Бухгалтер' }],
+                taskContract: { sourceType: 'report', sourceEntityType: 'report' }
+            });
+        }
         if (target === '/api/reports/table/close' && options.method === 'POST') {
             const body = JSON.parse(options.body || '{}');
             const rawData = JSON.parse(JSON.stringify(body.tableJson || {}));
@@ -74,6 +82,9 @@ async function setupReportsDom() {
                 submittedVia: 'web-template',
                 status: 'new',
                 lifecycleStatus: 'closed',
+                approvalStatus: 'task_created',
+                approvalTaskId: 777,
+                approvalAssigneeName: 'Бухгалтер',
                 closedAt: '2026-05-23T10:00:00.000Z',
                 closedByUsername: 'serhiy',
                 createdAt: new Date().toISOString(),
@@ -221,6 +232,7 @@ test('standard park report totals dar subtotal and locks after close', async () 
     assert.equal(body.amount, 200);
 
     await waitFor(() => /Закритий/.test(document.getElementById('reportSheetModeChip').textContent), 'closed lock render');
+    assert.match(document.getElementById('reportsTableBody').textContent, /#777/);
     assert.equal(document.getElementById('reportTemplateAddRowBtn').disabled, true);
     assert.equal(document.getElementById('reportTemplateAddColumnBtn').disabled, true);
     assert.equal(document.getElementById('reportTemplateCloseBtn').disabled, true);

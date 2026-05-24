@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.23",
+  "version": "0.63.24",
   "eventGenix": {
-    "releaseLabel": "CRM 63.23: без окремої вкладки Програми"
+    "releaseLabel": "CRM 63.24: погодження звітів бухгалтером"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

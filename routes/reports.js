@@ -9,6 +9,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
+const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const ExcelJS = require('exceljs');
 
 const log = createLogger('Reports');
@@ -59,6 +60,87 @@ function optionalInteger(value) {
 
 function currentUserId(req) {
     return optionalInteger(req.user?.id);
+}
+
+const REPORT_APPROVAL_ASSIGNEE_SETTING = 'reports.approval.assignee_user_id';
+
+function userLabel(row = {}) {
+    return row.name || row.username || (row.id ? `User #${row.id}` : null);
+}
+
+function normalizeApprovalStatus(value) {
+    return ['none', 'pending', 'task_created', 'in_review', 'approved', 'rejected'].includes(value) ? value : 'none';
+}
+
+async function getReportApprovalAssignee() {
+    const setting = await pool.query('SELECT value FROM settings WHERE key = $1 LIMIT 1', [REPORT_APPROVAL_ASSIGNEE_SETTING]);
+    const userId = optionalInteger(setting.rows[0]?.value);
+    if (!userId) return null;
+    const user = await pool.query(
+        `SELECT id, username, name, role
+         FROM users
+         WHERE id = $1 AND COALESCE(is_active, true) = true
+         LIMIT 1`,
+        [userId]
+    );
+    if (!user.rows.length) return null;
+    return {
+        id: user.rows[0].id,
+        username: user.rows[0].username,
+        name: user.rows[0].name || null,
+        role: user.rows[0].role || null,
+        label: userLabel(user.rows[0])
+    };
+}
+
+async function getReportWorkflowSettings(req) {
+    let users = [];
+    try {
+        users = await listTaskOwnerCandidates({ actor: req.user });
+    } catch (err) {
+        log.warn('Report workflow owner candidates lookup failed', { error: err.message });
+    }
+    const assignee = await getReportApprovalAssignee();
+    if (assignee && !users.some(user => Number(user.id) === Number(assignee.id))) {
+        users.unshift(assignee);
+    }
+    return {
+        approvalAssigneeUserId: assignee?.id || null,
+        approvalAssigneeLabel: assignee?.label || null,
+        users,
+        taskContract: {
+            sourceType: 'report',
+            sourceEntityType: 'report',
+            canonicalOwnerField: 'tasks.owner_user_id'
+        }
+    };
+}
+
+async function saveReportWorkflowSettings(req, body) {
+    const assigneeUserId = optionalInteger(body?.approvalAssigneeUserId ?? body?.assigneeUserId ?? body?.ownerUserId);
+    if (!assigneeUserId) {
+        await pool.query('DELETE FROM settings WHERE key = $1', [REPORT_APPROVAL_ASSIGNEE_SETTING]);
+        return getReportWorkflowSettings(req);
+    }
+    const user = await pool.query(
+        `SELECT id, username, name, role
+         FROM users
+         WHERE id = $1 AND COALESCE(is_active, true) = true
+         LIMIT 1`,
+        [assigneeUserId]
+    );
+    if (!user.rows.length) {
+        const err = new Error('Selected task receiver is not active');
+        err.statusCode = 400;
+        throw err;
+    }
+    await pool.query(
+        `INSERT INTO settings (key, value)
+         VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [REPORT_APPROVAL_ASSIGNEE_SETTING, String(assigneeUserId)]
+    );
+    return getReportWorkflowSettings(req);
 }
 
 function canManageReportTemplates(req) {
@@ -283,15 +365,21 @@ async function assignOnDutyAccountant(report) {
 }
 
 async function createReportHandoffTask(report, req) {
-    if (!report?.id || report.lifecycleStatus !== 'closed') return null;
+    if (!report?.id) return null;
     try {
         const reportId = String(report.id);
-        const title = `Перевірити закритий звіт #${reportId}`;
+        const reviewer = await getReportApprovalAssignee();
+        const assigneeLabel = reviewer?.label || report.accountantName || 'Бухгалтер';
+        const reportUrl = `/reports?reportId=${encodeURIComponent(reportId)}`;
+        const title = `Перевірити звіт #${reportId}`;
         const description = [
             `Звіт: ${report.description || report.rawData?.reportTableTemplate?.title || report.category || 'табличний звіт'}`,
             `Сума: ${Number(report.amount || 0).toLocaleString('uk-UA')} грн`,
-            `Закрив: ${report.closedByUsername || currentUsername(req)}`,
-            report.closedAt ? `Дата закриття: ${new Date(report.closedAt).toLocaleString('uk-UA')}` : null
+            `Статус звіту: ${report.lifecycleStatus === 'closed' ? 'закритий' : 'потребує перевірки'}`,
+            `Хто подав: ${report.submittedBy || currentUsername(req)}`,
+            report.closedByUsername ? `Закрив: ${report.closedByUsername}` : null,
+            report.closedAt ? `Дата закриття: ${new Date(report.closedAt).toLocaleString('uk-UA')}` : null,
+            `Відкрити звіт: ${reportUrl}`
         ].filter(Boolean).join('\n');
 
         const task = await getKleshnya().createTask({
@@ -299,11 +387,13 @@ async function createReportHandoffTask(report, req) {
             description,
             date: new Date().toISOString().slice(0, 10),
             priority: 'normal',
-            assigned_to: report.accountantName || 'Бухгалтер',
-            owner: report.accountantName || null,
+            assigned_to: assigneeLabel,
+            owner: assigneeLabel,
+            owner_user_id: reviewer?.id || null,
             created_by: currentUsername(req),
             created_by_user_id: currentUserId(req),
             category: 'finance',
+            subcategory: 'reports',
             source_type: 'report',
             source_id: reportId,
             source_entity_type: 'report',
@@ -315,11 +405,47 @@ async function createReportHandoffTask(report, req) {
             task_kind: 'action',
             visibility: 'team',
             workflow_state: 'todo',
+            control_meta: {
+                reportApproval: true,
+                reportId: Number(report.id),
+                reportUrl,
+                approvalStatus: 'task_created'
+            },
             duplicateMode: 'skip'
         });
+        if (task?.id) {
+            await pool.query(
+                `UPDATE reports
+                 SET approval_status = 'task_created',
+                     approval_task_id = $1,
+                     approval_assignee_user_id = $2,
+                     approval_assignee_name = $3,
+                     approval_requested_at = COALESCE(approval_requested_at, NOW()),
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [task.id, reviewer?.id || null, assigneeLabel, report.id]
+            );
+        } else {
+            await pool.query(
+                `UPDATE reports
+                 SET approval_status = CASE WHEN approval_status IN ('none', 'pending') THEN 'pending' ELSE approval_status END,
+                     approval_assignee_user_id = $1,
+                     approval_assignee_name = $2,
+                     updated_at = NOW()
+                 WHERE id = $3`,
+                [reviewer?.id || null, assigneeLabel, report.id]
+            );
+        }
         return task?.id ? task : null;
     } catch (err) {
         log.warn('Report handoff task creation skipped', { reportId: report?.id, error: err.message });
+        await pool.query(
+            `UPDATE reports
+             SET approval_status = CASE WHEN approval_status IN ('none', 'pending') THEN 'pending' ELSE approval_status END,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [report.id]
+        ).catch(() => {});
         return null;
     }
 }
@@ -389,7 +515,17 @@ function mapReportRow(r) {
         hashtags: parseHashtags(r.hashtags),
         hashtagActive: r.hashtag_active !== false && r.hashtag_active !== 0,
         // joined fields
-        accountantName: r.accountant_name || null
+        accountantName: r.accountant_name || null,
+        approvalStatus: normalizeApprovalStatus(r.approval_status),
+        approvalTaskId: r.approval_task_id || null,
+        approvalTaskStatus: r.approval_task_status || null,
+        approvalAssigneeUserId: r.approval_assignee_user_id || null,
+        approvalAssigneeName: r.approval_assignee_name || null,
+        approvalRequestedAt: r.approval_requested_at || null,
+        approvalReviewedAt: r.approval_reviewed_at || null,
+        approvalReviewedByUserId: r.approval_reviewed_by_user_id || null,
+        approvalReviewedByUsername: r.approval_reviewed_by_username || null,
+        approvalComment: r.approval_comment || null
     };
 }
 
@@ -404,6 +540,86 @@ function mapAccountantRow(r) {
         staffId: r.staff_id,
         createdAt: r.created_at
     };
+}
+
+async function loadReportRow(id) {
+    const result = await pool.query(`
+        SELECT r.*, a.name AS accountant_name, t.status AS approval_task_status
+        FROM reports r
+        LEFT JOIN accountants a ON a.id = r.assigned_to
+        LEFT JOIN tasks t ON t.id = r.approval_task_id
+        WHERE r.id = $1
+    `, [id]);
+    return result.rows[0] || null;
+}
+
+async function loadReportPayload(id) {
+    const row = await loadReportRow(id);
+    return row ? mapReportRow(row) : null;
+}
+
+async function completeApprovalTask(taskId, actor) {
+    if (!taskId) return null;
+    try {
+        return await getKleshnya().updateTaskStatus(taskId, 'done', actor);
+    } catch (err) {
+        log.warn('Report approval task status update skipped', { taskId, error: err.message });
+        return null;
+    }
+}
+
+function updateReportApprovalFromStatus(status, updates, params, req) {
+    if (status === 'processing') {
+        updates.push(`approval_status = CASE WHEN approval_status IN ('none', 'pending', 'task_created') THEN 'in_review' ELSE approval_status END`);
+    }
+    if (status === 'done' || status === 'rejected') {
+        const approvalStatus = status === 'done' ? 'approved' : 'rejected';
+        params.push(approvalStatus);
+        updates.push(`approval_status = $${params.length}`);
+        updates.push(`approval_reviewed_at = COALESCE(approval_reviewed_at, NOW())`);
+        params.push(currentUserId(req));
+        updates.push(`approval_reviewed_by_user_id = COALESCE(approval_reviewed_by_user_id, $${params.length})`);
+        params.push(currentUsername(req));
+        updates.push(`approval_reviewed_by_username = COALESCE(approval_reviewed_by_username, $${params.length})`);
+    }
+}
+
+function scheduleFinanceTransactionForReport(report, req) {
+    if (!report || Number(report.amount || 0) <= 0) return;
+    const reportId = report.id;
+    setImmediate(async () => {
+        try {
+            const exists = await pool.query(
+                `SELECT id FROM finance_transactions WHERE description LIKE $1 LIMIT 1`,
+                [`%#${reportId}%`]
+            );
+            if (exists.rowCount) return;
+
+            const finType = report.type === 'expense' ? 'expense' : 'income';
+            const categoryName = report.category || 'Інше';
+            const catQuery = await pool.query(
+                `SELECT id FROM finance_categories WHERE name ILIKE $1 AND type = $2 LIMIT 1`,
+                [`%${categoryName}%`, finType]
+            );
+            const catId = catQuery.rows[0]?.id || null;
+
+            await pool.query(
+                `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                    finType,
+                    catId,
+                    Math.round(Number(report.amount || 0)),
+                    `${report.description || 'Звіт'} (звіт #${reportId})`,
+                    report.created_at ? new Date(report.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+                    'report',
+                    report.submitted_by || req.user?.username || 'system'
+                ]
+            );
+        } catch (err) {
+            log.warn(`[ReportFinance] Error: ${err.message}`);
+        }
+    });
 }
 
 // ==========================================
@@ -448,9 +664,10 @@ router.get('/', async (req, res) => {
 
         const params = [];
         let sql = `
-            SELECT r.*, a.name AS accountant_name
+            SELECT r.*, a.name AS accountant_name, t.status AS approval_task_status
             FROM reports r
             LEFT JOIN accountants a ON a.id = r.assigned_to
+            LEFT JOIN tasks t ON t.id = r.approval_task_id
             WHERE 1=1
         `;
         sql += buildWhere(params);
@@ -1022,6 +1239,10 @@ router.post('/table/close', async (req, res) => {
         const handoffTask = await createReportHandoffTask(report, req);
         if (handoffTask?.id) {
             report.handoffTaskId = handoffTask.id;
+            report.approvalTaskId = handoffTask.id;
+            report.approvalStatus = 'task_created';
+            report.approvalTaskStatus = handoffTask.status || null;
+            report.approvalAssigneeName = handoffTask.assigned_to || handoffTask.owner || report.approvalAssigneeName || null;
             report.handoffDuplicateSkipped = Boolean(handoffTask.duplicateSkipped);
         }
         res.status(reportId ? 200 : 201).json({ success: true, report });
@@ -1095,19 +1316,127 @@ router.post('/table/export-xlsx', async (req, res) => {
 // ==========================================
 // GET /api/reports/:id — single report
 // ==========================================
+// ==========================================
+// REPORT APPROVAL WORKFLOW - task-backed accountant review
+// ==========================================
+router.get('/workflow-settings', async (req, res) => {
+    try {
+        res.json(await getReportWorkflowSettings(req));
+    } catch (err) {
+        log.error('GET /reports/workflow-settings error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.put('/workflow-settings', async (req, res) => {
+    try {
+        res.json(await saveReportWorkflowSettings(req, req.body || {}));
+    } catch (err) {
+        log.error('PUT /reports/workflow-settings error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.post('/:id/request-approval', async (req, res) => {
+    try {
+        const report = await loadReportPayload(req.params.id);
+        if (!report) return res.status(404).json({ error: 'Report not found' });
+        const task = await createReportHandoffTask(report, req);
+        const updated = await loadReportPayload(req.params.id);
+        res.json({ report: updated, taskId: task?.id || updated?.approvalTaskId || null, duplicateSkipped: Boolean(task?.duplicateSkipped) });
+    } catch (err) {
+        log.error('POST /reports/:id/request-approval error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/:id/in-review', async (req, res) => {
+    try {
+        const existing = await loadReportRow(req.params.id);
+        if (!existing) return res.status(404).json({ error: 'Report not found' });
+        const result = await pool.query(
+            `UPDATE reports
+             SET status = CASE WHEN status = 'new' THEN 'processing' ELSE status END,
+                 approval_status = CASE WHEN approval_status IN ('none', 'pending', 'task_created') THEN 'in_review' ELSE approval_status END,
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [req.params.id]
+        );
+        if (existing.approval_task_id) {
+            getKleshnya().updateTaskStatus(existing.approval_task_id, 'in_progress', currentUsername(req)).catch(err => {
+                log.warn('Report approval task in-progress update skipped', { taskId: existing.approval_task_id, error: err.message });
+            });
+        }
+        res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: existing.approval_task_status }));
+    } catch (err) {
+        log.error('POST /reports/:id/in-review error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/:id/approve', async (req, res) => {
+    try {
+        const existing = await loadReportRow(req.params.id);
+        if (!existing) return res.status(404).json({ error: 'Report not found' });
+        const comment = String(req.body?.comment || '').trim().slice(0, 2000);
+        const result = await pool.query(
+            `UPDATE reports
+             SET status = 'done',
+                 processed_at = NOW(),
+                 approval_status = 'approved',
+                 approval_reviewed_at = NOW(),
+                 approval_reviewed_by_user_id = $2,
+                 approval_reviewed_by_username = $3,
+                 approval_comment = NULLIF($4, ''),
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [req.params.id, currentUserId(req), currentUsername(req), comment]
+        );
+        await completeApprovalTask(existing.approval_task_id, currentUsername(req));
+        scheduleFinanceTransactionForReport(result.rows[0], req);
+        res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: 'done' }));
+    } catch (err) {
+        log.error('POST /reports/:id/approve error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/:id/reject', async (req, res) => {
+    try {
+        const existing = await loadReportRow(req.params.id);
+        if (!existing) return res.status(404).json({ error: 'Report not found' });
+        const comment = String(req.body?.comment || '').trim().slice(0, 2000);
+        const result = await pool.query(
+            `UPDATE reports
+             SET status = 'rejected',
+                 approval_status = 'rejected',
+                 approval_reviewed_at = NOW(),
+                 approval_reviewed_by_user_id = $2,
+                 approval_reviewed_by_username = $3,
+                 approval_comment = NULLIF($4, ''),
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [req.params.id, currentUserId(req), currentUsername(req), comment]
+        );
+        await completeApprovalTask(existing.approval_task_id, currentUsername(req));
+        res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: 'done' }));
+    } catch (err) {
+        log.error('POST /reports/:id/reject error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query(`
-            SELECT r.*, a.name AS accountant_name
-            FROM reports r
-            LEFT JOIN accountants a ON a.id = r.assigned_to
-            WHERE r.id = $1
-        `, [id]);
-        if (result.rows.length === 0) {
+        const report = await loadReportPayload(id);
+        if (!report) {
             return res.status(404).json({ error: 'Report not found' });
         }
-        res.json(mapReportRow(result.rows[0]));
+        res.json(report);
     } catch (err) {
         log.error('GET /reports/:id error', err);
         res.status(500).json({ error: 'Database error' });
@@ -1203,6 +1532,7 @@ router.put('/:id', async (req, res) => {
             params.push(status);
             updates.push(`status = $${params.length}`);
             if (status === 'done') updates.push(`processed_at = NOW()`);
+            updateReportApprovalFromStatus(status, updates, params, req);
         }
         if (photoUrl !== undefined) { params.push(photoUrl); updates.push(`photo_url = $${params.length}`); }
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
@@ -1222,6 +1552,9 @@ router.put('/:id', async (req, res) => {
         `, params);
 
         const updatedReport = result.rows[0];
+        if ((status === 'done' || status === 'rejected') && updatedReport.approval_task_id) {
+            completeApprovalTask(updatedReport.approval_task_id, currentUsername(req)).catch(() => {});
+        }
 
         // v33.8.0: When report is marked as done, create finance transaction (fire-and-forget)
         if (status === 'done' && updatedReport.amount > 0) {

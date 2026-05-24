@@ -29,6 +29,9 @@ const ReportsPage = (() => {
     let _reportTableDirty = false;
     let _reportTableBusy = false;
     let _reportTemplateWorkspaceReady = false;
+    let _reportWorkflowSettings = null;
+    let _reportApprovalUsers = [];
+    let _pendingOpenReportId = null;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -389,6 +392,15 @@ const ReportsPage = (() => {
         rejected: 'Відхилено'
     };
 
+    const APPROVAL_LABELS = {
+        none: 'Не передано',
+        pending: 'Очікує задачі',
+        task_created: 'Задача бухгалтеру',
+        in_review: 'На перевірці',
+        approved: 'Затверджено',
+        rejected: 'Повернуто'
+    };
+
     // ==========================================
     // DATE RANGE HELPERS
     // ==========================================
@@ -439,17 +451,22 @@ const ReportsPage = (() => {
         }
 
         document.getElementById('addReportBtn')?.addEventListener('click', () => openModal());
+        document.getElementById('reportApprovalSaveBtn')?.addEventListener('click', saveWorkflowSettings);
 
         document.getElementById('reportModal')?.addEventListener('click', e => {
             if (e.target === e.currentTarget) closeModal();
         });
+
+        const reportIdParam = Number(new URLSearchParams(window.location.search).get('reportId') || 0);
+        _pendingOpenReportId = Number.isInteger(reportIdParam) && reportIdParam > 0 ? reportIdParam : null;
 
         await Promise.all([
             loadSummary(),
             loadReports(),
             loadOnDuty(),
             loadSubmitters(),
-            loadHashtags()
+            loadHashtags(),
+            loadWorkflowSettings()
         ]);
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -503,10 +520,18 @@ const ReportsPage = (() => {
             sortReports();
             renderTable();
             renderPagination();
+            if (_pendingOpenReportId && _reports.some(report => Number(report.id) === Number(_pendingOpenReportId))) {
+                const id = _pendingOpenReportId;
+                _pendingOpenReportId = null;
+                setTimeout(() => {
+                    if (_expandedRow !== id) toggleDetail(id);
+                    document.querySelector(`tr[data-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 0);
+            }
         } catch (err) {
             console.error('Load reports error:', err);
             const tbody = document.getElementById('reportsTableBody');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#EF4444">Помилка завантаження</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#EF4444">Помилка завантаження</td></tr>';
         }
     }
 
@@ -526,6 +551,59 @@ const ReportsPage = (() => {
             ).join('');
         } catch (err) {
             console.error('Load on-duty error:', err);
+        }
+    }
+
+    async function loadWorkflowSettings() {
+        try {
+            _reportWorkflowSettings = await apiRequest('GET', '/api/reports/workflow-settings');
+            _reportApprovalUsers = Array.isArray(_reportWorkflowSettings.users) ? _reportWorkflowSettings.users : [];
+            renderWorkflowSettings();
+        } catch (err) {
+            console.error('Load report workflow settings error:', err);
+            renderWorkflowSettings(true);
+        }
+    }
+
+    function renderWorkflowSettings(hasError = false) {
+        const select = document.getElementById('reportApprovalAssignee');
+        const current = document.getElementById('reportApprovalCurrent');
+        const hint = document.getElementById('reportApprovalHint');
+        if (select) {
+            const selectedId = String(_reportWorkflowSettings?.approvalAssigneeUserId || '');
+            select.innerHTML = [
+                '<option value="">Бухгалтер на зміні / fallback</option>',
+                ..._reportApprovalUsers.map(user => {
+                    const label = user.label || user.name || user.username || `User #${user.id}`;
+                    return `<option value="${esc(user.id)}"${String(user.id) === selectedId ? ' selected' : ''}>${esc(label)}${user.role ? ` · ${esc(user.role)}` : ''}</option>`;
+                })
+            ].join('');
+        }
+        if (current) {
+            current.textContent = hasError
+                ? 'Налаштування недоступне'
+                : (_reportWorkflowSettings?.approvalAssigneeLabel
+                    ? `Задача піде: ${_reportWorkflowSettings.approvalAssigneeLabel}`
+                    : 'Задача піде бухгалтеру на зміні');
+        }
+        if (hint) {
+            hint.textContent = hasError
+                ? 'Не вдалося завантажити маршрут перевірки. Закриття звіту все одно збереже сам звіт.'
+                : 'Коли звіт закривають або вручну відправляють на перевірку, CRM створює задачу з джерелом report і показує її статус у списку.';
+        }
+    }
+
+    async function saveWorkflowSettings() {
+        const select = document.getElementById('reportApprovalAssignee');
+        try {
+            _reportWorkflowSettings = await apiRequest('PUT', '/api/reports/workflow-settings', {
+                approvalAssigneeUserId: select?.value || null
+            });
+            _reportApprovalUsers = Array.isArray(_reportWorkflowSettings.users) ? _reportWorkflowSettings.users : [];
+            renderWorkflowSettings();
+            showNotification('Маршрут перевірки звітів збережено');
+        } catch (err) {
+            showNotification('Не вдалося зберегти маршрут: ' + err.message, 'error');
         }
     }
 
@@ -1578,8 +1656,9 @@ const ReportsPage = (() => {
                 _reportTableState.lifecycle = { status: 'closed', closedAt: new Date().toISOString() };
             }
             _reportTableDirty = false;
-            showNotification('Звіт закрито і передано бухгалтеру');
-            setTemplateStatus(`Звіт #${_editingTableReportId || ''} закрито. Редагування заблоковано.`);
+            const taskSuffix = data.report?.approvalTaskId || data.report?.handoffTaskId ? ` · задача #${data.report?.approvalTaskId || data.report?.handoffTaskId}` : '';
+            showNotification(`Звіт закрито і передано бухгалтеру${taskSuffix}`);
+            setTemplateStatus(`Звіт #${_editingTableReportId || ''} закрито. Редагування заблоковано${taskSuffix}.`);
             await Promise.all([loadReports(), loadSummary(), loadHashtags(), loadReportDrafts()]);
             renderReportTemplateCards();
             renderReportTableWorkspace();
@@ -1705,12 +1784,49 @@ const ReportsPage = (() => {
     // RENDER: Table
     // ==========================================
 
+    function reportApprovalStatus(report) {
+        return report?.approvalStatus || 'none';
+    }
+
+    function renderApprovalBadge(report) {
+        const status = reportApprovalStatus(report);
+        const label = APPROVAL_LABELS[status] || status;
+        const task = report.approvalTaskId
+            ? ` <a href="/tasks?related_entity_type=report&related_entity_id=${encodeURIComponent(report.id)}" onclick="event.stopPropagation()" title="Відкрити задачі по звіту">#${report.approvalTaskId}</a>`
+            : '';
+        const assignee = report.approvalAssigneeName ? `<small>${esc(report.approvalAssigneeName)}</small>` : '';
+        return `<span class="rpt-approval-badge ${status}">${label}${task}</span>${assignee}`;
+    }
+
+    function renderApprovalActions(report, mode = 'compact') {
+        const status = reportApprovalStatus(report);
+        const closed = isClosedReport(report);
+        const compact = mode === 'compact';
+        const buttonClass = compact ? 'rpt-action-btn' : 'rpt-action-btn text';
+        const buttons = [];
+        if (!report.approvalTaskId && !['approved', 'rejected'].includes(status)) {
+            buttons.push(`<button class="${buttonClass} primary" onclick="event.stopPropagation();ReportsPage.requestApproval(${report.id})" title="Поставити задачу на перевірку">${compact ? '📌' : 'Поставити задачу'}</button>`);
+        }
+        if (['pending', 'task_created', 'none'].includes(status) && !['approved', 'rejected'].includes(status)) {
+            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.startApprovalReview(${report.id})" title="Взяти звіт в перевірку">${compact ? '🔎' : 'Взяти в перевірку'}</button>`);
+        }
+        if (!['approved', 'rejected'].includes(status)) {
+            buttons.push(`<button class="${buttonClass} success" onclick="event.stopPropagation();ReportsPage.approveReport(${report.id})" title="Затвердити звіт">${compact ? '✅' : 'Затвердити'}</button>`);
+            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.rejectReport(${report.id})" title="Повернути звіт">${compact ? '↩' : 'Повернути'}</button>`);
+        }
+        if (!closed) {
+            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.editReport(${report.id})" title="Редагувати">${compact ? '✏️' : 'Редагувати'}</button>`);
+            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.deleteReport(${report.id})" title="Видалити">${compact ? '🗑️' : 'Видалити'}</button>`);
+        }
+        return buttons.join('');
+    }
+
     function renderTable() {
         const tbody = document.getElementById('reportsTableBody');
         if (!tbody) return;
 
         if (_reports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--gray-400)">Немає звітів за обраний період</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--gray-400)">Немає звітів за обраний період</td></tr>';
             return;
         }
 
@@ -1735,13 +1851,14 @@ const ReportsPage = (() => {
                     <td>${esc(r.category) || '—'}</td>
                     <td>${esc(r.submittedBy) || '—'}</td>
                     <td>${photoBtn}</td>
-                    <td><span class="rpt-status-badge ${r.status}">${statusLabel}</span>${closed ? '<br><span class="rpt-sheet-mode-chip closed">Закритий</span>' : ''}</td>
                     <td>
-                        <div style="display:flex;gap:2px">
-                            ${r.status === 'new' ? `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.markProcessing(${r.id})" title="В обробку">⏳</button>` : ''}
-                            ${r.status !== 'done' ? `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.markDone(${r.id})" title="Опрацьовано">✅</button>` : ''}
-                            ${closed ? '' : `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.editReport(${r.id})" title="Редагувати">✏️</button>`}
-                            ${closed ? '' : `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.deleteReport(${r.id})" title="Видалити">🗑️</button>`}
+                        <span class="rpt-status-badge ${r.status}">${statusLabel}</span>
+                        ${closed ? '<br><span class="rpt-sheet-mode-chip closed">Закритий</span>' : ''}
+                        <br>${renderApprovalBadge(r)}
+                    </td>
+                    <td>
+                        <div class="rpt-row-actions">
+                            ${renderApprovalActions(r)}
                         </div>
                     </td>
                 </tr>
@@ -1772,7 +1889,7 @@ const ReportsPage = (() => {
         detailRow.className = 'rpt-detail-row';
         detailRow.dataset.detail = id;
         detailRow.innerHTML = `
-            <td colspan="11">
+            <td colspan="10">
                 <div class="rpt-detail-content">
                     ${tags ? `<p><strong>Хештеги:</strong> ${tags}</p>` : ''}
                     ${report.ocrText ? `<p><strong>OCR текст:</strong> ${esc(report.ocrText)}</p>` : ''}
@@ -1780,6 +1897,15 @@ const ReportsPage = (() => {
                     <p><strong>Канал:</strong> ${esc(report.submittedVia) || 'web'}</p>
                     ${renderReportRawTemplatePreview(report)}
                     ${report.accountantName ? `<p><strong>Бухгалтер:</strong> ${esc(report.accountantName)}</p>` : ''}
+                    <div class="rpt-approval-panel">
+                        <div>
+                            <strong>Погодження:</strong> ${renderApprovalBadge(report)}
+                            ${report.approvalRequestedAt ? `<p>Задача поставлена: ${formatDateTime(report.approvalRequestedAt)}</p>` : ''}
+                            ${report.approvalReviewedAt ? `<p>Рішення: ${formatDateTime(report.approvalReviewedAt)} · ${esc(report.approvalReviewedByUsername) || 'system'}</p>` : ''}
+                            ${report.approvalComment ? `<p>Коментар бухгалтера: ${esc(report.approvalComment)}</p>` : ''}
+                        </div>
+                        <div class="rpt-detail-actions">${renderApprovalActions(report, 'detail')}</div>
+                    </div>
                     ${report.processedAt ? `<p><strong>Опрацьовано:</strong> ${formatDateTime(report.processedAt)}</p>` : ''}
                     <p><strong>Створено:</strong> ${formatDateTime(report.createdAt)}</p>
                     <p><strong>Враховується в підсумках:</strong> ${report.hashtagActive !== false ? '✅ Так' : '❌ Ні'}</p>
@@ -1833,19 +1959,50 @@ const ReportsPage = (() => {
     }
 
     async function markProcessing(id) {
+        return startApprovalReview(id);
+    }
+
+    async function markDone(id) {
+        return approveReport(id);
+    }
+
+    async function requestApproval(id) {
         try {
-            await apiRequest('PUT', `/api/reports/${id}`, { status: 'processing' });
-            showNotification('Звіт переведено в обробку');
+            const result = await apiRequest('POST', `/api/reports/${id}/request-approval`, {});
+            showNotification(result.duplicateSkipped ? 'Задача на перевірку вже існує' : 'Задачу бухгалтеру поставлено');
             await loadReports();
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
     }
 
-    async function markDone(id) {
+    async function startApprovalReview(id) {
         try {
-            await apiRequest('PUT', `/api/reports/${id}`, { status: 'done' });
-            showNotification('Звіт опрацьовано');
+            await apiRequest('POST', `/api/reports/${id}/in-review`, {});
+            showNotification('Звіт взято в перевірку');
+            await Promise.all([loadReports(), loadSummary()]);
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
+    }
+
+    async function approveReport(id) {
+        try {
+            const comment = window.prompt('Коментар бухгалтера до затвердження (необовʼязково)', '') || '';
+            await apiRequest('POST', `/api/reports/${id}/approve`, { comment });
+            showNotification('Звіт затверджено бухгалтером');
+            await Promise.all([loadReports(), loadSummary()]);
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
+    }
+
+    async function rejectReport(id) {
+        const comment = window.prompt('Причина повернення звіту бухгалтером', '');
+        if (comment === null) return;
+        try {
+            await apiRequest('POST', `/api/reports/${id}/reject`, { comment });
+            showNotification('Звіт повернуто на доопрацювання');
             await Promise.all([loadReports(), loadSummary()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
@@ -2026,6 +2183,11 @@ const ReportsPage = (() => {
         showPhoto,
         markProcessing,
         markDone,
+        requestApproval,
+        startApprovalReview,
+        approveReport,
+        rejectReport,
+        saveWorkflowSettings,
         deleteReport,
         editReport,
         closeModal,

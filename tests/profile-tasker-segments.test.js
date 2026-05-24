@@ -115,9 +115,13 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
 
     const html = ctx.renderCabinetTaskCard(task);
     assert.match(html, /data-cabinet-task-action="reschedule-overdue-menu"/);
+    assert.match(html, /data-reschedule-option="today"/);
     assert.match(html, /data-reschedule-option="tomorrow"/);
     assert.match(html, /data-reschedule-option="day_after"/);
     assert.match(html, /data-reschedule-option="custom"/);
+    assert.match(html, /draggable="true"/);
+    assert.match(html, /data-cabinet-task-drag="overdue"/);
+    assert.match(html, /data-cabinet-task-action="move-to-today"/);
     assert.match(html, /data-cabinet-subtasks-panel="44"/);
     assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
     assert.match(html, /data-cabinet-subtask-done/);
@@ -135,6 +139,40 @@ test('profile task cards respect disabled rescheduling control meta', () => {
     assert.match(html, /data-cabinet-task-action="reschedule-overdue-menu"/);
     assert.match(html, /disabled/);
     assert.doesNotMatch(html, /data-cabinet-task-action="reschedule-overdue"/);
+    assert.doesNotMatch(html, /data-cabinet-task-drag="overdue"/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="move-to-today"/);
+});
+
+test('profile my day exposes today as a real overdue drop target', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetSection('Сьогодні', [], 'Порожньо', false, {
+        dropTarget: 'today',
+        dropHint: 'Киньте сюди прострочену задачу'
+    });
+
+    assert.match(html, /cabinet-task-section--drop-target/);
+    assert.match(html, /data-cabinet-task-drop-target="today"/);
+    assert.match(html, /Киньте сюди прострочену задачу/);
+});
+
+test('profile overdue to today move persists through reschedule endpoint with today deadline', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    ctx.apiPost = async (url, payload) => {
+        calls.push({ url, payload });
+        return { success: true };
+    };
+    ctx.showNotification = () => {};
+    ctx.refreshMyCabinetTab = async () => {};
+
+    await ctx.rescheduleCabinetTask(77, 'today', {
+        sourceSurface: 'profile_my_cabinet_overdue_to_today_drop'
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/tasks/77/reschedule');
+    assert.equal(calls[0].payload.sourceSurface, 'profile_my_cabinet_overdue_to_today_drop');
+    assert.match(calls[0].payload.deadline, /^20\d{2}-\d{2}-\d{2}T18:00:00$/);
 });
 
 test('profile unfinished gamification tabs use soon lockdown by role', () => {

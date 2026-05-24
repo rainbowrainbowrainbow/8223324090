@@ -141,9 +141,16 @@ function taskValue(task = {}) {
 
 function sourceSurface(value) {
     const raw = String(value || '').trim();
-    if (raw === 'task_page') return raw;
-    if (raw === 'task_detail') return raw;
-    if (raw === DEFAULT_TASK_SOURCE_SURFACE) return raw;
+    if ([
+        'task_page',
+        'task_page_overdue_badge',
+        'task_detail',
+        'profile_my_cabinet',
+        'profile_my_cabinet_overdue_badge',
+        'profile_my_cabinet_overdue_to_today_button',
+        'profile_my_cabinet_overdue_to_today_drop',
+        DEFAULT_TASK_SOURCE_SURFACE
+    ].includes(raw)) return raw;
     return DEFAULT_TASK_SOURCE_SURFACE;
 }
 

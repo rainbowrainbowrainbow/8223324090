@@ -1556,11 +1556,50 @@ body.dark-mode .cabinet-task-composer-hint {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
+    gap: 10px;
 }
 
 .cabinet-section-head h3 {
     margin: 0;
     font-size: 15px;
+}
+
+.cabinet-section-head-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+
+.cabinet-section-drop-hint {
+    display: none;
+    max-width: 170px;
+    color: var(--gray-500, #6b7280);
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: right;
+}
+
+.cabinet-task-section--drop-target {
+    position: relative;
+    border-color: rgba(20, 184, 166, 0.28);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.cabinet-task-section--drop-target .cabinet-section-drop-hint {
+    display: inline-block;
+}
+
+.cabinet-task-section--drop-target.is-drag-over {
+    border-color: rgba(16, 185, 129, 0.78);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(20, 184, 166, 0.06)), var(--white, #fff);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16), 0 16px 40px rgba(15, 23, 42, 0.10);
+}
+
+.cabinet-task-section--drop-target.is-drag-over .cabinet-section-drop-hint {
+    color: #047857;
 }
 
 .cabinet-task-card {
@@ -1570,6 +1609,20 @@ body.dark-mode .cabinet-task-composer-hint {
     padding: 10px 0;
     border-top: 1px solid var(--gray-100, #f3f4f6);
     transition: opacity 0.18s ease, transform 0.18s ease, filter 0.18s ease;
+}
+
+.cabinet-task-card[data-cabinet-task-drag="overdue"] {
+    cursor: grab;
+}
+
+.cabinet-task-card[data-cabinet-task-drag="overdue"]:active {
+    cursor: grabbing;
+}
+
+.cabinet-task-card.is-dragging {
+    opacity: 0.52;
+    filter: saturate(0.78);
+    transform: scale(0.992);
 }
 
 .cabinet-task-card.is-updating {
@@ -1627,6 +1680,32 @@ body.dark-mode .cabinet-task-composer-hint {
 .cabinet-task-due-action:disabled {
     cursor: not-allowed;
     opacity: 0.66;
+}
+
+.cabinet-task-move-today {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(16, 185, 129, 0.32);
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.12);
+    padding: 2px 8px;
+    color: #047857;
+    font: inherit;
+    font-weight: 900;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.cabinet-task-move-today:hover,
+.cabinet-task-move-today:focus-visible {
+    border-color: rgba(16, 185, 129, 0.58);
+    background: rgba(16, 185, 129, 0.20);
+    color: #065f46;
+}
+
+.cabinet-task-move-today.is-busy {
+    cursor: progress;
+    opacity: 0.68;
 }
 
 .cabinet-reschedule-wrap {
@@ -1997,6 +2076,37 @@ body.dark-mode .cabinet-task-due-badge--snoozed {
     background: rgba(120, 53, 15, 0.34);
     border-color: rgba(251, 191, 36, 0.24);
     color: #fde68a;
+}
+
+body.dark-mode .cabinet-task-section--drop-target {
+    border-color: rgba(45, 212, 191, 0.30);
+}
+
+body.dark-mode .cabinet-task-section--drop-target.is-drag-over {
+    border-color: rgba(52, 211, 153, 0.74);
+    background: linear-gradient(135deg, rgba(6, 95, 70, 0.32), rgba(15, 23, 42, 0.72));
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16), 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+body.dark-mode .cabinet-section-drop-hint {
+    color: rgba(203, 213, 225, 0.78);
+}
+
+body.dark-mode .cabinet-task-section--drop-target.is-drag-over .cabinet-section-drop-hint {
+    color: #99f6e4;
+}
+
+body.dark-mode .cabinet-task-move-today {
+    border-color: rgba(52, 211, 153, 0.34);
+    background: rgba(16, 185, 129, 0.16);
+    color: #bbf7d0;
+}
+
+body.dark-mode .cabinet-task-move-today:hover,
+body.dark-mode .cabinet-task-move-today:focus-visible {
+    border-color: rgba(94, 234, 212, 0.54);
+    background: rgba(20, 184, 166, 0.24);
+    color: #ccfbf1;
 }
 
 body.dark-mode .cabinet-task-priority--high,

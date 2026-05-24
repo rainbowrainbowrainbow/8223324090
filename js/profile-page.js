@@ -27,6 +27,8 @@ let cabinetCreateDuePreset = 'today';
 let cabinetTaskComposerExpanded = false;
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
+let cabinetTaskDragDropBound = false;
+let cabinetTaskDragState = null;
 let cabinetUndoToastTimer = null;
 let profileSecurityData = null;
 let cabinetSavedDecompositionTemplates = [];
@@ -2482,6 +2484,7 @@ function cabinetTaskAllowsReschedule(task = {}) {
 
 function renderCabinetRescheduleMenu(taskIdAttr) {
     const options = [
+        ['today', 'Сьогодні'],
         ['tomorrow', 'Завтра'],
         ['day_after', 'Післязавтра'],
         ['custom', 'Обрати дату']
@@ -2503,6 +2506,16 @@ function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}) {
         <button type="button" class="${className} cabinet-task-due-action" data-cabinet-task-action="reschedule-overdue-menu" data-task-id="${taskIdAttr}" aria-haspopup="menu" aria-expanded="false" ${canReschedule ? '' : 'disabled'} title="${canReschedule ? 'Перенести прострочену задачу' : 'Перенесення вимкнено для цієї задачі'}">${escapeHtml(label)}</button>
         ${canReschedule ? renderCabinetRescheduleMenu(taskIdAttr) : ''}
     </span>`;
+}
+
+function cabinetTaskCanMoveToToday(task = {}, dueState = null) {
+    const state = dueState || getCabinetTaskDueState(task);
+    return state?.key === 'overdue' && cabinetTaskAllowsReschedule(task);
+}
+
+function renderCabinetMoveTodayAction(task = {}, taskIdAttr = '', dueState = {}) {
+    if (!taskIdAttr || !cabinetTaskCanMoveToToday(task, dueState)) return '';
+    return `<button type="button" class="cabinet-task-move-today" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" title="Перенести прострочену задачу на сьогодні">На сьогодні</button>`;
 }
 
 function cabinetTaskReportBadge(task = {}) {
@@ -2702,17 +2715,22 @@ function renderCabinetTaskCard(task, compact = false) {
     const priorityLabel = { high: 'Високий', critical: 'Критично', low: 'Низький', normal: 'Звичайний' }[priority] || priority;
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
+    const canMoveToToday = cabinetTaskCanMoveToToday(task, dueState);
+    const dragAttrs = canMoveToToday
+        ? ' draggable="true" data-cabinet-task-drag="overdue" aria-grabbed="false" title="Перетягніть у колонку Сьогодні, щоб перенести задачу на сьогодні"'
+        : '';
     const doneActionLabel = 'Виконати задачу';
     const snoozeActionLabel = 'Відкласти задачу';
     const openActionLabel = 'Відкрити задачу у повному списку';
     const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
     return `
-        <div class="cabinet-task-card" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}">
+        <div class="cabinet-task-card" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}"${dragAttrs}>
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
+                    ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
                     <span class="cabinet-task-priority cabinet-task-priority--${escapeHtml(priority)}">${escapeHtml(priorityLabel)}</span>
                     ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
@@ -2734,13 +2752,24 @@ function renderCabinetTaskCard(task, compact = false) {
         </div>`;
 }
 
-function renderCabinetSection(title, list, emptyText, compact = false) {
+function renderCabinetSection(title, list, emptyText, compact = false, options = {}) {
     const visibleList = sortCabinetTasksForDisplay(list);
+    const dropTarget = options.dropTarget ? String(options.dropTarget) : '';
+    const dropAttrs = dropTarget
+        ? ` data-cabinet-task-drop-target="${escapeHtml(dropTarget)}" aria-label="${escapeHtml(options.dropLabel || 'Перетягніть задачу сюди')}"`
+        : '';
+    const sectionClass = `cabinet-task-section${dropTarget ? ' cabinet-task-section--drop-target' : ''}`;
+    const dropHint = dropTarget
+        ? `<span class="cabinet-section-drop-hint">${escapeHtml(options.dropHint || 'Можна перетягнути задачу сюди')}</span>`
+        : '';
     return `
-        <section class="cabinet-task-section">
+        <section class="${sectionClass}"${dropAttrs}>
             <div class="cabinet-section-head">
                 <h3>${escapeHtml(title)}</h3>
-                <span>${visibleList.length}</span>
+                <div class="cabinet-section-head-meta">
+                    ${dropHint}
+                    <span>${visibleList.length}</span>
+                </div>
             </div>
             ${visibleList.length
                 ? visibleList.map(task => renderCabinetTaskCard(task, compact)).join('')
@@ -2899,7 +2928,11 @@ function renderMyDayTab() {
             ${renderCabinetPulseCluster()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
-                ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.')}
+                ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.', false, {
+                    dropTarget: 'today',
+                    dropHint: 'Киньте сюди прострочену задачу',
+                    dropLabel: 'Сьогодні: перетягніть сюди прострочену задачу, щоб перенести її на сьогодні'
+                })}
                 ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', true)}
                 ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
                 ${renderCabinetSection('Приватне', privateTasks, 'Приватний шар порожній.', true)}
@@ -3091,6 +3124,86 @@ function toggleCabinetRescheduleMenu(button) {
     button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 }
 
+function clearCabinetTaskDragState() {
+    document.querySelectorAll('.cabinet-task-card.is-dragging').forEach(card => {
+        card.classList.remove('is-dragging');
+        card.setAttribute('aria-grabbed', 'false');
+    });
+    document.querySelectorAll('.cabinet-task-section--drop-target.is-drag-over').forEach(section => {
+        section.classList.remove('is-drag-over');
+    });
+    document.body?.classList.remove('cabinet-task-dragging');
+    cabinetTaskDragState = null;
+}
+
+function isCabinetTaskDragInteractiveTarget(target) {
+    return Boolean(target?.closest?.('button, a, input, select, textarea, label, [role="menu"], .cabinet-snooze-menu'));
+}
+
+function handleCabinetTaskDragStart(event) {
+    const card = event.target?.closest?.('[data-cabinet-task-drag="overdue"]');
+    if (!card || !card.closest('.cabinet-shell')) return;
+    if (isCabinetTaskDragInteractiveTarget(event.target)) {
+        event.preventDefault();
+        return;
+    }
+    const taskId = normalizeCabinetTaskId(card.dataset.taskId);
+    if (!taskId) {
+        event.preventDefault();
+        return;
+    }
+    cabinetTaskDragState = { taskId };
+    card.classList.add('is-dragging');
+    card.setAttribute('aria-grabbed', 'true');
+    document.body?.classList.add('cabinet-task-dragging');
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(taskId));
+    }
+}
+
+function handleCabinetTaskDragOver(event) {
+    if (!cabinetTaskDragState) return;
+    const section = event.target?.closest?.('[data-cabinet-task-drop-target="today"]');
+    if (!section) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    section.classList.add('is-drag-over');
+}
+
+function handleCabinetTaskDragLeave(event) {
+    const section = event.target?.closest?.('[data-cabinet-task-drop-target="today"]');
+    if (!section || section.contains(event.relatedTarget)) return;
+    section.classList.remove('is-drag-over');
+}
+
+async function handleCabinetTaskDrop(event) {
+    const section = event.target?.closest?.('[data-cabinet-task-drop-target="today"]');
+    if (!section || !cabinetTaskDragState) return;
+    event.preventDefault();
+    const taskId = normalizeCabinetTaskId(event.dataTransfer?.getData('text/plain') || cabinetTaskDragState.taskId);
+    clearCabinetTaskDragState();
+    if (!taskId) return;
+    try {
+        await moveCabinetTaskToToday(taskId, 'drag');
+    } catch (error) {
+        console.error('Profile cabinet overdue drop failed', error);
+        if (typeof showNotification === 'function') {
+            showNotification(error?.message || 'Не вдалося перенести задачу на сьогодні', 'error');
+        }
+    }
+}
+
+function bindCabinetTaskDragDrop() {
+    if (cabinetTaskDragDropBound) return;
+    cabinetTaskDragDropBound = true;
+    document.addEventListener('dragstart', handleCabinetTaskDragStart);
+    document.addEventListener('dragover', handleCabinetTaskDragOver);
+    document.addEventListener('dragleave', handleCabinetTaskDragLeave);
+    document.addEventListener('drop', handleCabinetTaskDrop);
+    document.addEventListener('dragend', clearCabinetTaskDragState);
+}
+
 function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
     const existing = document.querySelector('.cabinet-task-undo-toast');
     if (existing) existing.remove();
@@ -3150,6 +3263,28 @@ async function handleCabinetTaskActionClick(event) {
 
     if (action === 'subtasks-toggle') {
         await toggleCabinetTaskSubtasks(taskId);
+        return;
+    }
+
+    if (action === 'move-to-today') {
+        button.disabled = true;
+        button.classList.add('is-busy');
+        const card = button.closest('.cabinet-task-card');
+        card?.classList.add('is-updating');
+        try {
+            await moveCabinetTaskToToday(taskId, 'button');
+        } catch (error) {
+            console.error('Profile cabinet move to today failed', error);
+            if (typeof showNotification === 'function') {
+                showNotification(error?.message || 'Не вдалося перенести задачу на сьогодні', 'error');
+            }
+        } finally {
+            if (button.isConnected) {
+                button.disabled = false;
+                button.classList.remove('is-busy');
+            }
+            if (card?.isConnected) card.classList.remove('is-updating');
+        }
         return;
     }
 
@@ -3248,11 +3383,13 @@ async function snoozeCabinetTask(taskId, minutes) {
     await refreshMyCabinetTab();
 }
 
-async function rescheduleCabinetTask(taskId, option = 'tomorrow') {
+async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     let dateText = '';
-    if (option === 'day_after') {
+    if (option === 'today') {
+        dateText = profileDateOffsetStr(0);
+    } else if (option === 'day_after') {
         dateText = profileDateOffsetStr(2);
     } else if (option === 'custom') {
         dateText = typeof promptModal === 'function'
@@ -3262,13 +3399,36 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow') {
         dateText = profileDateOffsetStr(1);
     }
     if (!dateText) return;
+    const sourceSurface = options.sourceSurface || 'profile_my_cabinet_overdue_badge';
     const result = await apiPost(`/tasks/${id}/reschedule`, {
         deadline: profileDeadlineForDate(dateText),
-        sourceSurface: 'profile_my_cabinet_overdue_badge'
+        sourceSurface
     });
     if (!result?.success) throw new Error(result?.error || 'Task reschedule failed');
-    if (typeof showNotification === 'function') showNotification(`Задачу перенесено на ${dateText}`, 'success');
+    if (typeof showNotification === 'function' && options.notify !== false) {
+        const label = option === 'today' ? 'сьогодні' : dateText;
+        showNotification(`Задачу перенесено на ${label}`, 'success');
+    }
     await refreshMyCabinetTab();
+}
+
+async function moveCabinetTaskToToday(taskId, method = 'button') {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    const task = findCabinetTask(id) || {};
+    const dueState = getCabinetTaskDueState(task);
+    if (dueState.key !== 'overdue') {
+        if (typeof showNotification === 'function') showNotification('Ця задача вже не прострочена', 'info');
+        return;
+    }
+    if (!cabinetTaskAllowsReschedule(task)) {
+        throw new Error('Перенесення вимкнено для цієї задачі');
+    }
+    await rescheduleCabinetTask(id, 'today', {
+        sourceSurface: method === 'drag'
+            ? 'profile_my_cabinet_overdue_to_today_drop'
+            : 'profile_my_cabinet_overdue_to_today_button'
+    });
 }
 
 async function createCabinetTask(event, mode) {
@@ -3979,6 +4139,7 @@ function attachProfileListeners() {
         button.dataset.cabinetComposerToggleBound = 'true';
         button.addEventListener('click', () => setCabinetTaskComposerExpanded(!cabinetTaskComposerExpanded, { focusTitle: !cabinetTaskComposerExpanded }));
     });
+    bindCabinetTaskDragDrop();
     bindCabinetSubtasks();
 
     // Inventory slot click — equip/unequip

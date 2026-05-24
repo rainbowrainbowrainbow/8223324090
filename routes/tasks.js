@@ -658,11 +658,17 @@ function normalizeTaskPayload(row) {
 
 function sourceSurface(body = {}, fallback = 'task_detail') {
     const raw = String(body.sourceSurface || body.source_surface || fallback).trim();
-    if (raw === 'manager_queue_task_execution_v2') return raw;
-    if (raw === 'task_detail') return raw;
-    if (raw === 'task_page') return raw;
-    if (raw === 'profile_my_cabinet') return raw;
-    if (raw === 'alerts_panel') return raw;
+    if ([
+        'manager_queue_task_execution_v2',
+        'task_detail',
+        'task_page',
+        'task_page_overdue_badge',
+        'profile_my_cabinet',
+        'profile_my_cabinet_overdue_badge',
+        'profile_my_cabinet_overdue_to_today_button',
+        'profile_my_cabinet_overdue_to_today_drop',
+        'alerts_panel'
+    ].includes(raw)) return raw;
     return fallback;
 }
 

@@ -161,6 +161,7 @@ checkPage('art-director.html', (doc, html) => {
     const artCode = fs.readFileSync(path.join(ROOT, 'js', 'art-director-page.js'), 'utf8');
     const hrHtml = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
     const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const hrRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
     check('tabs exist', doc.querySelectorAll('.artdir-tab').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
     check('Art page uses modern standalone shell class', doc.getElementById('main-content')?.classList.contains('art-shell'));
@@ -177,6 +178,8 @@ checkPage('art-director.html', (doc, html) => {
     check('Costume tab is loaded through Art runtime and Art API', artCode.includes("if (tabName === 'costumes') loadCostumes();") && artCode.includes("apiGet('/costumes')") && artCode.includes("apiPost('/costumes'") && artCode.includes('ART_WORKSPACE_ROLES') && artCode.includes("'art_director'") && artCode.includes("'marketer'"));
     check('HR no longer exposes costumes as a visible owned tab', !hrHtml.includes('data-tab="costumes"') && !hrHtml.includes('id="tab-costumes"') && !hrHtml.includes('id="btnAddCostume"') && !hrHtml.includes('id="costumesList"'));
     check('Old HR costume deep link hands off to Art', hrCode.includes("target === 'costumes'") && hrCode.includes("window.location.replace('/art?tab=costumes')") && !hrCode.includes('costumes: loadCostumes') && !hrCode.includes('window.showAddCostume'));
+    check('HR vacancy candidate intake supports resume text and file upload', hrCode.includes('candidateResumeFiles') && hrCode.includes('raw_application_text') && hrCode.includes('/resume-files') && hrCode.includes('downloadResumeFile') && hrCode.includes('candidateResumeBadgeHtml') && hrHtml.includes('candidate-upload-card'));
+    check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
 });
 
 checkPage('center.html', (doc) => {

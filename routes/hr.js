@@ -6,6 +6,8 @@
 
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const multer = require('multer');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
@@ -18,6 +20,141 @@ router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager',
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
 const log = createLogger('HR');
+
+const RESUME_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
+const RESUME_UPLOAD_LIMIT_FILES = 3;
+const RESUME_TEXT_LIMIT = 50000;
+const RESUME_ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.csv', '.json', '.pdf', '.doc', '.docx', '.rtf', '.odt']);
+const RESUME_TEXT_EXTENSIONS = new Set(['.txt', '.md', '.csv', '.json']);
+const RESUME_ALLOWED_MIME_TYPES = new Set([
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+    'application/json',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/rtf',
+    'text/rtf',
+    'application/vnd.oasis.opendocument.text',
+    'application/octet-stream'
+]);
+
+function resumeFileExt(file) {
+    return path.extname(file?.originalname || '').toLowerCase();
+}
+
+function validateResumeUploadFile(file) {
+    const ext = resumeFileExt(file);
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (!RESUME_ALLOWED_EXTENSIONS.has(ext)) {
+        const err = new Error('Непідтримуваний формат резюме');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (mime && !mime.startsWith('text/') && !RESUME_ALLOWED_MIME_TYPES.has(mime)) {
+        const err = new Error('Непідтримуваний MIME-тип резюме');
+        err.statusCode = 400;
+        throw err;
+    }
+}
+
+const resumeUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: RESUME_UPLOAD_LIMIT_BYTES,
+        files: RESUME_UPLOAD_LIMIT_FILES
+    },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateResumeUploadFile(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
+});
+
+function handleResumeUpload(req, res, next) {
+    resumeUpload.array('files', RESUME_UPLOAD_LIMIT_FILES)(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        const error = err.code === 'LIMIT_FILE_COUNT'
+            ? `Можна додати не більше ${RESUME_UPLOAD_LIMIT_FILES} файлів`
+            : (err.message || 'Не вдалося завантажити резюме');
+        res.status(status).json({ success: false, error });
+    });
+}
+
+function normalizeResumeText(text) {
+    return String(text || '')
+        .replace(/\u0000/g, '')
+        .replace(/\r\n/g, '\n')
+        .trim()
+        .slice(0, RESUME_TEXT_LIMIT);
+}
+
+function extractResumeText(file) {
+    const ext = resumeFileExt(file);
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (RESUME_TEXT_EXTENSIONS.has(ext) || mime.startsWith('text/')) {
+        const text = normalizeResumeText(file.buffer.toString('utf8'));
+        return {
+            text,
+            status: text ? 'extracted' : 'failed',
+            note: text ? 'Текст імпортовано з файлу' : 'Файл не містить читабельного тексту'
+        };
+    }
+    return {
+        text: null,
+        status: 'stored_only',
+        note: 'Файл збережено як вкладення; для PDF/DOC/DOCX текст можна додати вручну у поле резюме'
+    };
+}
+
+function resumeFileMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        application_id: row.application_id,
+        original_name: row.original_name,
+        mime_type: row.mime_type,
+        file_ext: row.file_ext,
+        file_size: row.file_size,
+        extracted_text: row.extracted_text || null,
+        extraction_status: row.extraction_status || 'stored_only',
+        extraction_note: row.extraction_note || null,
+        uploaded_by: row.uploaded_by || null,
+        created_at: row.created_at,
+        download_url: `/api/hr/applications/${row.application_id}/resume-files/${row.id}/download`
+    };
+}
+
+function safeDownloadName(name) {
+    return String(name || 'resume')
+        .replace(/[\r\n"]/g, '')
+        .slice(0, 160) || 'resume';
+}
+
+async function loadResumeFilesForApplications(applicationIds) {
+    const ids = [...new Set((applicationIds || []).map(id => parseInt(id, 10)).filter(Number.isFinite))];
+    if (!ids.length) return new Map();
+    const files = await pool.query(
+        `SELECT id, application_id, original_name, mime_type, file_ext, file_size,
+                extracted_text, extraction_status, extraction_note, uploaded_by, created_at
+         FROM job_application_resume_files
+         WHERE application_id = ANY($1::int[])
+         ORDER BY created_at DESC, id DESC`,
+        [ids]
+    );
+    const grouped = new Map(ids.map(id => [id, []]));
+    for (const row of files.rows) {
+        const key = parseInt(row.application_id, 10);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(resumeFileMeta(row));
+    }
+    return grouped;
+}
 
 // Helper: get today's date in Kyiv timezone as YYYY-MM-DD
 function todayKyiv() {
@@ -2072,7 +2209,12 @@ router.delete('/vacancies/:id', async (req, res) => {
 router.get('/vacancies/:id/applications', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM job_applications WHERE vacancy_id=$1 ORDER BY created_at DESC', [req.params.id]);
-        res.json({ success: true, applications: r.rows });
+        const filesByApplication = await loadResumeFilesForApplications(r.rows.map(row => row.id));
+        const applications = r.rows.map(row => ({
+            ...row,
+            resume_files: filesByApplication.get(parseInt(row.id, 10)) || []
+        }));
+        res.json({ success: true, applications });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -2094,6 +2236,109 @@ router.post('/vacancies/:id/applications', async (req, res) => {
              raw_application_text || null, parsed_payload ? JSON.stringify(parsed_payload) : null]);
         res.json({ success: true, application: r.rows[0] });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.get('/applications/:id/resume-files', async (req, res) => {
+    try {
+        const appId = parseInt(req.params.id, 10);
+        const app = await pool.query('SELECT id FROM job_applications WHERE id=$1 LIMIT 1', [appId]);
+        if (!app.rows.length) return res.status(404).json({ error: 'Not found' });
+        const filesByApplication = await loadResumeFilesForApplications([appId]);
+        res.json({ success: true, files: filesByApplication.get(appId) || [] });
+    } catch (err) {
+        log.error('GET /applications/:id/resume-files', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/applications/:id/resume-files', handleResumeUpload, async (req, res) => {
+    try {
+        const appId = parseInt(req.params.id, 10);
+        const files = Array.isArray(req.files) ? req.files : [];
+        if (!files.length) return res.status(400).json({ success: false, error: 'Додайте хоча б один файл резюме' });
+
+        const app = await pool.query('SELECT id, raw_application_text, cv_url FROM job_applications WHERE id=$1 LIMIT 1', [appId]);
+        if (!app.rows.length) return res.status(404).json({ error: 'Not found' });
+
+        const inserted = [];
+        for (const file of files) {
+            const ext = resumeFileExt(file);
+            const extraction = extractResumeText(file);
+            const row = await pool.query(
+                `INSERT INTO job_application_resume_files
+                    (application_id, original_name, mime_type, file_ext, file_size, file_data,
+                     extracted_text, extraction_status, extraction_note, uploaded_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                 RETURNING id, application_id, original_name, mime_type, file_ext, file_size,
+                           extracted_text, extraction_status, extraction_note, uploaded_by, created_at`,
+                [
+                    appId,
+                    file.originalname || 'resume',
+                    file.mimetype || null,
+                    ext || null,
+                    file.size || file.buffer.length,
+                    file.buffer,
+                    extraction.text,
+                    extraction.status,
+                    extraction.note,
+                    req.user?.username || null
+                ]
+            );
+            inserted.push(resumeFileMeta(row.rows[0]));
+        }
+
+        const extractedBlocks = inserted
+            .filter(file => file.extracted_text)
+            .map(file => `Імпортовано з файлу ${file.original_name}:\n${file.extracted_text}`);
+        const appendedText = extractedBlocks.length ? extractedBlocks.join('\n\n') : null;
+        const firstDownloadUrl = inserted[0]?.download_url || null;
+        await pool.query(
+            `UPDATE job_applications
+             SET raw_application_text = CASE
+                    WHEN $2::text IS NULL THEN raw_application_text
+                    WHEN NULLIF(BTRIM(COALESCE(raw_application_text, '')), '') IS NULL THEN $2::text
+                    ELSE raw_application_text || E'\n\n' || $2::text
+                 END,
+                 cv_url = COALESCE(cv_url, $3),
+                 updated_at = NOW()
+             WHERE id=$1`,
+            [appId, appendedText, firstDownloadUrl]
+        );
+
+        res.json({
+            success: true,
+            files: inserted,
+            extracted_text_appended: Boolean(appendedText)
+        });
+    } catch (err) {
+        log.error('POST /applications/:id/resume-files', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/applications/:id/resume-files/:fileId/download', async (req, res) => {
+    try {
+        const appId = parseInt(req.params.id, 10);
+        const fileId = parseInt(req.params.fileId, 10);
+        if (!Number.isFinite(fileId)) return res.status(400).json({ error: 'Invalid file id' });
+        const r = await pool.query(
+            `SELECT id, application_id, original_name, mime_type, file_size, file_data
+             FROM job_application_resume_files
+             WHERE id=$1 AND application_id=$2`,
+            [fileId, appId]
+        );
+        if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+        const file = r.rows[0];
+        const filename = safeDownloadName(file.original_name);
+        const asciiName = filename.replace(/[^\x20-\x7E]/g, '_');
+        res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+        res.setHeader('Content-Length', file.file_size || file.file_data.length);
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        res.send(file.file_data);
+    } catch (err) {
+        log.error('GET /applications/:id/resume-files/:fileId/download', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 router.patch('/applications/:id', async (req, res) => {

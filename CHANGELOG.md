@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.9 - CRM 63.9: Резюме у вакансіях HR
+
+### HR / вакансії та резюме кандидатів [codex]
+- **Резюме можна додати текстом** - у flow `HR -> Вакансії -> + Кандидат` з'явився окремий intake-modal з полем для вставленого тексту резюме/анкети.
+- **Резюме можна завантажити файлом** - кандидат створюється як звичайний `job_applications` запис, після чого файли прив'язуються до нього через multipart endpoint `/api/hr/applications/:id/resume-files`.
+- **Файли зберігаються в Postgres** - додано `job_application_resume_files` з метаданими, `BYTEA`-вмістом, статусом extraction і без нового локального `/uploads` сегмента.
+- **Текстові файли імпортуються чесно** - TXT/MD/CSV/JSON читаються у `raw_application_text`, а PDF/DOC/DOCX/RTF/ODT зберігаються як вкладення з видимою fallback-підказкою для ручного тексту.
+- **Кандидатська картка стала кориснішою** - kanban показує бейдж резюме, detail-modal відкриває текст, extracted content і кнопки авторизованого завантаження файлів.
+- **Guardrail** - route smoke перевіряє pasted text, upload, metadata і download, а UI smoke фіксує новий intake/detail contract.
+
+---
+
 ## v0.63.8 - CRM 63.8: Костюмерна в Арті
 
 ### Art / перенесення костюмерної [codex]

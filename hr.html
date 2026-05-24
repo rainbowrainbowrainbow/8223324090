@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.8">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.8">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.8">
+    <link rel="stylesheet" href="css/base.css?v=0.63.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.9">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.9">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1510,17 +1510,51 @@
         .kanban-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
         .kc-name { font-weight: 600; margin-bottom: 4px; }
         .kc-meta { color: var(--gray-500); font-size: 12px; }
+        .kc-resume-pill { margin-top: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: rgba(37, 99, 235, 0.08); color: #1D4ED8; font-size: 11px; font-weight: 700; }
         .kc-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
         .kc-btn { padding: 3px 8px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--white); font-family: inherit; }
         .kc-btn.success { background: var(--primary); color: #fff; border-color: var(--primary); }
         .kc-btn.danger { color: #DC2626; border-color: #FCA5A5; }
         .btn-sm { font-size: 12px; padding: 4px 10px; }
+        .candidate-detail-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 20px; background: rgba(15,23,42,0.58); }
+        .candidate-detail-modal, .candidate-intake-modal { width: min(980px, 100%); max-height: min(88vh, 820px); overflow: auto; background: var(--white); color: var(--gray-900); border-radius: 16px; border: 1px solid var(--gray-200); box-shadow: 0 24px 80px rgba(15,23,42,0.24); padding: 20px; }
+        .candidate-intake-modal { width: min(860px, 100%); }
+        .candidate-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+        .candidate-detail-head h3 { margin: 2px 0 4px; }
+        .candidate-detail-head p { margin: 0; color: var(--gray-500); font-size: 13px; }
+        .candidate-detail-kicker { color: var(--primary); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+        .candidate-detail-close { border: 0; background: transparent; cursor: pointer; font-size: 26px; line-height: 1; color: var(--gray-500); }
+        .candidate-detail-grid, .candidate-intake-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .candidate-detail-grid section, .candidate-upload-card { border: 1px solid var(--gray-100); border-radius: 12px; padding: 14px; background: var(--gray-50); }
+        .candidate-detail-grid h4 { margin: 0 0 10px; }
+        .candidate-detail-wide, .candidate-intake-grid .wide { grid-column: 1 / -1; }
+        .candidate-detail-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px; }
+        .candidate-detail-row span { color: var(--gray-500); }
+        .candidate-resume-text, .candidate-resume-extracted { white-space: pre-wrap; overflow: auto; max-height: 260px; margin: 0; padding: 10px; border-radius: 10px; background: var(--white); border: 1px solid var(--gray-100); color: var(--gray-700); font-family: inherit; font-size: 13px; line-height: 1.5; }
+        .candidate-resume-extracted { margin: 8px 0 12px; max-height: 180px; }
+        .candidate-detail-empty { color: var(--gray-500); font-size: 13px; padding: 10px; border-radius: 10px; background: var(--white); border: 1px dashed var(--gray-200); }
+        .candidate-resume-file { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px; border-radius: 10px; background: var(--white); border: 1px solid var(--gray-100); margin-bottom: 8px; }
+        .candidate-resume-file strong, .candidate-resume-file span, .candidate-resume-file em { display: block; }
+        .candidate-resume-file span, .candidate-resume-file em { color: var(--gray-500); font-size: 12px; }
+        .candidate-intake-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: var(--gray-600); }
+        .candidate-intake-grid input, .candidate-intake-grid textarea { width: 100%; min-width: 0; border: 1px solid var(--gray-200); border-radius: 10px; padding: 10px 12px; background: var(--white); color: var(--gray-900); font: inherit; }
+        .candidate-upload-card { display: grid; gap: 10px; }
+        .candidate-upload-card strong, .candidate-upload-card span { display: block; }
+        .candidate-upload-card span, .candidate-file-empty { color: var(--gray-500); font-size: 12px; }
+        .candidate-file-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .candidate-file-chip { padding: 4px 8px; border-radius: 999px; background: rgba(37,99,235,0.08); color: #1D4ED8; font-size: 12px; font-weight: 700; }
+        .candidate-intake-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 16px; }
+        .candidate-intake-actions span { margin-right: auto; color: var(--gray-500); font-size: 13px; }
         /* Dark mode vacancies */
         body.dark-mode .hr-vacancy-card, body.dark-mode .kanban-card, body.dark-mode .vac-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
         body.dark-mode .kanban-col { background: rgba(255,255,255,0.03); }
         body.dark-mode .vac-desc { color: var(--gray-400); }
         body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-300); }
-        @media (max-width: 640px) { .candidates-kanban { flex-direction: column; } .kanban-col { min-width: auto; } }
+        body.dark-mode .kc-resume-pill, body.dark-mode .candidate-file-chip { background: rgba(96,165,250,0.14); color: #93C5FD; }
+        body.dark-mode .candidate-detail-modal, body.dark-mode .candidate-intake-modal { background: #1E1E2E; color: #E2E8F0; border-color: rgba(255,255,255,0.1); }
+        body.dark-mode .candidate-detail-grid section, body.dark-mode .candidate-upload-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .candidate-resume-text, body.dark-mode .candidate-resume-extracted, body.dark-mode .candidate-detail-empty, body.dark-mode .candidate-resume-file, body.dark-mode .candidate-intake-grid input, body.dark-mode .candidate-intake-grid textarea { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
+        @media (max-width: 640px) { .candidates-kanban { flex-direction: column; } .kanban-col { min-width: auto; } .candidate-detail-grid, .candidate-intake-grid { grid-template-columns: 1fr; } .candidate-detail-overlay { padding: 10px; align-items: start; } .candidate-intake-actions { flex-wrap: wrap; } .candidate-intake-actions span { width: 100%; } }
     </style>
 </head>
 <body data-page-group="hr">
@@ -2107,15 +2141,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.63.8"></script>
-    <script src="js/config.js?v=0.63.8"></script>
-    <script src="js/notification.js?v=0.63.8"></script>
-    <script src="js/api.js?v=0.63.8"></script>
-    <script src="js/auth.js?v=0.63.8"></script>
-    <script src="js/components/sidebar.js?v=0.63.8"></script>
+    <script src="js/ui.js?v=0.63.9"></script>
+    <script src="js/config.js?v=0.63.9"></script>
+    <script src="js/notification.js?v=0.63.9"></script>
+    <script src="js/api.js?v=0.63.9"></script>
+    <script src="js/auth.js?v=0.63.9"></script>
+    <script src="js/components/sidebar.js?v=0.63.9"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.63.8"></script>
-    <script src="js/alerts.js?v=0.63.8"></script><script>
+    <script src="js/hr-page.js?v=0.63.9"></script>
+    <script src="js/alerts.js?v=0.63.9"></script><script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {
         const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);

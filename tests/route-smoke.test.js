@@ -53,6 +53,18 @@ async function request(method, path, body, headers = {}) {
     return { status: res.status, data, text };
 }
 
+async function requestMultipart(path, formData, headers = {}) {
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers,
+        body: formData
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    return { status: res.status, data, text };
+}
+
 function tokenFor(role = 'creator') {
     return jwt.sign(
         {
@@ -424,6 +436,90 @@ function createFakePool() {
                         assigned_to: params[4],
                         assigned_at: params[5],
                         notes: params[6]
+                    }]
+                };
+            }
+            if (/SELECT \* FROM job_applications WHERE vacancy_id=\$1 ORDER BY created_at DESC/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 701,
+                        vacancy_id: Number(params[0]),
+                        name: 'РђРЅРЅР° РљР°РЅРґРёРґР°С‚',
+                        phone: '+380501112233',
+                        telegram_username: 'anna_hr',
+                        status: 'new',
+                        raw_application_text: 'РџР°СЃС‚РµРґ CV',
+                        experience: 'РђРЅС–РјР°С†С–СЏ',
+                        interview_notes: 'Р”РѕРґР°С‚Рё С‚РµСЃС‚'
+                    }]
+                };
+            }
+            if (/FROM job_application_resume_files WHERE application_id = ANY\(\$1::int\[\]\)/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 801,
+                        application_id: 701,
+                        original_name: 'anna-resume.txt',
+                        mime_type: 'text/plain',
+                        file_ext: '.txt',
+                        file_size: 42,
+                        extracted_text: 'РўРµРєСЃС‚ СЂРµР·СЋРјРµ',
+                        extraction_status: 'extracted',
+                        extraction_note: 'РўРµРєСЃС‚ С–РјРїРѕСЂС‚РѕРІР°РЅРѕ',
+                        uploaded_by: 'route-smoke',
+                        created_at: '2099-05-02T12:00:00Z'
+                    }]
+                };
+            }
+            if (/INSERT INTO job_applications/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 702,
+                        vacancy_id: params[0],
+                        name: params[1],
+                        phone: params[2],
+                        telegram_username: params[3],
+                        source: params[5],
+                        status: 'new',
+                        raw_application_text: params[15]
+                    }]
+                };
+            }
+            if (/SELECT id, raw_application_text, cv_url FROM job_applications WHERE id=\$1 LIMIT 1/i.test(text)) {
+                return { rows: [{ id: params[0], raw_application_text: null, cv_url: null }] };
+            }
+            if (/SELECT id FROM job_applications WHERE id=\$1 LIMIT 1/i.test(text)) {
+                return { rows: [{ id: params[0] }] };
+            }
+            if (/INSERT INTO job_application_resume_files/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 802,
+                        application_id: params[0],
+                        original_name: params[1],
+                        mime_type: params[2],
+                        file_ext: params[3],
+                        file_size: params[4],
+                        extracted_text: params[6],
+                        extraction_status: params[7],
+                        extraction_note: params[8],
+                        uploaded_by: params[9],
+                        created_at: '2099-05-02T12:05:00Z'
+                    }]
+                };
+            }
+            if (/UPDATE job_applications SET raw_application_text = CASE/i.test(text)) {
+                return { rows: [], rowCount: 1 };
+            }
+            if (/FROM job_application_resume_files WHERE id=\$1 AND application_id=\$2/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[0],
+                        application_id: params[1],
+                        original_name: 'anna-resume.txt',
+                        mime_type: 'text/plain',
+                        file_size: 18,
+                        file_data: Buffer.from('resume text content', 'utf8')
                     }]
                 };
             }
@@ -889,6 +985,35 @@ describe('route-level API safety smoke', () => {
         assert.equal(accountantFinance.status, 200, JSON.stringify(accountantFinance.data));
         assert.equal(accountantFinance.data.success, true);
         assert.equal(accountantFinance.data.data.profit, 0);
+    });
+
+    it('supports HR vacancy resume intake with pasted text, file upload, and download metadata', async () => {
+        const created = await request('POST', '/api/hr/vacancies/55/applications', {
+            name: 'РђРЅРЅР° РљР°РЅРґРёРґР°С‚',
+            phone: '+380501112233',
+            raw_application_text: 'РџР°СЃС‚РµРґ CV'
+        }, withAuth());
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        assert.equal(created.data.success, true);
+        assert.equal(created.data.application.raw_application_text, 'РџР°СЃС‚РµРґ CV');
+
+        const listed = await request('GET', '/api/hr/vacancies/55/applications', undefined, withAuth());
+        assert.equal(listed.status, 200, JSON.stringify(listed.data));
+        assert.equal(listed.data.applications[0].resume_files[0].original_name, 'anna-resume.txt');
+        assert.equal(listed.data.applications[0].resume_files[0].download_url, '/api/hr/applications/701/resume-files/801/download');
+
+        const form = new FormData();
+        form.append('files', new Blob(['РўРµРєСЃС‚ СЂРµР·СЋРјРµ'], { type: 'text/plain' }), 'resume.txt');
+        const uploaded = await requestMultipart('/api/hr/applications/702/resume-files', form, withAuth());
+        assert.equal(uploaded.status, 200, JSON.stringify(uploaded.data));
+        assert.equal(uploaded.data.success, true);
+        assert.equal(uploaded.data.files[0].extraction_status, 'extracted');
+        assert.equal(uploaded.data.extracted_text_appended, true);
+
+        const download = await fetch(`${baseUrl}/api/hr/applications/701/resume-files/801/download`, { headers: withAuth() });
+        assert.equal(download.status, 200);
+        assert.match(download.headers.get('content-disposition') || '', /filename=/);
+        assert.equal(await download.text(), 'resume text content');
     });
 
     it('keeps exposed module APIs aligned with page-level role access', async () => {

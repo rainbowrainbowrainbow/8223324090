@@ -126,19 +126,27 @@ function fmtMoney(n) {
     return new Intl.NumberFormat('uk-UA').format(n) + ' ₴';
 }
 
+function formatResumeFileSize(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) return `${value} Б`;
+    if (value < 1024 * 1024) return `${Math.round(value / 1024)} КБ`;
+    return `${(value / 1024 / 1024).toFixed(1)} МБ`;
+}
+
 async function hrFetch(path, options = {}, legacyBody = undefined) {
     const token = localStorage.getItem('pzp_token');
-    const headers = { 'Content-Type': 'application/json' };
+    const isFormData = typeof FormData !== 'undefined' && options?.body instanceof FormData;
+    const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (typeof options === 'string') {
         options = {
             method: options,
             body: legacyBody !== undefined ? JSON.stringify(legacyBody) : undefined
         };
-    } else if (options && options.body && typeof options.body !== 'string') {
+    } else if (options && options.body && typeof options.body !== 'string' && !(typeof FormData !== 'undefined' && options.body instanceof FormData)) {
         options = { ...options, body: JSON.stringify(options.body) };
     }
-    const resp = await fetch(`/api/hr${path}`, { headers, ...options });
+    const resp = await fetch(`/api/hr${path}`, { ...options, headers: { ...headers, ...(options.headers || {}) } });
     if (resp.status === 401 || resp.status === 403) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
@@ -2648,6 +2656,7 @@ function initDarkMode() {
 // ==========================================
 
 let currentVacancyId = null;
+let currentApplications = [];
 const VAC_STATUS_LABEL = {
     open: '🟢 Відкрита', paused: '⏸ Призупинена',
     filled: '✅ Заповнена', closed: '❌ Закрита'
@@ -2660,6 +2669,7 @@ const APP_STATUS_COLOR = {
     new: '#64748B', contacted: '#3B82F6', interview: '#8B5CF6',
     offer: '#F59E0B', hired: '#10B981', rejected: '#EF4444'
 };
+const RESUME_ACCEPT = '.txt,.md,.csv,.json,.pdf,.doc,.docx,.rtf,.odt';
 
 async function loadVacancies() {
     const status = document.getElementById('vacStatusFilter')?.value || 'open';
@@ -2732,6 +2742,7 @@ async function refreshCandidates() {
     const data = await hrFetch(`/vacancies/${currentVacancyId}/applications`);
     if (!data?.success) return;
     const apps = data.applications || [];
+    currentApplications = apps;
     const statuses = ['new', 'contacted', 'interview', 'offer'];
     const kanban = document.getElementById('candidatesKanban');
     if (!kanban) return;
@@ -2753,7 +2764,9 @@ async function refreshCandidates() {
                         ${a.interview_date ? `<div class="kc-meta">📅 ${new Date(a.interview_date).toLocaleDateString('uk-UA')}</div>` : ''}
                         ${a.experience ? `<div class="kc-meta">${escapeHtml(a.experience).slice(0, 120)}</div>` : ''}
                         ${a.interview_notes ? `<div class="kc-meta">${escapeHtml(a.interview_notes).slice(0, 120)}</div>` : ''}
+                        ${candidateResumeBadgeHtml(a)}
                         <div class="kc-actions">
+                            <button class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
                             ${s !== 'offer' ? `<button class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
                             ${s === 'offer' ? `<button class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
                             <button class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
@@ -2763,6 +2776,108 @@ async function refreshCandidates() {
             </div>
         </div>
     `).join('');
+}
+
+function candidateResumeBadgeHtml(candidate) {
+    const files = Array.isArray(candidate.resume_files) ? candidate.resume_files : [];
+    const hasText = Boolean(String(candidate.raw_application_text || '').trim());
+    if (!hasText && !files.length) return '';
+    const parts = [];
+    if (hasText) parts.push('текст');
+    if (files.length) parts.push(`${files.length} файл${files.length === 1 ? '' : 'и'}`);
+    return `<div class="kc-resume-pill">Резюме: ${escapeHtml(parts.join(' + '))}</div>`;
+}
+
+function findCurrentApplication(id) {
+    return currentApplications.find(app => parseInt(app.id, 10) === parseInt(id, 10)) || null;
+}
+
+function renderResumeFiles(files = []) {
+    if (!files.length) {
+        return '<div class="candidate-detail-empty">Файли резюме ще не додані.</div>';
+    }
+    return files.map(file => `
+        <div class="candidate-resume-file">
+            <div>
+                <strong>${escapeHtml(file.original_name || 'resume')}</strong>
+                <span>${escapeHtml(file.mime_type || file.file_ext || 'файл')} · ${formatResumeFileSize(file.file_size)}</span>
+                <em>${escapeHtml(file.extraction_note || (file.extraction_status === 'extracted' ? 'Текст імпортовано' : 'Збережено як вкладення'))}</em>
+            </div>
+            <button type="button" class="kc-btn" onclick="downloadResumeFile(${file.application_id}, ${file.id})">Завантажити</button>
+        </div>
+        ${file.extracted_text ? `<pre class="candidate-resume-extracted">${escapeHtml(file.extracted_text)}</pre>` : ''}
+    `).join('');
+}
+
+function closeCandidateDetailModal() {
+    document.getElementById('candidateDetailModal')?.remove();
+}
+
+function openCandidateDetail(id) {
+    const candidate = findCurrentApplication(id);
+    if (!candidate) return;
+    closeCandidateDetailModal();
+    const files = Array.isArray(candidate.resume_files) ? candidate.resume_files : [];
+    const overlay = document.createElement('div');
+    overlay.id = 'candidateDetailModal';
+    overlay.className = 'candidate-detail-overlay';
+    overlay.innerHTML = `
+        <div class="candidate-detail-modal" role="dialog" aria-modal="true" aria-labelledby="candidateDetailTitle">
+            <div class="candidate-detail-head">
+                <div>
+                    <span class="candidate-detail-kicker">Картка кандидата</span>
+                    <h3 id="candidateDetailTitle">${escapeHtml(candidate.name || 'Кандидат')}</h3>
+                    <p>${escapeHtml(APP_STATUS_LABEL[candidate.status] || candidate.status || '')}</p>
+                </div>
+                <button type="button" class="candidate-detail-close" onclick="closeCandidateDetailModal()" aria-label="Закрити">×</button>
+            </div>
+            <div class="candidate-detail-grid">
+                <section>
+                    <h4>Контакти і рекрутерські нотатки</h4>
+                    ${candidate.phone ? `<div class="candidate-detail-row"><span>Телефон</span><strong>${escapeHtml(candidate.phone)}</strong></div>` : ''}
+                    ${candidate.telegram_username ? `<div class="candidate-detail-row"><span>Telegram</span><strong>@${escapeHtml(candidate.telegram_username)}</strong></div>` : ''}
+                    ${candidate.availability ? `<div class="candidate-detail-row"><span>Доступність</span><strong>${escapeHtml(candidate.availability)}</strong></div>` : ''}
+                    ${candidate.experience ? `<p>${escapeHtml(candidate.experience)}</p>` : '<div class="candidate-detail-empty">Досвід не заповнений.</div>'}
+                    ${candidate.interview_notes ? `<p><strong>Нотатки:</strong> ${escapeHtml(candidate.interview_notes)}</p>` : ''}
+                </section>
+                <section>
+                    <h4>Текст резюме / анкети</h4>
+                    ${candidate.raw_application_text ? `<pre class="candidate-resume-text">${escapeHtml(candidate.raw_application_text)}</pre>` : '<div class="candidate-detail-empty">Текст ще не доданий. Можна вставити вручну або імпортувати з TXT/CSV/MD/JSON файлу.</div>'}
+                </section>
+                <section class="candidate-detail-wide">
+                    <h4>Вкладені файли</h4>
+                    ${renderResumeFiles(files)}
+                </section>
+            </div>
+        </div>
+    `;
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeCandidateDetailModal();
+    });
+    document.body.appendChild(overlay);
+}
+
+async function downloadResumeFile(applicationId, fileId) {
+    const candidate = findCurrentApplication(applicationId);
+    const file = (candidate?.resume_files || []).find(item => parseInt(item.id, 10) === parseInt(fileId, 10));
+    const filename = file?.original_name || 'resume';
+    const token = localStorage.getItem('pzp_token');
+    const response = await fetch(`/api/hr/applications/${applicationId}/resume-files/${fileId}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!response.ok) {
+        showNotification('Не вдалося завантажити файл резюме', 'error');
+        return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'resume';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 }
 
 function nextCandidateStatus(s) {
@@ -2785,34 +2900,137 @@ async function hireCandidate(id) {
     }
 }
 
-async function addCandidatePrompt(vacancyId) {
-    const result = await formModal('Додати кандидата', [
-        { key: 'name', label: 'Ім\'я кандидата', required: true, placeholder: 'Іван Петренко' },
-        { key: 'phone', label: 'Телефон', placeholder: '+380...' },
-        { key: 'tg', label: 'Telegram username', placeholder: '@username' },
-        { key: 'birth_date', label: 'Дата народження', type: 'date' },
-        { key: 'address', label: 'Адреса', placeholder: 'Місто, район, вулиця' },
-        { key: 'availability', label: 'Доступність', placeholder: 'Будні після 16:00, вихідні повний день' },
-        { key: 'experience', label: 'Досвід', type: 'textarea', placeholder: 'Коротко про досвід і ролі' },
-        { key: 'interview_notes', label: 'Нотатки інтервʼю', type: 'textarea', placeholder: 'Що важливо перевірити або імпортувати' },
-        { key: 'raw_application_text', label: 'Сирий текст анкети', type: 'textarea', placeholder: 'Вставити текст із форми/скану' }
-    ], { icon: '👤' });
-    if (!result) return;
-    await hrFetch(`/vacancies/${vacancyId}/applications`, {
-        method: 'POST',
-        body: JSON.stringify({
-            name: result.name.trim(),
-            phone: result.phone || null,
-            telegram_username: result.tg || null,
-            birth_date: result.birth_date || null,
-            address: result.address || null,
-            availability: result.availability || null,
-            experience: result.experience || null,
-            interview_notes: result.interview_notes || null,
-            raw_application_text: result.raw_application_text || null
-        })
+function closeCandidateIntakeModal() {
+    document.getElementById('candidateIntakeModal')?.remove();
+}
+
+function candidateNameFromFile(file) {
+    return String(file?.name || 'Кандидат')
+        .replace(/\.[^.]+$/, '')
+        .replace(/[_-]+/g, ' ')
+        .trim() || 'Кандидат з резюме';
+}
+
+function renderCandidateIntakeFiles(input) {
+    const list = document.getElementById('candidateResumeFilesList');
+    const help = document.getElementById('candidateResumeImportHelp');
+    const files = Array.from(input?.files || []);
+    if (list) {
+        list.innerHTML = files.length
+            ? files.map(file => `<span class="candidate-file-chip">${escapeHtml(file.name)} · ${formatResumeFileSize(file.size)}</span>`).join('')
+            : '<span class="candidate-file-empty">Файли не вибрані</span>';
+    }
+    if (help) {
+        const hasOnlyText = files.some(file => /\.(txt|md|csv|json)$/i.test(file.name || '') || String(file.type || '').startsWith('text/'));
+        help.textContent = files.length
+            ? (hasOnlyText ? 'Текстові файли будуть імпортовані у резюме. PDF/DOC/DOCX збережуться як вкладення.' : 'Файли будуть збережені як вкладення; для PDF/DOC/DOCX вставте текст резюме вручну, якщо потрібно.')
+            : 'Можна додати текст, файли або обидва варіанти.';
+    }
+}
+
+function addCandidatePrompt(vacancyId) {
+    closeCandidateIntakeModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'candidateIntakeModal';
+    overlay.className = 'candidate-detail-overlay candidate-intake-overlay';
+    overlay.innerHTML = `
+        <form class="candidate-intake-modal" id="candidateIntakeForm" role="dialog" aria-modal="true" aria-labelledby="candidateIntakeTitle">
+            <div class="candidate-detail-head">
+                <div>
+                    <span class="candidate-detail-kicker">HR вакансії</span>
+                    <h3 id="candidateIntakeTitle">Додати кандидата</h3>
+                    <p>Заповніть картку вручну, вставте текст резюме або додайте файл.</p>
+                </div>
+                <button type="button" class="candidate-detail-close" onclick="closeCandidateIntakeModal()" aria-label="Закрити">×</button>
+            </div>
+            <div class="candidate-intake-grid">
+                <label>Ім'я кандидата<input name="name" placeholder="Іван Петренко"></label>
+                <label>Телефон<input name="phone" placeholder="+380..."></label>
+                <label>Telegram<input name="telegram_username" placeholder="@username"></label>
+                <label>Дата народження<input name="birth_date" type="date"></label>
+                <label class="wide">Адреса<input name="address" placeholder="Місто, район, вулиця"></label>
+                <label class="wide">Доступність<input name="availability" placeholder="Будні після 16:00, вихідні повний день"></label>
+                <label class="wide">Досвід<textarea name="experience" rows="3" placeholder="Коротко про досвід і ролі"></textarea></label>
+                <label class="wide">Нотатки інтерв'ю<textarea name="interview_notes" rows="3" placeholder="Що важливо перевірити або уточнити"></textarea></label>
+                <label class="wide">Текст резюме / анкети<textarea name="raw_application_text" rows="6" placeholder="Вставте резюме, анкету або текст із форми"></textarea></label>
+                <div class="candidate-upload-card wide">
+                    <div>
+                        <strong>Файли резюме</strong>
+                        <span id="candidateResumeImportHelp">Можна додати текст, файли або обидва варіанти.</span>
+                    </div>
+                    <input id="candidateResumeFiles" name="resume_files" type="file" accept="${RESUME_ACCEPT}" multiple>
+                    <div id="candidateResumeFilesList" class="candidate-file-list"><span class="candidate-file-empty">Файли не вибрані</span></div>
+                </div>
+            </div>
+            <div class="candidate-intake-actions">
+                <span id="candidateIntakeStatus"></span>
+                <button type="button" class="btn-secondary" onclick="closeCandidateIntakeModal()">Скасувати</button>
+                <button type="submit" class="btn-add">Зберегти кандидата</button>
+            </div>
+        </form>
+    `;
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeCandidateIntakeModal();
     });
-    refreshCandidates();
+    document.body.appendChild(overlay);
+    const fileInput = document.getElementById('candidateResumeFiles');
+    fileInput?.addEventListener('change', () => renderCandidateIntakeFiles(fileInput));
+    document.getElementById('candidateIntakeForm')?.addEventListener('submit', event => handleCandidateIntakeSubmit(event, vacancyId));
+}
+
+async function handleCandidateIntakeSubmit(event, vacancyId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const status = document.getElementById('candidateIntakeStatus');
+    const submit = form.querySelector('button[type="submit"]');
+    const files = Array.from(document.getElementById('candidateResumeFiles')?.files || []);
+    const formData = new FormData(form);
+    let name = String(formData.get('name') || '').trim();
+    if (!name && files.length) name = candidateNameFromFile(files[0]);
+    if (!name) {
+        if (status) status.textContent = 'Вкажіть імʼя або додайте файл резюме.';
+        return;
+    }
+    if (submit) submit.disabled = true;
+    if (status) status.textContent = 'Створюю кандидата...';
+    try {
+        const created = await hrFetch(`/vacancies/${vacancyId}/applications`, {
+            method: 'POST',
+            body: {
+                name,
+                phone: String(formData.get('phone') || '').trim() || null,
+                telegram_username: String(formData.get('telegram_username') || '').trim() || null,
+                birth_date: formData.get('birth_date') || null,
+                address: String(formData.get('address') || '').trim() || null,
+                availability: String(formData.get('availability') || '').trim() || null,
+                experience: String(formData.get('experience') || '').trim() || null,
+                interview_notes: String(formData.get('interview_notes') || '').trim() || null,
+                raw_application_text: String(formData.get('raw_application_text') || '').trim() || null
+            }
+        });
+        if (!created?.success || !created.application?.id) {
+            throw new Error(created?.error || 'Не вдалося створити кандидата');
+        }
+        if (files.length) {
+            if (status) status.textContent = 'Завантажую резюме...';
+            const uploadBody = new FormData();
+            files.forEach(file => uploadBody.append('files', file));
+            const uploaded = await hrFetch(`/applications/${created.application.id}/resume-files`, {
+                method: 'POST',
+                body: uploadBody
+            });
+            if (!uploaded?.success) {
+                showNotification(uploaded?.error || 'Кандидата створено, але файл резюме не завантажився', 'error');
+            } else if (!uploaded.extracted_text_appended) {
+                showNotification('Файл резюме збережено. Для PDF/DOC/DOCX текст можна додати вручну у картці кандидата.', 'info');
+            }
+        }
+        closeCandidateIntakeModal();
+        await refreshCandidates();
+    } catch (err) {
+        if (status) status.textContent = err.message || 'Помилка збереження кандидата';
+        if (submit) submit.disabled = false;
+    }
 }
 
 // Vacancy create button

@@ -20,7 +20,7 @@ let shopItems = [];
 let leaderboardData = null;
 let achCatFilter = 'all';
 let leaderboardSort = 'xp';
-let activeTab = 'profile';
+let activeTab = 'professions';
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
@@ -293,6 +293,69 @@ function profileRoleLabel(role) {
     return labels[role] || role || 'Працівник';
 }
 
+const PROFILE_PROFESSION_GUIDES = {
+    creator: {
+        focus: 'Стратегія CRM, контроль системи, фінальні рішення і якість операцій.',
+        responsibilities: ['Тримати фокус команди', 'Приймати фінальні рішення', 'Контролювати критичні алерти'],
+        checklist: ['Перевірити критичні алерти', 'Подивитись задачі, що потребують рішення', 'Звірити ключові звіти та фінанси']
+    },
+    director: {
+        focus: 'Операційне керування, пріоритети дня, відповідальність за результат команди.',
+        responsibilities: ['Керувати денним фокусом', 'Знімати блокери', 'Контролювати якість виконання'],
+        checklist: ['Перевірити задачі команди', 'Підтвердити ризикові рішення', 'Закрити прострочені блокери']
+    },
+    vice_director: {
+        focus: 'Операційна підтримка директора, дисципліна процесів і контроль виконання.',
+        responsibilities: ['Підтримувати операційний ритм', 'Контролювати дедлайни', 'Підхоплювати проблемні ділянки'],
+        checklist: ['Перевірити сьогоднішні задачі', 'Оновити статуси проблемних процесів', 'Підготувати питання для директора']
+    },
+    senior_manager: {
+        focus: 'Продажі, менеджери, ліди, якість комунікації та виконання плану.',
+        responsibilities: ['Контролювати ліди', 'Допомагати менеджерам', 'Підтримувати якість CRM-воронки'],
+        checklist: ['Відкрити гарячі ліди', 'Перевірити прострочені follow-up', 'Оновити статус ключових клієнтів']
+    },
+    manager: {
+        focus: 'Клієнти, ліди, бронювання, follow-up і чистота CRM-карток.',
+        responsibilities: ['Обробляти ліди', 'Вести клієнтів до бронювання', 'Фіксувати домовленості'],
+        checklist: ['Перевірити нові ліди', 'Дотиснути відкриті follow-up', 'Оновити картки клієнтів після дзвінків']
+    },
+    admin: {
+        focus: 'Зал, прийом гостей, зміни, касова дисципліна і операційні задачі дня.',
+        responsibilities: ['Тримати зміну', 'Фіксувати операційні події', 'Передавати важливе наступній зміні'],
+        checklist: ['Перевірити графік зміни', 'Закрити задачі залу', 'Передати критичні нотатки команді']
+    },
+    accountant: {
+        focus: 'Фінанси, звіти, перевірка витрат/доходів і статуси закриття.',
+        responsibilities: ['Перевіряти звіти', 'Підтверджувати фінансові записи', 'Контролювати розбіжності'],
+        checklist: ['Відкрити звіти в обробці', 'Перевірити суми та категорії', 'Поставити статус затвердження']
+    },
+    hr: {
+        focus: 'Команда, структура, вакансії, onboarding і кадрові процеси.',
+        responsibilities: ['Вести кандидатів', 'Підтримувати структуру', 'Контролювати адаптацію'],
+        checklist: ['Перевірити вакансії', 'Оновити кадрові задачі', 'Подивитись onboarding та резерв']
+    },
+    animator: {
+        focus: 'Програми, взаємодія з дітьми, підготовка до подій і якість враження.',
+        responsibilities: ['Готуватись до програм', 'Вести подію за сценарієм', 'Повідомляти про ризики'],
+        checklist: ['Перевірити сьогоднішню програму', 'Підготувати реквізит', 'Передати результат після події']
+    },
+    instructor: {
+        focus: 'Безпека зони, інструктаж, контроль правил і підтримка гостей.',
+        responsibilities: ['Контролювати безпеку', 'Проводити інструктаж', 'Реагувати на порушення'],
+        checklist: ['Перевірити зону перед зміною', 'Провести інструктаж', 'Зафіксувати інциденти або ризики']
+    },
+    art_director: {
+        focus: 'Креатив, дизайни, шаблони, brand book і якість візуальних матеріалів.',
+        responsibilities: ['Керувати креативними задачами', 'Підтримувати бренд', 'Готувати матеріали до публікації'],
+        checklist: ['Перевірити активні дизайни', 'Оновити творчі задачі', 'Підготувати матеріали до погодження']
+    },
+    default: {
+        focus: 'Персональний робочий контекст, задачі, зміни і чеклісти для вашої ролі.',
+        responsibilities: ['Тримати задачі в актуальному статусі', 'Перевіряти зміну', 'Фіксувати важливі робочі дії'],
+        checklist: ['Перевірити задачі на сьогодні', 'Оновити статуси', 'Переглянути наступну зміну']
+    }
+};
+
 const PROFILE_CREATOR_ONLY_TABS = new Set(['inventory', 'shop']);
 const PROFILE_ALWAYS_SOON_TABS = new Set(['quests', 'season', 'teams', 'referral']);
 const PROFILE_SOON_TAB_COPY = {
@@ -520,9 +583,10 @@ async function initProfilePage() {
     const viewUserId = parseInt(params.get('id')) || currentUserId;
     isOwnProfile = viewUserId === currentUserId;
     const requestedTab = params.get('tab');
-    const allowedOwnTabs = ['profile', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
-    if (isOwnProfile && requestedTab && allowedOwnTabs.includes(requestedTab)) {
-        activeTab = requestedTab;
+    const normalizedRequestedTab = requestedTab === 'profile' ? 'professions' : requestedTab;
+    const allowedOwnTabs = ['professions', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    if (isOwnProfile && normalizedRequestedTab && allowedOwnTabs.includes(normalizedRequestedTab)) {
+        activeTab = normalizedRequestedTab;
     }
 
     // Load data
@@ -817,7 +881,7 @@ function renderProfile() {
 
         <!-- TABS -->
         <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Розділи профілю">
-            ${renderProfilePrimaryTab('profile', 'Огляд')}
+            ${renderProfilePrimaryTab('professions', 'Мої професії')}
             ${renderProfilePrimaryTab('myday', 'Мій день', { ownOnly: true })}
             ${renderProfilePrimaryTab('mytasks', 'Мої задачі', { ownOnly: true })}
             ${renderProfilePrimaryTab('settings', 'Налаштування', { ownOnly: true })}
@@ -876,6 +940,8 @@ function renderTabContent() {
     const locked = profileTabLock(activeTab);
     if (locked) return renderProfileComingSoon(activeTab);
     switch (activeTab) {
+        case 'profile':
+        case 'professions': return renderProfileProfessionsTab();
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyTasksTab();
         case 'settings': return renderProfileSettingsTab();
@@ -889,86 +955,187 @@ function renderTabContent() {
         case 'season': return renderSeasonTab();
         case 'teams': return renderTeamsTab();
         case 'referral': return renderReferralTab();
-        default: return renderWorkProfileOverview();
+        default: return renderProfileProfessionsTab();
     }
 }
 
-function renderWorkProfileOverview() {
+function profileProfessionGuide(role = profileRole()) {
+    return PROFILE_PROFESSION_GUIDES[role] || PROFILE_PROFESSION_GUIDES.default;
+}
+
+function profileProfessionContext() {
+    const p = profileData || {};
+    const user = profileUser(p);
+    const role = profileRole(p);
+    const roleLabel = profileRoleLabel(role);
+    const shift = p.nextShift || p.todayShift || {};
+    return {
+        role,
+        roleLabel,
+        displayName: profileDisplayName(p),
+        username: profileUsername(p),
+        department: shift.department || user.department || p.department || '',
+        position: shift.position || user.position || p.position || roleLabel,
+        telegramConnected: Boolean(user.telegramConnected),
+        guide: profileProfessionGuide(role)
+    };
+}
+
+function profileAllProfessionTasks() {
+    const buckets = [
+        profileData?.myTasks,
+        profileData?.tasks?.overdueList,
+        profileData?.tasks?.upcoming,
+        myCabinetData?.all,
+        myCabinetData?.today,
+        myCabinetData?.overdue,
+        myCabinetData?.waiting,
+        myCabinetData?.private
+    ];
+    const seen = new Set();
+    const list = [];
+    buckets.forEach(bucket => {
+        if (!Array.isArray(bucket)) return;
+        bucket.forEach(task => {
+            const key = task?.id || task?.taskId || task?.task_id || `${task?.title || ''}-${task?.deadline || task?.scheduledStartAt || ''}`;
+            if (!key || seen.has(String(key))) return;
+            seen.add(String(key));
+            list.push(task);
+        });
+    });
+    return list;
+}
+
+function profileProfessionChecklistTasks() {
+    return profileAllProfessionTasks()
+        .filter(task => {
+            const category = String(task.category || '').toLowerCase();
+            const kind = String(task.taskKind || task.task_kind || task.kind || '').toLowerCase();
+            const title = String(task.title || '').toLowerCase();
+            return category === 'checklist' || kind === 'checklist' || title.includes('чек') || title.includes('checklist');
+        })
+        .slice(0, 5);
+}
+
+function renderProfileProfessionFallbackChecklist(items = []) {
+    return `
+        <div class="profile-profession-checklist-fallback">
+            ${items.map(item => `
+                <div class="profile-profession-check-item">
+                    <span></span>
+                    <b>${escapeHtml(item)}</b>
+                </div>
+            `).join('')}
+        </div>`;
+}
+
+function renderProfileProfessionChecklist() {
+    const checklistTasks = profileProfessionChecklistTasks();
+    const guide = profileProfessionGuide();
+    if (checklistTasks.length) {
+        return `<div class="profile-work-list">${checklistTasks.map(task => renderProfileTaskRow(task, 'Чекліст')).join('')}</div>`;
+    }
+    return renderProfileProfessionFallbackChecklist(guide.checklist);
+}
+
+function renderProfileProfessionResponsibilities(items = []) {
+    return `
+        <div class="profile-profession-responsibilities">
+            ${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
+        </div>`;
+}
+
+function renderProfileProfessionsTab() {
     const p = profileData || {};
     const tasks = p.tasks || {};
     const myTasks = Array.isArray(p.myTasks) ? p.myTasks : [];
     const overdue = Array.isArray(tasks.overdueList) ? tasks.overdueList : [];
-    const upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
-    const recentActivity = Array.isArray(p.recentActivity) ? p.recentActivity.slice(0, 6) : [];
+    const context = profileProfessionContext();
+    const guide = context.guide;
+    const nextShift = p.nextShift || p.todayShift || null;
 
     return `
-        <div class="profile-work-overview">
-            <section class="profile-work-panel profile-work-panel-primary">
+        <div class="profile-professions-hub">
+            <section class="profile-work-panel profile-profession-hero">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Cockpit</span>
-                        <h2>Особистий фокус</h2>
+                        <span class="profile-kicker">Професійний контекст</span>
+                        <h2>${escapeHtml(context.roleLabel)}</h2>
                     </div>
-                    ${isOwnProfile ? '<button type="button" class="profile-widget-config-toggle" data-profile-widget-config-toggle>Налаштувати</button>' : '<a href="/tasks?view=today">Відкрити задачі</a>'}
+                    <span>${escapeHtml(context.position || context.roleLabel)}</span>
                 </div>
-                ${renderProfileCockpitWidgetStrip({ context: 'overview' })}
-                ${renderProfileWidgetSettingsPanel()}
+                <p>${escapeHtml(guide.focus)}</p>
+                <div class="profile-profession-meta">
+                    <span>Роль: ${escapeHtml(context.roleLabel)}</span>
+                    ${context.department ? `<span>Зона: ${escapeHtml(context.department)}</span>` : ''}
+                    ${context.username ? `<span>@${escapeHtml(context.username)}</span>` : ''}
+                    <span>${context.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                </div>
+                ${renderProfileProfessionResponsibilities(guide.responsibilities)}
             </section>
 
-            <section class="profile-work-panel profile-work-panel-tasks">
+            <section class="profile-work-panel profile-profession-checklist-panel">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Execution</span>
-                        <h2>Мої активні задачі</h2>
+                        <span class="profile-kicker">Чекліст ролі</span>
+                        <h2>Що тримати під контролем</h2>
+                    </div>
+                    <a href="/tasks?view=my">Відкрити задачі</a>
+                </div>
+                ${renderProfileProfessionChecklist()}
+            </section>
+
+            <section class="profile-work-panel profile-profession-ops-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Операційний стан</span>
+                        <h2>Сьогодні для ролі</h2>
+                    </div>
+                    ${nextShift ? '<span>зміна знайдена</span>' : '<span>без зміни</span>'}
+                </div>
+                <div class="profile-profession-signal-grid">
+                    <div>
+                        <b>${escapeHtml(profileShiftValue(nextShift))}</b>
+                        <span>${escapeHtml(profileShiftMeta(nextShift))}</span>
+                    </div>
+                    <div>
+                        <b>${myTasks.length}</b>
+                        <span>активних задач</span>
+                    </div>
+                    <div class="${overdue.length ? 'is-danger' : ''}">
+                        <b>${overdue.length}</b>
+                        <span>прострочених</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="profile-work-panel profile-profession-active-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Робочий список</span>
+                        <h2>Найближчі задачі</h2>
                     </div>
                     <span>${myTasks.length}</span>
                 </div>
                 ${myTasks.length
-                    ? `<div class="profile-work-list">${myTasks.slice(0, 6).map(renderProfileTaskRow).join('')}</div>`
-                    : '<div class="profile-empty-professional">Активних задач немає.</div>'}
+                    ? `<div class="profile-work-list">${myTasks.slice(0, 5).map(renderProfileTaskRow).join('')}</div>`
+                    : '<div class="profile-empty-professional">Активних задач для цієї ролі зараз немає.</div>'}
             </section>
 
-            <section class="profile-work-panel profile-work-panel-risks">
-                <div class="profile-panel-head">
-                    <div>
-                        <span class="profile-kicker">Контроль</span>
-                        <h2>Ризики й дедлайни</h2>
-                    </div>
-                    <span>${overdue.length + upcoming.length}</span>
-                </div>
-                ${overdue.length || upcoming.length
-                    ? `<div class="profile-work-list">
-                        ${overdue.slice(0, 4).map(task => renderProfileTaskRow(task, 'Прострочено')).join('')}
-                        ${upcoming.slice(0, 4).map(task => renderProfileTaskRow(task, 'Скоро')).join('')}
-                    </div>`
-                    : '<div class="profile-empty-professional">Критичних дедлайнів поруч немає.</div>'}
-            </section>
-
-            <section class="profile-work-panel profile-work-panel-compact profile-work-panel-progress">
+            <section class="profile-work-panel profile-profession-links-panel">
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Маршрути</span>
-                        <h2>Швидкі переходи</h2>
+                        <h2>Пов'язані місця</h2>
                     </div>
                 </div>
                 <div class="profile-quick-link-stack">
-                    <a href="/profile?tab=myday">Мій день <span>сьогоднішній зріз</span></a>
-                    <a href="/tasks?view=my">Мої задачі <span>повний список</span></a>
-                    <a href="/hr?tab=schedule">Графік <span>зміни команди</span></a>
-                    <a href="/certificates">Сертифікати <span>реєстр видач</span></a>
+                    <a href="/profile?tab=myday">Мій день <span>особистий зріз</span></a>
+                    <a href="/profile?tab=mytasks">Мої задачі <span>робочий список</span></a>
+                    <a href="/tasks?view=my">Задачі CRM <span>повний модуль</span></a>
+                    <a href="/hr?tab=schedule">Графік <span>зміни й присутність</span></a>
+                    <a href="/training">Навчання <span>матеріали ролі</span></a>
                 </div>
-            </section>
-
-            <section class="profile-work-panel profile-work-panel-compact profile-work-panel-activity">
-                <div class="profile-panel-head">
-                    <div>
-                        <span class="profile-kicker">Audit</span>
-                        <h2>Остання активність</h2>
-                    </div>
-                </div>
-                ${recentActivity.length
-                    ? `<div class="profile-activity-compact">${recentActivity.map(renderProfileActivityRow).join('')}</div>`
-                    : '<div class="profile-empty-professional">Активності ще немає.</div>'}
             </section>
 
         </div>`;

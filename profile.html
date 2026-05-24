@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.32">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.32">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.32">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.32">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.32">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.32">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.32">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.32">
+    <link rel="stylesheet" href="css/base.css?v=0.63.33">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.33">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.33">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.33">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.33">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.33">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.33">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.33">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1484,6 +1484,13 @@
             align-items: start;
         }
 
+        .profile-professions-hub {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 16px;
+            align-items: start;
+        }
+
         .profile-work-panel {
             min-width: 0;
             background:
@@ -1517,6 +1524,134 @@
 
         .profile-work-panel-wide {
             grid-column: 1 / -1;
+        }
+
+        .profile-profession-hero {
+            grid-column: span 7;
+        }
+
+        .profile-profession-checklist-panel {
+            grid-column: span 5;
+        }
+
+        .profile-profession-ops-panel {
+            grid-column: span 4;
+        }
+
+        .profile-profession-active-panel {
+            grid-column: span 5;
+        }
+
+        .profile-profession-links-panel {
+            grid-column: span 3;
+        }
+
+        .profile-profession-hero p {
+            margin: 0 0 14px;
+            color: var(--gray-600);
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.55;
+        }
+
+        .profile-profession-meta,
+        .profile-profession-responsibilities {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .profile-profession-meta span,
+        .profile-profession-responsibilities span {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.04);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 850;
+        }
+
+        .profile-profession-responsibilities span {
+            border-color: rgba(16, 185, 129, 0.24);
+            background: rgba(16, 185, 129, 0.07);
+            color: #047857;
+        }
+
+        .profile-profession-checklist-fallback {
+            display: grid;
+            gap: 8px;
+        }
+
+        .profile-profession-check-item {
+            display: grid;
+            grid-template-columns: 20px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            padding: 11px 12px;
+            border-radius: 12px;
+            background: var(--gray-50);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .profile-profession-check-item span {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid rgba(16, 185, 129, 0.56);
+            box-shadow: inset 0 0 0 3px rgba(16, 185, 129, 0.10);
+        }
+
+        .profile-profession-check-item b {
+            min-width: 0;
+            color: var(--gray-800);
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .profile-profession-signal-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .profile-profession-signal-grid div {
+            min-width: 0;
+            padding: 12px;
+            border-radius: 13px;
+            background: var(--gray-50);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .profile-profession-signal-grid div.is-danger {
+            background: rgba(239, 68, 68, 0.06);
+            border-color: rgba(239, 68, 68, 0.24);
+        }
+
+        .profile-profession-signal-grid b,
+        .profile-profession-signal-grid span {
+            display: block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-profession-signal-grid b {
+            color: var(--gray-900);
+            font-size: 20px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .profile-profession-signal-grid span {
+            margin-top: 3px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
         }
 
         .profile-panel-head {
@@ -2148,6 +2283,7 @@
         }
 
         body.dark-mode .profile-work-stat span,
+        body.dark-mode .profile-profession-hero p,
         body.dark-mode .profile-cockpit-widget-label,
         body.dark-mode .profile-cockpit-widget small,
         body.dark-mode .profile-widget-config-head p,
@@ -2188,6 +2324,9 @@
         }
 
         body.dark-mode .profile-work-stat,
+        body.dark-mode .profile-profession-meta span,
+        body.dark-mode .profile-profession-check-item,
+        body.dark-mode .profile-profession-signal-grid div,
         body.dark-mode .profile-cockpit-widget,
         body.dark-mode .profile-widget-config-panel,
         body.dark-mode .profile-widget-config-item,
@@ -2211,6 +2350,7 @@
         }
 
         body.dark-mode .profile-work-stat.danger,
+        body.dark-mode .profile-profession-signal-grid div.is-danger,
         body.dark-mode .profile-cockpit-widget--danger,
         body.dark-mode .profile-overview-metric.danger,
         body.dark-mode .profile-task-row.is-overdue,
@@ -2224,6 +2364,21 @@
         body.dark-mode .profile-security-metric.ok {
             background: rgba(6, 78, 59, 0.30);
             border-color: rgba(52, 211, 153, 0.28);
+        }
+
+        body.dark-mode .profile-profession-responsibilities span {
+            background: rgba(6, 78, 59, 0.30);
+            border-color: rgba(52, 211, 153, 0.28);
+            color: #A7F3D0;
+        }
+
+        body.dark-mode .profile-profession-check-item b,
+        body.dark-mode .profile-profession-signal-grid b {
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-profession-signal-grid span {
+            color: var(--profile-dark-secondary);
         }
 
         body.dark-mode .profile-cockpit-widget--schedule {
@@ -3094,16 +3249,26 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
+            .profile-professions-hub {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
             .profile-work-panel-primary,
             .profile-work-panel-tasks,
             .profile-work-panel-risks,
             .profile-work-panel-progress,
             .profile-work-panel-activity,
+            .profile-profession-hero,
+            .profile-profession-checklist-panel,
+            .profile-profession-ops-panel,
+            .profile-profession-active-panel,
+            .profile-profession-links-panel,
             .profile-work-panel-wide {
                 grid-column: auto;
             }
 
-            .profile-work-panel-primary {
+            .profile-work-panel-primary,
+            .profile-profession-hero {
                 grid-column: 1 / -1;
             }
         }
@@ -3120,6 +3285,10 @@
             }
 
             .profile-work-overview {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .profile-professions-hub {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
@@ -3172,7 +3341,9 @@
             .profile-cockpit-strip,
             .profile-status-grid,
             .profile-compact-metrics,
-            .profile-work-overview {
+            .profile-work-overview,
+            .profile-professions-hub,
+            .profile-profession-signal-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -3187,6 +3358,11 @@
             .profile-work-panel-risks,
             .profile-work-panel-progress,
             .profile-work-panel-activity,
+            .profile-profession-hero,
+            .profile-profession-checklist-panel,
+            .profile-profession-ops-panel,
+            .profile-profession-active-panel,
+            .profile-profession-links-panel,
             .profile-work-panel-wide {
                 grid-column: 1 / -1;
             }
@@ -3391,16 +3567,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.32"></script>
-    <script src="js/notification.js?v=0.63.32"></script>
-    <script src="js/api.js?v=0.63.32"></script>
-    <script src="js/auth.js?v=0.63.32"></script>
-    <script src="js/components/sidebar.js?v=0.63.32"></script>
+    <script src="js/config.js?v=0.63.33"></script>
+    <script src="js/notification.js?v=0.63.33"></script>
+    <script src="js/api.js?v=0.63.33"></script>
+    <script src="js/auth.js?v=0.63.33"></script>
+    <script src="js/components/sidebar.js?v=0.63.33"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.63.32"></script>
-    <script src="js/achievement-popup.js?v=0.63.32"></script>
-    <script src="js/task-create.js?v=0.63.32"></script>
-    <script src="js/profile-page.js?v=0.63.32"></script>
-    <script src="js/alerts.js?v=0.63.32"></script>
+    <script src="js/ui.js?v=0.63.33"></script>
+    <script src="js/achievement-popup.js?v=0.63.33"></script>
+    <script src="js/task-create.js?v=0.63.33"></script>
+    <script src="js/profile-page.js?v=0.63.33"></script>
+    <script src="js/alerts.js?v=0.63.33"></script>
 </body>
 </html>

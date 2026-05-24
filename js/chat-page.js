@@ -157,19 +157,16 @@
     function _resolveChatThemeState() {
         var savedDark = localStorage.getItem('pzp_dark_mode');
         var autoNight = localStorage.getItem('pzp_autoNight') !== 'false';
-        var isNight = _isInConfiguredNightWindow();
-        var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         var isDark = false;
 
         if (savedDark === 'true') isDark = true;
         else if (savedDark === 'false') isDark = false;
-        else if (autoNight) isDark = isNight;
-        else isDark = Boolean(systemDark);
+        else isDark = window.CRM_DEFAULT_DARK_MODE !== false;
 
         return {
             isDark: isDark,
             isAuto: savedDark === null,
-            isNightAuto: savedDark === null && autoNight && isNight && isDark,
+            isNightAuto: false,
             autoNight: autoNight
         };
     }

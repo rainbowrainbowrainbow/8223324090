@@ -292,8 +292,10 @@ async function apiDelete(path) {
 // ==========================================
 async function initProfilePage() {
     // Dark mode
-    if (localStorage.getItem('pzp_dark_mode') === 'true') {
+    if (localStorage.getItem('pzp_dark_mode') !== 'false') {
         document.body.classList.add('dark-mode');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
     }
 
     const token = localStorage.getItem('pzp_token');

@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <script>
-    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var auto=localStorage.getItem('pzp_autoNight')!=='false';var h=new Date().getHours();var start=parseInt(localStorage.getItem('pzp_night_start')||'19',10);var end=parseInt(localStorage.getItem('pzp_night_end')||'7',10);var night=(start>end)?(h>=start||h<end):(h>=start&&h<end);var sys=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;var d=s==='true'||(s===null&&(auto?night:sys));document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';document.addEventListener('DOMContentLoaded',function(){document.body.classList.toggle('dark-mode',d);});}catch(e){}})();
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';document.addEventListener('DOMContentLoaded',function(){document.body.classList.toggle('dark-mode',d);document.body.classList.remove('night-auto');});}catch(e){}})();
     </script>
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Genix | Налаштування чату</title>
     <meta name="description" content="Event Genix — налаштування Chat AI, Guardian та інтеграцій">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.24">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.24">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.24">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.24">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.24">
-    <link rel="stylesheet" href="css/chat.css?v=0.62.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.24">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.24">
+    <link rel="stylesheet" href="css/base.css?v=0.62.25">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.25">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.25">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.25">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.25">
+    <link rel="stylesheet" href="css/chat.css?v=0.62.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.25">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.25">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -182,14 +182,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.24"></script>
-    <script src="js/notification.js?v=0.62.24"></script>
-    <script src="js/api.js?v=0.62.24"></script>
-    <script src="js/auth.js?v=0.62.24"></script>
-    <script src="js/components/sidebar.js?v=0.62.24"></script>
+    <script src="js/config.js?v=0.62.25"></script>
+    <script src="js/notification.js?v=0.62.25"></script>
+    <script src="js/api.js?v=0.62.25"></script>
+    <script src="js/auth.js?v=0.62.25"></script>
+    <script src="js/components/sidebar.js?v=0.62.25"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/chat-settings-page.js?v=0.62.24"></script>
-    <script src="js/ui.js?v=0.62.24"></script>
-    <script src="js/alerts.js?v=0.62.24"></script>
+    <script src="js/chat-settings-page.js?v=0.62.25"></script>
+    <script src="js/ui.js?v=0.62.25"></script>
+    <script src="js/alerts.js?v=0.62.25"></script>
 </body>
 </html>

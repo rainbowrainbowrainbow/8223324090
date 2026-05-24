@@ -153,8 +153,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!getToken()) { window.location.href = '/'; return; }
 
     const saved = localStorage.getItem('pzp_dark_mode');
-    if (saved === 'true' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (saved !== 'false') {
         document.body.classList.add('dark-mode');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
     }
 
     // Check TEST_MODE badge

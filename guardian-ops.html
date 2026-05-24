@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <script>
-    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
     </script>
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
@@ -11,14 +11,14 @@
     <title>Event Genix | Guardian Ops</title>
     <meta name="description" content="Event Genix Guardian operator console">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.24">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.24">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.24">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.24">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.24">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.24">
+    <link rel="stylesheet" href="css/base.css?v=0.62.25">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.25">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.25">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.25">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.25">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.62.25">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -349,7 +349,7 @@
 </head>
 <body data-page-group="system">
     <script>
-    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();
     </script>
     <a href="#main-content" class="skip-link">Skip to Guardian operations</a>
     <div id="loginOverlay" class="page-login-overlay hidden">
@@ -523,13 +523,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.24"></script>
-    <script src="js/notification.js?v=0.62.24"></script>
-    <script src="js/api.js?v=0.62.24"></script>
-    <script src="js/auth.js?v=0.62.24"></script>
-    <script src="js/components/sidebar.js?v=0.62.24"></script>
+    <script src="js/config.js?v=0.62.25"></script>
+    <script src="js/notification.js?v=0.62.25"></script>
+    <script src="js/api.js?v=0.62.25"></script>
+    <script src="js/auth.js?v=0.62.25"></script>
+    <script src="js/components/sidebar.js?v=0.62.25"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/guardian-ops-page.js?v=0.62.24"></script><script src="js/alerts.js?v=0.62.24"></script>
-    <script src="js/ui.js?v=0.62.24"></script>
+    <script src="js/guardian-ops-page.js?v=0.62.25"></script><script src="js/alerts.js?v=0.62.25"></script>
+    <script src="js/ui.js?v=0.62.25"></script>
 </body>
 </html>

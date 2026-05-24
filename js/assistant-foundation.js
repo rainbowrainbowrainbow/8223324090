@@ -1351,14 +1351,14 @@
         if (nextMode === 'toggle') nextMode = currentDark ? 'light' : 'dark';
         if (nextMode === 'auto') {
             try { localStorage.removeItem('pzp_dark_mode'); } catch {}
-            const systemDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-            if (typeof window.applyCrmThemeMode === 'function') window.applyCrmThemeMode(systemDark, false);
+            const defaultDark = window.CRM_DEFAULT_DARK_MODE !== false;
+            if (typeof window.applyCrmThemeMode === 'function') window.applyCrmThemeMode(defaultDark, false);
             else {
-                document.body.classList.toggle('dark-mode', systemDark);
-                document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-                document.documentElement.style.colorScheme = systemDark ? 'dark' : 'light';
+                document.body.classList.toggle('dark-mode', defaultDark);
+                document.documentElement.setAttribute('data-theme', defaultDark ? 'dark' : 'light');
+                document.documentElement.style.colorScheme = defaultDark ? 'dark' : 'light';
             }
-            return { success: true, mode: 'auto', dark: systemDark };
+            return { success: true, mode: 'auto', dark: defaultDark };
         }
         const dark = nextMode === 'dark';
         if (typeof window.applyCrmThemeMode === 'function') window.applyCrmThemeMode(dark, true);

@@ -2654,8 +2654,10 @@ window.showAddCostume = async function() {
 // ==========================================
 
 function initDarkMode() {
-    if (localStorage.getItem('pzp_dark_mode') === 'true') {
+    if (localStorage.getItem('pzp_dark_mode') !== 'false') {
         document.body.classList.add('dark-mode');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
     }
 }
 

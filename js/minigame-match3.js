@@ -1264,7 +1264,11 @@ function startGameWithModifier(modifier) {
 // INIT
 // ==========================================
 async function initGamePage() {
-    if (localStorage.getItem('pzp_dark_mode') === 'true') document.body.classList.add('dark-mode');
+    if (localStorage.getItem('pzp_dark_mode') !== 'false') {
+        document.body.classList.add('dark-mode');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
+    }
     const token = localStorage.getItem('pzp_token');
     if (!token) { window.location.href = '/'; return; }
 

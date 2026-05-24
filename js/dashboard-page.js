@@ -463,8 +463,8 @@ const DashboardPage = (() => {
                 connectors: [],
                 activeTool: 'select',
                 preferences: {
-                    snapToGrid: true,
-                    snapMode: 'soft',
+                    snapToGrid: false,
+                    snapMode: 'freeform',
                     showGrid: true,
                     showGuides: true,
                     showPlanner: true,
@@ -583,7 +583,7 @@ const DashboardPage = (() => {
     }
 
     function normalizeBoardSnapMode(value) {
-        return BOARD_SNAP_MODES.has(value) ? value : 'soft';
+        return BOARD_SNAP_MODES.has(value) ? value : 'freeform';
     }
 
     function normalizeBoardWorkspaceMode(mode) {
@@ -755,8 +755,8 @@ const DashboardPage = (() => {
             connectors,
             activeTool: normalizeBoardTool(source.activeTool),
             preferences: {
-                snapToGrid: preferences.snapToGrid !== false,
-                snapMode: normalizeBoardSnapMode(preferences.snapMode || (preferences.snapToGrid === false ? 'freeform' : 'soft')),
+                snapToGrid: normalizeBoardSnapMode(preferences.snapToGrid === false ? 'freeform' : preferences.snapMode || (preferences.snapToGrid === true ? 'soft' : 'freeform')) !== 'freeform' && preferences.snapToGrid !== false,
+                snapMode: normalizeBoardSnapMode(preferences.snapToGrid === false ? 'freeform' : preferences.snapMode || (preferences.snapToGrid === true ? 'soft' : 'freeform')),
                 showGrid: preferences.showGrid !== false,
                 showGuides: preferences.showGuides !== false,
                 showPlanner: preferences.showPlanner !== false,
@@ -1070,7 +1070,7 @@ const DashboardPage = (() => {
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
             </div>
             <label class="board-tool-check">
-                <input type="checkbox" ${prefs.snapToGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
+                <input type="checkbox" ${prefs.snapToGrid === true ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
                 <span>Прив’язка</span>
             </label>
             <div class="board-tool-snap-presets" role="group" aria-label="Режими прив’язки">
@@ -3487,11 +3487,20 @@ const DashboardPage = (() => {
         return `<svg class="dashboard-board-drawing-layer" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
     }
 
+    function boardItemTransientBounds(item) {
+        const id = item?.id;
+        const drag = id && _boardDrag?.id === id ? _boardDrag : null;
+        const resize = id && _boardResize?.id === id ? _boardResize : null;
+        return {
+            x: Number(resize?.nextX ?? drag?.nextX ?? item?.x ?? 0),
+            y: Number(resize?.nextY ?? drag?.nextY ?? item?.y ?? 0),
+            w: Number(resize?.nextW ?? item?.w ?? 280),
+            h: Number(resize?.nextH ?? item?.h ?? 160)
+        };
+    }
+
     function boardItemAnchorPoint(item, anchor = 'right') {
-        const x = Number(item?.x || 0);
-        const y = Number(item?.y || 0);
-        const w = Number(item?.w || 280);
-        const h = Number(item?.h || 160);
+        const { x, y, w, h } = boardItemTransientBounds(item);
         if (anchor === 'top') return [x + w / 2, y];
         if (anchor === 'bottom') return [x + w / 2, y + h];
         if (anchor === 'left') return [x, y + h / 2];
@@ -3601,6 +3610,23 @@ const DashboardPage = (() => {
                 ${draftBody}
             </svg>
         `;
+    }
+
+    function boardItemHasLiveConnectorDependency(id) {
+        const itemId = String(id || '');
+        if (!itemId) return false;
+        const draftStart = getBoardConnectorDraftStart();
+        const draftHover = getBoardConnectorDraftHover();
+        if (draftStart?.itemId === itemId || draftHover?.itemId === itemId) return true;
+        return getBoardConnectors().some(connector => connector.from?.itemId === itemId || connector.to?.itemId === itemId);
+    }
+
+    function refreshBoardConnectorLayerForItem(id) {
+        if (!boardItemHasLiveConnectorDependency(id)) return;
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        const layer = canvas?.querySelector('.dashboard-board-connector-layer');
+        if (!layer) return;
+        layer.outerHTML = renderBoardConnectorLayer(getBoardConnectors());
     }
 
     function boardRectIntersectsZone(item, zone) {
@@ -3735,9 +3761,12 @@ const DashboardPage = (() => {
     function renderBoardResizeHandles(item) {
         if (!item || item.locked || item.hidden || _boardInteractionMode !== 'edit' || _boardSelectedId !== item.id) return '';
         if (isBoardThinGeometryItem(item)) return '';
+        const handles = isBoardEquilateralShapeItem(item)
+            ? ['ne', 'se', 'sw', 'nw']
+            : ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'];
         return `
             <div class="board-resize-handles" aria-hidden="true">
-                ${['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'].map(dir => `<button type="button" class="board-resize-handle board-resize-${dir}" data-board-resize-handle="${dir}" title="Resize ${dir}"></button>`).join('')}
+                ${handles.map(dir => `<button type="button" class="board-resize-handle board-resize-${dir}" data-board-resize-handle="${dir}" title="Resize ${dir}"></button>`).join('')}
             </div>
         `;
     }
@@ -4049,7 +4078,7 @@ const DashboardPage = (() => {
 
     function getBoardSnapUnit() {
         const prefs = safeObject(_config?.boardState?.preferences, {});
-        const snapMode = normalizeBoardSnapMode(prefs.snapMode || (prefs.snapToGrid === false ? 'freeform' : 'soft'));
+        const snapMode = normalizeBoardSnapMode(prefs.snapToGrid === false ? 'freeform' : prefs.snapMode || (prefs.snapToGrid === true ? 'soft' : 'freeform'));
         if (snapMode === 'freeform' || prefs.snapToGrid === false) return 1;
         if (snapMode === 'strict') return 24;
         return 10;
@@ -4300,6 +4329,7 @@ const DashboardPage = (() => {
         _boardDrag.nextX = x;
         _boardDrag.nextY = y;
         _boardDrag.moved = true;
+        refreshBoardConnectorLayerForItem(_boardDrag.id);
     }
 
     function endBoardDrag() {
@@ -4403,6 +4433,7 @@ const DashboardPage = (() => {
         _boardResize.nextW = next.w;
         _boardResize.nextH = next.h;
         _boardResize.moved = true;
+        refreshBoardConnectorLayerForItem(_boardResize.id);
     }
 
     function endBoardResize() {
@@ -4555,7 +4586,7 @@ const DashboardPage = (() => {
             return;
         }
         const connector = getBoardConnectors().find(conn => conn.id === drag.connectorId);
-        const target = findNearestBoardAnchor(drag.lastPoint, { threshold: 42 });
+        const target = findNearestBoardAnchor(drag.lastPoint, { threshold: 56 });
         if (!connector || !target) {
             renderBoard();
             return;
@@ -4595,7 +4626,7 @@ const DashboardPage = (() => {
         if (!_boardConnectorDraft || !Array.isArray(point)) return;
         const start = getBoardConnectorDraftStart();
         if (!start) return;
-        const hover = findNearestBoardAnchor(point, { threshold: 44, excludeItemId: start.itemId });
+        const hover = findNearestBoardAnchor(point, { threshold: 56, excludeItemId: start.itemId });
         const currentPoint = _boardConnectorDraft.currentPoint || [];
         const previousHover = getBoardConnectorDraftHover();
         const pointChanged = currentPoint[0] !== point[0] || currentPoint[1] !== point[1];
@@ -4676,7 +4707,7 @@ const DashboardPage = (() => {
         const point = boardPointFromEvent(event);
         const start = getBoardConnectorDraftStart();
         const endpoint = findNearestBoardAnchor(point, {
-            threshold: start ? 44 : 28,
+            threshold: start ? 56 : 42,
             excludeItemId: start?.itemId || null
         });
         if (!endpoint) {
@@ -6716,7 +6747,7 @@ const DashboardPage = (() => {
             widgets,
             `writing:${writingLane ? writingLane.checked : _config?.sceneOptions?.writingLane !== false}`,
             `chaos:${controlledChaos ? controlledChaos.checked : _config?.sceneOptions?.controlledChaos !== false}`,
-            `snap:${snapToGrid ? snapToGrid.checked : _config?.boardState?.preferences?.snapToGrid !== false}`,
+            `snap:${snapToGrid ? snapToGrid.checked : _config?.boardState?.preferences?.snapToGrid === true}`,
             `grid:${showGrid ? showGrid.checked : _config?.boardState?.preferences?.showGrid !== false}`,
             `guides:${showGuides ? showGuides.checked : _config?.boardState?.preferences?.showGuides !== false}`,
             `planner:${showPlanner ? showPlanner.checked : _config?.boardState?.preferences?.showPlanner !== false}`,
@@ -6847,7 +6878,7 @@ const DashboardPage = (() => {
                     <label class="dashboard-settings-scene-row">
                         <span>Прив’язка до сітки</span>
                         <span class="settings-toggle">
-                            <input type="checkbox" id="settingsBoardSnapToGrid" ${boardPrefs.snapToGrid !== false ? 'checked' : ''}>
+                            <input type="checkbox" id="settingsBoardSnapToGrid" ${boardPrefs.snapToGrid === true ? 'checked' : ''}>
                             <span class="settings-toggle-slider"></span>
                         </span>
                     </label>

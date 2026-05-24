@@ -222,7 +222,7 @@ function normalizeBoardRelationType(value) {
 }
 
 function normalizeBoardSnapMode(value) {
-    return BOARD_SNAP_MODES.has(value) ? value : 'soft';
+    return BOARD_SNAP_MODES.has(value) ? value : 'freeform';
 }
 
 function sanitizeBoardStroke(stroke, index = 0) {
@@ -300,8 +300,8 @@ function defaultBoardState(overrides = {}) {
         connectors: [],
         activeTool: 'select',
         preferences: {
-            snapToGrid: true,
-            snapMode: 'soft',
+            snapToGrid: false,
+            snapMode: 'freeform',
             showGrid: true,
             showGuides: true,
             showPlanner: true,
@@ -391,8 +391,8 @@ function sanitizeBoardState(input, role) {
         connectors,
         activeTool: normalizeBoardTool(source.activeTool),
         preferences: {
-            snapToGrid: preferencesSource.snapToGrid !== false,
-            snapMode: normalizeBoardSnapMode(preferencesSource.snapMode || (preferencesSource.snapToGrid === false ? 'freeform' : 'soft')),
+            snapToGrid: normalizeBoardSnapMode(preferencesSource.snapToGrid === false ? 'freeform' : preferencesSource.snapMode || (preferencesSource.snapToGrid === true ? 'soft' : 'freeform')) !== 'freeform' && preferencesSource.snapToGrid !== false,
+            snapMode: normalizeBoardSnapMode(preferencesSource.snapToGrid === false ? 'freeform' : preferencesSource.snapMode || (preferencesSource.snapToGrid === true ? 'soft' : 'freeform')),
             showGrid: preferencesSource.showGrid !== false,
             showGuides: preferencesSource.showGuides !== false,
             showPlanner: preferencesSource.showPlanner !== false,

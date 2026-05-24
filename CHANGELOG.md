@@ -4,6 +4,19 @@
 
 ---
 
+## v0.63.2 - CRM 63.2: Вільна dashboard-дошка
+
+### Dashboard Board / freeform interaction model [codex]
+- **Вільніша сцена за замовчуванням** - нові й неповні `boardState` тепер стартують у `freeform` snap mode без примусової прив'язки до сітки; toolbar і settings показують цей стан чесно.
+- **Коло й квадрат без овального дрейфу** - `circle` і `square` лишаються з рівними `w`/`h` під час створення, нормалізації та resize; для них показуються тільки кутові ручки, щоб інтерфейс не підказував прямокутне розтягування.
+- **Planner не блокує об'єкти** - planning overlay опущено під board items, тому зайняті зони більше не перехоплюють drag/select над фігурами чи віджетами.
+- **Конектори йдуть за об'єктами під час руху** - SVG-шар конекторів тепер перераховує endpoint-и ще під час drag/resize під'єднаного item, а не тільки після відпускання миші.
+- **М'якше anchor snapping** - connector mode має більший безпечний радіус пошуку anchor-ів для старту, preview, завершення й редагування endpoint-а, без введення нового free-point persistence-контракту.
+- **Сумісність без міграції схеми** - backend і frontend sanitizer-и синхронно нормалізують `freeform`/`snapToGrid`, а наявні shapes/connectors лишаються в поточному evolutionary board JSON.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` покриває equal resize для circle/square, live connector rerender під час руху, near-anchor canvas snapping і дефолтний freeform state.
+
+---
+
 ## v0.63.1 - CRM 63.1: Оновлений арт-модуль
 
 ### Art / standalone shell refresh [codex]

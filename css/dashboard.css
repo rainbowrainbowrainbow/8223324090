@@ -1205,7 +1205,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     width: 1200px;
     height: 720px;
     pointer-events: none;
-    z-index: 2;
+    z-index: 0;
 }
 
 .dashboard-planner-guide {
@@ -1756,6 +1756,20 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     background: #ffffff;
     border-color: #0f766e;
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14), 0 8px 18px rgba(15, 23, 42, 0.18);
+}
+
+.dashboard-board-item.equilateral-geometry .board-resize-handle {
+    width: 12px;
+    height: 12px;
+    border-color: #0f766e;
+    background: #ffffff;
+}
+
+.dashboard-board-item.equilateral-geometry .board-resize-n,
+.dashboard-board-item.equilateral-geometry .board-resize-e,
+.dashboard-board-item.equilateral-geometry .board-resize-s,
+.dashboard-board-item.equilateral-geometry .board-resize-w {
+    display: none;
 }
 
 .board-resize-n { left: 50%; top: -7px; transform: translateX(-50%); cursor: ns-resize; }

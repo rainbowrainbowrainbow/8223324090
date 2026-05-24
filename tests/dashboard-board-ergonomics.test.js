@@ -23,9 +23,13 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
     assert.match(pageJs, /function beginBoardLineEndpointDrag/);
     assert.match(pageJs, /function beginBoardConnectorEndpointDrag/);
     assert.match(pageJs, /function findNearestBoardAnchor/);
+    assert.match(pageJs, /function boardItemTransientBounds/);
+    assert.match(pageJs, /function refreshBoardConnectorLayerForItem/);
     assert.match(pageJs, /if \(item\.type === 'widget' \|\| item\.type === 'note' \|\| item\.type === 'text'\) return false/);
     assert.match(css, /\.dashboard-board-shell\.is-panning/);
     assert.match(css, /\.dashboard-board-item\.thin-geometry/);
+    assert.match(css, /\.dashboard-board-item\.equilateral-geometry \.board-resize-n/);
+    assert.match(css, /\.dashboard-planner-layer[\s\S]*z-index: 0;/);
     assert.match(css, /\.board-line-endpoint/);
     assert.match(css, /\.board-connector-endpoint/);
     assert.match(css, /box-shadow: 0 0 0 1px var\(--workspace-selection-ring/);
@@ -183,6 +187,50 @@ test('dashboard primitive shapes create as scene-native objects, while notes kee
     assert.ok(noteEl?.querySelector('.dashboard-board-item-frame'));
 });
 
+test('dashboard circle and square resize through freeform corner handles without drifting from equal bounds', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const circle = DashboardPage.addBoardShape('circle', [220, 220]);
+    const doc = dom.window.document;
+    let circleEl = doc.querySelector(`[data-board-item-id="${circle.id}"]`);
+    const circleHandles = [...circleEl.querySelectorAll('[data-board-resize-handle]')].map(handle => handle.dataset.boardResizeHandle).sort();
+
+    assert.deepEqual(circleHandles, ['ne', 'nw', 'se', 'sw']);
+
+    circleEl.querySelector('[data-board-resize-handle="se"]').dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: circle.x + circle.w,
+        clientY: circle.y + circle.h
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: circle.x + circle.w + 74,
+        clientY: circle.y + circle.h + 26
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: circle.x + circle.w + 74,
+        clientY: circle.y + circle.h + 26
+    }));
+
+    circleEl = doc.querySelector(`[data-board-item-id="${circle.id}"]`);
+    assert.equal(circle.w, circle.h);
+    assert.equal(circleEl.style.width, circleEl.style.height);
+    assert.ok(circle.w > 150);
+
+    const square = DashboardPage.addBoardShape('square', [520, 220]);
+    const squareEl = doc.querySelector(`[data-board-item-id="${square.id}"]`);
+    const squareHandles = [...squareEl.querySelectorAll('[data-board-resize-handle]')].map(handle => handle.dataset.boardResizeHandle).sort();
+
+    assert.deepEqual(squareHandles, ['ne', 'nw', 'se', 'sw']);
+    assert.equal(squareEl.style.width, squareEl.style.height);
+});
+
 test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse while admitting circle/square', () => {
     const pageJs = read('js/dashboard-page.js');
     const routeJs = read('routes/dashboard.js');
@@ -213,8 +261,15 @@ test('dashboard board persistence normalizes legacy and modern saved content con
     const backendState = routeTest.sanitizeBoardState(fixture, 'creator');
     const { boardTest } = loadDashboardHarness({ exposeBoardInternals: true });
     const frontendState = boardTest.normalizeBoardState(fixture);
+    const backendDefaultState = routeTest.sanitizeBoardState({}, 'creator');
+    const frontendDefaultState = boardTest.normalizeBoardState({});
     const backendItems = byId(backendState.items);
     const frontendItems = byId(frontendState.items);
+
+    for (const state of [backendDefaultState, frontendDefaultState]) {
+        assert.equal(state.preferences.snapMode, 'freeform');
+        assert.equal(state.preferences.snapToGrid, false);
+    }
 
     for (const state of [backendState, frontendState]) {
         assert.equal(state.schemaVersion, 1);
@@ -340,6 +395,7 @@ test('dashboard connectors rerender from item anchors after connected objects mo
         clientX: rect.x + 90,
         clientY: rect.y + 50
     }));
+    const during = connectorPath();
     doc.dispatchEvent(new dom.window.MouseEvent('pointerup', {
         bubbles: true,
         cancelable: true,
@@ -350,8 +406,50 @@ test('dashboard connectors rerender from item anchors after connected objects mo
     const after = connectorPath();
 
     assert.notEqual(before, '');
+    assert.notEqual(during, '');
+    assert.notEqual(during, before);
     assert.notEqual(after, '');
     assert.notEqual(after, before);
+});
+
+test('dashboard connector mode snaps from near-canvas clicks to item anchors', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const rect = DashboardPage.addBoardShape('rect', [220, 220]);
+    const circle = DashboardPage.addBoardShape('circle', [520, 220]);
+    const doc = dom.window.document;
+    const canvas = doc.getElementById('dashboardBoardCanvas');
+
+    DashboardPage.setBoardTool('connector');
+    canvas.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: rect.x + rect.w + 36,
+        clientY: rect.y + rect.h / 2
+    }));
+
+    assert.ok(doc.querySelector('[data-board-connector-draft="true"]'));
+
+    canvas.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: circle.x - 44,
+        clientY: circle.y + circle.h / 2
+    }));
+    assert.ok(doc.querySelector('.board-anchor.is-draft-target'));
+
+    canvas.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: circle.x - 36,
+        clientY: circle.y + circle.h / 2
+    }));
+
+    assert.equal(doc.querySelector('[data-board-connector-draft="true"]'), null);
+    assert.equal(doc.querySelectorAll('[data-board-connector-id]').length, 1);
 });
 
 test('dashboard sandbox UX exposes tool families, canvas hints, and cancel reset', () => {

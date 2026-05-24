@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.10">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.10">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.10">
+    <link rel="stylesheet" href="css/base.css?v=0.63.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.11">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.11">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -219,6 +219,96 @@
             color: var(--gray-900);
             border-color: rgba(148,163,184,0.18);
             box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 12px 24px rgba(15,23,42,0.08);
+        }
+
+        .profile-primary-tab.is-soon {
+            overflow: hidden;
+            padding-right: 48px;
+            background: rgba(245, 158, 11, 0.08);
+            border-color: rgba(245, 158, 11, 0.30);
+            color: #92400E;
+        }
+
+        .profile-primary-tab.is-soon::after {
+            content: attr(data-profile-soon);
+            position: absolute;
+            top: 4px;
+            right: -18px;
+            min-width: 58px;
+            padding: 2px 8px;
+            transform: rotate(18deg);
+            background: #F59E0B;
+            color: #111827;
+            font-size: 9px;
+            font-weight: 900;
+            line-height: 1;
+            text-align: center;
+            text-transform: uppercase;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+        }
+
+        .profile-primary-tab.is-soon.active {
+            background: rgba(245, 158, 11, 0.14);
+            border-color: rgba(245, 158, 11, 0.42);
+            color: #78350F;
+            box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.16) inset, 0 10px 22px rgba(120, 53, 15, 0.08);
+        }
+
+        .profile-soon-panel {
+            position: relative;
+            overflow: hidden;
+            padding: 28px;
+            border-radius: 24px;
+            border: 1px solid rgba(245, 158, 11, 0.24);
+            background:
+                linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.92)),
+                radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.16), transparent 34%);
+            box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+        }
+
+        .profile-soon-ribbon {
+            position: absolute;
+            top: 18px;
+            right: -34px;
+            width: 148px;
+            padding: 7px 0;
+            transform: rotate(24deg);
+            background: #F59E0B;
+            color: #111827;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0;
+            text-align: center;
+            text-transform: uppercase;
+            box-shadow: 0 10px 24px rgba(120, 53, 15, 0.18);
+        }
+
+        .profile-soon-kicker {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(245, 158, 11, 0.12);
+            color: #92400E;
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .profile-soon-panel h3 {
+            margin: 16px 0 8px;
+            color: var(--gray-900);
+            font-size: 24px;
+            line-height: 1.2;
+        }
+
+        .profile-soon-panel p {
+            max-width: 720px;
+            margin: 0;
+            color: var(--gray-600);
+            font-size: 15px;
+            line-height: 1.6;
         }
 
         .profile-secondary-tabs {
@@ -1844,6 +1934,45 @@
             box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.16) inset;
         }
 
+        body.dark-mode .profile-primary-tab.is-soon {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.34);
+            color: #FDE68A;
+        }
+
+        body.dark-mode .profile-primary-tab.is-soon::after {
+            background: #FBBF24;
+            color: #111827;
+        }
+
+        body.dark-mode .profile-primary-tab.is-soon.active {
+            background: rgba(245, 158, 11, 0.18);
+            border-color: rgba(251, 191, 36, 0.46);
+            color: #FEF3C7;
+            box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.18) inset;
+        }
+
+        body.dark-mode .profile-soon-panel {
+            background:
+                linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.92)),
+                radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 34%);
+            border-color: rgba(245, 158, 11, 0.26);
+            box-shadow: 0 18px 44px rgba(2, 6, 23, 0.34);
+        }
+
+        body.dark-mode .profile-soon-kicker {
+            background: rgba(245, 158, 11, 0.16);
+            color: #FDE68A;
+        }
+
+        body.dark-mode .profile-soon-panel h3 {
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-soon-panel p {
+            color: var(--profile-dark-secondary);
+        }
+
         body.dark-mode .profile-secondary-tab {
             background: rgba(148, 163, 184, 0.10);
             border-color: rgba(148, 163, 184, 0.16);
@@ -2734,6 +2863,21 @@
                 font-size: 12px;
             }
 
+            .profile-primary-tab.is-soon {
+                padding-right: 42px;
+            }
+
+            .profile-primary-tab.is-soon::after {
+                right: -20px;
+                min-width: 54px;
+                font-size: 8px;
+            }
+
+            .profile-soon-panel {
+                padding: 24px 18px;
+                border-radius: 18px;
+            }
+
             .profile-secondary-tabs {
                 overflow-x: auto;
                 flex-wrap: nowrap;
@@ -2897,16 +3041,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.10"></script>
-    <script src="js/notification.js?v=0.63.10"></script>
-    <script src="js/api.js?v=0.63.10"></script>
-    <script src="js/auth.js?v=0.63.10"></script>
-    <script src="js/components/sidebar.js?v=0.63.10"></script>
+    <script src="js/config.js?v=0.63.11"></script>
+    <script src="js/notification.js?v=0.63.11"></script>
+    <script src="js/api.js?v=0.63.11"></script>
+    <script src="js/auth.js?v=0.63.11"></script>
+    <script src="js/components/sidebar.js?v=0.63.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.63.10"></script>
-    <script src="js/achievement-popup.js?v=0.63.10"></script>
-    <script src="js/task-create.js?v=0.63.10"></script>
-    <script src="js/profile-page.js?v=0.63.10"></script>
-    <script src="js/alerts.js?v=0.63.10"></script>
+    <script src="js/ui.js?v=0.63.11"></script>
+    <script src="js/achievement-popup.js?v=0.63.11"></script>
+    <script src="js/task-create.js?v=0.63.11"></script>
+    <script src="js/profile-page.js?v=0.63.11"></script>
+    <script src="js/alerts.js?v=0.63.11"></script>
 </body>
 </html>

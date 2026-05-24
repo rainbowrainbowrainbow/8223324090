@@ -114,6 +114,38 @@ test('profile task cards respect disabled rescheduling control meta', () => {
     assert.doesNotMatch(html, /data-cabinet-task-action="reschedule-overdue"/);
 });
 
+test('profile unfinished gamification tabs use soon lockdown by role', () => {
+    const ctx = loadProfileTaskerContext();
+
+    vm.runInContext(`
+        AppState = { currentUser: { id: 7, role: 'manager' } };
+        profileData = { user: { id: 7, role: 'manager', name: 'Manager' } };
+        currentUserId = 7;
+        isOwnProfile = true;
+        activeTab = 'inventory';
+        myInventory = [];
+    `, ctx);
+
+    assert.equal(ctx.profileCanOpenTab('inventory'), false);
+    assert.equal(ctx.profileCanOpenTab('shop'), false);
+    assert.equal(ctx.profileCanOpenTab('quests'), false);
+    assert.match(ctx.renderProfilePrimaryTab('inventory', 'Інвентар', { ownOnly: true }), /is-soon/);
+    assert.match(ctx.renderTabContent(), /profile-soon-panel/);
+    assert.match(ctx.renderTabContent(), /data-profile-soon-panel="inventory"/);
+
+    vm.runInContext(`
+        AppState.currentUser.role = 'creator';
+        profileData.user.role = 'creator';
+        activeTab = 'inventory';
+    `, ctx);
+
+    assert.equal(ctx.profileCanOpenTab('inventory'), true);
+    assert.equal(ctx.profileCanOpenTab('shop'), true);
+    assert.equal(ctx.profileCanOpenTab('quests'), false);
+    assert.doesNotMatch(ctx.renderProfilePrimaryTab('inventory', 'Інвентар', { ownOnly: true }), /is-soon/);
+    assert.doesNotMatch(ctx.renderInventory(), /\uD83C\uDF92/);
+});
+
 test('my cabinet task projection counts scheduled workload by today or no date, not all active tasks', () => {
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');

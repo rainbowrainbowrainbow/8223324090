@@ -222,6 +222,93 @@ function profileRoleLabel(role) {
     return labels[role] || role || 'Працівник';
 }
 
+const PROFILE_CREATOR_ONLY_TABS = new Set(['inventory', 'shop']);
+const PROFILE_ALWAYS_SOON_TABS = new Set(['quests', 'season', 'teams', 'referral']);
+const PROFILE_SOON_TAB_COPY = {
+    inventory: {
+        title: 'Інвентар скоро',
+        kicker: 'Creator preview',
+        message: 'Інвентар ще закритий для команди. Після запуску тут будуть робочі нагороди та предмети без тестової візуальної мішанини.'
+    },
+    shop: {
+        title: 'Магазин скоро',
+        kicker: 'Creator preview',
+        message: 'Магазин поки доступний тільки Creator для перевірки балансу і товарів. Для команди покупки закриті до повного запуску.'
+    },
+    quests: {
+        title: 'Щоденні скоро',
+        kicker: 'Coming soon',
+        message: 'Щоденні завдання ще в підготовці. Розділ буде відкрито після перевірки нагород і стабільності прогресу.'
+    },
+    season: {
+        title: 'Сезон скоро',
+        kicker: 'Coming soon',
+        message: 'Сезонний прогрес закритий до повного запуску правил, винагород і періодів сезону.'
+    },
+    teams: {
+        title: 'Команди скоро',
+        kicker: 'Coming soon',
+        message: 'Командні механіки ще не відкриті. Поки вони не впливають на роботу профілю або рейтинг.'
+    },
+    referral: {
+        title: 'Реферали скоро',
+        kicker: 'Coming soon',
+        message: 'Реферальна програма буде доступна після окремого запуску правил, винагород і звітності.'
+    }
+};
+
+function profileViewerRole() {
+    const appUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    return String(appUser?.role || appUser?.account_role || appUser?.accountRole || profileRole(profileData) || '').toLowerCase();
+}
+
+function profileViewerIsCreator() {
+    return profileViewerRole() === 'creator';
+}
+
+function profileTabLock(tab) {
+    if (PROFILE_ALWAYS_SOON_TABS.has(tab)) {
+        return { code: 'soon', soon: true, creatorOnly: false };
+    }
+    if (PROFILE_CREATOR_ONLY_TABS.has(tab) && !profileViewerIsCreator()) {
+        return { code: 'creator_only', soon: true, creatorOnly: true };
+    }
+    return null;
+}
+
+function profileCanOpenTab(tab) {
+    return !profileTabLock(tab);
+}
+
+function renderProfilePrimaryTab(tab, label, options = {}) {
+    if (options.ownOnly && !isOwnProfile) return '';
+    const lock = profileTabLock(tab);
+    const classes = [
+        'profile-primary-tab',
+        activeTab === tab ? 'active' : '',
+        lock ? 'is-soon is-locked' : ''
+    ].filter(Boolean).join(' ');
+    const attrs = lock
+        ? ' data-profile-locked="true" data-profile-soon="скоро"'
+        : '';
+    return `<button class="${classes}" data-profile-tab="${tab}" onclick="switchTab('${tab}')"${attrs}>${escapeHtml(label)}${options.suffix || ''}</button>`;
+}
+
+function renderProfileComingSoon(tab) {
+    const copy = PROFILE_SOON_TAB_COPY[tab] || {
+        title: 'Скоро',
+        kicker: 'Coming soon',
+        message: 'Розділ ще не відкритий для роботи.'
+    };
+    return `
+    <div class="profile-soon-panel" data-profile-soon-panel="${escapeHtml(tab)}">
+        <div class="profile-soon-ribbon">скоро</div>
+        <div class="profile-soon-kicker">${escapeHtml(copy.kicker)}</div>
+        <h3>${escapeHtml(copy.title)}</h3>
+        <p>${escapeHtml(copy.message)}</p>
+    </div>`;
+}
+
 function profileInitial(data = profileData) {
     return profileDisplayName(data).trim().charAt(0).toUpperCase() || '?';
 }
@@ -447,18 +534,18 @@ function renderProfile() {
 
         <!-- TABS -->
         <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Розділи профілю">
-            <button class="profile-primary-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Огляд</button>
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'myday' ? 'active' : ''}" onclick="switchTab('myday')">Мій день</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'mytasks' ? 'active' : ''}" onclick="switchTab('mytasks')">Мої задачі</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'settings' ? 'active' : ''}" onclick="switchTab('settings')">Налаштування</button>` : ''}
-            <button class="profile-primary-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">Досягнення</button>
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">Інвентар</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">Магазин</button>` : ''}
-            <button class="profile-primary-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Рейтинг</button>
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">Щоденні${_hasUnclaimedQuests() ? '<span class="profile-reward-dot" aria-label="Є нагороди"></span>' : ''}</button>` : ''}
-            <button class="profile-primary-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">Сезон</button>
-            <button class="profile-primary-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">Команди</button>
-            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">Реферали</button>` : ''}
+            ${renderProfilePrimaryTab('profile', 'Огляд')}
+            ${renderProfilePrimaryTab('myday', 'Мій день', { ownOnly: true })}
+            ${renderProfilePrimaryTab('mytasks', 'Мої задачі', { ownOnly: true })}
+            ${renderProfilePrimaryTab('settings', 'Налаштування', { ownOnly: true })}
+            ${renderProfilePrimaryTab('achievements', 'Досягнення')}
+            ${renderProfilePrimaryTab('inventory', 'Інвентар', { ownOnly: true })}
+            ${renderProfilePrimaryTab('shop', 'Магазин', { ownOnly: true })}
+            ${renderProfilePrimaryTab('leaderboard', 'Рейтинг')}
+            ${renderProfilePrimaryTab('quests', 'Щоденні', { ownOnly: true })}
+            ${renderProfilePrimaryTab('season', 'Сезон')}
+            ${renderProfilePrimaryTab('teams', 'Команди')}
+            ${renderProfilePrimaryTab('referral', 'Реферали', { ownOnly: true })}
         </div>
 
         <div id="tabContent">
@@ -472,22 +559,23 @@ function renderProfile() {
 
 async function switchTab(tab) {
     activeTab = tab;
+    const locked = profileTabLock(tab);
     if (tab === 'mytasks') {
         setCabinetQuickMode('tasks');
     }
-    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
+    if (!locked && isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
     }
-    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
+    if (!locked && isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
         await refreshCabinetPulseCounts();
     }
 
     // Lazy load data for tabs that need it
-    if (tab === 'shop' && shopItems.length === 0) await loadShopItems();
-    if (tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
-    if (tab === 'season' && !seasonalQuests) await loadSeasonalQuests();
-    if (tab === 'teams' && !teamsData) await loadTeamsData();
-    if (tab === 'referral' && !referralData) await loadReferralData();
+    if (!locked && tab === 'shop' && shopItems.length === 0) await loadShopItems();
+    if (!locked && tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
+    if (!locked && tab === 'season' && !seasonalQuests) await loadSeasonalQuests();
+    if (!locked && tab === 'teams' && !teamsData) await loadTeamsData();
+    if (!locked && tab === 'referral' && !referralData) await loadReferralData();
 
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
@@ -496,12 +584,14 @@ async function switchTab(tab) {
     }
     // Update tab buttons
     document.querySelectorAll('.profile-primary-tab').forEach(btn => {
-        const tabName = btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
+        const tabName = btn.dataset.profileTab || btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
         btn.classList.toggle('active', tabName === tab);
     });
 }
 
 function renderTabContent() {
+    const locked = profileTabLock(activeTab);
+    if (locked) return renderProfileComingSoon(activeTab);
     switch (activeTab) {
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyTasksTab();
@@ -2786,11 +2876,11 @@ async function createCabinetTask(event, mode) {
 // INVENTORY
 // ==========================================
 function renderInventory() {
+    if (profileTabLock('inventory')) return renderProfileComingSoon('inventory');
     const items = myInventory || [];
 
     if (items.length === 0) {
-        return `<div style="text-align:center;padding:48px 20px">
-            <div style="font-size:48px;margin-bottom:12px">🎒</div>
+        return `<div class="inventory-empty-state" style="text-align:center;padding:48px 20px">
             <div style="font-size:16px;font-weight:700;color:var(--gray-700);margin-bottom:4px">Інвентар порожній</div>
             <div style="font-size:13px;color:var(--gray-400)">Купуй предмети в магазині або отримуй за ачивки</div>
             <button onclick="switchTab('shop')" style="margin-top:16px;padding:10px 24px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit">🛒 Перейти в магазин</button>
@@ -2811,7 +2901,7 @@ function renderInventory() {
     }).join('');
 
     return `<div style="margin-top:16px">
-        <h3 style="margin-bottom:12px">🎒 Інвентар (${items.length})</h3>
+        <h3 style="margin-bottom:12px">Інвентар (${items.length})</h3>
         <div style="display:flex;flex-direction:column;gap:8px">${cardsHtml}</div>
     </div>`;
 }
@@ -2957,6 +3047,7 @@ function renderDailyPreview() {
 }
 
 function renderQuests() {
+    if (profileTabLock('quests')) return renderProfileComingSoon('quests');
     if (!questsData?.quests) return '<div style="text-align:center;padding:40px;color:var(--gray-500)">Квести завантажуються...</div>';
 
     const quests = questsData.quests;
@@ -3024,11 +3115,13 @@ function renderTitles() {
 // SHOP TAB
 // ==========================================
 async function loadShopItems() {
+    if (profileTabLock('shop')) return;
     const data = await apiGet('/gamification/shop');
     shopItems = data || [];
 }
 
 function renderShopTab() {
+    if (profileTabLock('shop')) return renderProfileComingSoon('shop');
     if (!shopItems.length) return '<div class="empty-state"><div class="empty-state-icon">🛒</div><div class="empty-state-text">Магазин порожній</div></div>';
 
     const ownedCodes = new Set((myInventory || []).map(i => i.code));
@@ -3067,6 +3160,10 @@ function renderShopTab() {
 }
 
 async function buyItem(itemId, itemName) {
+    if (profileTabLock('shop')) {
+        if (typeof showNotification === 'function') showNotification('Магазин поки закритий для цієї ролі', 'warning');
+        return;
+    }
     if (!await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', cancelText: 'Скасувати' })) return;
     const result = await apiPost('/gamification/shop/buy', { itemId });
     if (result?.success) {
@@ -3294,6 +3391,12 @@ function attachProfileListeners() {
 }
 
 async function claimQuest(questId) {
+    if (profileTabLock('quests')) {
+        if (typeof showNotification === 'function') {
+            showNotification('Щоденні завдання ще закриті', 'warning');
+        }
+        return;
+    }
     if (isRewardClaimPending('quest', questId)) return;
     setRewardClaimPending('quest', questId, true);
     renderProfile();
@@ -3532,6 +3635,7 @@ async function buyStreakFreeze() {
 // SEASONAL QUESTS TAB (v30.8.0)
 // ==========================================
 async function loadSeasonalQuests() {
+    if (profileTabLock('season')) return;
     seasonalQuests = await apiGet('/gamification/seasons');
     // Also check progress
     await apiPost('/gamification/seasons/check');
@@ -3539,6 +3643,7 @@ async function loadSeasonalQuests() {
 }
 
 function renderSeasonTab() {
+    if (profileTabLock('season')) return renderProfileComingSoon('season');
     if (!seasonalQuests) return '<div class="empty-state"><div class="empty-state-icon">🏔️</div><div class="empty-state-text">Завантаження сезонних квестів...</div></div>';
 
     const quests = Array.isArray(seasonalQuests) ? seasonalQuests : [];
@@ -3659,6 +3764,10 @@ function renderSeasonTab() {
 }
 
 async function claimSeasonQuest(questId) {
+    if (profileTabLock('season')) {
+        if (typeof showNotification === 'function') showNotification('Сезонний розділ ще закритий', 'warning');
+        return;
+    }
     if (isRewardClaimPending('season', questId)) return;
     setRewardClaimPending('season', questId, true);
     renderProfile();
@@ -3686,6 +3795,7 @@ async function claimSeasonQuest(questId) {
 // TEAMS & CHALLENGES TAB (v30.8.0)
 // ==========================================
 async function loadTeamsData() {
+    if (profileTabLock('teams')) return;
     const [teams, challenges] = await Promise.all([
         apiGet('/gamification/teams'),
         apiGet('/gamification/challenges')
@@ -3695,6 +3805,7 @@ async function loadTeamsData() {
 }
 
 function renderTeamsTab() {
+    if (profileTabLock('teams')) return renderProfileComingSoon('teams');
     if (!teamsData) return '<div class="empty-state"><div class="empty-state-icon">⚡</div><div class="empty-state-text">Завантаження команд...</div></div>';
 
     const teams = teamsData.teams || [];
@@ -3768,6 +3879,10 @@ function renderTeamsTab() {
 }
 
 async function joinTeamById(teamId) {
+    if (profileTabLock('teams')) {
+        if (typeof showNotification === 'function') showNotification('Команди ще закриті', 'warning');
+        return;
+    }
     const result = await apiPost(`/gamification/teams/${teamId}/join`);
     if (result?.success) {
         if (typeof showNotification === 'function') showNotification(`⚡ Ви приєдналися до команди!`, 'success');
@@ -3779,6 +3894,10 @@ async function joinTeamById(teamId) {
 }
 
 async function leaveMyTeam() {
+    if (profileTabLock('teams')) {
+        if (typeof showNotification === 'function') showNotification('Команди ще закриті', 'warning');
+        return;
+    }
     if (!await confirmModal('Вийти з команди?', { type: 'danger', okText: 'Вийти', cancelText: 'Скасувати' })) return;
     const result = await apiPost('/gamification/teams/leave');
     if (result?.success) {
@@ -3794,10 +3913,12 @@ async function leaveMyTeam() {
 // REFERRAL TAB (v30.8.0)
 // ==========================================
 async function loadReferralData() {
+    if (profileTabLock('referral')) return;
     referralData = await apiGet('/gamification/referral');
 }
 
 function renderReferralTab() {
+    if (profileTabLock('referral')) return renderProfileComingSoon('referral');
     if (!referralData) return '<div class="empty-state"><div class="empty-state-icon">🤝</div><div class="empty-state-text">Завантаження...</div></div>';
 
     const code = referralData.code || '';

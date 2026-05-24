@@ -1643,6 +1643,36 @@ function _profileTabSettings(data) {
 let _gameTabData = null;
 let _gameSubTab = 'achievements';
 
+function _profileGameIsCreator() {
+    return getRealUserRole(AppState.currentUser) === 'creator';
+}
+
+function _gameSubTabLock(tab) {
+    if ((tab === 'inventory' || tab === 'shop') && !_profileGameIsCreator()) {
+        return { code: 'creator_only' };
+    }
+    return null;
+}
+
+function _renderGameComingSoon(tab) {
+    const copy = tab === 'shop'
+        ? {
+            title: 'Магазин скоро',
+            message: 'Магазин відкритий тільки для Creator під час перевірки балансу та товарів. Для команди покупки закриті до повного запуску.'
+        }
+        : {
+            title: 'Інвентар скоро',
+            message: 'Інвентар відкритий тільки для Creator під час підготовки нагород. Для команди розділ поки показує контрольований soon-стан.'
+        };
+    return `
+        <div class="game-coming-soon">
+            <div class="game-coming-soon-ribbon">скоро</div>
+            <div class="game-coming-soon-kicker">Creator preview</div>
+            <div class="game-coming-soon-title">${copy.title}</div>
+            <div class="game-coming-soon-text">${copy.message}</div>
+        </div>`;
+}
+
 async function _profileTabGame(container, data) {
     container.innerHTML = '<div class="profile-loading">Завантаження...</div>';
 
@@ -1708,16 +1738,27 @@ function _renderGameTab(container) {
         { key: 'shop', label: 'Магазин' },
         { key: 'leaderboard', label: 'Лідери' }
     ];
-    const subTabsHTML = `<div class="game-sub-tabs">${subTabs.map(t =>
-        `<button class="game-sub-tab ${_gameSubTab === t.key ? 'active' : ''}" onclick="_switchGameSubTab('${t.key}')">${t.label}</button>`
-    ).join('')}</div>`;
+    const subTabsHTML = `<div class="game-sub-tabs">${subTabs.map(t => {
+        const locked = _gameSubTabLock(t.key);
+        const classes = [
+            'game-sub-tab',
+            _gameSubTab === t.key ? 'active' : '',
+            locked ? 'is-soon is-locked' : ''
+        ].filter(Boolean).join(' ');
+        const attrs = locked ? ' data-profile-locked="true" data-profile-soon="скоро"' : '';
+        return `<button class="${classes}" onclick="_switchGameSubTab('${t.key}')"${attrs}>${t.label}</button>`;
+    }).join('')}</div>`;
 
     let contentHTML = '';
-    switch (_gameSubTab) {
-        case 'achievements': contentHTML = _renderGameAchievements(achievements, profile); break;
-        case 'inventory': contentHTML = _renderGameInventory(); break;
-        case 'shop': contentHTML = _renderGameShop(shop, coins); break;
-        case 'leaderboard': contentHTML = _renderGameLeaderboard(leaderboard); break;
+    if (_gameSubTabLock(_gameSubTab)) {
+        contentHTML = _renderGameComingSoon(_gameSubTab);
+    } else {
+        switch (_gameSubTab) {
+            case 'achievements': contentHTML = _renderGameAchievements(achievements, profile); break;
+            case 'inventory': contentHTML = _renderGameInventory(); break;
+            case 'shop': contentHTML = _renderGameShop(shop, coins); break;
+            case 'leaderboard': contentHTML = _renderGameLeaderboard(leaderboard); break;
+        }
     }
 
     container.innerHTML = headerHTML + subTabsHTML + `<div class="game-content">${contentHTML}</div>`;
@@ -1759,6 +1800,9 @@ function _renderGameAchievements(achievements, profile) {
 }
 
 function _renderGameInventory() {
+    if (_gameSubTabLock('inventory')) {
+        return _renderGameComingSoon('inventory');
+    }
     const profile = _gameTabData.profile || {};
     const inventory = profile.inventory || [];
     const equipped = profile.equipped || [];
@@ -1782,6 +1826,9 @@ function _renderGameInventory() {
 }
 
 function _renderGameShop(shop, coins) {
+    if (_gameSubTabLock('shop')) {
+        return _renderGameComingSoon('shop');
+    }
     if (!shop || !Array.isArray(shop) || shop.length === 0) {
         return '<div class="profile-empty">Магазин порожній</div>';
     }
@@ -1841,6 +1888,10 @@ function _renderGameLeaderboard(leaderboard) {
 }
 
 async function _gameBuyItem(shopItemId) {
+    if (_gameSubTabLock('shop')) {
+        if (typeof showNotification === 'function') showNotification('Магазин ще закритий', 'warning');
+        return;
+    }
     const result = await apiGamificationBuy(shopItemId);
     if (result.success) {
         if (typeof showNotification === 'function') showNotification('Придбано!', 'success');
@@ -1853,6 +1904,10 @@ async function _gameBuyItem(shopItemId) {
 }
 
 async function _gameToggleEquip(itemId, type, isEquipped) {
+    if (_gameSubTabLock('inventory')) {
+        if (typeof showNotification === 'function') showNotification('Інвентар ще закритий', 'warning');
+        return;
+    }
     let result;
     if (isEquipped) {
         result = await apiGamificationUnequip(type);

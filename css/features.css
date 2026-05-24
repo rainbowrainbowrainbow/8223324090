@@ -2490,6 +2490,88 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
     background: rgba(0,0,0,0.08);
 }
 
+.game-sub-tab.is-soon {
+    position: relative;
+    overflow: hidden;
+    padding-right: 42px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #92400E;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.game-sub-tab.is-soon::after {
+    content: attr(data-profile-soon);
+    position: absolute;
+    top: 4px;
+    right: -18px;
+    min-width: 54px;
+    padding: 2px 8px;
+    transform: rotate(18deg);
+    background: #F59E0B;
+    color: #111827;
+    font-size: 8px;
+    font-weight: 900;
+    line-height: 1;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.game-sub-tab.is-soon.active {
+    background: rgba(245, 158, 11, 0.18);
+    color: #78350F;
+}
+
+.game-coming-soon {
+    position: relative;
+    overflow: hidden;
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid rgba(245, 158, 11, 0.24);
+    background: linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.92));
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+}
+
+.game-coming-soon-ribbon {
+    position: absolute;
+    top: 14px;
+    right: -34px;
+    width: 140px;
+    padding: 6px 0;
+    transform: rotate(24deg);
+    background: #F59E0B;
+    color: #111827;
+    font-size: 10px;
+    font-weight: 900;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.game-coming-soon-kicker {
+    display: inline-flex;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.12);
+    color: #92400E;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.game-coming-soon-title {
+    margin-top: 14px;
+    color: var(--gray-900, #1a202c);
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.game-coming-soon-text {
+    max-width: 560px;
+    margin-top: 6px;
+    color: var(--gray-600, #4a5568);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 /* Achievements */
 .game-ach-header {
     font-size: 13px;
@@ -2719,6 +2801,13 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
 .dark-mode .game-sub-tab { background: rgba(255,255,255,0.06); color: #CBD5E0; }
 .dark-mode .game-sub-tab.active { background: #805AD5; color: #fff; }
 .dark-mode .game-sub-tab:hover:not(.active) { background: rgba(255,255,255,0.1); }
+.dark-mode .game-sub-tab.is-soon { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.34); color: #FDE68A; }
+.dark-mode .game-sub-tab.is-soon::after { background: #FBBF24; color: #111827; }
+.dark-mode .game-sub-tab.is-soon.active { background: rgba(245, 158, 11, 0.20); color: #FEF3C7; }
+.dark-mode .game-coming-soon { background: linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.92)); border-color: rgba(245, 158, 11, 0.26); box-shadow: 0 16px 34px rgba(2, 6, 23, 0.30); }
+.dark-mode .game-coming-soon-kicker { background: rgba(245, 158, 11, 0.16); color: #FDE68A; }
+.dark-mode .game-coming-soon-title { color: #E2E8F0; }
+.dark-mode .game-coming-soon-text { color: #CBD5E0; }
 
 .dark-mode .game-ach-card { background: rgba(255,255,255,0.04); }
 .dark-mode .game-ach-card.unlocked { background: rgba(128, 90, 213, 0.1); }

@@ -1268,7 +1268,7 @@
                     <h4>v0.63.36 — CRM 63.36: перенос прострочених задач</h4>
                     <ul>
                         <li><b>Прострочені задачі можна перенести у <code>Сьогодні</code></b> — картку з блоку <code>Прострочено</code> можна перетягнути в секцію <code>Сьогодні</code>.</li>
-                        <li><b>Перенос зберігається в задачі</b> — дія викликає canonical <code>/api/tasks/:id/reschedule</code> і ставить deadline на сьогодні, а не просто переставляє картку в DOM.</li>
+                        <li><b>Перенос зберігається в задачі</b> — дія викликає canonical <code>/api/tasks/:id/reschedule</code> і ставить deadline/date на сьогодні; для scheduled-задач переноситься і <code>scheduled_start_at</code>.</li>
                         <li><b>Є запасна дія без drag</b> — для touch/точної роботи на простроченій картці доступна кнопка <code>На сьогодні</code> з тим самим persisted reschedule.</li>
                         <li><b>Drop target став зрозумілим</b> — колонка <code>Сьогодні</code> має підказку і clean hover/drop state у темній та світлій темі.</li>
                         <li><b>Guardrail</b> — тести перевіряють draggable-картку, drop target, <code>today</code> reschedule option і payload із deadline на сьогодні.</li>

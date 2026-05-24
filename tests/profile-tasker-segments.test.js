@@ -175,6 +175,18 @@ test('profile overdue to today move persists through reschedule endpoint with to
     assert.match(calls[0].payload.deadline, /^20\d{2}-\d{2}-\d{2}T18:00:00$/);
 });
 
+test('task reschedule keeps scheduled tasks in the same today projection contract', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'services', 'taskExecution.js'), 'utf8');
+    const routeSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+
+    assert.match(source, /scheduled_start_at = CASE/);
+    assert.match(source, /scheduled_end_at = CASE/);
+    assert.match(source, /scheduled_end_at - scheduled_start_at/);
+    assert.match(source, /schedule_status = CASE/);
+    assert.match(source, /profile_my_cabinet_overdue_to_today_drop/);
+    assert.match(routeSource, /profile_my_cabinet_overdue_to_today_drop/);
+});
+
 test('profile unfinished gamification tabs use soon lockdown by role', () => {
     const ctx = loadProfileTaskerContext();
 

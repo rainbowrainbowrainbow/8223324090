@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.34",
+  "version": "0.63.35",
   "eventGenix": {
-    "releaseLabel": "CRM 63.34: чесний лічильник Мого дня"
+    "releaseLabel": "CRM 63.35: компактне створення задач"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

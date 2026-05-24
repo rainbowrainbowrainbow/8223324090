@@ -24,6 +24,7 @@ let activeTab = 'professions';
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
+let cabinetTaskComposerExpanded = false;
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
 let cabinetUndoToastTimer = null;
@@ -1776,6 +1777,27 @@ function cabinetDueDateForPreset(preset = cabinetCreateDuePreset) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function setCabinetTaskComposerExpanded(expanded = true, options = {}) {
+    cabinetTaskComposerExpanded = Boolean(expanded);
+    const form = document.getElementById('cabinetTaskComposer');
+    if (!form) return;
+    form.classList.toggle('is-expanded', cabinetTaskComposerExpanded);
+    form.classList.toggle('is-collapsed', !cabinetTaskComposerExpanded);
+    form.dataset.cabinetComposerState = cabinetTaskComposerExpanded ? 'expanded' : 'collapsed';
+    form.querySelectorAll('[data-cabinet-composer-advanced]').forEach(node => {
+        if (cabinetTaskComposerExpanded) node.removeAttribute('hidden');
+        else node.setAttribute('hidden', '');
+        node.setAttribute('aria-hidden', cabinetTaskComposerExpanded ? 'false' : 'true');
+    });
+    form.querySelectorAll('[data-cabinet-composer-toggle]').forEach(button => {
+        button.setAttribute('aria-expanded', cabinetTaskComposerExpanded ? 'true' : 'false');
+        button.textContent = cabinetTaskComposerExpanded ? 'Згорнути' : 'Більше параметрів';
+    });
+    if (options.focusDate) document.getElementById('cabinetTaskDate')?.focus();
+    else if (options.focusTitle) document.getElementById('cabinetTaskTitle')?.focus();
+}
+window.setCabinetTaskComposerExpanded = setCabinetTaskComposerExpanded;
+
 function setCabinetDuePreset(preset = 'today') {
     cabinetCreateDuePreset = ['today', 'tomorrow', 'no_date', 'custom'].includes(preset) ? preset : 'today';
     const date = document.getElementById('cabinetTaskDate');
@@ -1785,7 +1807,7 @@ function setCabinetDuePreset(preset = 'today') {
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-    if (cabinetCreateDuePreset === 'custom') date?.focus();
+    if (cabinetCreateDuePreset === 'custom') setCabinetTaskComposerExpanded(true, { focusDate: true });
 }
 
 function syncCabinetTaskCreateMode() {
@@ -2729,6 +2751,7 @@ function renderCabinetSection(title, list, emptyText, compact = false) {
 function renderCabinetTaskComposer(options = {}) {
     const segment = options.segment || myTasksSegment || 'all';
     const defaults = cabinetCreateDefaultsForSegment(segment, options.mode || '');
+    const expanded = Boolean(cabinetTaskComposerExpanded);
     const dateValue = window.TaskCreate?.dateForDuePresetValue
         ? window.TaskCreate.dateForDuePresetValue(cabinetCreateDuePreset, '')
         : cabinetDueDateForPreset(cabinetCreateDuePreset);
@@ -2745,73 +2768,83 @@ function renderCabinetTaskComposer(options = {}) {
     `).join('');
 
     return `
-        <form class="cabinet-capture cabinet-task-composer" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
+        <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
             <div class="cabinet-task-composer-head">
                 <div>
                     <span class="cabinet-kicker">Нова задача</span>
                     <h3>Додати в мій робочий простір</h3>
                 </div>
-                <button type="submit" class="cabinet-task-create-submit">Створити задачу</button>
+                <div class="cabinet-task-composer-actions">
+                    <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
+                    <button type="submit" class="cabinet-task-create-submit">Створити задачу</button>
+                </div>
             </div>
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Назва</span>
                     <input id="cabinetTaskTitle" autocomplete="off" placeholder="${escapeHtml(defaults.placeholder)}">
                 </label>
-                <label for="cabinetTaskCategory">
-                    <span>Категорія</span>
-                    <select id="cabinetTaskCategory">${categories}</select>
-                </label>
-                <label for="cabinetTaskMode">
-                    <span>Режим</span>
-                    <select id="cabinetTaskMode" onchange="syncCabinetTaskCreateMode()">
-                        <option value="work" ${defaults.mode === 'work' ? 'selected' : ''}>Робоча</option>
-                        <option value="personal" ${defaults.mode === 'personal' ? 'selected' : ''}>Особиста</option>
-                        <option value="private" ${defaults.mode === 'private' ? 'selected' : ''}>Приватна</option>
-                    </select>
-                </label>
-                <label for="cabinetTaskKind">
-                    <span>Тип</span>
-                    <select id="cabinetTaskKind">
-                        <option value="action" ${defaults.kind === 'action' ? 'selected' : ''}>Дія</option>
-                        <option value="reminder" ${defaults.kind === 'reminder' ? 'selected' : ''}>Нагадування</option>
-                        <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Дотиск</option>
-                        <option value="idea" ${defaults.kind === 'idea' ? 'selected' : ''}>Ідея</option>
-                    </select>
-                </label>
+                <div class="cabinet-task-composer-main-advanced" id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
+                    <label for="cabinetTaskCategory">
+                        <span>Категорія</span>
+                        <select id="cabinetTaskCategory">${categories}</select>
+                    </label>
+                    <label for="cabinetTaskMode">
+                        <span>Режим</span>
+                        <select id="cabinetTaskMode" onchange="syncCabinetTaskCreateMode()">
+                            <option value="work" ${defaults.mode === 'work' ? 'selected' : ''}>Робоча</option>
+                            <option value="personal" ${defaults.mode === 'personal' ? 'selected' : ''}>Особиста</option>
+                            <option value="private" ${defaults.mode === 'private' ? 'selected' : ''}>Приватна</option>
+                        </select>
+                    </label>
+                    <label for="cabinetTaskKind">
+                        <span>Тип</span>
+                        <select id="cabinetTaskKind">
+                            <option value="action" ${defaults.kind === 'action' ? 'selected' : ''}>Дія</option>
+                            <option value="reminder" ${defaults.kind === 'reminder' ? 'selected' : ''}>Нагадування</option>
+                            <option value="followup" ${defaults.kind === 'followup' ? 'selected' : ''}>Дотиск</option>
+                            <option value="idea" ${defaults.kind === 'idea' ? 'selected' : ''}>Ідея</option>
+                        </select>
+                    </label>
+                </div>
             </div>
             <div class="cabinet-task-composer-meta">
-                <div class="cabinet-due-presets" role="group" aria-label="Коли виконати">${duePresets}</div>
-                <label for="cabinetTaskDate">
-                    <span>Дата</span>
-                    <input id="cabinetTaskDate" type="date" value="${escapeHtml(dateValue)}">
-                </label>
-                <label for="cabinetTaskPriority">
-                    <span>Пріоритет</span>
-                    <select id="cabinetTaskPriority">
-                        <option value="normal">Звичайний</option>
-                        <option value="high">Високий</option>
-                        <option value="low">Низький</option>
-                    </select>
-                </label>
-                <label for="cabinetTaskVisibility">
-                    <span>Видимість</span>
-                    <select id="cabinetTaskVisibility">
-                        <option value="team" ${defaults.visibility === 'team' ? 'selected' : ''}>Командна</option>
-                        <option value="me_only" ${defaults.visibility === 'me_only' ? 'selected' : ''}>Тільки мені</option>
-                        <option value="private" ${defaults.visibility === 'private' ? 'selected' : ''}>Приватна</option>
-                    </select>
-                </label>
-                <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
-                    <input id="cabinetTaskReportRequired" type="checkbox">
-                    <span>Потрібен звіт перед виконанням</span>
-                </label>
-                <label class="cabinet-task-report-toggle" for="cabinetTaskAllowReschedule">
-                    <input id="cabinetTaskAllowReschedule" type="checkbox" checked>
-                    <span>Дозволити перенесення</span>
-                </label>
+                <div class="cabinet-task-composer-essential">
+                    <div class="cabinet-due-presets" role="group" aria-label="Коли виконати">${duePresets}</div>
+                    <span class="cabinet-task-composer-hint">Швидко створіть задачу або відкрийте параметри для підзадач, типу й видимості.</span>
+                </div>
+                <div class="cabinet-task-composer-meta-advanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
+                    <label for="cabinetTaskDate">
+                        <span>Дата</span>
+                        <input id="cabinetTaskDate" type="date" value="${escapeHtml(dateValue)}">
+                    </label>
+                    <label for="cabinetTaskPriority">
+                        <span>Пріоритет</span>
+                        <select id="cabinetTaskPriority">
+                            <option value="normal">Звичайний</option>
+                            <option value="high">Високий</option>
+                            <option value="low">Низький</option>
+                        </select>
+                    </label>
+                    <label for="cabinetTaskVisibility">
+                        <span>Видимість</span>
+                        <select id="cabinetTaskVisibility">
+                            <option value="team" ${defaults.visibility === 'team' ? 'selected' : ''}>Командна</option>
+                            <option value="me_only" ${defaults.visibility === 'me_only' ? 'selected' : ''}>Тільки мені</option>
+                            <option value="private" ${defaults.visibility === 'private' ? 'selected' : ''}>Приватна</option>
+                        </select>
+                    </label>
+                    <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
+                        <input id="cabinetTaskReportRequired" type="checkbox">
+                        <span>Потрібен звіт перед виконанням</span>
+                    </label>
+                    <label class="cabinet-task-report-toggle" for="cabinetTaskAllowReschedule">
+                        <input id="cabinetTaskAllowReschedule" type="checkbox" checked>
+                        <span>Дозволити перенесення</span>
+                    </label>
+                </div>
             </div>
-            <div class="cabinet-task-subtasks">
+            <div class="cabinet-task-subtasks" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
                 <div class="cabinet-task-subtasks-head">
                     <span>Підзадачі</span>
                     <button type="button" class="cabinet-subtask-add" onclick="addCabinetSubtask()">+ Підзадача</button>
@@ -3319,6 +3352,7 @@ async function createCabinetTask(event, mode) {
     setCabinetSubtaskDraftStatus('');
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
+    cabinetTaskComposerExpanded = false;
     if (typeof showNotification === 'function') showNotification('Задачу створено в основних задачах', 'success');
     await refreshMyCabinetTab();
 }
@@ -3940,6 +3974,11 @@ function attachProfileListeners() {
         cabinetDate.dataset.cabinetDateBound = 'true';
         cabinetDate.addEventListener('change', () => setCabinetDuePreset('custom'));
     }
+    document.querySelectorAll('[data-cabinet-composer-toggle]').forEach(button => {
+        if (button.dataset.cabinetComposerToggleBound === 'true') return;
+        button.dataset.cabinetComposerToggleBound = 'true';
+        button.addEventListener('click', () => setCabinetTaskComposerExpanded(!cabinetTaskComposerExpanded, { focusTitle: !cabinetTaskComposerExpanded }));
+    });
     bindCabinetSubtasks();
 
     // Inventory slot click — equip/unequip

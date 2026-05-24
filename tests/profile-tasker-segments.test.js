@@ -76,6 +76,27 @@ test('profile quick task card uses completed-today and today-or-undated remainin
     assert.match(html, /виконано сьогодні/);
 });
 
+test('profile task composer starts collapsed with advanced fields behind an explicit toggle', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext('cabinetTaskComposerExpanded = false;', ctx);
+    const collapsedHtml = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
+
+    assert.match(collapsedHtml, /cabinet-task-composer is-collapsed/);
+    assert.match(collapsedHtml, /data-cabinet-composer-state="collapsed"/);
+    assert.match(collapsedHtml, /data-cabinet-composer-toggle/);
+    assert.match(collapsedHtml, /Більше параметрів/);
+    assert.match(collapsedHtml, /id="cabinetTaskTitle"/);
+    assert.match(collapsedHtml, /class="cabinet-due-presets"/);
+    assert.match(collapsedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
+
+    vm.runInContext('cabinetTaskComposerExpanded = true;', ctx);
+    const expandedHtml = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
+    assert.match(expandedHtml, /cabinet-task-composer is-expanded/);
+    assert.match(expandedHtml, /data-cabinet-composer-state="expanded"/);
+    assert.match(expandedHtml, /Згорнути/);
+    assert.doesNotMatch(expandedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
+});
+
 test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {
     const ctx = loadProfileTaskerContext();
     const task = {

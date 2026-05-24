@@ -221,7 +221,6 @@ const NOTE_COLORS = ['#fef3c7', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#e0
 const FURNITURE_EMOJIS = { furn_desk: '🖥️', furn_plant: '🪴', furn_trophy: '🏆', furn_arcade: '🎮', furn_dino_statue: '🦕' };
 const MOOD_EMOJIS = { happy: '😊', working: '💼', tired: '😴', excited: '🤩', chill: '😎' };
 const QUEST_ICONS = { complete_tasks: '✅', create_booking: '📋', play_minigame: '🎮', visit_room: '🏠', send_message: '💬', early_login: '🌅', mark_shift: '⏰', meta_quest: '⭐' };
-const PROFILE_AVATAR_EMOJIS = ['🙂', '😎', '🤝', '🧠', '⚡', '🔥', '🎯', '✅', '💼', '🛠️', '🎨', '👑'];
 const PROFILE_AVATAR_COLORS = ['#f59e0b', '#10b981', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#64748b'];
 
 function profileAvatarData(data = profileData) {
@@ -240,7 +239,7 @@ function renderProfileAvatarVisual(className = 'profile-work-avatar', data = pro
     if (avatar.url) {
         return `<div class="${className}"${attrs}><img src="${escapeHtml(avatar.url)}" alt=""></div>`;
     }
-    return `<div class="${className}"${style}${attrs}>${escapeHtml(avatar.emoji || avatar.initial)}</div>`;
+    return `<div class="${className}"${style}${attrs}>${escapeHtml(avatar.initial)}</div>`;
 }
 
 // ==========================================
@@ -602,7 +601,6 @@ function renderWorkProfileOverview() {
 
 function renderProfileSettingsTab() {
     const avatar = profileAvatarData(profileData);
-    const currentEmoji = avatar.emoji || '🙂';
     const currentColor = avatar.color || '#f59e0b';
     return `
         <div class="profile-settings-shell">
@@ -617,41 +615,44 @@ function renderProfileSettingsTab() {
                 <div class="profile-avatar-editor">
                     <div>
                         <div id="profileAvatarPreview" class="profile-avatar-preview" style="background:${escapeHtml(currentColor)}">
-                            ${avatar.url ? `<img src="${escapeHtml(avatar.url)}" alt="">` : escapeHtml(avatar.emoji || avatar.initial)}
+                            ${avatar.url ? `<img src="${escapeHtml(avatar.url)}" alt="">` : escapeHtml(avatar.initial)}
                         </div>
                         <div class="profile-avatar-preview-hint">Так аватарка буде виглядати в меню та профілі</div>
                     </div>
                     <div class="profile-avatar-controls">
-                        <input type="hidden" id="profileAvatarEmoji" value="${escapeHtml(currentEmoji)}">
                         <input type="hidden" id="profileAvatarColor" value="${escapeHtml(currentColor)}">
-                        <label>Швидкий emoji</label>
-                        <div class="profile-avatar-emoji-grid">
-                            ${PROFILE_AVATAR_EMOJIS.map(emoji => `<button type="button" class="${emoji === currentEmoji ? 'active' : ''}" onclick="selectProfileAvatarEmoji('${emoji}')">${escapeHtml(emoji)}</button>`).join('')}
+                        <div class="profile-avatar-section">
+                            <label>Літера замість фото</label>
+                            <div class="profile-avatar-color-grid">
+                                ${PROFILE_AVATAR_COLORS.map(color => `<button type="button" class="${color.toLowerCase() === currentColor.toLowerCase() ? 'active' : ''}" style="background:${color}" title="${color}" onclick="selectProfileAvatarColor('${color}')"></button>`).join('')}
+                            </div>
+                            <div class="profile-avatar-action-row">
+                                <button type="button" class="profile-settings-primary" onclick="saveProfileAvatar('initials')">Зберегти літеру</button>
+                            </div>
                         </div>
-                        <label>Колір фону</label>
-                        <div class="profile-avatar-color-grid">
-                            ${PROFILE_AVATAR_COLORS.map(color => `<button type="button" class="${color.toLowerCase() === currentColor.toLowerCase() ? 'active' : ''}" style="background:${color}" title="${color}" onclick="selectProfileAvatarColor('${color}')"></button>`).join('')}
+                        <div class="profile-avatar-upload-card">
+                            <label for="profileAvatarFile">Фото з пристрою</label>
+                            <div class="profile-avatar-upload-row">
+                                <input id="profileAvatarFile" class="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="handleProfileAvatarFileChange(this)">
+                                <label class="profile-avatar-file-pick" for="profileAvatarFile">
+                                    <span>↑</span>
+                                    <b id="profileAvatarFileName">Обрати фото</b>
+                                    <small id="profileAvatarFileMeta">JPG, PNG, WebP або GIF до 5 МБ</small>
+                                </label>
+                                <div class="profile-avatar-upload-actions">
+                                    <button type="button" id="profileAvatarUploadBtn" class="profile-settings-primary" onclick="uploadProfileAvatarFile()" disabled>Зберегти фото</button>
+                                    <button type="button" onclick="clearProfileAvatarFile()">Скинути вибір</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="profile-avatar-action-row">
-                            <button type="button" class="profile-settings-primary" onclick="saveProfileAvatar('emoji')">Зберегти emoji</button>
-                            <button type="button" onclick="saveProfileAvatar('initials')">Літера з імені</button>
-                        </div>
-                        <label for="profileAvatarFile">Фото з компʼютера або телефона</label>
-                        <div class="profile-avatar-upload-row">
-                            <input id="profileAvatarFile" class="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="handleProfileAvatarFileChange(this)">
-                            <label class="profile-avatar-file-pick" for="profileAvatarFile">
-                                <span>⬆</span>
-                                <b id="profileAvatarFileName">Обрати фото</b>
-                                <small>JPG, PNG, WebP або GIF до 5 МБ</small>
-                            </label>
-                            <button type="button" id="profileAvatarUploadBtn" onclick="uploadProfileAvatarFile()" disabled>Завантажити</button>
-                        </div>
-                        <label for="profileAvatarUrl">Фото через URL</label>
-                        <div class="profile-avatar-url-row">
-                            <input id="profileAvatarUrl" type="url" placeholder="https://.../avatar.jpg" value="${escapeHtml(avatar.url)}" oninput="previewProfileAvatarUrl()">
-                            <button type="button" onclick="saveProfileAvatar('image')">Зберегти фото</button>
-                        </div>
-                        <p class="profile-avatar-note">Можна завантажити файл із пристрою, вставити прямий https/http URL або використати emoji-аватар. Після збереження sidebar оновиться одразу.</p>
+                        <details class="profile-avatar-url-details">
+                            <summary>Вставити посилання на фото</summary>
+                            <div class="profile-avatar-url-row">
+                                <input id="profileAvatarUrl" type="url" placeholder="https://.../avatar.jpg" value="${escapeHtml(avatar.url)}" oninput="previewProfileAvatarUrl()">
+                                <button type="button" onclick="saveProfileAvatar('image')">Зберегти URL</button>
+                            </div>
+                        </details>
+                        <p class="profile-avatar-note">Найзручніше — обрати фото з пристрою, перевірити preview і натиснути «Зберегти фото». Sidebar оновиться одразу після збереження.</p>
                     </div>
                 </div>
             </section>
@@ -662,7 +663,8 @@ function renderProfileSettingsTab() {
 function renderProfileSecurityPanel() {
     const security = profileSecurityData || {};
     const user = security.user || profileUser(profileData);
-    const sessions = Array.isArray(security.sessions) ? security.sessions : [];
+    const rawSessions = Array.isArray(security.sessions) ? security.sessions : [];
+    const sessions = normalizeProfileSecuritySessions(rawSessions);
     const events = Array.isArray(security.events) ? security.events : [];
     const passwordChanged = user.password_changed_at || user.passwordChangedAt;
     const sessionRevokedAt = user.session_revoked_at || user.sessionRevokedAt;
@@ -674,7 +676,7 @@ function renderProfileSecurityPanel() {
                     <span class="profile-kicker">Безпека акаунта</span>
                     <h2>Пароль, сесії, журнал</h2>
                 </div>
-                <span>${sessions.length} активн${sessions.length === 1 ? 'а' : 'их'} сес${sessions.length === 1 ? 'ія' : 'ій'}</span>
+                <span>${sessions.length} активн${sessions.length === 1 ? 'ий' : 'их'} пристро${sessions.length === 1 ? 'й' : 'їв'}</span>
             </div>
             <div class="profile-security-grid">
                 ${profileSecurityMetric('Пароль', passwordChanged ? profileFormatTime(passwordChanged) : 'потрібно оновити', passwordChanged ? 'остання зміна' : 'немає зафіксованої зміни', passwordChanged ? 'ok' : 'danger')}
@@ -688,12 +690,12 @@ function renderProfileSecurityPanel() {
             <div class="profile-security-columns">
                 <div class="profile-security-card">
                     <div class="profile-security-card-head">
-                        <b>Активні сесії</b>
-                        <span>refresh-token контур</span>
+                        <b>Активні пристрої</b>
+                        <span>${rawSessions.length > sessions.length ? 'повтори refresh-token згруповано' : 'без зайвих повторів'}</span>
                     </div>
                     ${sessions.length
                         ? sessions.map(renderProfileSessionRow).join('')
-                        : '<div class="profile-security-empty">Активні refresh-сесії не знайдено. Поточний legacy-вхід завершиться після logout або завершення JWT.</div>'}
+                        : '<div class="profile-security-empty">Активні пристрої не знайдено. Поточний legacy-вхід завершиться після logout або завершення JWT.</div>'}
                 </div>
                 <div class="profile-security-card">
                     <div class="profile-security-card-head">
@@ -717,6 +719,51 @@ function profileSecurityMetric(label, value, hint, tone = '') {
         </div>`;
 }
 
+function profileSessionTimeValue(value) {
+    const time = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+}
+
+function normalizeProfileSecuritySessions(sessions = []) {
+    const grouped = new Map();
+    sessions.forEach(session => {
+        const label = sessionDeviceLabel(session);
+        const ip = session.ip_address || session.ipAddress || 'IP не зафіксовано';
+        const key = `${label}|${ip}`;
+        const createdAt = session.created_at || session.createdAt || null;
+        const expiresAt = session.expires_at || session.expiresAt || null;
+        const createdMs = profileSessionTimeValue(createdAt);
+        const expiresMs = profileSessionTimeValue(expiresAt);
+        const current = grouped.get(key);
+        if (!current) {
+            grouped.set(key, {
+                ...session,
+                deviceLabel: label,
+                ipAddress: ip,
+                tokenCount: 1,
+                latestCreatedMs: createdMs,
+                latestExpiresMs: expiresMs,
+                created_at: createdAt,
+                expires_at: expiresAt
+            });
+            return;
+        }
+        current.tokenCount += 1;
+        if (createdMs >= current.latestCreatedMs) {
+            current.latestCreatedMs = createdMs;
+            current.created_at = createdAt;
+            current.createdAt = createdAt;
+        }
+        if (expiresMs >= current.latestExpiresMs) {
+            current.latestExpiresMs = expiresMs;
+            current.expires_at = expiresAt;
+            current.expiresAt = expiresAt;
+        }
+    });
+    return Array.from(grouped.values())
+        .sort((a, b) => (b.latestCreatedMs || 0) - (a.latestCreatedMs || 0));
+}
+
 function sessionDeviceLabel(session) {
     const device = String(session.device_info || session.deviceInfo || '').trim();
     if (!device) return 'Невідомий пристрій';
@@ -727,14 +774,15 @@ function sessionDeviceLabel(session) {
 }
 
 function renderProfileSessionRow(session) {
-    const ip = session.ip_address || session.ipAddress || 'IP не зафіксовано';
+    const ip = session.ipAddress || session.ip_address || 'IP не зафіксовано';
+    const tokenCount = Number(session.tokenCount || 1);
     return `
         <div class="profile-security-row">
             <div>
-                <b>${escapeHtml(sessionDeviceLabel(session))}</b>
+                <b>${escapeHtml(session.deviceLabel || sessionDeviceLabel(session))}</b>
                 <span>${escapeHtml(ip)}</span>
             </div>
-            <small>${profileFormatTime(session.created_at || session.createdAt)} → ${profileFormatTime(session.expires_at || session.expiresAt)}</small>
+            <small>${profileFormatTime(session.created_at || session.createdAt)} → ${profileFormatTime(session.expires_at || session.expiresAt)}${tokenCount > 1 ? ` · ${tokenCount} входів згруповано` : ''}</small>
         </div>`;
 }
 
@@ -848,10 +896,9 @@ function profileOverviewMetric(label, value, hint, tone = '') {
         </div>`;
 }
 
-function paintProfileAvatarPreview(mode = 'emoji') {
+function paintProfileAvatarPreview(mode = 'initials') {
     const preview = document.getElementById('profileAvatarPreview');
     if (!preview) return;
-    const emoji = document.getElementById('profileAvatarEmoji')?.value || profileAvatarData().initial;
     const color = document.getElementById('profileAvatarColor')?.value || '#f59e0b';
     const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
     preview.innerHTML = '';
@@ -864,16 +911,7 @@ function paintProfileAvatarPreview(mode = 'emoji') {
         return;
     }
     preview.style.background = color;
-    preview.textContent = mode === 'initials' ? profileAvatarData().initial : emoji;
-}
-
-function selectProfileAvatarEmoji(emoji) {
-    const input = document.getElementById('profileAvatarEmoji');
-    if (input) input.value = emoji;
-    document.querySelectorAll('.profile-avatar-emoji-grid button').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.trim() === emoji);
-    });
-    paintProfileAvatarPreview('emoji');
+    preview.textContent = profileAvatarData().initial;
 }
 
 function selectProfileAvatarColor(color) {
@@ -882,40 +920,66 @@ function selectProfileAvatarColor(color) {
     document.querySelectorAll('.profile-avatar-color-grid button').forEach(btn => {
         btn.classList.toggle('active', (btn.getAttribute('title') || '').toLowerCase() === color.toLowerCase());
     });
-    paintProfileAvatarPreview('emoji');
+    paintProfileAvatarPreview('initials');
 }
 
 function previewProfileAvatarUrl() {
     const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
-    paintProfileAvatarPreview(url ? 'image' : 'emoji');
+    paintProfileAvatarPreview(url ? 'image' : 'initials');
+}
+
+function formatProfileFileSize(bytes) {
+    const size = Number(bytes || 0);
+    if (!size) return '0 КБ';
+    if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} МБ`;
+    return `${Math.ceil(size / 1024)} КБ`;
+}
+
+function clearProfileAvatarFile(options = {}) {
+    const input = document.getElementById('profileAvatarFile');
+    const nameEl = document.getElementById('profileAvatarFileName');
+    const metaEl = document.getElementById('profileAvatarFileMeta');
+    const uploadBtn = document.getElementById('profileAvatarUploadBtn');
+    const pick = document.querySelector('.profile-avatar-file-pick');
+    if (input) input.value = '';
+    if (nameEl) nameEl.textContent = 'Обрати фото';
+    if (metaEl) metaEl.textContent = 'JPG, PNG, WebP або GIF до 5 МБ';
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (pick) pick.classList.remove('has-file');
+    if (options.restorePreview !== false) {
+        const hasUrl = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+        paintProfileAvatarPreview(hasUrl ? 'image' : 'initials');
+    }
 }
 
 function handleProfileAvatarFileChange(input) {
     const file = input?.files?.[0];
     const nameEl = document.getElementById('profileAvatarFileName');
+    const metaEl = document.getElementById('profileAvatarFileMeta');
     const uploadBtn = document.getElementById('profileAvatarUploadBtn');
+    const pick = document.querySelector('.profile-avatar-file-pick');
     if (uploadBtn) uploadBtn.disabled = true;
     if (!file) {
-        if (nameEl) nameEl.textContent = 'Обрати фото';
+        clearProfileAvatarFile();
         return;
     }
 
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (file.size > 5 * 1024 * 1024) {
         if (typeof showNotification === 'function') showNotification('Фото профілю має бути до 5 МБ', 'error');
-        input.value = '';
-        if (nameEl) nameEl.textContent = 'Обрати фото';
+        clearProfileAvatarFile();
         return;
     }
     if (file.type && !allowed.includes(file.type)) {
         if (typeof showNotification === 'function') showNotification('Підтримуються тільки JPG, PNG, WebP або GIF', 'error');
-        input.value = '';
-        if (nameEl) nameEl.textContent = 'Обрати фото';
+        clearProfileAvatarFile();
         return;
     }
 
     if (nameEl) nameEl.textContent = file.name;
+    if (metaEl) metaEl.textContent = `${formatProfileFileSize(file.size)} · готово до збереження`;
     if (uploadBtn) uploadBtn.disabled = false;
+    if (pick) pick.classList.add('has-file');
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -997,7 +1061,7 @@ async function uploadProfileAvatarFile() {
 async function saveProfileAvatar(type) {
     const payload = {
         avatarType: type,
-        avatarEmoji: document.getElementById('profileAvatarEmoji')?.value || '🙂',
+        avatarEmoji: '',
         avatarColor: document.getElementById('profileAvatarColor')?.value || '#f59e0b',
         avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
     };

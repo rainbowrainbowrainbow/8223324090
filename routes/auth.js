@@ -632,7 +632,7 @@ router.patch('/profile/avatar', authenticateToken, async (req, res) => {
     try {
         const avatarType = ['emoji', 'image', 'initials'].includes(req.body.avatarType)
             ? req.body.avatarType
-            : 'emoji';
+            : 'initials';
         const colorRaw = String(req.body.avatarColor || req.body.avatar_color || '').trim();
         const avatarColor = /^#[0-9a-f]{6}$/i.test(colorRaw) ? colorRaw : '#f59e0b';
         const emojiRaw = String(req.body.avatarEmoji || req.body.avatar_emoji || '').trim();

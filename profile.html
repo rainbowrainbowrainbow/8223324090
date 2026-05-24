@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.62.27">
-    <link rel="stylesheet" href="css/layout.css?v=0.62.27">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.27">
-    <link rel="stylesheet" href="css/pages.css?v=0.62.27">
-    <link rel="stylesheet" href="css/modals.css?v=0.62.27">
-    <link rel="stylesheet" href="css/controls.css?v=0.62.27">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.27">
-    <link rel="stylesheet" href="css/responsive.css?v=0.62.27">
+    <link rel="stylesheet" href="css/base.css?v=0.62.28">
+    <link rel="stylesheet" href="css/layout.css?v=0.62.28">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.62.28">
+    <link rel="stylesheet" href="css/pages.css?v=0.62.28">
+    <link rel="stylesheet" href="css/modals.css?v=0.62.28">
+    <link rel="stylesheet" href="css/controls.css?v=0.62.28">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.62.28">
+    <link rel="stylesheet" href="css/responsive.css?v=0.62.28">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1353,7 +1353,7 @@
         .profile-avatar-controls {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 14px;
             min-width: 0;
         }
 
@@ -1364,17 +1364,30 @@
             letter-spacing: 0.02em;
         }
 
-        .profile-avatar-emoji-grid,
+        .profile-avatar-section,
+        .profile-avatar-upload-card,
+        .profile-avatar-url-details {
+            border: 1px solid rgba(148,163,184,0.2);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.52);
+            padding: 14px;
+        }
+
+        .profile-avatar-section {
+            display: grid;
+            gap: 10px;
+        }
+
         .profile-avatar-color-grid {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
         }
 
-        .profile-avatar-emoji-grid button,
         .profile-avatar-color-grid button,
         .profile-avatar-action-row button,
-        .profile-avatar-url-row button {
+        .profile-avatar-url-row button,
+        .profile-avatar-upload-actions button {
             min-height: 38px;
             border-radius: 10px;
             border: 1px solid var(--gray-200);
@@ -1385,12 +1398,6 @@
             font-weight: 900;
         }
 
-        .profile-avatar-emoji-grid button {
-            width: 42px;
-            font-size: 20px;
-        }
-
-        .profile-avatar-emoji-grid button.active,
         .profile-avatar-color-grid button.active {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(16,185,129,0.14);
@@ -1404,7 +1411,7 @@
 
         .profile-avatar-action-row,
         .profile-avatar-url-row,
-        .profile-avatar-upload-row {
+        .profile-avatar-upload-actions {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
@@ -1412,12 +1419,13 @@
 
         .profile-avatar-action-row button,
         .profile-avatar-url-row button,
-        .profile-avatar-upload-row button,
+        .profile-avatar-upload-actions button,
         .profile-avatar-file-pick {
             padding: 0 14px;
         }
 
-        .profile-avatar-action-row .profile-settings-primary {
+        .profile-avatar-action-row .profile-settings-primary,
+        .profile-avatar-upload-actions .profile-settings-primary {
             background: var(--primary);
             border-color: var(--primary);
             color: #fff;
@@ -1428,6 +1436,9 @@
         }
 
         .profile-avatar-upload-row {
+            display: grid;
+            grid-template-columns: minmax(260px, 1fr) auto;
+            gap: 10px;
             align-items: stretch;
         }
 
@@ -1440,8 +1451,7 @@
         }
 
         .profile-avatar-file-pick {
-            flex: 1 1 300px;
-            min-height: 58px;
+            min-height: 74px;
             border-radius: 12px;
             border: 1px dashed var(--gray-300);
             background: rgba(16,185,129,0.05);
@@ -1453,6 +1463,18 @@
             column-gap: 10px;
             align-items: center;
             font-weight: 900;
+            min-width: 0;
+            transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+        }
+
+        .profile-avatar-file-pick:hover,
+        .profile-avatar-file-pick.has-file {
+            border-color: var(--primary);
+            background: rgba(16,185,129,0.1);
+        }
+
+        .profile-avatar-file-pick:hover {
+            transform: translateY(-1px);
         }
 
         .profile-avatar-file-pick span {
@@ -1481,7 +1503,15 @@
             font-weight: 800;
         }
 
-        .profile-avatar-upload-row button:disabled {
+        .profile-avatar-upload-actions {
+            align-content: center;
+        }
+
+        .profile-avatar-upload-actions button {
+            min-width: 132px;
+        }
+
+        .profile-avatar-upload-actions button:disabled {
             opacity: 0.48;
             cursor: not-allowed;
         }
@@ -1502,6 +1532,22 @@
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+        }
+
+        .profile-avatar-url-details {
+            color: var(--gray-700);
+        }
+
+        .profile-avatar-url-details summary {
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 900;
+            color: var(--gray-700);
+            list-style-position: inside;
+        }
+
+        .profile-avatar-url-details .profile-avatar-url-row {
+            margin-top: 12px;
         }
 
         .profile-security-panel {
@@ -1862,14 +1908,16 @@
             color: var(--profile-dark-secondary);
         }
 
-        body.dark-mode .profile-avatar-emoji-grid button,
         body.dark-mode .profile-avatar-color-grid button,
         body.dark-mode .profile-avatar-action-row button,
         body.dark-mode .profile-avatar-url-row button,
-        body.dark-mode .profile-avatar-upload-row button,
+        body.dark-mode .profile-avatar-upload-actions button,
         body.dark-mode .profile-avatar-url-row input,
         body.dark-mode .profile-avatar-file-pick,
-        body.dark-mode .profile-avatar-file-pick span {
+        body.dark-mode .profile-avatar-file-pick span,
+        body.dark-mode .profile-avatar-section,
+        body.dark-mode .profile-avatar-upload-card,
+        body.dark-mode .profile-avatar-url-details {
             background: rgba(255,255,255,0.06);
             border-color: rgba(255,255,255,0.12);
             color: var(--profile-dark-text);
@@ -1884,7 +1932,12 @@
             color: var(--profile-dark-secondary);
         }
 
-        body.dark-mode .profile-avatar-action-row .profile-settings-primary {
+        body.dark-mode .profile-avatar-url-details summary {
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-avatar-action-row .profile-settings-primary,
+        body.dark-mode .profile-avatar-upload-actions .profile-settings-primary {
             background: var(--primary);
             border-color: var(--primary);
             color: #fff;
@@ -2697,6 +2750,15 @@
                 grid-template-columns: 1fr;
             }
 
+            .profile-avatar-upload-row {
+                grid-template-columns: 1fr;
+            }
+
+            .profile-avatar-upload-actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
+
             .profile-avatar-preview {
                 width: 112px;
                 height: 112px;
@@ -2835,16 +2897,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.62.27"></script>
-    <script src="js/notification.js?v=0.62.27"></script>
-    <script src="js/api.js?v=0.62.27"></script>
-    <script src="js/auth.js?v=0.62.27"></script>
-    <script src="js/components/sidebar.js?v=0.62.27"></script>
+    <script src="js/config.js?v=0.62.28"></script>
+    <script src="js/notification.js?v=0.62.28"></script>
+    <script src="js/api.js?v=0.62.28"></script>
+    <script src="js/auth.js?v=0.62.28"></script>
+    <script src="js/components/sidebar.js?v=0.62.28"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.62.27"></script>
-    <script src="js/achievement-popup.js?v=0.62.27"></script>
-    <script src="js/task-create.js?v=0.62.27"></script>
-    <script src="js/profile-page.js?v=0.62.27"></script>
-    <script src="js/alerts.js?v=0.62.27"></script>
+    <script src="js/ui.js?v=0.62.28"></script>
+    <script src="js/achievement-popup.js?v=0.62.28"></script>
+    <script src="js/task-create.js?v=0.62.28"></script>
+    <script src="js/profile-page.js?v=0.62.28"></script>
+    <script src="js/alerts.js?v=0.62.28"></script>
 </body>
 </html>

@@ -36,9 +36,15 @@ const PREDEFINED_TAGS = [
     { tag: 'Постійний', color: '#8B5CF6' }
 ];
 
-// Helper: check if Supabase is available
+const CUSTOMER_SUPABASE_ENABLED = String(process.env.CUSTOMERS_SUPABASE_ENABLED || '').toLowerCase() === 'true';
+
+// Helper: check if the legacy customers Supabase table is explicitly enabled.
 function useSupabase() {
-    return !!getSupabase();
+    return CUSTOMER_SUPABASE_ENABLED && !!getSupabase();
+}
+
+function getCustomerSupabase() {
+    return useSupabase() ? getSupabase() : null;
 }
 
 function cleanText(value) {
@@ -352,7 +358,7 @@ router.get('/search', async (req, res) => {
         const q = (req.query.q || '').trim();
         if (q.length < 2) return res.json([]);
 
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const pattern = `%${q}%`;
             const { data, error } = await sb.from('customers')
@@ -399,7 +405,7 @@ router.get('/rfm', async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let rows;
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers')
                 .select('id, name, phone, instagram, child_name, total_bookings, total_spent, first_visit, last_visit, created_at, updated_at')
@@ -550,7 +556,7 @@ router.get('/export', exportLimiter, async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let customerRows;
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
             if (error) throw error;
@@ -611,7 +617,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         let customerRows;
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers').select('*').eq('business_context', businessContext).order('name');
             if (error) throw error;
@@ -688,7 +694,7 @@ router.get('/stats', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             // Total
             const { count: total } = await sb.from('customers').select('*', { count: 'exact', head: true }).eq('business_context', businessContext);
@@ -1314,7 +1320,7 @@ router.get('/', async (req, res) => {
         const sortBy = (req.query.sortBy || 'updated_at').trim();
         const tag = (req.query.tag || '').trim();
 
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             let query = sb.from('customers').select('*', { count: 'exact' });
             query = query.eq('business_context', businessContext);
@@ -1452,7 +1458,7 @@ router.get('/:id', async (req, res) => {
         const numId = parseInt(id);
 
         let customer;
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers').select('*').eq('id', numId).eq('business_context', businessContext).single();
             if (error || !data) return res.status(404).json({ error: 'Клієнта не знайдено' });
@@ -1551,7 +1557,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const payload = customerWritePayload(input);
             let { data, error } = await sb.from('customers').insert(payload).select().single();
@@ -1587,7 +1593,7 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const payload = customerWritePayload(input, { updatedAt: true });
             let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).eq('business_context', businessContext).select().single();
@@ -1632,7 +1638,7 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
             await client.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
         } catch { /* certificates may not have customer_id yet */ }
 
-        const sb = getSupabase();
+        const sb = getCustomerSupabase();
         if (sb) {
             const { error } = await sb.from('customers').delete().eq('id', numId).eq('business_context', businessContext);
             if (error) { await client.query('ROLLBACK'); throw error; }

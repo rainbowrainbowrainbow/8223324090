@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.16",
+  "version": "0.63.17",
   "eventGenix": {
-    "releaseLabel": "CRM 63.16: Клієнтська воронка з drill-down"
+    "releaseLabel": "CRM 63.17: Збереження нових клієнтів через Postgres"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

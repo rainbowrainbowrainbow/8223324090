@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.12 - CRM 63.12: Чистий selector сертифікатів
+
+### Сертифікати / batch quantity selector [codex]
+- **Прибрано зайве кільце у batch selector** - selected state більше не малює другу внутрішню обводку навколо кількості сертифікатів.
+- **Фокус відділено від вибраного стану** - keyboard focus лишається видимим, але тепер це окремий focus-visible шар, який не накладається на checked border як випадковий подвійний ring.
+- **Legacy modal і standalone `/certificates/batch` вирівняно** - виправлено і старий `batchQty` control у `index.html`, і новий `certPageBatchQty` control у standalone certificates flow.
+- **Native radio не ламає доступність** - legacy radio більше не ховається через `display:none`; він візуально прихований, але зберігає keyboard/focus поведінку.
+- **Guardrail** - UI smoke перевіряє, що native radio chrome не повернувся, `display:none` не використовується, а checked state не має `inset` ring.
+
+---
+
 ## v0.63.11 - CRM 63.11: Скоро-вкладки профілю
 
 ### Профіль / gamification lockdown [codex]

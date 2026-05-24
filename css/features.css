@@ -1418,23 +1418,61 @@ body.dark-mode .filter-mode-banner-text strong { color: #FCD34D; }
 body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
 
 .batch-qty-option {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-height: 38px;
     padding: 8px 16px;
-    border: 2px solid var(--border);
-    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 999px;
+    background: rgba(248, 250, 252, 0.92);
+    color: var(--gray-700);
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 800;
     font-size: 14px;
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.batch-qty-option:hover {
+    border-color: rgba(16, 185, 129, 0.32);
+    background: rgba(16, 185, 129, 0.06);
 }
 .batch-qty-option:has(input:checked) {
-    border-color: var(--primary);
-    background: rgba(16,185,129,0.08);
-    color: var(--primary);
+    border-color: rgba(16, 185, 129, 0.46);
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+    box-shadow: none;
 }
-.batch-qty-option input { display: none; }
+.batch-qty-option:has(input:focus-visible) {
+    outline: 3px solid rgba(16, 185, 129, 0.26);
+    outline-offset: 3px;
+}
+.batch-qty-option input {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+    clip-path: inset(50%);
+}
+body.dark-mode .batch-qty-option {
+    background: rgba(15, 23, 42, 0.70);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #E5E7EB;
+}
+body.dark-mode .batch-qty-option:hover {
+    border-color: rgba(45, 212, 191, 0.34);
+    background: rgba(20, 184, 166, 0.10);
+}
+body.dark-mode .batch-qty-option:has(input:checked) {
+    border-color: rgba(45, 212, 191, 0.46);
+    background: rgba(20, 184, 166, 0.18);
+    color: #99F6E4;
+}
+body.dark-mode .batch-qty-option:has(input:focus-visible) {
+    outline-color: rgba(45, 212, 191, 0.30);
+}
 
 .cert-card-body {
     margin-bottom: 8px;

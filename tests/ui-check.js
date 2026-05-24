@@ -80,8 +80,10 @@ function walkFiles(dir, matcher) {
 
 checkPage('index.html', (doc, html) => {
     const modalsCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
+    const featuresCss = fs.readFileSync(path.join(ROOT, 'css', 'features.css'), 'utf8');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
+    const legacyBatchInputRule = featuresCss.match(/\.batch-qty-option input\s*\{([\s\S]*?)\}/)?.[1] || '';
 
     check('loginForm exists', !!doc.getElementById('loginForm'));
     check('loginScreen exists', !!doc.getElementById('loginScreen'));
@@ -115,6 +117,7 @@ checkPage('index.html', (doc, html) => {
     check('Confirm modals stay singleton and motion-free', modalsCss.includes('v0.59.12: confirm dialogs are singleton') && modalsCss.includes('.confirm-overlay[data-confirm-kind="confirm"]') && modalsCss.includes('transform: none !important'));
     check('Product sales title opts out of sticky modal header block', modalsCss.includes('.product-sales-head h3') && modalsCss.includes('position: static !important') && modalsCss.includes('background: transparent !important'));
     check('Certificate modals use dedicated close buttons for mobile Safari', doc.querySelector('#certificateModal [data-cert-modal-close="certificateModal"]')?.tagName === 'BUTTON' && doc.querySelector('#certDetailModal [data-cert-modal-close="certDetailModal"]')?.tagName === 'BUTTON' && doc.querySelector('#batchCertModal [data-cert-modal-close="batchCertModal"]')?.tagName === 'BUTTON');
+    check('Legacy certificate batch quantity picker hides radio without display none and keeps focus ring', !!doc.querySelector('input[name="batchQty"]') && !legacyBatchInputRule.includes('display: none') && legacyBatchInputRule.includes('opacity: 0') && legacyBatchInputRule.includes('clip-path: inset(50%)') && featuresCss.includes('.batch-qty-option:has(input:focus-visible)') && featuresCss.includes('.batch-qty-option:has(input:checked)') && featuresCss.includes('body.dark-mode .batch-qty-option:has(input:checked)'));
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
     check('Park pinata filler excludes client-owned option', !html.includes('value="Клієнта"'));
@@ -252,6 +255,9 @@ checkPage('certificates.html', (doc, html) => {
     const certificatePageCode = fs.readFileSync(path.join(ROOT, 'js', 'certificates-page.js'), 'utf8');
     const certificateRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'certificates.js'), 'utf8');
     const certificateServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'certificates.js'), 'utf8');
+    const pagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const certQtyInputRule = pagesCss.match(/\.cert-quantity-option input\s*\{([\s\S]*?)\}/)?.[1] || '';
+    const certQtyCheckedRule = pagesCss.match(/\.cert-quantity-option input:checked \+ span\s*\{([\s\S]*?)\}/)?.[1] || '';
     check('Certificates page exposes standalone list route surface', !!doc.getElementById('certificatesListView') && !!doc.getElementById('certPageList') && !!doc.getElementById('certPageStats'));
     check('Certificates page exposes standalone single-create route surface', !!doc.getElementById('certificatesNewView') && !!doc.getElementById('certificatePageForm') && !!doc.getElementById('certPageSubmitBtn'));
     check('Certificates page exposes standalone batch-create route surface', !!doc.getElementById('certificatesBatchView') && !!doc.getElementById('certificateBatchPageForm') && !!doc.getElementById('certBatchPageSubmitBtn'));
@@ -267,7 +273,8 @@ checkPage('certificates.html', (doc, html) => {
     check('Certificates standalone page does not carry a duplicate local profile modal', !doc.getElementById('profileModal') && !doc.getElementById('profileContent'));
     check('Certificates registry uses durable source metadata and true API stats', certificateServiceCode.includes('issueSource: row.issue_source') && certificateRouteCode.includes('issue_source') && certificateRouteCode.includes('batch_group_id') && certificateRouteCode.includes('stats: {') && certificatePageCode.includes('renderStats(state.stats, result.total, state.items)'));
     check('Certificates standalone detail/result restore visual preview helper', !!doc.getElementById('certificatePageDetailModal') && certificatePageCode.includes('CertificatePreview.renderInto') && certificatePageCode.includes('certCreatePreview') && certificatePageCode.includes('certificatePagePreview'));
-    check('Certificates batch quantity picker hides native radio chrome but keeps focus state', html.includes('class="cert-quantity-option"') && htmlContains('css/pages.css', '.cert-quantity-option input:checked + span') && htmlContains('css/pages.css', '.cert-quantity-option input:focus-visible + span'));
+    check('Certificates batch quantity picker hides native radio chrome but keeps focus state', html.includes('class="cert-quantity-option"') && certQtyInputRule.includes('opacity: 0') && certQtyInputRule.includes('clip-path: inset(50%)') && pagesCss.includes('.cert-quantity-option input:focus-visible + span'));
+    check('Certificates batch quantity selected state avoids duplicate inset ring', certQtyCheckedRule.includes('box-shadow: none') && !certQtyCheckedRule.includes('inset') && pagesCss.includes('.cert-quantity-option input:checked:focus-visible + span') && pagesCss.includes('body.dark-mode .cert-quantity-option input:focus-visible + span'));
 });
 
 checkPage('staff.html', (doc, html) => {

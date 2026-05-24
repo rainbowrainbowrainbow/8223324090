@@ -2781,8 +2781,10 @@ body.dark-mode .operations-pack-bar select {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;
+    margin: 0;
     opacity: 0;
     pointer-events: none;
+    clip-path: inset(50%);
 }
 
 .cert-quantity-option span {
@@ -2803,12 +2805,16 @@ body.dark-mode .operations-pack-bar select {
     border-color: rgba(16, 185, 129, 0.44);
     background: rgba(16, 185, 129, 0.13);
     color: #047857;
-    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.18);
+    box-shadow: none;
 }
 
 .cert-quantity-option input:focus-visible + span {
-    outline: 3px solid rgba(16, 185, 129, 0.28);
-    outline-offset: 3px;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.28);
+}
+
+.cert-quantity-option input:checked:focus-visible + span {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.28);
 }
 
 .cert-batch-codes {
@@ -2963,6 +2969,12 @@ body.dark-mode .cert-quantity-option input:checked + span {
     border-color: rgba(45, 212, 191, 0.44);
     background: rgba(20, 184, 166, 0.18);
     color: #99f6e4;
+    box-shadow: none;
+}
+
+body.dark-mode .cert-quantity-option input:focus-visible + span,
+body.dark-mode .cert-quantity-option input:checked:focus-visible + span {
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.30);
 }
 
 body.dark-mode .cert-standalone-preview,

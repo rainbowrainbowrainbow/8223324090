@@ -41,6 +41,8 @@ describe('POST /api/certificates — Create single', () => {
         assert.ok(res.data.validUntil, 'Should have validUntil');
         assert.ok(res.data.status, 'Should have status');
         assert.ok(res.data.season, 'Should have season');
+        assert.equal(res.data.issueSource, 'single');
+        assert.equal(res.data.batchGroupId, null);
         assert.equal(res.data.status, 'active');
         assert.match(res.data.certCode, /^CERT-\d{4}-\d{5}$/);
         assert.equal(res.data.displayValue, 'Тестова Дитина');
@@ -169,6 +171,8 @@ describe('POST /api/certificates/batch — Batch generate', () => {
         assert.equal(res.data.certificates.length, 5);
         for (const cert of res.data.certificates) {
             assert.equal(cert.status, 'active');
+            assert.equal(cert.issueSource, 'batch');
+            assert.ok(cert.batchGroupId, 'batchGroupId should be set');
             assert.match(cert.certCode, /^CERT-\d{4}-\d{5}$/);
             createdIds.push(cert.id);
         }
@@ -329,6 +333,9 @@ describe('GET /api/certificates — List with filters', () => {
         assert.equal(res.status, 200);
         assert.ok(Array.isArray(res.data.items), 'items should be an array');
         assert.equal(typeof res.data.total, 'number', 'total should be a number');
+        assert.equal(typeof res.data.stats, 'object', 'stats should be an object');
+        assert.equal(typeof res.data.stats.active, 'number', 'stats.active should be a number');
+        assert.equal(typeof res.data.stats.bySource, 'object', 'stats.bySource should be an object');
         assert.ok(res.data.total >= res.data.items.length, 'total >= items.length');
     });
 
@@ -466,6 +473,7 @@ describe('GET /api/certificates/:id — Single get', () => {
         const fields = [
             'id', 'certCode', 'displayMode', 'displayValue', 'typeText',
             'issuedAt', 'validUntil', 'issuedByUserId', 'issuedByName',
+            'issueSource', 'batchGroupId',
             'status', 'usedAt', 'invalidatedAt', 'invalidReason', 'notes',
             'season', 'telegramAlertSent', 'createdAt', 'updatedAt'
         ];

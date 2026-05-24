@@ -25,6 +25,8 @@ function mapCertificateRow(row) {
         validUntil: row.valid_until,
         issuedByUserId: row.issued_by_user_id,
         issuedByName: row.issued_by_name,
+        issueSource: row.issue_source || 'single',
+        batchGroupId: row.batch_group_id || null,
         status: row.status || 'active',
         usedAt: row.used_at,
         invalidatedAt: row.invalidated_at,

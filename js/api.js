@@ -953,12 +953,12 @@ async function apiGetCertificates(filters = {}) {
         const qs = params.toString();
         const url = `${API_BASE}/certificates${qs ? '?' + qs : ''}`;
         const response = await fetch(url, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (handleAuthError(response)) return { items: [], total: 0, stats: null };
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {
         console.error('API getCertificates error:', err);
-        return { items: [], total: 0 };
+        return { items: [], total: 0, stats: null };
     }
 }
 

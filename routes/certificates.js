@@ -3,6 +3,7 @@
  * v8.4: Certificate registry with Telegram alerts
  */
 const router = require('express').Router();
+const { randomUUID } = require('crypto');
 const { pool, generateCertCode } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
@@ -32,7 +33,7 @@ router.get('/', async (req, res) => {
             params.push(status);
         }
         if (search) {
-            conditions.push(`(display_value ILIKE $${idx} OR cert_code ILIKE $${idx})`);
+            conditions.push(`(display_value ILIKE $${idx} OR cert_code ILIKE $${idx} OR type_text ILIKE $${idx} OR issued_by_name ILIKE $${idx})`);
             params.push(`%${search}%`);
             idx++;
         }
@@ -43,6 +44,16 @@ router.get('/', async (req, res) => {
 
         const countResult = await pool.query(`SELECT COUNT(*) FROM certificates ${where}`, params);
         const total = parseInt(countResult.rows[0].count);
+        const statusResult = await pool.query(
+            `SELECT status, COUNT(*)::int AS count FROM certificates ${where} GROUP BY status`,
+            params
+        );
+        const sourceResult = await pool.query(
+            `SELECT issue_source, COUNT(*)::int AS count FROM certificates ${where} GROUP BY issue_source`,
+            params
+        );
+        const statusCounts = Object.fromEntries(statusResult.rows.map(row => [row.status || 'active', Number(row.count) || 0]));
+        const sourceCounts = Object.fromEntries(sourceResult.rows.map(row => [row.issue_source || 'single', Number(row.count) || 0]));
 
         const result = await pool.query(
             `SELECT * FROM certificates ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
@@ -51,7 +62,18 @@ router.get('/', async (req, res) => {
 
         res.json({
             items: result.rows.map(mapCertificateRow),
-            total
+            total,
+            stats: {
+                total,
+                active: statusCounts.active || 0,
+                used: statusCounts.used || 0,
+                expired: statusCounts.expired || 0,
+                revoked: statusCounts.revoked || 0,
+                blocked: statusCounts.blocked || 0,
+                stopped: (statusCounts.revoked || 0) + (statusCounts.blocked || 0),
+                byStatus: statusCounts,
+                bySource: sourceCounts
+            }
         });
     } catch (err) {
         log.error('List error', err);
@@ -168,8 +190,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const finalValidUntil = validUntil || calculateValidUntil(new Date(), defaultDays);
 
         const result = await client.query(
-            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', 'single', NULL)
              RETURNING *`,
             [
                 certCode,
@@ -249,11 +271,12 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
         await client.query('BEGIN');
 
         const created = [];
+        const batchGroupId = `cert_batch_${randomUUID()}`;
         for (let i = 0; i < quantity; i++) {
             const certCode = await generateCertCode(client);
             const result = await client.query(
-                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
-                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, 'active')
+                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status, issue_source, batch_group_id)
+                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, 'active', 'batch', $8)
                  RETURNING *`,
                 [
                     certCode,
@@ -262,7 +285,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
                     req.user.id || null,
                     req.user.name || req.user.username,
                     `Пакетна генерація (${quantity} шт.)${eventName ? ` · ${eventName}` : ''}`,
-                    season
+                    season,
+                    batchGroupId
                 ]
             );
             created.push(mapCertificateRow(result.rows[0]));
@@ -273,6 +297,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
             ['certificate_batch', req.user.username, JSON.stringify({
                 quantity,
                 typeText,
+                batchGroupId,
                 eventName: eventName || undefined,
                 codes: created.map(c => c.certCode)
             })]

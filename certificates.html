@@ -9,14 +9,14 @@
     <title>Event Genix | Сертифікати</title>
     <meta name="description" content="Event Genix — сертифікати">
     <link rel="icon" type="image/png" href="/images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="/css/base.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/layout.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/pages.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/modals.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/dark-mode.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/responsive.css?v=0.62.23">
-    <link rel="stylesheet" href="/css/role-switcher.css?v=0.62.23">
+    <link rel="stylesheet" href="/css/base.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/layout.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/pages.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/modals.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/dark-mode.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/responsive.css?v=0.62.24">
+    <link rel="stylesheet" href="/css/role-switcher.css?v=0.62.24">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -164,10 +164,10 @@
                             <div class="form-field form-field-wide">
                                 <span>Кількість</span>
                                 <div class="cert-quantity-options" role="radiogroup" aria-label="Кількість сертифікатів">
-                                    <label><input type="radio" name="certPageBatchQty" value="5"> 5 шт.</label>
-                                    <label><input type="radio" name="certPageBatchQty" value="10" checked> 10 шт.</label>
-                                    <label><input type="radio" name="certPageBatchQty" value="15"> 15 шт.</label>
-                                    <label><input type="radio" name="certPageBatchQty" value="20"> 20 шт.</label>
+                                    <label class="cert-quantity-option"><input type="radio" name="certPageBatchQty" value="5"><span>5 шт.</span></label>
+                                    <label class="cert-quantity-option"><input type="radio" name="certPageBatchQty" value="10" checked><span>10 шт.</span></label>
+                                    <label class="cert-quantity-option"><input type="radio" name="certPageBatchQty" value="15"><span>15 шт.</span></label>
+                                    <label class="cert-quantity-option"><input type="radio" name="certPageBatchQty" value="20"><span>20 шт.</span></label>
                                 </div>
                             </div>
                             <div class="form-field cert-fixed-type-field">
@@ -204,7 +204,7 @@
     </div>
 
     <div id="certificatePageDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі сертифіката">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium cert-detail-modal-content">
             <button type="button" class="modal-close" id="certificatePageDetailClose" aria-label="Закрити">&times;</button>
             <h3>Деталі сертифіката</h3>
             <div id="certificatePageDetailContent"></div>
@@ -212,28 +212,19 @@
         </div>
     </div>
 
-    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
-        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
-            <span class="modal-close">&times;</span>
-            <h3>Особистий кабінет</h3>
-            <div id="profileContent" class="profile-content">
-                <div class="profile-loading">Завантаження...</div>
-            </div>
-        </div>
-    </div>
-
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
 
-    <script src="/js/ui.js?v=0.62.23"></script>
-    <script src="/js/config.js?v=0.62.23"></script>
-    <script src="/js/notification.js?v=0.62.23"></script>
-    <script src="/js/api.js?v=0.62.23"></script>
-    <script src="/js/auth.js?v=0.62.23"></script>
-    <script src="/js/components/sidebar.js?v=0.62.23"></script>
+    <script src="/js/ui.js?v=0.62.24"></script>
+    <script src="/js/config.js?v=0.62.24"></script>
+    <script src="/js/notification.js?v=0.62.24"></script>
+    <script src="/js/api.js?v=0.62.24"></script>
+    <script src="/js/auth.js?v=0.62.24"></script>
+    <script src="/js/components/sidebar.js?v=0.62.24"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="/js/certificates-page.js?v=0.62.23"></script>
-    <script src="/js/alerts.js?v=0.62.23"></script>
+    <script src="/js/certificate-preview.js?v=0.62.24"></script>
+    <script src="/js/certificates-page.js?v=0.62.24"></script>
+    <script src="/js/alerts.js?v=0.62.24"></script>
 </body>
 </html>

@@ -8,7 +8,9 @@
         mode: 'list',
         searchTimer: null,
         items: [],
-        detailId: null
+        stats: null,
+        detailId: null,
+        detailCert: null
     };
 
     const STATUS_META = {
@@ -55,6 +57,30 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return fallback;
         return date.toLocaleDateString('uk-UA');
+    }
+
+    function formatDateTime(value, fallback = '—') {
+        if (!value) return fallback;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return fallback;
+        return date.toLocaleString('uk-UA', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function issuerLabel(cert) {
+        return cert.issuedByName || cert.issuedByUsername || '—';
+    }
+
+    function issueSourceMeta(cert) {
+        const source = cert.issueSource || 'single';
+        if (source === 'batch') return { label: 'Пакетна видача', tone: 'batch' };
+        if (source === 'legacy') return { label: 'Legacy', tone: 'legacy' };
+        return { label: 'Одинична видача', tone: 'single' };
     }
 
     function currentSeason() {
@@ -157,7 +183,8 @@
         container.innerHTML = '<div class="empty-state">Завантаження...</div>';
         const result = await apiGetCertificates(filters);
         state.items = Array.isArray(result.items) ? result.items : [];
-        renderStats(state.items);
+        state.stats = result.stats || null;
+        renderStats(state.stats, result.total, state.items);
 
         if (!state.items.length) {
             container.innerHTML = `
@@ -172,23 +199,34 @@
         container.innerHTML = state.items.map(renderCertCard).join('');
     }
 
-    function renderStats(items) {
-        const counts = { active: 0, used: 0, expired: 0, revoked: 0, blocked: 0 };
+    function renderStats(stats, total, items = []) {
+        const fallback = { active: 0, used: 0, expired: 0, revoked: 0, blocked: 0 };
         items.forEach((item) => {
-            if (Object.prototype.hasOwnProperty.call(counts, item.status)) counts[item.status] += 1;
+            if (Object.prototype.hasOwnProperty.call(fallback, item.status)) fallback[item.status] += 1;
         });
+        const counts = {
+            active: Number(stats?.active ?? fallback.active) || 0,
+            used: Number(stats?.used ?? fallback.used) || 0,
+            expired: Number(stats?.expired ?? fallback.expired) || 0,
+            revoked: Number(stats?.revoked ?? fallback.revoked) || 0,
+            blocked: Number(stats?.blocked ?? fallback.blocked) || 0
+        };
+        const sourceCounts = stats?.bySource || {};
+        const trueTotal = Number(stats?.total ?? total ?? items.length) || 0;
         const el = $('certPageStats');
         if (!el) return;
         el.innerHTML = `
-            <span><b>${items.length}</b> у вибірці</span>
+            <span><b>${trueTotal}</b> у фільтрі</span>
             <span><b>${counts.active}</b> активні</span>
             <span><b>${counts.used}</b> використані</span>
             <span><b>${counts.expired}</b> прострочені</span>
-            <span><b>${counts.revoked + counts.blocked}</b> зупинені</span>`;
+            <span><b>${counts.revoked + counts.blocked}</b> зупинені</span>
+            <span><b>${Number(sourceCounts.batch || 0)}</b> пакетні</span>`;
     }
 
     function renderCertCard(cert) {
         const modeLabel = cert.displayMode === 'fio' ? 'ПІБ' : 'Номер';
+        const source = issueSourceMeta(cert);
         return `
             <article class="cert-page-card" data-cert-id="${esc(cert.id)}">
                 <button type="button" class="cert-page-card-main" data-cert-open="${esc(cert.id)}">
@@ -198,9 +236,10 @@
                     <span>${esc(modeLabel)} · ${esc(cert.typeText || 'сертифікат')}</span>
                 </button>
                 <div class="cert-page-card-meta">
-                    <span>Видано: ${formatDate(cert.issuedAt)}</span>
+                    <span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span>
+                    <span>Видано: ${formatDateTime(cert.issuedAt)}</span>
                     <span>Дійсний до: ${formatDate(cert.validUntil)}</span>
-                    ${cert.issuedByName ? `<span>${esc(cert.issuedByName)}</span>` : ''}
+                    <span>Видав: ${esc(issuerLabel(cert))}</span>
                 </div>
             </article>`;
     }
@@ -247,15 +286,23 @@
     function renderSingleResult(cert) {
         const box = $('certCreateResult');
         if (!box) return;
+        const source = issueSourceMeta(cert);
         box.classList.remove('hidden');
         box.innerHTML = `
             <span class="cert-result-kicker">Видано</span>
             <h3>${esc(cert.certCode)}</h3>
             <p>${esc(cert.displayValue || 'Порожній сертифікат')} · ${esc(cert.typeText || '')}</p>
+            <div class="cert-result-meta">
+                <span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span>
+                <span>Видано: ${formatDateTime(cert.issuedAt)}</span>
+                <span>Видав: ${esc(issuerLabel(cert))}</span>
+            </div>
+            <div id="certCreatePreview" class="cert-standalone-preview cert-standalone-preview-result"></div>
             <div class="cert-result-actions">
                 <button type="button" class="btn-page-secondary" data-cert-open="${esc(cert.id)}">Переглянути</button>
                 <a class="btn-page-primary" href="/certificates">До реєстру</a>
             </div>`;
+        renderCertificatePreview('certCreatePreview', cert);
     }
 
     async function handleBatchSubmit(event) {
@@ -359,23 +406,53 @@
         }
     }
 
+    function renderCertificatePreview(containerId, cert) {
+        if (window.CertificatePreview && typeof window.CertificatePreview.renderInto === 'function') {
+            window.CertificatePreview.renderInto(containerId, cert, {
+                apiBase: API_BASE,
+                getAuthHeaders
+            });
+            return;
+        }
+        const container = $(containerId);
+        if (container) {
+            container.innerHTML = '<div class="cert-preview-fallback">Візуальне превʼю недоступне. Дані сертифіката нижче.</div>';
+        }
+    }
+
     function renderDetail(cert) {
         const content = $('certificatePageDetailContent');
         const actions = $('certificatePageDetailActions');
         const modeLabel = cert.displayMode === 'fio' ? 'ПІБ' : 'Номер';
+        const source = issueSourceMeta(cert);
+        state.detailCert = cert;
         content.innerHTML = `
-            <div class="cert-detail-grid">
-                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${esc(cert.certCode)}</code></span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${statusBadge(cert.status)}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${esc(cert.displayValue || '—')}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${esc(cert.typeText || '—')}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${formatDate(cert.issuedAt)}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${formatDate(cert.validUntil)}</span></div>
-                ${cert.issuedByName ? `<div class="cert-detail-row"><span class="cert-detail-label">Видав:</span><span class="cert-detail-val">${esc(cert.issuedByName)}</span></div>` : ''}
-                ${cert.notes ? `<div class="cert-detail-row"><span class="cert-detail-label">Примітка:</span><span class="cert-detail-val">${esc(cert.notes)}</span></div>` : ''}
+            <div class="cert-detail-shell">
+                <div id="certificatePagePreview" class="cert-standalone-preview"></div>
+                <div class="cert-detail-summary-card">
+                    <div class="cert-detail-summary-head">
+                        <div>
+                            <span class="cert-result-kicker">Сертифікат</span>
+                            <h4>${esc(cert.certCode)}</h4>
+                        </div>
+                        ${statusBadge(cert.status)}
+                    </div>
+                    <div class="cert-detail-grid">
+                        <div class="cert-detail-row"><span class="cert-detail-label">Джерело:</span><span class="cert-detail-val"><span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span></span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${esc(cert.displayValue || '—')}</span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${esc(cert.typeText || '—')}</span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${formatDateTime(cert.issuedAt)}</span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${formatDate(cert.validUntil)}</span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">Видав:</span><span class="cert-detail-val">${esc(issuerLabel(cert))}</span></div>
+                        ${cert.batchGroupId ? `<div class="cert-detail-row"><span class="cert-detail-label">Batch ID:</span><span class="cert-detail-val"><code>${esc(cert.batchGroupId)}</code></span></div>` : ''}
+                        ${cert.notes ? `<div class="cert-detail-row"><span class="cert-detail-label">Примітка:</span><span class="cert-detail-val">${esc(cert.notes)}</span></div>` : ''}
+                    </div>
+                </div>
             </div>`;
+        renderCertificatePreview('certificatePagePreview', cert);
 
         let html = `<button type="button" class="btn-page-secondary" data-cert-copy="${esc(cert.certCode)}">Копіювати код</button>`;
+        html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">Скачати PNG</button>`;
         if (cert.status === 'active') {
             html += `<button type="button" class="btn-page-primary" data-cert-status="${esc(cert.id)}" data-next-status="used">Використано</button>`;
             html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
@@ -391,6 +468,36 @@
     function closeDetail() {
         $('certificatePageDetailModal')?.classList.add('hidden');
         state.detailId = null;
+        state.detailCert = null;
+    }
+
+    async function downloadCertificateFromPage(id) {
+        if (!window.CertificatePreview || typeof window.CertificatePreview.generateCertificateCanvas !== 'function') {
+            notify('Генератор превʼю недоступний', 'error');
+            return;
+        }
+        try {
+            let cert = state.detailCert && String(state.detailCert.id) === String(id) ? state.detailCert : null;
+            if (!cert) {
+                const response = await fetch(`${API_BASE}/certificates/${encodeURIComponent(id)}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!response.ok) throw new Error('not_found');
+                cert = await response.json();
+            }
+            const canvas = await window.CertificatePreview.generateCertificateCanvas(cert, {
+                apiBase: API_BASE,
+                getAuthHeaders
+            });
+            const link = document.createElement('a');
+            link.download = `${cert.certCode || 'certificate'}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            notify('Сертифікат завантажено', 'success');
+        } catch (error) {
+            console.error('Certificate download failed:', error);
+            notify('Не вдалося згенерувати PNG', 'error');
+        }
     }
 
     async function updateStatus(id, status) {
@@ -471,6 +578,12 @@
             if (deleteBtn) {
                 event.preventDefault();
                 deleteCertificateFromPage(deleteBtn.dataset.certDelete);
+                return;
+            }
+            const downloadBtn = event.target.closest('[data-cert-download]');
+            if (downloadBtn) {
+                event.preventDefault();
+                downloadCertificateFromPage(downloadBtn.dataset.certDownload);
                 return;
             }
             const copyBtn = event.target.closest('[data-cert-copy]');

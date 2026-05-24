@@ -224,6 +224,71 @@ const DashboardPage = (() => {
             widget: 'tasks'
         }
     ];
+    const BOARD_CONTENT_TONES = new Set(['idea', 'production', 'approved', 'blocked', 'story']);
+    const BOARD_CONTENT_PRESET_ORDER = ['idea', 'production', 'approved', 'blocked', 'story'];
+    const BOARD_CONTENT_PRESETS = {
+        idea: {
+            label: 'Ідея',
+            tone: 'idea',
+            title: 'Ідея / кластер',
+            frameText: 'Зона для сирих ідей, референсів, гіпотез і перших варіантів.',
+            relationType: 'inspires',
+            notes: [
+                ['Seed', 'Головна думка або пропозиція'],
+                ['Референси', 'Що надихає: візуал, тон, приклад'],
+                ['Перевірка', 'Що треба уточнити перед production']
+            ]
+        },
+        production: {
+            label: 'Production',
+            tone: 'production',
+            title: 'Production map',
+            frameText: 'Робоча зона для матеріалів, відповідальних і наступних кроків.',
+            relationType: 'depends',
+            notes: [
+                ['Матеріали', 'Фото, відео, текст, реквізит'],
+                ['Відповідальний', 'Хто веде підготовку'],
+                ['Наступний крок', 'Що робимо першим']
+            ]
+        },
+        approved: {
+            label: 'Approved',
+            tone: 'approved',
+            title: 'Approved / publish-ready',
+            frameText: 'Зона для узгоджених блоків, які можна запускати або публікувати.',
+            relationType: 'feeds',
+            notes: [
+                ['Готово', 'Що вже затверджено'],
+                ['Публікація', 'Канал, дата, формат'],
+                ['Контроль', 'Що перевірити перед випуском']
+            ]
+        },
+        blocked: {
+            label: 'Blocked',
+            tone: 'blocked',
+            title: 'Blocked / needs decision',
+            frameText: 'Зона для блокерів, ризиків і питань, які потребують рішення.',
+            relationType: 'blocks',
+            notes: [
+                ['Блокер', 'Що зупиняє рух'],
+                ['Рішення', 'Кому треба прийняти рішення'],
+                ['Ризик', 'Що станеться, якщо не вирішити']
+            ]
+        },
+        story: {
+            label: 'Storyboard',
+            tone: 'story',
+            title: 'Launch storyboard',
+            frameText: 'Сцена для послідовності: хук, доказ, дія, follow-up.',
+            relationType: 'feeds',
+            notes: [
+                ['Hook', 'Перший сильний сигнал'],
+                ['Proof', 'Доказ або сцена підтримки'],
+                ['Action', 'Що має зробити аудиторія'],
+                ['Follow-up', 'Що відбувається після контакту']
+            ]
+        }
+    };
 
     // Widget definitions — all available widgets
     const WIDGET_DEFS = {
@@ -560,6 +625,11 @@ const DashboardPage = (() => {
         return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
     }
 
+    function normalizeBoardTone(value) {
+        const tone = String(value || '').trim();
+        return BOARD_CONTENT_TONES.has(tone) ? tone : '';
+    }
+
     function isBoardEquilateralShape(shape) {
         return shape === 'circle' || shape === 'square';
     }
@@ -707,6 +777,7 @@ const DashboardPage = (() => {
             safe.text = String(legacyText || (type === 'note' ? 'Нова нотатка' : type === 'space' ? 'Зарезервовано як вільний простір.' : '')).slice(0, 5000);
             safe.title = String(item.title || item.label || '').slice(0, 120);
             safe.color = String(item.color || '').slice(0, 40);
+            safe.tone = normalizeBoardTone(item.tone);
             safe.shape = normalizeBoardShape(item.shape || 'rect');
             if (type === 'shape') {
                 const dimensions = normalizeBoardShapeDimensions(safe.shape, safe.w, safe.h);
@@ -1033,6 +1104,10 @@ const DashboardPage = (() => {
         const familyLabel = getBoardToolFamilyLabel(tool);
         const cancelHint = tool === 'select' ? 'Клік поза об’єктом знімає вибір' : 'Esc повертає до вибору';
         const widgetOptions = renderBoardWidgetPickerOptions();
+        const contentPresetButtons = BOARD_CONTENT_PRESET_ORDER.map(id => {
+            const preset = BOARD_CONTENT_PRESETS[id];
+            return `<button type="button" class="board-tool-preset tone-${escapeHtml(preset.tone)}" onclick="DashboardPage.insertBoardContentPreset('${escapeJsString(id)}')" title="${escapeHtml(preset.frameText)}">${escapeHtml(preset.label)}</button>`;
+        }).join('');
         return `
             <div class="board-tool-current" data-board-current-family="${escapeHtml(family)}">
                 <span>${escapeHtml(familyLabel)}</span>
@@ -1051,6 +1126,9 @@ const DashboardPage = (() => {
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.addBoardNote()">+ Нотатка</button>
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.addBoardSpace()">+ Порожня зона</button>
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
+            </div>
+            <div class="board-content-preset-strip" role="group" aria-label="Content workspace presets">
+                ${contentPresetButtons}
             </div>
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.snapToGrid === true ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
@@ -3774,6 +3852,8 @@ const DashboardPage = (() => {
         const locked = item.locked ? ' locked' : '';
         const hidden = item.hidden ? ' hidden-object' : '';
         const geometry = isBoardThinGeometryItem(item) ? ' thin-geometry' : '';
+        const tone = normalizeBoardTone(item.tone);
+        const toneClass = tone ? ` board-tone-${tone}` : '';
         const runtimeState = getBoardWidgetRuntimeState(item);
         const style = `left:${Number(item.x || 0)}px;top:${Number(item.y || 0)}px;width:${Number(item.w || 280)}px;height:${Number(item.h || 160)}px;z-index:${Number(item.z || 1)}`;
         const title = item.type === 'widget'
@@ -3782,7 +3862,7 @@ const DashboardPage = (() => {
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
-            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-widget-type="${item.type === 'widget' ? escapeHtml(item.widgetType) : ''}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
+            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}${toneClass}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-widget-type="${item.type === 'widget' ? escapeHtml(item.widgetType) : ''}" data-board-tone="${escapeHtml(tone)}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
                         <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : item.type === 'space' ? '◌' : '•'}</span>
@@ -3969,7 +4049,16 @@ const DashboardPage = (() => {
                     </div>
                 `}
                 <div class="board-inspector-section">
-                    <strong>AI-шаблони</strong>
+                    <strong>Content-пресети</strong>
+                    <div class="board-inspector-row">
+                        ${BOARD_CONTENT_PRESET_ORDER.map(id => {
+                            const preset = BOARD_CONTENT_PRESETS[id];
+                            return `<button type="button" class="board-inspector-chip board-tone-${escapeHtml(preset.tone)}" onclick="DashboardPage.insertBoardContentPreset('${escapeJsString(id)}')">${escapeHtml(preset.label)}</button>`;
+                        }).join('')}
+                    </div>
+                </div>
+                <div class="board-inspector-section">
+                    <strong>AI-допомога</strong>
                     <div class="board-inspector-row">
                         ${['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board'].map(action => `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('${action}')">${BOARD_AI_ACTION_LABELS[action] || action}</button>`).join('')}
                     </div>
@@ -5190,6 +5279,69 @@ const DashboardPage = (() => {
         _boardSelectedId = frame?.id || created[0]?.id || null;
         _boardSelectedConnectorId = null;
         markBoardDirty('ai-board');
+        renderBoard();
+    }
+
+    function insertBoardContentPreset(presetId = 'idea') {
+        const preset = BOARD_CONTENT_PRESETS[presetId] || BOARD_CONTENT_PRESETS.idea;
+        const tone = normalizeBoardTone(preset.tone) || 'idea';
+        const existingCount = getBoardItems().length;
+        const baseX = 92 + (existingCount % 3) * 72;
+        const baseY = 92 + (existingCount % 3) * 54;
+        const baseZ = nextBoardZ();
+        pushBoardUndo('content-preset');
+
+        const frame = normalizeBoardItem({
+            id: `board-content-frame-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            type: 'frame',
+            title: preset.title,
+            text: preset.frameText,
+            tone,
+            x: baseX - 28,
+            y: baseY - 34,
+            w: presetId === 'story' ? 760 : 680,
+            h: presetId === 'story' ? 310 : 280,
+            z: baseZ
+        }, existingCount);
+        if (frame) getBoardItems().push(frame);
+
+        const createdNotes = [];
+        (preset.notes || []).slice(0, 6).forEach(([title, text], index) => {
+            const note = normalizeBoardItem({
+                id: `board-content-note-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+                type: 'note',
+                title,
+                text,
+                tone,
+                x: baseX + (index % 3) * 208,
+                y: baseY + Math.floor(index / 3) * 112,
+                w: 184,
+                h: 88,
+                z: baseZ + index + 1
+            }, existingCount + index + 1);
+            if (note) {
+                getBoardItems().push(note);
+                createdNotes.push(note);
+            }
+        });
+
+        if (createdNotes.length > 1) {
+            createdNotes.slice(1).forEach((note, index) => {
+                const connector = normalizeBoardConnector({
+                    id: `conn-content-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+                    from: { itemId: createdNotes[0].id, anchor: 'right' },
+                    to: { itemId: note.id, anchor: 'left' },
+                    style: 'curve',
+                    relationType: preset.relationType || 'feeds',
+                    label: preset.relationType || 'feeds'
+                }, getBoardConnectors().length + index);
+                if (connector) getBoardConnectors().push(connector);
+            });
+        }
+
+        _boardSelectedId = frame?.id || createdNotes[0]?.id || null;
+        _boardSelectedConnectorId = null;
+        markBoardDirty('content-preset');
         renderBoard();
     }
 
@@ -8430,6 +8582,7 @@ const DashboardPage = (() => {
         updateBoardConnector,
         deleteBoardConnector,
         setBoardConnectorPreference,
+        insertBoardContentPreset,
         runBoardAiAction,
         undoBoard,
         redoBoard,

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.22 - CRM 63.22: контентна sandbox-дошка
+
+### Dashboard Board / sandbox workspace [codex]
+- **Палітра стала ближчою до реальної content-workspace логіки** - у dock додано окрему групу `Контент` з пресетами `Ідея`, `Production`, `Approved`, `Blocked` і `Storyboard`, щоб дошка не була лише набором випадкових кнопок.
+- **Пресети створюють готові робочі сцени** - кожен пресет додає semantic frame, набір нотаток і зв'язки між ними, тож команда може швидко зібрати idea cluster, production map, publish-ready зону або storyboard.
+- **Збереження не втрачає семантику** - board state тепер безпечно нормалізує і зберігає коротке поле `tone` для frame/note/text/space через canonical Postgres dashboard config.
+- **Dark/light polish** - додано тональні стилі для content-зон, пресетів, frame/note поверхонь і toolbar states у світлій та темній темах без повернення фігур у card-like shell.
+- **Guardrail** - board-тести покривають true primitive geometry, connector draft/follow та новий content preset path з persistent tone.
+
+---
+
 ## v0.63.21 - CRM 63.21: єдина воронка лідів
 
 ### Ліди / Customers / навігація [codex]

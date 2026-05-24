@@ -219,6 +219,25 @@ test('dashboard primitive shapes create as scene-native objects, while notes kee
     assert.ok(noteEl?.querySelector('.dashboard-board-item-frame'));
 });
 
+test('dashboard content presets create semantic workspace zones with persistent tones', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    DashboardPage.insertBoardContentPreset('production');
+
+    const doc = dom.window.document;
+    const frame = doc.querySelector('.dashboard-board-item.type-frame[data-board-tone="production"]');
+    const notes = doc.querySelectorAll('.dashboard-board-item.type-note[data-board-tone="production"]');
+    const connectors = doc.querySelectorAll('[data-board-connector-id]');
+
+    assert.ok(frame);
+    assert.ok(frame.classList.contains('board-tone-production'));
+    assert.equal(notes.length, 3);
+    assert.equal(connectors.length, 2);
+    assert.ok(doc.querySelector('.board-content-preset-strip'));
+    assert.ok(doc.querySelector('.board-tool-preset.tone-production'));
+});
+
 test('dashboard legacy line and arrow shapes are unframed scene geometry and drag freely in 2D', () => {
     const { dom, DashboardPage } = loadDashboardHarness();
     DashboardPage.setBoardInteractionMode('edit');

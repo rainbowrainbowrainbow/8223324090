@@ -166,6 +166,7 @@ const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
 const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
 const BOARD_ALLOWED_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
+const BOARD_CONTENT_TONES = new Set(['idea', 'production', 'approved', 'blocked', 'story']);
 const DASHBOARD_WORKSPACE_MODE = 'workspace';
 const BOARD_SNAP_MODES = new Set(['strict', 'soft', 'freeform']);
 const DASHBOARD_CONFIG_PERSISTENCE = Object.freeze({
@@ -214,6 +215,11 @@ function normalizeBoardWidgetDepth(value) {
 
 function normalizeBoardShape(value) {
     return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
+}
+
+function normalizeBoardTone(value) {
+    const tone = String(value || '').trim();
+    return BOARD_CONTENT_TONES.has(tone) ? tone : '';
 }
 
 function isBoardEquilateralShape(shape) {
@@ -361,6 +367,7 @@ function sanitizeBoardItem(item, role) {
         safe.text = String(legacyText || '').slice(0, 5000);
         safe.title = String(item.title || item.label || '').slice(0, 120);
         safe.color = String(item.color || '').slice(0, 40);
+        safe.tone = normalizeBoardTone(item.tone);
         safe.shape = normalizeBoardShape(item.shape || 'rect');
         if (type === 'shape') {
             const dimensions = normalizeBoardShapeDimensions(safe.shape, safe.w, safe.h);

@@ -409,7 +409,7 @@
                 className: 'task-report-required-modal'
             });
         } else {
-            const reportText = window.prompt('Перед виконанням цієї задачі потрібно додати звіт.');
+            const reportText = null;
             values = reportText ? { reportText, amount: '' } : null;
         }
         if (!values) return null;

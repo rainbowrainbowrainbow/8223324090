@@ -993,7 +993,11 @@ function showOneTimeCredential(credential, title = 'One-time credentials') {
         });
         return;
     }
-    window.alert(`${title}\n\n${text}`);
+    if (typeof showNotification === 'function') {
+        showNotification(text, 'info');
+    } else {
+        console.info(`${title}\n\n${text}`);
+    }
 }
 
 function suggestUsernameFromStaffInfo(info = {}) {

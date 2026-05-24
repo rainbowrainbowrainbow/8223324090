@@ -1731,7 +1731,7 @@ async function saveCabinetSubtasksAsTemplate() {
             type: 'info'
         });
     } else {
-        const name = window.prompt('Назва шаблону підзадач', title ? `${title} · підзадачі` : 'Новий шаблон підзадач');
+        const name = null;
         values = name ? { name, description: '' } : null;
     }
     if (!values?.name) return;
@@ -1785,7 +1785,7 @@ async function updateSelectedCabinetSavedTemplate() {
             type: 'info'
         });
     } else {
-        const name = window.prompt('Назва шаблону підзадач', current.name || current.title || 'Шаблон підзадач');
+        const name = null;
         values = name ? { name, description: current.description || '' } : null;
     }
     if (!values?.name) return;
@@ -2918,7 +2918,7 @@ async function handleCabinetTaskActionClick(event) {
             closeCabinetSnoozeMenus();
             let minutes = button.dataset.minutes || 60;
             if (minutes === 'custom') {
-                const raw = window.prompt('На скільки хвилин відкласти задачу?', '60');
+                const raw = typeof promptModal === 'function' ? await promptModal('На скільки хвилин відкласти задачу?', { inputType: 'number', defaultValue: '60' }) : null;
                 if (raw === null) return;
                 minutes = raw;
             }
@@ -3000,7 +3000,7 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow') {
     } else if (option === 'custom') {
         dateText = typeof promptModal === 'function'
             ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: profileDateOffsetStr(1) })
-            : window.prompt('Нова дата для задачі:', profileDateOffsetStr(1));
+            : null;
     } else {
         dateText = profileDateOffsetStr(1);
     }

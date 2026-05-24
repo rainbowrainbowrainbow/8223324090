@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.30 - CRM 63.30: системні guardrails
+
+### Системна якість / UX guardrails / API traceability [codex]
+- **Прибрано native browser dialogs із production JS** - задачі, профіль, HR/staff credential flow, task report gate і звіти більше не використовують сирі `window.prompt`, `window.alert` або `window.confirm`; робочі сценарії йдуть через CRM-модалки або notification-шар.
+- **Звіти бухгалтера отримали нормальний comment flow** - затвердження й повернення звіту беруть коментар через спільний `promptModal`, без системного браузерного вікна.
+- **500-відповіді API отримали trace metadata** - новий middleware додає `requestId` і `success: false` до JSON-помилок, які route handlers повертають напряму, щоб production debug не закінчувався безликим `Internal server error`.
+- **Postgres-only runtime guard** - UI smoke перевіряє, що live runtime не повертає Supabase client path у `js/`, `routes/`, `services/`, `middleware`, `server.js` або `db/index.js`.
+- **Guardrail** - додано unit test для error metadata і frontend smoke-guard, який не дає native browser dialogs повернутись у production JS.
+
+---
+
 ## v0.63.29 - CRM 63.29: красивіший Помічник
 
 ### Помічник / topbar / interactive panel [codex]

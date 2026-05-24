@@ -2531,7 +2531,7 @@ async function saveTaskSubtasksAsTemplate() {
             type: 'info'
         });
     } else {
-        const name = window.prompt('Назва шаблону підзадач', title ? `${title} · підзадачі` : 'Новий шаблон підзадач');
+        const name = null;
         values = name ? { name, description: '' } : null;
     }
     if (!values?.name) return;
@@ -2587,7 +2587,7 @@ async function updateSelectedTaskSavedTemplate() {
             type: 'info'
         });
     } else {
-        const name = window.prompt('Назва шаблону підзадач', current.name || current.title || 'Шаблон підзадач');
+        const name = null;
         values = name ? { name, description: current.description || '' } : null;
     }
     if (!values?.name) return;
@@ -3268,7 +3268,7 @@ async function rescheduleOverdueTask(taskId, option = 'tomorrow') {
     } else if (option === 'custom') {
         dateText = typeof promptModal === 'function'
             ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: getDateOffsetStr(1) })
-            : window.prompt('Нова дата для задачі:', getDateOffsetStr(1));
+            : null;
     } else {
         dateText = getDateOffsetStr(1);
     }

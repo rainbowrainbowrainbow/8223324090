@@ -1166,7 +1166,7 @@ async function profileQuickReschedule(taskId, option, event) {
         if (option === 'custom') {
             const selectedDate = typeof promptModal === 'function'
                 ? await promptModal('Нова дата для задачі:', { inputType: 'date', defaultValue: profileKyivDate(1) })
-                : window.prompt('Нова дата для задачі:', profileKyivDate(1));
+                : null;
             if (!selectedDate) return;
             payload = { deadline: `${selectedDate}T18:00:00` };
         } else {

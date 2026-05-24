@@ -921,7 +921,7 @@ const ReportsPage = (() => {
                 cancelText: 'Лишитись тут'
             }));
         }
-        return window.confirm(message);
+        return false;
     }
 
     async function selectReportTemplate(templateId) {
@@ -1999,7 +1999,7 @@ const ReportsPage = (() => {
 
     async function approveReport(id) {
         try {
-            const comment = window.prompt('Коментар бухгалтера до затвердження (необовʼязково)', '') || '';
+            const comment = typeof promptModal === 'function' ? ((await promptModal('Коментар бухгалтера до затвердження (необовʼязково)', { defaultValue: '', type: 'info' })) || '') : '';
             await apiRequest('POST', `/api/reports/${id}/approve`, { comment });
             showNotification('Звіт затверджено бухгалтером');
             await Promise.all([loadReports(), loadSummary()]);
@@ -2009,7 +2009,7 @@ const ReportsPage = (() => {
     }
 
     async function rejectReport(id) {
-        const comment = window.prompt('Причина повернення звіту бухгалтером', '');
+        const comment = typeof promptModal === 'function' ? await promptModal('Причина повернення звіту бухгалтером', { defaultValue: '', type: 'warning' }) : null;
         if (comment === null) return;
         try {
             await apiRequest('POST', `/api/reports/${id}/reject`, { comment });

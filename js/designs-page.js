@@ -54,12 +54,18 @@ let editTags = [];
 
     // v20.8.0: Embedded mode — hide chrome when inside Art page
     if (new URLSearchParams(window.location.search).get('embedded') === '1') {
+        document.documentElement.classList.add('embed-mode');
+        document.body.classList.add('embed-mode');
         const sidebar = document.getElementById('sidebarNav');
         const header = document.querySelector('.header');
         if (sidebar) sidebar.style.display = 'none';
         if (header) header.style.display = 'none';
         const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
+        if (main) {
+            main.style.marginLeft = '0';
+            main.style.width = '100%';
+            main.style.maxWidth = 'none';
+        }
     }
 
     initPage();
@@ -1568,7 +1574,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.63.25" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.63.26" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1662,7 +1668,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.63.25" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.63.26" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

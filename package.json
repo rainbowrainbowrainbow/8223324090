@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.25",
+  "version": "0.63.26",
   "eventGenix": {
-    "releaseLabel": "CRM 63.25: фінальна передача звіту бухгалтеру"
+    "releaseLabel": "CRM 63.26: стабільні embedded-вкладки Art"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.26 - CRM 63.26: стабільні embedded-вкладки Art
+
+### Art / Випускний / embedded shell [codex]
+- **Виправлено вузький layout у вкладці `Випускний` всередині Art** - embedded-сторінка більше не резервує ширину під власний sidebar, коли sidebar схований iframe-режимом.
+- **Додано спільний embedded-shell контракт** - `layout.css` тепер системно скидає sidebar/header, `margin-left` і `width` для iframe-поверхонь із `embed-mode`.
+- **Захищено схожу вкладку `Дизайни`** - сторінка дизайнів теж вмикає `embed-mode` до завантаження layout CSS і явно розтягує workspace на всю ширину iframe.
+- **Standalone-сторінки не змінені** - прямі переходи `/graduation` і `/designs` зберігають звичайний CRM sidebar, а embedded-режим працює тільки для iframe/deep embed.
+- **Guardrail** - UI smoke перевіряє, що Art iframe-джерела мають ранній embedded mode і що shared shell більше не залишає sidebar-резерв усередині iframe.
+
+---
+
 ## v0.63.25 - CRM 63.25: фінальна передача звіту бухгалтеру
 
 ### Звіти / UX фінального етапу [codex]

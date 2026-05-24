@@ -21,15 +21,15 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.63.25">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.25">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.25">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.25">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.25">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.25">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.25">
-    <link rel="stylesheet" href="css/graduation.css?v=0.63.25">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.25">
+    <link rel="stylesheet" href="css/base.css?v=0.63.26">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.26">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.26">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.26">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.26">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.26">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.26">
+    <link rel="stylesheet" href="css/graduation.css?v=0.63.26">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.26">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -38,7 +38,14 @@
         .embed-mode .sidebar-overlay,
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
-        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+        .embed-mode .page-container {
+            margin-left: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+        }
     </style>
 </head>
 <body data-page-group="art">
@@ -125,12 +132,12 @@
     <!-- Notification -->
     <div id="notification" class="notification" style="display:none"></div>
 
-    <script src="js/config.js?v=0.63.25"></script>
-    <script src="js/notification.js?v=0.63.25"></script>
-    <script src="js/api.js?v=0.63.25"></script>
-    <script src="js/auth.js?v=0.63.25"></script>
-    <script src="js/components/sidebar.js?v=0.63.25"></script>
-    <script src="js/graduation.js?v=0.63.25"></script>
+    <script src="js/config.js?v=0.63.26"></script>
+    <script src="js/notification.js?v=0.63.26"></script>
+    <script src="js/api.js?v=0.63.26"></script>
+    <script src="js/auth.js?v=0.63.26"></script>
+    <script src="js/components/sidebar.js?v=0.63.26"></script>
+    <script src="js/graduation.js?v=0.63.26"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
@@ -146,7 +153,11 @@
                 if (header) header.style.display = 'none';
                 if (loginOverlay) loginOverlay.style.display = 'none';
                 const main = document.getElementById('main-content');
-                if (main) main.style.marginLeft = '0';
+                if (main) {
+                    main.style.marginLeft = '0';
+                    main.style.width = '100%';
+                    main.style.maxWidth = 'none';
+                }
                 // Inherit token from URL query (passed by parent art-director iframe loader)
                 const urlToken = new URLSearchParams(location.search).get('token');
                 if (urlToken && !localStorage.getItem('pzp_token')) {
@@ -177,7 +188,7 @@
             }
         });
     </script>
-    <script src="js/ui.js?v=0.63.25"></script>
-    <script src="js/alerts.js?v=0.63.25"></script>
+    <script src="js/ui.js?v=0.63.26"></script>
+    <script src="js/alerts.js?v=0.63.26"></script>
 </body>
 </html>

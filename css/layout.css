@@ -72,6 +72,54 @@ body.dark-mode.page-exiting::before {
     background: var(--gray-900, #0F172A);
 }
 
+/* v0.63.26: embedded CRM surfaces must not reserve the parent sidebar width.
+   Art iframe tabs such as Designs and Graduation own only their inner canvas. */
+html.embed-mode,
+html.embed-mode body,
+body.embed-mode {
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+}
+
+html.embed-mode .sidebar-nav,
+html.embed-mode .header,
+html.embed-mode .sidebar-overlay,
+html.embed-mode .skip-link,
+html.embed-mode .page-login-overlay,
+body.embed-mode .sidebar-nav,
+body.embed-mode .header,
+body.embed-mode .sidebar-overlay,
+body.embed-mode .skip-link,
+body.embed-mode .page-login-overlay {
+    display: none !important;
+}
+
+html.embed-mode body[data-page-group] .page-container,
+html.embed-mode body[data-page-group] .main-content,
+body.embed-mode[data-page-group] .page-container,
+body.embed-mode[data-page-group] .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+html.embed-mode .page-container,
+html.embed-mode .main-content,
+body.embed-mode .page-container,
+body.embed-mode .main-content {
+    padding: 16px !important;
+}
+
+html.embed-mode .app-container,
+html.embed-mode #mainApp,
+body.embed-mode .app-container,
+body.embed-mode #mainApp {
+    display: block !important;
+    min-height: 100vh !important;
+}
+
 /* ==========================================
    SIDEBAR NAVIGATION — v17.10.0
    ========================================== */

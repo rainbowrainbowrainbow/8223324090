@@ -10,22 +10,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script>
     // v29.2.0: Trampoline — catch cached 301 from /leads→/customers?tab=leads
-    if (location.search.includes('tab=leads') || document.referrer.includes('/leads')) {
-        location.replace('/sales-funnel');
-    }
+    // v0.63.21: Customers no longer owns a separate funnel surface; leads funnel is canonical.
+    (function(){
+        var params = new URLSearchParams(location.search);
+        if (params.get('tab') === 'journey') {
+            var target = new URL('/sales-funnel', location.origin);
+            target.searchParams.set('view', 'kanban');
+            var businessContext = params.get('businessContext');
+            if (businessContext) target.searchParams.set('businessContext', businessContext);
+            location.replace(target.pathname + target.search);
+            return;
+        }
+        if (location.search.includes('tab=leads') || document.referrer.includes('/leads')) {
+            location.replace('/sales-funnel');
+        }
+    })();
     </script>
     <title>Event Genix | Клієнти</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.20">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.20">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.20">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.20">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.20">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.20">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.20">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.20">
+    <link rel="stylesheet" href="css/base.css?v=0.63.21">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.21">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.21">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.21">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.21">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.21">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.21">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.21">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -575,74 +587,6 @@
         }
         .crm-tag-option:hover { opacity: 0.8; }
 
-        /* v30.4: Journey funnel */
-        .journey-funnel {
-            background: var(--white);
-            border-radius: var(--radius);
-            padding: 20px;
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-sm);
-        }
-        .journey-stage {
-            margin-bottom: 10px;
-        }
-        .journey-stage-action {
-            display: block;
-            width: 100%;
-            padding: 0;
-            border: 0;
-            background: transparent;
-            color: inherit;
-            font: inherit;
-            text-align: left;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-        }
-        .journey-stage-action:focus-visible {
-            outline: 3px solid rgba(37, 99, 235, 0.35);
-            outline-offset: 3px;
-        }
-        .journey-stage-action:hover .journey-bar,
-        .journey-stage-action:focus-visible .journey-bar {
-            transform: translateX(3px);
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
-        }
-        .journey-bar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: var(--journey-width);
-            padding: 12px 16px;
-            border-radius: var(--radius-sm);
-            color: white;
-            font-weight: 700;
-            font-size: 13px;
-            min-height: 44px;
-            min-width: min(100%, 280px);
-            transition: width 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .journey-icon { font-size: 18px; }
-        .journey-label { flex: 1; }
-        .journey-count {
-            font-size: 14px;
-            font-weight: 900;
-            white-space: nowrap;
-        }
-        .journey-action {
-            padding-left: 8px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.02em;
-            text-transform: uppercase;
-            opacity: 0.9;
-            white-space: nowrap;
-        }
-        .journey-total {
-            margin-top: 12px;
-            font-size: 12px;
-            color: var(--gray-400);
-        }
-
         /* v30.4: Duplicate cards */
         .duplicates-list {
             display: flex;
@@ -1122,7 +1066,6 @@
             background: var(--gray-800);
             border-color: var(--gray-600);
         }
-        [data-theme="dark"] .journey-funnel,
         [data-theme="dark"] .nps-score-card,
         [data-theme="dark"] .bulk-form {
             background: var(--gray-800);
@@ -1159,8 +1102,6 @@
         html[data-theme="dark"] .crm-table,
         body.dark-mode .rfm-segment-card,
         html[data-theme="dark"] .rfm-segment-card,
-        body.dark-mode .journey-funnel,
-        html[data-theme="dark"] .journey-funnel,
         body.dark-mode .nps-score-card,
         html[data-theme="dark"] .nps-score-card,
         body.dark-mode .bulk-form,
@@ -1374,18 +1315,6 @@
             .crm-tabs {
                 flex-wrap: wrap;
             }
-            .journey-bar {
-                width: 100% !important;
-                flex-wrap: wrap;
-                align-items: flex-start;
-            }
-            .journey-label {
-                min-width: 140px;
-            }
-            .journey-action {
-                width: 100%;
-                padding-left: 26px;
-            }
         }
     </style>
 </head>
@@ -1460,7 +1389,6 @@
             <div class="crm-tabs">
                 <button type="button" class="crm-tab active" data-tab="list">Список</button>
                 <button type="button" class="crm-tab" data-tab="rfm">RFM-аналітика</button>
-                <button type="button" class="crm-tab" data-tab="journey">Воронка</button>
                 <button type="button" class="crm-tab" data-tab="duplicates">Дублікати</button>
                 <button type="button" class="crm-tab" data-tab="nps">NPS</button>
                 <button type="button" class="crm-tab" data-tab="bulk">Розсилка</button>
@@ -1550,9 +1478,6 @@
                     </table>
                 </div>
             </div>
-
-            <!-- Journey funnel tab -->
-            <div id="tabJourney" style="display:none"></div>
 
             <!-- Duplicates tab -->
             <div id="tabDuplicates" style="display:none"></div>
@@ -1661,13 +1586,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.20"></script>
-    <script src="js/notification.js?v=0.63.20"></script>
-    <script src="js/api.js?v=0.63.20"></script>
-    <script src="js/auth.js?v=0.63.20"></script>
-    <script src="js/ui.js?v=0.63.20"></script>
-    <script src="js/components/sidebar.js?v=0.63.20"></script>
+    <script src="js/config.js?v=0.63.21"></script>
+    <script src="js/notification.js?v=0.63.21"></script>
+    <script src="js/api.js?v=0.63.21"></script>
+    <script src="js/auth.js?v=0.63.21"></script>
+    <script src="js/ui.js?v=0.63.21"></script>
+    <script src="js/components/sidebar.js?v=0.63.21"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.63.20"></script><script src="js/alerts.js?v=0.63.20"></script>
+    <script src="js/customers-page.js?v=0.63.21"></script><script src="js/alerts.js?v=0.63.21"></script>
 </body>
 </html>

@@ -2120,7 +2120,7 @@ const DashboardPage = (() => {
         if (!total && !stages.length) return '';
 
         const stageChips = stages.map(stage => `
-            <a class="work-queue-funnel-chip" href="${escapeHtml(stage.href || `/sales-funnel?stage=${encodeURIComponent(stage.stage || '')}`)}">
+            <a class="work-queue-funnel-chip" href="${escapeHtml(stage.href || `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(stage.stage || '')}`)}">
                 <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>
                 <strong>${Number(stage.waitingAction || 0)}/${Number(stage.total || 0)}</strong>
             </a>
@@ -5865,7 +5865,7 @@ const DashboardPage = (() => {
         const stageChips = stages.map(stage => {
             const waiting = Number(stage.waitingAction || 0);
             const count = Number(stage.total || 0);
-            const href = stage.href || `/sales-funnel?stage=${encodeURIComponent(stage.stage || '')}`;
+            const href = stage.href || `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(stage.stage || '')}`;
             return `
                 <a class="dashboard-funnel-stage-chip${waiting > 0 ? ' needs-action' : ''}" href="${escapeHtml(href)}">
                     <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>

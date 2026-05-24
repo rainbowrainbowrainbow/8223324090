@@ -60,17 +60,7 @@ const RFM_SEGMENTS = {
     lost: { label: 'Втрачені', icon: '💤', color: '#64748B' }
 };
 
-const JOURNEY_STAGES = [
-    {
-        id: 'leads',
-        label: 'Ліди',
-        countKey: 'leads',
-        color: '#64748B',
-        icon: '📋',
-        kind: 'leads',
-        actionLabel: 'Відкрити воронку лідів',
-        href: '/sales-funnel?view=kanban&pipeline_stage=new'
-    },
+const CUSTOMER_LIFECYCLE_SEGMENTS = [
     {
         id: 'prospects',
         label: 'Перспективні (0 візитів)',
@@ -422,8 +412,8 @@ function openCustomerDeepLink() {
     requestAnimationFrame(() => highlightCustomerRow(customerId));
 }
 
-function getJourneyStage(stageId) {
-    return JOURNEY_STAGES.find(stage => stage.id === stageId) || null;
+function getCustomerLifecycleSegment(segmentId) {
+    return CUSTOMER_LIFECYCLE_SEGMENTS.find(segment => segment.id === segmentId) || null;
 }
 
 function hasVisitBound(value) {
@@ -451,7 +441,7 @@ function setCustomerFilterInputsFromState() {
     });
 }
 
-function customerJourneyUrl(stage) {
+function customerLifecycleUrl(stage) {
     const url = new URL('/customers', window.location.origin);
     url.searchParams.set('tab', 'list');
     url.searchParams.set('journey', stage.id);
@@ -461,13 +451,13 @@ function customerJourneyUrl(stage) {
     return url;
 }
 
-function syncCustomerJourneyUrl(stage) {
+function syncCustomerLifecycleUrl(stage) {
     if (!window.history?.replaceState || !stage) return;
-    const url = customerJourneyUrl(stage);
+    const url = customerLifecycleUrl(stage);
     window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
-function applyCustomerJourneyStage(stage, options = {}) {
+function applyCustomerLifecycleSegment(stage, options = {}) {
     if (!stage || stage.kind !== 'customers') return false;
     CrmState.filters = {
         ...CrmState.filters,
@@ -484,7 +474,7 @@ function applyCustomerJourneyStage(stage, options = {}) {
     };
     CrmState.page = 1;
     setCustomerFilterInputsFromState();
-    if (!options.skipUrl) syncCustomerJourneyUrl(stage);
+    if (!options.skipUrl) syncCustomerLifecycleUrl(stage);
     return true;
 }
 
@@ -492,9 +482,9 @@ function applyInitialCustomerQueryParams() {
     const params = new URLSearchParams(window.location.search);
     const requestedTab = params.get('tab') || '';
     const requestedJourney = params.get('journey') || '';
-    const stage = getJourneyStage(requestedJourney);
+    const stage = getCustomerLifecycleSegment(requestedJourney);
     if (stage?.kind === 'customers') {
-        applyCustomerJourneyStage(stage, { skipUrl: true });
+        applyCustomerLifecycleSegment(stage, { skipUrl: true });
         return 'list';
     }
     const minVisits = params.get('minVisits');
@@ -505,29 +495,13 @@ function applyInitialCustomerQueryParams() {
         CrmState.filters.sortBy = 'total_bookings';
         setCustomerFilterInputsFromState();
     }
-    return ['list', 'rfm', 'journey', 'duplicates', 'nps', 'bulk'].includes(requestedTab) ? requestedTab : '';
-}
-
-async function handleJourneyStageAction(stageId) {
-    const stage = getJourneyStage(stageId);
-    if (!stage) return;
-    if (stage.kind === 'leads') {
-        const url = new URL(stage.href, window.location.origin);
-        if (customerBusinessContext() !== 'event_genix') url.searchParams.set('businessContext', customerBusinessContext());
-        window.location.href = `${url.pathname}${url.search}`;
-        return;
-    }
-    applyCustomerJourneyStage(stage);
-    switchTab('list');
-    await fetchCustomers();
-    renderCustomerTable();
-    renderPagination();
+    return ['list', 'rfm', 'duplicates', 'nps', 'bulk'].includes(requestedTab) ? requestedTab : '';
 }
 
 function getCustomerFilterSummary() {
     const f = CrmState.filters;
     return [
-        f.journeyLabel ? { label: 'Сегмент воронки', value: f.journeyLabel } : null,
+        f.journeyLabel ? { label: 'Сегмент клієнтів', value: f.journeyLabel } : null,
         f.search ? { label: 'Пошук', value: f.search } : null,
         f.tag ? { label: 'Тег', value: f.tag } : null,
         f.source ? { label: 'Джерело', value: SOURCE_LABELS[f.source] || f.source } : null,
@@ -1186,56 +1160,6 @@ window.addTag = async function(customerId, tag, color) {
 };
 
 // ==========================================
-// v30.4: JOURNEY FUNNEL
-// ==========================================
-
-async function loadJourney() {
-    const token = localStorage.getItem('pzp_token');
-    try {
-        const res = await fetch(customerApiUrl('/api/customers/journey-stats'), { headers: { 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        if (!data.success) return;
-        const s = data.stats;
-        const stages = JOURNEY_STAGES.map(stage => ({
-            ...stage,
-            count: parseInt(s[stage.countKey], 10) || 0
-        }));
-        const total = stages.reduce((sum, stage) => sum + stage.count, 0);
-        const maxWidth = Math.max(1, ...stages.map(stage => stage.count));
-
-        const el = document.getElementById('tabJourney');
-        el.innerHTML = `<div class="journey-funnel">
-            <h4 style="margin-bottom:16px">Customer Journey</h4>
-            ${stages.map(st => {
-                const pct = total > 0 ? Math.round(st.count / total * 100) : 0;
-                const width = Math.max(20, Math.round(st.count / maxWidth * 100));
-                const stageTarget = st.kind === 'leads'
-                    ? 'Воронка лідів'
-                    : 'Список клієнтів';
-                return `<div class="journey-stage">
-                    <button type="button"
-                        class="journey-stage-action"
-                        data-journey-stage="${escapeHtml(st.id)}"
-                        aria-label="${escapeHtml(`${st.label}: ${st.count}. ${st.actionLabel}`)}"
-                        title="${escapeHtml(st.actionLabel)}">
-                    <div class="journey-bar" style="--journey-width:${width}%;background:${st.color}">
-                        <span class="journey-icon">${st.icon}</span>
-                        <span class="journey-label">${st.label}</span>
-                        <span class="journey-count">${st.count} (${pct}%)</span>
-                        <span class="journey-action">${stageTarget} →</span>
-                    </div>
-                    </button>
-                </div>`;
-            }).join('')}
-            <div class="journey-total">Всього у видимій воронці: ${total}</div>
-        </div>`;
-        el.querySelectorAll('[data-journey-stage]').forEach(button => {
-            button.addEventListener('click', () => handleJourneyStageAction(button.dataset.journeyStage));
-        });
-    } catch { /* journey load failed */ }
-}
-
-// ==========================================
 // v30.4: DUPLICATES
 // ==========================================
 
@@ -1522,8 +1446,8 @@ async function importVcf(file) {
 function switchTab(tab) {
     CrmState.activeTab = tab;
     document.querySelectorAll('.crm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    const tabs = ['tabList', 'tabRfm', 'tabJourney', 'tabDuplicates', 'tabNps', 'tabBulk'];
-    const map = { list: 'tabList', rfm: 'tabRfm', journey: 'tabJourney', duplicates: 'tabDuplicates', nps: 'tabNps', bulk: 'tabBulk' };
+    const tabs = ['tabList', 'tabRfm', 'tabDuplicates', 'tabNps', 'tabBulk'];
+    const map = { list: 'tabList', rfm: 'tabRfm', duplicates: 'tabDuplicates', nps: 'tabNps', bulk: 'tabBulk' };
     tabs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = id === map[tab] ? '' : 'none';
@@ -1532,7 +1456,6 @@ function switchTab(tab) {
     if (tab === 'rfm' && !CrmState.rfmData) {
         fetchRFM().then(renderRFM).catch(function(err) { console.warn('RFM load failed', err); });
     }
-    if (tab === 'journey') loadJourney();
     if (tab === 'duplicates') loadDuplicates();
     if (tab === 'nps') loadNps();
     if (tab === 'bulk') loadBulkTab();

@@ -302,7 +302,7 @@ function leadFunnelStageLabel(stage) {
 
 function leadFunnelHref(stage = '') {
     const normalized = normalizeFunnelStage(stage);
-    return normalized ? `/sales-funnel?stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
+    return normalized ? `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
 }
 
 function normalizeLeadFunnelInsights(rows = []) {

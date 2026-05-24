@@ -736,7 +736,7 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.funnelInsights.total, 15);
         assert.equal(res.data.queue.meta.funnelInsights.waitingAction, 9);
         assert.equal(res.data.queue.meta.funnelInsights.hotStage.stage, 'info_sent');
-        assert.equal(res.data.queue.meta.funnelInsights.stages[0].href, '/sales-funnel?stage=info_sent');
+        assert.equal(res.data.queue.meta.funnelInsights.stages[0].href, '/sales-funnel?view=kanban&pipeline_stage=info_sent');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
         const waitingQuery = latestWaitingQuery();
@@ -1263,10 +1263,10 @@ describe('work queue endpoint', () => {
                     total: 15,
                     waitingAction: 9,
                     href: '/sales-funnel',
-                    hotStage: { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?stage=info_sent' },
+                    hotStage: { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?view=kanban&pipeline_stage=info_sent' },
                     stages: [
-                        { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?stage=info_sent' },
-                        { stage: 'contacted', label: 'Контакт', total: 4, waitingAction: 1, href: '/sales-funnel?stage=contacted' }
+                        { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?view=kanban&pipeline_stage=info_sent' },
+                        { stage: 'contacted', label: 'Контакт', total: 4, waitingAction: 1, href: '/sales-funnel?view=kanban&pipeline_stage=contacted' }
                     ]
                 },
                 intelligence: {

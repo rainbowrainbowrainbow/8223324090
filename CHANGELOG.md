@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.21 - CRM 63.21: єдина воронка лідів
+
+### Ліди / Customers / навігація [codex]
+- **Залишено один канонічний kanban лідів** - робочою воронкою для лідів є `/sales-funnel`, а дублююча вкладка `Воронка` на сторінці клієнтів прибрана з UI.
+- **Старі переходи більше не відкривають неправильну поверхню** - `/customers?tab=journey` автоматично переводиться на `/sales-funnel?view=kanban`, щоб користувач не потрапляв у другий псевдо-kanban.
+- **Переходи з dashboard/work queue приведені до canonical query** - stage chips тепер ведуть на `pipeline_stage`, а `/sales-funnel` також приймає старий `stage` як сумісний fallback.
+- **Клієнтські lifecycle-зрізи не втрачено** - старі `journey` deep links лишаються як фільтр списку клієнтів, але більше не виглядають як окрема воронка лідів.
+- **Guardrail** - UI smoke перевіряє, що Customers більше не експонує duplicate journey funnel, а sales funnel читає canonical і legacy stage-параметри.
+
+---
+
 ## v0.63.20 - CRM 63.20: чистий HR без legacy блоку
 
 ### HR / кеш сторінок та legacy guard [codex]

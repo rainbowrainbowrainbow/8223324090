@@ -346,7 +346,7 @@ function applyLeadQueryParams() {
     const params = new URLSearchParams(window.location.search);
     const requestedView = params.get('view');
     if (['table', 'kanban', 'mailing'].includes(requestedView)) currentView = requestedView;
-    const requestedStage = params.get('pipeline_stage') || '';
+    const requestedStage = params.get('pipeline_stage') || params.get('stage') || '';
     currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
     currentFilter = params.get('status') || currentFilter;
     currentTypeFilter = params.get('lead_type') || currentTypeFilter;

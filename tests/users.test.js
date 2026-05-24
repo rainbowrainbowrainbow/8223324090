@@ -53,6 +53,18 @@ describe('Users', () => {
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
+        assert.equal(res.data.login, res.data.username);
+        assert.ok(res.data.passwordChangedAt);
+    });
+
+    it('POST /api/users/:id/reset-password — accepts legacy manual password payload', async () => {
+        if (!createdUserId) return;
+        const res = await authRequest('POST', `/api/users/${createdUserId}/reset-password`, {
+            password: 'LegacyPayload789!'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.credential, null);
     });
 
     it('PATCH /api/users/:id/active — deactivate user', async () => {

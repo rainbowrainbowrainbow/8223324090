@@ -45,6 +45,16 @@ function normalizeStaffId(value) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : NaN;
 }
 
+function resetPasswordFromPayload(body = {}) {
+    const candidates = [body.newPassword, body.password, body.manualPassword];
+    for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null) continue;
+        const value = String(candidate);
+        if (value.length > 0) return value;
+    }
+    return '';
+}
+
 // GET /api/users — list all users for account management (creator/director/hr)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
@@ -278,30 +288,35 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
 router.post('/:id/reset-password', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { newPassword } = req.body;
+        const manualPassword = resetPasswordFromPayload(req.body || {});
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true;
 
-        if (!newPassword && !issueOneTime) {
+        if (!manualPassword && !issueOneTime) {
             return res.status(400).json({ error: 'Потрібен новий пароль або one-time reissue' });
         }
-        const finalPassword = issueOneTime ? generateOneTimePassword() : String(newPassword || '');
+        const finalPassword = issueOneTime ? generateOneTimePassword() : manualPassword;
         if (finalPassword.length < 6) {
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }
 
-        const target = await pool.query('SELECT id, username, role FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, name, role, is_active, login_aliases FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
         if (!canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
 
         const hash = await bcrypt.hash(finalPassword, 10);
-        await pool.query(
+        const hashVerified = await bcrypt.compare(finalPassword, hash);
+        if (!hashVerified) {
+            throw new Error('password_hash_verified_after_reset_failed');
+        }
+        const updated = await pool.query(
             `UPDATE users
              SET password_hash = $1,
                  password_changed_at = NOW(),
                  session_revoked_at = NOW()
-             WHERE id = $2`,
+             WHERE id = $2
+             RETURNING id, username, is_active, password_changed_at, session_revoked_at`,
             [hash, parseInt(id)]
         );
         await revokeAllUserTokens(parseInt(id));
@@ -318,6 +333,11 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
         res.json({
             success: true,
             username: target.rows[0].username,
+            login: target.rows[0].username,
+            loginAliases: Array.isArray(target.rows[0].login_aliases) ? target.rows[0].login_aliases : [],
+            isActive: updated.rows[0]?.is_active !== false,
+            passwordChangedAt: updated.rows[0]?.password_changed_at || null,
+            sessionRevokedAt: updated.rows[0]?.session_revoked_at || null,
             credential: issueOneTime ? oneTimeCredential(target.rows[0].username, finalPassword, 'password_reissue') : null
         });
     } catch (err) {

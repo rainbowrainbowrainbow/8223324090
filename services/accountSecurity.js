@@ -25,6 +25,7 @@ function safeJson(value) {
     const clone = { ...value };
     delete clone.password;
     delete clone.newPassword;
+    delete clone.manualPassword;
     delete clone.currentPassword;
     delete clone.token;
     delete clone.refreshToken;

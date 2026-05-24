@@ -886,6 +886,32 @@ function showOneTimeCredentialModal(credential, title = 'One-time credentials') 
     window.alert(`${title}\n\n${text}`);
 }
 
+function showManualPasswordResetResult(payload = {}, user = {}) {
+    const username = payload.login || payload.username || user.username || '';
+    const copyText = username ? `Логін: ${username}` : '';
+    const active = payload.isActive !== false;
+    const message = [
+        username ? `Логін для входу: ${username}` : 'Пароль оновлено.',
+        active
+            ? 'Пароль оновлено, старі сесії скинуто. Користувач може входити з новим паролем.'
+            : 'Пароль оновлено, але акаунт вимкнений. Активуйте акаунт перед входом.'
+    ].join('\n');
+
+    if (typeof confirmModal === 'function' && username) {
+        confirmModal(message, {
+            type: active ? 'success' : 'warning',
+            okText: 'Скопіювати логін',
+            cancelText: 'Закрити'
+        }).then(ok => {
+            if (ok && navigator.clipboard) {
+                navigator.clipboard.writeText(copyText).then(() => showNotification('Логін скопійовано', 'success'));
+            }
+        });
+        return;
+    }
+    showNotification(active ? message : 'Пароль оновлено, але акаунт вимкнений', active ? 'success' : 'warning');
+}
+
 async function loadAccountConflicts() {
     try {
         const data = await crmApiFetch('/api/users/link-conflicts');
@@ -1467,8 +1493,10 @@ async function openAccountPasswordModal(userId, button) {
     if (response.credential) {
         showOneTimeCredentialModal(response.credential, `Пароль для ${response.username || user.username} перевипущено`);
     } else {
-        showNotification(`Пароль для ${response.username || user.username} змінено`, 'success');
+        showManualPasswordResetResult(response, user);
     }
+    accountCenterLastUpdatedId = userId;
+    await loadAccountCenter({ resetFilters: true });
 }
 
 async function openAccountAccessEditor(userId, button) {

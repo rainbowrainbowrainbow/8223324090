@@ -36,6 +36,14 @@ const DashboardPage = (() => {
         ellipse: 'Еліпс',
         diamond: 'Ромб'
     };
+    const BOARD_TOOL_FAMILY_LABELS = {
+        navigate: 'Рух',
+        insert: 'Додати',
+        draw: 'Малювання',
+        shape: 'Фігури',
+        connect: 'Зв’язки',
+        operate: 'Сцена'
+    };
     const BOARD_TOOL_HINTS = {
         select: 'Обирайте модулі, відкривайте віджети або міняйте блоки.',
         hand: 'Перетягуйте поле дошки, не змінюючи модулі.',
@@ -56,6 +64,27 @@ const DashboardPage = (() => {
         'round-rect': 'Натисніть на дошці, щоб поставити м’який блок.',
         ellipse: 'Натисніть на дошці, щоб поставити еліпс.',
         diamond: 'Натисніть на дошці, щоб поставити ромб.'
+    };
+    const BOARD_TOOL_CANVAS_HINTS = {
+        select: 'Клікніть об’єкт для налаштувань. Тягніть сценові фігури за саму форму.',
+        hand: 'Тягніть полотно, щоб оглянути робочу сцену.',
+        connector: 'Клікніть стартовий об’єкт, ведіть прев’ю до цілі, другим кліком зафіксуйте зв’язок.',
+        arrow: 'Клікніть стартовий об’єкт, ведіть стрілку до цілі, другим кліком зафіксуйте зв’язок.',
+        brush: 'Малюйте поверх сцени. Esc повертає до вибору.',
+        highlighter: 'Підсвітіть важливу зону. Esc повертає до вибору.',
+        eraser: 'Клікніть штрих, який треба прибрати.',
+        note: 'Клік на сцені створить нотатку.',
+        text: 'Клік на сцені створить текстовий блок.',
+        frame: 'Клік на сцені створить рамку для групування.',
+        space: 'Клік на сцені залишить порожню зону.',
+        widget: 'Клік на сцені додасть вибраний live-віджет.',
+        line: 'Клік на сцені поставить лінію.',
+        rect: 'Клік на сцені поставить прямокутник.',
+        square: 'Клік на сцені поставить квадрат.',
+        circle: 'Клік на сцені поставить коло.',
+        'round-rect': 'Клік на сцені поставить скруглений прямокутник.',
+        ellipse: 'Клік на сцені поставить еліпс.',
+        diamond: 'Клік на сцені поставить ромб.'
     };
     const BOARD_MODE_LABELS = {
         'board:view': 'Перегляд',
@@ -485,6 +514,20 @@ const DashboardPage = (() => {
         return BOARD_CONNECTOR_TOOLS.has(normalizeBoardTool(value));
     }
 
+    function getBoardToolFamily(value) {
+        const tool = normalizeBoardTool(value);
+        if (tool === 'select' || tool === 'hand') return 'navigate';
+        if (isBoardConnectorTool(tool)) return 'connect';
+        if (BOARD_DRAW_TOOLS.has(tool) || tool === 'eraser') return 'draw';
+        if (BOARD_SHAPE_TOOLS.has(tool)) return 'shape';
+        if (BOARD_CREATE_TOOLS.has(tool)) return 'insert';
+        return 'operate';
+    }
+
+    function getBoardToolFamilyLabel(value) {
+        return BOARD_TOOL_FAMILY_LABELS[getBoardToolFamily(value)] || BOARD_TOOL_FAMILY_LABELS.operate;
+    }
+
     function normalizeBoardShape(value) {
         return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
     }
@@ -876,6 +919,8 @@ const DashboardPage = (() => {
         syncBoardWorkspaceMode();
         const toolbar = document.getElementById('dashboardBoardToolbar');
         const stage = document.querySelector('.dashboard-workspace-stage');
+        const activeTool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        const activeFamily = getBoardToolFamily(activeTool);
 
         gridBtn?.classList.toggle('active', false);
         boardBtn?.classList.toggle('active', isWorkspace);
@@ -883,25 +928,42 @@ const DashboardPage = (() => {
         if (toolbar) {
             toolbar.dataset.interactionMode = _boardInteractionMode;
             toolbar.dataset.workspaceMode = _boardWorkspaceMode;
+            toolbar.dataset.activeTool = activeTool;
+            toolbar.dataset.activeToolFamily = activeFamily;
         }
         if (controls) {
             controls.dataset.interactionMode = _boardInteractionMode;
             controls.dataset.workspaceMode = _boardWorkspaceMode;
+            controls.dataset.activeTool = activeTool;
+            controls.dataset.activeToolFamily = activeFamily;
         }
         if (toolOptions) {
             toolOptions.dataset.interactionMode = _boardInteractionMode;
             toolOptions.dataset.workspaceMode = _boardWorkspaceMode;
+            toolOptions.dataset.activeTool = activeTool;
+            toolOptions.dataset.activeToolFamily = activeFamily;
         }
         if (stage) {
             stage.dataset.interactionMode = _boardInteractionMode;
             stage.dataset.workspaceMode = _boardWorkspaceMode;
+            stage.dataset.activeTool = activeTool;
+            stage.dataset.activeToolFamily = activeFamily;
         }
         viewBtn?.classList.toggle('active', _boardWorkspaceMode === 'board:view');
         editBtn?.classList.toggle('active', _boardWorkspaceMode !== 'board:view');
         document.querySelectorAll('[data-board-tool]').forEach(btn => {
-            const active = btn.dataset.boardTool === (_config?.boardState?.activeTool || 'select');
+            const buttonTool = normalizeBoardTool(btn.dataset.boardTool || 'select');
+            const active = buttonTool === activeTool;
+            btn.dataset.toolLabel = BOARD_TOOL_LABELS[buttonTool] || buttonTool;
+            btn.dataset.toolFamily = getBoardToolFamily(buttonTool);
             btn.classList.toggle('active', active);
             btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-board-tool-family]').forEach(group => {
+            const family = String(group.dataset.boardToolFamily || '');
+            const active = family === activeFamily || (family === 'interaction' && ['navigate', 'operate'].includes(activeFamily));
+            group.classList.toggle('active-family', active);
+            group.dataset.activeFamily = active ? 'true' : 'false';
         });
         if (toolOptions) {
             toolOptions.classList.remove('hidden');
@@ -941,12 +1003,19 @@ const DashboardPage = (() => {
         }
         const label = BOARD_TOOL_LABELS[tool] || tool;
         const modeHint = BOARD_TOOL_HINTS[tool] || 'Перемикайте інструменти як у редакторі.';
+        const family = getBoardToolFamily(tool);
+        const familyLabel = getBoardToolFamilyLabel(tool);
+        const cancelHint = tool === 'select' ? 'Клік поза об’єктом знімає вибір' : 'Esc повертає до вибору';
         const widgetOptions = renderBoardWidgetPickerOptions();
         return `
-            <div class="board-tool-current">
-                <span>Інструмент</span>
+            <div class="board-tool-current" data-board-current-family="${escapeHtml(family)}">
+                <span>${escapeHtml(familyLabel)}</span>
                 <strong>${escapeHtml(label)}</strong>
                 <em>${escapeHtml(modeHint)}</em>
+            </div>
+            <div class="board-tool-mode-strip" aria-label="Поточний режим дошки">
+                <span class="board-tool-mode-pill is-${escapeHtml(family)}">${escapeHtml(BOARD_MODE_LABELS[mode] || mode)}</span>
+                <span class="board-tool-mode-pill muted">${escapeHtml(cancelHint)}</span>
             </div>
             <div class="board-builder-quick-add" aria-label="Конструктор dashboard">
                 <select class="board-builder-widget-select" id="boardBuilderWidgetSelect" aria-label="Вибрати віджет для dashboard">
@@ -3274,21 +3343,48 @@ const DashboardPage = (() => {
         return _boardWorkspaceMode;
     }
 
+    function renderBoardCanvasHint(items = [], drawings = [], connectors = []) {
+        if (_boardInteractionMode !== 'edit') return '';
+        const draftStart = getBoardConnectorDraftStart();
+        if (!draftStart && (_boardSelectedId || _boardSelectedConnectorId || _boardObjectEditing || _boardWidgetInspectId)) return '';
+        const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        const family = getBoardToolFamily(tool);
+        const label = draftStart ? 'Завершіть зв’язок' : (BOARD_TOOL_LABELS[tool] || tool);
+        const hint = draftStart
+            ? 'Наведіть на інший об’єкт і клікніть anchor. Esc скасовує чернетку.'
+            : (BOARD_TOOL_CANVAS_HINTS[tool] || BOARD_TOOL_HINTS[tool] || 'Працюйте зі сценою без зайвого хрому.');
+        const count = Number(items.length || 0) + Number(drawings.length || 0) + Number(connectors.length || 0);
+        const density = count > 8 ? ' compact' : '';
+        return `
+            <div class="board-canvas-hint is-${escapeHtml(family)}${draftStart ? ' is-draft' : ''}${density}" data-board-canvas-hint="true">
+                <span>${escapeHtml(getBoardToolFamilyLabel(tool))}</span>
+                <strong>${escapeHtml(label)}</strong>
+                <em>${escapeHtml(hint)}</em>
+            </div>
+        `;
+    }
+
     function renderBoard() {
         const shell = document.getElementById('dashboardBoardShell');
         const canvas = document.getElementById('dashboardBoardCanvas');
         if (!shell || !canvas || !_config) return;
         shell.classList.remove('hidden');
         syncBoardWorkspaceMode();
+        const activeTool = normalizeBoardTool(_config.boardState?.activeTool || 'select');
+        const activeFamily = getBoardToolFamily(activeTool);
         canvas.dataset.interactionMode = _boardInteractionMode;
-        canvas.dataset.activeTool = _config.boardState?.activeTool || 'select';
+        canvas.dataset.activeTool = activeTool;
+        canvas.dataset.toolFamily = activeFamily;
         canvas.dataset.workspaceMode = _boardWorkspaceMode;
         canvas.dataset.connectorDraft = _boardConnectorDraft ? 'true' : 'false';
+        canvas.dataset.hasSelection = (_boardSelectedId || _boardSelectedConnectorId) ? 'true' : 'false';
         const prefs = safeObject(_config.boardState?.preferences, {});
         canvas.dataset.gridVisible = prefs.showGrid === false ? 'false' : 'true';
         canvas.dataset.guidesVisible = prefs.showGuides === false ? 'false' : 'true';
         shell.dataset.gridVisible = canvas.dataset.gridVisible;
         shell.dataset.guidesVisible = canvas.dataset.guidesVisible;
+        shell.dataset.activeTool = activeTool;
+        shell.dataset.toolFamily = activeFamily;
         const items = getBoardItems();
         const drawings = getBoardDrawings();
         const connectors = getBoardConnectors();
@@ -3307,11 +3403,12 @@ const DashboardPage = (() => {
         if (!items.length && !drawings.length && !connectors.length) {
             canvas.innerHTML = `
                 <div class="dashboard-board-empty">
-                    <strong>Порожній board mode</strong>
-                    <span>Почніть з нотатки або додайте кілька поточних dashboard widgets як керовані board-об'єкти.</span>
+                    <strong>Порожня sandbox-сцена</strong>
+                    <span>Почніть з нотатки, віджета або простої фігури. Інструмент зверху підкаже наступний крок, а Esc повертає до вибору.</span>
                     <div class="dashboard-board-empty-actions">
-                        <button type="button" class="dashboard-btn primary" onclick="DashboardPage.addBoardNote()">Додати нотатку</button>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.seedBoardWidgets()">Додати widgets</button>
+                        <button type="button" class="dashboard-btn primary" onclick="DashboardPage.addBoardNote()">Нотатка</button>
+                        <button type="button" class="dashboard-btn" onclick="DashboardPage.seedBoardWidgets()">Віджети</button>
+                        <button type="button" class="dashboard-btn" onclick="DashboardPage.setBoardTool('rect')">Фігура</button>
                     </div>
                 </div>
             `;
@@ -3319,7 +3416,7 @@ const DashboardPage = (() => {
             return;
         }
 
-        canvas.innerHTML = renderBoardDrawingLayer(drawings) + renderBoardConnectorLayer(connectors) + renderBoardPlanningLayer(items) + items
+        canvas.innerHTML = renderBoardCanvasHint(items, drawings, connectors) + renderBoardDrawingLayer(drawings) + renderBoardConnectorLayer(connectors) + renderBoardPlanningLayer(items) + items
             .slice()
             .sort((a, b) => Number(a.z || 0) - Number(b.z || 0))
             .map(renderBoardItem)
@@ -5076,12 +5173,42 @@ const DashboardPage = (() => {
         syncBoardToolbar();
     }
 
-    function exitBoardObjectEditing() {
+    function cancelBoardTransientState(options = {}) {
+        const hadTransient = !!(_boardObjectEditing || _boardWidgetInspectId || _boardConnectorDraft || _boardResize || _boardLineEndpointDrag || _boardConnectorEndpointDrag || _boardDrawing || _boardDrag);
+        document.removeEventListener('pointermove', handleBoardStrokeMove);
+        document.removeEventListener('pointerup', endBoardStroke);
+        document.removeEventListener('pointermove', handleBoardDragMove);
+        document.removeEventListener('pointerup', endBoardDrag);
+        document.removeEventListener('pointermove', handleBoardResizeMove);
+        document.removeEventListener('pointerup', endBoardResize);
+        document.removeEventListener('pointermove', handleBoardLineEndpointMove);
+        document.removeEventListener('pointerup', endBoardLineEndpointDrag);
+        document.removeEventListener('pointermove', handleBoardConnectorEndpointMove);
+        document.removeEventListener('pointerup', endBoardConnectorEndpointDrag);
         _boardObjectEditing = null;
         _boardWidgetInspectId = null;
         _boardConnectorDraft = null;
+        _boardResize = null;
+        _boardLineEndpointDrag = null;
+        _boardConnectorEndpointDrag = null;
+        _boardDrawing = null;
+        _boardDrag = null;
+        if (options.selectTool === true && _config?.boardState) {
+            _config.boardState.activeTool = 'select';
+            _boardInteractionMode = 'edit';
+            markBoardDirty('tool');
+        }
         syncBoardWorkspaceMode();
-        renderBoard();
+        if (options.render !== false) renderBoard();
+        return hadTransient;
+    }
+
+    function exitBoardObjectEditing() {
+        cancelBoardTransientState();
+    }
+
+    function cancelBoardAction() {
+        return cancelBoardTransientState({ selectTool: true });
     }
 
     function setBoardConnectorPreference(key, value) {
@@ -5237,6 +5364,8 @@ const DashboardPage = (() => {
             _boardInteractionMode = 'edit';
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
+            _boardSelectedConnectorId = null;
+            if (!_boardConnectorDraft) _boardSelectedId = null;
             if (nextTool === 'arrow') {
                 const prefs = safeObject(_config.boardState.preferences, {});
                 _config.boardState.preferences = { ...prefs, connectorStyle: 'arrow' };
@@ -5245,6 +5374,8 @@ const DashboardPage = (() => {
         } else if (BOARD_DRAW_TOOLS.has(nextTool) || nextTool === 'eraser' || BOARD_CREATE_TOOLS.has(nextTool) || BOARD_SHAPE_TOOLS.has(nextTool)) {
             _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
+            _boardSelectedId = null;
+            _boardSelectedConnectorId = null;
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
         } else if (nextTool === 'select') {
@@ -5388,8 +5519,9 @@ const DashboardPage = (() => {
             }
             if (!editable && event.key === 'Escape') {
                 event.preventDefault();
-                if (_boardObjectEditing || _boardWidgetInspectId || _boardConnectorDraft) {
-                    exitBoardObjectEditing();
+                if (_boardObjectEditing || _boardWidgetInspectId || _boardConnectorDraft || _boardResize || _boardLineEndpointDrag || _boardConnectorEndpointDrag || _boardDrawing) {
+                    cancelBoardTransientState({ selectTool: true });
+                    return;
                 } else if (_boardSelectedConnectorId) {
                     _boardSelectedConnectorId = null;
                     renderBoard();
@@ -8110,6 +8242,7 @@ const DashboardPage = (() => {
         enterBoardWidgetInspect,
         enterBoardObjectEditing,
         exitBoardObjectEditing,
+        cancelBoardAction,
         handleBoardAnchor,
         updateBoardConnector,
         deleteBoardConnector,

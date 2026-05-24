@@ -4,6 +4,18 @@
 
 ---
 
+## v0.62.31 - Dashboard Board: sandbox UX
+
+### Dashboard Board / sandbox usability [codex]
+- **Зрозуміла сім’я інструмента** - board тепер веде явний `toolFamily` для navigate/insert/draw/shape/connect і синхронізує це в toolbar, canvas та stage dataset-станах.
+- **Палітра без debug-відчуття** - компактний rail показує людські назви груп, активну групу та hover-підказки для іконок, не роздуваючи CRM shell.
+- **Контекстні canvas hints** - сцена показує коротку підказку для активного інструмента, а connector draft окремо нагадує завершити зв’язок або скасувати через Esc.
+- **Esc/cancel guardrail** - transient-стани connector draft, draw/resize/endpoint/drag тепер централізовано очищаються і повертають оператора до `select`.
+- **М’якші affordances** - selection ring, resize hover, cursor states і empty state стали виразнішими, але без переходу в чужий whiteboard-стиль.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` перевіряє active tool family, canvas hint, active palette state і cancel reset.
+
+---
+
 ## v0.62.30 - Dashboard Board: зв’язки-стрілки
 
 ### Dashboard Board / connector interaction [codex]

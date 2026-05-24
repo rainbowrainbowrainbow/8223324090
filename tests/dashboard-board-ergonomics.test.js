@@ -41,7 +41,19 @@ function loadDashboardHarness() {
             </section>
             <div id="dashboardBoardToolbar"></div>
             <div class="dashboard-workspace-stage"></div>
-            <div id="boardEditControls"></div>
+            <div id="boardEditControls">
+                <div data-board-tool-family="interaction"></div>
+                <div data-board-tool-family="navigate">
+                    <button type="button" data-board-tool="select">Вибір</button>
+                    <button type="button" data-board-tool="hand">Рука</button>
+                </div>
+                <div data-board-tool-family="shape">
+                    <button type="button" data-board-tool="rect">Прямокутник</button>
+                </div>
+                <div data-board-tool-family="connect">
+                    <button type="button" data-board-tool="arrow">Стрілка</button>
+                </div>
+            </div>
             <div id="boardToolOptions"></div>
             <button id="dashboardBoardModeBtn"></button>
             <button id="boardViewModeBtn"></button>
@@ -206,4 +218,47 @@ test('dashboard connectors rerender from item anchors after connected objects mo
     assert.notEqual(before, '');
     assert.notEqual(after, '');
     assert.notEqual(after, before);
+});
+
+test('dashboard sandbox UX exposes tool families, canvas hints, and cancel reset', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const rect = DashboardPage.addBoardShape('rect', [220, 220]);
+    const circle = DashboardPage.addBoardShape('circle', [520, 220]);
+    const doc = dom.window.document;
+    const canvas = doc.getElementById('dashboardBoardCanvas');
+
+    DashboardPage.setBoardTool('rect');
+    assert.equal(canvas.dataset.toolFamily, 'shape');
+    assert.ok(doc.querySelector('[data-board-current-family="shape"]'));
+    assert.ok(doc.querySelector('[data-board-canvas-hint="true"].is-shape'));
+    assert.equal(doc.querySelector('[data-board-tool="rect"]')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(doc.querySelector('[data-board-tool-family="shape"]')?.dataset.activeFamily, 'true');
+    assert.equal(doc.querySelector('[data-board-tool="rect"]')?.dataset.toolLabel, 'Прямокутник');
+
+    DashboardPage.setBoardTool('arrow');
+    doc.querySelector(`[data-board-item-id="${rect.id}"]`).dispatchEvent(new dom.window.MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.x + rect.w,
+        clientY: rect.y + rect.h / 2
+    }));
+    canvas.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: circle.x,
+        clientY: circle.y + circle.h / 2
+    }));
+
+    assert.equal(canvas.dataset.toolFamily, 'connect');
+    assert.equal(canvas.dataset.connectorDraft, 'true');
+    assert.ok(doc.querySelector('[data-board-canvas-hint="true"].is-connect.is-draft'));
+
+    DashboardPage.cancelBoardAction();
+
+    assert.equal(canvas.dataset.connectorDraft, 'false');
+    assert.equal(canvas.dataset.activeTool, 'select');
+    assert.equal(canvas.dataset.toolFamily, 'navigate');
+    assert.equal(doc.querySelector('[data-board-tool="select"]')?.getAttribute('aria-pressed'), 'true');
 });

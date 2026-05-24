@@ -22,7 +22,6 @@ let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'profile';
 let myCabinetData = null;
-let myProductivityData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
@@ -341,8 +340,7 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
         isOwnProfile ? apiGet('/dashboard/alerts') : null,
         isOwnProfile ? apiGet('/leads/new-count') : null,
-        isOwnProfile ? apiGet('/auth/security') : null,
-        isOwnProfile ? apiGet('/tasks/productivity').catch(() => null) : null
+        isOwnProfile ? apiGet('/auth/security') : null
     ]);
 
     profileData = results[0];
@@ -357,7 +355,6 @@ async function loadProfileData(userId) {
     myCabinetData = results[9];
     syncCabinetPulseCounts(results[10], results[11]);
     profileSecurityData = results[12];
-    myProductivityData = results[13];
 }
 
 // ==========================================
@@ -468,9 +465,6 @@ async function switchTab(tab) {
     }
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
-    }
-    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myProductivityData) {
-        myProductivityData = await apiGet('/tasks/productivity').catch(() => null);
     }
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
         await refreshCabinetPulseCounts();
@@ -2176,209 +2170,6 @@ function renderCabinetTaskComposer(options = {}) {
         </form>`;
 }
 
-function productivityNumber(value) {
-    const number = Number(value || 0);
-    return Number.isFinite(number) ? number.toLocaleString('uk-UA') : '0';
-}
-
-function productivityPercent(value) {
-    const number = Math.max(0, Math.min(100, Number(value || 0)));
-    return `${Number.isFinite(number) ? Math.round(number) : 0}%`;
-}
-
-function productivityMetric(label, value, caption, options = {}) {
-    const danger = options.danger ? ' danger' : '';
-    return `<div class="cabinet-productivity-metric${danger}">
-        <span>${escapeHtml(label)}</span>
-        <b>${escapeHtml(String(value))}</b>
-        <small>${escapeHtml(caption || '')}</small>
-    </div>`;
-}
-
-function productivitySourceLabel(source) {
-    return {
-        none: 'Без декомпозиції',
-        manual: 'Вручну',
-        template: 'Шаблон',
-        ai: 'AI',
-        template_ai: 'Шаблон + AI',
-        system: 'Системні',
-        mixed: 'Змішані'
-    }[source] || source;
-}
-
-function productivityCategoryLabel(category) {
-    const found = CABINET_TASK_CATEGORIES.find(([value]) => value === category);
-    return found ? found[1] : (category === 'uncategorized' ? 'Без категорії' : category);
-}
-
-function productivityBarWidth(value, max) {
-    const top = Math.max(1, Number(max || 0));
-    return Math.max(2, Math.min(100, Math.round((Number(value || 0) / top) * 100)));
-}
-
-function renderProductivitySimpleBars(title, rows, labelGetter, valueGetter) {
-    const data = Array.isArray(rows) ? rows : [];
-    const max = data.reduce((top, item) => Math.max(top, Number(valueGetter(item) || 0)), 0);
-    const body = data.length
-        ? data.map(item => {
-            const value = Number(valueGetter(item) || 0);
-            return `<div class="cabinet-productivity-bar-row">
-                <span>${escapeHtml(labelGetter(item))}</span>
-                <div class="cabinet-productivity-bar-track"><div class="cabinet-productivity-bar-fill" style="width:${productivityBarWidth(value, max)}%"></div></div>
-                <b>${productivityNumber(value)}</b>
-            </div>`;
-        }).join('')
-        : '<div class="cabinet-productivity-empty">Даних поки немає.</div>';
-    return `<section class="cabinet-productivity-chart">
-        <h4>${escapeHtml(title)}</h4>
-        ${body}
-    </section>`;
-}
-
-function renderProductivityCreatedCompletedChart(rows) {
-    const data = Array.isArray(rows) ? rows.slice(-7) : [];
-    const max = data.reduce((top, item) => Math.max(top, Number(item.created || 0), Number(item.completed || 0)), 0);
-    const body = data.length
-        ? data.map(item => `
-            <div class="cabinet-productivity-pair-row">
-                <span>${escapeHtml(String(item.date || '').slice(5))}</span>
-                <div class="cabinet-productivity-pair-bars">
-                    <div class="cabinet-productivity-pair-fill created" style="width:${productivityBarWidth(item.created, max)}%" title="Створено: ${productivityNumber(item.created)}"></div>
-                    <div class="cabinet-productivity-pair-fill completed" style="width:${productivityBarWidth(item.completed, max)}%" title="Виконано: ${productivityNumber(item.completed)}"></div>
-                </div>
-                <b>${productivityNumber(item.created)}/${productivityNumber(item.completed)}</b>
-            </div>
-        `).join('')
-        : '<div class="cabinet-productivity-empty">Даних поки немає.</div>';
-    return `<section class="cabinet-productivity-chart">
-        <h4>Створено / виконано</h4>
-        <div class="cabinet-productivity-legend"><span class="created">Створено</span><span class="completed">Виконано</span></div>
-        ${body}
-    </section>`;
-}
-
-function renderProductivityAchievements(data = {}) {
-    const achievements = Array.isArray(data.achievements) ? data.achievements : [];
-    const visible = achievements
-        .slice()
-        .sort((a, b) => Number(b.unlocked === true) - Number(a.unlocked === true) || Number(b.percent || 0) - Number(a.percent || 0))
-        .slice(0, 6);
-    if (!visible.length) return '<div class="cabinet-productivity-empty">Досягнення зʼявляться після перших задач.</div>';
-    return visible.map(item => `
-        <div class="cabinet-productivity-achievement ${item.unlocked ? 'unlocked' : ''}">
-            <div>
-                <b>${escapeHtml(item.title || item.id || '')}</b>
-                <span>${escapeHtml(item.description || '')}</span>
-            </div>
-            <small>${productivityNumber(item.progress)}/${productivityNumber(item.target)}</small>
-            <div class="cabinet-productivity-achievement-track">
-                <div style="width:${productivityBarWidth(item.percent, 100)}%"></div>
-            </div>
-        </div>
-    `).join('');
-}
-
-function renderProductivityInsights(data = {}) {
-    const summary = data.summary || {};
-    const decomposition = data.decomposition || {};
-    const source = decomposition.sourceBreakdown || {};
-    const sourceRows = Object.entries(source)
-        .filter(([, count]) => Number(count || 0) > 0)
-        .map(([key, count]) => `<span><b>${productivityNumber(count)}</b> ${escapeHtml(productivitySourceLabel(key))}</span>`)
-        .join('');
-    return `<div class="cabinet-productivity-insights">
-        <div>
-            <span>Декомпозовані задачі</span>
-            <b>${productivityNumber(summary.decomposedTasksCount)}</b>
-            <small>${productivityPercent(decomposition.decomposedCompletionRate)} завершення</small>
-        </div>
-        <div>
-            <span>Без декомпозиції</span>
-            <b>${productivityNumber(decomposition.nonDecomposedTasks)}</b>
-            <small>${productivityPercent(decomposition.nonDecomposedCompletionRate)} завершення</small>
-        </div>
-        <div>
-            <span>AI-декомпозиція</span>
-            <b>${productivityNumber(decomposition.aiTasks)}</b>
-            <small>${productivityNumber(decomposition.aiCompletedTasks)} завершено</small>
-        </div>
-        <div>
-            <span>Шаблонна декомпозиція</span>
-            <b>${productivityNumber(decomposition.templateTasks)}</b>
-            <small>${productivityNumber(decomposition.templateCompletedTasks)} завершено</small>
-        </div>
-        <div class="cabinet-productivity-source-chips">${sourceRows || '<span>Джерела ще порожні</span>'}</div>
-    </div>`;
-}
-
-function renderCabinetProductivitySurface() {
-    const data = myProductivityData;
-    if (!data) {
-        return `<section class="cabinet-productivity-surface">
-            <div class="cabinet-productivity-head">
-                <div>
-                    <div class="cabinet-kicker">Панель продуктивності</div>
-                    <h3>Особиста продуктивність</h3>
-                </div>
-            </div>
-            <div class="cabinet-productivity-empty">Аналітика продуктивності тимчасово недоступна.</div>
-        </section>`;
-    }
-    const summary = data.summary || {};
-    const streak = data.streak || {};
-    const charts = data.charts || {};
-    const completedByDay = Array.isArray(charts.completedByDay) ? charts.completedByDay.slice(-7) : [];
-    const sourceSplit = Array.isArray(charts.decompositionSourceSplit) ? charts.decompositionSourceSplit : [];
-    const categories = Array.isArray(charts.categoryDistribution) ? charts.categoryDistribution.slice(0, 5) : [];
-    const unlocked = (data.achievements || []).filter(item => item.unlocked).length;
-    const totalAchievements = (data.achievements || []).length;
-
-    return `<section class="cabinet-productivity-surface" aria-label="Особиста продуктивність">
-        <div class="cabinet-productivity-head">
-            <div>
-                <div class="cabinet-kicker">Панель продуктивності</div>
-                <h3>Особиста продуктивність</h3>
-            </div>
-            <div class="cabinet-productivity-streak ${streak.activeToday ? 'active' : ''}">
-                <span>Стрік задач</span>
-                <b>${productivityNumber(streak.current)}</b>
-                <small>${streak.activeToday ? 'активний сьогодні' : 'тримається з учора'}</small>
-            </div>
-        </div>
-        <div class="cabinet-productivity-metrics">
-            ${productivityMetric('Сьогодні', productivityNumber(summary.completedToday), 'виконано')}
-            ${productivityMetric('7 днів', productivityNumber(summary.completed7Days), 'виконано')}
-            ${productivityMetric('30 днів', productivityNumber(summary.completed30Days), 'виконано')}
-            ${productivityMetric('Завершено', productivityPercent(summary.completionRate), 'задач закрито')}
-            ${productivityMetric('Прострочено', productivityNumber(summary.overdueCount), 'активні задачі', { danger: Number(summary.overdueCount || 0) > 0 })}
-            ${productivityMetric('Підзадачі', productivityNumber(summary.subtasksCompleted), 'виконано')}
-        </div>
-        <div class="cabinet-productivity-grid">
-            <section class="cabinet-productivity-panel">
-                <div class="cabinet-productivity-panel-head">
-                    <h4>Досягнення</h4>
-                    <span>${productivityNumber(unlocked)}/${productivityNumber(totalAchievements)}</span>
-                </div>
-                ${renderProductivityAchievements(data)}
-            </section>
-            <section class="cabinet-productivity-panel">
-                <div class="cabinet-productivity-panel-head">
-                    <h4>Декомпозиція</h4>
-                    <span>${productivityNumber(summary.decomposedTasksCount)} задач</span>
-                </div>
-                ${renderProductivityInsights(data)}
-            </section>
-        </div>
-        <div class="cabinet-productivity-charts">
-            ${renderProductivitySimpleBars('Виконано за день', completedByDay, item => String(item.date || '').slice(5), item => item.count)}
-            ${renderProductivityCreatedCompletedChart(charts.createdVsCompleted || [])}
-            ${renderProductivitySimpleBars('Джерела декомпозиції', sourceSplit, item => productivitySourceLabel(item.source), item => item.count)}
-            ${renderProductivitySimpleBars('Категорії задач', categories, item => productivityCategoryLabel(item.category), item => item.count)}
-        </div>
-    </section>`;
-}
-
 function renderMyDayTab() {
     const today = cabinetList('today');
     const overdue = cabinetList('overdue');
@@ -2394,7 +2185,6 @@ function renderMyDayTab() {
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
-            ${renderCabinetProductivitySurface()}
             ${renderCabinetTaskActionLegend()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
@@ -2667,12 +2457,7 @@ async function handleCabinetTaskActionClick(event) {
 }
 
 async function refreshMyCabinetTab() {
-    const [cabinet, productivity] = await Promise.all([
-        apiGet('/tasks/my-cabinet'),
-        apiGet('/tasks/productivity').catch(() => null)
-    ]);
-    myCabinetData = cabinet;
-    if (productivity) myProductivityData = productivity;
+    myCabinetData = await apiGet('/tasks/my-cabinet');
     await refreshCabinetPulseCounts();
     const tabContent = document.getElementById('tabContent');
     if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {

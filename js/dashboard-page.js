@@ -396,6 +396,8 @@ const DashboardPage = (() => {
     let _boardLegacyUpgradePending = false;
     let _boardKeyboardBound = false;
     let _boardRecoveryKey = 'eg_dashboard_board_draft_guest';
+    let _dashboardInitPromise = null;
+    let _dashboardViewportBound = false;
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
     let _workQueueReplyFilters = loadReplyConsoleFilters();
     let _workQueueSelection = new Set();
@@ -1113,6 +1115,17 @@ const DashboardPage = (() => {
     }
 
     async function init() {
+        if (_dashboardInitPromise) return _dashboardInitPromise;
+        _dashboardInitPromise = runDashboardInit().catch(err => {
+            console.error('[dashboard:init] fatal openability failure:', err);
+            revealDashboardShell();
+            renderDashboardOpenFallback(err, 'init');
+            return null;
+        });
+        return _dashboardInitPromise;
+    }
+
+    async function runDashboardInit() {
         const token = localStorage.getItem('pzp_token');
         if (!token) {
             window.location.href = '/';
@@ -1132,7 +1145,12 @@ const DashboardPage = (() => {
         }
 
         // Verify session
-        const verified = await apiVerifyToken();
+        let verified = null;
+        try {
+            verified = await apiVerifyToken();
+        } catch (err) {
+            console.error('[dashboard:init] session verification failed:', err);
+        }
         if (!verified) {
             window.location.href = '/';
             return;
@@ -1141,7 +1159,9 @@ const DashboardPage = (() => {
         const el = document.getElementById('currentUser');
         if (el) el.textContent = verified.name;
         setBoardRecoveryKey();
+        initDashboardViewportHeight();
         initBoardKeyboard();
+        revealDashboardShell();
 
         // Decision Screen — before dashboard loads
         if (typeof DecisionScreen !== 'undefined') {
@@ -1156,8 +1176,79 @@ const DashboardPage = (() => {
 
         // Render greeting
         renderGreeting();
-        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+        revealDashboardShell();
+    }
+
+    function revealDashboardShell() {
+        if (typeof showAuthenticatedPageShell === 'function') {
+            showAuthenticatedPageShell();
+            return;
+        }
+        document.body?.classList?.remove('auth-screen');
+        document.body?.classList?.add('authenticated-shell', 'shell-ready');
+        document.getElementById('loginScreen')?.classList.add('hidden');
+        const mainApp = document.getElementById('mainApp');
+        if (mainApp) {
+            mainApp.classList.remove('hidden');
+            if (mainApp.style.display === 'none') mainApp.style.display = '';
+            mainApp.style.visibility = 'visible';
+        }
+        if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    }
+
+    function syncDashboardViewportHeight() {
+        const height = Number(window.visualViewport?.height || window.innerHeight || 0);
+        if (!height || !Number.isFinite(height)) return;
+        document.documentElement.style.setProperty('--eg-viewport-height', `${Math.round(height)}px`);
+    }
+
+    function initDashboardViewportHeight() {
+        syncDashboardViewportHeight();
+        if (_dashboardViewportBound) return;
+        _dashboardViewportBound = true;
+        window.addEventListener?.('resize', syncDashboardViewportHeight, { passive: true });
+        window.visualViewport?.addEventListener?.('resize', syncDashboardViewportHeight, { passive: true });
+        window.visualViewport?.addEventListener?.('scroll', syncDashboardViewportHeight, { passive: true });
+    }
+
+    function renderDashboardOpenFallback(error, source = 'render') {
+        revealDashboardShell();
+        const shell = document.getElementById('dashboardBoardShell');
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        const grid = document.getElementById('dashboardGrid');
+        if (grid) {
+            grid.classList.add('hidden');
+            grid.setAttribute('aria-hidden', 'true');
+        }
+        if (shell) shell.classList.remove('hidden');
+        if (canvas) {
+            canvas.innerHTML = `
+                <div class="dashboard-board-warning" role="alert" data-dashboard-open-fallback="${escapeHtml(source)}">
+                    <strong>Dashboard відкрився у безпечному режимі</strong>
+                    <span>Board-сцена не змогла повністю відрендеритись на цьому пристрої. Оновіть сторінку або відкрийте з desktop, поки ми зберігаємо доступ до CRM shell.</span>
+                </div>
+            `;
+            return;
+        }
+        if (typeof renderStandaloneFatalError === 'function') {
+            renderStandaloneFatalError({
+                moduleName: 'dashboard',
+                title: 'Dashboard відкрився у безпечному режимі',
+                message: 'Board-сцена не змогла повністю відрендеритись на цьому пристрої.',
+                error
+            });
+        }
+    }
+
+    function renderWidgetsSafely(source = 'dashboard') {
+        try {
+            renderWidgets();
+            return true;
+        } catch (err) {
+            console.error(`[dashboard:${source}] render failed:`, err);
+            renderDashboardOpenFallback(err, source);
+            return false;
+        }
     }
 
     async function loadConfig() {
@@ -1177,13 +1268,16 @@ const DashboardPage = (() => {
                     _boardLegacyUpgradePending = false;
                     markBoardDirty('legacy-note-upgrade');
                 }
-                renderWidgets();
+                renderWidgetsSafely('config');
+            } else {
+                _config = normalizeDashboardConfig(createDefaultDashboardConfig());
+                renderWidgetsSafely('empty-config');
             }
         } catch (err) {
             console.error('Dashboard config error:', err);
             // Render with defaults
             _config = normalizeDashboardConfig(createDefaultDashboardConfig());
-            renderWidgets();
+            renderWidgetsSafely('fallback-config');
         }
     }
 
@@ -4084,6 +4178,15 @@ const DashboardPage = (() => {
         return 10;
     }
 
+    function captureBoardPointerSafely(target, event) {
+        if (!target || typeof target.setPointerCapture !== 'function' || event?.pointerId == null) return;
+        try {
+            target.setPointerCapture(event.pointerId);
+        } catch (err) {
+            console.warn('[dashboard:board] pointer capture skipped:', err);
+        }
+    }
+
     function beginBoardCanvasPointer(event) {
         if (shouldStartBoardPan(event)) {
             beginBoardPan(event);
@@ -4145,7 +4248,7 @@ const DashboardPage = (() => {
             moved: false
         };
         shell.classList.add('is-panning');
-        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(event.currentTarget, event);
         document.addEventListener('pointermove', handleBoardPanMove);
         document.addEventListener('pointerup', endBoardPan, { once: true });
     }
@@ -4186,7 +4289,7 @@ const DashboardPage = (() => {
         pushBoardUndo('draw');
         getBoardDrawings().push(stroke);
         _boardDrawing = { strokeId: stroke.id, moved: false };
-        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(event.currentTarget, event);
         document.addEventListener('pointermove', handleBoardStrokeMove);
         document.addEventListener('pointerup', endBoardStroke, { once: true });
         renderBoard();
@@ -4309,7 +4412,7 @@ const DashboardPage = (() => {
             element,
             moved: false
         };
-        element.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(element, event);
         document.addEventListener('pointermove', handleBoardDragMove);
         document.addEventListener('pointerup', endBoardDrag, { once: true });
     }
@@ -4368,7 +4471,7 @@ const DashboardPage = (() => {
             element,
             moved: false
         };
-        element.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(element, event);
         document.addEventListener('pointermove', handleBoardResizeMove);
         document.addEventListener('pointerup', endBoardResize, { once: true });
         syncBoardWidgetRuntime();
@@ -4474,7 +4577,7 @@ const DashboardPage = (() => {
             element,
             moved: false
         };
-        handle.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(handle, event);
         document.addEventListener('pointermove', handleBoardLineEndpointMove);
         document.addEventListener('pointerup', endBoardLineEndpointDrag, { once: true });
     }
@@ -4546,7 +4649,7 @@ const DashboardPage = (() => {
             endPoint: toPoint,
             moved: false
         };
-        handle.setPointerCapture?.(event.pointerId);
+        captureBoardPointerSafely(handle, event);
         document.addEventListener('pointermove', handleBoardConnectorEndpointMove);
         document.addEventListener('pointerup', endBoardConnectorEndpointDrag, { once: true });
     }

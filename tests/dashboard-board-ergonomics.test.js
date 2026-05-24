@@ -35,6 +35,24 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
     assert.match(css, /box-shadow: 0 0 0 1px var\(--workspace-selection-ring/);
 });
 
+test('dashboard board Android openability has guarded init, viewport, and touch fallbacks', () => {
+    const pageJs = read('js/dashboard-page.js');
+    const css = read('css/dashboard.css');
+
+    assert.match(pageJs, /let _dashboardInitPromise = null/);
+    assert.match(pageJs, /if \(_dashboardInitPromise\) return _dashboardInitPromise/);
+    assert.match(pageJs, /function revealDashboardShell/);
+    assert.match(pageJs, /function renderDashboardOpenFallback/);
+    assert.match(pageJs, /function initDashboardViewportHeight/);
+    assert.match(pageJs, /visualViewport\?\.addEventListener\?\.\('resize'/);
+    assert.match(pageJs, /function captureBoardPointerSafely/);
+    assert.doesNotMatch(pageJs, /setPointerCapture\?\.\(event\.pointerId\)/);
+    assert.match(css, /--eg-viewport-height/);
+    assert.match(css, /\.dashboard-board-shell[\s\S]*-webkit-overflow-scrolling: touch;/);
+    assert.match(css, /\.dashboard-board-canvas[\s\S]*touch-action: pan-x pan-y;/);
+    assert.match(css, /@media \(max-width: 430px\)[\s\S]*\.dashboard-workspace-stage \.dashboard-board-shell/);
+});
+
 function loadDashboardHarness(options = {}) {
     let pageJs = read('js/dashboard-page.js');
     if (options.exposeBoardInternals) {

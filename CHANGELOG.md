@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.3 - CRM 63.3: Dashboard для Android
+
+### Dashboard Board / Android openability hardening [codex]
+- **Shell відкривається до важкого board-render** - `DashboardPage.init()` тепер показує authenticated shell одразу після верифікації сесії, тому Android/WebView не лишає користувача на прихованому `#mainApp`, якщо board-сцена стартує повільно або падає.
+- **Init без подвійного старту** - додано idempotent init promise, щоб inline auth flow і `DOMContentLoaded` не запускали dashboard одночасно на повільних мобільних браузерах.
+- **Безпечний fallback замість blank screen** - помилка config/render більше не блокує весь dashboard: board shell відкривається з попередженням, а CRM shell лишається доступним.
+- **Touch-safe взаємодія** - `setPointerCapture` загорнуто в guarded helper для Android Chromium/WebView, а board shell, canvas, anchors і resize handles отримали явні touch-action/scroll rules.
+- **Мобільний viewport** - dashboard використовує `--eg-viewport-height` з `visualViewport` / `innerHeight` fallback та responsive висоти для board shell на вузьких екранах.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` покриває init guard, viewport fallback, touch-safe pointer capture і mobile board shell CSS.
+
+---
+
 ## v0.63.2 - CRM 63.2: Вільна dashboard-дошка
 
 ### Dashboard Board / freeform interaction model [codex]

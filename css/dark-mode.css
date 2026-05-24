@@ -3488,6 +3488,75 @@ body.dark-mode .guardian-stats-summary {
     font-weight: 800;
 }
 
+/* v0.63.14: Timeline toolbar uses one CRM glass control language. */
+.timeline-dashboard-page .control-panel {
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--eg-panel-bg, rgba(15, 23, 42, 0.72)) 88%, transparent) !important;
+    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.22)) !important;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1) !important;
+    backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.timeline-dashboard-page .date-controls,
+.timeline-dashboard-page .v32-controls,
+.timeline-dashboard-page .action-buttons,
+.timeline-dashboard-page .view-mode-controls {
+    min-height: 42px;
+    padding: 3px;
+    border-radius: 14px;
+    background: var(--eg-panel-bg-soft, rgba(15, 23, 42, 0.08));
+    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.18));
+}
+
+.timeline-dashboard-page .status-filter-controls,
+.timeline-dashboard-page .period-selector,
+.timeline-dashboard-page .zoom-controls {
+    min-height: 42px;
+    border-radius: 14px;
+    background: transparent;
+    border-color: transparent;
+    padding: 3px;
+}
+
+.timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn),
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
+    min-height: 36px !important;
+    border-radius: 11px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    box-shadow: none !important;
+    font-size: 12px;
+    font-weight: 850;
+    letter-spacing: 0;
+}
+
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo):hover,
+.timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn):hover:not(.active) {
+    background: var(--eg-surface-elevated, rgba(255, 255, 255, 0.72)) !important;
+    border-color: var(--eg-border-strong, rgba(20, 184, 166, 0.28)) !important;
+    color: var(--eg-text-primary, #0f172a) !important;
+}
+
+.timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn).active,
+.timeline-dashboard-page .btn-today.is-today,
+.timeline-dashboard-page .btn-room-load.active,
+.timeline-dashboard-page .toggle-mini:has(input:checked) {
+    background: linear-gradient(135deg, var(--eg-accent, #14b8a6), #0f766e) !important;
+    color: #FFFFFF !important;
+    border-color: transparent !important;
+}
+
+.timeline-dashboard-page .btn-nav {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    padding: 0 !important;
+}
+
 .timeline-dashboard-page .working-hours {
     color: var(--eg-text-muted);
     font-size: 11px;

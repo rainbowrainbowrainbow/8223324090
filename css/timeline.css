@@ -350,6 +350,184 @@
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 .mini-booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 
+.timeline-banquet-link-layer {
+    position: absolute;
+    inset: 0 auto auto 0;
+    z-index: 11;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.timeline-banquet-link-path {
+    fill: none;
+    stroke: rgba(245, 158, 11, 0.82);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 8 7;
+    filter: drop-shadow(0 3px 7px rgba(120, 53, 15, 0.28));
+}
+
+.timeline-banquet-link-path--draft {
+    stroke: rgba(20, 184, 166, 0.8);
+    stroke-width: 2;
+    stroke-dasharray: 5 6;
+    opacity: 0.9;
+}
+
+.booking-banquet-link-handle {
+    position: absolute;
+    right: -9px;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translateY(-50%);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+    cursor: crosshair;
+    z-index: 16;
+    padding: 0;
+    opacity: 0;
+    transition: opacity var(--speed-fast) var(--ease-smooth),
+                transform var(--speed-fast) var(--ease-smooth),
+                box-shadow var(--speed-fast) var(--ease-smooth);
+    touch-action: manipulation;
+}
+
+.booking-block:hover .booking-banquet-link-handle,
+.booking-block:focus-within .booking-banquet-link-handle,
+.booking-block.has-banquet-links .booking-banquet-link-handle,
+body.banquet-linking-active .booking-banquet-link-handle {
+    opacity: 1;
+}
+
+.booking-banquet-link-handle:hover,
+.booking-banquet-link-handle:focus-visible {
+    transform: translateY(-50%) scale(1.12);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22), 0 5px 14px rgba(15, 23, 42, 0.24);
+    outline: none;
+}
+
+.booking-block.banquet-link-source {
+    outline: 2px solid rgba(245, 158, 11, 0.72);
+    outline-offset: 2px;
+    z-index: 28;
+}
+
+.booking-block.banquet-link-target {
+    outline: 2px solid rgba(20, 184, 166, 0.78);
+    outline-offset: 2px;
+    z-index: 28;
+}
+
+body.banquet-linking-active .booking-block {
+    cursor: crosshair;
+}
+
+.booking-banquet-links-detail {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.booking-banquet-links-title {
+    font-size: 12px;
+    font-weight: 900;
+    color: #B45309;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.booking-banquet-links-list {
+    display: grid;
+    gap: 6px;
+}
+
+.booking-banquet-link-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+.booking-banquet-link-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    font-weight: 900;
+    flex: 0 0 auto;
+}
+
+.booking-banquet-link-target {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--gray-700);
+}
+
+.booking-banquet-unlink-btn {
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid rgba(245, 158, 11, 0.32);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    color: #B45309;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.booking-banquet-unlink-btn:hover {
+    background: rgba(245, 158, 11, 0.16);
+}
+
+html[data-theme="dark"] .booking-banquet-links-detail,
+body.dark-mode .booking-banquet-links-detail {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.24);
+}
+
+html[data-theme="dark"] .booking-banquet-links-title,
+body.dark-mode .booking-banquet-links-title {
+    color: #FBBF24;
+}
+
+html[data-theme="dark"] .booking-banquet-link-chip,
+body.dark-mode .booking-banquet-link-chip {
+    background: rgba(15, 23, 42, 0.68);
+    border-color: rgba(245, 158, 11, 0.24);
+}
+
+html[data-theme="dark"] .booking-banquet-link-target,
+body.dark-mode .booking-banquet-link-target {
+    color: rgba(226, 232, 240, 0.9);
+}
+
+html[data-theme="dark"] .booking-banquet-unlink-btn,
+body.dark-mode .booking-banquet-unlink-btn {
+    background: rgba(15, 23, 42, 0.72);
+    color: #FCD34D;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
 .booking-block .title {
     white-space: nowrap;
     overflow: hidden;

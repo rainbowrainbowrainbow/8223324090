@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.14 - CRM 63.14: Банкетні зв'язки таймлайну
+
+### Таймлайн / банкетні зв'язки та toolbar [codex]
+- **Банкетні активності можна зв'язувати напряму в таймлайні** - на картці бронювання з'явився компактний круглий handle: оператор клікає джерело, потім цільове бронювання, і CRM створює зв'язок "частини одного банкету".
+- **Зв'язок став durable, а не DOM-декорацією** - додано `booking_banquet_links` у Postgres, API `POST/DELETE /api/bookings/:id/banquet-links`, історію дій та повернення `banquetLinks` разом із бронюваннями.
+- **Конектори рендеряться як timeline-native SVG overlay** - лінії не блокують кліки по бронюваннях, перераховуються після rerender, фільтрів, drag/resize і zoom-змін у видимому денному таймлайні.
+- **Керування зв'язком доступне з деталей бронювання** - у modal details показується блок "Банкетні зв'язки" з цільовими активностями та кнопкою `Прибрати`.
+- **Toolbar приведено до одного CRM glass стилю** - дата, фільтри статусів, period/zoom та службові кнопки отримали узгоджені розміри, hover/active state і dark-mode поведінку.
+- **Guardrail** - додано route-тест `tests/booking-banquet-links.test.js` і UI smoke-перевірки на durable модель, SVG layer та єдину мову toolbar controls.
+
+---
+
 ## v0.63.13 - CRM 63.13: Вільний Dashboard Board
 
 ### Dashboard Board / residual shapes and movement [codex]

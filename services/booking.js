@@ -186,7 +186,8 @@ function mapBookingRow(row) {
         banquetGuests: row.banquet_guests || null,
         banquetTables: row.banquet_tables || null,
         banquetMenu: row.banquet_menu || null,
-        certificateId: row.certificate_id || null
+        certificateId: row.certificate_id || null,
+        banquetLinks: Array.isArray(row.banquet_links) ? row.banquet_links : []
     };
 }
 

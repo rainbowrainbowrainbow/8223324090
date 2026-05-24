@@ -207,6 +207,62 @@ const ATOMIC_LINKED_HISTORY_ACTIONS = new Set([
     'shift', 'undo_shift'
 ]);
 
+const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
+
+function normalizeBanquetLinkPair(sourceId, targetId) {
+    const a = String(sourceId || '').trim();
+    const b = String(targetId || '').trim();
+    if (!a || !b || a === b) return null;
+    return a < b ? [a, b] : [b, a];
+}
+
+function mapBanquetLinkRow(row, relativeBookingId = null) {
+    const bookingA = row.booking_a_id;
+    const bookingB = row.booking_b_id;
+    const targetId = relativeBookingId && String(relativeBookingId) === String(bookingA)
+        ? bookingB
+        : bookingA;
+    return {
+        id: row.id,
+        bookingId: relativeBookingId || bookingA,
+        targetId,
+        bookingAId: bookingA,
+        bookingBId: bookingB,
+        relationType: row.relation_type || BANQUET_LINK_RELATION_TYPE,
+        label: row.label || null,
+        createdAt: row.created_at || null,
+        createdBy: row.created_by || null
+    };
+}
+
+async function attachBanquetLinksToBookings(bookings, businessContext) {
+    if (!Array.isArray(bookings) || bookings.length === 0) return bookings;
+    const ids = bookings.map(booking => booking.id).filter(Boolean);
+    if (ids.length === 0) return bookings;
+
+    const linksResult = await pool.query(
+        `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
+           FROM booking_banquet_links
+          WHERE business_context = $1
+            AND relation_type = $2
+            AND booking_a_id = ANY($3::text[])
+            AND booking_b_id = ANY($3::text[])
+          ORDER BY created_at ASC, id ASC`,
+        [businessContext || DEFAULT_TIMELINE_CONTEXT, BANQUET_LINK_RELATION_TYPE, ids]
+    );
+    const byBooking = new Map(ids.map(id => [String(id), []]));
+    linksResult.rows.forEach(row => {
+        const a = String(row.booking_a_id);
+        const b = String(row.booking_b_id);
+        if (byBooking.has(a)) byBooking.get(a).push(mapBanquetLinkRow(row, a));
+        if (byBooking.has(b)) byBooking.get(b).push(mapBanquetLinkRow(row, b));
+    });
+    return bookings.map(booking => ({
+        ...booking,
+        banquetLinks: byBooking.get(String(booking.id)) || []
+    }));
+}
+
 function pickAtomicLinkedPatch(input) {
     const patch = {};
     if (!input || typeof input !== 'object') return patch;
@@ -395,10 +451,166 @@ router.get('/:date', async (req, res) => {
              ORDER BY time`,
             params
         );
-        res.json(result.rows.map(mapBookingRow));
+        const mapped = result.rows.map(mapBookingRow);
+        res.json(await attachBanquetLinksToBookings(mapped, businessContext));
     } catch (err) {
         log.error('Error fetching bookings', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res) => {
+    const { id } = req.params;
+    const targetId = req.body?.targetId || req.body?.target_id || req.body?.toBookingId;
+    if (!validateId(id) || !validateId(targetId)) {
+        return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+    }
+    const pair = normalizeBanquetLinkPair(id, targetId);
+    if (!pair) {
+        return res.status(400).json({ success: false, error: 'Не можна звʼязати бронювання саме із собою' });
+    }
+    const label = String(req.body?.label || '').trim().slice(0, 200) || null;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const bookingResult = await client.query(
+            'SELECT * FROM bookings WHERE id = ANY($1::text[]) FOR UPDATE',
+            [[id, targetId]]
+        );
+        const bookings = bookingResult.rows;
+        if (bookings.length !== 2) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Бронювання для звʼязку не знайдено' });
+        }
+        const source = bookings.find(row => String(row.id) === String(id));
+        const target = bookings.find(row => String(row.id) === String(targetId));
+        const businessContext = source.business_context || DEFAULT_TIMELINE_CONTEXT;
+        if (!requireTimelineContext(req, res, businessContext)) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if ((target.business_context || DEFAULT_TIMELINE_CONTEXT) !== businessContext) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Бронювання з різних контекстів не можна звʼязати' });
+        }
+        if (source.status === 'cancelled' || target.status === 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Скасовані бронювання не можна звʼязати як банкет' });
+        }
+        if (source.date !== target.date) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Банкетний звʼязок у таймлайні підтримує бронювання одного дня' });
+        }
+        if (!canEditBooking(req.user, source) || !canEditBooking(req.user, target)) {
+            await client.query('ROLLBACK');
+            return sendBookingDenied(req, res, source);
+        }
+        const insert = await client.query(
+            `INSERT INTO booking_banquet_links
+                (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (business_context, booking_a_id, booking_b_id, relation_type)
+             DO UPDATE SET label = COALESCE(EXCLUDED.label, booking_banquet_links.label),
+                           updated_at = NOW()
+             RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
+            [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE, label, actorUserId(req.user), req.user?.username || null]
+        );
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['booking_banquet_link_created', req.user?.username, JSON.stringify({
+                booking_id: id,
+                target_booking_id: targetId,
+                business_context: businessContext,
+                relation_type: BANQUET_LINK_RELATION_TYPE
+            })]
+        );
+        await client.query('COMMIT');
+        const link = mapBanquetLinkRow(insert.rows[0], id);
+        broadcast('booking:banquet-link-updated', { link, date: source.date }, req.user?.id?.toString(), source.date);
+        res.json({ success: true, link });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link create)', rbErr));
+        log.error('Error creating banquet booking link', err);
+        res.status(500).json({ success: false, error: 'Failed to create banquet link' });
+    } finally {
+        client.release();
+    }
+});
+
+router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), async (req, res) => {
+    const { id, targetId } = req.params;
+    if (!validateId(id) || !validateId(targetId)) {
+        return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+    }
+    const pair = normalizeBanquetLinkPair(id, targetId);
+    if (!pair) {
+        return res.status(400).json({ success: false, error: 'Invalid banquet link pair' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const bookingResult = await client.query(
+            'SELECT * FROM bookings WHERE id = ANY($1::text[]) FOR UPDATE',
+            [[id, targetId]]
+        );
+        if (bookingResult.rows.length !== 2) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Бронювання для звʼязку не знайдено' });
+        }
+        const source = bookingResult.rows.find(row => String(row.id) === String(id));
+        const target = bookingResult.rows.find(row => String(row.id) === String(targetId));
+        const businessContext = source.business_context || DEFAULT_TIMELINE_CONTEXT;
+        if (!requireTimelineContext(req, res, businessContext)) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if ((target.business_context || DEFAULT_TIMELINE_CONTEXT) !== businessContext) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Бронювання з різних контекстів не можна змінити разом' });
+        }
+        if (!canEditBooking(req.user, source) || !canEditBooking(req.user, target)) {
+            await client.query('ROLLBACK');
+            return sendBookingDenied(req, res, source);
+        }
+        const deleted = await client.query(
+            `DELETE FROM booking_banquet_links
+              WHERE business_context = $1
+                AND relation_type = $4
+                AND (
+                    (booking_a_id = $2 AND booking_b_id = $3)
+                    OR (booking_a_id = $3 AND booking_b_id = $2)
+                )
+              RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
+            [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE]
+        );
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['booking_banquet_link_deleted', req.user?.username, JSON.stringify({
+                booking_id: id,
+                target_booking_id: targetId,
+                business_context: businessContext,
+                relation_type: BANQUET_LINK_RELATION_TYPE,
+                deleted: deleted.rowCount > 0
+            })]
+        );
+        await client.query('COMMIT');
+        const link = deleted.rows[0] ? mapBanquetLinkRow(deleted.rows[0], id) : null;
+        broadcast('booking:banquet-link-updated', { link, removed: true, date: source.date }, req.user?.id?.toString(), source.date);
+        res.json({ success: true, removed: deleted.rowCount > 0, link });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link delete)', rbErr));
+        log.error('Error deleting banquet booking link', err);
+        res.status(500).json({ success: false, error: 'Failed to delete banquet link' });
+    } finally {
+        client.release();
     }
 });
 

@@ -289,6 +289,8 @@ async function renderTimeline() {
 
     // Режим декількох днів
     if (AppState.multiDayMode) {
+        cancelBanquetLinkDraft(false);
+        document.getElementById('timelineBanquetLinkLayer')?.remove();
         await renderMultiDayTimeline();
         return;
     }
@@ -443,6 +445,7 @@ async function renderTimeline() {
     // v5.15: Apply status filter after render
     applyStatusFilter();
     updateTodayButton();
+    renderBanquetLinksOverlay();
 
     // v5.9: Re-render pending line if Telegram poll is active (Bug #3 fix)
     if (AppState.pendingPollInterval) {
@@ -505,6 +508,7 @@ function applyStatusFilter() {
         }
     });
     updateFilterBanner();
+    renderBanquetLinksOverlay();
 }
 
 // v20.11.0: Keyboard navigation for booking blocks
@@ -743,6 +747,12 @@ function createBookingBlock(booking, startHour) {
     // v5.19: Linked bookings show 🔗 badge instead of user letter
     const badge = isLinked ? '🔗' : escapeHtml(userLetter);
 
+    const banquetTargetIds = getBanquetLinkedTargetIds(renderBooking);
+    if (banquetTargetIds.length > 0) {
+        block.classList.add('has-banquet-links');
+        block.setAttribute('data-banquet-linked-targets', banquetTargetIds.join(','));
+    }
+
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(renderBooking.label || renderBooking.programCode)}: ${escapeHtml(renderBooking.room)}${durationBadge}</div>
@@ -753,11 +763,31 @@ function createBookingBlock(booking, startHour) {
 
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations
+    if (!isViewer()) {
+        const linkHandle = document.createElement('button');
+        linkHandle.type = 'button';
+        linkHandle.className = 'booking-banquet-link-handle';
+        linkHandle.dataset.banquetLinkHandle = '1';
+        linkHandle.setAttribute('aria-label', 'Звʼязати це бронювання з банкетом');
+        linkHandle.title = 'Звʼязати як частину банкету';
+        block.appendChild(linkHandle);
+        linkHandle.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        linkHandle.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            beginBanquetLinkDraft(renderBooking, block, e);
+        });
+    }
+
     block._bookingId = booking.id;
     block.setAttribute('data-booking-id', booking.id);
     if (isLinked) {
         block.addEventListener('click', (e) => {
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            if (handleBanquetLinkTargetClick(renderBooking, e)) return;
             // v30.3: Shift+Click for bulk select
             if (e.shiftKey && typeof BulkOps !== 'undefined') {
                 e.preventDefault();
@@ -770,6 +800,7 @@ function createBookingBlock(booking, startHour) {
         block.addEventListener('click', (e) => {
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
             if (e.target.closest('.graduation-segment, .graduation-segment-actions')) return;
+            if (handleBanquetLinkTargetClick(renderBooking, e)) return;
             // v30.3: Shift+Click for bulk select
             if (e.shiftKey && typeof BulkOps !== 'undefined') {
                 e.preventDefault();
@@ -781,17 +812,19 @@ function createBookingBlock(booking, startHour) {
     }
     block.addEventListener('mouseenter', (e) => {
         // Feature #14: Suppress tooltip during drag
-        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
+        if (e.target.closest('[data-banquet-link-handle]')) return;
         showTooltip(e, renderBooking);
     });
     block.addEventListener('mousemove', (e) => {
-        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         moveTooltip(e);
     });
     block.addEventListener('mouseleave', hideTooltip);
     // v3.9: Touch events for mobile tooltip
     block.addEventListener('touchstart', (e) => {
-        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
+        if (e.target.closest('[data-banquet-link-handle]')) return;
         showTooltip(e.touches[0], renderBooking);
     }, { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });
@@ -817,6 +850,212 @@ function createBookingBlock(booking, startHour) {
 // ==========================================
 // ЛІНІЯ АФІШІ (v7.9.3)
 // ==========================================
+
+function ensureBanquetLinkLayer() {
+    const scroll = document.getElementById('timelineScroll');
+    if (!scroll) return null;
+    let layer = document.getElementById('timelineBanquetLinkLayer');
+    if (!layer) {
+        layer = document.createElementNS(BANQUET_LINK_SVG_NS, 'svg');
+        layer.id = 'timelineBanquetLinkLayer';
+        layer.classList.add('timeline-banquet-link-layer');
+        layer.setAttribute('aria-hidden', 'true');
+        scroll.insertBefore(layer, document.getElementById('timelineLines'));
+    }
+    const width = Math.max(scroll.scrollWidth, scroll.clientWidth);
+    const height = Math.max(scroll.scrollHeight, scroll.clientHeight);
+    layer.setAttribute('width', String(width));
+    layer.setAttribute('height', String(height));
+    layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    return layer;
+}
+
+function bookingBlockAnchorPoint(block, side = 'right') {
+    const scroll = document.getElementById('timelineScroll');
+    if (!block || !scroll) return null;
+    const blockRect = block.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    return {
+        x: (side === 'left' ? blockRect.left : blockRect.right) - scrollRect.left + scroll.scrollLeft,
+        y: blockRect.top + blockRect.height / 2 - scrollRect.top + scroll.scrollTop
+    };
+}
+
+function eventToTimelinePoint(event) {
+    const scroll = document.getElementById('timelineScroll');
+    if (!event || !scroll) return null;
+    const rect = scroll.getBoundingClientRect();
+    return {
+        x: event.clientX - rect.left + scroll.scrollLeft,
+        y: event.clientY - rect.top + scroll.scrollTop
+    };
+}
+
+function linkPathBetweenPoints(from, to) {
+    if (!from || !to) return '';
+    const dx = Math.max(34, Math.abs(to.x - from.x) * 0.45);
+    return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
+}
+
+function appendBanquetLinkPath(layer, from, to, className, label = '') {
+    const path = document.createElementNS(BANQUET_LINK_SVG_NS, 'path');
+    path.setAttribute('class', className);
+    path.setAttribute('d', linkPathBetweenPoints(from, to));
+    if (label) path.setAttribute('aria-label', label);
+    layer.appendChild(path);
+    return path;
+}
+
+function renderBanquetLinksOverlay() {
+    const layer = ensureBanquetLinkLayer();
+    if (!layer) return;
+    layer.innerHTML = '';
+    const blocks = Array.from(document.querySelectorAll('.booking-block[data-booking-id]:not(.status-hidden)'))
+        .filter(block => !block.classList.contains('afisha-block'));
+    const blockById = new Map(blocks.map(block => [String(block.dataset.bookingId), block]));
+    const cachedBookings = _getTimelineCachedBookings();
+    const bookingById = new Map(cachedBookings.map(booking => [String(booking.id), booking]));
+    const renderedPairs = new Set();
+
+    cachedBookings.forEach(booking => {
+        const fromBlock = blockById.get(String(booking.id));
+        if (!fromBlock) return;
+        getBookingBanquetLinks(booking).forEach(link => {
+            const targetId = String(link.targetId || '');
+            if (!targetId) return;
+            const targetBlock = blockById.get(targetId);
+            if (!targetBlock) return;
+            const pairKey = String(link.id || [String(booking.id), targetId].sort().join('::'));
+            if (renderedPairs.has(pairKey)) return;
+            renderedPairs.add(pairKey);
+
+            const fromRect = fromBlock.getBoundingClientRect();
+            const toRect = targetBlock.getBoundingClientRect();
+            const fromSide = fromRect.left <= toRect.left ? 'right' : 'left';
+            const toSide = fromSide === 'right' ? 'left' : 'right';
+            const from = bookingBlockAnchorPoint(fromBlock, fromSide);
+            const to = bookingBlockAnchorPoint(targetBlock, toSide);
+            const target = bookingById.get(targetId);
+            const title = `Банкетний звʼязок: ${booking.label || booking.programCode || booking.id} ↔ ${target?.label || target?.programCode || targetId}`;
+            appendBanquetLinkPath(layer, from, to, 'timeline-banquet-link-path', title);
+        });
+    });
+
+    if (_banquetLinkDraft?.sourceId) {
+        const sourceBlock = blockById.get(String(_banquetLinkDraft.sourceId));
+        const pointer = _banquetLinkDraft.pointer;
+        if (sourceBlock && pointer) {
+            const leftPoint = bookingBlockAnchorPoint(sourceBlock, 'left');
+            const rightPoint = bookingBlockAnchorPoint(sourceBlock, 'right');
+            const sourceSide = pointer.x >= ((leftPoint.x + rightPoint.x) / 2) ? 'right' : 'left';
+            const from = bookingBlockAnchorPoint(sourceBlock, sourceSide);
+            appendBanquetLinkPath(layer, from, pointer, 'timeline-banquet-link-path timeline-banquet-link-path--draft');
+        }
+    }
+}
+
+function beginBanquetLinkDraft(booking, block, event) {
+    if (!booking?.id || isViewer()) return;
+    cancelBanquetLinkDraft(false);
+    hideTooltip();
+    _banquetLinkDraft = {
+        sourceId: String(booking.id),
+        sourceBooking: booking,
+        pointer: eventToTimelinePoint(event)
+    };
+    document.body.classList.add('banquet-linking-active');
+    block.classList.add('banquet-link-source');
+    showNotification('Оберіть друге бронювання для банкетного звʼязку', 'info');
+    document.addEventListener('pointermove', handleBanquetLinkPointerMove, true);
+    document.addEventListener('keydown', handleBanquetLinkKeydown, true);
+    document.addEventListener('click', handleBanquetLinkOutsideClick, true);
+    renderBanquetLinksOverlay();
+}
+
+function cancelBanquetLinkDraft(showMessage = true) {
+    if (!_banquetLinkDraft) return;
+    document.body.classList.remove('banquet-linking-active');
+    document.querySelectorAll('.booking-block.banquet-link-source, .booking-block.banquet-link-target')
+        .forEach(block => block.classList.remove('banquet-link-source', 'banquet-link-target'));
+    document.removeEventListener('pointermove', handleBanquetLinkPointerMove, true);
+    document.removeEventListener('keydown', handleBanquetLinkKeydown, true);
+    document.removeEventListener('click', handleBanquetLinkOutsideClick, true);
+    _banquetLinkDraft = null;
+    renderBanquetLinksOverlay();
+    if (showMessage) showNotification('Банкетний звʼязок скасовано', 'info');
+}
+
+function handleBanquetLinkPointerMove(event) {
+    if (!_banquetLinkDraft) return;
+    _banquetLinkDraft.pointer = eventToTimelinePoint(event);
+    document.querySelectorAll('.booking-block.banquet-link-target')
+        .forEach(block => block.classList.remove('banquet-link-target'));
+    const block = event.target?.closest?.('.booking-block[data-booking-id]');
+    if (block && String(block.dataset.bookingId) !== String(_banquetLinkDraft.sourceId)) {
+        block.classList.add('banquet-link-target');
+    }
+    renderBanquetLinksOverlay();
+}
+
+function handleBanquetLinkKeydown(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelBanquetLinkDraft();
+    }
+}
+
+function handleBanquetLinkOutsideClick(event) {
+    if (!_banquetLinkDraft) return;
+    const block = event.target?.closest?.('.booking-block[data-booking-id]');
+    const handle = event.target?.closest?.('[data-banquet-link-handle]');
+    if (block || handle) return;
+    cancelBanquetLinkDraft();
+}
+
+function handleBanquetLinkTargetClick(targetBooking, event) {
+    if (!_banquetLinkDraft) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    completeBanquetLinkDraft(targetBooking);
+    return true;
+}
+
+async function completeBanquetLinkDraft(targetBooking) {
+    if (!_banquetLinkDraft || !targetBooking?.id) return;
+    const sourceId = _banquetLinkDraft.sourceId;
+    const targetId = String(targetBooking.id);
+    if (sourceId === targetId) {
+        showNotification('Оберіть інше бронювання для банкетного звʼязку', 'warning');
+        return;
+    }
+    const sourceBooking = _banquetLinkDraft.sourceBooking;
+    const label = sourceBooking?.groupName || targetBooking.groupName || '';
+    cancelBanquetLinkDraft(false);
+    const result = await apiCreateBookingBanquetLink(sourceId, targetId, label);
+    if (!result || result.success === false) {
+        showNotification(result?.error || 'Не вдалося створити банкетний звʼязок', 'error');
+        return;
+    }
+    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    await renderTimeline();
+    showNotification('Банкетний звʼязок створено', 'success');
+}
+
+async function removeBookingBanquetLink(sourceId, targetId) {
+    const result = await apiDeleteBookingBanquetLink(sourceId, targetId);
+    if (!result || result.success === false) {
+        showNotification(result?.error || 'Не вдалося прибрати банкетний звʼязок', 'error');
+        return false;
+    }
+    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    await renderTimeline();
+    if (typeof showBookingDetails === 'function') {
+        showBookingDetails(sourceId);
+    }
+    showNotification('Банкетний звʼязок прибрано', 'success');
+    return true;
+}
+window.removeBookingBanquetLink = removeBookingBanquetLink;
 
 function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     const lineEl = document.createElement('div');
@@ -1012,6 +1251,20 @@ let _bookingDragState = null;
 let _resizeState = null;
 let _graduationSegmentDragState = null;
 let _graduationSegmentResizeState = null;
+let _banquetLinkDraft = null;
+
+const BANQUET_LINK_SVG_NS = 'http://www.w3.org/2000/svg';
+
+function getBookingBanquetLinks(booking) {
+    return Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : [];
+}
+
+function getBanquetLinkedTargetIds(booking) {
+    return getBookingBanquetLinks(booking)
+        .map(link => link?.targetId || (String(link?.bookingAId) === String(booking?.id) ? link?.bookingBId : link?.bookingAId))
+        .filter(Boolean)
+        .map(String);
+}
 
 // --- Haptic feedback ---
 function _triggerHaptic(type) {
@@ -1038,6 +1291,8 @@ function initBookingDrag(block, booking, startHour) {
         if (_bookingDragState) return;
         // Guard: multi-day mode
         if (AppState.multiDayMode) return;
+        // Guard: banquet link handle owns its own tap/click flow
+        if (e.target.closest('[data-banquet-link-handle]')) return;
         // Guard: don't start drag from resize handle
         if (e.target.closest('.resize-handle')) return;
         // Guard: nested graduation components own their drag/resize contract.
@@ -1292,6 +1547,7 @@ function _updateBookingDragPosition(clientX, clientY) {
         const relNewLeft = ((relNewMin - s.startHour * 60) / cellM) * cellW;
         rb.el.style.left = `${relNewLeft}px`;
     });
+    renderBanquetLinksOverlay();
 
     // --- Auto-scroll near edges ---
     _handleDragEdgeScroll(clientX);
@@ -2183,6 +2439,7 @@ function _handleResizeMove(e) {
     // Update duration badge
     const badge = s.block.querySelector('.duration-badge');
     if (badge) badge.textContent = `${newDuration}хв`;
+    renderBanquetLinksOverlay();
 }
 
 async function _handleResizeEnd(e) {

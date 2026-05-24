@@ -342,6 +342,43 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
     }
 }
 
+async function apiCreateBookingBanquetLink(sourceId, targetId, label = '') {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links`)}`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({ targetId, label }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBookingBanquetLink error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiDeleteBookingBanquetLink(sourceId, targetId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links/${encodeURIComponent(targetId)}`)}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteBookingBanquetLink error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiGetLines(date) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, { headers: getAuthHeaders(false) });

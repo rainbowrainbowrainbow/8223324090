@@ -1410,6 +1410,36 @@ function getCategoryIcon(category) {
     return icons[category] || '📋';
 }
 
+function renderBookingBanquetLinksDetail(booking, allBookings = []) {
+    const links = Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : [];
+    if (!links.length) return '';
+    const byId = new Map((allBookings || []).map(item => [String(item.id), item]));
+    const rows = links.map(link => {
+        const targetId = String(link.targetId || '');
+        const target = byId.get(targetId);
+        const targetLabel = target
+            ? `${target.time || ''} ${target.label || target.programCode || target.id}`.trim()
+            : targetId;
+        const unlinkAction = isViewer() ? '' : `
+            <button type="button"
+                    class="booking-banquet-unlink-btn"
+                    onclick="removeBookingBanquetLink('${escapeHtml(String(booking.id))}', '${escapeHtml(targetId)}')">
+                Прибрати
+            </button>`;
+        return `
+            <div class="booking-banquet-link-chip">
+                <span class="booking-banquet-link-mark">↔</span>
+                <span class="booking-banquet-link-target">${escapeHtml(targetLabel)}</span>
+                ${unlinkAction}
+            </div>`;
+    }).join('');
+    return `
+        <div class="booking-banquet-links-detail">
+            <div class="booking-banquet-links-title">Банкетні звʼязки</div>
+            <div class="booking-banquet-links-list">${rows}</div>
+        </div>`;
+}
+
 async function showBookingDetails(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
@@ -1531,6 +1561,7 @@ async function showBookingDetails(bookingId) {
         </div>
         ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="Скопіювати">📋</button></div>` : ''}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
+        ${renderBookingBanquetLinksDetail(booking, bookings)}
         <div id="bookingCustomerBlock"></div>
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         <div class="booking-detail-row booking-detail-row--summary" data-copy="${escapeHtml(booking.date)} ${escapeHtml(booking.time)}-${escapeHtml(endTime)} ${escapeHtml(booking.programName)} ${escapeHtml(booking.room)} ${escapeHtml(line ? line.name : '')} ${escapeHtml(formatPrice(booking.price))}">

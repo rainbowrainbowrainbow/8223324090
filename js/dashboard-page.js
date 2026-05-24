@@ -12,7 +12,8 @@ const DashboardPage = (() => {
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
     const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'space', 'widget']);
-    const BOARD_SHAPE_TOOLS = new Set(['line', 'arrow', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_CONNECTOR_TOOLS = new Set(['connector', 'arrow']);
+    const BOARD_SHAPE_TOOLS = new Set(['line', 'rect', 'square', 'circle', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
     const BOARD_TOOL_LABELS = {
         select: 'Вибір',
@@ -27,7 +28,7 @@ const DashboardPage = (() => {
         space: 'Порожня зона',
         widget: 'Віджет',
         line: 'Лінія',
-        arrow: 'Стрілка',
+        arrow: 'Стрілка-зв’язок',
         rect: 'Прямокутник',
         square: 'Квадрат',
         circle: 'Коло',
@@ -41,14 +42,14 @@ const DashboardPage = (() => {
         brush: 'Малюйте поверх сцени вільною лінією.',
         highlighter: 'Підсвічуйте важливі зони напівпрозорим маркером.',
         eraser: 'Натискайте по штрихах, щоб прибрати зайве.',
-        connector: 'Обирайте точки на двох модулях, щоб зробити зв’язок.',
+        connector: 'Клікніть стартовий об’єкт, ведіть прев’ю до цілі й клікніть другий об’єкт.',
         note: 'Натисніть на дошці, щоб додати нотатку.',
         text: 'Натисніть на дошці, щоб додати текст.',
         frame: 'Натисніть на дошці, щоб додати рамку для групи.',
         space: 'Позначте місце, яке має лишитися вільним або зарезервованим.',
         widget: 'Натисніть на дошці, щоб додати віджет.',
         line: 'Натисніть на дошці, щоб поставити лінію.',
-        arrow: 'Натисніть на дошці, щоб поставити стрілку.',
+        arrow: 'Клікніть стартовий об’єкт, ведіть прев’ю стрілки до цілі й клікніть другий об’єкт.',
         rect: 'Натисніть на дошці, щоб поставити прямокутник.',
         square: 'Натисніть на дошці, щоб поставити квадрат з рівними сторонами.',
         circle: 'Натисніть на дошці, щоб поставити справжнє коло з рівною шириною і висотою.',
@@ -480,6 +481,10 @@ const DashboardPage = (() => {
         return BOARD_TOOLS.has(value) ? value : 'select';
     }
 
+    function isBoardConnectorTool(value) {
+        return BOARD_CONNECTOR_TOOLS.has(normalizeBoardTool(value));
+    }
+
     function normalizeBoardShape(value) {
         return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
     }
@@ -499,6 +504,10 @@ const DashboardPage = (() => {
 
     function normalizeBoardConnectorStyle(value) {
         return BOARD_CONNECTOR_STYLES.has(value) ? value : 'arrow';
+    }
+
+    function normalizeBoardAnchor(value, fallback = 'right') {
+        return ['top', 'right', 'bottom', 'left'].includes(value) ? value : fallback;
     }
 
     function normalizeBoardRelationType(value) {
@@ -549,11 +558,11 @@ const DashboardPage = (() => {
             id: String(connector.id || `conn-${Date.now()}-${index}`).slice(0, 90),
             from: {
                 itemId: fromItemId,
-                anchor: ['top', 'right', 'bottom', 'left'].includes(from.anchor) ? from.anchor : 'right'
+                anchor: normalizeBoardAnchor(from.anchor, 'right')
             },
             to: {
                 itemId: toItemId,
-                anchor: ['top', 'right', 'bottom', 'left'].includes(to.anchor) ? to.anchor : 'left'
+                anchor: normalizeBoardAnchor(to.anchor, 'left')
             },
             style: normalizeBoardConnectorStyle(connector.style),
             relationType: normalizeBoardRelationType(connector.relationType),
@@ -3253,7 +3262,7 @@ const DashboardPage = (() => {
         if (_boardObjectEditing?.kind === 'text') return 'object:text-edit';
         if (_boardWidgetInspectId) return 'object:widget-inspect';
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
-        if (tool === 'connector') return 'board:connect';
+        if (isBoardConnectorTool(tool)) return 'board:connect';
         if (BOARD_DRAW_TOOLS.has(tool) || tool === 'eraser') return 'board:draw';
         if (BOARD_CREATE_TOOLS.has(tool)) return 'board:create';
         if (BOARD_SHAPE_TOOLS.has(tool)) return 'board:shape';
@@ -3349,6 +3358,17 @@ const DashboardPage = (() => {
         return [x + w, y + h / 2];
     }
 
+    function activeBoardConnectorStyle(tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select')) {
+        if (tool === 'arrow') return 'arrow';
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        return normalizeBoardConnectorStyle(prefs.connectorStyle);
+    }
+
+    function activeBoardConnectorRelationType() {
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        return normalizeBoardRelationType(prefs.relationType);
+    }
+
     function boardConnectorPath(fromPoint, toPoint, style = 'arrow') {
         const [x1, y1] = fromPoint;
         const [x2, y2] = toPoint;
@@ -3357,6 +3377,50 @@ const DashboardPage = (() => {
             return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
         }
         return `M ${x1} ${y1} L ${x2} ${y2}`;
+    }
+
+    function getBoardConnectorDraftStart(draft = _boardConnectorDraft) {
+        if (!draft || typeof draft !== 'object') return null;
+        const source = safeObject(draft.from || draft, {});
+        const itemId = String(source.itemId || '').slice(0, 90);
+        if (!itemId) return null;
+        return { itemId, anchor: normalizeBoardAnchor(source.anchor, 'right') };
+    }
+
+    function getBoardConnectorDraftHover(draft = _boardConnectorDraft) {
+        if (!draft?.hover) return null;
+        const hover = safeObject(draft.hover, {});
+        const itemId = String(hover.itemId || '').slice(0, 90);
+        if (!itemId) return null;
+        return { itemId, anchor: normalizeBoardAnchor(hover.anchor, 'left'), distance: Number(hover.distance || 0) };
+    }
+
+    function getBoardConnectorDraftStyle(draft = _boardConnectorDraft) {
+        return normalizeBoardConnectorStyle(draft?.style || activeBoardConnectorStyle());
+    }
+
+    function renderBoardConnectorDraftPreview(itemsById) {
+        const start = getBoardConnectorDraftStart();
+        const fromItem = itemsById.get(start?.itemId);
+        if (!start || !fromItem || fromItem.hidden) return '';
+        const fromPoint = boardItemAnchorPoint(fromItem, start.anchor);
+        const hover = getBoardConnectorDraftHover();
+        const hoverItem = hover ? itemsById.get(hover.itemId) : null;
+        const currentPoint = Array.isArray(_boardConnectorDraft?.currentPoint) ? _boardConnectorDraft.currentPoint : fromPoint;
+        const toPoint = hover && hoverItem && !hoverItem.hidden
+            ? boardItemAnchorPoint(hoverItem, hover.anchor)
+            : currentPoint;
+        const style = getBoardConnectorDraftStyle();
+        const path = boardConnectorPath(fromPoint, toPoint, style);
+        const marker = style === 'arrow' ? ' marker-end="url(#boardConnectorArrow)"' : '';
+        const snapping = hover && hoverItem ? ' snapping' : '';
+        return `
+            <g class="board-connector board-connector-draft${snapping}" data-board-connector-draft="true">
+                <path class="board-connector-path" d="${escapeHtml(path)}" stroke="#0f766e" stroke-width="2.5"${marker}></path>
+                <circle class="board-connector-endpoint endpoint-from" cx="${fromPoint[0]}" cy="${fromPoint[1]}" r="6"></circle>
+                <circle class="board-connector-endpoint endpoint-to" cx="${toPoint[0]}" cy="${toPoint[1]}" r="${hover && hoverItem ? 8 : 5}"></circle>
+            </g>
+        `;
     }
 
     function renderBoardConnectorLayer(connectors = []) {
@@ -3385,6 +3449,7 @@ const DashboardPage = (() => {
                 </g>
             `;
         }).join('');
+        const draftBody = renderBoardConnectorDraftPreview(itemsById);
         return `
             <svg class="dashboard-board-connector-layer" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-label="Board connectors">
                 <defs>
@@ -3393,6 +3458,7 @@ const DashboardPage = (() => {
                     </marker>
                 </defs>
                 ${body}
+                ${draftBody}
             </svg>
         `;
     }
@@ -3540,9 +3606,15 @@ const DashboardPage = (() => {
         if (item.locked || item.hidden) return '';
         if (isBoardThinGeometryItem(item)) return '';
         const idJs = escapeJsString(item.id);
+        const draftStart = getBoardConnectorDraftStart();
+        const draftHover = getBoardConnectorDraftHover();
         return `
             <div class="board-anchor-set" aria-hidden="${_boardWorkspaceMode === 'board:connect' ? 'false' : 'true'}">
-                ${['top', 'right', 'bottom', 'left'].map(anchor => `<button type="button" class="board-anchor anchor-${anchor}" data-board-anchor="${anchor}" onclick="DashboardPage.handleBoardAnchor('${idJs}', '${anchor}', event)" title="Зв’язати: ${BOARD_ANCHOR_LABELS[anchor] || anchor}"></button>`).join('')}
+                ${['top', 'right', 'bottom', 'left'].map(anchor => {
+                    const start = draftStart?.itemId === item.id && draftStart.anchor === anchor ? ' is-draft-start' : '';
+                    const target = draftHover?.itemId === item.id && draftHover.anchor === anchor ? ' is-draft-target' : '';
+                    return `<button type="button" class="board-anchor anchor-${anchor}${start}${target}" data-board-anchor="${anchor}" onclick="DashboardPage.handleBoardAnchor('${idJs}', '${anchor}', event)" title="Зв’язати: ${BOARD_ANCHOR_LABELS[anchor] || anchor}"></button>`;
+                }).join('')}
             </div>
         `;
     }
@@ -3607,8 +3679,9 @@ const DashboardPage = (() => {
         const prefs = safeObject(_config?.boardState?.preferences, {});
         const mode = getBoardWorkspaceMode();
         const modeLabel = BOARD_MODE_LABELS[mode] || mode.replace('board:', '').replace('object:', '');
-        const connectorDraft = _boardConnectorDraft
-            ? `<span class="board-inspector-hint">Початок зв’язку: ${escapeHtml(BOARD_ANCHOR_LABELS[_boardConnectorDraft.anchor] || _boardConnectorDraft.anchor)}</span>`
+        const draftStart = getBoardConnectorDraftStart();
+        const connectorDraft = draftStart
+            ? `<span class="board-inspector-hint">Початок зв’язку: ${escapeHtml(BOARD_ANCHOR_LABELS[draftStart.anchor] || draftStart.anchor)}</span>`
             : '';
         const objectControls = item ? `
             <div class="board-inspector-section">
@@ -3689,6 +3762,16 @@ const DashboardPage = (() => {
         canvas.querySelectorAll('.dashboard-board-item').forEach(el => {
             el.addEventListener('click', event => {
                 if (_boardInteractionMode !== 'edit') return;
+                if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) {
+                    if (isBoardInteractiveTarget(event.target)) {
+                        event.stopPropagation();
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleBoardConnectorItemClick(event, el);
+                    return;
+                }
                 if (isBoardInteractiveTarget(event.target)) {
                     event.stopPropagation();
                     selectBoardItem(el.dataset.boardItemId, { render: false });
@@ -3706,6 +3789,10 @@ const DashboardPage = (() => {
             el.dataset.directDragBound = 'true';
             el.addEventListener('pointerdown', event => {
                 if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+                if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) {
+                    event.stopPropagation();
+                    return;
+                }
                 if (!canStartDirectBoardDrag(findBoardItem(el.dataset.boardItemId), event.target)) return;
                 beginBoardDrag(event, el);
             });
@@ -3782,12 +3869,14 @@ const DashboardPage = (() => {
     function bindBoardCanvasHandlers(canvas) {
         if (!canvas) return;
         canvas.onpointerdown = beginBoardCanvasPointer;
+        canvas.onpointermove = handleBoardCanvasPointerMove;
         canvas.onclick = event => {
             if (Date.now() < _boardSuppressCanvasClickUntil) {
                 event.preventDefault();
                 event.stopPropagation();
                 return;
             }
+            if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
             if (_boardInteractionMode === 'edit' && event.target === canvas) selectBoardItem(null);
         };
     }
@@ -3832,15 +3921,17 @@ const DashboardPage = (() => {
             return;
         }
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
-        if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
-        const blockedSurface = event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning, .dashboard-planner-zone, .dashboard-planner-guide');
-        if (blockedSurface && !(BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool))) return;
-        if (tool === 'connector') {
-            _boardConnectorDraft = null;
-            renderBoard();
+        if (isBoardConnectorTool(tool)) {
+            if (isBoardInteractiveTarget(event.target)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            handleBoardConnectorCanvasClick(event);
             return;
         }
+        if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
+        const blockedSurface = event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning, .dashboard-planner-zone, .dashboard-planner-guide');
+        if (blockedSurface && !(BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool))) return;
         if (BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool)) {
             event.preventDefault();
             event.stopPropagation();
@@ -3854,6 +3945,12 @@ const DashboardPage = (() => {
         if (tool === 'eraser') {
             eraseBoardStrokeAt(event);
         }
+    }
+
+    function handleBoardCanvasPointerMove(event) {
+        if (_boardInteractionMode !== 'edit' || !_boardConnectorDraft) return;
+        if (!isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
+        updateBoardConnectorDraftPreview(boardPointFromEvent(event));
     }
 
     function shouldStartBoardPan(event) {
@@ -4023,6 +4120,7 @@ const DashboardPage = (() => {
 
     function beginBoardDrag(event, element) {
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (isBoardConnectorTool(_config?.boardState?.activeTool || 'select')) return;
         if (isBoardInteractiveTarget(event.target)) return;
         const id = element.dataset.boardItemId;
         const item = findBoardItem(id);
@@ -4334,12 +4432,129 @@ const DashboardPage = (() => {
         renderBoard();
     }
 
+    function canUseBoardConnectorAnchor(item) {
+        return !!(item && !item.hidden && !item.locked && !isBoardThinGeometryItem(item));
+    }
+
+    function nearestBoardAnchorOnItem(item, point) {
+        if (!canUseBoardConnectorAnchor(item) || !Array.isArray(point)) return null;
+        let best = null;
+        ['top', 'right', 'bottom', 'left'].forEach(anchor => {
+            const anchorPoint = boardItemAnchorPoint(item, anchor);
+            const dx = anchorPoint[0] - point[0];
+            const dy = anchorPoint[1] - point[1];
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (!best || distance < best.distance) {
+                best = { itemId: item.id, anchor, distance };
+            }
+        });
+        return best;
+    }
+
+    function updateBoardConnectorDraftPreview(point) {
+        if (!_boardConnectorDraft || !Array.isArray(point)) return;
+        const start = getBoardConnectorDraftStart();
+        if (!start) return;
+        const hover = findNearestBoardAnchor(point, { threshold: 44, excludeItemId: start.itemId });
+        const currentPoint = _boardConnectorDraft.currentPoint || [];
+        const previousHover = getBoardConnectorDraftHover();
+        const pointChanged = currentPoint[0] !== point[0] || currentPoint[1] !== point[1];
+        const hoverChanged = (previousHover?.itemId || '') !== (hover?.itemId || '') || (previousHover?.anchor || '') !== (hover?.anchor || '');
+        if (!pointChanged && !hoverChanged) return;
+        _boardConnectorDraft = {
+            ..._boardConnectorDraft,
+            currentPoint: point,
+            hover: hover ? { itemId: hover.itemId, anchor: hover.anchor, distance: hover.distance } : null
+        };
+        renderBoard();
+    }
+
+    function beginBoardConnectorDraft(endpoint, point = null) {
+        if (!_config?.boardState || !endpoint?.itemId) return false;
+        const item = findBoardItem(endpoint.itemId);
+        if (!canUseBoardConnectorAnchor(item)) return false;
+        const safeEndpoint = {
+            itemId: item.id,
+            anchor: normalizeBoardAnchor(endpoint.anchor, 'right')
+        };
+        const anchorPoint = boardItemAnchorPoint(item, safeEndpoint.anchor);
+        _boardConnectorDraft = {
+            from: safeEndpoint,
+            currentPoint: Array.isArray(point) ? point : anchorPoint,
+            hover: null,
+            style: activeBoardConnectorStyle(),
+            relationType: activeBoardConnectorRelationType()
+        };
+        _boardSelectedId = item.id;
+        _boardSelectedConnectorId = null;
+        renderBoard();
+        return true;
+    }
+
+    function completeBoardConnectorDraft(endpoint, point = null) {
+        const start = getBoardConnectorDraftStart();
+        if (!start || !endpoint?.itemId) return false;
+        const item = findBoardItem(endpoint.itemId);
+        if (!canUseBoardConnectorAnchor(item)) return false;
+        const target = {
+            itemId: item.id,
+            anchor: normalizeBoardAnchor(endpoint.anchor, 'left')
+        };
+        if (start.itemId === target.itemId) {
+            return beginBoardConnectorDraft(target, point);
+        }
+        const relationType = normalizeBoardRelationType(_boardConnectorDraft?.relationType || activeBoardConnectorRelationType());
+        const connector = normalizeBoardConnector({
+            id: `conn-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            from: start,
+            to: target,
+            style: getBoardConnectorDraftStyle(),
+            relationType,
+            label: relationType
+        }, getBoardConnectors().length);
+        if (!connector) return false;
+        pushBoardUndo('connector-create');
+        getBoardConnectors().push(connector);
+        _boardConnectorDraft = null;
+        _boardSelectedId = null;
+        _boardSelectedConnectorId = connector.id;
+        markBoardDirty('connector-create');
+        renderBoard();
+        return true;
+    }
+
+    function handleBoardConnectorItemClick(event, element) {
+        const item = findBoardItem(element?.dataset?.boardItemId);
+        const point = boardPointFromEvent(event);
+        const endpoint = nearestBoardAnchorOnItem(item, point);
+        if (!endpoint) return false;
+        if (!_boardConnectorDraft) return beginBoardConnectorDraft(endpoint, point);
+        return completeBoardConnectorDraft(endpoint, point);
+    }
+
+    function handleBoardConnectorCanvasClick(event) {
+        const point = boardPointFromEvent(event);
+        const start = getBoardConnectorDraftStart();
+        const endpoint = findNearestBoardAnchor(point, {
+            threshold: start ? 44 : 28,
+            excludeItemId: start?.itemId || null
+        });
+        if (!endpoint) {
+            if (_boardConnectorDraft) updateBoardConnectorDraftPreview(point);
+            return false;
+        }
+        if (!_boardConnectorDraft) return beginBoardConnectorDraft(endpoint, point);
+        return completeBoardConnectorDraft(endpoint, point);
+    }
+
     function findNearestBoardAnchor(point, options = {}) {
         if (!Array.isArray(point)) return null;
         const threshold = safeNumber(options.threshold, 36, 8, 160);
+        const excludeItemId = options.excludeItemId ? String(options.excludeItemId) : '';
         let best = null;
         getBoardItems().forEach(item => {
-            if (!item || item.hidden) return;
+            if (!canUseBoardConnectorAnchor(item)) return;
+            if (excludeItemId && item.id === excludeItemId) return;
             ['top', 'right', 'bottom', 'left'].forEach(anchor => {
                 const anchorPoint = boardItemAnchorPoint(item, anchor);
                 const dx = anchorPoint[0] - point[0];
@@ -4628,7 +4843,7 @@ const DashboardPage = (() => {
 
     function runBoardCreateAction(kind, payload = {}) {
         const action = String(kind || '').trim();
-        if (action === 'connector') return setBoardTool('connector');
+        if (isBoardConnectorTool(action)) return setBoardTool(action);
         if (payload?.immediate === true) return createBoardItemFromTool(action, payload.point || null);
         if (BOARD_CREATE_TOOLS.has(action) || BOARD_SHAPE_TOOLS.has(action)) return setBoardTool(action);
         if (payload?.shape && BOARD_ALLOWED_SHAPES.has(payload.shape)) return setBoardTool(payload.shape);
@@ -4883,35 +5098,13 @@ const DashboardPage = (() => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
         if (!_config?.boardState) return;
-        setBoardTool('connector');
+        const activeTool = normalizeBoardTool(_config.boardState.activeTool || 'select');
+        if (!isBoardConnectorTool(activeTool)) setBoardTool('connector');
         const item = findBoardItem(itemId);
-        if (!item || item.locked || item.hidden) return;
-        if (!_boardConnectorDraft) {
-            _boardConnectorDraft = { itemId, anchor };
-            selectBoardItem(itemId, { render: false });
-            renderBoard();
-            return;
-        }
-        if (_boardConnectorDraft.itemId === itemId) {
-            _boardConnectorDraft = { itemId, anchor };
-            renderBoard();
-            return;
-        }
-        const prefs = safeObject(_config.boardState.preferences, {});
-        pushBoardUndo('connector-create');
-        getBoardConnectors().push(normalizeBoardConnector({
-            id: `conn-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            from: _boardConnectorDraft,
-            to: { itemId, anchor },
-            style: normalizeBoardConnectorStyle(prefs.connectorStyle),
-            relationType: normalizeBoardRelationType(prefs.relationType),
-            label: normalizeBoardRelationType(prefs.relationType)
-        }, getBoardConnectors().length));
-        _boardConnectorDraft = null;
-        _boardSelectedId = null;
-        _boardSelectedConnectorId = getBoardConnectors()[getBoardConnectors().length - 1]?.id || null;
-        markBoardDirty('connector-create');
-        renderBoard();
+        if (!canUseBoardConnectorAnchor(item)) return;
+        const endpoint = { itemId, anchor: normalizeBoardAnchor(anchor, 'right') };
+        if (!_boardConnectorDraft) beginBoardConnectorDraft(endpoint);
+        else completeBoardConnectorDraft(endpoint);
     }
 
     function updateBoardConnector(id, key, value) {
@@ -5040,10 +5233,15 @@ const DashboardPage = (() => {
         if (!_config?.boardState) return;
         const nextTool = normalizeBoardTool(tool);
         _config.boardState.activeTool = nextTool;
-        if (nextTool === 'connector') {
+        if (isBoardConnectorTool(nextTool)) {
             _boardInteractionMode = 'edit';
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
+            if (nextTool === 'arrow') {
+                const prefs = safeObject(_config.boardState.preferences, {});
+                _config.boardState.preferences = { ...prefs, connectorStyle: 'arrow' };
+                if (_boardConnectorDraft) _boardConnectorDraft.style = 'arrow';
+            }
         } else if (BOARD_DRAW_TOOLS.has(nextTool) || nextTool === 'eraser' || BOARD_CREATE_TOOLS.has(nextTool) || BOARD_SHAPE_TOOLS.has(nextTool)) {
             _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;

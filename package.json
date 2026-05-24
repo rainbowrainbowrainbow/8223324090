@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.62.29",
+  "version": "0.62.30",
   "eventGenix": {
-    "releaseLabel": "Dashboard Board: сценові фігури"
+    "releaseLabel": "Dashboard Board: зв’язки-стрілки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

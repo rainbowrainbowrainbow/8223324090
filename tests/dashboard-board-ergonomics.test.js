@@ -112,6 +112,8 @@ test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse whi
     const css = read('css/dashboard.css');
 
     assert.match(pageJs, /BOARD_SHAPE_TOOLS = new Set\(\[[^\]]*'rect'[^\]]*'square'[^\]]*'circle'[^\]]*'ellipse'/);
+    assert.doesNotMatch(pageJs, /BOARD_SHAPE_TOOLS = new Set\(\[[^\]]*'arrow'/);
+    assert.match(pageJs, /BOARD_ALLOWED_SHAPES = new Set\(\[[^\]]*'arrow'/);
     assert.match(routeJs, /BOARD_ALLOWED_SHAPES = new Set\(\[[^\]]*'rect'[^\]]*'square'[^\]]*'circle'[^\]]*'ellipse'/);
     assert.match(pageJs, /function normalizeBoardShapeDimensions/);
     assert.match(routeJs, /function normalizeBoardShapeDimensions/);
@@ -121,4 +123,87 @@ test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse whi
     assert.match(html, /data-board-tool="circle"/);
     assert.match(css, /\.board-shape-circle/);
     assert.match(css, /\.board-shape-square/);
+});
+
+test('dashboard arrow tool creates an anchor connector draft instead of inserting a static arrow shape', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const rect = DashboardPage.addBoardShape('rect', [200, 200]);
+    const circle = DashboardPage.addBoardShape('circle', [520, 200]);
+    DashboardPage.setBoardTool('arrow');
+
+    const doc = dom.window.document;
+    const startEl = () => doc.querySelector(`[data-board-item-id="${rect.id}"]`);
+    const endEl = () => doc.querySelector(`[data-board-item-id="${circle.id}"]`);
+    const click = (el, x, y) => el.dispatchEvent(new dom.window.MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y
+    }));
+
+    click(startEl(), rect.x + rect.w, rect.y + rect.h / 2);
+
+    assert.equal(doc.querySelector('[data-board-shape-kind="arrow"]'), null);
+    assert.ok(doc.querySelector('[data-board-connector-draft="true"]'));
+    assert.equal(doc.getElementById('dashboardBoardCanvas')?.dataset.workspaceMode, 'board:connect');
+
+    doc.getElementById('dashboardBoardCanvas').dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: circle.x,
+        clientY: circle.y + circle.h / 2
+    }));
+
+    assert.ok(doc.querySelector('.board-anchor.is-draft-target'));
+
+    click(endEl(), circle.x, circle.y + circle.h / 2);
+
+    assert.equal(doc.querySelector('[data-board-connector-draft="true"]'), null);
+    assert.equal(doc.querySelectorAll('[data-board-connector-id]').length, 1);
+    assert.match(doc.querySelector('[data-board-connector-id] .board-connector-path')?.getAttribute('d') || '', /^M /);
+});
+
+test('dashboard connectors rerender from item anchors after connected objects move', () => {
+    const { dom, DashboardPage } = loadDashboardHarness();
+    DashboardPage.setBoardInteractionMode('edit');
+
+    const rect = DashboardPage.addBoardShape('rect', [220, 240]);
+    const square = DashboardPage.addBoardShape('square', [560, 240]);
+    DashboardPage.handleBoardAnchor(rect.id, 'right');
+    DashboardPage.handleBoardAnchor(square.id, 'left');
+
+    const doc = dom.window.document;
+    const connectorPath = () => doc.querySelector('[data-board-connector-id] .board-connector-path')?.getAttribute('d') || '';
+    const before = connectorPath();
+
+    DashboardPage.setBoardTool('select');
+    const rectEl = doc.querySelector(`[data-board-item-id="${rect.id}"]`);
+    const dragHandle = rectEl?.querySelector('[data-board-drag-handle]') || rectEl;
+    dragHandle.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: rect.x + 20,
+        clientY: rect.y + 20
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.x + 90,
+        clientY: rect.y + 50
+    }));
+    doc.dispatchEvent(new dom.window.MouseEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.x + 90,
+        clientY: rect.y + 50
+    }));
+
+    const after = connectorPath();
+
+    assert.notEqual(before, '');
+    assert.notEqual(after, '');
+    assert.notEqual(after, before);
 });

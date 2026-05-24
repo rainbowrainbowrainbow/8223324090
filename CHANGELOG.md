@@ -4,6 +4,18 @@
 
 ---
 
+## v0.62.30 - Dashboard Board: зв’язки-стрілки
+
+### Dashboard Board / connector interaction [codex]
+- **Стрілка стала connector-режимом** - активний інструмент `arrow` більше не створює статичну shape-фігуру; він входить у `board:connect` і використовує наявний `boardState.connectors`.
+- **Два кліки з live preview** - перший клік обирає стартовий anchor, рух курсора показує SVG-прев’ю, другий клік по валідному об’єкту зберігає connector.
+- **Anchor snapping** - під час наведення підсвічується найближча доступна точка прив’язки; endpoint-и лишаються item-anchor парою без небезпечного free-point розширення контракту.
+- **Connector-и рухаються з об’єктами** - шлях зв’язку перераховується з bounds під’єднаних board items після переміщення, включно з primitive shapes.
+- **Сумісність legacy arrow** - старі `shape: "arrow"` записи продовжують рендеритися як legacy static geometry, але новий toolbar flow не додає такі об’єкти.
+- **Guardrail** - `tests/dashboard-board-ergonomics.test.js` перевіряє arrow draft flow, snapping preview, persisted connector creation і rerender після руху об’єкта.
+
+---
+
 ## v0.62.29 - Dashboard Board: сценові фігури
 
 ### Dashboard Board / scene-native primitives [codex]

@@ -1295,6 +1295,21 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     filter: drop-shadow(0 8px 16px rgba(16, 185, 129, 0.20));
 }
 
+.board-connector-draft {
+    pointer-events: none;
+}
+
+.board-connector-draft .board-connector-path {
+    stroke-dasharray: 9 7;
+    opacity: 0.92;
+    filter: drop-shadow(0 8px 18px rgba(15, 118, 110, 0.20));
+}
+
+.board-connector-draft.snapping .board-connector-path {
+    stroke-dasharray: none;
+    opacity: 1;
+}
+
 .board-connector-endpoint {
     fill: #ecfdf5;
     stroke: #10b981;
@@ -1874,6 +1889,22 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     box-shadow: 0 8px 18px rgba(16, 185, 129, 0.30);
     pointer-events: auto;
     cursor: crosshair;
+}
+
+.dashboard-board-canvas[data-workspace-mode="board:connect"] .dashboard-board-item {
+    cursor: crosshair;
+}
+
+.board-anchor.is-draft-start {
+    background: #0f766e;
+    transform: scale(1.12);
+}
+
+.board-anchor.is-draft-target {
+    background: #ffffff;
+    border-color: #0f766e;
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.18), 0 12px 22px rgba(16, 185, 129, 0.28);
+    transform: scale(1.28);
 }
 
 .anchor-top { left: calc(50% - 7px); top: -7px; }

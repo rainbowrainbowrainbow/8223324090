@@ -194,6 +194,7 @@ async function initPage() {
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
     canManage = MANAGE_ROLES.includes(user.role);
 
+    removeLegacyAnimatorShiftSummary();
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     initTabs();
@@ -268,7 +269,14 @@ function getInitialHrTab() {
     return document.getElementById(`tab-${target}`) ? target : 'today';
 }
 
+function removeLegacyAnimatorShiftSummary() {
+    document.getElementById('shiftsSummarySection')?.remove();
+    document.getElementById('shiftsSummaryContainer')?.closest('.page-section')?.remove();
+    document.getElementById('shiftsMonthPicker')?.closest('.page-section')?.remove();
+}
+
 async function activateHrTab(target, options = {}) {
+    removeLegacyAnimatorShiftSummary();
     const tab = document.querySelector(`.hr-tab[data-tab="${target}"]`);
     const panel = document.getElementById(`tab-${target}`);
     if (!tab || !panel) return;
@@ -288,6 +296,7 @@ async function activateHrTab(target, options = {}) {
         blacklist: loadBlacklist, accounts: loadAccountCenter
     };
     await loaders[target]?.();
+    removeLegacyAnimatorShiftSummary();
 }
 
 // ==========================================

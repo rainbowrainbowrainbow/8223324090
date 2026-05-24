@@ -23,9 +23,44 @@ function securityHeaders(req, res, next) {
     next();
 }
 
+const STATIC_HTML_ROUTE_PATHS = new Set([
+    '/',
+    '/dashboard',
+    '/invite',
+    '/maysternya-doli',
+    '/tasks',
+    '/programs',
+    '/staff',
+    '/copilot',
+    '/designs',
+    '/warehouse',
+    '/hr',
+    '/customers',
+    '/finance',
+    '/reports',
+    '/report-agent',
+    '/analytics',
+    '/sales-funnel',
+    '/chat',
+    '/chat-settings',
+    '/profile',
+    '/certificates',
+    '/afisha',
+    '/sound',
+    '/art',
+    '/center',
+    '/guardian-ops',
+    '/status',
+    '/training'
+]);
+
+function isHtmlPagePath(pathname) {
+    return pathname.endsWith('.html') || STATIC_HTML_ROUTE_PATHS.has(pathname);
+}
+
 function cacheControl(req, res, next) {
     const p = req.path;
-    if (p.endsWith('.html') || p === '/') {
+    if (isHtmlPagePath(p)) {
         // HTML: always revalidate
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');

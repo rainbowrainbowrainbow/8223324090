@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.20 - CRM 63.20: чистий HR без legacy блоку
+
+### HR / кеш сторінок та legacy guard [codex]
+- **Прибрано причину повторної появи “Зміни аніматорів” у вкладках HR** - extensionless route `/hr` тепер отримує `Cache-Control: no-cache, no-store, must-revalidate`, як і прямі `.html` сторінки, щоб браузер не тримав старий HR DOM.
+- **Додано runtime guard для старого DOM** - `js/hr-page.js` прибирає legacy `shiftsSummarySection`, `shiftsSummaryContainer` і `shiftsMonthPicker`, якщо вони прилетіли зі stale сторінки або старого кешу.
+- **Покрито не тільки “Структура”** - guard виконується під час старту HR та при перемиканні вкладок, тому `Резерв`, `Онбординг`, `Чорний список` та інші вкладки не повинні показувати цей сторонній блок.
+- **Guardrail** - UI smoke перевіряє відсутність legacy summary та no-store політику для `/hr`.
+
+---
+
 ## v0.63.19 - CRM 63.19: інтерактивна HR структура
 
 ### HR / Кадри / Структура [codex]

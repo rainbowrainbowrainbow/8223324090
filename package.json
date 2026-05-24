@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.19",
+  "version": "0.63.20",
   "eventGenix": {
-    "releaseLabel": "CRM 63.19: інтерактивна HR структура"
+    "releaseLabel": "CRM 63.20: чистий HR без legacy блоку"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

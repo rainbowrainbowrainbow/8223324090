@@ -1468,6 +1468,18 @@ body.dark-mode .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
     background: rgba(20, 184, 166, 0.14);
 }
 
+body.dark-mode .cabinet-link-btn--secondary {
+    border-color: rgba(45, 212, 191, 0.24);
+    background: rgba(20, 184, 166, 0.10);
+    color: #99f6e4;
+}
+
+body.dark-mode .cabinet-link-btn--secondary:hover,
+body.dark-mode .cabinet-link-btn--secondary:focus-visible {
+    border-color: rgba(45, 212, 191, 0.46);
+    background: rgba(20, 184, 166, 0.18);
+}
+
 body.dark-mode .cabinet-task-composer-hint {
     color: rgba(226, 232, 240, 0.68);
 }
@@ -1478,6 +1490,28 @@ body.dark-mode .cabinet-task-composer-hint {
     color: var(--gray-500, #6b7280);
     font-size: 13px;
     line-height: 1.45;
+}
+
+.cabinet-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.cabinet-link-btn--secondary {
+    border: 1px solid rgba(20, 184, 166, 0.24);
+    background: rgba(20, 184, 166, 0.08);
+    color: #0f766e;
+    box-shadow: none;
+}
+
+.cabinet-link-btn--secondary:hover,
+.cabinet-link-btn--secondary:focus-visible {
+    outline: none;
+    border-color: rgba(15, 118, 110, 0.44);
+    background: rgba(20, 184, 166, 0.14);
 }
 
 .cabinet-segments {
@@ -2212,6 +2246,10 @@ body.dark-mode .cabinet-task-priority--critical {
     .cabinet-task-card {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .cabinet-toolbar-actions {
+        justify-content: flex-start;
     }
 
     .cabinet-capture {

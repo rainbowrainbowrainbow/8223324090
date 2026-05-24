@@ -12,6 +12,11 @@ function loadProfileTaskerContext() {
         setTimeout,
         clearTimeout,
         document: { addEventListener() {} },
+        localStorage: {
+            getItem() { return null; },
+            setItem() {},
+            removeItem() {}
+        },
         navigator: {},
         window: null
     };
@@ -95,6 +100,40 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(expandedHtml, /data-cabinet-composer-state="expanded"/);
     assert.match(expandedHtml, /Згорнути/);
     assert.doesNotMatch(expandedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
+});
+
+test('profile my day and my tasks keep distinct presentation scopes', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = {
+            all: [],
+            today: [],
+            overdue: [],
+            waiting: [],
+            private: []
+        };
+        myTasksSegment = 'all';
+        cabinetTaskComposerExpanded = false;
+    `, ctx);
+
+    const myDayHtml = ctx.renderMyDayTab();
+    const myTasksHtml = ctx.renderMyTasksTab();
+
+    assert.match(myDayHtml, /cabinet-quick-cluster/);
+    assert.match(myDayHtml, /cabinet-task-composer/);
+    assert.match(myDayHtml, /data-cabinet-task-drop-target="today"/);
+    assert.doesNotMatch(myTasksHtml, /cabinet-quick-cluster/);
+    assert.doesNotMatch(myTasksHtml, /cabinet-task-composer/);
+    assert.match(myTasksHtml, /cabinet-shell--mytasks/);
+    assert.match(myTasksHtml, /cabinet-segments/);
+    assert.match(myTasksHtml, /data-cabinet-active-segment="all"/);
+    assert.match(myTasksHtml, /Повний список задач/);
+    assert.match(myTasksHtml, /Додати в Мій день/);
+});
+
+test('profile my tasks no longer forces the daily quick mode when switching tabs', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    assert.doesNotMatch(source, /if \(tab === 'mytasks'\)\s*\{\s*setCabinetQuickMode\('tasks'\);\s*\}/);
 });
 
 test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {

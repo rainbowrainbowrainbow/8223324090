@@ -910,9 +910,6 @@ function renderProfile() {
 async function switchTab(tab) {
     activeTab = tab;
     const locked = profileTabLock(tab);
-    if (tab === 'mytasks') {
-        setCabinetQuickMode('tasks');
-    }
     if (!locked && isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
     }
@@ -2954,17 +2951,18 @@ function renderMyTasksTab() {
     const activeSegment = cabinetSegmentConfig(myTasksSegment);
     const filtered = sortCabinetTasksForDisplay(all.filter(task => cabinetTaskMatchesSegment(task, myTasksSegment)));
     return `
-        <div class="cabinet-shell">
+        <div class="cabinet-shell cabinet-shell--mytasks">
             <div class="cabinet-toolbar cabinet-toolbar--tasker">
                 <div>
                     <div class="cabinet-kicker">Особиста проекція</div>
                     <h2>Мої задачі</h2>
-                    <p>Єдина персональна проекція з основних задач: створення, фільтри, виконання і відкладання працюють з тими самими API.</p>
+                    <p>Фільтрований список ваших задач із основного task engine: статуси, підзадачі, дедлайни і переходи без денного cockpit-шуму.</p>
                 </div>
-                <a href="/tasks?view=my" class="cabinet-link-btn">Повний список задач</a>
+                <div class="cabinet-toolbar-actions">
+                    <button type="button" class="cabinet-link-btn cabinet-link-btn--secondary" onclick="switchTab('myday')">Додати в Мій день</button>
+                    <a href="/tasks?view=my" class="cabinet-link-btn">Повний список задач</a>
+                </div>
             </div>
-            ${renderCabinetPulseCluster()}
-            ${renderCabinetTaskComposer({ segment: myTasksSegment })}
             <div class="cabinet-segments">
                 ${CABINET_TASK_SEGMENTS.map(segment => `
                     <button type="button" class="${myTasksSegment === segment.id ? 'active' : ''}" onclick="setMyTasksSegment('${segment.id}')" aria-pressed="${myTasksSegment === segment.id ? 'true' : 'false'}" title="${escapeHtml(segment.hint)}">
@@ -2981,7 +2979,7 @@ function renderMyTasksTab() {
                     </div>
                     <span>${filtered.length} / ${all.length}</span>
                 </div>
-                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : `<div class="cabinet-empty">У сегменті "${escapeHtml(activeSegment.label)}" поки немає задач. Створіть задачу вище — вона одразу з'явиться тут, якщо відповідає фільтру.</div>`}
+                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : `<div class="cabinet-empty">У сегменті "${escapeHtml(activeSegment.label)}" поки немає задач.</div>`}
             </div>
         </div>`;
 }

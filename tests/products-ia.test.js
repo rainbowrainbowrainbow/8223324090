@@ -9,7 +9,7 @@ function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 }
 
-test('products compatibility page keeps business-aware products IA without sidebar promotion', () => {
+test('products compatibility page keeps business-aware products IA with restored product menu entrypoints', () => {
     const html = read('programs.html');
     const sidebar = read('js/components/sidebar.js');
 
@@ -38,8 +38,11 @@ test('products compatibility page keeps business-aware products IA without sideb
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
-    assert.doesNotMatch(sidebar, /href: '\/programs'/);
-    assert.doesNotMatch(sidebar, /href: '\/programs#catalogs'/);
+    assert.match(sidebar, /href: '\/programs'/);
+    assert.match(sidebar, /href: '\/programs#animation'/);
+    assert.match(sidebar, /href: '\/programs#kitchen-cakes'/);
+    assert.match(sidebar, /href: '\/programs#kitchen-menu'/);
+    assert.match(sidebar, /href: '\/programs#catalogs'/);
 });
 
 test('products frontend wires document linkage and catalog entry points', () => {
@@ -51,6 +54,12 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /renderKitchenSubtabs/);
     assert.match(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
     assert.match(pageJs, /setProductBusinessContext/);
+    assert.match(pageJs, /PRODUCT_CATEGORY_HASH_TO_ID/);
+    assert.match(pageJs, /readInitialCategory/);
+    assert.match(pageJs, /'#animation': 'animation'/);
+    assert.match(pageJs, /'#kitchen-cakes'/);
+    assert.match(pageJs, /'#kitchen-menu'/);
+    assert.match(pageJs, /currentCategory = readInitialCategory\(\)/);
     assert.match(pageJs, /getProductApiBusinessContext/);
     assert.match(pageJs, /businessContext: getProductApiBusinessContext\(\)/);
     assert.match(pageJs, /renderMaysternyaProducts/);

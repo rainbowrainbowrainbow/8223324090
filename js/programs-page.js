@@ -168,8 +168,21 @@ function safeWriteProductPreference(key, value) {
     }
 }
 
+const PRODUCT_CATEGORY_HASH_TO_ID = {
+    '#programs': 'all',
+    '#quest': 'quest',
+    '#animation': 'animation',
+    '#animations': 'animation',
+    '#show': 'show',
+    '#photo': 'photo',
+    '#masterclass': 'masterclass',
+    '#pinata': 'pinata',
+    '#custom': 'custom'
+};
+
 function readInitialBusinessContext() {
     const hash = window.location.hash || '';
+    if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'park_zakrevsky';
     if (hash === '#maysternya' || hash === '#business-maysternya') return 'maysternya_doli';
     if (hash === '#catalogs' || hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'park_zakrevsky';
     return normalizeProductBusinessContext(safeReadProductPreference(PRODUCT_BUSINESS_STORAGE_KEY, 'park_zakrevsky'));
@@ -177,10 +190,16 @@ function readInitialBusinessContext() {
 
 function readInitialProductTab() {
     const hash = window.location.hash || '';
+    if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'programs';
     if (hash === '#catalogs') return 'catalogs';
     if (hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'kitchen';
     const stored = safeReadProductPreference(PRODUCT_TAB_STORAGE_KEY, 'programs');
     return ['programs', 'kitchen', 'catalogs'].includes(stored) ? stored : 'programs';
+}
+
+function readInitialCategory() {
+    const hash = window.location.hash || '';
+    return PRODUCT_CATEGORY_HASH_TO_ID[hash] || 'all';
 }
 
 function readInitialKitchenTab() {
@@ -191,7 +210,7 @@ let activeBusinessContext = readInitialBusinessContext();
 let activeProductTab = readInitialProductTab();
 let activeKitchenTab = readInitialKitchenTab();
 let activeMenuSection = 'all';
-let currentCategory = 'all';
+let currentCategory = readInitialCategory();
 let allProducts = [];
 let productCatalogs = [];
 let catalogEntriesLoaded = false;
@@ -242,6 +261,7 @@ function getBusinessHash() {
     if (!isParkProductsContext()) return '#maysternya';
     if (activeProductTab === 'catalogs') return '#catalogs';
     if (activeProductTab === 'kitchen') return `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`;
+    if (activeProductTab === 'programs' && currentCategory !== 'all') return `#${currentCategory}`;
     return '';
 }
 
@@ -448,6 +468,7 @@ function renderCategoryTabs() {
             currentCategory = btn.dataset.cat;
             container.querySelectorAll('.category-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
+            syncProductsRouteState();
             renderProducts();
         });
     });

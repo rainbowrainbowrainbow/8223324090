@@ -99,6 +99,66 @@
             ]
         },
         {
+            id: 'products.programs',
+            title: 'Продукти',
+            href: '/programs',
+            icon: '🧩',
+            access: 'programs',
+            group: 'product',
+            breadcrumb: 'Продукт -> Продукти',
+            summary: 'Операційний продуктовий блок парку: програми, анімації, кухня, торти, меню та каталоги.',
+            primaryAction: 'Відкрити продукти',
+            aliases: ['продукти', 'продукт', 'programs', 'products', 'послуги', 'розважальні програми']
+        },
+        {
+            id: 'products.animation',
+            title: 'Анімації',
+            href: '/programs#animation',
+            icon: '🎪',
+            access: 'programs',
+            group: 'product',
+            breadcrumb: 'Продукт -> Продукти -> Анімації',
+            summary: 'Швидкий перехід до категорії анімацій у продуктовому модулі.',
+            primaryAction: 'Відкрити анімації',
+            aliases: ['анімації', 'анімація', 'аніматори', 'animation', 'animations']
+        },
+        {
+            id: 'products.cakes',
+            title: 'Торти',
+            href: '/programs#kitchen-cakes',
+            icon: '🎂',
+            access: 'programs',
+            group: 'product',
+            breadcrumb: 'Продукт -> Кухня -> Торти',
+            summary: 'Швидкий перехід до каталогу тортів і кондитерських позицій.',
+            primaryAction: 'Відкрити торти',
+            aliases: ['торти', 'торт', 'кондитерка', 'кондитерські позиції', 'cakes', 'cake']
+        },
+        {
+            id: 'products.menu',
+            title: 'Меню',
+            href: '/programs#kitchen-menu',
+            icon: '🍽️',
+            access: 'programs',
+            group: 'product',
+            breadcrumb: 'Продукт -> Кухня -> Меню',
+            summary: 'Швидкий перехід до кухонного меню з розділами, складом, вагою та цінами.',
+            primaryAction: 'Відкрити меню',
+            aliases: ['меню', 'кухня', 'страви', 'напої', 'піца', 'бургери', 'menu', 'kitchen']
+        },
+        {
+            id: 'products.catalogs',
+            title: 'Каталоги продуктів',
+            href: '/programs#catalogs',
+            icon: '📚',
+            access: 'programs',
+            group: 'product',
+            breadcrumb: 'Продукт -> Каталоги',
+            summary: 'Каталоги продуктів і повʼязані продуктові довідники.',
+            primaryAction: 'Відкрити каталоги',
+            aliases: ['каталоги продуктів', 'каталоги', 'catalogs', 'catalog']
+        },
+        {
             id: 'tasks.list',
             title: 'Задачі',
             href: '/tasks',

@@ -71,6 +71,11 @@ const SEARCH_NAV_ALIASES = {
     '/checkin': ['check-in', 'чекін', 'фото', 'присутність'],
     '/content': ['контент', 'content', 'соцмережі', 'пости'],
     '/art': ['арт директор', 'art director', 'арт', 'креатив'],
+    '/programs': ['продукти', 'продукт', 'programs', 'products', 'послуги', 'розважальні програми'],
+    '/programs#animation': ['анімації', 'анімація', 'аніматори', 'animation', 'animations'],
+    '/programs#kitchen-cakes': ['торти', 'торт', 'кондитерка', 'кондитерські позиції', 'cakes', 'cake'],
+    '/programs#kitchen-menu': ['меню', 'кухня', 'страви', 'напої', 'піца', 'бургери', 'menu', 'kitchen'],
+    '/programs#catalogs': ['каталоги продуктів', 'каталоги', 'catalogs', 'catalog'],
     '/graduation': ['випускний', 'graduation', 'випускні'],
     '/designs': ['дизайн', 'дизайн-борд', 'designs', 'макети'],
     '/designs#catalogs': ['каталоги', 'catalogs', 'каталог'],
@@ -105,6 +110,11 @@ const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/finance', icon: '₴', label: 'Фінанси', access: 'finance', group: 'sales' },
     { href: '/staff', icon: '◷', label: 'Графік', access: 'schedule_daily', group: 'team' },
     { href: '/hr', icon: '☷', label: 'Кадри', access: 'hr_page', group: 'team' },
+    { href: '/programs', icon: '🧩', label: 'Продукти', access: 'programs', group: 'product' },
+    { href: '/programs#animation', icon: '🎪', label: 'Анімації', access: 'programs', group: 'product' },
+    { href: '/programs#kitchen-cakes', icon: '🎂', label: 'Торти', access: 'programs', group: 'product' },
+    { href: '/programs#kitchen-menu', icon: '🍽️', label: 'Меню', access: 'programs', group: 'product' },
+    { href: '/programs#catalogs', icon: '📚', label: 'Каталоги продуктів', access: 'programs', group: 'product' },
     { href: '/afisha', icon: '🎭', label: 'Афіша', access: 'afisha', group: 'product' },
     { href: '/certificates', icon: '🎫', label: 'Сертифікати', access: 'certificates', group: 'product' },
     { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат або абонемент', access: 'certificates', group: 'product' },
@@ -116,6 +126,7 @@ const SEARCH_GROUP_SHORTCUTS = [
     { href: '/dashboard', icon: '⌂', label: 'Сьогодні', group: 'today', aliases: ['сьогодні', 'today', 'поточний день'] },
     { href: '/sales-funnel', icon: '◇', label: 'Продажі', group: 'sales', aliases: ['продажі', 'sales', 'ліди', 'клієнти'] },
     { href: '/staff', icon: '◷', label: 'Команда', group: 'team', aliases: ['команда', 'team', 'графік', 'кадри'] },
+    { href: '/programs', icon: '🧩', label: 'Продукт', group: 'product', aliases: ['продукт', 'продукти', 'products', 'торти', 'меню', 'анімації'] },
     { href: '/center', icon: '☷', label: 'Система', group: 'system', aliases: ['система', 'system', 'центр', 'налаштування'] }
 ];
 

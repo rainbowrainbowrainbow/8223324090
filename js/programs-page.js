@@ -110,6 +110,9 @@ async function initPage() {
     document.getElementById('saveProductNextBtn')?.addEventListener('click', () => saveProduct({ addNext: true }));
     document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
     document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
+    document.getElementById('pf-tech-card-detailed')?.addEventListener('change', syncTechCardModePanel);
+    document.getElementById('addTechCardIngredientBtn')?.addEventListener('click', () => addTechCardIngredientRow());
+    document.getElementById('pf-tech-writeoff-btn')?.addEventListener('click', submitTechCardWriteOff);
     document.getElementById('productDocSaveBtn')?.addEventListener('click', saveProductDocument);
     document.getElementById('productDocCancelBtn')?.addEventListener('click', closeProductDocumentModal);
     document.getElementById('productDocCloseBtn')?.addEventListener('click', closeProductDocumentModal);
@@ -226,6 +229,11 @@ let catalogEntriesLoaded = false;
 let editingDocumentProductId = null;
 let productDocumentSaving = false;
 let productDocumentLastFocus = null;
+let productWarehouseItems = [];
+let productWarehouseItemsLoaded = false;
+let techCardIngredientDrafts = [];
+let techCardLoadedProductId = null;
+let productFormFocusWriteOff = false;
 
 const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
 
@@ -689,6 +697,7 @@ function renderKitchenProducts(grid, canManage) {
                 <div class="kitchen-card-badges">
                     ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
                     ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
+                    ${p.techCardMode === 'detailed' ? `<span class="kitchen-badge">Детальна техкарта · ${Number(p.techCardLinkedIngredientCount || 0)}/${Number(p.techCardIngredientCount || 0)}</span>` : ''}
                     ${p.priceVariantNote ? '<span class="kitchen-badge">Варіанти ціни</span>' : ''}
                     ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
                 </div>
@@ -696,6 +705,7 @@ function renderKitchenProducts(grid, canManage) {
                 ${canManage ? `
                     <div class="card-actions">
                         <button type="button" class="btn-page-secondary" onclick="openProductForm('${productId}')">✏️ Редагувати</button>
+                        ${subtype === 'menu' && p.techCardMode === 'detailed' ? `<button type="button" class="btn-page-secondary" onclick="openProductForm('${productId}', { focusWriteOff: true })">Списати склад</button>` : ''}
                         <button type="button" class="btn-page-danger" onclick="deleteProduct('${productId}')">Деактивувати</button>
                     </div>
                 ` : ''}
@@ -707,6 +717,7 @@ function renderKitchenProducts(grid, canManage) {
 function renderKitchenDetailPanel(product) {
     const items = [
         ['Розділ', product.menuSection],
+        ['Складська техкарта', product.techCardMode === 'detailed' ? `детальна · ${Number(product.techCardLinkedIngredientCount || 0)} з ${Number(product.techCardIngredientCount || 0)} позицій привʼязано до складу` : null],
         ['Вага / обʼєм / вихід', product.weightValue],
         ['Одиниця', product.servingUnit],
         ['Варіанти / ціна', product.priceVariantNote],
@@ -1139,6 +1150,7 @@ function setKitchenFormVisibility(domain, kitchenType) {
     });
     const saveNextBtn = document.getElementById('saveProductNextBtn');
     if (saveNextBtn) saveNextBtn.style.display = isKitchen ? '' : 'none';
+    syncTechCardModePanel();
 }
 
 function syncKitchenSubtypeFromForm() {
@@ -1148,7 +1160,304 @@ function syncKitchenSubtypeFromForm() {
     setKitchenFormVisibility('kitchen', kitchenType);
 }
 
-function openProductForm(productId = null) {
+async function loadProductWarehouseItems() {
+    if (productWarehouseItemsLoaded) return productWarehouseItems;
+    const data = await apiGetWarehouse({ all: true });
+    productWarehouseItems = (data.items || [])
+        .filter(item => item.isActive !== false)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'uk'));
+    productWarehouseItemsLoaded = true;
+    return productWarehouseItems;
+}
+
+function normalizeTechCardDraftRow(row = {}, index = 0) {
+    const stockId = row.stockId || row.stock_id || row.warehouseStockId || row.warehouse_stock_id || '';
+    const warehouseItem = stockId
+        ? productWarehouseItems.find(item => String(item.id) === String(stockId))
+        : null;
+    const quantity = Number(row.quantityPerUnit || row.quantity_per_unit || row.quantity || 1);
+    const wastePercent = Number(row.wastePercent ?? row.waste_percent ?? 0);
+    return {
+        stockId: stockId ? String(stockId) : '',
+        label: row.label || row.ingredientLabel || row.ingredient_label || row.stockName || warehouseItem?.name || '',
+        quantity: Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1,
+        unit: row.unit || row.stockUnit || row.stock_unit || warehouseItem?.unit || '',
+        wastePercent: Number.isFinite(wastePercent) && wastePercent >= 0 ? wastePercent : 0,
+        notes: row.notes || '',
+        sortOrder: Number(row.sortOrder || row.sort_order || ((index + 1) * 10))
+    };
+}
+
+function syncTechCardDraftsFromDom() {
+    const rows = Array.from(document.querySelectorAll('#pf-tech-card-rows .tech-card-row'));
+    if (!rows.length) return techCardIngredientDrafts;
+    techCardIngredientDrafts = rows.map((row, index) => normalizeTechCardDraftRow({
+        stockId: row.querySelector('[data-tech-card-field="stockId"]')?.value || '',
+        label: row.querySelector('[data-tech-card-field="label"]')?.value.trim() || '',
+        quantity: row.querySelector('[data-tech-card-field="quantity"]')?.value || 1,
+        unit: row.querySelector('[data-tech-card-field="unit"]')?.value.trim() || '',
+        wastePercent: row.querySelector('[data-tech-card-field="wastePercent"]')?.value || 0,
+        notes: row.querySelector('[data-tech-card-field="notes"]')?.value.trim() || '',
+        sortOrder: (index + 1) * 10
+    }, index));
+    return techCardIngredientDrafts;
+}
+
+function renderTechCardIngredientRows() {
+    const container = document.getElementById('pf-tech-card-rows');
+    if (!container) return;
+    if (!techCardIngredientDrafts.length) {
+        container.innerHTML = '<div class="tech-card-empty">Додайте інгредієнти, які витрачаються на одну порцію.</div>';
+        return;
+    }
+
+    const warehouseOptions = ['<option value="">Без складської привʼязки</option>']
+        .concat(productWarehouseItems.map(item => {
+            const location = item.locationName ? ` · ${escapeHtml(item.locationName)}` : '';
+            const stockInfo = ` · ${Number(item.quantity || 0)} ${escapeHtml(item.unit || '')}`;
+            return `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${stockInfo}${location}</option>`;
+        }))
+        .join('');
+
+    container.innerHTML = techCardIngredientDrafts.map((row, index) => `
+        <div class="tech-card-row" data-tech-card-row="${index}">
+            <label>
+                Склад
+                <select data-tech-card-field="stockId" onchange="updateTechCardIngredientRow(${index}, 'stockId', this.value)">
+                    ${warehouseOptions}
+                </select>
+            </label>
+            <label>
+                Назва
+                <input type="text" data-tech-card-field="label" value="${escapeHtml(row.label)}" placeholder="Інгредієнт">
+            </label>
+            <label>
+                На 1 порцію
+                <input type="number" data-tech-card-field="quantity" value="${Number(row.quantity || 1)}" min="1" step="1">
+            </label>
+            <label>
+                Од.
+                <input type="text" data-tech-card-field="unit" value="${escapeHtml(row.unit)}" placeholder="г / мл / шт">
+            </label>
+            <label>
+                Втрати %
+                <input type="number" data-tech-card-field="wastePercent" value="${Number(row.wastePercent || 0)}" min="0" max="500" step="0.1">
+            </label>
+            <label>
+                Нотатка
+                <input type="text" data-tech-card-field="notes" value="${escapeHtml(row.notes)}" placeholder="підготовка / заміна">
+            </label>
+            <div class="tech-card-row-actions" aria-label="Дії інгредієнта">
+                <button type="button" onclick="moveTechCardIngredientRow(${index}, -1)" title="Вище">↑</button>
+                <button type="button" onclick="moveTechCardIngredientRow(${index}, 1)" title="Нижче">↓</button>
+                <button type="button" onclick="removeTechCardIngredientRow(${index})" title="Видалити">✕</button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.tech-card-row').forEach((rowEl, index) => {
+        const select = rowEl.querySelector('[data-tech-card-field="stockId"]');
+        if (select) select.value = techCardIngredientDrafts[index]?.stockId || '';
+    });
+}
+
+function isDetailedTechCardEnabled() {
+    return !!document.getElementById('pf-tech-card-detailed')?.checked;
+}
+
+function syncTechCardModePanel() {
+    const isMenu = document.getElementById('pf-domain')?.value === 'kitchen'
+        && document.getElementById('pf-kitchen-type')?.value === 'menu';
+    const modePanel = document.getElementById('pf-tech-card-mode-panel');
+    const structured = document.getElementById('pf-tech-card-structured');
+    const writeOff = document.getElementById('pf-tech-card-writeoff');
+    const detailed = isMenu && isDetailedTechCardEnabled();
+
+    if (modePanel) modePanel.classList.toggle('hidden', !isMenu);
+    if (structured) structured.classList.toggle('hidden', !detailed);
+    if (writeOff) writeOff.classList.toggle('hidden', !(detailed && document.getElementById('pf-id')?.value));
+
+    if (detailed && !productWarehouseItemsLoaded) {
+        loadProductWarehouseItems().then(renderTechCardIngredientRows).catch(() => renderTechCardIngredientRows());
+    } else if (detailed) {
+        renderTechCardIngredientRows();
+    }
+}
+
+function addTechCardIngredientRow(row = {}) {
+    syncTechCardDraftsFromDom();
+    techCardIngredientDrafts.push(normalizeTechCardDraftRow(row, techCardIngredientDrafts.length));
+    renderTechCardIngredientRows();
+}
+
+function updateTechCardIngredientRow(index, field, value) {
+    syncTechCardDraftsFromDom();
+    const row = techCardIngredientDrafts[index];
+    if (!row) return;
+    row[field] = value;
+    if (field === 'stockId') {
+        const warehouseItem = productWarehouseItems.find(item => String(item.id) === String(value));
+        if (warehouseItem) {
+            row.label = warehouseItem.name || row.label;
+            row.unit = warehouseItem.unit || row.unit;
+        }
+    }
+    renderTechCardIngredientRows();
+}
+
+function moveTechCardIngredientRow(index, delta) {
+    syncTechCardDraftsFromDom();
+    const nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= techCardIngredientDrafts.length) return;
+    const [row] = techCardIngredientDrafts.splice(index, 1);
+    techCardIngredientDrafts.splice(nextIndex, 0, row);
+    renderTechCardIngredientRows();
+}
+
+function removeTechCardIngredientRow(index) {
+    syncTechCardDraftsFromDom();
+    techCardIngredientDrafts.splice(index, 1);
+    renderTechCardIngredientRows();
+}
+
+function collectTechCardIngredientRows() {
+    syncTechCardDraftsFromDom();
+    return techCardIngredientDrafts
+        .map((row, index) => ({
+            stockId: row.stockId ? Number(row.stockId) : null,
+            label: row.label || '',
+            quantity: Number(row.quantity || 0),
+            unit: row.unit || '',
+            wastePercent: Number(row.wastePercent || 0),
+            notes: row.notes || '',
+            sortOrder: (index + 1) * 10
+        }))
+        .filter(row => row.stockId || row.label || row.quantity || row.notes);
+}
+
+async function hydrateTechCardForm(productId, product, domain, kitchenType, options = {}) {
+    techCardLoadedProductId = productId || null;
+    productFormFocusWriteOff = !!options.focusWriteOff;
+    const isMenu = domain === 'kitchen' && kitchenType === 'menu';
+    const checkbox = document.getElementById('pf-tech-card-detailed');
+    const resultEl = document.getElementById('pf-tech-writeoff-result');
+    if (resultEl) resultEl.innerHTML = '';
+
+    if (!isMenu) {
+        techCardIngredientDrafts = [];
+        if (checkbox) checkbox.checked = false;
+        syncTechCardModePanel();
+        return;
+    }
+
+    await loadProductWarehouseItems().catch(() => {});
+    let mode = product?.techCardMode || 'simple';
+    let rows = [];
+    if (productId) {
+        const response = await apiGetProductTechCard(productId, { businessContext: getProductApiBusinessContext() });
+        if (response?.success && response.techCard) {
+            mode = response.techCard.mode || mode;
+            rows = response.techCard.ingredients || [];
+        }
+    }
+    techCardIngredientDrafts = rows.map(normalizeTechCardDraftRow);
+    if (checkbox) checkbox.checked = mode === 'detailed';
+    syncTechCardModePanel();
+
+    if (productFormFocusWriteOff && checkbox?.checked) {
+        document.getElementById('pf-tech-card-writeoff')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById('pf-tech-writeoff-units')?.focus();
+    }
+}
+
+async function saveProductTechCardIfNeeded(productId, domain, kitchenType) {
+    if (domain !== 'kitchen' || kitchenType !== 'menu') return { success: true };
+    const detailed = isDetailedTechCardEnabled();
+    const payload = {
+        businessContext: getProductApiBusinessContext(),
+        techCardMode: detailed ? 'detailed' : 'simple'
+    };
+
+    if (detailed) {
+        const rows = collectTechCardIngredientRows();
+        if (!rows.length) {
+            showNotification('Детальна техкарта потребує хоча б один інгредієнт', 'error');
+            return { success: false };
+        }
+        const invalid = rows.find(row => (!row.stockId && !row.label) || !Number.isInteger(row.quantity) || row.quantity <= 0 || row.wastePercent < 0 || row.wastePercent > 500);
+        if (invalid) {
+            showNotification('Перевірте склад, кількість і втрати у техкарті', 'error');
+            return { success: false };
+        }
+        payload.ingredients = rows;
+    }
+
+    const result = await apiUpdateProductTechCard(productId, payload);
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося зберегти детальну техкарту', 'error');
+        return { success: false };
+    }
+    return result;
+}
+
+async function submitTechCardWriteOff() {
+    const id = document.getElementById('pf-id')?.value;
+    if (!id) {
+        showNotification('Спочатку збережіть меню-позицію', 'error');
+        return;
+    }
+    const units = parseInt(document.getElementById('pf-tech-writeoff-units')?.value, 10);
+    const reason = document.getElementById('pf-tech-writeoff-reason')?.value.trim() || 'Списання по детальній техкарті';
+    const resultEl = document.getElementById('pf-tech-writeoff-result');
+    if (!units || units <= 0) {
+        showNotification('Вкажіть кількість порцій для списання', 'error');
+        return;
+    }
+
+    const saved = await saveProductTechCardIfNeeded(id, 'kitchen', 'menu');
+    if (!saved?.success) return;
+
+    if (resultEl) resultEl.textContent = 'Списуємо склад...';
+    const result = await apiWriteOffProductTechCard(id, {
+        businessContext: getProductApiBusinessContext(),
+        units,
+        reason
+    });
+
+    if (!result?.success) {
+        const details = (result?.insufficient || result?.incomplete || [])
+            .map(item => item.name || item.label || item.stockName)
+            .filter(Boolean)
+            .join(', ');
+        if (resultEl) resultEl.textContent = details ? `${result.error}: ${details}` : (result?.error || 'Помилка списання');
+        showNotification(result?.error || 'Не вдалося списати склад', 'error');
+        return;
+    }
+
+    const consumed = result.consumed || [];
+    const lowStock = result.procurementSignals || [];
+    const resultHtml = `
+        <div class="kitchen-consumption-list">
+            ${consumed.map(item => `
+                <div class="kitchen-consumption-item">
+                    <span>${escapeHtml(item.name)}</span>
+                    <span>-${Number(item.quantity || 0)} ${escapeHtml(item.unit || '')} · залишок ${Number(item.remainingQuantity || 0)}</span>
+                </div>
+            `).join('')}
+        </div>
+        ${lowStock.length ? `<small>Є сигнал на закупку: ${lowStock.map(item => escapeHtml(item.name)).join(', ')}</small>` : ''}
+    `;
+    if (resultEl) {
+        resultEl.innerHTML = resultHtml;
+    }
+    showNotification(`Списано склад для ${units} порц.`, 'success');
+    await loadProducts();
+    await hydrateTechCardForm(id, allProducts.find(item => item.id === id), 'kitchen', 'menu', { focusWriteOff: true });
+    const freshResultEl = document.getElementById('pf-tech-writeoff-result');
+    if (freshResultEl) freshResultEl.innerHTML = resultHtml;
+}
+
+async function openProductForm(productId = null, options = {}) {
     const form = placeProductForm();
     if (!form) return;
     form.style.display = '';
@@ -1158,6 +1467,7 @@ function openProductForm(productId = null) {
         if (!p) return;
         const domain = getProductDomain(p);
         const kitchenType = getKitchenType(p);
+        techCardIngredientDrafts = [];
         document.getElementById('pf-id').value = p.id;
         document.getElementById('pf-code').value = p.code || '';
         document.getElementById('pf-name').value = p.name || '';
@@ -1184,11 +1494,17 @@ function openProductForm(productId = null) {
         document.getElementById('pf-ingredients').value = p.ingredients || '';
         document.getElementById('pf-tech-card').value = p.techCard || '';
         document.getElementById('pf-cake-decoration').value = p.cakeDecoration || '';
+        const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
+        if (detailedCheckbox) detailedCheckbox.checked = p.techCardMode === 'detailed';
         setKitchenFormVisibility(domain, kitchenType);
+        await hydrateTechCardForm(productId, p, domain, kitchenType, options);
     } else {
         const isMaysternya = !isParkProductsContext();
         const isKitchen = !isMaysternya && activeProductTab === 'kitchen';
         const kitchenType = isKitchen ? activeKitchenTab : '';
+        techCardLoadedProductId = null;
+        productFormFocusWriteOff = false;
+        techCardIngredientDrafts = [];
         document.getElementById('pf-id').value = '';
         document.getElementById('pf-code').value = '';
         document.getElementById('pf-name').value = '';
@@ -1218,7 +1534,10 @@ function openProductForm(productId = null) {
         document.getElementById('pf-ingredients').value = '';
         document.getElementById('pf-tech-card').value = '';
         document.getElementById('pf-cake-decoration').value = '';
+        const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
+        if (detailedCheckbox) detailedCheckbox.checked = false;
         setKitchenFormVisibility(isKitchen ? 'kitchen' : 'program', kitchenType);
+        await hydrateTechCardForm(null, null, isKitchen ? 'kitchen' : 'program', kitchenType);
     }
 
     form.scrollIntoView({ behavior: 'smooth' });
@@ -1226,6 +1545,8 @@ function openProductForm(productId = null) {
 
 function closeProductForm() {
     document.getElementById('productForm').style.display = 'none';
+    techCardLoadedProductId = null;
+    productFormFocusWriteOff = false;
 }
 
 async function saveProduct(options = {}) {
@@ -1261,6 +1582,7 @@ async function saveProduct(options = {}) {
             : 'active',
         ingredients: document.getElementById('pf-ingredients')?.value.trim(),
         techCard: document.getElementById('pf-tech-card')?.value.trim(),
+        techCardMode: domain === 'kitchen' && kitchenType === 'menu' && isDetailedTechCardEnabled() ? 'detailed' : 'simple',
         cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
             ? document.getElementById('pf-cake-decoration')?.value.trim()
             : '',
@@ -1292,6 +1614,9 @@ async function saveProduct(options = {}) {
     }
 
     if (result && result.success) {
+        const savedProductId = id || result.product?.id || product.id;
+        const techCardResult = await saveProductTechCardIfNeeded(savedProductId, domain, kitchenType);
+        if (!techCardResult?.success) return;
         const noun = domain === 'kitchen' ? (kitchenType === 'cake' ? 'Торт' : 'Меню-позицію') : 'Програму';
         showNotification(id ? `${noun} оновлено` : `${noun} додано`, 'success');
         closeProductForm();

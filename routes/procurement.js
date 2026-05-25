@@ -135,6 +135,10 @@ router.post('/from-stock-item/:stockItemId', async (req, res) => {
         const quantity = Number(req.body.quantity || deficit);
         const targetLocationId = toOptionalInt(req.body.targetLocationId) || item.location_id || null;
         const contractorId = toOptionalInt(req.body.contractorId) || item.preferred_contractor_id || null;
+        const source = req.body.source === 'kitchen_tech_card' ? 'kitchen_tech_card' : 'low_stock';
+        const sourceNote = source === 'kitchen_tech_card'
+            ? `Kitchen tech-card demand: ${item.quantity}/${item.min_quantity}`
+            : `Low stock draft: ${item.quantity}/${item.min_quantity}`;
         const today = new Date().toISOString().slice(0, 10);
 
         await client.query('BEGIN');
@@ -143,16 +147,17 @@ router.post('/from-stock-item/:stockItemId', async (req, res) => {
                 title, department, planned_date, notes, created_by,
                 target_location_id, contractor_id, source
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'low_stock')
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
             RETURNING *
         `, [
-            `Поповнення: ${item.name}`,
+            source === 'kitchen_tech_card' ? `Кухонний попит: ${item.name}` : `Поповнення: ${item.name}`,
             CATEGORY_DEPT[item.category] || 'admin',
             today,
-            `Авто-draft з low stock: ${item.quantity}/${item.min_quantity}`,
+            sourceNote,
             req.user.username,
             targetLocationId,
-            contractorId
+            contractorId,
+            source
         ]);
 
         const procItem = await client.query(`
@@ -160,7 +165,7 @@ router.post('/from-stock-item/:stockItemId', async (req, res) => {
                 list_id, stock_id, warehouse_stock_id, contractor_id, name,
                 quantity, unit, estimated_price, notes, note, trigger_source
             )
-            VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$8,'low_stock')
+            VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$8,$9)
             RETURNING *
         `, [
             list.rows[0].id,
@@ -170,7 +175,8 @@ router.post('/from-stock-item/:stockItemId', async (req, res) => {
             quantity,
             item.unit,
             item.purchase_unit_price || 0,
-            `Потрібно поповнити склад ${item.location_name || ''}`.trim()
+            (req.body.notes || `Потрібно поповнити склад ${item.location_name || ''}`).trim(),
+            source
         ]);
 
         await client.query('COMMIT');
@@ -591,10 +597,26 @@ router.get('/suggestions/low-stock', async (req, res) => {
             SELECT ws.id, ws.name, ws.category, ws.quantity, ws.min_quantity, ws.unit,
                    ws.location_id, wl.name AS location_name,
                    ws.preferred_contractor_id, c.name AS preferred_contractor_name,
-                   ws.purchase_unit_price
+                   ws.purchase_unit_price,
+                   COALESCE(kitchen.linked_menu_count, 0) AS linked_menu_count,
+                   kitchen.linked_menu_items,
+                   COALESCE(kitchen.base_menu_usage, 0) AS base_menu_usage
             FROM warehouse_stock ws
             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(DISTINCT p.id)::int AS linked_menu_count,
+                    STRING_AGG(DISTINCT p.name, ', ' ORDER BY p.name) AS linked_menu_items,
+                    COALESCE(SUM(psr.quantity), 0)::int AS base_menu_usage
+                FROM product_stock_requirements psr
+                JOIN products p ON p.id = psr.product_id
+                WHERE psr.stock_id = ws.id
+                  AND COALESCE(p.domain, 'program') = 'kitchen'
+                  AND p.kitchen_type = 'menu'
+                  AND COALESCE(p.tech_card_mode, 'simple') = 'detailed'
+                  AND COALESCE(p.is_active, true) = true
+            ) kitchen ON true
             WHERE ws.is_active = true AND ws.quantity <= ws.min_quantity
             ORDER BY (ws.min_quantity - ws.quantity) DESC, ws.category, ws.name
         `);
@@ -620,11 +642,79 @@ router.get('/suggestions/low-stock', async (req, res) => {
                 targetLocationName: r.location_name || null,
                 contractorId: r.preferred_contractor_id || null,
                 contractorName: r.preferred_contractor_name || null,
-                estimatedPrice: r.purchase_unit_price || 0
+                estimatedPrice: r.purchase_unit_price || 0,
+                source: Number(r.linked_menu_count || 0) > 0 ? 'kitchen_tech_card' : 'low_stock',
+                linkedMenuCount: Number(r.linked_menu_count || 0),
+                linkedMenuItems: r.linked_menu_items || null,
+                baseMenuUsage: Number(r.base_menu_usage || 0)
             }))
         });
     } catch (err) {
         log.error('GET /suggestions/low-stock error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/procurement/suggestions/kitchen-demand — warehouse-linked menu ingredient pressure
+router.get('/suggestions/kitchen-demand', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT ws.id, ws.name, ws.category, ws.quantity, ws.min_quantity, ws.unit,
+                   ws.location_id, wl.name AS location_name,
+                   ws.preferred_contractor_id, c.name AS preferred_contractor_name,
+                   ws.purchase_unit_price,
+                   kitchen.linked_menu_count,
+                   kitchen.linked_menu_items,
+                   kitchen.base_menu_usage
+            FROM warehouse_stock ws
+            LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+            LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+            JOIN LATERAL (
+                SELECT
+                    COUNT(DISTINCT p.id)::int AS linked_menu_count,
+                    STRING_AGG(DISTINCT p.name, ', ' ORDER BY p.name) AS linked_menu_items,
+                    COALESCE(SUM(psr.quantity), 0)::int AS base_menu_usage
+                FROM product_stock_requirements psr
+                JOIN products p ON p.id = psr.product_id
+                WHERE psr.stock_id = ws.id
+                  AND COALESCE(p.domain, 'program') = 'kitchen'
+                  AND p.kitchen_type = 'menu'
+                  AND COALESCE(p.tech_card_mode, 'simple') = 'detailed'
+                  AND COALESCE(p.is_active, true) = true
+            ) kitchen ON kitchen.linked_menu_count > 0
+            WHERE ws.is_active = true
+            ORDER BY
+                CASE WHEN ws.quantity <= ws.min_quantity THEN 0 ELSE 1 END,
+                (ws.quantity - ws.min_quantity),
+                kitchen.linked_menu_count DESC,
+                ws.name
+            LIMIT 30
+        `);
+
+        res.json({
+            suggestions: result.rows.map(r => ({
+                stockId: r.id,
+                name: r.name,
+                category: r.category,
+                currentQuantity: r.quantity,
+                minQuantity: r.min_quantity,
+                deficit: Math.max(Number(r.min_quantity || 0) - Number(r.quantity || 0), 0),
+                unit: r.unit,
+                suggestedDepartment: r.category === 'food' ? 'cafe' : 'admin',
+                targetLocationId: r.location_id || null,
+                targetLocationName: r.location_name || null,
+                contractorId: r.preferred_contractor_id || null,
+                contractorName: r.preferred_contractor_name || null,
+                estimatedPrice: r.purchase_unit_price || 0,
+                source: 'kitchen_tech_card',
+                linkedMenuCount: Number(r.linked_menu_count || 0),
+                linkedMenuItems: r.linked_menu_items || null,
+                baseMenuUsage: Number(r.base_menu_usage || 0),
+                isLowStock: Number(r.quantity || 0) <= Number(r.min_quantity || 0)
+            }))
+        });
+    } catch (err) {
+        log.error('GET /suggestions/kitchen-demand error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

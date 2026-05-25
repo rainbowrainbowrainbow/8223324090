@@ -929,7 +929,10 @@ function switchPageTab(tab) {
     if (contractorsEl) contractorsEl.style.display = tab === 'contractors' ? '' : 'none';
     var pinataEl = document.getElementById('pinataTab');
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
-    if (tab === 'procurement' && procLists.length === 0) loadProcLists();
+    if (tab === 'procurement') {
+        if (procLists.length === 0) loadProcLists();
+        loadProcurementKitchenDemand();
+    }
     if (tab === 'contractors') loadWarehouseContractors();
 }
 // Hash-based tab switch (from alerts: /warehouse#procurement)
@@ -1103,6 +1106,65 @@ async function copyContractorDraft() {
 let procLists = [];
 let currentProcListId = null;
 let currentProcDetail = null;
+let procurementKitchenDemand = [];
+
+async function loadProcurementKitchenDemand() {
+    const container = document.getElementById('procKitchenDemandSignals');
+    if (!container) return;
+    container.innerHTML = '<div class="proc-demand-card"><div class="proc-demand-title">Завантажуємо попит кухні...</div></div>';
+    const data = await apiGetProcurementKitchenDemand();
+    procurementKitchenDemand = data.suggestions || [];
+    renderProcurementKitchenDemand();
+}
+
+function renderProcurementKitchenDemand() {
+    const container = document.getElementById('procKitchenDemandSignals');
+    if (!container) return;
+    if (!procurementKitchenDemand.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = procurementKitchenDemand.slice(0, 5).map(item => {
+        const lowStockLabel = item.isLowStock ? 'нижче мінімуму' : 'повʼязано з меню';
+        const menuUsage = item.linkedMenuItems ? `Меню: ${item.linkedMenuItems}` : `${item.linkedMenuCount || 0} меню-позицій`;
+        const deficit = Number(item.deficit || 0) > 0 ? `дефіцит ${item.deficit} ${item.unit || ''}` : `залишок ${item.currentQuantity || 0} ${item.unit || ''}`;
+        return `
+            <article class="proc-demand-card">
+                <div class="proc-demand-card-head">
+                    <div>
+                        <div class="proc-demand-title">${escapeHtml(item.name)}</div>
+                        <div class="proc-demand-meta">
+                            <span>${escapeHtml(lowStockLabel)}</span>
+                            <span>${escapeHtml(deficit)}</span>
+                            <span>${escapeHtml(menuUsage)}</span>
+                        </div>
+                    </div>
+                    <button type="button" class="wh-mini-btn primary" onclick="createKitchenDemandProcurement(${Number(item.stockId || 0)})">У закупку</button>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+async function createKitchenDemandProcurement(stockId) {
+    const signal = procurementKitchenDemand.find(item => String(item.stockId) === String(stockId));
+    if (!signal) return;
+    const result = await apiCreateProcurementFromStockItem(stockId, {
+        quantity: Number(signal.deficit || 0) > 0 ? Number(signal.deficit) : 1,
+        targetLocationId: signal.targetLocationId || currentLocationId || null,
+        contractorId: signal.contractorId || null,
+        source: 'kitchen_tech_card'
+    });
+    if (result?.success && result.list) {
+        showNotification('Закупку створено з кухонної техкарти', 'success');
+        switchPageTab('procurement');
+        await loadProcLists();
+        openProcDetail(result.list.id);
+    } else {
+        showNotification(result?.error || 'Не вдалося створити закупку з кухонного попиту', 'error');
+    }
+}
 
 async function loadProcLists() {
     const dept = document.getElementById('procDeptFilter')?.value || '';
@@ -1386,7 +1448,8 @@ async function loadSuggestions() {
                     quantity: item.deficit > 0 ? item.deficit : 1,
                     unit: item.unit,
                     estimatedPrice: item.estimatedPrice || 0,
-                    triggerSource: 'low_stock'
+                    triggerSource: item.source || 'low_stock',
+                    notes: item.linkedMenuItems ? `Кухонна техкарта: ${item.linkedMenuItems}` : null
                 });
             }
             created++;

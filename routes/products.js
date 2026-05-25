@@ -23,7 +23,9 @@ const PRODUCT_PRICE_JOIN = `
            pr.unit AS price_rule_unit,
            pr.category AS price_rule_category,
            pr.updated_at AS price_rule_updated_at,
-           pr.updated_by AS price_rule_updated_by
+           pr.updated_by AS price_rule_updated_by,
+           COALESCE(psr_stats.tech_card_ingredient_count, 0) AS tech_card_ingredient_count,
+           COALESCE(psr_stats.tech_card_linked_ingredient_count, 0) AS tech_card_linked_ingredient_count
     FROM products p
     LEFT JOIN LATERAL (
         SELECT code, name, value, unit, category, updated_at, updated_by
@@ -32,6 +34,13 @@ const PRODUCT_PRICE_JOIN = `
         ORDER BY pr.updated_at DESC NULLS LAST, pr.id DESC
         LIMIT 1
     ) pr ON true
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*)::int AS tech_card_ingredient_count,
+            COUNT(*) FILTER (WHERE psr.stock_id IS NOT NULL)::int AS tech_card_linked_ingredient_count
+        FROM product_stock_requirements psr
+        WHERE psr.product_id = p.id
+    ) psr_stats ON true
 `;
 
 function buildProductPriceRuleCode(productId) {
@@ -52,6 +61,7 @@ const SOURCE_DOCUMENT_KINDS = new Set(['google_doc', 'pdf', 'link']);
 const PRODUCT_DOMAINS = new Set(['program', 'kitchen']);
 const KITCHEN_TYPES = new Set(['cake', 'menu']);
 const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
+const PRODUCT_TECH_CARD_MODES = new Set(['simple', 'detailed']);
 
 function requireProductBusinessContext(req, res) {
     const businessContext = businessContextFromRequest(req);
@@ -70,6 +80,77 @@ function cleanNullableString(value, maxLength) {
     const text = String(value).trim();
     if (!text) return null;
     return text.slice(0, maxLength);
+}
+
+function toOptionalInt(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function toPositiveInt(value) {
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function normalizeTechCardMode(value) {
+    const mode = String(value || 'simple').trim().toLowerCase();
+    return PRODUCT_TECH_CARD_MODES.has(mode) ? mode : 'simple';
+}
+
+function normalizeWastePercent(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 500) return null;
+    return Math.round(n * 100) / 100;
+}
+
+function mapTechCardIngredientRow(row) {
+    const quantity = Number(row.quantity || 0);
+    const wastePercent = Number(row.waste_percent || 0);
+    const currentQty = row.current_qty === undefined || row.current_qty === null ? null : Number(row.current_qty);
+    const minQty = row.min_quantity === undefined || row.min_quantity === null ? null : Number(row.min_quantity);
+    return {
+        id: row.id,
+        productId: row.product_id,
+        stockId: row.stock_id || null,
+        warehouseStockId: row.stock_id || null,
+        label: row.ingredient_label || row.stock_name || null,
+        stockName: row.stock_name || null,
+        quantityPerUnit: quantity,
+        quantity,
+        unit: row.unit || row.stock_unit || null,
+        stockUnit: row.stock_unit || row.unit || null,
+        wastePercent,
+        notes: row.notes || null,
+        sortOrder: row.sort_order || 100,
+        currentQuantity: currentQty,
+        minQuantity: minQty,
+        locationId: row.location_id || null,
+        locationName: row.location_name || null,
+        preferredContractorId: row.preferred_contractor_id || null,
+        preferredContractorName: row.preferred_contractor_name || null,
+        isLinked: Boolean(row.stock_id),
+        isActiveStock: row.stock_is_active !== false
+    };
+}
+
+function buildTechCardProcurementSignals(rows) {
+    return rows
+        .filter(row => row.stock_id && row.current_qty !== null && row.current_qty !== undefined && Number(row.current_qty) <= Number(row.min_quantity || 0))
+        .map(row => ({
+            stockId: row.stock_id,
+            name: row.stock_name || row.ingredient_label || `stock #${row.stock_id}`,
+            currentQuantity: Number(row.current_qty || 0),
+            minQuantity: Number(row.min_quantity || 0),
+            deficit: Math.max(Number(row.min_quantity || 0) - Number(row.current_qty || 0), 1),
+            unit: row.stock_unit || row.unit || null,
+            locationId: row.location_id || null,
+            locationName: row.location_name || null,
+            contractorId: row.preferred_contractor_id || null,
+            contractorName: row.preferred_contractor_name || null,
+            source: 'kitchen_tech_card'
+        }));
 }
 
 function normalizeProductPayload(body = {}) {
@@ -94,6 +175,7 @@ function normalizeProductPayload(body = {}) {
         promoDescription: cleanNullableString(pickField(body, 'promoDescription', 'promo_description', null), 3000),
         ingredients: cleanNullableString(pickField(body, 'ingredients', 'ingredients', null), 4000),
         techCard: cleanNullableString(pickField(body, 'techCard', 'tech_card', null), 5000),
+        techCardMode: normalizeTechCardMode(pickField(body, 'techCardMode', 'tech_card_mode', 'simple')),
         menuSection: domain === 'kitchen' && kitchenType === 'menu'
             ? cleanNullableString(pickField(body, 'menuSection', 'menu_section', null), 120)
             : null,
@@ -173,6 +255,38 @@ async function getProductWithPriceRule(client, id, businessContext = DEFAULT_BUS
     return result.rows[0] || null;
 }
 
+async function getTechCardIngredientRows(client, productId) {
+    const result = await client.query(
+        `SELECT
+            psr.id,
+            psr.product_id,
+            psr.stock_id,
+            psr.quantity,
+            psr.ingredient_label,
+            psr.unit,
+            psr.waste_percent,
+            psr.notes,
+            psr.sort_order,
+            ws.name AS stock_name,
+            ws.quantity AS current_qty,
+            ws.min_quantity,
+            ws.unit AS stock_unit,
+            ws.is_active AS stock_is_active,
+            ws.location_id,
+            wl.name AS location_name,
+            ws.preferred_contractor_id,
+            c.name AS preferred_contractor_name
+         FROM product_stock_requirements psr
+         LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
+         LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+         LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+         WHERE psr.product_id = $1
+         ORDER BY psr.sort_order, psr.id`,
+        [productId]
+    );
+    return result.rows;
+}
+
 async function upsertProductPriceRule(client, product, username) {
     const value = Number.parseInt(product.price, 10);
     const priceValue = Number.isFinite(value) && value >= 0 ? value : 0;
@@ -250,6 +364,9 @@ function mapProductRow(row) {
         promoDescription: row.promo_description || null,
         ingredients: row.ingredients || null,
         techCard: row.tech_card || null,
+        techCardMode: row.tech_card_mode || 'simple',
+        techCardIngredientCount: Number(row.tech_card_ingredient_count || 0),
+        techCardLinkedIngredientCount: Number(row.tech_card_linked_ingredient_count || 0),
         menuSection: row.menu_section || null,
         servingUnit: row.serving_unit || null,
         weightValue: row.weight_value || null,
@@ -296,6 +413,9 @@ function validateProduct(body) {
     }
     if (body.availabilityStatus && !PRODUCT_AVAILABILITY_STATUSES.has(body.availabilityStatus)) {
         errors.push('availabilityStatus must be active, draft, seasonal, sold_out, or hidden');
+    }
+    if (body.techCardMode && !PRODUCT_TECH_CARD_MODES.has(body.techCardMode)) {
+        errors.push('techCardMode must be simple or detailed');
     }
     if (body.duration === undefined || body.duration === null || typeof body.duration !== 'number' || body.duration < 0) {
         errors.push('duration is required (non-negative number)');
@@ -535,6 +655,7 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
             description, isPerChild = false, hasFiller = false,
             isCustom = false, sortOrder = 0, domain, kitchenType,
             shortDescription, promoDescription, ingredients, techCard,
+            techCardMode,
             menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
             cakeDecoration
         } = payload;
@@ -544,10 +665,10 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         await client.query('BEGIN');
         const result = await client.query(
-            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
              RETURNING *`,
-            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);
@@ -599,6 +720,7 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
             description, isPerChild = false, hasFiller = false,
             isCustom = false, isActive = true, sortOrder = 0, domain, kitchenType,
             shortDescription, promoDescription, ingredients, techCard,
+            techCardMode,
             menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
             cakeDecoration
         } = payload;
@@ -608,12 +730,12 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
                 code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
                 price=$7, hosts=$8, age_range=$9, kids_capacity=$10, description=$11,
                 domain=$12, kitchen_type=$13, short_description=$14, promo_description=$15,
-                ingredients=$16, tech_card=$17, menu_section=$18, serving_unit=$19,
-                weight_value=$20, price_variant_note=$21, availability_status=$22,
-                cake_decoration=$23, is_per_child=$24, has_filler=$25, is_custom=$26,
-                is_active=$27, sort_order=$28, updated_at=NOW(), updated_by=$29
-             WHERE id=$30 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $31 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
+                ingredients=$16, tech_card=$17, tech_card_mode=$18, menu_section=$19, serving_unit=$20,
+                weight_value=$21, price_variant_note=$22, availability_status=$23,
+                cake_decoration=$24, is_per_child=$25, has_filler=$26, is_custom=$27,
+                is_active=$28, sort_order=$29, updated_at=NOW(), updated_by=$30
+             WHERE id=$31 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $32 RETURNING *`,
+            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);
@@ -658,6 +780,362 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     }
 });
 
+// GET /api/products/:id/tech-card — detailed kitchen tech-card rows
+router.get('/:id/tech-card', async (req, res) => {
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        const rows = await getTechCardIngredientRows(pool, req.params.id);
+        res.json({
+            success: true,
+            product: mapProductRow(product),
+            techCard: {
+                mode: product.tech_card_mode || 'simple',
+                ingredients: rows.map(mapTechCardIngredientRow),
+                procurementSignals: buildTechCardProcurementSignals(rows)
+            }
+        });
+    } catch (err) {
+        log.error('Get product tech card error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// PUT /api/products/:id/tech-card — switch simple/detailed mode and save structured ingredient rows
+router.put('/:id/tech-card', requireRole('admin', 'manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const { id } = req.params;
+        const mode = normalizeTechCardMode(pickField(req.body || {}, 'techCardMode', 'tech_card_mode', 'simple'));
+        const hasIngredientPayload = Array.isArray(req.body?.ingredients);
+
+        await client.query('BEGIN');
+        const productResult = await client.query(
+            `SELECT *
+             FROM products
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [id, businessContext]
+        );
+        if (!productResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        const product = productResult.rows[0];
+        if (product.domain !== 'kitchen' || product.kitchen_type !== 'menu') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Detailed tech-card mode is available only for kitchen menu items' });
+        }
+
+        let normalizedRows = [];
+        if (hasIngredientPayload) {
+            const rawRows = req.body.ingredients || [];
+            const stockIds = [...new Set(rawRows.map(row => toOptionalInt(row.stockId || row.stock_id || row.warehouseStockId || row.warehouse_stock_id)).filter(Boolean))];
+            const stockRows = stockIds.length
+                ? await client.query(
+                    `SELECT ws.*, wl.name AS location_name, c.name AS preferred_contractor_name
+                     FROM warehouse_stock ws
+                     LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                     LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+                     WHERE ws.id = ANY($1::int[]) AND ws.is_active = true`,
+                    [stockIds]
+                )
+                : { rows: [] };
+            const stockById = new Map(stockRows.rows.map(row => [Number(row.id), row]));
+            const errors = [];
+
+            normalizedRows = rawRows.map((row, index) => {
+                const stockId = toOptionalInt(row.stockId || row.stock_id || row.warehouseStockId || row.warehouse_stock_id);
+                const stock = stockId ? stockById.get(stockId) : null;
+                const quantity = toPositiveInt(row.quantityPerUnit || row.quantity_per_unit || row.quantity);
+                const label = cleanNullableString(row.label || row.ingredientLabel || row.ingredient_label, 255);
+                const unit = cleanNullableString(row.unit, 30);
+                const wastePercent = normalizeWastePercent(row.wastePercent ?? row.waste_percent);
+                const notes = cleanNullableString(row.notes, 1000);
+                const sortOrder = toPositiveInt(row.sortOrder || row.sort_order) || ((index + 1) * 10);
+
+                if (stockId && !stock) errors.push(`Ingredient row ${index + 1}: linked warehouse item is inactive or missing`);
+                if (!stockId && !label) errors.push(`Ingredient row ${index + 1}: warehouse item or fallback label is required`);
+                if (!quantity) errors.push(`Ingredient row ${index + 1}: quantity must be a positive integer`);
+                if (wastePercent === null) errors.push(`Ingredient row ${index + 1}: wastePercent must be between 0 and 500`);
+
+                return {
+                    stockId,
+                    ingredientLabel: label || stock?.name || null,
+                    quantity,
+                    unit: unit || stock?.unit || null,
+                    wastePercent: wastePercent === null ? 0 : wastePercent,
+                    notes,
+                    sortOrder
+                };
+            }).filter(row => row.stockId || row.ingredientLabel);
+
+            if (mode === 'detailed' && normalizedRows.length === 0) {
+                errors.push('Detailed tech-card mode requires at least one ingredient row');
+            }
+            if (errors.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: errors.join('; ') });
+            }
+        }
+
+        await client.query(
+            `UPDATE products
+             SET tech_card_mode = $1,
+                 updated_at = NOW(),
+                 updated_by = $2
+             WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+            [mode, req.user.username, id, businessContext]
+        );
+
+        if (hasIngredientPayload) {
+            await client.query('DELETE FROM product_stock_requirements WHERE product_id = $1', [id]);
+            for (const row of normalizedRows) {
+                await client.query(
+                    `INSERT INTO product_stock_requirements (
+                        product_id, stock_id, quantity, ingredient_label, unit,
+                        waste_percent, notes, sort_order, updated_by, updated_at
+                     )
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+                    [
+                        id,
+                        row.stockId,
+                        row.quantity,
+                        row.ingredientLabel,
+                        row.unit,
+                        row.wastePercent,
+                        row.notes,
+                        row.sortOrder,
+                        req.user.username
+                    ]
+                );
+            }
+        }
+
+        const savedRows = await getTechCardIngredientRows(client, id);
+        const savedProduct = await getProductWithPriceRule(client, id, businessContext);
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            product: mapProductRow(savedProduct),
+            techCard: {
+                mode,
+                ingredients: savedRows.map(mapTechCardIngredientRow),
+                procurementSignals: buildTechCardProcurementSignals(savedRows)
+            }
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Update product tech card error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/products/:id/tech-card/write-off — explicit kitchen production/sale write-off
+router.post('/:id/tech-card/write-off', requireRole('admin', 'manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const { id } = req.params;
+        const units = toPositiveInt(req.body?.units || req.body?.quantity || req.body?.portions);
+        const reason = cleanNullableString(req.body?.reason, 240) || 'Kitchen tech-card write-off';
+        if (!units) return res.status(400).json({ success: false, error: 'units must be a positive integer' });
+
+        await client.query('BEGIN');
+        const productResult = await client.query(
+            `SELECT *
+             FROM products
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [id, businessContext]
+        );
+        if (!productResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        const product = productResult.rows[0];
+        if (product.domain !== 'kitchen' || product.kitchen_type !== 'menu' || product.tech_card_mode !== 'detailed') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Write-off requires a kitchen menu item in detailed tech-card mode' });
+        }
+
+        const ingredientRows = await client.query(
+            `SELECT
+                psr.*,
+                ws.name AS stock_name,
+                ws.quantity AS current_qty,
+                ws.min_quantity,
+                ws.unit AS stock_unit,
+                ws.location_id,
+                ws.is_active AS stock_is_active,
+                wl.name AS location_name,
+                ws.preferred_contractor_id,
+                c.name AS preferred_contractor_name
+             FROM product_stock_requirements psr
+             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
+             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+             WHERE psr.product_id = $1
+             ORDER BY psr.sort_order, psr.id`,
+            [id]
+        );
+
+        if (!ingredientRows.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Detailed tech-card has no ingredient rows' });
+        }
+
+        const incomplete = ingredientRows.rows.filter(row => !row.stock_id || row.stock_is_active !== true);
+        if (incomplete.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                error: 'All ingredient rows must be linked to active warehouse stock before write-off',
+                incomplete: incomplete.map(mapTechCardIngredientRow)
+            });
+        }
+
+        const stockIds = [...new Set(ingredientRows.rows.map(row => Number(row.stock_id)))];
+        await client.query('SELECT id FROM warehouse_stock WHERE id = ANY($1::int[]) FOR UPDATE', [stockIds]);
+        const lockedIngredientRows = await client.query(
+            `SELECT
+                psr.*,
+                ws.name AS stock_name,
+                ws.quantity AS current_qty,
+                ws.min_quantity,
+                ws.unit AS stock_unit,
+                ws.location_id,
+                ws.is_active AS stock_is_active,
+                wl.name AS location_name,
+                ws.preferred_contractor_id,
+                c.name AS preferred_contractor_name
+             FROM product_stock_requirements psr
+             JOIN warehouse_stock ws ON ws.id = psr.stock_id AND ws.is_active = true
+             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+             WHERE psr.product_id = $1
+             ORDER BY psr.sort_order, psr.id`,
+            [id]
+        );
+        if (lockedIngredientRows.rowCount !== ingredientRows.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Ingredient linkage changed before write-off; reload the tech-card and try again' });
+        }
+
+        const consumption = lockedIngredientRows.rows.map(row => {
+            const baseQty = Number(row.quantity || 0) * units;
+            const wasteMultiplier = 1 + (Number(row.waste_percent || 0) / 100);
+            const totalQuantity = Math.ceil(baseQty * wasteMultiplier);
+            return {
+                row,
+                stockId: row.stock_id,
+                stockName: row.stock_name,
+                quantityPerUnit: Number(row.quantity || 0),
+                wastePercent: Number(row.waste_percent || 0),
+                totalQuantity
+            };
+        });
+
+        const invalid = consumption.filter(item => !Number.isInteger(item.totalQuantity) || item.totalQuantity <= 0);
+        if (invalid.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Calculated ingredient consumption must be positive' });
+        }
+
+        const insufficient = consumption.filter(item => Number(item.row.current_qty || 0) < item.totalQuantity);
+        if (insufficient.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                error: 'Not enough warehouse stock for detailed tech-card write-off',
+                insufficient: insufficient.map(item => ({
+                    stockId: item.stockId,
+                    name: item.stockName,
+                    required: item.totalQuantity,
+                    currentQuantity: Number(item.row.current_qty || 0),
+                    unit: item.row.stock_unit || item.row.unit || null
+                }))
+            });
+        }
+
+        const consumed = [];
+        for (const item of consumption) {
+            const update = await client.query(
+                `UPDATE warehouse_stock
+                 SET quantity = quantity - $1,
+                     updated_at = NOW(),
+                     updated_by = $2
+                 WHERE id = $3
+                 RETURNING id, name, quantity, min_quantity, unit, location_id`,
+                [item.totalQuantity, req.user.username, item.stockId]
+            );
+            const updatedStock = update.rows[0];
+            const writeOffReason = `${reason}: ${product.name} x${units}`;
+
+            await client.query(
+                `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
+                 VALUES ($1, $2, $3, $4)`,
+                [item.stockId, -item.totalQuantity, writeOffReason, req.user.username]
+            );
+            await client.query(
+                `INSERT INTO warehouse_stock_movements (
+                    warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                    quantity, reason, created_by
+                 )
+                 VALUES ($1, 'issue', $2, NULL, $3, $4, $5)`,
+                [item.stockId, item.row.location_id || null, item.totalQuantity, writeOffReason, req.user.username]
+            );
+
+            consumed.push({
+                stockId: item.stockId,
+                name: updatedStock.name,
+                quantity: item.totalQuantity,
+                unit: updatedStock.unit,
+                remainingQuantity: Number(updatedStock.quantity || 0),
+                minQuantity: Number(updatedStock.min_quantity || 0),
+                lowStock: Number(updatedStock.quantity || 0) <= Number(updatedStock.min_quantity || 0)
+            });
+        }
+
+        const procurementSignals = consumed
+            .filter(item => item.lowStock)
+            .map(item => ({
+                stockId: item.stockId,
+                name: item.name,
+                currentQuantity: item.remainingQuantity,
+                minQuantity: item.minQuantity,
+                deficit: Math.max(item.minQuantity - item.remainingQuantity, 1),
+                unit: item.unit,
+                source: 'kitchen_tech_card'
+            }));
+
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            productId: id,
+            productName: product.name,
+            units,
+            consumed,
+            procurementSignals
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Product tech-card write-off error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // ==========================================
 // v33.8.0: Product stock requirements (Integration 1)
 // ==========================================
@@ -670,9 +1148,15 @@ router.get('/:id/stock-requirements', async (req, res) => {
         const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
         if (!product) return res.status(404).json({ error: 'Product not found' });
         const r = await pool.query(
-            `SELECT psr.*, ws.name AS stock_name, ws.quantity AS current_qty, ws.unit
+            `SELECT
+                psr.*,
+                ws.name AS stock_name,
+                ws.quantity AS current_qty,
+                ws.min_quantity,
+                ws.unit AS stock_unit,
+                COALESCE(psr.unit, ws.unit) AS unit
              FROM product_stock_requirements psr
-             JOIN warehouse_stock ws ON ws.id = psr.stock_id
+             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
              JOIN products p ON p.id = psr.product_id
              WHERE psr.product_id = $1
                AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
@@ -691,16 +1175,27 @@ router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (r
         const businessContext = requireProductBusinessContext(req, res);
         if (!businessContext) return;
         const { stockId, quantity } = req.body;
-        if (!stockId || !quantity || quantity < 1)
-            return res.status(400).json({ error: 'stockId і quantity (>0) required' });
+        const safeStockId = toOptionalInt(stockId);
+        const safeQuantity = toPositiveInt(quantity);
+        if (!safeStockId || !safeQuantity)
+            return res.status(400).json({ error: 'stockId and quantity (>0) required' });
         const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
         if (!product) return res.status(404).json({ error: 'Product not found' });
+        const stock = await pool.query('SELECT id, name, unit FROM warehouse_stock WHERE id = $1 AND is_active = true', [safeStockId]);
+        if (!stock.rowCount) return res.status(404).json({ error: 'Warehouse stock item not found' });
         const r = await pool.query(
-            `INSERT INTO product_stock_requirements (product_id, stock_id, quantity)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (product_id, stock_id) DO UPDATE SET quantity = $3
+            `INSERT INTO product_stock_requirements (
+                product_id, stock_id, quantity, ingredient_label, unit, sort_order, updated_by, updated_at
+             )
+             VALUES ($1, $2, $3, $4, $5, 100, $6, NOW())
+             ON CONFLICT (product_id, stock_id) DO UPDATE SET
+                quantity = EXCLUDED.quantity,
+                ingredient_label = EXCLUDED.ingredient_label,
+                unit = EXCLUDED.unit,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
              RETURNING *`,
-            [req.params.id, stockId, quantity]
+            [req.params.id, safeStockId, safeQuantity, stock.rows[0].name, stock.rows[0].unit, req.user.username]
         );
         res.json({ success: true, requirement: r.rows[0] });
     } catch (err) {

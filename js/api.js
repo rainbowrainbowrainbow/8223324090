@@ -787,6 +787,62 @@ async function apiDeleteProduct(id, options = {}) {
     }
 }
 
+async function apiGetProductTechCard(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, techCard: { mode: 'simple', ingredients: [] } };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getProductTechCard error:', err);
+        return { success: false, error: err.message, techCard: { mode: 'simple', ingredients: [] } };
+    }
+}
+
+async function apiUpdateProductTechCard(id, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateProductTechCard error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiWriteOffProductTechCard(id, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card/write-off`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', insufficient: body.insufficient || [], incomplete: body.incomplete || [] };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API writeOffProductTechCard error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 // v5.0: Auth API
 async function apiLogin(username, password) {
     const response = await fetch(`${API_BASE}/auth/login`, {
@@ -1786,6 +1842,18 @@ async function apiGetProcurementSuggestions() {
         return await response.json();
     } catch (err) {
         console.error('API getProcurementSuggestions error:', err);
+        return { suggestions: [] };
+    }
+}
+
+async function apiGetProcurementKitchenDemand() {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/suggestions/kitchen-demand`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { suggestions: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProcurementKitchenDemand error:', err);
         return { suggestions: [] };
     }
 }

@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.3">
+    <link rel="stylesheet" href="css/base.css?v=0.66.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -472,6 +472,37 @@
         .proc-progress { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray-500); }
         .proc-progress-bar { width: 60px; height: 6px; background: var(--gray-100); border-radius: 3px; overflow: hidden; }
         .proc-progress-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+        .proc-demand-signals {
+            display: grid;
+            gap: 10px;
+            margin: 0 0 16px;
+        }
+        .proc-demand-card {
+            display: grid;
+            gap: 8px;
+            padding: 14px 16px;
+            border: 1px solid rgba(16, 185, 129, 0.22);
+            border-radius: 14px;
+            background: rgba(16, 185, 129, 0.06);
+        }
+        .proc-demand-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .proc-demand-title {
+            color: var(--gray-800);
+            font-weight: 900;
+        }
+        .proc-demand-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+        }
         .proc-detail-items { max-height: 400px; overflow-y: auto; }
         .proc-item-row {
             display: flex; align-items: center; gap: 10px; padding: 10px 0;
@@ -725,6 +756,7 @@
         body.dark-mode .wh-stock-mode-switcher,
         body.dark-mode .warehouse-location-card,
         body.dark-mode .contractor-card,
+        body.dark-mode .proc-demand-card,
         body.dark-mode .wh-mini-btn {
             background: rgba(15,23,42,.72);
             border-color: rgba(148,163,184,.18);
@@ -734,6 +766,7 @@
             color: #A7F3D0;
         }
         body.dark-mode .warehouse-location-card-title,
+        body.dark-mode .proc-demand-title,
         body.dark-mode .contractor-title {
             color: #F8FAFC;
         }
@@ -741,6 +774,7 @@
         body.dark-mode .warehouse-location-card-desc,
         body.dark-mode .contractor-meta,
         body.dark-mode .contractor-note,
+        body.dark-mode .proc-demand-meta,
         body.dark-mode .wh-active-location-hint {
             color: #CBD5E1;
         }
@@ -1032,6 +1066,7 @@
                     <button type="button" onclick="loadSuggestions()" class="wh-toggle">Авто з нестач</button>
                 </div>
 
+                <div id="procKitchenDemandSignals" class="proc-demand-signals"></div>
                 <div id="procListCards" class="proc-cards"></div>
                 <div id="procEmptyState" class="empty-state" style="display:none;">
                     <div class="empty-state-icon">🛒</div>
@@ -1313,14 +1348,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.3"></script>
-    <script src="js/notification.js?v=0.66.3"></script>
-    <script src="js/api.js?v=0.66.3"></script>
-    <script src="js/auth.js?v=0.66.3"></script>
-    <script src="js/components/sidebar.js?v=0.66.3"></script>
+    <script src="js/config.js?v=0.66.4"></script>
+    <script src="js/notification.js?v=0.66.4"></script>
+    <script src="js/api.js?v=0.66.4"></script>
+    <script src="js/auth.js?v=0.66.4"></script>
+    <script src="js/components/sidebar.js?v=0.66.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/warehouse-page.js?v=0.66.3"></script>
-    <script src="js/alerts.js?v=0.66.3"></script><script>
+    <script src="js/warehouse-page.js?v=0.66.4"></script>
+    <script src="js/alerts.js?v=0.66.4"></script><script>
     // ─── Pinata Tab (v33.5) ──────────────────
     async function loadPinataTab() {
         try {
@@ -1400,6 +1435,6 @@
         loadPinataTab();
     }
     </script>
-    <script src="js/ui.js?v=0.66.3"></script>
+    <script src="js/ui.js?v=0.66.4"></script>
 </body>
 </html>

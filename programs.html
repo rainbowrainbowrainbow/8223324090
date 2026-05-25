@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.66.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.3">
+    <link rel="stylesheet" href="css/base.css?v=0.66.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -530,6 +530,171 @@
             line-height: 1.42;
         }
 
+        .tech-card-mode-panel {
+            flex: 1 1 100%;
+            display: grid;
+            gap: 12px;
+            padding: 14px;
+            border: 1px solid rgba(20, 184, 166, 0.24);
+            border-radius: 16px;
+            background: rgba(20, 184, 166, 0.06);
+        }
+
+        .tech-card-mode-toggle {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            color: var(--gray-700, #334155);
+            font-size: 14px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .tech-card-mode-toggle input {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            accent-color: var(--primary-color, #14b8a6);
+        }
+
+        .tech-card-mode-toggle small,
+        .tech-card-hint,
+        .tech-card-row small,
+        .tech-card-writeoff-result {
+            color: var(--gray-500, #64748b);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        .tech-card-structured {
+            display: grid;
+            gap: 10px;
+        }
+
+        .tech-card-structured.hidden,
+        .tech-card-writeoff.hidden {
+            display: none !important;
+        }
+
+        .tech-card-rows {
+            display: grid;
+            gap: 8px;
+        }
+
+        .tech-card-row {
+            display: grid;
+            grid-template-columns: minmax(190px, 1.25fr) minmax(140px, .8fr) minmax(88px, .42fr) minmax(74px, .34fr) minmax(78px, .34fr) minmax(130px, .7fr) auto;
+            gap: 8px;
+            align-items: end;
+            padding: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.68);
+        }
+
+        .tech-card-row label,
+        .tech-card-writeoff label {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+            color: var(--gray-500, #64748b);
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        .tech-card-row input,
+        .tech-card-row select,
+        .tech-card-writeoff input {
+            width: 100%;
+            min-width: 0;
+            min-height: 38px;
+            padding: 8px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            background: var(--white, #fff);
+            color: var(--gray-800, #1f2937);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .tech-card-row-actions {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 108px;
+        }
+
+        .tech-card-row-actions button,
+        .tech-card-add-row {
+            min-height: 34px;
+            padding: 7px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.78);
+            color: var(--gray-700, #334155);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .tech-card-row-actions button:hover,
+        .tech-card-add-row:hover {
+            border-color: rgba(20, 184, 166, 0.42);
+            color: var(--primary-dark, #0f766e);
+        }
+
+        .tech-card-writeoff {
+            display: grid;
+            grid-template-columns: minmax(100px, .35fr) minmax(220px, 1fr) auto;
+            gap: 8px;
+            align-items: end;
+            padding: 10px;
+            border: 1px solid rgba(245, 158, 11, 0.28);
+            border-radius: 14px;
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .tech-card-hint {
+            margin: 0;
+        }
+
+        .tech-card-writeoff-result {
+            grid-column: 1 / -1;
+        }
+
+        .kitchen-consumption-list {
+            display: grid;
+            gap: 4px;
+            margin-top: 6px;
+        }
+
+        .kitchen-consumption-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 9px;
+            background: rgba(15, 23, 42, 0.04);
+            color: var(--gray-700, #334155);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .tech-card-empty {
+            padding: 12px;
+            border: 1px dashed rgba(148, 163, 184, 0.32);
+            border-radius: 12px;
+            color: var(--gray-500, #64748b);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
         .product-doc-modal .product-doc-modal-card {
             width: min(620px, calc(100vw - 28px));
             max-width: 620px;
@@ -796,9 +961,36 @@
         body.dark-mode .product-doc-panel,
         body.dark-mode .menu-section-chip,
         body.dark-mode .kitchen-detail-panel,
+        body.dark-mode .tech-card-mode-panel,
+        body.dark-mode .tech-card-row,
+        body.dark-mode .tech-card-writeoff,
+        body.dark-mode .tech-card-empty,
         [data-theme="dark"] .product-doc-panel {
             background: rgba(255, 255, 255, 0.04);
             border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        body.dark-mode .tech-card-row input,
+        body.dark-mode .tech-card-row select,
+        body.dark-mode .tech-card-writeoff input,
+        body.dark-mode .tech-card-row-actions button,
+        body.dark-mode .tech-card-add-row {
+            background: rgba(15, 23, 42, 0.72);
+            border-color: rgba(255, 255, 255, 0.12);
+            color: #f8fafc;
+        }
+
+        body.dark-mode .tech-card-mode-toggle,
+        body.dark-mode .tech-card-row label,
+        body.dark-mode .tech-card-writeoff label {
+            color: #e2e8f0;
+        }
+
+        body.dark-mode .tech-card-mode-toggle small,
+        body.dark-mode .tech-card-hint,
+        body.dark-mode .tech-card-empty,
+        body.dark-mode .tech-card-writeoff-result {
+            color: #cbd5e1;
         }
 
         body.dark-mode .product-doc-modal .product-doc-modal-card,
@@ -927,6 +1119,22 @@
 
             .product-catalog-card {
                 grid-template-columns: 1fr;
+            }
+
+            .tech-card-row,
+            .tech-card-writeoff {
+                grid-template-columns: 1fr;
+            }
+
+            .tech-card-row-actions {
+                justify-content: stretch;
+                min-width: 0;
+            }
+
+            .tech-card-row-actions button,
+            .tech-card-add-row,
+            .tech-card-writeoff button {
+                width: 100%;
             }
         }
     </style>
@@ -1104,6 +1312,32 @@
                         <label for="pf-tech-card">Техкарта</label>
                         <textarea id="pf-tech-card" placeholder="Вага, вихід, зберігання, production notes"></textarea>
                     </div>
+                    <div class="form-field product-kitchen-fields product-menu-fields hidden tech-card-mode-panel" id="pf-tech-card-mode-panel">
+                        <label class="tech-card-mode-toggle" for="pf-tech-card-detailed">
+                            <input type="checkbox" id="pf-tech-card-detailed">
+                            <span>
+                                Детальна техкарта зі складом
+                                <small>Інгредієнти на одну порцію, складська привʼязка, втрати та контрольоване списання.</small>
+                            </span>
+                        </label>
+                        <div id="pf-tech-card-structured" class="tech-card-structured hidden">
+                            <p class="tech-card-hint">Виберіть складський товар там, де він вже є у складі. Рядки без складської привʼязки можна зберегти як підготовку, але вони не списуються автоматично.</p>
+                            <div id="pf-tech-card-rows" class="tech-card-rows"></div>
+                            <button type="button" id="addTechCardIngredientBtn" class="tech-card-add-row">+ Додати інгредієнт</button>
+                            <div id="pf-tech-card-writeoff" class="tech-card-writeoff hidden">
+                                <label for="pf-tech-writeoff-units">
+                                    Порцій
+                                    <input type="number" id="pf-tech-writeoff-units" value="1" min="1" step="1">
+                                </label>
+                                <label for="pf-tech-writeoff-reason">
+                                    Причина
+                                    <input type="text" id="pf-tech-writeoff-reason" placeholder="Продано / вироблено / банкет">
+                                </label>
+                                <button type="button" id="pf-tech-writeoff-btn" class="btn-page-secondary">Списати склад</button>
+                                <div id="pf-tech-writeoff-result" class="tech-card-writeoff-result"></div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-field cake-decoration-field hidden">
                         <label for="pf-cake-decoration">Оформлення торта</label>
                         <textarea id="pf-cake-decoration" placeholder="Декор, topper, кольори, свічки, тематичні елементи"></textarea>
@@ -1267,13 +1501,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.66.3"></script>
-    <script src="js/config.js?v=0.66.3"></script>
-    <script src="js/notification.js?v=0.66.3"></script>
-    <script src="js/api.js?v=0.66.3"></script>
-    <script src="js/auth.js?v=0.66.3"></script>
-    <script src="js/components/sidebar.js?v=0.66.3"></script>
+    <script src="js/ui.js?v=0.66.4"></script>
+    <script src="js/config.js?v=0.66.4"></script>
+    <script src="js/notification.js?v=0.66.4"></script>
+    <script src="js/api.js?v=0.66.4"></script>
+    <script src="js/auth.js?v=0.66.4"></script>
+    <script src="js/components/sidebar.js?v=0.66.4"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.66.3"></script><script src="js/alerts.js?v=0.66.3"></script>
+    <script src="js/programs-page.js?v=0.66.4"></script><script src="js/alerts.js?v=0.66.4"></script>
 </body>
 </html>

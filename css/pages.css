@@ -2945,6 +2945,54 @@ body.dark-mode .operations-pack-bar select {
     box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
 }
 
+.cert-page-empty {
+    display: grid;
+    min-height: 224px;
+    align-content: center;
+    justify-items: center;
+    gap: 16px;
+    text-align: center;
+}
+
+.cert-page-empty-copy {
+    display: grid;
+    width: min(100%, 560px);
+    gap: 8px;
+    justify-items: center;
+}
+
+.cert-page-empty h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.cert-page-empty p {
+    max-width: 520px;
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.cert-page-empty-cta {
+    width: auto;
+    max-width: 100%;
+    justify-self: center;
+    white-space: normal;
+    text-align: center;
+}
+
+.cert-page-empty-cta:focus-visible {
+    outline: 3px solid rgba(20, 184, 166, 0.34);
+    outline-offset: 3px;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3196,12 +3244,17 @@ body.dark-mode .cert-page-stats b {
 
 body.dark-mode .cert-page-hero p,
 body.dark-mode .cert-result-card p,
+body.dark-mode .cert-page-empty p,
 body.dark-mode .cert-result-meta,
 body.dark-mode .cert-page-card-meta,
 body.dark-mode .cert-page-card-main span:last-child,
 body.dark-mode .cert-page-filters label,
 body.dark-mode .cert-form-card .form-field {
     color: #cbd5e1;
+}
+
+body.dark-mode .cert-page-empty h3 {
+    color: #f8fafc;
 }
 
 body.dark-mode .cert-page-filters input,
@@ -3315,9 +3368,28 @@ body.dark-mode .cert-fixed-type-field strong {
     .cert-page-toolbar,
     .cert-form-card,
     .cert-result-card,
+    .cert-page-empty,
     .cert-page-card {
         border-radius: 14px;
         padding: 14px;
+    }
+
+    .cert-page-empty {
+        min-height: 188px;
+        gap: 14px;
+    }
+
+    .cert-page-empty-copy {
+        gap: 6px;
+    }
+
+    .cert-page-empty h3 {
+        font-size: 18px;
+    }
+
+    .cert-page-empty-cta {
+        width: 100%;
+        justify-content: center;
     }
 
     .cert-batch-code-row {

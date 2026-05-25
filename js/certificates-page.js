@@ -250,10 +250,12 @@
 
         if (!state.items.length) {
             container.innerHTML = `
-                <div class="cert-page-empty">
-                    <h3>Сертифікатів не знайдено</h3>
-                    <p>Спробуйте змінити фільтр або видати новий сертифікат чи абонемент.</p>
-                    <a class="btn-page-primary" href="/certificates/new">${SINGLE_ISSUE_LABEL}</a>
+                <div class="cert-page-empty" role="status">
+                    <div class="cert-page-empty-copy">
+                        <h3>Сертифікатів не знайдено</h3>
+                        <p>Спробуйте змінити фільтр або видати новий сертифікат чи абонемент.</p>
+                    </div>
+                    <a class="btn-page-primary cert-page-empty-cta" href="/certificates/new">${SINGLE_ISSUE_LABEL}</a>
                 </div>`;
             return;
         }

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.47 - CRM 63.47: drag-and-drop перенос задач
+
+### Профіль / Мій день / overdue drag-and-drop / 25.05.2026 [codex]
+- **Перенос із "Прострочено" у "Сьогодні" знову працює drag-and-drop** - overdue-картка доходить до `/api/tasks/:id/reschedule` і після reload виходить із простроченого bucket.
+- **Прибрано PostgreSQL помилку `$2`** - reschedule SQL більше не використовує один параметр одночасно як `TIMESTAMP` і `TIMESTAMPTZ`, тому `inconsistent types deduced for parameter $2` не зриває перенесення.
+- **Збережено реальний durable move** - дія оновлює canonical `tasks.deadline`, денний `tasks.date`, scheduled-поля для запланованих задач і фіксує source surface `profile_my_cabinet_overdue_to_today_drop`.
+- **Regression test** - додано перевірку typed SQL-параметрів для reschedule, щоб drag/drop перенос не повернувся до помилки типів.
+
+---
+
 ## v0.63.46 - CRM 63.46: оголошення і TTS
 
 ### Звук / оголошення / TTS-підключення / 25.05.2026 [codex]

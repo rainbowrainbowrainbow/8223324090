@@ -67,3 +67,11 @@ test('deadline reschedule updates stale due date and clears snooze state', () =>
     assert.match(source, /snoozed_until = NULL/);
     assert.match(source, /remind_at = NULL/);
 });
+
+test('deadline reschedule uses separate typed params for deadline and scheduled timestamps', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'taskExecution.js'), 'utf8');
+    assert.match(source, /deadline = \$2::timestamp/);
+    assert.match(source, /WHEN \$3::timestamptz IS NULL OR scheduled_start_at IS NULL/);
+    assert.match(source, /\[task\.id, deadline \|\| null, deadline \|\| null, task\.version \|\| 1\]/);
+    assert.doesNotMatch(source, /deadline = \$2,\s+scheduled_end_at = CASE/);
+});

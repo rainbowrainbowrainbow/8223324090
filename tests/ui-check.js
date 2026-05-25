@@ -358,9 +358,14 @@ checkPage('chat-settings.html', (doc) => {
 checkPage('sound.html', (doc, html) => {
     const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
     const soundCss = fs.readFileSync(path.join(ROOT, 'css', 'sound.css'), 'utf8');
+    const musicRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'music.js'), 'utf8');
     check('Sound library exposes upload as the real music fallback action', html.includes('onclick="_openUploadModal()"') && html.includes('Завантажити аудіо') && soundCode.includes('window._openUploadModal') && soundCode.includes('/music/library/upload') && soundCode.includes('new FormData()'));
     check('Sound page does not expose active soon-only Suno generation button', html.includes('AI-музика недоступна') && html.includes('disabled aria-disabled="true"') && !html.includes('Створити музику (скоро)'));
     check('Sound upload and disabled music states have explicit styling', soundCss.includes('.sound-create-btn.upload') && soundCss.includes('.sound-create-btn.is-disabled') && soundCss.includes('body.dark-mode .sound-create-btn.upload'));
+    check('Sound announcements expose command surface and TTS settings panel', !!doc.getElementById('createAnnouncementBtn') && !!doc.getElementById('announcementStats') && !!doc.getElementById('ttsSettingsForm') && !!doc.getElementById('ttsApiKey') && !!doc.getElementById('ttsSaveSettingsBtn') && html.includes('Підключення голосу'));
+    check('Sound announcement create payload matches API contract', soundCode.includes('text_content: text') && soundCode.includes('announcement_type:') && soundCode.includes('duration_seconds:') && musicRouteCode.includes('body.text_content ?? body.text') && musicRouteCode.includes('_normalizeAnnouncementPriority'));
+    check('Sound announcements have real TTS config and apply flow', soundCode.includes('/music/tts-config') && soundCode.includes('generateAnnouncementTts') && soundCode.includes('/apply-tts') && musicRouteCode.includes("SOUND_TTS_SETTING_KEY = 'sound_tts_config'") && musicRouteCode.includes("router.put('/tts-config'") && musicRouteCode.includes("router.post('/announcements/:id/apply-tts'"));
+    check('Sound announcement redesign has scoped dark/mobile styling', soundCss.includes('.sound-announcement-command') && soundCss.includes('.sound-ann-card') && soundCss.includes('.sound-tts-panel') && soundCss.includes('body.dark-mode .sound-announcement-command') && soundCss.includes('.sound-announcement-layout'));
 });
 
 checkPage('tasks.html', (doc, html) => {

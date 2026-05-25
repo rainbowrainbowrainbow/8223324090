@@ -6,10 +6,12 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const multer = require('multer');
 const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { settingsCache } = require('../services/cache');
 const {
     uploadAudioFromUrl,
     uploadAudioBufferWithMetadata,
@@ -17,6 +19,20 @@ const {
     makeAudioFilename
 } = require('../services/audioStorage');
 const log = createLogger('Music');
+
+const SOUND_TTS_SETTING_KEY = 'sound_tts_config';
+const DEFAULT_SOUND_TTS_CONFIG = {
+    enabled: true,
+    provider: 'kie_ai',
+    model: 'elevenlabs/text-to-speech-multilingual-v2',
+    voice: 'Rachel',
+    language: 'uk',
+    timeoutMs: 30000,
+    apiKey: ''
+};
+const SOUND_TTS_PROVIDERS = new Set(['kie_ai']);
+const SOUND_TTS_VOICES = new Set(['Rachel', 'Adam', 'Bella', 'Antoni', 'Elli', 'Josh']);
+const SOUND_TTS_LANGUAGES = new Set(['uk', 'en', 'pl', 'de', 'fr', 'es']);
 
 // File upload for sound library
 const uploadSound = multer({
@@ -61,6 +77,187 @@ async function _cleanupStoredSound(stored) {
     }
 }
 
+function _safeJson(value, fallback = {}) {
+    if (!value || typeof value !== 'string') return { ...fallback };
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? { ...fallback, ...parsed } : { ...fallback };
+    } catch {
+        return { ...fallback };
+    }
+}
+
+function _maskSecret(value) {
+    const text = String(value || '');
+    if (!text) return '';
+    if (text.length <= 8) return '••••';
+    return `${text.slice(0, 4)}••••${text.slice(-4)}`;
+}
+
+function _normalizeTtsConfig(input = {}, current = DEFAULT_SOUND_TTS_CONFIG) {
+    const provider = String(input.provider || current.provider || DEFAULT_SOUND_TTS_CONFIG.provider).trim().toLowerCase();
+    const model = String(input.model || current.model || DEFAULT_SOUND_TTS_CONFIG.model).trim().slice(0, 160) || DEFAULT_SOUND_TTS_CONFIG.model;
+    const voice = String(input.voice || current.voice || DEFAULT_SOUND_TTS_CONFIG.voice).trim();
+    const language = String(input.language || current.language || DEFAULT_SOUND_TTS_CONFIG.language).trim().toLowerCase();
+    const timeoutMs = Math.max(5000, Math.min(Number(input.timeoutMs || current.timeoutMs || DEFAULT_SOUND_TTS_CONFIG.timeoutMs) || DEFAULT_SOUND_TTS_CONFIG.timeoutMs, 120000));
+    const next = {
+        enabled: input.enabled !== false,
+        provider: SOUND_TTS_PROVIDERS.has(provider) ? provider : DEFAULT_SOUND_TTS_CONFIG.provider,
+        model,
+        voice: SOUND_TTS_VOICES.has(voice) ? voice : DEFAULT_SOUND_TTS_CONFIG.voice,
+        language: SOUND_TTS_LANGUAGES.has(language) ? language : DEFAULT_SOUND_TTS_CONFIG.language,
+        timeoutMs,
+        apiKey: String(current.apiKey || '').trim()
+    };
+    if (typeof input.apiKey === 'string' && input.apiKey.trim()) next.apiKey = input.apiKey.trim();
+    if (input.clearApiKey === true) next.apiKey = '';
+    return next;
+}
+
+async function _readSoundTtsConfig() {
+    const cached = settingsCache.get(SOUND_TTS_SETTING_KEY);
+    const raw = cached !== null
+        ? cached
+        : (await pool.query('SELECT value FROM settings WHERE key = $1', [SOUND_TTS_SETTING_KEY])).rows[0]?.value;
+    if (cached === null) settingsCache.set(SOUND_TTS_SETTING_KEY, raw || null);
+    return _normalizeTtsConfig(_safeJson(raw, DEFAULT_SOUND_TTS_CONFIG), DEFAULT_SOUND_TTS_CONFIG);
+}
+
+async function _writeSoundTtsConfig(input) {
+    const current = await _readSoundTtsConfig();
+    const next = _normalizeTtsConfig(input, current);
+    await pool.query(
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [SOUND_TTS_SETTING_KEY, JSON.stringify(next)]
+    );
+    settingsCache.invalidate(SOUND_TTS_SETTING_KEY);
+    return next;
+}
+
+function _runtimeSoundTtsConfig(stored) {
+    const envKey = process.env.KIE_API_KEY || '';
+    const apiKey = envKey || stored.apiKey || '';
+    return {
+        ...stored,
+        apiKey,
+        keySource: envKey ? 'env' : (stored.apiKey ? 'settings' : 'missing'),
+        keyConfigured: Boolean(apiKey)
+    };
+}
+
+function _publicSoundTtsConfig(config) {
+    return {
+        success: true,
+        enabled: config.enabled !== false,
+        provider: config.provider,
+        model: config.model,
+        voice: config.voice,
+        language: config.language,
+        timeoutMs: config.timeoutMs,
+        keySource: config.keySource,
+        keyConfigured: config.keyConfigured,
+        apiKeyMasked: _maskSecret(config.apiKey)
+    };
+}
+
+async function _getSoundTtsRuntimeConfig() {
+    return _runtimeSoundTtsConfig(await _readSoundTtsConfig());
+}
+
+function _normalizeAnnouncementType(value) {
+    const type = String(value || 'general').trim().toLowerCase();
+    return ['general', 'safety', 'event', 'promo', 'info', 'schedule', 'birthday'].includes(type) ? type : 'general';
+}
+
+function _normalizeAnnouncementPriority(value) {
+    if (Number.isFinite(Number(value))) return Math.max(0, Math.min(Number(value), 10));
+    const key = String(value || 'normal').trim().toLowerCase();
+    if (key === 'urgent') return 10;
+    if (key === 'high') return 7;
+    if (key === 'low') return 1;
+    return 3;
+}
+
+function _announcementPayload(body = {}) {
+    return {
+        title: String(body.title || '').trim(),
+        textContent: String(body.text_content ?? body.text ?? '').trim(),
+        announcementType: _normalizeAnnouncementType(body.announcement_type || body.type),
+        scheduleType: String(body.schedule_type || 'once').trim() || 'once',
+        scheduledAt: body.scheduled_at || null,
+        repeatCron: body.repeat_cron || null,
+        durationSeconds: Math.max(5, Math.min(Number(body.duration_seconds || 30) || 30, 600)),
+        priority: _normalizeAnnouncementPriority(body.priority),
+        zoneId: body.zone_id || null
+    };
+}
+
+function _postJson(hostname, requestPath, payload, headers = {}, timeoutMs = 30000) {
+    const body = JSON.stringify(payload || {});
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname,
+            path: requestPath,
+            method: 'POST',
+            timeout: timeoutMs,
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+                ...headers
+            }
+        }, resp => {
+            let data = '';
+            resp.on('data', chunk => { data += chunk; });
+            resp.on('end', () => {
+                let parsed;
+                try { parsed = data ? JSON.parse(data) : {}; }
+                catch { parsed = { raw: data }; }
+                resolve({ ...parsed, httpStatus: resp.statusCode });
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('TTS request timeout')));
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
+}
+
+async function _createKieTtsTask(config, input = {}) {
+    if (!config.enabled) {
+        const err = new Error('TTS вимкнено в налаштуваннях');
+        err.statusCode = 409;
+        throw err;
+    }
+    if (!config.keyConfigured) {
+        const err = new Error('TTS API key не налаштовано');
+        err.statusCode = 501;
+        throw err;
+    }
+    const text = String(input.text || '').trim().slice(0, 5000);
+    if (!text) {
+        const err = new Error('Потрібен текст для TTS');
+        err.statusCode = 400;
+        throw err;
+    }
+    return _postJson('api.kie.ai', '/api/v1/jobs/createTask', {
+        model: input.model || config.model,
+        input: {
+            text,
+            voice: input.voice || config.voice,
+            language: input.language || config.language
+        }
+    }, { Authorization: `Bearer ${config.apiKey}` }, config.timeoutMs);
+}
+
+function _taskIdFromKieResponse(response = {}) {
+    return response.data?.taskId || response.taskId || response.task_id || null;
+}
+
+function _audioUrlFromKieResponse(response = {}) {
+    return response.url || response.data?.url || response.audioUrl || null;
+}
+
 // All music routes require authentication and sound-page-level access.
 router.use(authenticateToken);
 router.use(requireRole('manager', 'art_director'));
@@ -86,15 +283,15 @@ router.get('/announcements', async (req, res) => {
 
 router.post('/announcements', async (req, res) => {
     try {
-        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, zone_id } = req.body;
-        if (!title?.trim() || !text_content?.trim()) return res.status(400).json({ error: 'Назва і текст обов\'язкові' });
-        const initStatus = scheduled_at ? 'scheduled' : 'draft';
+        const payload = _announcementPayload(req.body);
+        if (!payload.title || !payload.textContent) return res.status(400).json({ error: 'Назва і текст обов\'язкові' });
+        const initStatus = payload.scheduledAt ? 'scheduled' : 'draft';
         const r = await pool.query(
             `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, zone_id, status, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-            [title.trim(), text_content.trim(), announcement_type || 'promo', schedule_type || 'once',
-             scheduled_at || null, repeat_cron || null, duration_seconds || 30, priority || 0,
-             zone_id || null, initStatus, req.user?.username || 'system']
+            [payload.title, payload.textContent, payload.announcementType, payload.scheduleType,
+             payload.scheduledAt, payload.repeatCron, payload.durationSeconds, payload.priority,
+             payload.zoneId, initStatus, req.user?.username || 'system']
         );
         res.json({ success: true, announcement: r.rows[0] });
     } catch (err) { log.error('Create announcement', err); res.status(500).json({ error: 'Internal server error' }); }
@@ -102,13 +299,15 @@ router.post('/announcements', async (req, res) => {
 
 router.put('/announcements/:id', async (req, res) => {
     try {
-        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, status, zone_id } = req.body;
+        const payload = _announcementPayload(req.body);
+        if (!payload.title || !payload.textContent) return res.status(400).json({ error: 'Назва і текст обов\'язкові' });
         const r = await pool.query(
             `UPDATE announcements SET title=$1, text_content=$2, announcement_type=$3, schedule_type=$4,
              scheduled_at=$5, repeat_cron=$6, duration_seconds=$7, priority=$8, status=$9, zone_id=$10, updated_at=NOW()
              WHERE id=$11 AND deleted_at IS NULL RETURNING *`,
-            [title, text_content, announcement_type, schedule_type, scheduled_at || null, repeat_cron || null,
-             duration_seconds || 30, priority || 0, status || 'draft', zone_id || null, req.params.id]
+            [payload.title, payload.textContent, payload.announcementType, payload.scheduleType,
+             payload.scheduledAt, payload.repeatCron, payload.durationSeconds, payload.priority,
+             req.body.status || 'draft', payload.zoneId, req.params.id]
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ success: true, announcement: r.rows[0] });
@@ -296,46 +495,106 @@ router.get('/log', async (req, res) => {
 });
 
 // ============================================
-// TTS Generation via Kie.ai
+// TTS Settings + Generation via Kie.ai
 // ============================================
+
+router.get('/tts-config', requireRole('creator', 'director', 'art_director'), async (req, res) => {
+    try {
+        res.json(_publicSoundTtsConfig(await _getSoundTtsRuntimeConfig()));
+    } catch (err) {
+        log.error('GET /tts-config error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/tts-config', requireRole('creator', 'director', 'art_director'), async (req, res) => {
+    try {
+        const stored = await _writeSoundTtsConfig(req.body || {});
+        res.json(_publicSoundTtsConfig(_runtimeSoundTtsConfig(stored)));
+    } catch (err) {
+        log.error('PUT /tts-config error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/tts-config/test', requireRole('creator', 'director', 'art_director'), async (req, res) => {
+    try {
+        const config = await _getSoundTtsRuntimeConfig();
+        if (!config.enabled) return res.status(409).json({ error: 'TTS вимкнено в налаштуваннях' });
+        if (!config.keyConfigured) return res.status(501).json({ error: 'TTS API key не налаштовано' });
+        res.json({
+            ..._publicSoundTtsConfig(config),
+            message: `TTS готовий: ${config.provider}, ${config.model}, ключ із ${config.keySource}.`
+        });
+    } catch (err) {
+        log.error('POST /tts-config/test error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 'art_director'), async (req, res) => {
     const id = parseInt(req.params.id);
     try {
         const ann = await pool.query('SELECT * FROM announcements WHERE id = $1', [id]);
         if (!ann.rows.length) return res.status(404).json({ error: 'Не знайдено' });
-        const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
-
-        const payload = JSON.stringify({
-            model: 'elevenlabs/text-to-speech-multilingual-v2',
-            input: {
-                text: ann.rows[0].text_content,
-                voice: 'Rachel', language: 'uk'
-            }
-        });
-        const kieRes = await new Promise((resolve, reject) => {
-            const r = require('https').request({
-                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
-                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ error: d }); } }); });
-            r.on('error', reject); r.write(payload); r.end();
+        const config = await _getSoundTtsRuntimeConfig();
+        const kieRes = await _createKieTtsTask(config, {
+            text: ann.rows[0].text_content,
+            voice: req.body?.voice,
+            language: req.body?.language
         });
 
-        const taskId = kieRes.data?.taskId || kieRes.taskId;
-        if (!taskId && !kieRes.url && !kieRes.data?.url)
+        const taskId = _taskIdFromKieResponse(kieRes);
+        const audioUrl = _audioUrlFromKieResponse(kieRes);
+        if (!taskId && !audioUrl)
             return res.status(502).json({ error: 'TTS failed', detail: kieRes });
 
-        if (kieRes.url) {
+        if (audioUrl) {
+            const filename = makeAudioFilename('announcement', ann.rows[0].title || `announcement-${id}`);
+            const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
+            const finalUrl = permanentUrl || audioUrl;
             await pool.query(
-                'UPDATE announcements SET voice_url=$1, voice_provider=$2, tts_generated=true WHERE id=$3',
-                [kieRes.url, 'elevenlabs', id]
+                'UPDATE announcements SET voice_url=$1, voice_provider=$2, tts_generated=true, tts_generating=false, updated_at=NOW() WHERE id=$3',
+                [finalUrl, 'elevenlabs', id]
             );
-            return res.json({ ok: true, voiceUrl: kieRes.url, status: 'ready' });
+            await pool.query(`INSERT INTO music_log (action, announcement_id, details) VALUES ('tts', $1, $2)`,
+                [id, JSON.stringify({ provider: 'kie_ai', status: 'ready', voice: config.voice })]);
+            return res.json({ success: true, voiceUrl: finalUrl, status: 'ready' });
         }
-        res.json({ ok: true, taskId: kieRes.taskId, status: 'generating' });
+        await pool.query(
+            'UPDATE announcements SET voice_provider=$1, tts_generated=false, tts_generating=true, updated_at=NOW() WHERE id=$2',
+            ['elevenlabs', id]
+        );
+        await pool.query(`INSERT INTO music_log (action, announcement_id, details) VALUES ('tts', $1, $2)`,
+            [id, JSON.stringify({ provider: 'kie_ai', status: 'generating', taskId })]);
+        res.json({ success: true, taskId, status: 'generating' });
     } catch (err) {
         log.error('POST /generate-tts error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    }
+});
+
+router.post('/announcements/:id/apply-tts', requireRole('admin', 'director', 'art_director'), async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { audioUrl } = req.body || {};
+    if (!audioUrl) return res.status(400).json({ error: 'audioUrl required' });
+    try {
+        const ann = await pool.query('SELECT id, title FROM announcements WHERE id=$1 AND deleted_at IS NULL', [id]);
+        if (!ann.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        const filename = makeAudioFilename('announcement', ann.rows[0].title || `announcement-${id}`);
+        const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
+        const finalUrl = permanentUrl || audioUrl;
+        const r = await pool.query(
+            `UPDATE announcements
+             SET voice_url=$1, voice_provider='elevenlabs', tts_generated=true, tts_generating=false, updated_at=NOW()
+             WHERE id=$2 RETURNING *`,
+            [finalUrl, id]
+        );
+        await pool.query(`INSERT INTO music_log (action, announcement_id, details) VALUES ('tts', $1, $2)`,
+            [id, JSON.stringify({ provider: 'kie_ai', status: 'ready', source: 'async_apply' })]);
+        res.json({ success: true, announcement: r.rows[0], voiceUrl: finalUrl });
+    } catch (err) {
+        log.error('POST /announcements/:id/apply-tts error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -477,33 +736,19 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
     const { text, name, category, voice, language } = req.body;
     if (!text) return res.status(400).json({ error: 'Потрібен text' });
     try {
-        const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
-
-        const payload = JSON.stringify({
-            model: 'elevenlabs/text-to-speech-multilingual-v2',
-            input: {
-                text: text.substring(0, 5000),
-                voice: voice || 'Rachel',
-                language: language || 'uk'
-            }
+        const config = await _getSoundTtsRuntimeConfig();
+        const kieRes = await _createKieTtsTask(config, {
+            text,
+            voice,
+            language
         });
-
-        const kieRes = await new Promise((resolve, reject) => {
-            const r = require('https').request({
-                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
-                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
-            r.on('error', reject); r.write(payload); r.end();
-        });
-
-        const taskId = kieRes.data?.taskId || kieRes.taskId;
+        const taskId = _taskIdFromKieResponse(kieRes);
         if (taskId) {
             return res.json({ success: true, taskId, status: 'generating', name: name || `TTS: ${text.substring(0, 50)}`, category: category || 'effects' });
         }
 
-        if (kieRes.url || kieRes.data?.url) {
-            const audioUrl = kieRes.url || kieRes.data.url;
+        const audioUrl = _audioUrlFromKieResponse(kieRes);
+        if (audioUrl) {
             const filename = makeAudioFilename(category || 'tts', name || 'voice');
             const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
             const finalUrl = permanentUrl || audioUrl;
@@ -518,13 +763,10 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
 
             return res.json({ success: true, id: r.rows[0].id, url: finalUrl, status: 'ready' });
         }
-        if (kieRes.taskId || kieRes.data?.taskId) {
-            return res.json({ success: true, taskId: kieRes.taskId || kieRes.data.taskId, status: 'generating' });
-        }
         res.status(502).json({ error: 'TTS не вдалось', detail: kieRes });
     } catch (err) {
         log.error('generate-tts error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
     }
 });
 
@@ -543,12 +785,12 @@ router.post('/library/generate-music', requireRole('admin', 'creator', 'director
 // v39.8: Poll generation status + save to CRM uploads
 router.get('/library/generate-status/:taskId', async (req, res) => {
     try {
-        const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY not configured' });
+        const config = await _getSoundTtsRuntimeConfig();
+        if (!config.keyConfigured) return res.status(501).json({ error: 'TTS API key не налаштовано' });
 
         const kieRes = await new Promise((resolve, reject) => {
             require('https').get(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${req.params.taskId}`, {
-                headers: { 'Authorization': `Bearer ${KIE_KEY}` }
+                headers: { 'Authorization': `Bearer ${config.apiKey}` }
             }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } }); }).on('error', reject);
         });
 

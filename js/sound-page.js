@@ -56,7 +56,10 @@
 
         // Lazy load data
         if (tabName === 'library' && !_loadedTabs.library) loadLibrary();
-        if (tabName === 'announcements' && !_loadedTabs.announcements) loadAnnouncements();
+        if (tabName === 'announcements') {
+            if (!_loadedTabs.announcements) loadAnnouncements();
+            loadTtsConfig();
+        }
         if (tabName === 'projects' && !_loadedTabs.projects) loadProjects();
         if (tabName === 'log' && !_loadedTabs.log) { initLogFilters(); loadLog(); }
     }
@@ -184,6 +187,22 @@
     // ANNOUNCEMENTS
     // ==========================================
     let _announcements = [];
+    let _ttsConfigLoaded = false;
+    let _announcementActionsBound = false;
+    let _ttsSettingsBound = false;
+
+    const ANN_TYPE_LABELS = {
+        general: 'Загальне',
+        safety: 'Безпека',
+        event: 'Подія',
+        promo: 'Промо',
+        info: 'Інфо',
+        schedule: 'Розклад',
+        birthday: 'День народження'
+    };
+    const ANN_TYPE_ICONS = { general: '📢', safety: '🛡️', event: '🎉', promo: '🏷️', info: 'ℹ️', schedule: '🕒', birthday: '🎂' };
+    const ANN_STATUS_LABELS = { draft: 'Чернетка', active: 'Активне', scheduled: 'Заплановано', archived: 'Архів' };
+    const ANN_DELIVERY_LABELS = { success: 'доставлено', delivered: 'доставлено', failed: 'помилка', pending: 'очікує' };
 
     async function loadAnnouncements() {
         const container = document.getElementById('announcementsContainer');
@@ -200,69 +219,330 @@
         }
     }
 
+    function normalizeAnnouncementPriority(value) {
+        const num = Number(value || 0);
+        if (num >= 9) return { label: 'Терміново', cls: 'urgent' };
+        if (num >= 6) return { label: 'Високий', cls: 'high' };
+        return { label: 'Звичайний', cls: 'normal' };
+    }
+
+    function announcementText(item) {
+        return item.text_content || item.text || item.content || '';
+    }
+
+    function announcementType(item) {
+        return item.announcement_type || item.type || 'general';
+    }
+
+    function renderAnnouncementStats() {
+        const el = document.getElementById('announcementStats');
+        if (!el) return;
+        const active = _announcements.filter(a => a.status === 'active').length;
+        const scheduled = _announcements.filter(a => a.status === 'scheduled').length;
+        const voiced = _announcements.filter(a => a.voice_url || a.tts_generated).length;
+        const plays = _announcements.reduce((sum, a) => sum + (Number(a.played_count ?? a.play_count) || 0), 0);
+        el.innerHTML = `
+            <div class="sound-ann-stat"><strong>${_announcements.length}</strong><span>усього</span></div>
+            <div class="sound-ann-stat"><strong>${active}</strong><span>активні</span></div>
+            <div class="sound-ann-stat"><strong>${scheduled}</strong><span>заплановано</span></div>
+            <div class="sound-ann-stat"><strong>${voiced}</strong><span>з голосом</span></div>
+            <div class="sound-ann-stat"><strong>${plays}</strong><span>програвань</span></div>`;
+    }
+
     function renderAnnouncements() {
         const container = document.getElementById('announcementsContainer');
         if (!container) return;
+        renderAnnouncementStats();
 
         if (!_announcements.length) {
-            container.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Оголошень немає</p><p class="sound-empty-sub">Створіть перше оголошення</p></div>';
+            container.innerHTML = '<div class="sound-empty sound-ann-empty"><div class="sound-empty-icon">📢</div><p>Оголошень немає</p><p class="sound-empty-sub">Створіть перше оголошення або згенеруйте голос через TTS-панель.</p></div>';
             return;
         }
 
-        const TYPE_ICONS = { general: '📢', safety: '🛡️', event: '🎉', promo: '🏷️' };
-        const PRIORITY_BADGES = { urgent: '🔴', high: '🟡', normal: '' };
-
-        let html = '<div class="sound-ann-list">';
+        let html = '';
         for (const a of _announcements) {
-            const icon = TYPE_ICONS[a.type] || '📢';
-            const priority = PRIORITY_BADGES[a.priority] || '';
+            const type = announcementType(a);
+            const icon = ANN_TYPE_ICONS[type] || '📢';
+            const priority = normalizeAnnouncementPriority(a.priority);
+            const text = announcementText(a);
+            const plays = Number(a.played_count ?? a.play_count) || 0;
             const date = a.created_at ? new Date(a.created_at).toLocaleDateString('uk', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-            const statusCls = a.is_deleted ? 'sound-ann-deleted' : (a.status === 'active' ? 'sound-ann-active' : '');
+            const status = a.is_deleted ? 'archived' : (a.status || 'draft');
+            const delivery = a.last_delivery_status ? (ANN_DELIVERY_LABELS[a.last_delivery_status] || a.last_delivery_status) : '';
+            const hasVoice = Boolean(a.voice_url || a.tts_generated);
+            const isGenerating = Boolean(a.tts_generating);
 
-            html += `<div class="sound-ann-card ${statusCls}" data-id="${a.id}">
-                <div class="sound-ann-icon">${icon} ${priority}</div>
-                <div class="sound-ann-body">
-                    <div class="sound-ann-title">${_esc(a.title)}</div>
-                    ${a.text ? `<div class="sound-ann-text">${_esc(a.text).substring(0, 120)}</div>` : ''}
+            html += `<article class="sound-ann-card sound-ann-card--${_esc(priority.cls)}" data-id="${a.id}">
+                <div class="sound-ann-marker" aria-hidden="true">${icon}</div>
+                <div class="sound-ann-content">
+                    <div class="sound-ann-topline">
+                        <span class="sound-ann-type">${_esc(ANN_TYPE_LABELS[type] || type)}</span>
+                        <span class="sound-ann-priority sound-ann-priority--${_esc(priority.cls)}">${_esc(priority.label)}</span>
+                        <span class="sound-ann-status">${_esc(ANN_STATUS_LABELS[status] || status)}</span>
+                    </div>
+                    <h3 class="sound-ann-title">${_esc(a.title)}</h3>
+                    <p class="sound-ann-text">${_esc(text).slice(0, 180)}${text.length > 180 ? '...' : ''}</p>
                     <div class="sound-ann-meta">
-                        <span>${_esc(a.type || 'загальне')}</span>
-                        ${a.play_count ? `<span class="sound-card-sep">•</span><span>▶ ${a.play_count}×</span>` : ''}
-                        ${date ? `<span class="sound-card-sep">•</span><span>${date}</span>` : ''}
+                        <span>▶ ${plays} програвань</span>
+                        ${hasVoice ? '<span>🎙️ голос готовий</span>' : isGenerating ? '<span>⏳ TTS генерується</span>' : '<span>без голосу</span>'}
+                        ${delivery ? `<span>доставка: ${_esc(delivery)}</span>` : ''}
+                        ${date ? `<span>${date}</span>` : ''}
                     </div>
                 </div>
                 <div class="sound-ann-actions">
-                    <button class="btn-icon sound-play-ann" data-id="${a.id}" title="Програти">▶</button>
-                    ${a.is_deleted ? `<button class="btn-icon sound-restore-ann" data-id="${a.id}" title="Відновити">♻️</button>` : `<button class="btn-icon sound-delete-ann" data-id="${a.id}" title="Видалити">🗑️</button>`}
+                    ${a.voice_url ? `<button type="button" class="sound-ann-action sound-ann-audio" data-url="${_esc(a.voice_url)}" title="Прослухати голос">🔊</button>` : ''}
+                    <button type="button" class="sound-ann-action sound-generate-ann-tts" data-id="${a.id}" title="Згенерувати TTS">🎙️</button>
+                    <button type="button" class="sound-ann-action sound-play-ann" data-id="${a.id}" title="Відправити/програти">▶</button>
+                    ${a.is_deleted ? `<button type="button" class="sound-ann-action sound-restore-ann" data-id="${a.id}" title="Відновити">♻️</button>` : `<button type="button" class="sound-ann-action sound-delete-ann" data-id="${a.id}" title="Видалити">🗑️</button>`}
                 </div>
-            </div>`;
+            </article>`;
         }
-        html += '</div>';
         container.innerHTML = html;
-
-        // Event delegation for actions
-        container.addEventListener('click', handleAnnouncementAction);
     }
 
     async function handleAnnouncementAction(e) {
+        const audioBtn = e.target.closest('.sound-ann-audio');
+        const generateBtn = e.target.closest('.sound-generate-ann-tts');
         const playBtn = e.target.closest('.sound-play-ann');
         const deleteBtn = e.target.closest('.sound-delete-ann');
         const restoreBtn = e.target.closest('.sound-restore-ann');
 
-        if (playBtn) {
+        if (audioBtn) {
+            e.preventDefault();
+            window._playSound(audioBtn.dataset.url, audioBtn);
+        } else if (generateBtn) {
+            e.preventDefault();
+            await generateAnnouncementTts(generateBtn.dataset.id);
+        } else if (playBtn) {
+            e.preventDefault();
             try {
-                await apiCall('POST', `/music/announcements/${playBtn.dataset.id}/play`);
-            } catch {}
+                const data = await apiCall('POST', `/music/announcements/${playBtn.dataset.id}/play`);
+                if (data?.success) showNotification('Оголошення відправлено', 'success');
+                else showNotification(data?.error || 'Не вдалося програти оголошення', 'error');
+                loadAnnouncements();
+            } catch (err) { showNotification(err.message || 'Не вдалося програти оголошення', 'error'); }
         } else if (deleteBtn) {
+            e.preventDefault();
             if (!await confirmModal('Видалити оголошення?', { type: 'danger' })) return;
             try {
                 await apiCall('DELETE', `/music/announcements/${deleteBtn.dataset.id}`);
                 loadAnnouncements();
-            } catch {}
+            } catch (err) { showNotification(err.message || 'Не вдалося видалити', 'error'); }
         } else if (restoreBtn) {
+            e.preventDefault();
             try {
                 await apiCall('POST', `/music/announcements/${restoreBtn.dataset.id}/restore`);
                 loadAnnouncements();
-            } catch {}
+            } catch (err) { showNotification(err.message || 'Не вдалося відновити', 'error'); }
+        }
+    }
+
+    async function generateAnnouncementTts(id) {
+        if (!id) return;
+        if (typeof showNotification === 'function') showNotification('Генеруємо голос для оголошення...', 'info');
+        try {
+            const data = await apiCall('POST', `/music/announcements/${id}/generate-tts`, {});
+            if (data?.success && data.status === 'ready') {
+                showNotification('Голос готовий', 'success');
+                loadAnnouncements();
+                return;
+            }
+            if (data?.taskId) {
+                showNotification('TTS у черзі. Очікуємо результат...', 'info');
+                pollAnnouncementTts(id, data.taskId);
+                loadAnnouncements();
+                return;
+            }
+            showNotification(data?.error || 'TTS не вдалось', 'error');
+        } catch (err) {
+            showNotification(err.message || 'TTS не вдалось', 'error');
+        }
+    }
+
+    function pollAnnouncementTts(id, taskId) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+            attempts++;
+            if (attempts > 60) {
+                clearInterval(poll);
+                showNotification('TTS генерується надто довго. Перевірте лог пізніше.', 'error');
+                return;
+            }
+            const data = await apiCall('GET', `/music/library/generate-status/${taskId}`);
+            if (data?.done && data.audioUrl) {
+                clearInterval(poll);
+                const applied = await apiCall('POST', `/music/announcements/${id}/apply-tts`, { audioUrl: data.audioUrl });
+                if (applied?.success) {
+                    showNotification('Голос привʼязано до оголошення', 'success');
+                    loadAnnouncements();
+                }
+            } else if (data?.state === 'failed') {
+                clearInterval(poll);
+                showNotification(data?.error || 'TTS не вдалось', 'error');
+            }
+        }, 3000);
+    }
+
+    async function loadTtsConfig() {
+        if (_ttsConfigLoaded) return;
+        try {
+            const data = await apiCall('GET', '/music/tts-config');
+            if (data?.success) applyTtsConfig(data);
+            else setTtsStatus(data?.error || 'TTS налаштування недоступні', 'error');
+        } catch (err) {
+            setTtsStatus(err.message || 'TTS налаштування недоступні', 'error');
+        } finally {
+            _ttsConfigLoaded = true;
+        }
+    }
+
+    function setTtsStatus(message, tone = 'muted') {
+        const el = document.getElementById('ttsConfigStatus');
+        if (!el) return;
+        el.textContent = message;
+        el.dataset.tone = tone;
+    }
+
+    function applyTtsConfig(config) {
+        const enabled = document.getElementById('ttsEnabled');
+        const provider = document.getElementById('ttsProvider');
+        const model = document.getElementById('ttsModel');
+        const voice = document.getElementById('ttsVoice');
+        const language = document.getElementById('ttsLanguage');
+        const key = document.getElementById('ttsApiKey');
+        if (enabled) enabled.checked = config.enabled !== false;
+        if (provider) provider.value = config.provider || 'kie_ai';
+        if (model) model.value = config.model || 'elevenlabs/text-to-speech-multilingual-v2';
+        if (voice) voice.value = config.voice || 'Rachel';
+        if (language) language.value = config.language || 'uk';
+        if (key) {
+            key.value = '';
+            key.placeholder = config.keyConfigured ? `Збережено: ${config.apiKeyMasked || '••••'}` : 'Вставте Kie.ai API key';
+        }
+        setTtsStatus(config.keyConfigured ? `Підключено через ${config.keySource === 'env' ? 'env' : 'CRM settings'}` : 'Ключ TTS ще не налаштовано', config.keyConfigured ? 'ok' : 'warn');
+    }
+
+    function readTtsForm() {
+        const apiKey = document.getElementById('ttsApiKey')?.value?.trim() || '';
+        return {
+            enabled: document.getElementById('ttsEnabled')?.checked !== false,
+            provider: document.getElementById('ttsProvider')?.value || 'kie_ai',
+            model: document.getElementById('ttsModel')?.value?.trim() || 'elevenlabs/text-to-speech-multilingual-v2',
+            voice: document.getElementById('ttsVoice')?.value || 'Rachel',
+            language: document.getElementById('ttsLanguage')?.value || 'uk',
+            ...(apiKey ? { apiKey } : {})
+        };
+    }
+
+    function initTtsSettingsPanel() {
+        if (_ttsSettingsBound) return;
+        _ttsSettingsBound = true;
+        document.getElementById('ttsSaveSettingsBtn')?.addEventListener('click', async () => {
+            setTtsStatus('Зберігаємо налаштування...', 'muted');
+            const data = await apiCall('PUT', '/music/tts-config', readTtsForm());
+            if (data?.success) {
+                applyTtsConfig(data);
+                showNotification('TTS налаштування збережено', 'success');
+            } else {
+                setTtsStatus(data?.error || 'Не вдалося зберегти TTS', 'error');
+                showNotification(data?.error || 'Не вдалося зберегти TTS', 'error');
+            }
+        });
+        document.getElementById('ttsTestSettingsBtn')?.addEventListener('click', async () => {
+            const data = await apiCall('POST', '/music/tts-config/test', {});
+            if (data?.success) {
+                setTtsStatus(data.message || 'TTS готовий', 'ok');
+                showNotification('TTS підключення готове', 'success');
+            } else {
+                setTtsStatus(data?.error || 'TTS не налаштовано', 'error');
+                showNotification(data?.error || 'TTS не налаштовано', 'error');
+            }
+        });
+        document.getElementById('ttsSampleGenerateBtn')?.addEventListener('click', async () => {
+            const text = document.getElementById('ttsSampleText')?.value?.trim();
+            if (!text) return showNotification('Введіть текст для тесту TTS', 'error');
+            const settings = readTtsForm();
+            const name = `TTS тест ${new Date().toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' })}`;
+            const data = await apiCall('POST', '/music/library/generate-tts', {
+                text,
+                name,
+                category: 'announcement',
+                voice: settings.voice,
+                language: settings.language
+            });
+            if (data?.success && data.status === 'ready') {
+                showNotification('Тестовий голос додано до бібліотеки', 'success');
+                _loadedTabs.library = false;
+            } else if (data?.taskId) {
+                showNotification('Тестовий TTS генерується...', 'info');
+                _pollGeneration(data.taskId, name, 'announcement', 'elevenlabs');
+            } else {
+                showNotification(data?.error || 'TTS не вдалось', 'error');
+            }
+        });
+    }
+
+    function initAnnouncementActions() {
+        if (_announcementActionsBound) return;
+        const container = document.getElementById('announcementsContainer');
+        if (!container) return;
+        _announcementActionsBound = true;
+        container.addEventListener('click', handleAnnouncementAction);
+    }
+
+    function resetAnnouncementModal() {
+        const title = document.getElementById('annTitle');
+        const text = document.getElementById('annText');
+        const type = document.getElementById('annType');
+        const priority = document.getElementById('annPriority');
+        const duration = document.getElementById('annDuration');
+        const tts = document.getElementById('annGenerateTts');
+        if (title) title.value = '';
+        if (text) text.value = '';
+        if (type) type.value = 'general';
+        if (priority) priority.value = '3';
+        if (duration) duration.value = '30';
+        if (tts) tts.checked = false;
+    }
+
+    function openAnnouncementModal() {
+        const modal = document.getElementById('announcementModal');
+        resetAnnouncementModal();
+        modal?.classList.remove('hidden');
+        rememberSoundEditableModal(modal);
+        setTimeout(() => document.getElementById('annTitle')?.focus(), 0);
+    }
+
+    function closeAnnouncementModal(force = false) {
+        const modal = document.getElementById('announcementModal');
+        return closeSoundEditableModal(modal, () => modal?.classList.add('hidden'), {
+            force,
+            message: 'Є незбережені зміни в оголошенні. Закрити без збереження?'
+        });
+    }
+
+    async function saveAnnouncementFromModal() {
+        const modal = document.getElementById('announcementModal');
+        const title = document.getElementById('annTitle')?.value?.trim();
+        const text = document.getElementById('annText')?.value?.trim();
+        if (!title) return showNotification('Введіть назву', 'error');
+        if (!text) return showNotification('Введіть текст оголошення', 'error');
+        const body = {
+            title,
+            text_content: text,
+            announcement_type: document.getElementById('annType')?.value || 'general',
+            priority: document.getElementById('annPriority')?.value || '3',
+            duration_seconds: document.getElementById('annDuration')?.value || 30
+        };
+        const data = await apiCall('POST', '/music/announcements', body);
+        if (!data?.success) return showNotification(data?.error || 'Не вдалося створити оголошення', 'error');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        await closeAnnouncementModal(true);
+        showNotification('Оголошення створено', 'success');
+        _loadedTabs.announcements = false;
+        await loadAnnouncements();
+        if (document.getElementById('annGenerateTts')?.checked && data.announcement?.id) {
+            generateAnnouncementTts(data.announcement.id);
         }
     }
 
@@ -273,40 +553,12 @@
         const saveBtn = document.getElementById('announcementModalSave');
         const createBtn = document.getElementById('createAnnouncementBtn');
         const refreshBtn = document.getElementById('announcementsRefreshBtn');
-        const openAnnouncementModal = () => {
-            modal?.classList.remove('hidden');
-            rememberSoundEditableModal(modal);
-        };
-        const closeAnnouncementModal = (force = false) => closeSoundEditableModal(modal, () => modal?.classList.add('hidden'), {
-            force,
-            message: 'Є незбережені зміни в оголошенні. Закрити без збереження?'
-        });
 
         if (createBtn) createBtn.addEventListener('click', openAnnouncementModal);
         if (closeBtn) closeBtn.addEventListener('click', () => closeAnnouncementModal(false));
         if (cancelBtn) cancelBtn.addEventListener('click', () => closeAnnouncementModal(false));
         if (refreshBtn) refreshBtn.addEventListener('click', () => loadAnnouncements());
-
-        if (saveBtn) saveBtn.addEventListener('click', async () => {
-            const title = document.getElementById('annTitle')?.value?.trim();
-            if (!title) return showNotification('Введіть назву', 'error');
-            const body = {
-                title,
-                text: document.getElementById('annText')?.value?.trim() || '',
-                type: document.getElementById('annType')?.value || 'general',
-                priority: document.getElementById('annPriority')?.value || 'normal'
-            };
-            try {
-                await apiCall('POST', '/music/announcements', body);
-                if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
-                await closeAnnouncementModal(true);
-                document.getElementById('annTitle').value = '';
-                document.getElementById('annText').value = '';
-                loadAnnouncements();
-            } catch (err) {
-                showNotification('Помилка: ' + (err.message || ''), 'error');
-            }
-        });
+        if (saveBtn) saveBtn.addEventListener('click', saveAnnouncementFromModal);
 
         // Close on overlay click
         if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeAnnouncementModal(false); });
@@ -317,6 +569,8 @@
                 closeAnnouncementModal(false);
             }
         });
+        initAnnouncementActions();
+        initTtsSettingsPanel();
     }
 
     // ==========================================

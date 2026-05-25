@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.6 - CRM 66.6: Issued credential verification tests
+
+### HR / staff accounts / password verification / 25.05.2026 [codex]
+- **Додано динамічний тест виданих паролів** - `tests/account-issued-credential.test.js` реально генерує bcrypt hash і перевіряє `verifyIssuedCredential` через мокнутий SQL-клієнт, а не тільки шукає рядки в коді.
+- **Перевірено той самий login identity contract** - тест фіксує, що read-after-write перевірка використовує `users.username`, `users.login_aliases` і той самий пріоритет username, що й `/api/auth/login`.
+- **Перевірено fail-closed сценарії** - wrong password, inactive account, missing user і порожній логін/пароль повертають `loginReady: false` з явною причиною.
+- **Генератор one-time паролів покритий повторними пробами** - тест 250 разів генерує довгі паролі й блокує повернення неоднозначних символів `I`, `L`, `O`, `0`, `l`, `1`.
+- **Regression guardrail підключено до `npm test`** - новий тест додано в `test:unit`, тому CI тепер ловить регресію автоматично.
+
+---
+
 ## v0.66.5 - CRM 66.5: Password readiness guard
 
 ### HR / staff accounts / password readiness / 25.05.2026 [codex]

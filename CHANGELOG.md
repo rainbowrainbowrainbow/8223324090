@@ -4,6 +4,15 @@
 
 ---
 
+## v0.64.5 - CRM 64.5: Telegram inbox private replies
+
+### OmniClaw / Telegram inbox / 25.05.2026 [codex]
+- **Відповіді з CRM у приватний Telegram inbox більше не падають через thread id** - Omni-відправка тепер явно вимикає глобальний `message_thread_id`, який потрібен для групових форум-тредів, але ламає приватні діалоги з помилкою `Bad Request: message thread not found`.
+- **Групові Telegram-нотифікації не зламані** - спільний `sendTelegramMessage` зберігає стару поведінку з налаштованим thread id для службових груп, а новий `skipThread` використовується тільки там, де треба писати напряму в inbox-чат.
+- **Regression guardrail** - `tests/omni-send-truth.test.js` перевіряє, що manual Telegram inbox replies передаються в провайдер без глобального forum-thread.
+
+---
+
 ## v0.64.4 - CRM 64.4: Telegram inbox webhook ownership
 
 ### OmniClaw / Telegram inbox / 25.05.2026 [codex]

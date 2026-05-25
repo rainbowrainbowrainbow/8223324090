@@ -503,6 +503,31 @@ describe('Communication Send Truth v1', () => {
         );
     });
 
+    it('sends Telegram inbox replies without the global forum thread id', async () => {
+        const pool = createManualSendPool({
+            id: 916,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            meta: {}
+        });
+        const calls = [];
+        const hub = loadHub(pool, {
+            sendTelegramMessage: async (...args) => {
+                calls.push(args);
+                return { ok: true, result: { message_id: 42 } };
+            }
+        });
+
+        await hub.sendManualMessage(916, 'Привіт', 'Manager');
+
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0][0], '12345');
+        assert.equal(calls[0][1], 'Привіт');
+        assert.deepEqual(calls[0][2], { skipThread: true });
+    });
+
     it('does not set reply expectation on ordinary outbound sends', async () => {
         const pool = createManualSendPool({
             id: 915,

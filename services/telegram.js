@@ -208,7 +208,11 @@ async function sendTelegramMessage(chatId, text, options = {}) {
         return { ok: false, description: 'No bot token configured' };
     }
     const maxRetries = options.retries || 3;
-    const threadId = await getConfiguredThreadId();
+    const skipThread = options.skipThread === true || options.threadId === null || options.threadId === false;
+    const explicitThreadId = options.threadId !== undefined && options.threadId !== null && options.threadId !== false
+        ? parseInt(options.threadId, 10) || null
+        : null;
+    const threadId = skipThread ? null : (explicitThreadId || await getConfiguredThreadId());
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const payload = {

@@ -1422,7 +1422,7 @@ async function generateAndSendAIResponse(conversation, message) {
 async function sendToChannel(channel, externalId, text, meta) {
   switch (channel) {
     case 'telegram':
-      return sendTelegramMessage(externalId, text);
+      return sendTelegramMessage(externalId, text, { skipThread: true });
     case 'viber':
       return sendViber(externalId, text, meta);
     case 'sms':

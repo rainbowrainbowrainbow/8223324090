@@ -24,6 +24,12 @@ const PUBLIC_API_ROUTES = [
     },
     {
         method: 'POST',
+        path: '/omni/webhook/telegram',
+        owner: 'omnichannel',
+        reason: 'Omni Telegram inbox webhook must accept Telegram provider updates before CRM user JWT exists.'
+    },
+    {
+        method: 'POST',
         path: '/report-bot/webhook',
         owner: 'report-bot',
         reason: 'Report-bot webhook is guarded by Telegram webhook secret validation instead of JWT.'

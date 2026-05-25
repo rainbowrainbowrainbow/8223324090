@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.64.2",
+  "version": "0.64.3",
   "eventGenix": {
-    "releaseLabel": "CRM 64.2: виконані перенесені задачі у віджетах"
+    "releaseLabel": "CRM 64.3: Telegram inbox webhook"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

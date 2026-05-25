@@ -24,6 +24,7 @@ focused tests.
 | `GET /health` | settings | Public health endpoint for uptime checks and lightweight operational smoke. |
 | `GET /version` | settings | Public version endpoint used by clients and smoke checks. |
 | `POST /telegram/webhook` | telegram | Telegram webhook is guarded by provider secret validation instead of JWT. |
+| `POST /omni/webhook/telegram` | omnichannel | Omni Telegram inbox webhook must accept Telegram provider updates before CRM user JWT exists. |
 | `POST /report-bot/webhook` | report-bot | Report-bot webhook is guarded by Telegram webhook secret validation instead of JWT. |
 | `POST /report-bot/submit` | report-bot | Report-bot submit is guarded by the bot API key instead of user JWT. |
 | `GET /report-bot/on-duty` | report-bot | Report bot read endpoint is guarded inside the route by bot API key policy. |

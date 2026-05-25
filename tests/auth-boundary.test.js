@@ -53,6 +53,7 @@ describe('API auth boundary middleware', () => {
         app.use('/api/landing', require('../routes/landing'));
         app.get('/api/status/public', (req, res) => res.json({ ok: true, public: true }));
         app.post('/api/leads/landing', (req, res) => res.json({ ok: true, public: true }));
+        app.post('/api/omni/webhook/telegram', (req, res) => res.json({ ok: true, public: true, provider: 'telegram' }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
         app.get('/api/graduation/catalog/export', (req, res) => {
             res.json({ ok: true, auth: req.headers.authorization, user: req.user?.username });
@@ -71,6 +72,7 @@ describe('API auth boundary middleware', () => {
     it('marks intended public endpoints as public', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/landing/demo-request' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/landing' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/bookings' }), false);
     });
@@ -93,6 +95,15 @@ describe('API auth boundary middleware', () => {
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.public, true);
+    });
+
+    it('allows Omni Telegram inbox webhook updates without user JWT', async () => {
+        const res = await request(baseUrl, 'POST', '/api/omni/webhook/telegram', {
+            update_id: 1,
+            message: { message_id: 1, text: '/start', chat: { id: 123, type: 'private' } }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.provider, 'telegram');
     });
 
     it('rejects generic protected endpoints without auth', async () => {

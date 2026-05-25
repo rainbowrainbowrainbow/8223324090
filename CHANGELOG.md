@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.58 - CRM 63.58: dashboard AI shell
+
+### Dashboard / AI assistant shell / 25.05.2026 [codex]
+- **AI assistant на dashboard отримав окремий shell-контракт** - додано `data-crm-page="dashboard"` і scoped final layer у `css/assistant-rail.css`, щоб dashboard не наслідував зламану cross-page геометрію.
+- **Prompt surface став головним елементом** - команда `Запитати CRM або /команда` тепер має стабільну 58px input-капсулу, чистий AI mark, readable state chip і фокус без стрибків.
+- **Кнопки зібрано в єдину control group** - mic, stop, voice, replay і expand отримали однакові розміри, hover/focus і не розсипаються поруч з input.
+- **Зайву meta-density прибрано з dashboard shell** - signal/engine chip приховано саме для dashboard, а відповідь/context panel відкривається як охайна secondary surface.
+- **Responsive і light/dark polish** - додано правила для laptop/mobile width і окремий light-mode contract без зміни assistant runtime.
+- **Regression guardrail** - `tests/ui-check.js` перевіряє dashboard marker і scoped assistant shell repair.
+
+---
+
 ## v0.63.57 - CRM 63.57: Telegram фото для складу
 
 ### Склад / Telegram photo intake / vision / 25.05.2026 [codex]

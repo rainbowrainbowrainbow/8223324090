@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.57",
+  "version": "0.63.58",
   "eventGenix": {
-    "releaseLabel": "CRM 63.57: Telegram фото для складу"
+    "releaseLabel": "CRM 63.58: dashboard AI shell"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

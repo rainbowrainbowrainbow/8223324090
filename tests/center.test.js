@@ -17,6 +17,13 @@ describe('Center', () => {
         assert.ok(res.data.kpi.today);
         assert.ok(res.data.kpi.week);
         assert.ok(res.data.kpi.month);
+        assert.ok(res.data.generatedAt);
+        assert.ok(res.data.periods);
+        assert.ok(res.data.periods.today);
+        assert.ok(res.data.source);
+        assert.equal(typeof res.data.kpi.today.projectedRevenue, 'number');
+        assert.equal(typeof res.data.kpi.today.confirmedBookings, 'number');
+        assert.equal(typeof res.data.tasks.overdue, 'number');
     });
 
     it('GET /api/center/workers — workers list', async () => {
@@ -44,6 +51,8 @@ describe('Center', () => {
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
         assert.ok(Array.isArray(res.data.tasks));
+        assert.ok(res.data.period);
+        assert.match(res.data.source, /open tasks|filtered/);
     });
 
     it('GET /api/center/clients — client search', async () => {

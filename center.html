@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.51">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.51">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.51">
+    <link rel="stylesheet" href="css/base.css?v=0.63.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.52">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.52">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -853,6 +853,355 @@
         .dark-mode .loyalty-tier-card { background: rgba(40,40,40,0.4); }
         .dark-mode .loyalty-stats { color: var(--gray-400); }
         .dark-mode .loyalty-stats strong { color: var(--gray-200); }
+
+        /* v0.63.52: Control Center modern CRM shell */
+        .center-page {
+            width: min(100%, 1480px);
+            max-width: none;
+            padding: 24px clamp(14px, 2vw, 30px) 42px;
+            color: var(--text-primary, #F8FAFC);
+        }
+        .center-hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 18px;
+            align-items: end;
+            padding: 22px clamp(18px, 2.4vw, 30px);
+            margin-bottom: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            background:
+                linear-gradient(135deg, rgba(20, 184, 166, 0.16), transparent 34%),
+                linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(17, 24, 39, 0.72));
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.24);
+        }
+        .center-eyebrow {
+            margin-bottom: 6px;
+            color: #67E8F9;
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+        .center-page .center-hero h1 {
+            margin: 0;
+            color: #F8FAFC;
+            font-size: clamp(26px, 3vw, 40px);
+            line-height: 1.05;
+            letter-spacing: 0;
+        }
+        .center-hero-copy p {
+            max-width: 760px;
+            margin: 8px 0 0;
+            color: #CBD5E1;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        .center-hero-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            min-height: 42px;
+            padding: 10px 14px;
+            border: 1px solid rgba(45, 212, 191, 0.28);
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.72);
+            color: #DDFCF7;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+        .center-hero-status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #22C55E;
+            box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.15);
+        }
+        .center-truth-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .center-truth-card {
+            min-height: 92px;
+            padding: 14px 16px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.72);
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+        }
+        .center-truth-card span,
+        .center-truth-card small {
+            display: block;
+            color: #94A3B8;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .center-truth-card strong {
+            display: block;
+            margin: 5px 0 4px;
+            color: #F8FAFC;
+            font-size: clamp(18px, 2vw, 24px);
+            line-height: 1.15;
+        }
+        .center-truth-card.is-warning {
+            border-color: rgba(245, 158, 11, 0.36);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(15, 23, 42, 0.72));
+        }
+        .center-truth-card.is-danger {
+            border-color: rgba(248, 113, 113, 0.42);
+            background: linear-gradient(135deg, rgba(248, 113, 113, 0.18), rgba(15, 23, 42, 0.72));
+        }
+        .center-tabs {
+            gap: 8px;
+            padding: 6px;
+            margin-bottom: 18px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.62);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .center-tab-btn {
+            min-height: 42px;
+            padding: 9px 18px;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            background: transparent;
+            color: #CBD5E1;
+            font-size: 13px;
+            font-weight: 900;
+        }
+        .center-tab-btn.active,
+        .center-tab-btn[aria-selected="true"] {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.95), rgba(16, 185, 129, 0.92));
+            color: #04111A;
+            box-shadow: 0 10px 26px rgba(20, 184, 166, 0.22);
+        }
+        .dark-mode .center-tab-btn.active,
+        .dark-mode .center-tab-btn[aria-selected="true"] {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.95), rgba(16, 185, 129, 0.92));
+            color: #04111A;
+        }
+        .center-tab-btn:hover:not(.active),
+        .center-tab-btn:focus-visible {
+            border-color: rgba(45, 212, 191, 0.32);
+            background: rgba(255,255,255,0.07);
+            outline: none;
+        }
+        .center-section {
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.68);
+            box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
+        }
+        .center-section-title {
+            min-height: 34px;
+            color: #F8FAFC;
+            font-size: 15px;
+            letter-spacing: 0;
+        }
+        .center-section-title .collapse-arrow {
+            color: #2DD4BF;
+        }
+        .section-body {
+            color: #CBD5E1;
+        }
+        .kpi-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .kpi-card,
+        .worker-card,
+        .chart-card,
+        .briefing-card,
+        .workload-card,
+        .goal-card,
+        .recon-card,
+        .catalog-card,
+        .client-card,
+        .combo-card,
+        .addon-row,
+        .discount-row,
+        .proposal-card,
+        .event-row,
+        .hot-lead-card {
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            background: rgba(15, 23, 42, 0.52);
+            color: #E2E8F0;
+        }
+        .kpi-card {
+            min-height: 126px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            text-align: left;
+        }
+        .kpi-card-label,
+        .chart-card-title,
+        .briefing-card-title,
+        .recon-card-label {
+            color: #94A3B8;
+            letter-spacing: 0;
+        }
+        .kpi-card-value {
+            color: #F8FAFC;
+            font-size: 24px;
+            line-height: 1.15;
+        }
+        .kpi-card-value.revenue,
+        .catalog-card-price,
+        .addon-row-revenue,
+        .price-value-cell {
+            color: #34D399;
+        }
+        .kpi-card-meta {
+            margin-top: 8px;
+            color: #94A3B8;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+        .kpi-period-tabs {
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .kpi-period-tab,
+        .catalog-filter-tab,
+        .btn-center-action,
+        .btn-add-lead {
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.58);
+            color: #CBD5E1;
+            font-weight: 900;
+        }
+        .kpi-period-tab.active,
+        .catalog-filter-tab.active {
+            background: rgba(20, 184, 166, 0.92);
+            color: #04111A;
+            border-color: transparent;
+        }
+        .dark-mode .kpi-period-tab.active,
+        .dark-mode .catalog-filter-tab.active {
+            background: rgba(20, 184, 166, 0.92);
+            color: #04111A;
+        }
+        .center-empty,
+        .center-empty-mini,
+        .center-loading,
+        .center-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 86px;
+            padding: 18px;
+            border: 1px dashed rgba(148, 163, 184, 0.22);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.36);
+            color: #94A3B8;
+            text-align: center;
+            font-weight: 800;
+        }
+        .center-state strong {
+            color: #E2E8F0;
+            font-size: 14px;
+        }
+        .center-state small {
+            max-width: 520px;
+            color: #94A3B8;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .center-state.is-error {
+            border-color: rgba(248, 113, 113, 0.36);
+            color: #FCA5A5;
+        }
+        .center-embed-frame {
+            height: calc(100vh - 238px);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.72);
+        }
+        .conversion-table th,
+        .conversion-table td,
+        .prices-table th,
+        .prices-table td,
+        .perf-table th,
+        .perf-table td {
+            border-color: rgba(148, 163, 184, 0.16);
+        }
+        .conversion-table th,
+        .prices-table th,
+        .perf-table th {
+            color: #94A3B8;
+        }
+        .center-task-row.is-overdue {
+            border-left: 3px solid #F87171;
+            background: rgba(127, 29, 29, 0.22);
+        }
+        .center-task-overdue {
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(248, 113, 113, 0.16);
+            color: #FCA5A5;
+            font-size: 10px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .dark-mode .center-section,
+        .dark-mode .kpi-card,
+        .dark-mode .chart-card,
+        .dark-mode .worker-card,
+        .dark-mode .briefing-card,
+        .dark-mode .workload-card,
+        .dark-mode .goal-card,
+        .dark-mode .recon-card,
+        .dark-mode .catalog-card,
+        .dark-mode .client-card,
+        .dark-mode .combo-card,
+        .dark-mode .addon-row,
+        .dark-mode .discount-row,
+        .dark-mode .proposal-card,
+        .dark-mode .event-row {
+            background: rgba(15, 23, 42, 0.58);
+        }
+        @media (max-width: 980px) {
+            .center-hero {
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+            .center-hero-status {
+                width: fit-content;
+                white-space: normal;
+            }
+            .center-truth-strip,
+            .kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 640px) {
+            .center-page {
+                padding: 14px 10px 28px;
+            }
+            .center-hero {
+                padding: 18px 14px;
+                border-radius: 16px;
+            }
+            .center-truth-strip,
+            .kpi-grid,
+            .recon-grid {
+                grid-template-columns: 1fr;
+            }
+            .center-tabs {
+                overflow-x: auto;
+            }
+            .center-tab-btn {
+                flex: 0 0 auto;
+            }
+        }
     </style>
 </head>
 <body data-page-group="crm">
@@ -908,26 +1257,54 @@
 
         <main id="main-content" class="page-container">
             <div class="center-page">
-                <h1>Центр керування</h1>
+                <section class="center-hero" aria-labelledby="centerPageTitle">
+                    <div class="center-hero-copy">
+                        <div class="center-eyebrow">Операційний контроль</div>
+                        <h1 id="centerPageTitle">Центр керування</h1>
+                        <p>Поточні KPI, задачі, ліди, фінанси й аналітика з реальних CRM-джерел.</p>
+                    </div>
+                    <div class="center-hero-status" id="centerFreshness" aria-live="polite">
+                        <span class="center-hero-status-dot"></span>
+                        Завантаження актуальних даних...
+                    </div>
+                </section>
+
+                <section class="center-truth-strip" id="centerTruthStrip" aria-label="Операційний стан">
+                    <div class="center-truth-card is-loading">
+                        <span>Дані</span>
+                        <strong>Оновлюються</strong>
+                        <small>Перевіряємо CRM-джерела</small>
+                    </div>
+                    <div class="center-truth-card is-loading">
+                        <span>Задачі</span>
+                        <strong>...</strong>
+                        <small>Відкриті / прострочені</small>
+                    </div>
+                    <div class="center-truth-card is-loading">
+                        <span>KPI</span>
+                        <strong>...</strong>
+                        <small>Підтверджена виручка</small>
+                    </div>
+                </section>
 
                 <!-- v20.3.0: Center tabs -->
-                <div class="center-tabs" id="centerTabs">
-                    <button type="button" class="center-tab-btn active" data-tab="overview">Огляд</button>
-                    <button type="button" class="center-tab-btn" data-tab="finance">Фінанси</button>
-                    <button type="button" class="center-tab-btn" data-tab="reports">Звіти</button>
-                    <button type="button" class="center-tab-btn" data-tab="analytics">Аналітика</button>
+                <div class="center-tabs" id="centerTabs" role="tablist" aria-label="Розділи центру керування">
+                    <button type="button" class="center-tab-btn active" data-tab="overview" role="tab" aria-selected="true">Огляд</button>
+                    <button type="button" class="center-tab-btn" data-tab="finance" role="tab" aria-selected="false">Фінанси</button>
+                    <button type="button" class="center-tab-btn" data-tab="reports" role="tab" aria-selected="false">Звіти</button>
+                    <button type="button" class="center-tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналітика</button>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabFinance">
+                <div class="center-tab-panel hidden" id="tabFinance" role="tabpanel" aria-label="Фінанси">
                     <iframe src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
                 </div>
                 <!-- Tab: Reports (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabReports">
+                <div class="center-tab-panel hidden" id="tabReports" role="tabpanel" aria-label="Звіти">
                     <iframe src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
                 </div>
                 <!-- Tab: Analytics (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabAnalytics">
+                <div class="center-tab-panel hidden" id="tabAnalytics" role="tabpanel" aria-label="Аналітика">
                     <iframe src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
                 </div>
 
@@ -1233,14 +1610,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/ui.js?v=0.63.51"></script>
-    <script src="js/config.js?v=0.63.51"></script>
-    <script src="js/notification.js?v=0.63.51"></script>
-    <script src="js/api.js?v=0.63.51"></script>
-    <script src="js/auth.js?v=0.63.51"></script>
-    <script src="js/components/sidebar.js?v=0.63.51"></script>
+    <script src="js/ui.js?v=0.63.52"></script>
+    <script src="js/config.js?v=0.63.52"></script>
+    <script src="js/notification.js?v=0.63.52"></script>
+    <script src="js/api.js?v=0.63.52"></script>
+    <script src="js/auth.js?v=0.63.52"></script>
+    <script src="js/components/sidebar.js?v=0.63.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/center-page.js?v=0.63.51"></script>
+    <script src="js/center-page.js?v=0.63.52"></script>
     <script>
     // v20.3.0: Center tabs
     (function() {
@@ -1257,8 +1634,11 @@
 
         function switchCenterTab(tab) {
             // Deactivate all tabs
-            tabs.querySelectorAll('.center-tab-btn').forEach(b => b.classList.remove('active'));
-            tabs.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+            tabs.querySelectorAll('.center-tab-btn').forEach(b => {
+                const active = b.dataset.tab === tab;
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
 
             // Show/hide sections
             const overviewSections = document.querySelectorAll('.center-section');
@@ -1279,8 +1659,8 @@
     </script><!-- v32.1: Birthdays + Subscription reminder -->
     <script>
     (function() {
-        const ALLOWED_ROLES = ['director', 'deputy_director', 'top_manager', 'creator', 'admin'];
-        const token = localStorage.getItem('token');
+        const ALLOWED_ROLES = ['director', 'vice_director', 'deputy_director', 'top_manager', 'creator', 'admin'];
+        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
         if (!token) return;
         let userRole;
         try {
@@ -1306,7 +1686,7 @@
                     badge.style.display = '';
                 }
                 if (items.length === 0) {
-                    list.innerHTML = '<div style="padding:12px;color:#888">Найближчі 30 днів без днів народження</div>';
+                    list.innerHTML = '<div class="center-state"><strong>Найближчі 30 днів без днів народження</strong><small>Джерело: CRM-картки клієнтів з датою народження дитини.</small></div>';
                     return;
                 }
                 list.innerHTML = items.map(b => {
@@ -1322,13 +1702,13 @@
                         '<span style="color:' + color + ';font-weight:700;min-width:80px">' + icon + ' ' + label + '</span>' +
                         '<span style="font-weight:600">' + (b.childName || '—') + '</span>' +
                         '<span style="color:#888">' + dateStr + '</span>' +
-                        '<span style="color:#888">' + (b.parentName || '') + '</span>' +
-                        '<a href="tel:' + (b.phone || '') + '" style="color:#3B82F6;margin-left:auto">' + (b.phone || '') + '</a>' +
+                        '<span style="color:#94A3B8">' + (b.parentName || '') + '</span>' +
+                        (b.phone ? '<a href="tel:' + b.phone + '" style="color:#67E8F9;margin-left:auto;font-weight:800">' + b.phone + '</a>' : '') +
                     '</div>';
                 }).join('');
             })
             .catch(() => {
-                list.innerHTML = '<div style="padding:12px;color:#888">Не вдалось завантажити</div>';
+                list.innerHTML = '<div class="center-state is-error"><strong>Не вдалось завантажити дні народження</strong><small>Перевірте доступ до CRM-карток клієнтів або повторіть пізніше.</small></div>';
             });
         }
 
@@ -1359,6 +1739,6 @@
         }
     })();
     </script>
-    <script src="js/alerts.js?v=0.63.51"></script>
+    <script src="js/alerts.js?v=0.63.52"></script>
 </body>
 </html>

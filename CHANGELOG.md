@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.52 - CRM 63.52: центр керування
+
+### Центр керування / data truth / modern shell / 25.05.2026 [codex]
+- **Сторінку `Центр керування` переведено в сучасний CRM shell** - додано операційний hero, truth strip з актуальністю даних, ARIA-стан вкладок, чистіші секції, KPI-карти й responsive guardrails.
+- **KPI вирівняно з реальними CRM-джерелами** - підтверджена виручка рахується з main bookings (`linked_to IS NULL`) без скасованих бронювань, планова сума з попередніми бронюваннями показується окремо, а періоди `Сьогодні / Тиждень / Місяць` повертаються з backend metadata.
+- **Операційні задачі стали чесним списком дій** - `/api/center/tasks` за замовчуванням показує відкриті неархівні задачі, підсвічує прострочені, а `/api/center/overview` повертає open/overdue/dueToday summary.
+- **Виправлено застарілі джерела даних** - worker activity більше не читає неіснуючі `history.changed_*` поля, дні народження в центрі беруть канонічний `pzp_token`, а видимі секції отримали явні loading/error/empty стани замість мовчазного старого UI.
+- **Regression guardrail** - UI smoke перевіряє новий truth header, ARIA-вкладки, token для birthdays і frontend wiring для metadata/freshness; API smoke контракт `tests/center.test.js` доповнено полями source/periods/tasks truth.
+
+---
+
 ## v0.63.51 - CRM 63.51: документи продуктів
 
 ### Products / document-link modal / 25.05.2026 [codex]

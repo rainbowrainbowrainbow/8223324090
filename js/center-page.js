@@ -306,6 +306,107 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function formatDateShort(value) {
+    if (!value) return '—';
+    return new Date(`${value}T12:00:00`).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+}
+
+function formatDateTime(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleString('uk-UA', {
+        timeZone: 'Europe/Kyiv',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function centerStateHtml(title, detail = '', type = 'empty') {
+    const typeClass = type === 'error' ? ' is-error' : '';
+    return `<div class="center-state${typeClass}"><strong>${escapeHtml(title)}</strong>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</div>`;
+}
+
+function setContainerState(id, title, detail = '', type = 'empty') {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = centerStateHtml(title, detail, type);
+}
+
+function setContainerLoading(id, label = 'Завантаження актуальних даних...') {
+    setContainerState(id, label, 'CRM оновлює цей блок з реального джерела.', 'loading');
+}
+
+function setBadgeCount(id, count) {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    const visible = Number(count || 0) > 0;
+    badge.textContent = visible ? String(count) : '';
+    badge.style.display = visible ? '' : 'none';
+}
+
+function renderCenterFreshness(data) {
+    const el = document.getElementById('centerFreshness');
+    if (!el) return;
+    if (!data?.generatedAt) {
+        el.innerHTML = '<span class="center-hero-status-dot"></span>Дані ще оновлюються';
+        return;
+    }
+    el.innerHTML = `<span class="center-hero-status-dot"></span>Оновлено ${formatDateTime(data.generatedAt)}`;
+}
+
+function renderCenterTruth(data) {
+    const strip = document.getElementById('centerTruthStrip');
+    if (!strip || !data?.kpi) return;
+    const periodMeta = data.periods?.[currentPeriod];
+    const current = data.kpi[currentPeriod] || data.kpi.today || {};
+    const tasks = data.tasks || {};
+    const overdue = Number(tasks.overdue || 0);
+    const dueToday = Number(tasks.dueToday || 0);
+    const taskClass = overdue > 0 ? ' is-danger' : dueToday > 0 ? ' is-warning' : '';
+    const periodText = periodMeta
+        ? `${periodMeta.label}: ${formatDateShort(periodMeta.from)}-${formatDateShort(periodMeta.to)}`
+        : 'Період KPI';
+
+    strip.innerHTML = `
+        <div class="center-truth-card">
+            <span>Актуальність</span>
+            <strong>${data.generatedAt ? formatDateTime(data.generatedAt) : 'оновлюється'}</strong>
+            <small>${escapeHtml(data.source?.bookings || 'CRM-джерела')}</small>
+        </div>
+        <div class="center-truth-card${taskClass}">
+            <span>Задачі зараз</span>
+            <strong>${Number(tasks.open || 0)} відкритих</strong>
+            <small>${overdue} прострочених · ${dueToday} на сьогодні</small>
+        </div>
+        <div class="center-truth-card">
+            <span>${escapeHtml(periodText)}</span>
+            <strong>${formatPrice(current.revenue || 0)}</strong>
+            <small>${Number(current.confirmedBookings || 0)} підтверджених · ${Number(current.preliminaryBookings || 0)} попередніх</small>
+        </div>
+    `;
+}
+
+function setInitialLoadingStates() {
+    [
+        ['kpiGrid', 'Завантаження KPI...'],
+        ['workersGrid', 'Оновлюємо digital workers...'],
+        ['pricesContent', 'Оновлюємо централізовані ціни...'],
+        ['tasksList', 'Оновлюємо відкриті задачі...'],
+        ['reportContent', 'Перевіряємо щоденний звіт...'],
+        ['goalsContent', 'Перевіряємо цілі...'],
+        ['briefingContent', 'Готуємо тижневий брифінг...'],
+        ['workloadContent', 'Рахуємо навантаження...'],
+        ['perfContent', 'Рахуємо ефективність програм...'],
+        ['heatmapContent', 'Будуємо сезонну карту...'],
+        ['crossSellContent', 'Перевіряємо cross-sell дані...'],
+        ['catalogContent', 'Оновлюємо каталог...'],
+        ['reconciliationContent', 'Звіряємо фінанси...'],
+        ['eventLogContent', 'Оновлюємо стрічку подій...'],
+        ['hotLeadsList', 'Перевіряємо гарячі ліди...'],
+        ['conversionGrid', 'Рахуємо ефективність менеджерів...']
+    ].forEach(([id, label]) => setContainerLoading(id, label));
+}
+
 // ==========================================
 // RENDER: WORKERS
 // ==========================================
@@ -363,28 +464,38 @@ function renderKPI(kpi, period) {
 
     const data = kpi[period];
     if (!data) {
-        grid.innerHTML = '<div class="center-empty">Немає даних</div>';
+        grid.innerHTML = centerStateHtml('Немає KPI-даних', 'Для цього періоду немає доступних бронювань або джерело ще оновлюється.');
         return;
     }
+    const periodMeta = centerData?.periods?.[period];
+    const periodText = periodMeta ? `${formatDateShort(periodMeta.from)}-${formatDateShort(periodMeta.to)}` : '';
+    const projectedNote = Number(data.projectedRevenue || 0) > Number(data.revenue || 0)
+        ? `Планово з попередніми: ${formatPrice(data.projectedRevenue)}`
+        : 'Тільки підтверджені бронювання';
 
     grid.innerHTML = `
         <div class="kpi-card">
-            <div class="kpi-card-label">Виручка</div>
+            <div class="kpi-card-label">Підтверджена виручка</div>
             <div class="kpi-card-value revenue">${formatPrice(data.revenue)}</div>
+            <div class="kpi-card-meta">${escapeHtml(projectedNote)}</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-card-label">Бронювань</div>
+            <div class="kpi-card-label">Бронювань у періоді</div>
             <div class="kpi-card-value">${data.bookings}</div>
+            <div class="kpi-card-meta">${Number(data.confirmedBookings || 0)} підтверджених · ${Number(data.preliminaryBookings || 0)} попередніх</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-card-label">Сер. чек</div>
             <div class="kpi-card-value">${data.avgCheck > 0 ? formatPrice(data.avgCheck) : '—'}</div>
+            <div class="kpi-card-meta">За підтвердженими бронюваннями</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-card-label">Топ програма</div>
             <div class="kpi-card-value" style="font-size:13px">${escapeHtml(data.topProgram)}</div>
+            <div class="kpi-card-meta">${periodText || 'Поточний період'} · main bookings</div>
         </div>
     `;
+    renderCenterTruth(centerData);
 }
 
 // ==========================================
@@ -729,18 +840,20 @@ function renderTasks(tasks) {
     if (!container) return;
 
     if (!tasks || tasks.length === 0) {
-        container.innerHTML = '<div class="center-empty">Немає активних задач</div>';
+        container.innerHTML = centerStateHtml('Немає активних задач', 'У центрі показуються відкриті задачі; виконані й архівні не змішуються з операційним списком.');
         return;
     }
 
     container.innerHTML = tasks.slice(0, 30).map(t => {
         const priorityClass = t.priority === 'high' ? ' center-task-priority-high' : '';
+        const overdueClass = t.is_overdue ? ' is-overdue' : '';
         const statusIcon = t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
         return `
-        <div class="center-task-row${priorityClass}">
+        <div class="center-task-row${priorityClass}${overdueClass}">
             <div class="center-task-status ${t.status}"></div>
             <div class="center-task-title">${escapeHtml(t.title)}</div>
             ${t.assigned_to ? `<span class="center-task-assignee">${escapeHtml(t.assigned_to)}</span>` : ''}
+            ${t.is_overdue ? '<span class="center-task-overdue">прострочено</span>' : ''}
             <span style="font-size:11px;color:var(--gray-400)">${statusIcon}</span>
         </div>`;
     }).join('');
@@ -1514,9 +1627,14 @@ function renderWorkload(loadData) {
     const el = document.getElementById('workloadContent');
     if (!el) return;
 
+    if (!loadData) {
+        el.innerHTML = centerStateHtml('Помилка навантаження аніматорів', 'Дані /api/stats/load зараз недоступні.', 'error');
+        return;
+    }
+
     const animators = loadData?.animatorWorkload || [];
     if (!animators.length) {
-        el.innerHTML = '<div class="center-empty">Немає даних про навантаження</div>';
+        el.innerHTML = centerStateHtml('Немає даних про навантаження', 'За поточний місяць не знайдено підтверджених бронювань з аніматорами.');
         return;
     }
 
@@ -2087,16 +2205,21 @@ async function sendReportToTelegram() {
 // ==========================================
 
 async function loadOverview() {
+    setContainerLoading('kpiGrid', 'Завантаження KPI...');
     const data = await apiCenterOverview();
     if (!data || !data.success) {
-        document.getElementById('kpiGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        setContainerState('kpiGrid', 'Помилка завантаження KPI', 'Дані не залишено як старі: оновіть сторінку або перевірте API /api/center/overview.', 'error');
+        renderCenterFreshness(null);
         return;
     }
     centerData = data;
+    renderCenterFreshness(data);
+    renderCenterTruth(data);
     renderKPI(data.kpi, currentPeriod);
 }
 
 async function loadWorkers() {
+    setContainerLoading('workersGrid', 'Оновлюємо digital workers...');
     try {
         const response = await fetch(`${API_BASE}/center/workers`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return;
@@ -2105,21 +2228,22 @@ async function loadWorkers() {
         if (data.success) {
             renderWorkers(data.workers);
         } else {
-            document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+            setContainerState('workersGrid', 'Помилка завантаження воркерів', 'Статус digital workers не оновився.', 'error');
         }
     } catch (err) {
         console.error('Load workers error:', err);
-        document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        setContainerState('workersGrid', 'Помилка завантаження воркерів', 'Статус digital workers не оновився.', 'error');
     }
 }
 
 async function loadPrices() {
+    setContainerLoading('pricesContent', 'Оновлюємо централізовані ціни...');
     const [data, positionsData] = await Promise.all([
         apiCenterPrices(),
         apiCenterPricePositions()
     ]);
     if (!data || !data.success) {
-        document.getElementById('pricesContent').innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
+        setContainerState('pricesContent', 'Помилка завантаження цін', 'Централізовані правила price_rules зараз недоступні.', 'error');
         return;
     }
     pricesData = data.prices || [];
@@ -2129,9 +2253,10 @@ async function loadPrices() {
 }
 
 async function loadTasks() {
+    setContainerLoading('tasksList', 'Оновлюємо відкриті задачі...');
     const data = await apiCenterTasks();
     if (!data || !data.success) {
-        document.getElementById('tasksList').innerHTML = '<div class="center-empty">Помилка завантаження задач</div>';
+        setContainerState('tasksList', 'Помилка завантаження задач', 'Операційний список очищено від старого стану, повторіть пізніше.', 'error');
         return;
     }
     tasksData = data.tasks || [];
@@ -2139,9 +2264,10 @@ async function loadTasks() {
 }
 
 async function loadReport() {
+    setContainerLoading('reportContent', 'Перевіряємо щоденний звіт...');
     const data = await apiCenterReport();
     if (!data || !data.success) {
-        document.getElementById('reportContent').innerHTML = '<div class="center-empty">Помилка завантаження звіту</div>';
+        setContainerState('reportContent', 'Помилка завантаження звіту', 'Останній звіт не підтягнувся з settings.', 'error');
         return;
     }
     renderReport(data.report);
@@ -2153,7 +2279,7 @@ async function loadCharts() {
         renderCharts(data);
     } else {
         const section = document.getElementById('chartsSection');
-        if (section) section.querySelector('.charts-grid').innerHTML = '<div class="center-empty">Немає даних для графіків</div>';
+        if (section) section.querySelector('.charts-grid').innerHTML = centerStateHtml('Немає даних для графіків', 'Графіки використовують /api/stats/revenue і /api/stats/programs за останні 7 днів.');
     }
 }
 
@@ -2192,66 +2318,75 @@ async function loadProposals() {
 // ==========================================
 
 async function loadGoals() {
+    setContainerLoading('goalsContent', 'Перевіряємо цілі...');
     const data = await apiCenterGoals();
     if (data.success) {
         renderGoals(data.goals, centerData?.kpi);
     } else {
-        document.getElementById('goalsContent').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        setContainerState('goalsContent', 'Помилка завантаження цілей', 'Налаштування center_revenue_goals зараз недоступне.', 'error');
     }
 }
 
 async function loadBriefing() {
+    setContainerLoading('briefingContent', 'Готуємо тижневий брифінг...');
     const data = await apiCenterBriefing();
     if (data.success) {
         renderBriefing(data.briefing);
     } else {
-        document.getElementById('briefingContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        setContainerState('briefingContent', 'Помилка брифінгу', 'Не вдалося зібрати бронювання, задачі й персонал на тиждень.', 'error');
     }
 }
 
 async function loadWorkload() {
+    setContainerLoading('workloadContent', 'Рахуємо навантаження аніматорів...');
     const data = await apiAnimatorWorkload();
     renderWorkload(data);
 }
 
 async function loadProgramPerformance() {
+    setContainerLoading('perfContent', 'Рахуємо ефективність програм...');
     const data = await apiProgramPerformance();
     if (data.success) {
         renderProgramPerformance(data);
     } else {
-        document.getElementById('perfContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        setContainerState('perfContent', 'Помилка ефективності програм', 'Матриця програм не отримала актуальні booking-дані.', 'error');
     }
 }
 
 async function loadHeatmap() {
+    setContainerLoading('heatmapContent', 'Будуємо сезонну карту...');
     const data = await apiSeasonalHeatmap();
     if (data.success) {
         renderHeatmap(data);
     } else {
-        document.getElementById('heatmapContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        setContainerState('heatmapContent', 'Помилка сезонної карти', 'Heatmap не отримав booking-дані за останні місяці.', 'error');
     }
 }
 
 async function loadCrossSell() {
+    setContainerLoading('crossSellContent', 'Перевіряємо cross-sell дані...');
     const data = await apiCrossSell();
     if (data.success) {
         renderCrossSell(data);
     } else {
-        document.getElementById('crossSellContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        setContainerState('crossSellContent', 'Помилка cross-sell аналізу', 'Комбінації й add-ons не підтягнулись з бронювань.', 'error');
     }
 }
 
 async function loadCatalog() {
+    setContainerLoading('catalogContent', 'Оновлюємо каталог програм...');
     const data = await apiProducts();
     renderCatalog(data);
 }
 
 async function loadReconciliation() {
+    setContainerLoading('reconciliationContent', 'Звіряємо фінансові дані...');
     const data = await apiReconciliation();
     renderReconciliation(data);
 }
 
 async function loadEventLog() {
+    setContainerLoading('eventLogContent', 'Оновлюємо стрічку подій...');
     const data = await apiEventLog();
     renderEventLog(data);
 }
@@ -2263,15 +2398,17 @@ async function loadEventLog() {
 async function loadHotLeads() {
     const container = document.getElementById('hotLeadsList');
     if (!container) return;
+    setContainerLoading('hotLeadsList', 'Перевіряємо гарячі ліди...');
+    setBadgeCount('hotLeadsCount', 0);
     try {
-        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } });
+        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
+        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + token } });
         const data = await resp.json();
         if (!data.success || !data.leads.length) {
-            container.innerHTML = '<div class="center-empty-mini">Немає гарячих лідів — все під контролем 👍</div>';
+            container.innerHTML = centerStateHtml('Немає гарячих лідів', 'Ліди без відповіді або з високим ризиком не знайдені.');
             return;
         }
-        const badge = document.getElementById('hotLeadsCount');
-        if (badge) { badge.textContent = data.leads.length; badge.style.display = ''; }
+        setBadgeCount('hotLeadsCount', data.leads.length);
 
         container.innerHTML = data.leads.map(l => `
             <div class="hot-lead-card" data-id="${l.id}">
@@ -2292,15 +2429,16 @@ async function loadHotLeads() {
             </div>
         `).join('');
     } catch {
-        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+        container.innerHTML = centerStateHtml('Помилка завантаження лідів', 'Не вдалося прочитати /api/leads/hot.', 'error');
     }
 }
 
 async function updateLeadStatus(id, status) {
     try {
+        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
         await fetch('/api/leads/' + id, {
             method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({ pipeline_stage: status })
         });
         loadHotLeads();
@@ -2318,9 +2456,10 @@ function initAddLeadBtn() {
         ], { icon: '👤' });
         if (!result) return;
         try {
+            const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
             await fetch('/api/leads', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ client_name: result.name, phone: result.phone || null })
             });
             loadHotLeads();
@@ -2335,14 +2474,16 @@ function initAddLeadBtn() {
 async function loadConversion() {
     const container = document.getElementById('conversionGrid');
     if (!container) return;
+    setContainerLoading('conversionGrid', 'Рахуємо ефективність менеджерів...');
     try {
         const now = new Date();
+        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
         const resp = await fetch(`/api/analytics/conversion?period=month&year=${now.getFullYear()}&month=${now.getMonth() + 1}`, {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await resp.json();
         if (!data.success || !data.managers.length) {
-            container.innerHTML = '<div class="center-empty-mini">Немає даних за цей місяць</div>';
+            container.innerHTML = centerStateHtml('Немає даних за цей місяць', 'Конверсія менеджерів рахується з бронювань поточного місяця.');
             return;
         }
         container.innerHTML = `
@@ -2367,7 +2508,7 @@ async function loadConversion() {
                 `).join('')}</tbody>
             </table>`;
     } catch {
-        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+        container.innerHTML = centerStateHtml('Помилка завантаження конверсії', 'Не вдалося прочитати /api/analytics/conversion.', 'error');
     }
 }
 
@@ -2454,6 +2595,8 @@ async function initCenterPage() {
             </div>`;
         return;
     }
+
+    setInitialLoadingStates();
 
     // Restore collapsed sections from localStorage
     restoreCollapsedState();

@@ -78,67 +78,81 @@ router.get('/overview', async (req, res) => {
         const today = formatDateISO(now);
         const weekStart = formatDateISO(getWeekStart(now));
         const monthStart = formatDateISO(getMonthStart(now));
-        const todayScope = scopedBookingParams(req.user, [today]);
-        const weekScope = scopedBookingParams(req.user, [weekStart, today]);
-        const monthScope = scopedBookingParams(req.user, [monthStart, today]);
+
+        async function getKpiSnapshot(from, to) {
+            const totalsScope = scopedBookingParams(req.user, [from, to]);
+            const topScope = scopedBookingParams(req.user, [from, to]);
+            const [totalsResult, topProgramResult] = await Promise.all([
+                pool.query(`
+                    SELECT
+                        COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS confirmed_revenue,
+                        COALESCE(SUM(b.price), 0)::int AS projected_revenue,
+                        COUNT(*)::int AS bookings,
+                        COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed_bookings,
+                        COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary_bookings
+                    FROM bookings b
+                    WHERE b.date::date >= $1::date
+                      AND b.date::date <= $2::date
+                      AND b.status != 'cancelled'
+                      AND b.linked_to IS NULL
+                      ${totalsScope.sql}
+                `, totalsScope.params),
+                pool.query(`
+                    SELECT b.program_name, COUNT(*)::int AS cnt
+                    FROM bookings b
+                    WHERE b.date::date >= $1::date
+                      AND b.date::date <= $2::date
+                      AND b.status = 'confirmed'
+                      AND b.linked_to IS NULL
+                      ${topScope.sql}
+                    GROUP BY b.program_name
+                    ORDER BY cnt DESC, b.program_name
+                    LIMIT 1
+                `, topScope.params)
+            ]);
+
+            const row = totalsResult.rows[0] || {};
+            const revenue = parseInt(row.confirmed_revenue || 0);
+            const projectedRevenue = parseInt(row.projected_revenue || 0);
+            const bookings = parseInt(row.bookings || 0);
+            const confirmedBookings = parseInt(row.confirmed_bookings || 0);
+
+            return {
+                revenue,
+                projectedRevenue,
+                bookings,
+                confirmedBookings,
+                preliminaryBookings: parseInt(row.preliminary_bookings || 0),
+                avgCheck: confirmedBookings > 0 ? Math.round(revenue / confirmedBookings) : 0,
+                topProgram: topProgramResult.rows[0]?.program_name || '—'
+            };
+        }
 
         // Run all queries in parallel
         const [
-            revenueToday, revenueWeek, revenueMonth,
-            bookingsToday, bookingsWeek, bookingsMonth,
-            topProgramToday, topProgramWeek, topProgramMonth,
+            kpiToday, kpiWeek, kpiMonth,
             workersResult,
             tasksStats
         ] = await Promise.all([
-            // Revenue
-            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql}`, todayScope.params),
-            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql}`, weekScope.params),
-            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql}`, monthScope.params),
-            // Bookings count
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql}`, todayScope.params),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql}`, weekScope.params),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql}`, monthScope.params),
-            // Top program
-            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, todayScope.params),
-            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, weekScope.params),
-            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, monthScope.params),
+            getKpiSnapshot(today, today),
+            getKpiSnapshot(weekStart, today),
+            getKpiSnapshot(monthStart, today),
             // Workers
             pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(err => { log.warn('Worker roles fetch failed', err.message); return { rows: [] }; }),
-            // Tasks stats
+            // Tasks stats: open/overdue truth for the operational center.
             pool.query(`SELECT
-                COUNT(*) FILTER (WHERE status = 'done') AS done,
-                COUNT(*) FILTER (WHERE status != 'done') AS open,
+                COUNT(*) FILTER (WHERE status IN ('done', 'completed') AND COALESCE(completed_at, updated_at, created_at)::date >= $1::date) AS done,
+                COUNT(*) FILTER (WHERE status NOT IN ('done', 'completed') AND archived_at IS NULL) AS open,
+                COUNT(*) FILTER (WHERE status NOT IN ('done', 'completed') AND archived_at IS NULL AND deadline IS NOT NULL AND deadline::date < $2::date) AS overdue,
+                COUNT(*) FILTER (WHERE status NOT IN ('done', 'completed') AND archived_at IS NULL AND ((NULLIF(date, '')::date = $2::date) OR (deadline IS NOT NULL AND deadline::date = $2::date))) AS due_today,
                 COUNT(*) AS total
-                FROM tasks WHERE date::date >= $1::date`, [monthStart])
+                FROM tasks`, [monthStart, today])
         ]);
 
-        // Avg check
-        const bookingsTodayCount = parseInt(bookingsToday.rows[0].cnt);
-        const bookingsWeekCount = parseInt(bookingsWeek.rows[0].cnt);
-        const bookingsMonthCount = parseInt(bookingsMonth.rows[0].cnt);
-        const revTodayVal = parseInt(revenueToday.rows[0].revenue);
-        const revWeekVal = parseInt(revenueWeek.rows[0].revenue);
-        const revMonthVal = parseInt(revenueMonth.rows[0].revenue);
-
         const kpi = {
-            today: {
-                revenue: revTodayVal,
-                bookings: bookingsTodayCount,
-                avgCheck: bookingsTodayCount > 0 ? Math.round(revTodayVal / bookingsTodayCount) : 0,
-                topProgram: topProgramToday.rows[0]?.program_name || '—'
-            },
-            week: {
-                revenue: revWeekVal,
-                bookings: bookingsWeekCount,
-                avgCheck: bookingsWeekCount > 0 ? Math.round(revWeekVal / bookingsWeekCount) : 0,
-                topProgram: topProgramWeek.rows[0]?.program_name || '—'
-            },
-            month: {
-                revenue: revMonthVal,
-                bookings: bookingsMonthCount,
-                avgCheck: bookingsMonthCount > 0 ? Math.round(revMonthVal / bookingsMonthCount) : 0,
-                topProgram: topProgramMonth.rows[0]?.program_name || '—'
-            }
+            today: kpiToday,
+            week: kpiWeek,
+            month: kpiMonth
         };
 
         // Workers with live status
@@ -159,11 +173,23 @@ router.get('/overview', async (req, res) => {
         const tasksOverview = {
             done: parseInt(tasksStats.rows[0]?.done || 0),
             open: parseInt(tasksStats.rows[0]?.open || 0),
+            overdue: parseInt(tasksStats.rows[0]?.overdue || 0),
+            dueToday: parseInt(tasksStats.rows[0]?.due_today || 0),
             total: parseInt(tasksStats.rows[0]?.total || 0)
         };
 
         res.json({
             success: true,
+            generatedAt: new Date().toISOString(),
+            periods: {
+                today: { label: 'Сьогодні', from: today, to: today },
+                week: { label: 'Поточний тиждень', from: weekStart, to: today },
+                month: { label: 'Поточний місяць', from: monthStart, to: today }
+            },
+            source: {
+                bookings: 'bookings: status != cancelled, linked_to IS NULL, confirmed revenue for KPI, visibility-scoped',
+                tasks: 'tasks: open excludes done/completed/archived, overdue uses deadline before today'
+            },
             kpi,
             workers,
             tasks: tasksOverview
@@ -198,9 +224,9 @@ router.get('/workers', async (req, res) => {
                 GROUP BY created_by
             `, lastBookingsScope.params).catch(() => ({ rows: [] })),
             pool.query(`
-                SELECT changed_by AS name, MAX(changed_at) AS last_activity
-                FROM history WHERE changed_by IS NOT NULL
-                GROUP BY changed_by
+                SELECT username AS name, MAX(created_at) AS last_activity
+                FROM history WHERE username IS NOT NULL
+                GROUP BY username
             `).catch(() => ({ rows: [] }))
         ]);
 
@@ -560,6 +586,7 @@ router.post('/report', async (req, res) => {
 router.get('/tasks', async (req, res) => {
     try {
         const { assignee, status } = req.query;
+        const today = formatDateISO(getKyivNow());
         const conditions = [];
         const params = [];
 
@@ -567,23 +594,36 @@ router.get('/tasks', async (req, res) => {
             params.push(assignee);
             conditions.push(`assigned_to = $${params.length}`);
         }
-        if (status) {
+        if (status && status !== 'all') {
             params.push(status);
             conditions.push(`status = $${params.length}`);
+        } else {
+            conditions.push(`status NOT IN ('done', 'completed')`);
+            conditions.push(`archived_at IS NULL`);
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        params.push(today);
+        const todayParam = `$${params.length}`;
         const result = await pool.query(
-            `SELECT id, title, description, status, priority, category, assigned_to, date, deadline, created_at, updated_at
+            `SELECT id, title, description, status, priority, category, assigned_to, date, deadline, created_at, updated_at,
+                (status NOT IN ('done', 'completed') AND deadline IS NOT NULL AND deadline::date < ${todayParam}::date) AS is_overdue
              FROM tasks ${where}
              ORDER BY
+                CASE WHEN status NOT IN ('done', 'completed') AND deadline IS NOT NULL AND deadline::date < ${todayParam}::date THEN 0 ELSE 1 END,
                 CASE WHEN status = 'in_progress' THEN 0 WHEN status = 'todo' THEN 1 ELSE 2 END,
                 CASE WHEN priority = 'high' THEN 0 WHEN priority = 'normal' THEN 1 ELSE 2 END,
+                deadline ASC NULLS LAST,
                 created_at DESC
              LIMIT 100`,
             params
         );
-        res.json({ success: true, tasks: result.rows });
+        res.json({
+            success: true,
+            period: { today },
+            source: status && status !== 'all' ? 'tasks filtered by requested status' : 'open tasks only; done/completed/archived hidden by default',
+            tasks: result.rows
+        });
     } catch (err) {
         log.error('GET /center/tasks error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження задач' });

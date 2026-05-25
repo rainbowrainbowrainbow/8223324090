@@ -193,6 +193,8 @@ checkPage('art-director.html', (doc, html) => {
 checkPage('center.html', (doc) => {
     check('tabs exist', doc.querySelectorAll('.center-tab-btn').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
+    check('Control Center has modern truth header', !!doc.querySelector('.center-hero') && !!doc.getElementById('centerTruthStrip') && !!doc.getElementById('centerFreshness'));
+    check('Control Center tabs expose ARIA state', [...doc.querySelectorAll('.center-tab-btn')].every(btn => btn.getAttribute('role') === 'tab' && btn.hasAttribute('aria-selected')));
 });
 
 checkPage('copilot.html', (doc) => {
@@ -964,6 +966,8 @@ check('Omni page guides unavailable channels to account setup', omniHtml.include
 check('Omni page separates inbox from channel setup and health workspaces', omniHtml.includes('omni-workspace-modes') && omniHtml.includes('data-omni-mode="inbox"') && omniHtml.includes('id="omniChannelsWorkspace"') && omniHtml.includes('id="omniHealthWorkspace"') && omniHtml.includes('function setOmniMode') && omniHtml.includes('function renderOmniHealthWorkspace'));
 check('Omni channel setup is not embedded in the conversation sidebar', omniHtml.indexOf('id="omniAccountsPanel"') > omniHtml.indexOf('id="omniChannelsWorkspace"') && !omniHtml.includes('omni-chat-empty-icon">Om'));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
+check('Center renders freshness and truth strip from overview metadata', centerCode.includes('function renderCenterTruth') && centerCode.includes('generatedAt') && centerCode.includes('confirmedBookings') && centerCode.includes('setInitialLoadingStates'));
+check('Center birthdays uses canonical CRM token key', htmlContains('center.html', "localStorage.getItem('pzp_token') || localStorage.getItem('token')"));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
 check('CRM system UI exposes requestId-aware errors and shared state renderers',
     uiCode.includes('window.CrmApiErrors')

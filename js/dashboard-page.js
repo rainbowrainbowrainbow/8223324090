@@ -7997,6 +7997,9 @@ const DashboardPage = (() => {
                 throw new Error(data.error || `HTTP ${resp.status}`);
             }
             await refetchQueueAfterDurableExecution(previousItemId, actionLabel);
+            window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
+                detail: { source: 'dashboard_work_queue', path, method }
+            }));
             return data;
         } catch (err) {
             console.error('Task queue action error:', err);
@@ -8517,6 +8520,17 @@ const DashboardPage = (() => {
         loadWidgetData(type);
     }
 
+    const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health'];
+
+    function refreshTaskRelatedWidgets() {
+        TASK_RELATED_WIDGET_TYPES.forEach(type => {
+            loadWidgetData(type);
+            document.querySelectorAll(`[data-widget-type="${type}"] .board-widget-live`).forEach(container => {
+                loadWidgetData(type, container);
+            });
+        });
+    }
+
     // Helpers
     function formatCurrency(amount) {
         if (amount >= 1000) return Math.round(amount / 1000) + 'k';
@@ -8577,6 +8591,9 @@ const DashboardPage = (() => {
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
+    window.addEventListener('crm:tasks-updated', () => {
+        refreshTaskRelatedWidgets();
+    });
 
     return {
         init,
@@ -8611,6 +8628,7 @@ const DashboardPage = (() => {
         clearReplyExpectation,
         escalateReplyExpectation,
         refreshWidget,
+        refreshTaskRelatedWidgets,
         setTeamOnlineHistory,
         setDashboardMode,
         setDashboardRolePreview,

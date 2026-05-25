@@ -2626,6 +2626,9 @@ const Sidebar = (() => {
     window.addEventListener('crm:alerts-updated', (event) => {
         _renderSidebarAlerts({ alerts: event.detail?.alerts || [] });
     });
+    window.addEventListener('crm:tasks-updated', () => {
+        _refreshTaskMiniWidget();
+    });
 
     // ─── Sidebar action helpers ──────────────────────────────────
     // On timeline (index.html) — open modal directly
@@ -2655,6 +2658,7 @@ const Sidebar = (() => {
         checkPageAccess,
         toggleGroup,
         openAlerts,
+        refreshTaskMiniWidget: _refreshTaskMiniWidget,
         initUserCard,
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,

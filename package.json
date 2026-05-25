@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.64.1",
+  "version": "0.64.2",
   "eventGenix": {
-    "releaseLabel": "CRM 64.1: підзадачі у dashboard widgets"
+    "releaseLabel": "CRM 64.2: виконані перенесені задачі у віджетах"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

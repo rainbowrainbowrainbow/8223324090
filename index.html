@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.64.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.64.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.64.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.64.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.64.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.64.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.64.1">
-    <link rel="stylesheet" href="css/features.css?v=0.64.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.64.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.64.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.64.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.1">
+    <link rel="stylesheet" href="css/base.css?v=0.64.2">
+    <link rel="stylesheet" href="css/auth.css?v=0.64.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.64.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.2">
+    <link rel="stylesheet" href="css/timeline.css?v=0.64.2">
+    <link rel="stylesheet" href="css/panel.css?v=0.64.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.64.2">
+    <link rel="stylesheet" href="css/controls.css?v=0.64.2">
+    <link rel="stylesheet" href="css/features.css?v=0.64.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.64.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.64.2">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.64.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.64.1 CRM 64.1: підзадачі у dashboard widgets">✨ 0.64.1 CRM 64.1: підзадачі у dashboard widgets</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.64.2 CRM 64.2: виконані перенесені задачі у віджетах">✨ 0.64.2 CRM 64.2: виконані перенесені задачі у віджетах</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.64.1 — CRM 64.1: підзадачі у dashboard widgets</p>
+                <p class="tagline">AI First CRM v0.64.2 — CRM 64.2: виконані перенесені задачі у віджетах</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.64.1: CRM 64.1: підзадачі у dashboard widgets</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.64.2: CRM 64.2: виконані перенесені задачі у віджетах</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1265,12 +1265,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.64.1 — CRM 64.1: підзадачі у dashboard widgets</h4>
+                    <h4>v0.64.2 — CRM 64.2: виконані перенесені задачі у віджетах</h4>
                     <ul>
-                        <li><b>Dashboard task widgets бачать decomposed tasks</b> — віджети задач, personal tasker, team tasks і work queue отримують підзадачі з <code>task_subtasks</code>.</li>
-                        <li><b>Підзадачі більше не ховаються</b> — картки показують <code>done/total</code>, progress-bar, перші кроки і компактний індикатор overflow.</li>
-                        <li><b>Counts синхронізовані з truth</b> — payload віддає <code>subtaskCount</code>, <code>subtaskDoneCount</code>, <code>subtaskProgress</code> і конкретні child rows з одного джерела.</li>
-                        <li><b>Додано regression guardrail</b> — тести перевіряють backend contract, triage-preview і статичний UI contract dashboard.</li>
+                        <li><b>Виконані перенесені задачі одразу видно у віджетах</b> — profile, Tasks і dashboard work queue шлють спільний <code>crm:tasks-updated</code> сигнал після виконання/перенесення задачі.</li>
+                        <li><b>Sidebar і dashboard оновлюються без ручного reload</b> — task chip у меню та task widgets перераховують completed/active після зміни задачі.</li>
+                        <li><b>Підрахунок дня переведено на Kyiv time</b> — <code>completed_at</code> рахується через <code>Europe/Kyiv</code>, тому перенесена з прострочених задача не випадає з "виконано сьогодні".</li>
+                        <li><b>Personal tasker має DB-level stats</b> — done today більше не залежить від обрізаного display payload.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9293,28 +9293,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.64.1"></script>
-    <script src="js/timeline-visibility.js?v=0.64.1"></script>
-    <script src="js/config.js?v=0.64.1"></script>
-    <script src="js/api.js?v=0.64.1"></script>
-    <script src="js/ui.js?v=0.64.1"></script>
-    <script src="js/auth.js?v=0.64.1"></script>
-    <script src="js/timeline.js?v=0.64.1"></script>
-    <script src="js/booking.js?v=0.64.1"></script>
-    <script src="js/settings.js?v=0.64.1"></script>
-    <script src="js/booking-form.js?v=0.64.1"></script>
-    <script src="js/booking-linked.js?v=0.64.1"></script>
-    <script src="js/settings-dashboard.js?v=0.64.1"></script>
-    <script src="js/settings-history.js?v=0.64.1"></script>
-    <script src="js/settings-afisha.js?v=0.64.1"></script>
-    <script src="js/settings-certificates.js?v=0.64.1"></script>
-    <script src="js/offline.js?v=0.64.1"></script>
-    <script src="js/crm-feature-registry.js?v=0.64.1"></script>
-    <script src="js/search.js?v=0.64.1"></script>
-    <script src="js/ws.js?v=0.64.1"></script>
-    <script src="js/app.js?v=0.64.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.64.1"></script>
-    <script src="js/components/sidebar.js?v=0.64.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.64.1"></script>
+    <script src="js/timeline-context.js?v=0.64.2"></script>
+    <script src="js/timeline-visibility.js?v=0.64.2"></script>
+    <script src="js/config.js?v=0.64.2"></script>
+    <script src="js/api.js?v=0.64.2"></script>
+    <script src="js/ui.js?v=0.64.2"></script>
+    <script src="js/auth.js?v=0.64.2"></script>
+    <script src="js/timeline.js?v=0.64.2"></script>
+    <script src="js/booking.js?v=0.64.2"></script>
+    <script src="js/settings.js?v=0.64.2"></script>
+    <script src="js/booking-form.js?v=0.64.2"></script>
+    <script src="js/booking-linked.js?v=0.64.2"></script>
+    <script src="js/settings-dashboard.js?v=0.64.2"></script>
+    <script src="js/settings-history.js?v=0.64.2"></script>
+    <script src="js/settings-afisha.js?v=0.64.2"></script>
+    <script src="js/settings-certificates.js?v=0.64.2"></script>
+    <script src="js/offline.js?v=0.64.2"></script>
+    <script src="js/crm-feature-registry.js?v=0.64.2"></script>
+    <script src="js/search.js?v=0.64.2"></script>
+    <script src="js/ws.js?v=0.64.2"></script>
+    <script src="js/app.js?v=0.64.2"></script>
+    <script src="js/kleshnya-widget.js?v=0.64.2"></script>
+    <script src="js/components/sidebar.js?v=0.64.2"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.64.2"></script>
 </body>
 </html>

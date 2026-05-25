@@ -129,6 +129,16 @@ const collapsedTaskSubtaskIds = new Set();
 const taskCardSubtaskCache = new Map();
 const loadingTaskSubtaskIds = new Set();
 
+function notifyTaskWidgetsChanged(detail = {}) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
+        detail: {
+            source: 'tasks_page',
+            ...detail
+        }
+    }));
+}
+
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -3529,6 +3539,7 @@ async function cycleStatus(taskId, newStatus) {
         result = await apiCompleteTask(taskId, { reportId });
     }
     if (result && result.success) {
+        notifyTaskWidgetsChanged({ action: 'task_status', taskId, status: newStatus });
         await loadAllTasks();
     } else {
         showNotification(result?.error || 'Помилка зміни статусу', 'error');
@@ -4217,6 +4228,7 @@ async function taskDetailComplete(taskId) {
     }
     if (result?.success) {
         showNotification('Задачу виконано', 'success');
+        notifyTaskWidgetsChanged({ action: 'task_status', taskId, status: 'done' });
         await closeTaskDetailOverlay(true);
         await loadAllTasks();
         return;

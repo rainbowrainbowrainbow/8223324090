@@ -43,6 +43,16 @@ const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
 
+function notifyTaskWidgetsChanged(detail = {}) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
+        detail: {
+            source: 'profile_my_cabinet',
+            ...detail
+        }
+    }));
+}
+
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
 let seasonalQuests = null;
@@ -3078,6 +3088,7 @@ async function updateCabinetSubtaskDone(input) {
         : normalizeCabinetSubtask(item));
     cabinetSubtaskCache.set(taskId, updated);
     updateCabinetTaskSubtaskSummary(taskId, updated);
+    notifyTaskWidgetsChanged({ action: 'subtask_status', taskId, subtaskId });
     const summary = cabinetSubtaskSummary(task);
     if (summary.total && summary.done >= summary.total && typeof showNotification === 'function') {
         showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
@@ -3373,6 +3384,7 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
         result = await apiPatch(`/auth/tasks/${id}/quick-status`, { status });
     }
     if (!result?.success) throw new Error(result?.error || 'Task status update failed');
+    notifyTaskWidgetsChanged({ action: 'task_status', taskId: id, status });
     if (!options.silent && status === 'done' && options.allowUndo !== false) {
         showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
     } else if (!options.silent && typeof showNotification === 'function') {
@@ -3390,6 +3402,7 @@ async function snoozeCabinetTask(taskId, minutes) {
         sourceSurface: 'profile_my_cabinet'
     });
     if (!result?.success) throw new Error(result?.error || 'Task snooze failed');
+    notifyTaskWidgetsChanged({ action: 'task_snooze', taskId: id });
     if (typeof showNotification === 'function') showNotification(`Задачу відкладено на ${delay} хв`, 'success');
     await refreshMyCabinetTab();
 }
@@ -3416,6 +3429,7 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
         sourceSurface
     });
     if (!result?.success) throw new Error(result?.error || 'Task reschedule failed');
+    notifyTaskWidgetsChanged({ action: 'task_reschedule', taskId: id, option });
     if (typeof showNotification === 'function' && options.notify !== false) {
         const label = option === 'today' ? 'сьогодні' : dateText;
         showNotification(`Задачу перенесено на ${label}`, 'success');

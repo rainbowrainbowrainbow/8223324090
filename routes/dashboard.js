@@ -101,13 +101,25 @@ function isTaskerOverdue(row = {}) {
     return !Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now();
 }
 
+function dateOnlyKyiv(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${map.year}-${map.month}-${map.day}`;
+}
+
 function isTaskerDoneToday(row = {}) {
     if (!TASKER_DONE_STATUSES.has(normalizeTaskStatus(row.status))) return false;
     const completedAt = row.completed_at || row.updated_at;
     if (!completedAt) return false;
-    const completed = new Date(completedAt);
-    if (Number.isNaN(completed.getTime())) return false;
-    return completed.toISOString().slice(0, 10) === getKyivDateStr();
+    return dateOnlyKyiv(completedAt) === getKyivDateStr();
 }
 
 function matchesTaskerUserIdentity(row = {}, user, fields = []) {
@@ -141,7 +153,22 @@ function taskerStats(tasks = []) {
     };
 }
 
-function buildPersonalTaskerPayload(rows = [], user) {
+function normalizeTaskerStatsRow(row = {}) {
+    const total = Number(row.total || 0);
+    const done = Number(row.done || 0);
+    return {
+        total,
+        active: Number(row.active || 0),
+        todo: Number(row.todo || 0),
+        inProgress: Number(row.in_progress || row.inProgress || 0),
+        done,
+        doneToday: Number(row.done_today || row.doneToday || 0),
+        overdue: Number(row.overdue || 0),
+        completionRate: total ? Math.round((done / total) * 100) : 0
+    };
+}
+
+function buildPersonalTaskerPayload(rows = [], user, statsOverride = null) {
     const payloadTasks = taskWidgetPayload(rows).map((task, index) => ({
         ...task,
         creatorLabel: rows[index]?.creator_name || rows[index]?.creator_username || rows[index]?.created_by || null,
@@ -154,7 +181,7 @@ function buildPersonalTaskerPayload(rows = [], user) {
     const createdRows = rows.filter(row => matchesTaskerUserIdentity(row, user, ['created_by_user_id', 'created_by', 'creator_username', 'creator_name']));
     const assigned = assignedRows.map(row => byId.get(String(row.id))).filter(Boolean);
     const created = createdRows.map(row => byId.get(String(row.id))).filter(Boolean);
-    const allStats = taskerStats(rows);
+    const allStats = statsOverride || taskerStats(rows);
     return {
         scope: 'creator',
         currentUser: {
@@ -744,7 +771,31 @@ router.get('/widgets/:type', async (req, res) => {
                         t.updated_at DESC
                     LIMIT 180
                 `, params);
-                data = buildPersonalTaskerPayload(result.rows, req.user);
+                const statsParams = [];
+                const statsVisibility = buildTaskVisibilityScope(req.user, statsParams, 't');
+                statsParams.push(getKyivDateStr());
+                const statsResult = await pool.query(`
+                    SELECT
+                        COUNT(*)::int AS total,
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived'))::int AS active,
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'todo')::int AS todo,
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'in_progress')::int AS in_progress,
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))::int AS done,
+                        COUNT(*) FILTER (
+                            WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete')
+                              AND t.completed_at IS NOT NULL
+                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${statsParams.length}::date
+                        )::int AS done_today,
+                        COUNT(*) FILTER (
+                            WHERE t.deadline IS NOT NULL
+                              AND t.deadline < NOW()
+                              AND COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived')
+                        )::int AS overdue
+                    FROM tasks t
+                    WHERE COALESCE(t.status, 'todo') != 'archived'
+                    ${statsVisibility}
+                `, statsParams);
+                data = buildPersonalTaskerPayload(result.rows, req.user, normalizeTaskerStatsRow(statsResult.rows[0] || {}));
                 break;
             }
 

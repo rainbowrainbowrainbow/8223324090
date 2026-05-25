@@ -4,6 +4,16 @@
 
 ---
 
+## v0.64.2 - CRM 64.2: виконані перенесені задачі у віджетах
+
+### Профіль / Мій день / task widgets / 25.05.2026 [codex]
+- **Виконані перенесені задачі одразу відображаються у віджетах** - після виконання задачі з `Мій день`, `Tasks` або work queue клієнт шле спільний `crm:tasks-updated` сигнал, а sidebar і dashboard task widgets перераховуються без очікування старого таймера чи ручного reload.
+- **Підрахунок "виконано сьогодні" переведено на київський день** - profile day progress і dashboard `personal_tasker` рахують `completed_at AT TIME ZONE 'Europe/Kyiv'`, тому перенесена з прострочених задача не випадає з денного completed-віджета через UTC/date mismatch.
+- **Dashboard personal tasker більше не залежить від обрізаного списку** - `done_today`, `done`, `active`, `todo`, `in_progress` і `overdue` беруться окремим DB-level агрегатом, а не з перших 180 рядків display payload.
+- **Regression guardrail** - UI/static checks фіксують refresh contract між profile, tasks page, sidebar і dashboard, а також Kyiv/date-backed done-today stats.
+
+---
+
 ## v0.64.1 - CRM 64.1: підзадачі у dashboard widgets
 
 ### Dashboard / task widgets / декомпозиція задач / 25.05.2026 [codex]

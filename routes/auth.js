@@ -114,6 +114,26 @@ function profileTaskOwnerWhere(user, alias = '') {
     return { match, params };
 }
 
+function kyivDateStr(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(now);
+    const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${map.year}-${map.month}-${map.day}`;
+}
+
+function profileTaskWorkloadDateSql(alias = 'tasks') {
+    return `COALESCE(
+        (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
+        CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
+        (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
+        (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
+    )`;
+}
+
 router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -264,7 +284,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         const isAdminRole = MANAGEMENT_ROLES.includes(user.role);
 
         const now = new Date();
-        const today = now.toISOString().split('T')[0];
+        const today = kyivDateStr(now);
         const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         // Previous week range for delta comparison
         const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -445,13 +465,20 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 `SELECT COUNT(*)::int as count FROM bookings WHERE date = $1 AND status != 'cancelled'`,
                 [today]
             ),
-            // 22: Today's tasks done count vs total for this user
+            // 22: Today's tasks done count vs active workload for this user
             pool.query(
                 `SELECT
-                    COUNT(*) FILTER (WHERE status = 'done' AND completed_at::date = CURRENT_DATE) ::int as done_today,
-                    COUNT(*) FILTER (WHERE status != 'done') ::int as remaining
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(status, 'todo') = 'done'
+                          AND completed_at IS NOT NULL
+                          AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${ownerParams.length + 1}::date
+                    ) ::int as done_today,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+                          AND (${profileTaskWorkloadDateSql('tasks')} = $${ownerParams.length + 1}::date OR ${profileTaskWorkloadDateSql('tasks')} IS NULL)
+                    ) ::int as remaining
                  FROM tasks WHERE ${ownerWhere}
-                 AND (date = $${ownerParams.length + 1} OR (deadline IS NOT NULL AND deadline::date = CURRENT_DATE) OR date IS NULL)`,
+                `,
                 [...ownerParams, today]
             ),
             // 23: Next scheduled working shift for this employee

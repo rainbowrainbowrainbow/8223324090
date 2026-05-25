@@ -3,6 +3,21 @@
  */
 (function() {
     const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
+    const SINGLE_ISSUE_LABEL = 'Видати сертифікат або абонемент';
+    const IDENTITY_COPY = {
+        fio: {
+            label: "ПІБ (прізвище та ім'я)",
+            placeholder: "Наприклад: Іваненко Марія",
+            hint: "Обов'язково: повне ім'я отримувача для унікальної видачі.",
+            error: "ПІБ отримувача обов'язковий"
+        },
+        number: {
+            label: 'Номер або ідентифікатор отримувача',
+            placeholder: 'Наприклад: номер телефону, картки або договору',
+            hint: "Обов'язково: унікальний номер або інший ідентифікатор отримувача.",
+            error: "Номер або ідентифікатор отримувача обов'язковий"
+        }
+    };
 
     const state = {
         mode: 'list',
@@ -116,15 +131,31 @@
         return `<span class="cert-page-badge cert-page-badge-${esc(meta.tone)}">${esc(meta.label)}</span>`;
     }
 
+    function displayValueForCert(cert) {
+        if (cert?.displayValue) return cert.displayValue;
+        if (cert?.issueSource === 'batch') return 'Пакетний код без отримувача';
+        return 'Отримувача не вказано';
+    }
+
+    function syncHeaderActiveState(mode) {
+        document.querySelectorAll('.cert-page-actions [data-cert-mode]').forEach((link) => {
+            const active = link.dataset.certMode === mode;
+            link.classList.toggle('is-active', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+    }
+
     function setMode(mode) {
         state.mode = mode;
         const titles = {
-            list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі.'],
-            new: ['Видати сертифікат', 'Окрема робоча сторінка для створення одного сертифіката.'],
+            list: ['Сертифікати', 'Реєстр, фільтри, статуси і швидкий перехід до видачі сертифіката або абонемента.'],
+            new: [SINGLE_ISSUE_LABEL, "Окрема робоча сторінка для створення одного сертифіката або абонемента з обов'язковим отримувачем."],
             batch: ['Пакет сертифікатів на одноразовий вхід', 'Пакетна генерація одноразових кодів без вибору іншого типу.']
         };
         $('certificatePageTitle').textContent = titles[mode][0];
         $('certificatePageSubtitle').textContent = titles[mode][1];
+        syncHeaderActiveState(mode);
         $('certificatesListView').classList.toggle('hidden', mode !== 'list');
         $('certificatesNewView').classList.toggle('hidden', mode !== 'new');
         $('certificatesBatchView').classList.toggle('hidden', mode !== 'batch');
@@ -156,9 +187,40 @@
     }
 
     function updateDisplayModeLabel() {
-        const mode = $('certPageDisplayMode')?.value;
+        const mode = $('certPageDisplayMode')?.value === 'number' ? 'number' : 'fio';
+        const copy = IDENTITY_COPY[mode];
         const label = $('certPageDisplayValueLabel');
-        if (label) label.textContent = mode === 'fio' ? "ПІБ (прізвище та ім'я)" : 'Номер або ідентифікатор';
+        const input = $('certPageDisplayValue');
+        const hint = $('certPageDisplayValueHint');
+        if (label) label.textContent = copy.label;
+        if (input) input.placeholder = copy.placeholder;
+        if (hint) hint.textContent = copy.hint;
+        setDisplayValueError('');
+    }
+
+    function setDisplayValueError(message) {
+        const input = $('certPageDisplayValue');
+        const error = $('certPageDisplayValueError');
+        if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+        if (error) {
+            error.textContent = message || '';
+            error.classList.toggle('hidden', !message);
+        }
+    }
+
+    function validateSingleIdentity({ focus = false } = {}) {
+        const mode = $('certPageDisplayMode')?.value === 'number' ? 'number' : 'fio';
+        const input = $('certPageDisplayValue');
+        const value = input?.value.trim() || '';
+        if (!value) {
+            const message = IDENTITY_COPY[mode].error;
+            setDisplayValueError(message);
+            notify(message, 'error');
+            if (focus) input?.focus();
+            return null;
+        }
+        setDisplayValueError('');
+        return value;
     }
 
     function updateSingleTypeMode() {
@@ -190,8 +252,8 @@
             container.innerHTML = `
                 <div class="cert-page-empty">
                     <h3>Сертифікатів не знайдено</h3>
-                    <p>Спробуйте змінити фільтр або видати новий сертифікат.</p>
-                    <a class="btn-page-primary" href="/certificates/new">Видати сертифікат</a>
+                    <p>Спробуйте змінити фільтр або видати новий сертифікат чи абонемент.</p>
+                    <a class="btn-page-primary" href="/certificates/new">${SINGLE_ISSUE_LABEL}</a>
                 </div>`;
             return;
         }
@@ -232,7 +294,7 @@
                 <button type="button" class="cert-page-card-main" data-cert-open="${esc(cert.id)}">
                     <span class="cert-page-code">${esc(cert.certCode)}</span>
                     ${statusBadge(cert.status)}
-                    <strong>${esc(cert.displayValue || 'Без імені / номера')}</strong>
+                    <strong>${esc(displayValueForCert(cert))}</strong>
                     <span>${esc(modeLabel)} · ${esc(cert.typeText || 'сертифікат')}</span>
                 </button>
                 <div class="cert-page-card-meta">
@@ -246,8 +308,11 @@
 
     async function handleSingleSubmit(event) {
         event.preventDefault();
+        const displayValue = validateSingleIdentity({ focus: true });
+        if (!displayValue) return;
+
         const btn = $('certPageSubmitBtn');
-        const original = btn?.textContent || 'Видати сертифікат';
+        const original = btn?.textContent || SINGLE_ISSUE_LABEL;
         if (btn) {
             btn.disabled = true;
             btn.textContent = 'Видаю...';
@@ -256,7 +321,7 @@
         const preset = $('certPageTypePreset')?.value || 'на одноразовий вхід';
         const data = {
             displayMode: $('certPageDisplayMode')?.value || 'fio',
-            displayValue: $('certPageDisplayValue')?.value.trim() || undefined,
+            displayValue,
             typeText: preset === 'custom'
                 ? $('certPageTypeText')?.value.trim()
                 : preset,
@@ -268,13 +333,13 @@
         try {
             const result = await apiCreateCertificate(data);
             if (!result.success) {
-                notify(result.error || 'Не вдалося видати сертифікат', 'error');
+                notify(result.error || 'Не вдалося видати сертифікат або абонемент', 'error');
                 return;
             }
             renderSingleResult(result.certificate);
             $('certificatePageForm')?.reset();
             initializeSingleForm();
-            notify(`Сертифікат ${result.certificate.certCode} видано`, 'success');
+            notify(`Сертифікат або абонемент ${result.certificate.certCode} видано`, 'success');
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -291,7 +356,7 @@
         box.innerHTML = `
             <span class="cert-result-kicker">Видано</span>
             <h3>${esc(cert.certCode)}</h3>
-            <p>${esc(cert.displayValue || 'Порожній сертифікат')} · ${esc(cert.typeText || '')}</p>
+            <p>${esc(displayValueForCert(cert))} · ${esc(cert.typeText || '')}</p>
             <div class="cert-result-meta">
                 <span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span>
                 <span>Видано: ${formatDateTime(cert.issuedAt)}</span>
@@ -439,7 +504,7 @@
                     </div>
                     <div class="cert-detail-grid">
                         <div class="cert-detail-row"><span class="cert-detail-label">Джерело:</span><span class="cert-detail-val"><span class="cert-source-chip cert-source-${esc(source.tone)}">${esc(source.label)}</span></span></div>
-                        <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${esc(cert.displayValue || '—')}</span></div>
+                        <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${esc(displayValueForCert(cert))}</span></div>
                         <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${esc(cert.typeText || '—')}</span></div>
                         <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${formatDateTime(cert.issuedAt)}</span></div>
                         <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${formatDate(cert.validUntil)}</span></div>
@@ -553,6 +618,13 @@
             state.searchTimer = setTimeout(loadCertificatesPage, 350);
         });
         $('certPageDisplayMode')?.addEventListener('change', updateDisplayModeLabel);
+        $('certPageDisplayValue')?.addEventListener('input', () => {
+            if ($('certPageDisplayValue')?.value.trim()) setDisplayValueError('');
+        });
+        $('certPageDisplayValue')?.addEventListener('invalid', (event) => {
+            event.preventDefault();
+            validateSingleIdentity({ focus: true });
+        });
         $('certPageTypePreset')?.addEventListener('change', updateSingleTypeMode);
         $('certificatePageForm')?.addEventListener('submit', handleSingleSubmit);
         $('certificateBatchPageForm')?.addEventListener('submit', handleBatchSubmit);

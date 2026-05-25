@@ -48,18 +48,39 @@ function calculateValidUntil(issuedDate, defaultDays = 45) {
 const VALID_STATUSES = ['active', 'used', 'expired', 'revoked', 'blocked'];
 const VALID_DISPLAY_MODES = ['number', 'fio'];
 
-function validateCertificateInput(body) {
+function normalizeCertificateIdentity(value) {
+    return String(value ?? '').trim();
+}
+
+function certificateIdentityKey(value) {
+    return normalizeCertificateIdentity(value).toLocaleLowerCase('uk-UA');
+}
+
+function certificateIdentityRequiredMessage(displayMode = 'fio') {
+    return displayMode === 'number'
+        ? "Номер або ідентифікатор отримувача обов'язковий"
+        : "ПІБ отримувача обов'язковий";
+}
+
+function validateCertificateInput(body, options = {}) {
+    const source = body || {};
     const errors = [];
-    if (body.displayValue && body.displayValue.length > 200) {
+    const displayValue = normalizeCertificateIdentity(source.displayValue);
+    const displayMode = source.displayMode || 'fio';
+
+    if (options.requireIdentity && !displayValue) {
+        errors.push(certificateIdentityRequiredMessage(displayMode));
+    }
+    if (displayValue && displayValue.length > 200) {
         errors.push('displayValue max 200 chars');
     }
-    if (body.displayMode && !VALID_DISPLAY_MODES.includes(body.displayMode)) {
+    if (source.displayMode && !VALID_DISPLAY_MODES.includes(source.displayMode)) {
         errors.push('displayMode must be "number" or "fio"');
     }
-    if (body.typeText && body.typeText.length > 200) {
+    if (source.typeText && source.typeText.length > 200) {
         errors.push('typeText max 200 chars');
     }
-    if (body.validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(body.validUntil)) {
+    if (source.validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(source.validUntil)) {
         errors.push('validUntil must be YYYY-MM-DD');
     }
     return errors;
@@ -68,6 +89,9 @@ function validateCertificateInput(body) {
 module.exports = {
     mapCertificateRow,
     calculateValidUntil,
+    normalizeCertificateIdentity,
+    certificateIdentityKey,
+    certificateIdentityRequiredMessage,
     validateCertificateInput,
     getCurrentSeason,
     VALID_STATUSES,

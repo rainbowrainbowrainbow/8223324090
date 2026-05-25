@@ -80,7 +80,7 @@ const SEARCH_NAV_ALIASES = {
     '/sound#announcements': ['оголошення', 'announcements', 'аудіо оголошення'],
     '/afisha': ['афіша', 'afisha', 'події афіші', 'створити афішу', 'додати подію', 'розклад подій'],
     '/certificates': ['сертифікати', 'certificates', 'сертифікат', 'реєстр сертифікатів'],
-    '/certificates/new': ['видати сертифікат', 'new certificate', 'створити сертифікат', 'видати грамоту', 'створити грамоту', 'грамота', 'грамоту'],
+    '/certificates/new': ['видати сертифікат', 'видати абонемент', 'сертифікат або абонемент', 'new certificate', 'new subscription', 'створити сертифікат', 'створити абонемент', 'видати грамоту', 'створити грамоту', 'грамота', 'грамоту'],
     '/certificates/batch': ['пакет сертифікатів', 'batch certificates', 'пакетна видача'],
     '/kleshnya': ['помічник', 'assistant', 'ai провідник', 'клешня'],
     '/guardian-ops': ['guardian ops', 'guardian', 'безпека', 'модерація'],
@@ -107,7 +107,7 @@ const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/hr', icon: '☷', label: 'Кадри', access: 'hr_page', group: 'team' },
     { href: '/afisha', icon: '🎭', label: 'Афіша', access: 'afisha', group: 'product' },
     { href: '/certificates', icon: '🎫', label: 'Сертифікати', access: 'certificates', group: 'product' },
-    { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product' },
+    { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат або абонемент', access: 'certificates', group: 'product' },
     { href: '/warehouse', icon: '▣', label: 'Склад', access: 'warehouse', group: 'system' },
     { href: '/profile', icon: '●', label: 'Профіль', access: 'all', group: 'system' }
 ];

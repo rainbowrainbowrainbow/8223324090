@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.43",
+  "version": "0.63.44",
   "eventGenix": {
-    "releaseLabel": "CRM 63.43: перенос прострочених задач у Мій день"
+    "releaseLabel": "CRM 63.44: сертифікати з унікальним отримувачем"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

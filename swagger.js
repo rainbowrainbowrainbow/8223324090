@@ -408,7 +408,7 @@ const swaggerSpec = {
           id: { type: 'integer' },
           certCode: { type: 'string', example: 'PZP-AB12CD' },
           displayMode: { type: 'string', enum: ['fio', 'number'] },
-          displayValue: { type: 'string' },
+          displayValue: { type: 'string', description: 'Recipient identity for single-issued certificates; batch placeholders may be blank until assigned.' },
           typeText: { type: 'string', example: 'на одноразовий вхід' },
           validUntil: { type: 'string', format: 'date', nullable: true },
           issuedAt: { type: 'string', format: 'date-time' },
@@ -425,9 +425,10 @@ const swaggerSpec = {
       },
       CertificateCreateRequest: {
         type: 'object',
+        required: ['displayValue'],
         properties: {
           displayMode: { type: 'string', enum: ['fio', 'number'], default: 'fio' },
-          displayValue: { type: 'string' },
+          displayValue: { type: 'string', minLength: 1, maxLength: 200, description: 'Required recipient identity. Trimmed and uniqueness-checked case-insensitively across certificates.' },
           typeText: { type: 'string', default: 'на одноразовий вхід' },
           validUntil: { type: 'string', format: 'date', nullable: true },
           notes: { type: 'string', nullable: true },
@@ -1710,14 +1711,15 @@ const swaggerSpec = {
         },
         responses: {
           201: { description: 'Certificate created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Certificate' } } } },
-          400: { description: 'Validation error' }
+          400: { description: 'Validation error' },
+          409: { description: 'Recipient identity already exists' }
         }
       }
     },
     '/certificates/batch': {
       post: {
         tags: ['Certificates'],
-        summary: 'Batch-generate N blank certificates (admin/user)',
+        summary: 'Batch-generate placeholder one-time certificates without recipient identity (admin/user)',
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/CertificateBatchRequest' } } }
@@ -1774,11 +1776,13 @@ const swaggerSpec = {
         ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', properties: { displayValue: { type: 'string' }, typeText: { type: 'string' }, validUntil: { type: 'string', format: 'date' }, notes: { type: 'string', nullable: true } } } } }
+          content: { 'application/json': { schema: { type: 'object', properties: { displayValue: { type: 'string', minLength: 1, maxLength: 200, description: 'When provided, recipient identity is required and uniqueness-checked case-insensitively.' }, typeText: { type: 'string' }, validUntil: { type: 'string', format: 'date' }, notes: { type: 'string', nullable: true } } } } }
         },
         responses: {
           200: { description: 'Certificate updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/Certificate' } } } },
-          404: { description: 'Certificate not found' }
+          400: { description: 'Validation error' },
+          404: { description: 'Certificate not found' },
+          409: { description: 'Recipient identity already exists' }
         }
       },
       delete: {

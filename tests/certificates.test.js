@@ -10,6 +10,10 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { request, authRequest, getToken } = require('./helpers');
 
+function uniqueRecipient(label = 'Тестовий отримувач') {
+    return `${label} ${Date.now()} ${Math.random().toString(36).slice(2, 8)}`;
+}
+
 // ==========================================
 // POST /api/certificates — Create single
 // ==========================================
@@ -24,9 +28,10 @@ describe('POST /api/certificates — Create single', () => {
     });
 
     it('POST /api/certificates — create with all valid fields → 201', async () => {
+        const displayValue = uniqueRecipient('Тестова Дитина');
         const res = await authRequest('POST', '/api/certificates', {
             displayMode: 'fio',
-            displayValue: 'Тестова Дитина',
+            displayValue,
             typeText: 'на одноразовий вхід',
             validUntil: '2099-12-31',
             notes: 'smoke test',
@@ -45,31 +50,53 @@ describe('POST /api/certificates — Create single', () => {
         assert.equal(res.data.batchGroupId, null);
         assert.equal(res.data.status, 'active');
         assert.match(res.data.certCode, /^CERT-\d{4}-\d{5}$/);
-        assert.equal(res.data.displayValue, 'Тестова Дитина');
+        assert.equal(res.data.displayValue, displayValue);
         assert.equal(res.data.season, 'winter');
         createdIds.push(res.data.id);
     });
 
-    it('POST /api/certificates — create with minimal fields (defaults applied) → 201', async () => {
+    it('POST /api/certificates — empty displayValue → 400', async () => {
         const res = await authRequest('POST', '/api/certificates', {});
-        assert.equal(res.status, 201, `Expected 201, got ${res.status}: ${JSON.stringify(res.data)}`);
-        assert.equal(res.data.displayMode, 'fio');
-        assert.equal(res.data.displayValue, '');
-        assert.equal(res.data.typeText, 'на одноразовий вхід');
-        assert.ok(res.data.validUntil, 'validUntil should be set (auto-calculated)');
-        assert.ok(['winter', 'spring', 'summer', 'autumn'].includes(res.data.season), `Season should be valid, got ${res.data.season}`);
-        assert.equal(res.data.status, 'active');
-        createdIds.push(res.data.id);
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error.includes('обов'), `Error should mention required identity, got: ${res.data.error}`);
+    });
+
+    it('POST /api/certificates — whitespace-only displayValue → 400', async () => {
+        const res = await authRequest('POST', '/api/certificates', {
+            displayMode: 'number',
+            displayValue: '   '
+        });
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error.includes('Номер або ідентифікатор'), `Error should mention number identity, got: ${res.data.error}`);
     });
 
     it('POST /api/certificates — create with displayMode number → 201', async () => {
+        const displayValue = uniqueRecipient('12345');
         const res = await authRequest('POST', '/api/certificates', {
             displayMode: 'number',
-            displayValue: '12345'
+            displayValue
         });
         assert.equal(res.status, 201);
         assert.equal(res.data.displayMode, 'number');
+        assert.equal(res.data.displayValue, displayValue);
         createdIds.push(res.data.id);
+    });
+
+    it('POST /api/certificates — duplicate normalized displayValue → 409', async () => {
+        const displayValue = uniqueRecipient('Дублікат');
+        const first = await authRequest('POST', '/api/certificates', {
+            displayMode: 'fio',
+            displayValue
+        });
+        assert.equal(first.status, 201);
+        createdIds.push(first.data.id);
+
+        const duplicate = await authRequest('POST', '/api/certificates', {
+            displayMode: 'fio',
+            displayValue: `  ${displayValue.toUpperCase()}  `
+        });
+        assert.equal(duplicate.status, 409);
+        assert.equal(duplicate.data.code, 'CERTIFICATE_RECIPIENT_NOT_UNIQUE');
     });
 
     it('POST /api/certificates — invalid displayMode → 400', async () => {
@@ -106,6 +133,7 @@ describe('POST /api/certificates — Create single', () => {
 
     it('POST /api/certificates — explicit season → 201', async () => {
         const res = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Сезон Літо'),
             season: 'summer'
         });
         assert.equal(res.status, 201);
@@ -115,6 +143,7 @@ describe('POST /api/certificates — Create single', () => {
 
     it('POST /api/certificates — invalid season falls back to auto-detection → 201', async () => {
         const res = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Сезон Auto'),
             season: 'invalid_season'
         });
         assert.equal(res.status, 201);
@@ -127,7 +156,7 @@ describe('POST /api/certificates — Create single', () => {
 
     it('POST /api/certificates — history entry recorded on create', async () => {
         const createRes = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Історія Тест',
+            displayValue: uniqueRecipient('Історія Тест'),
             validUntil: '2099-12-31'
         });
         assert.equal(createRes.status, 201);
@@ -143,6 +172,7 @@ describe('POST /api/certificates — Create single', () => {
 
     it('POST /api/certificates — created certificate has issuedByName set', async () => {
         const res = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('IssuedBy Тест'),
             validUntil: '2099-12-31'
         });
         assert.equal(res.status, 201);
@@ -172,6 +202,7 @@ describe('POST /api/certificates/batch — Batch generate', () => {
         for (const cert of res.data.certificates) {
             assert.equal(cert.status, 'active');
             assert.equal(cert.issueSource, 'batch');
+            assert.equal(cert.displayValue, '');
             assert.ok(cert.batchGroupId, 'batchGroupId should be set');
             assert.match(cert.certCode, /^CERT-\d{4}-\d{5}$/);
             createdIds.push(cert.id);
@@ -302,7 +333,7 @@ describe('GET /api/certificates — List with filters', () => {
     before(async () => {
         // Create a few certificates for testing list/filter/search
         const res1 = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Тестовий Пошук',
+            displayValue: uniqueRecipient('Тестовий Пошук'),
             validUntil: '2099-12-31',
             season: 'winter'
         });
@@ -313,7 +344,7 @@ describe('GET /api/certificates — List with filters', () => {
         }
 
         const res2 = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Другий Тестовий',
+            displayValue: uniqueRecipient('Другий Тестовий'),
             validUntil: '2099-12-31',
             season: 'summer'
         });
@@ -349,7 +380,10 @@ describe('GET /api/certificates — List with filters', () => {
 
     it('GET /api/certificates — filter by status used', async () => {
         // Create a cert and mark as used
-        const createRes = await authRequest('POST', '/api/certificates', { validUntil: '2099-12-31' });
+        const createRes = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Used Filter Тест'),
+            validUntil: '2099-12-31'
+        });
         assert.equal(createRes.status, 201);
         createdIds.push(createRes.data.id);
 
@@ -459,7 +493,7 @@ describe('GET /api/certificates/:id — Single get', () => {
 
     it('GET /api/certificates/:id — existing certificate returns 200 with full data', async () => {
         const createRes = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Повний Тест',
+            displayValue: uniqueRecipient('Повний Тест'),
             validUntil: '2099-12-31',
             season: 'winter'
         });
@@ -504,7 +538,7 @@ describe('GET /api/certificates/code/:code — Find by code', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Код Тест',
+            displayValue: uniqueRecipient('Код Тест'),
             validUntil: '2099-12-31'
         });
         if (res.status === 201) {
@@ -560,7 +594,7 @@ describe('GET /api/certificates/qr/:code — QR generation', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/certificates', {
-            displayValue: 'QR Тест',
+            displayValue: uniqueRecipient('QR Тест'),
             validUntil: '2099-12-31'
         });
         if (res.status === 201) {
@@ -612,7 +646,7 @@ describe('PUT /api/certificates/:id — Update', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Оригінальне Ім\'я',
+            displayValue: uniqueRecipient('Оригінальне Ім\'я'),
             typeText: 'на одноразовий вхід',
             validUntil: '2099-12-31',
             notes: 'Оригінальні нотатки'
@@ -630,11 +664,12 @@ describe('PUT /api/certificates/:id — Update', () => {
     });
 
     it('PUT /api/certificates/:id — update displayValue', async () => {
+        const displayValue = uniqueRecipient('Новий Отримувач');
         const res = await authRequest('PUT', `/api/certificates/${testCertId}`, {
-            displayValue: 'Новий Отримувач'
+            displayValue
         });
         assert.equal(res.status, 200);
-        assert.equal(res.data.displayValue, 'Новий Отримувач');
+        assert.equal(res.data.displayValue, displayValue);
     });
 
     it('PUT /api/certificates/:id — update typeText', async () => {
@@ -661,6 +696,34 @@ describe('PUT /api/certificates/:id — Update', () => {
         assert.ok(res.data.validUntil, 'validUntil should be set');
     });
 
+    it('PUT /api/certificates/:id — whitespace-only displayValue → 400', async () => {
+        const res = await authRequest('PUT', `/api/certificates/${testCertId}`, {
+            displayValue: '   '
+        });
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error.includes('обов'), `Error should mention required identity, got: ${res.data.error}`);
+    });
+
+    it('PUT /api/certificates/:id — duplicate normalized displayValue → 409', async () => {
+        const first = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Edit Duplicate A'),
+            validUntil: '2099-12-31'
+        });
+        const second = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Edit Duplicate B'),
+            validUntil: '2099-12-31'
+        });
+        assert.equal(first.status, 201);
+        assert.equal(second.status, 201);
+        createdIds.push(first.data.id, second.data.id);
+
+        const duplicate = await authRequest('PUT', `/api/certificates/${second.data.id}`, {
+            displayValue: `  ${first.data.displayValue.toUpperCase()}  `
+        });
+        assert.equal(duplicate.status, 409);
+        assert.equal(duplicate.data.code, 'CERTIFICATE_RECIPIENT_NOT_UNIQUE');
+    });
+
     it('PUT /api/certificates/:id — non-existent returns 404', async () => {
         const res = await authRequest('PUT', '/api/certificates/999999', {
             displayValue: 'Не існує'
@@ -670,7 +733,7 @@ describe('PUT /api/certificates/:id — Update', () => {
 
     it('PUT /api/certificates/:id — history entry recorded for edit', async () => {
         const editRes = await authRequest('PUT', `/api/certificates/${testCertId}`, {
-            displayValue: 'Історія Редагування'
+            displayValue: uniqueRecipient('Історія Редагування')
         });
         assert.equal(editRes.status, 200);
 
@@ -690,7 +753,7 @@ describe('PATCH /api/certificates/:id/status — Status transitions', () => {
     // Helper: create a fresh active certificate for each test that needs one
     async function createActiveCert() {
         const res = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Статус Тест',
+            displayValue: uniqueRecipient('Статус Тест'),
             validUntil: '2099-12-31'
         });
         assert.equal(res.status, 201);
@@ -843,7 +906,7 @@ describe('PATCH /api/certificates/:id/status — Status transitions', () => {
 describe('DELETE /api/certificates/:id — Delete', () => {
     it('DELETE /api/certificates/:id — delete existing certificate', async () => {
         const createRes = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Видалити',
+            displayValue: uniqueRecipient('Видалити'),
             validUntil: '2099-12-31'
         });
         assert.equal(createRes.status, 201);
@@ -865,7 +928,7 @@ describe('DELETE /api/certificates/:id — Delete', () => {
 
     it('DELETE /api/certificates/:id — history entry recorded for delete', async () => {
         const createRes = await authRequest('POST', '/api/certificates', {
-            displayValue: 'Історія Видалення',
+            displayValue: uniqueRecipient('Історія Видалення'),
             validUntil: '2099-12-31'
         });
         assert.equal(createRes.status, 201);
@@ -893,7 +956,10 @@ describe('POST /api/certificates/:id/send-image — Telegram image', () => {
     });
 
     it('POST /api/certificates/:id/send-image — missing imageBase64 → 400', async () => {
-        const createRes = await authRequest('POST', '/api/certificates', { validUntil: '2099-12-31' });
+        const createRes = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Telegram Missing Image'),
+            validUntil: '2099-12-31'
+        });
         assert.equal(createRes.status, 201);
         createdIds.push(createRes.data.id);
 
@@ -910,7 +976,10 @@ describe('POST /api/certificates/:id/send-image — Telegram image', () => {
     });
 
     it('POST /api/certificates/:id/send-image — Telegram chat not configured → 400 or 500', async () => {
-        const createRes = await authRequest('POST', '/api/certificates', { validUntil: '2099-12-31' });
+        const createRes = await authRequest('POST', '/api/certificates', {
+            displayValue: uniqueRecipient('Telegram Config'),
+            validUntil: '2099-12-31'
+        });
         assert.equal(createRes.status, 201);
         createdIds.push(createRes.data.id);
 

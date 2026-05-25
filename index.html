@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.63.43">
-    <link rel="stylesheet" href="css/auth.css?v=0.63.43">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.43">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.43">
-    <link rel="stylesheet" href="css/timeline.css?v=0.63.43">
-    <link rel="stylesheet" href="css/panel.css?v=0.63.43">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.43">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.43">
-    <link rel="stylesheet" href="css/features.css?v=0.63.43">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.43">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.43">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.43">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.43">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.43">
+    <link rel="stylesheet" href="css/base.css?v=0.63.44">
+    <link rel="stylesheet" href="css/auth.css?v=0.63.44">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.44">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.44">
+    <link rel="stylesheet" href="css/timeline.css?v=0.63.44">
+    <link rel="stylesheet" href="css/panel.css?v=0.63.44">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.44">
+    <link rel="stylesheet" href="css/controls.css?v=0.63.44">
+    <link rel="stylesheet" href="css/features.css?v=0.63.44">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.44">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.44">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.44">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.44">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.44">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.63.43 CRM 63.43: перенос прострочених задач у Мій день">✨ 0.63.43 CRM 63.43: перенос прострочених задач у Мій день</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.63.44 CRM 63.44: сертифікати з унікальним отримувачем">✨ 0.63.44 CRM 63.44: сертифікати з унікальним отримувачем</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.63.43 — CRM 63.43: перенос прострочених задач у Мій день</p>
+                <p class="tagline">AI First CRM v0.63.44 — CRM 63.44: сертифікати з унікальним отримувачем</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.43: CRM 63.43: перенос прострочених задач у Мій день</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.44: CRM 63.44: сертифікати з унікальним отримувачем</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -662,7 +662,7 @@
                 <div id="certificatesList" class="certificates-list">
                     <p class="empty-state">Натисніть кнопку, щоб завантажити</p>
                 </div>
-                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
+                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" onclick="showCreateCertificateModal()">➕ Видати сертифікат або абонемент</button>
                 <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">Пакет сертифікатів на одноразовий вхід</button>
             </div>
         </aside>
@@ -917,10 +917,10 @@
     </div>
 
     <!-- v8.4: Модалка видачі сертифіката -->
-    <div id="certificateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Видати сертифікат">
+    <div id="certificateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Видати сертифікат або абонемент">
         <div class="modal-content">
             <button type="button" class="modal-close" data-cert-modal-close="certificateModal" aria-label="Закрити">&times;</button>
-            <h3 id="certModalTitle">Видати сертифікат</h3>
+            <h3 id="certModalTitle">Видати сертифікат або абонемент</h3>
             <form id="certificateForm" onsubmit="handleCertificateSubmit(event)">
                 <div class="form-group">
                     <label for="certDisplayMode">Режим відображення</label>
@@ -931,7 +931,7 @@
                 </div>
                 <div class="form-group">
                     <label for="certDisplayValue" id="certDisplayValueLabel">ПІБ або ідентифікатор</label>
-                    <input type="text" id="certDisplayValue" maxlength="200">
+                    <input type="text" id="certDisplayValue" maxlength="200" required aria-required="true">
                 </div>
                 <div class="form-group">
                     <label for="certTypeText">Тип сертифіката</label>
@@ -964,7 +964,7 @@
                     <label for="certNotes">Примітка</label>
                     <textarea id="certNotes" rows="2" placeholder="Опціонально..."></textarea>
                 </div>
-                <button type="submit" class="btn-submit btn-full">Видати сертифікат</button>
+                <button type="submit" class="btn-submit btn-full">Видати сертифікат або абонемент</button>
             </form>
         </div>
     </div>
@@ -1265,12 +1265,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.63.43 — CRM 63.43: перенос прострочених задач у Мій день</h4>
+                    <h4>v0.63.44 — CRM 63.44: сертифікати з унікальним отримувачем</h4>
                     <ul>
-                        <li><b>Перенос із "Прострочено" у "Сьогодні" знову працює</b> — drag-and-drop і кнопка <code>На сьогодні</code> тепер коректно визначають overdue-задачу за дедлайном, scheduled start, remind або датою.</li>
-                        <li><b>Прибрано хибне повідомлення</b> — прострочена задача більше не зупиняється локально з toast <code>Ця задача вже не прострочена</code>.</li>
-                        <li><b>Дані зберігаються через існуючий reschedule API</b> — перенос викликає <code>/api/tasks/:id/reschedule</code> і лишає source surface для drop/button сценаріїв.</li>
-                        <li><b>Regression test</b> — додано перевірку реального overdue-to-today move перед релізом.</li>
+                        <li><b>Активна вкладка сертифікатів стала маршрутною</b> — у <code>/certificates</code>, <code>/certificates/new</code> і <code>/certificates/batch</code> зелений стан тепер переходить за реальною сторінкою, а не лишається на видачі.</li>
+                        <li><b>Видача охоплює сертифікат або абонемент</b> — оновлено назви у сторінці сертифікатів, quick access, пошуку та feature registry.</li>
+                        <li><b>Отримувач став обов'язковим</b> — single-create більше не приймає порожній ПІБ або номер, а помилка змінюється за режимом поля.</li>
+                        <li><b>Унікальність отримувача</b> — create/edit перевіряють <code>displayValue</code> після trim та case-insensitive порівняння, а пакетні одноразові коди лишилися явним плейсхолдерним винятком.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9257,28 +9257,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.63.43"></script>
-    <script src="js/timeline-visibility.js?v=0.63.43"></script>
-    <script src="js/config.js?v=0.63.43"></script>
-    <script src="js/api.js?v=0.63.43"></script>
-    <script src="js/ui.js?v=0.63.43"></script>
-    <script src="js/auth.js?v=0.63.43"></script>
-    <script src="js/timeline.js?v=0.63.43"></script>
-    <script src="js/booking.js?v=0.63.43"></script>
-    <script src="js/settings.js?v=0.63.43"></script>
-    <script src="js/booking-form.js?v=0.63.43"></script>
-    <script src="js/booking-linked.js?v=0.63.43"></script>
-    <script src="js/settings-dashboard.js?v=0.63.43"></script>
-    <script src="js/settings-history.js?v=0.63.43"></script>
-    <script src="js/settings-afisha.js?v=0.63.43"></script>
-    <script src="js/settings-certificates.js?v=0.63.43"></script>
-    <script src="js/offline.js?v=0.63.43"></script>
-    <script src="js/crm-feature-registry.js?v=0.63.43"></script>
-    <script src="js/search.js?v=0.63.43"></script>
-    <script src="js/ws.js?v=0.63.43"></script>
-    <script src="js/app.js?v=0.63.43"></script>
-    <script src="js/kleshnya-widget.js?v=0.63.43"></script>
-    <script src="js/components/sidebar.js?v=0.63.43"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.43"></script>
+    <script src="js/timeline-context.js?v=0.63.44"></script>
+    <script src="js/timeline-visibility.js?v=0.63.44"></script>
+    <script src="js/config.js?v=0.63.44"></script>
+    <script src="js/api.js?v=0.63.44"></script>
+    <script src="js/ui.js?v=0.63.44"></script>
+    <script src="js/auth.js?v=0.63.44"></script>
+    <script src="js/timeline.js?v=0.63.44"></script>
+    <script src="js/booking.js?v=0.63.44"></script>
+    <script src="js/settings.js?v=0.63.44"></script>
+    <script src="js/booking-form.js?v=0.63.44"></script>
+    <script src="js/booking-linked.js?v=0.63.44"></script>
+    <script src="js/settings-dashboard.js?v=0.63.44"></script>
+    <script src="js/settings-history.js?v=0.63.44"></script>
+    <script src="js/settings-afisha.js?v=0.63.44"></script>
+    <script src="js/settings-certificates.js?v=0.63.44"></script>
+    <script src="js/offline.js?v=0.63.44"></script>
+    <script src="js/crm-feature-registry.js?v=0.63.44"></script>
+    <script src="js/search.js?v=0.63.44"></script>
+    <script src="js/ws.js?v=0.63.44"></script>
+    <script src="js/app.js?v=0.63.44"></script>
+    <script src="js/kleshnya-widget.js?v=0.63.44"></script>
+    <script src="js/components/sidebar.js?v=0.63.44"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.44"></script>
 </body>
 </html>

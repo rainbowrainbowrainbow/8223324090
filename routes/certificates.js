@@ -6,7 +6,15 @@ const router = require('express').Router();
 const { randomUUID } = require('crypto');
 const { pool, generateCertCode } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
-const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
+const {
+    mapCertificateRow,
+    calculateValidUntil,
+    normalizeCertificateIdentity,
+    validateCertificateInput,
+    getCurrentSeason,
+    VALID_STATUSES,
+    VALID_SEASONS
+} = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { publish: publishEvent } = require('../services/eventBus');
@@ -15,6 +23,30 @@ const QRCode = require('qrcode');
 
 const log = createLogger('Certificates');
 const BATCH_CERTIFICATE_TYPE_TEXT = 'на одноразовий вхід';
+const DUPLICATE_RECIPIENT_CODE = 'CERTIFICATE_RECIPIENT_NOT_UNIQUE';
+
+async function assertUniqueCertificateIdentity(db, displayValue, excludeId = null) {
+    const normalized = normalizeCertificateIdentity(displayValue);
+    if (!normalized) return;
+
+    const params = [normalized];
+    let where = 'LOWER(TRIM(display_value)) = LOWER($1)';
+    if (excludeId) {
+        params.push(excludeId);
+        where += ` AND id <> $${params.length}`;
+    }
+
+    const duplicate = await db.query(
+        `SELECT id FROM certificates WHERE ${where} LIMIT 1`,
+        params
+    );
+    if (duplicate.rows.length > 0) {
+        const error = new Error('Такий отримувач сертифіката вже існує');
+        error.statusCode = 409;
+        error.code = DUPLICATE_RECIPIENT_CODE;
+        throw error;
+    }
+}
 
 // GET /api/certificates — List with filters
 // v39.8: Security — require authentication
@@ -164,17 +196,21 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('admin', 'user'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const errors = validateCertificateInput(req.body);
+        const errors = validateCertificateInput(req.body, { requireIdentity: true });
         if (errors.length > 0) {
             return res.status(400).json({ error: errors.join(', ') });
         }
 
         const { displayMode, displayValue, typeText, validUntil, notes, season } = req.body;
+        const finalDisplayMode = displayMode || 'fio';
+        const finalDisplayValue = normalizeCertificateIdentity(displayValue);
+        const finalTypeText = typeText || BATCH_CERTIFICATE_TYPE_TEXT;
 
         // Validate season
         const finalSeason = VALID_SEASONS.includes(season) ? season : getCurrentSeason();
 
         await client.query('BEGIN');
+        await assertUniqueCertificateIdentity(client, finalDisplayValue);
 
         const certCode = await generateCertCode(client);
 
@@ -195,9 +231,9 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
              RETURNING *`,
             [
                 certCode,
-                displayMode || 'fio',
-                (displayValue || '').trim(),
-                typeText || 'на одноразовий вхід',
+                finalDisplayMode,
+                finalDisplayValue,
+                finalTypeText,
                 finalValidUntil,
                 req.user.id || null,
                 req.user.name || req.user.username,
@@ -210,9 +246,9 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
             ['certificate_create', req.user.username, JSON.stringify({
                 certCode,
-                displayMode: displayMode || 'fio',
-                displayValue: (displayValue || '').trim(),
-                typeText: typeText || 'на одноразовий вхід'
+                displayMode: finalDisplayMode,
+                displayValue: finalDisplayValue,
+                typeText: finalTypeText
             })]
         );
 
@@ -226,9 +262,9 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         // v19.1: Publish to event queue (triggers auto-print, logging rules)
         publishEvent('certificate.created', {
             cert_id: cert.id, cert_code: certCode,
-            display_mode: displayMode || 'fio',
-            display_value: (displayValue || '').trim(),
-            type_text: typeText || 'на одноразовий вхід',
+            display_mode: finalDisplayMode,
+            display_value: finalDisplayValue,
+            type_text: finalTypeText,
             valid_until: finalValidUntil,
             issued_by: req.user.username, season: finalSeason
         }, `cert_created_${certCode}`);
@@ -237,6 +273,9 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         res.status(201).json(mapped);
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ error: err.message, code: err.code });
+        }
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
@@ -244,7 +283,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-// POST /api/certificates/batch — Generate N blank certificates at once
+// POST /api/certificates/batch — Generate placeholder one-time certificates without recipient identity
 router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
     const client = await pool.connect();
     try {
@@ -440,21 +479,43 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
 
 // PUT /api/certificates/:id — Update certificate details
 router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const { displayValue, typeText, validUntil, notes } = req.body;
+        const hasDisplayValue = Object.prototype.hasOwnProperty.call(req.body, 'displayValue');
 
-        const existing = await pool.query('SELECT * FROM certificates WHERE id = $1', [id]);
+        const existing = await client.query('SELECT * FROM certificates WHERE id = $1', [id]);
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Certificate not found' });
         }
 
         const cert = existing.rows[0];
+        const nextDisplayValue = hasDisplayValue
+            ? normalizeCertificateIdentity(displayValue)
+            : normalizeCertificateIdentity(cert.display_value);
+        const requireIdentity = cert.issue_source !== 'batch' || hasDisplayValue;
+        const errors = validateCertificateInput({
+            displayMode: cert.display_mode || 'fio',
+            displayValue: nextDisplayValue,
+            typeText,
+            validUntil
+        }, { requireIdentity });
+        if (errors.length > 0) {
+            return res.status(400).json({ error: errors.join(', ') });
+        }
 
-        await pool.query(
+        await client.query('BEGIN');
+        if (hasDisplayValue) {
+            await assertUniqueCertificateIdentity(client, nextDisplayValue, id);
+        } else if (requireIdentity) {
+            await assertUniqueCertificateIdentity(client, nextDisplayValue, id);
+        }
+
+        await client.query(
             `UPDATE certificates SET display_value = $1, type_text = $2, valid_until = $3, notes = $4, updated_at = NOW() WHERE id = $5`,
             [
-                displayValue || cert.display_value,
+                nextDisplayValue,
                 typeText || cert.type_text,
                 validUntil || cert.valid_until,
                 notes !== undefined ? notes : cert.notes,
@@ -462,16 +523,23 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             ]
         );
 
-        await pool.query(
+        await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
             ['certificate_edit', req.user.username, JSON.stringify({ certCode: cert.cert_code })]
         );
 
-        const updated = await pool.query('SELECT * FROM certificates WHERE id = $1', [id]);
+        const updated = await client.query('SELECT * FROM certificates WHERE id = $1', [id]);
+        await client.query('COMMIT');
         res.json(mapCertificateRow(updated.rows[0]));
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ error: err.message, code: err.code });
+        }
         log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

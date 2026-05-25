@@ -92,7 +92,7 @@ const Sidebar = (() => {
         { href: '/sound#announcements', icon: '📢', label: 'Оголошення', access: 'sound',      group: 'product' },
         { href: '/afisha',       icon: '🎭', label: 'Афіша',         access: 'afisha',         group: 'product' },
         { href: '/certificates', icon: '🎫', label: 'Сертифікати',   access: 'certificates',   group: 'product' },
-        { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product', quickAccessOnly: true },
+        { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат або абонемент', access: 'certificates', group: 'product', quickAccessOnly: true },
         { href: '/certificates/batch', icon: '📦', label: 'Пакет сертифікатів на одноразовий вхід', access: 'certificates', group: 'product', quickAccessOnly: true },
 
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', priority: 5, defaultOpen: false },

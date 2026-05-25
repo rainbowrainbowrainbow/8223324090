@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mapCertificateRow } = require('../services/certificates');
+const {
+    mapCertificateRow,
+    normalizeCertificateIdentity,
+    certificateIdentityKey,
+    validateCertificateInput
+} = require('../services/certificates');
 
 test('certificate row mapping exposes durable issue source metadata', () => {
     const mapped = mapCertificateRow({
@@ -37,4 +42,24 @@ test('certificate row mapping defaults missing issue source to single', () => {
 
     assert.equal(mapped.issueSource, 'single');
     assert.equal(mapped.batchGroupId, null);
+});
+
+test('certificate identity normalization trims values for uniqueness checks', () => {
+    assert.equal(normalizeCertificateIdentity('  Марія Іваненко  '), 'Марія Іваненко');
+    assert.equal(certificateIdentityKey('  DUPLICATE  '), 'duplicate');
+});
+
+test('single certificate validation requires fio recipient identity when enabled', () => {
+    const errors = validateCertificateInput({ displayMode: 'fio', displayValue: '   ' }, { requireIdentity: true });
+    assert.ok(errors.some(error => error.includes('ПІБ отримувача')), `Expected fio required error, got: ${errors.join(', ')}`);
+});
+
+test('single certificate validation requires number identity when enabled', () => {
+    const errors = validateCertificateInput({ displayMode: 'number', displayValue: '' }, { requireIdentity: true });
+    assert.ok(errors.some(error => error.includes('Номер або ідентифікатор')), `Expected number required error, got: ${errors.join(', ')}`);
+});
+
+test('batch/legacy certificate validation can still map placeholder identity when not required', () => {
+    const errors = validateCertificateInput({ displayMode: 'fio', displayValue: '' });
+    assert.deepEqual(errors, []);
 });

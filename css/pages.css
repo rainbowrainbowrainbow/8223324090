@@ -2670,6 +2670,33 @@ body.dark-mode .operations-pack-bar select {
     align-items: center;
 }
 
+.cert-page-actions .cert-page-action-link {
+    border-color: rgba(148, 163, 184, 0.32);
+}
+
+.cert-page-actions .cert-page-action-link.is-active,
+.cert-page-actions .cert-page-action-link[aria-current="page"] {
+    border-color: rgba(16, 185, 129, 0.68);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(20, 184, 166, 0.9));
+    color: #ffffff;
+    box-shadow: 0 12px 28px rgba(16, 185, 129, 0.24);
+}
+
+.cert-page-actions .cert-page-action-link.is-active::before,
+.cert-page-actions .cert-page-action-link[aria-current="page"]::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18);
+}
+
+.cert-page-actions .cert-page-action-link:focus-visible {
+    outline: 3px solid rgba(20, 184, 166, 0.42);
+    outline-offset: 3px;
+}
+
 .cert-page-view {
     display: grid;
     gap: 14px;
@@ -2739,6 +2766,17 @@ body.dark-mode .operations-pack-bar select {
 .cert-form-card textarea:focus {
     border-color: rgba(16, 185, 129, 0.7);
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+.cert-form-card input[aria-invalid="true"] {
+    border-color: rgba(239, 68, 68, 0.78);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+}
+
+.cert-form-card .form-error {
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 900;
 }
 
 .cert-page-stats {
@@ -3177,6 +3215,17 @@ body.dark-mode .cert-page-stats span {
     background: rgba(15, 23, 42, 0.7);
     border-color: rgba(148, 163, 184, 0.24);
     color: #e5e7eb;
+}
+
+body.dark-mode .cert-page-actions .cert-page-action-link.is-active,
+body.dark-mode .cert-page-actions .cert-page-action-link[aria-current="page"] {
+    border-color: rgba(45, 212, 191, 0.72);
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.96), rgba(16, 185, 129, 0.88));
+    color: #f8fafc;
+}
+
+body.dark-mode .cert-form-card .form-error {
+    color: #fca5a5;
 }
 
 body.dark-mode .cert-source-single {

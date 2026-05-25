@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.44 - CRM 63.44: сертифікати з унікальним отримувачем
+
+### Сертифікати / активна вкладка / обов'язковий отримувач / 25.05.2026 [codex]
+- **Активна вкладка сертифікатів стала маршрутною** - header на `/certificates`, `/certificates/new` і `/certificates/batch` тепер синхронізує `is-active` та `aria-current="page"` із реальним mode.
+- **Видача перейменована на сертифікат або абонемент** - оновлено активні entry points у сторінці сертифікатів, sidebar quick access, пошуку, feature registry та legacy launcher.
+- **Single-create вимагає отримувача** - frontend і API більше не приймають порожній або whitespace-only `displayValue`, а повідомлення відповідає режиму `fio` або `number`.
+- **Create/edit перевіряють унікальність отримувача** - нормалізація використовує trim і case-insensitive lookup, duplicate повертає `CERTIFICATE_RECIPIENT_NOT_UNIQUE`; batch-коди лишаються явними плейсхолдерами без отримувача.
+- **Tests/API contract** - оновлено certificate contract tests, UI smoke guardrails, integration expectations і Swagger опис для нового required/unique контракту.
+
+---
+
 ## v0.63.43 - CRM 63.43: перенос прострочених задач у Мій день
 
 ### Профіль / Мій день / overdue drag-and-drop / 25.05.2026 [codex]

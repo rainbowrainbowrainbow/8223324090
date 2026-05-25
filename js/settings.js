@@ -2678,6 +2678,12 @@ function closeCertificatesPanel() {
     }
 }
 
+function certificateDisplayValueLabel(cert) {
+    if (cert?.displayValue) return cert.displayValue;
+    if (cert?.issueSource === 'batch') return 'Пакетний код без отримувача';
+    return 'Отримувача не вказано';
+}
+
 async function loadCertificates() {
     const container = document.getElementById('certificatesList');
     if (!container) return;
@@ -2706,7 +2712,7 @@ async function loadCertificates() {
                 ${statusBadge}
             </div>
             <div class="cert-card-body">
-                <div class="cert-display-value">${escapeHtml(cert.displayValue)}</div>
+                <div class="cert-display-value">${escapeHtml(certificateDisplayValueLabel(cert))}</div>
                 <div class="cert-type">${escapeHtml(cert.typeText)}</div>
             </div>
             <div class="cert-card-footer">
@@ -2824,6 +2830,12 @@ function onCertDisplayModeChange() {
     }
 }
 
+function getCertIdentityRequiredMessage(mode) {
+    return mode === 'number'
+        ? "Номер або ідентифікатор отримувача обов'язковий"
+        : "ПІБ отримувача обов'язковий";
+}
+
 function onCertTypePresetChange() {
     const preset = document.getElementById('certTypePreset')?.value;
     const textInput = document.getElementById('certTypeText');
@@ -2859,6 +2871,15 @@ async function handleCertificateSubmit(event) {
     const form = event.currentTarget || document.getElementById('certificateForm');
     const submitBtn = event.submitter || form?.querySelector('button[type="submit"]');
     const originalText = submitBtn?.textContent || '';
+    const displayMode = document.getElementById('certDisplayMode')?.value || 'fio';
+    const displayValueInput = document.getElementById('certDisplayValue');
+    const displayValue = displayValueInput?.value.trim() || '';
+    if (!displayValue) {
+        const message = getCertIdentityRequiredMessage(displayMode);
+        showNotification(message, 'error');
+        displayValueInput?.focus();
+        return;
+    }
 
     if (submitBtn) {
         submitBtn.disabled = true;
@@ -2867,8 +2888,8 @@ async function handleCertificateSubmit(event) {
 
     try {
         const data = {
-            displayMode: document.getElementById('certDisplayMode')?.value,
-            displayValue: document.getElementById('certDisplayValue')?.value.trim(),
+            displayMode,
+            displayValue,
             typeText: document.getElementById('certTypeText')?.value.trim() || 'на одноразовий вхід',
             validUntil: document.getElementById('certValidUntil')?.value || undefined,
             notes: document.getElementById('certNotes')?.value.trim() || undefined,
@@ -2887,9 +2908,9 @@ async function handleCertificateSubmit(event) {
         loadCertificates();
 
         if (isCertificateTouchDevice()) {
-            showNotification(`Сертифікат ${result.certificate.certCode} видано. Деталі відкриваються з реєстру.`, 'success');
+            showNotification(`Сертифікат або абонемент ${result.certificate.certCode} видано. Деталі відкриваються з реєстру.`, 'success');
         } else {
-            showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
+            showNotification(`Сертифікат або абонемент ${result.certificate.certCode} видано!`, 'success');
             // Одразу показати деталі нового сертифіката тільки там, де превʼю стабільне.
             showCertDetail(result.certificate.id);
 
@@ -2903,7 +2924,7 @@ async function handleCertificateSubmit(event) {
         const modalOpen = !document.getElementById('certificateModal')?.classList.contains('hidden');
         if (submitBtn && modalOpen) {
             submitBtn.disabled = false;
-            submitBtn.textContent = originalText || 'Видати сертифікат';
+            submitBtn.textContent = originalText || 'Видати сертифікат або абонемент';
         }
     }
 }
@@ -2974,7 +2995,7 @@ async function showCertDetail(id, options = {}) {
                 <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code> <button class="btn-copy-cert" onclick="copyCertCode('${cert.certCode}')" title="Скопіювати код">📋</button></span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
-                <div class="cert-detail-row cert-detail-row-name"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue || '—')}</span></div>
+                <div class="cert-detail-row cert-detail-row-name"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(certificateDisplayValueLabel(cert))}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${escapeHtml(cert.typeText || '')}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${issuedDate}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${validDate}</span></div>
@@ -2986,7 +3007,7 @@ async function showCertDetail(id, options = {}) {
         `;
 
         // Download + copy — available to everyone; action buttons — admin and user roles
-        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
+        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${certificateDisplayValueLabel(cert)}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
         let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
         window._certCopyText = copyText;
         btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(window._certCopyText)">📋 Скопіювати інфо</button>`;

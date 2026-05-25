@@ -9,14 +9,14 @@
     <title>Event Genix | Сертифікати</title>
     <meta name="description" content="Event Genix — сертифікати">
     <link rel="icon" type="image/png" href="/images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="/css/base.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/layout.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/pages.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/modals.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/dark-mode.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/responsive.css?v=0.63.43">
-    <link rel="stylesheet" href="/css/role-switcher.css?v=0.63.43">
+    <link rel="stylesheet" href="/css/base.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/layout.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/sidebar-aurora.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/pages.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/modals.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/dark-mode.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/responsive.css?v=0.63.44">
+    <link rel="stylesheet" href="/css/role-switcher.css?v=0.63.44">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -70,9 +70,9 @@
                     <p id="certificatePageSubtitle">Реєстр, видача і пакетна генерація сертифікатів без вкладених панелей.</p>
                 </div>
                 <div class="cert-page-actions" aria-label="Навігація сертифікатів">
-                    <a class="btn-page-secondary" href="/certificates">Реєстр</a>
-                    <a class="btn-page-primary" href="/certificates/new">Видати сертифікат</a>
-                    <a class="btn-page-secondary" href="/certificates/batch">Пакет сертифікатів на одноразовий вхід</a>
+                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="list" href="/certificates">Реєстр</a>
+                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="new" href="/certificates/new">Видати сертифікат або абонемент</a>
+                    <a class="btn-page-secondary cert-page-action-link" data-cert-mode="batch" href="/certificates/batch">Пакет сертифікатів на одноразовий вхід</a>
                 </div>
             </section>
 
@@ -118,7 +118,9 @@
                             </label>
                             <label class="form-field">
                                 <span id="certPageDisplayValueLabel">ПІБ або ідентифікатор</span>
-                                <input type="text" id="certPageDisplayValue" maxlength="200" autocomplete="off">
+                                <input type="text" id="certPageDisplayValue" maxlength="200" autocomplete="off" required aria-required="true" aria-describedby="certPageDisplayValueHint certPageDisplayValueError">
+                                <small class="form-hint" id="certPageDisplayValueHint">Обов'язково вкажіть отримувача.</small>
+                                <small class="form-error hidden" id="certPageDisplayValueError" role="alert"></small>
                             </label>
                             <label class="form-field">
                                 <span>Тип сертифіката</span>
@@ -146,7 +148,7 @@
                         <input type="hidden" id="certPageSeason" value="winter">
                         <div class="cert-form-actions">
                             <a class="btn-page-secondary" href="/certificates">Назад до сертифікатів</a>
-                            <button type="submit" class="btn-page-primary" id="certPageSubmitBtn">Видати сертифікат</button>
+                            <button type="submit" class="btn-page-primary" id="certPageSubmitBtn">Видати сертифікат або абонемент</button>
                         </div>
                     </form>
                     <aside id="certCreateResult" class="cert-result-card" aria-live="polite">
@@ -216,15 +218,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="/js/ui.js?v=0.63.43"></script>
-    <script src="/js/config.js?v=0.63.43"></script>
-    <script src="/js/notification.js?v=0.63.43"></script>
-    <script src="/js/api.js?v=0.63.43"></script>
-    <script src="/js/auth.js?v=0.63.43"></script>
-    <script src="/js/components/sidebar.js?v=0.63.43"></script>
+    <script src="/js/ui.js?v=0.63.44"></script>
+    <script src="/js/config.js?v=0.63.44"></script>
+    <script src="/js/notification.js?v=0.63.44"></script>
+    <script src="/js/api.js?v=0.63.44"></script>
+    <script src="/js/auth.js?v=0.63.44"></script>
+    <script src="/js/components/sidebar.js?v=0.63.44"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="/js/certificate-preview.js?v=0.63.43"></script>
-    <script src="/js/certificates-page.js?v=0.63.43"></script>
-    <script src="/js/alerts.js?v=0.63.43"></script>
+    <script src="/js/certificate-preview.js?v=0.63.44"></script>
+    <script src="/js/certificates-page.js?v=0.63.44"></script>
+    <script src="/js/alerts.js?v=0.63.44"></script>
 </body>
 </html>

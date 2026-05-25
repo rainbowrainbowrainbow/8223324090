@@ -62,6 +62,9 @@ test('rescheduling policy honors explicit canReschedule control metadata', () =>
 
 test('deadline reschedule updates stale due date and clears snooze state', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'taskExecution.js'), 'utf8');
+    assert.match(source, /deadline = \$2::timestamp/);
+    assert.match(source, /WHEN \$4::timestamptz IS NULL/);
+    assert.doesNotMatch(source, /deadline = \$2,\s*\n/);
     assert.match(source, /date = CASE/);
     assert.match(source, /AT TIME ZONE 'Europe\/Kyiv'\)::date::text/);
     assert.match(source, /snoozed_until = NULL/);

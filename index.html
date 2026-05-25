@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.63.58">
-    <link rel="stylesheet" href="css/auth.css?v=0.63.58">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.58">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.58">
-    <link rel="stylesheet" href="css/timeline.css?v=0.63.58">
-    <link rel="stylesheet" href="css/panel.css?v=0.63.58">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.58">
-    <link rel="stylesheet" href="css/controls.css?v=0.63.58">
-    <link rel="stylesheet" href="css/features.css?v=0.63.58">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.58">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.58">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.58">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.63.58">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.58">
+    <link rel="stylesheet" href="css/base.css?v=0.64.0">
+    <link rel="stylesheet" href="css/auth.css?v=0.64.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.64.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.0">
+    <link rel="stylesheet" href="css/timeline.css?v=0.64.0">
+    <link rel="stylesheet" href="css/panel.css?v=0.64.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.64.0">
+    <link rel="stylesheet" href="css/controls.css?v=0.64.0">
+    <link rel="stylesheet" href="css/features.css?v=0.64.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.64.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.64.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.64.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.63.58 CRM 63.58: dashboard AI shell">✨ 0.63.58 CRM 63.58: dashboard AI shell</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.64.0 CRM 64: перенос задач у Мій день">✨ 0.64.0 CRM 64: перенос задач у Мій день</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.63.58 — CRM 63.58: dashboard AI shell</p>
+                <p class="tagline">AI First CRM v0.64.0 — CRM 64: перенос задач у Мій день</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.63.58: CRM 63.58: dashboard AI shell</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.64.0: CRM 64: перенос задач у Мій день</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1265,12 +1265,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.63.58 — CRM 63.58: dashboard AI shell</h4>
+                    <h4>v0.64.0 — CRM 64: перенос задач у Мій день</h4>
                     <ul>
-                        <li><b>Dashboard assistant shell перезібрано</b> — блок AI на dashboard отримав scoped premium geometry замість cramped debug command bar.</li>
-                        <li><b>Prompt став центром блоку</b> — input, AI mark і ready-state chip вирівняні в стабільну 58px командну капсулу з нормальним focus-state.</li>
-                        <li><b>Кнопки зібрано в одну control group</b> — mic, stop, voice, replay і expand тепер мають однаковий ритм, розміри й hover/focus treatment.</li>
-                        <li><b>Зайву meta-density прибрано</b> — signal/engine chip приховано саме для dashboard, а response/context panel відкривається як охайна secondary surface.</li>
+                        <li><b>Перетягування прострочених задач у <code>Мій день</code> виправлено</b> — drop у колонку <code>Сьогодні</code> більше не падає з PostgreSQL-помилкою <code>inconsistent types</code>.</li>
+                        <li><b>Перенесення тепер реально оновлює дату</b> — backend reschedule розділяє <code>timestamp</code> для дедлайну і <code>timestamptz</code> для schedule/date логіки.</li>
+                        <li><b>Статус простроченої задачі очищається</b> — якщо задача була в <code>overdue</code>, після переносу вона повертається в робочий <code>todo</code> і має зʼявлятися в <code>Сьогодні</code>.</li>
+                        <li><b>Додано regression guardrail</b> — тести перевіряють typed SQL, profile drag/drop contract і спільний execution route.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9293,28 +9293,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.63.58"></script>
-    <script src="js/timeline-visibility.js?v=0.63.58"></script>
-    <script src="js/config.js?v=0.63.58"></script>
-    <script src="js/api.js?v=0.63.58"></script>
-    <script src="js/ui.js?v=0.63.58"></script>
-    <script src="js/auth.js?v=0.63.58"></script>
-    <script src="js/timeline.js?v=0.63.58"></script>
-    <script src="js/booking.js?v=0.63.58"></script>
-    <script src="js/settings.js?v=0.63.58"></script>
-    <script src="js/booking-form.js?v=0.63.58"></script>
-    <script src="js/booking-linked.js?v=0.63.58"></script>
-    <script src="js/settings-dashboard.js?v=0.63.58"></script>
-    <script src="js/settings-history.js?v=0.63.58"></script>
-    <script src="js/settings-afisha.js?v=0.63.58"></script>
-    <script src="js/settings-certificates.js?v=0.63.58"></script>
-    <script src="js/offline.js?v=0.63.58"></script>
-    <script src="js/crm-feature-registry.js?v=0.63.58"></script>
-    <script src="js/search.js?v=0.63.58"></script>
-    <script src="js/ws.js?v=0.63.58"></script>
-    <script src="js/app.js?v=0.63.58"></script>
-    <script src="js/kleshnya-widget.js?v=0.63.58"></script>
-    <script src="js/components/sidebar.js?v=0.63.58"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.63.58"></script>
+    <script src="js/timeline-context.js?v=0.64.0"></script>
+    <script src="js/timeline-visibility.js?v=0.64.0"></script>
+    <script src="js/config.js?v=0.64.0"></script>
+    <script src="js/api.js?v=0.64.0"></script>
+    <script src="js/ui.js?v=0.64.0"></script>
+    <script src="js/auth.js?v=0.64.0"></script>
+    <script src="js/timeline.js?v=0.64.0"></script>
+    <script src="js/booking.js?v=0.64.0"></script>
+    <script src="js/settings.js?v=0.64.0"></script>
+    <script src="js/booking-form.js?v=0.64.0"></script>
+    <script src="js/booking-linked.js?v=0.64.0"></script>
+    <script src="js/settings-dashboard.js?v=0.64.0"></script>
+    <script src="js/settings-history.js?v=0.64.0"></script>
+    <script src="js/settings-afisha.js?v=0.64.0"></script>
+    <script src="js/settings-certificates.js?v=0.64.0"></script>
+    <script src="js/offline.js?v=0.64.0"></script>
+    <script src="js/crm-feature-registry.js?v=0.64.0"></script>
+    <script src="js/search.js?v=0.64.0"></script>
+    <script src="js/ws.js?v=0.64.0"></script>
+    <script src="js/app.js?v=0.64.0"></script>
+    <script src="js/kleshnya-widget.js?v=0.64.0"></script>
+    <script src="js/components/sidebar.js?v=0.64.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.64.0"></script>
 </body>
 </html>

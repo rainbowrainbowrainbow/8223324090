@@ -4,6 +4,17 @@
 
 ---
 
+## v0.64.0 - CRM 64: перенос задач у Мій день
+
+### Профіль / Мій день / drag-and-drop задач / 25.05.2026 [codex]
+- **Перетягування з `Прострочено` в `Сьогодні` більше не падає** - виправлено backend reschedule SQL, який змішував різні типи для одного PostgreSQL placeholder і давав `inconsistent types deduced for parameter $2`.
+- **Перенесення реально оновлює дедлайн і дату задачі** - `POST /api/tasks/:id/reschedule` тепер типізує `tasks.deadline` як `timestamp`, а scheduling/date-логіку веде через окремий `timestamptz` placeholder.
+- **Статус простроченої задачі очищається при переносі** - якщо `status` або `workflow_state` були `overdue`, після перенесення задача повертається в робочий `todo` і має зʼявлятися в колонці `Сьогодні`.
+- **DnD-контракт у профілі збережено** - frontend `Мій день` і далі викликає той самий route з `sourceSurface=profile_my_cabinet_overdue_to_today_drop`, але тепер серверна мутація проходить без SQL-конфлікту.
+- **Regression guardrail** - `tests/task-scheduling.test.js`, `tests/profile-tasker-segments.test.js` і `tests/work-queue.test.js` покривають typed reschedule SQL, profile overdue-to-today drop contract і execution rails.
+
+---
+
 ## v0.63.58 - CRM 63.58: dashboard AI shell
 
 ### Dashboard / AI assistant shell / 25.05.2026 [codex]

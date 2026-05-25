@@ -443,22 +443,22 @@ async function rescheduleTask(taskId, deadline, actor, options = {}) {
         }
         const result = await query.query(
             `UPDATE tasks
-             SET deadline = $2,
+             SET deadline = $2::timestamp,
                  scheduled_end_at = CASE
-                    WHEN $2::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_end_at
-                    WHEN scheduled_end_at IS NOT NULL THEN $2::timestamptz + (scheduled_end_at - scheduled_start_at)
+                    WHEN $4::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_end_at
+                    WHEN scheduled_end_at IS NOT NULL THEN $4::timestamptz + (scheduled_end_at - scheduled_start_at)
                     ELSE scheduled_end_at
                  END,
                  scheduled_start_at = CASE
-                    WHEN $2::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_start_at
-                    ELSE $2::timestamptz
+                    WHEN $4::timestamptz IS NULL OR scheduled_start_at IS NULL THEN scheduled_start_at
+                    ELSE $4::timestamptz
                  END,
                  date = CASE
-                    WHEN $2::timestamptz IS NULL THEN date
-                    ELSE ($2::timestamptz AT TIME ZONE 'Europe/Kyiv')::date::text
+                    WHEN $4::timestamptz IS NULL THEN date
+                    ELSE ($4::timestamptz AT TIME ZONE 'Europe/Kyiv')::date::text
                  END,
                  schedule_status = CASE
-                    WHEN $2::timestamptz IS NOT NULL AND scheduled_start_at IS NOT NULL THEN 'scheduled'
+                    WHEN $4::timestamptz IS NOT NULL AND scheduled_start_at IS NOT NULL THEN 'scheduled'
                     ELSE schedule_status
                  END,
                  status = CASE WHEN COALESCE(status, 'todo') = 'overdue' THEN 'todo' ELSE status END,
@@ -471,7 +471,7 @@ async function rescheduleTask(taskId, deadline, actor, options = {}) {
            AND COALESCE(version, 1) = $3
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
          RETURNING *`,
-            [task.id, deadline || null, task.version || 1]
+            [task.id, deadline || null, task.version || 1, deadline || null]
         );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or cannot be rescheduled');

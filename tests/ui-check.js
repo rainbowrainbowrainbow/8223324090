@@ -246,9 +246,13 @@ checkPage('finance.html', (doc, html) => {
 
 checkPage('afisha.html', (doc, html) => {
     const afishaPageCode = fs.readFileSync(path.join(ROOT, 'js', 'afisha-page.js'), 'utf8');
-    check('Afisha page exposes standalone create and list workspace', !!doc.getElementById('afishaPageForm') && !!doc.getElementById('afishaPageList') && !!doc.getElementById('afishaStats'));
+    const afishaRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'afisha.js'), 'utf8');
+    const afishaMaterialsMigration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '219_afisha_event_materials.sql'), 'utf8');
+    check('Afisha page exposes event-centric workspace shell', !!doc.getElementById('afishaPageForm') && !!doc.getElementById('afishaPageList') && !!doc.getElementById('afishaStats') && !!doc.getElementById('afishaEventWorkspace') && html.includes('afisha-event-rail'));
+    check('Afisha page exposes per-event materials folder UI', !!doc.getElementById('afishaMaterialForm') && !!doc.getElementById('afishaMaterialList') && !!doc.getElementById('afishaMaterialKind') && !!doc.getElementById('afishaMaterialFile'));
     check('Afisha page exposes import/export and recurring templates', !!doc.getElementById('afishaImportText') && !!doc.getElementById('afishaTemplateForm') && !!doc.getElementById('afishaTemplateList'));
     check('Afisha page uses API-backed event CRUD without timeline modal dependency', afishaPageCode.includes("api('POST', '/afisha'") && afishaPageCode.includes("api('PUT', `/afisha/") && afishaPageCode.includes("api('DELETE', `/afisha/") && !html.includes('id="afishaModal"'));
+    check('Afisha materials use real event-scoped persistence and upload routes', afishaPageCode.includes('/materials/upload') && afishaPageCode.includes('new FormData()') && afishaRouteCode.includes('afisha_event_materials') && afishaRouteCode.includes("router.post('/:id/materials/upload'") && afishaRouteCode.includes("router.get('/:id/materials/:materialId/download'") && afishaMaterialsMigration.includes('CREATE TABLE IF NOT EXISTS afisha_event_materials') && afishaMaterialsMigration.includes('file_data BYTEA'));
     check('Afisha page includes shared shell and dedicated script', html.includes('sidebarLinks') && html.includes('js/afisha-page.js') && html.includes('data-page="afisha"'));
     check('Afisha standalone page verifies auth before showing shell', afishaPageCode.includes('bootstrapAfishaShell') && afishaPageCode.includes('apiVerifyToken()') && afishaPageCode.includes('showAuthenticatedPageShell()') && afishaPageCode.includes("window.location.href = '/'") && afishaPageCode.indexOf('bootstrapAfishaShell') < afishaPageCode.indexOf('initDefaults();'));
     check('Afisha destructive actions use CRM confirm modal helper', afishaPageCode.includes('function confirmAfishaAction') && afishaPageCode.includes('await confirmAfishaAction') && !afishaPageCode.includes("if (!confirm('"));

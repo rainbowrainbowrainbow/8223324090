@@ -3773,7 +3773,7 @@ body.dark-mode .art-shell .artdir-embed-frame {
     }
 }
 
-/* v0.60.24: standalone Afisha page, moved out of the timeline modal flow */
+/* v0.63.45: Afisha event-centric workspace with per-event materials folders */
 .afisha-shell {
     display: grid;
     gap: 16px;
@@ -3781,7 +3781,10 @@ body.dark-mode .art-shell .artdir-embed-frame {
 
 .afisha-page-hero,
 .afisha-form-card,
-.afisha-list-card,
+.afisha-event-rail,
+.afisha-event-hero-card,
+.afisha-empty-workspace,
+.afisha-materials-card,
 .afisha-ops-card,
 .afisha-stat-card {
     border: 1px solid rgba(20, 184, 166, 0.16);
@@ -3795,12 +3798,12 @@ body.dark-mode .art-shell .artdir-embed-frame {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     gap: 16px;
-    padding: 20px 22px;
+    padding: 22px;
 }
 
 .afisha-page-hero h1 {
     margin: 4px 0 6px;
-    font-size: clamp(28px, 4vw, 44px);
+    font-size: clamp(28px, 4vw, 42px);
     letter-spacing: 0;
     color: #0f172a;
 }
@@ -3808,13 +3811,15 @@ body.dark-mode .art-shell .artdir-embed-frame {
 .afisha-page-hero p {
     margin: 0;
     color: #64748b;
-    max-width: 720px;
+    max-width: 760px;
 }
 
 .afisha-page-actions,
 .afisha-form-actions,
 .afisha-date-actions,
-.afisha-filter-row {
+.afisha-filter-row,
+.afisha-event-actions,
+.afisha-item-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -3832,7 +3837,8 @@ body.dark-mode .art-shell .artdir-embed-frame {
 }
 
 .afisha-stat-card span,
-.afisha-section-title span {
+.afisha-section-title span,
+.afisha-empty-workspace span {
     display: block;
     font-size: 12px;
     font-weight: 800;
@@ -3850,14 +3856,24 @@ body.dark-mode .art-shell .artdir-embed-frame {
 
 .afisha-workspace {
     display: grid;
-    grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.35fr);
+    grid-template-columns: minmax(310px, 0.88fr) minmax(0, 1.62fr);
     gap: 14px;
     align-items: start;
 }
 
+.afisha-detail-workspace,
+.afisha-event-workspace {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+}
+
+.afisha-event-rail,
 .afisha-form-card,
-.afisha-list-card,
-.afisha-ops-card {
+.afisha-materials-card,
+.afisha-ops-card,
+.afisha-event-hero-card,
+.afisha-empty-workspace {
     padding: 18px;
 }
 
@@ -3869,10 +3885,13 @@ body.dark-mode .art-shell .artdir-embed-frame {
     margin-bottom: 14px;
 }
 
-.afisha-section-title h2 {
+.afisha-section-title h2,
+.afisha-event-hero-main h2,
+.afisha-empty-workspace h2 {
     margin: 2px 0 0;
     font-size: 20px;
     color: #0f172a;
+    letter-spacing: 0;
 }
 
 .afisha-filter-row input,
@@ -3882,7 +3901,10 @@ body.dark-mode .art-shell .artdir-embed-frame {
 .afisha-ops-card textarea,
 .afisha-form-card input,
 .afisha-form-card select,
-.afisha-form-card textarea {
+.afisha-form-card textarea,
+.afisha-material-form input,
+.afisha-material-form select,
+.afisha-material-form textarea {
     min-height: 42px;
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 12px;
@@ -3893,19 +3915,66 @@ body.dark-mode .art-shell .artdir-embed-frame {
 }
 
 .afisha-form-card textarea,
-.afisha-ops-card textarea {
+.afisha-ops-card textarea,
+.afisha-material-form textarea {
     width: 100%;
     resize: vertical;
 }
 
 .afisha-page-list,
-.afisha-template-list {
+.afisha-template-list,
+.afisha-material-list {
     display: grid;
     gap: 10px;
 }
 
-.afisha-page-item,
-.afisha-template-item {
+.afisha-page-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.74);
+    padding: 12px;
+}
+
+.afisha-page-item.is-active {
+    border-color: rgba(20, 184, 166, 0.58);
+    box-shadow: 0 14px 32px rgba(20, 184, 166, 0.14);
+}
+
+.afisha-page-item.is-active::before {
+    content: "";
+    position: absolute;
+    inset: 12px auto 12px 0;
+    width: 4px;
+    border-radius: 999px;
+    background: #14b8a6;
+}
+
+.afisha-event-select {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    padding: 0;
+    cursor: pointer;
+}
+
+.afisha-event-select:focus-visible,
+.afisha-item-actions button:focus-visible,
+.afisha-template-item button:focus-visible,
+.afisha-material-item button:focus-visible,
+.afisha-material-item a:focus-visible {
+    outline: 3px solid rgba(20, 184, 166, 0.32);
+    outline-offset: 3px;
+}
+
+.afisha-template-item,
+.afisha-material-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
@@ -3917,7 +3986,9 @@ body.dark-mode .art-shell .artdir-embed-frame {
 }
 
 .afisha-item-topline,
-.afisha-item-meta {
+.afisha-item-meta,
+.afisha-material-topline,
+.afisha-event-facts {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -3927,19 +3998,51 @@ body.dark-mode .art-shell .artdir-embed-frame {
     font-weight: 700;
 }
 
-.afisha-item-main h3 {
+.afisha-item-main h3,
+.afisha-material-item h3 {
     margin: 7px 0 4px;
     color: #0f172a;
     font-size: 17px;
     letter-spacing: 0;
 }
 
-.afisha-item-main p {
+.afisha-item-main p,
+.afisha-event-hero-main p,
+.afisha-empty-workspace p,
+.afisha-material-item p {
     margin: 0 0 8px;
     color: #475569;
 }
 
-.afisha-type-badge {
+.afisha-event-hero-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: start;
+}
+
+.afisha-event-hero-main h2 {
+    margin: 8px 0 8px;
+    font-size: 28px;
+}
+
+.afisha-event-actions {
+    justify-content: flex-end;
+    max-width: 240px;
+}
+
+.afisha-event-actions button {
+    width: 100%;
+}
+
+.afisha-date-actions {
+    justify-content: flex-end;
+    padding: 0 2px;
+}
+
+.afisha-type-badge,
+.afisha-material-badge,
+.afisha-event-facts span {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -3949,30 +4052,36 @@ body.dark-mode .art-shell .artdir-embed-frame {
     font-size: 12px;
 }
 
-.afisha-type-badge--event {
+.afisha-type-badge--event,
+.afisha-material-badge--note {
     background: rgba(20, 184, 166, 0.12);
     color: #0f766e;
 }
 
-.afisha-type-badge--birthday {
+.afisha-type-badge--birthday,
+.afisha-material-badge--link {
     background: rgba(236, 72, 153, 0.12);
     color: #be185d;
 }
 
-.afisha-type-badge--regular {
+.afisha-type-badge--regular,
+.afisha-material-badge--file {
     background: rgba(59, 130, 246, 0.12);
     color: #1d4ed8;
 }
 
+.afisha-event-facts span {
+    background: rgba(100, 116, 139, 0.12);
+    color: #334155;
+}
+
 .afisha-item-actions {
-    display: flex;
-    flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 7px;
 }
 
 .afisha-item-actions button,
-.afisha-template-item button {
+.afisha-template-item button,
+.afisha-material-item button {
     min-height: 36px;
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 10px;
@@ -3982,10 +4091,29 @@ body.dark-mode .art-shell .artdir-embed-frame {
     cursor: pointer;
 }
 
-.afisha-ops-grid {
+.afisha-material-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.afisha-material-item a {
+    display: inline-flex;
+    margin-top: 4px;
+    color: #0f766e;
+    font-weight: 900;
+    text-decoration: none;
+}
+
+.afisha-tools-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 1.1fr) minmax(260px, 0.9fr);
     gap: 14px;
+}
+
+.afisha-templates-card {
+    grid-column: 1 / -1;
 }
 
 .afisha-template-form {
@@ -4008,7 +4136,10 @@ body.dark-mode .art-shell .artdir-embed-frame {
 
 body.dark-mode .afisha-page-hero,
 body.dark-mode .afisha-form-card,
-body.dark-mode .afisha-list-card,
+body.dark-mode .afisha-event-rail,
+body.dark-mode .afisha-event-hero-card,
+body.dark-mode .afisha-empty-workspace,
+body.dark-mode .afisha-materials-card,
 body.dark-mode .afisha-ops-card,
 body.dark-mode .afisha-stat-card {
     background: linear-gradient(180deg, rgba(15,23,42,0.94), rgba(17,24,39,0.9));
@@ -4018,15 +4149,22 @@ body.dark-mode .afisha-stat-card {
 
 body.dark-mode .afisha-page-hero h1,
 body.dark-mode .afisha-section-title h2,
+body.dark-mode .afisha-event-hero-main h2,
+body.dark-mode .afisha-empty-workspace h2,
 body.dark-mode .afisha-stat-card strong,
-body.dark-mode .afisha-item-main h3 {
+body.dark-mode .afisha-item-main h3,
+body.dark-mode .afisha-material-item h3 {
     color: #f8fafc;
 }
 
 body.dark-mode .afisha-page-hero p,
 body.dark-mode .afisha-item-main p,
+body.dark-mode .afisha-event-hero-main p,
+body.dark-mode .afisha-empty-workspace p,
+body.dark-mode .afisha-material-item p,
 body.dark-mode .afisha-item-topline,
 body.dark-mode .afisha-item-meta,
+body.dark-mode .afisha-material-topline,
 body.dark-mode .afisha-template-item span {
     color: #cbd5e1;
 }
@@ -4039,19 +4177,39 @@ body.dark-mode .afisha-ops-card textarea,
 body.dark-mode .afisha-form-card input,
 body.dark-mode .afisha-form-card select,
 body.dark-mode .afisha-form-card textarea,
+body.dark-mode .afisha-material-form input,
+body.dark-mode .afisha-material-form select,
+body.dark-mode .afisha-material-form textarea,
 body.dark-mode .afisha-page-item,
 body.dark-mode .afisha-template-item,
+body.dark-mode .afisha-material-item,
 body.dark-mode .afisha-item-actions button,
-body.dark-mode .afisha-template-item button {
+body.dark-mode .afisha-template-item button,
+body.dark-mode .afisha-material-item button {
     background: rgba(15,23,42,0.7);
     border-color: rgba(148, 163, 184, 0.24);
     color: #e5e7eb;
 }
 
+body.dark-mode .afisha-event-facts span {
+    background: rgba(148, 163, 184, 0.16);
+    color: #e5e7eb;
+}
+
+body.dark-mode .afisha-material-item a {
+    color: #5eead4;
+}
+
+@media (max-width: 1180px) {
+    .afisha-workspace,
+    .afisha-tools-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 980px) {
     .afisha-page-hero,
-    .afisha-workspace,
-    .afisha-ops-grid {
+    .afisha-event-hero-card {
         grid-template-columns: 1fr;
     }
 
@@ -4059,32 +4217,51 @@ body.dark-mode .afisha-template-item button {
         width: 100%;
     }
 
-    .afisha-page-actions > * {
+    .afisha-page-actions > *,
+    .afisha-event-actions button {
         flex: 1 1 180px;
+    }
+
+    .afisha-event-actions {
+        max-width: none;
+        justify-content: stretch;
     }
 }
 
 @media (max-width: 620px) {
     .afisha-page-hero,
     .afisha-form-card,
-    .afisha-list-card,
+    .afisha-event-rail,
+    .afisha-event-hero-card,
+    .afisha-empty-workspace,
+    .afisha-materials-card,
     .afisha-ops-card {
         border-radius: 14px;
         padding: 14px;
     }
 
-    .afisha-page-item,
+    .afisha-section-title,
     .afisha-template-item,
-    .afisha-template-form {
+    .afisha-material-item,
+    .afisha-template-form,
+    .afisha-material-form {
         grid-template-columns: 1fr;
     }
 
-    .afisha-item-actions {
+    .afisha-section-title {
+        display: grid;
+    }
+
+    .afisha-filter-row,
+    .afisha-item-actions,
+    .afisha-date-actions {
         justify-content: stretch;
     }
 
-    .afisha-item-actions button {
-        flex: 1 1 120px;
+    .afisha-filter-row > *,
+    .afisha-item-actions button,
+    .afisha-date-actions button {
+        flex: 1 1 140px;
     }
 }
 /* Shared CRM business-context switcher for scoped customer/lead surfaces. */

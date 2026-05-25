@@ -248,6 +248,32 @@ const swaggerSpec = {
           description: { type: 'string', nullable: true }
         }
       },
+      AfishaMaterial: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          event_id: { type: 'integer' },
+          kind: { type: 'string', enum: ['note', 'link', 'file'] },
+          title: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          url: { type: 'string', nullable: true },
+          original_name: { type: 'string', nullable: true },
+          mime_type: { type: 'string', nullable: true },
+          file_size: { type: 'integer', nullable: true },
+          uploaded_by: { type: 'string', nullable: true },
+          download_url: { type: 'string', nullable: true }
+        }
+      },
+      AfishaMaterialCreateRequest: {
+        type: 'object',
+        required: ['kind', 'title'],
+        properties: {
+          kind: { type: 'string', enum: ['note', 'link'], default: 'note' },
+          title: { type: 'string', maxLength: 180 },
+          description: { type: 'string', nullable: true },
+          url: { type: 'string', nullable: true, description: 'Required when kind=link' }
+        }
+      },
       AfishaTemplate: {
         type: 'object',
         properties: {
@@ -1301,6 +1327,93 @@ const swaggerSpec = {
         ],
         responses: {
           200: { description: 'Distribution reset', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, reset: { type: 'integer', description: 'Number of events reset' } } } } } }
+        }
+      }
+    },
+    '/afisha/{id}/materials': {
+      get: {
+        tags: ['Afisha'],
+        summary: 'List materials for one afisha event',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Event materials folder', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, event: { $ref: '#/components/schemas/AfishaEvent' }, materials: { type: 'array', items: { $ref: '#/components/schemas/AfishaMaterial' } } } } } } },
+          404: { description: 'Event not found' }
+        }
+      },
+      post: {
+        tags: ['Afisha'],
+        summary: 'Create note or link material for one afisha event',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/AfishaMaterialCreateRequest' } } }
+        },
+        responses: {
+          200: { description: 'Material created', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, material: { $ref: '#/components/schemas/AfishaMaterial' } } } } } },
+          400: { description: 'Invalid material payload' },
+          404: { description: 'Event not found' }
+        }
+      }
+    },
+    '/afisha/{id}/materials/upload': {
+      post: {
+        tags: ['Afisha'],
+        summary: 'Upload file material for one afisha event',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  file: { type: 'string', format: 'binary' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'File material uploaded', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, material: { $ref: '#/components/schemas/AfishaMaterial' } } } } } },
+          400: { description: 'Invalid upload' },
+          413: { description: 'File too large' }
+        }
+      }
+    },
+    '/afisha/{id}/materials/{materialId}': {
+      delete: {
+        tags: ['Afisha'],
+        summary: 'Delete an afisha event material',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'materialId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Material deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+          404: { description: 'Material not found' }
+        }
+      }
+    },
+    '/afisha/{id}/materials/{materialId}/download': {
+      get: {
+        tags: ['Afisha'],
+        summary: 'Download an afisha file material',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'materialId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Binary file material' },
+          404: { description: 'File material not found' }
         }
       }
     },

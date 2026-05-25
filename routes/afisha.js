@@ -1,6 +1,8 @@
 /**
  * routes/afisha.js — Events CRUD
  */
+const path = require('path');
+const multer = require('multer');
 const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr, getKyivDate } = require('../services/booking');
@@ -35,6 +37,92 @@ function shouldTemplateRunOnDate(tpl, dateStr, dateObj) {
 }
 
 const log = createLogger('Afisha');
+
+const AFISHA_MATERIAL_UPLOAD_LIMIT_BYTES = 8 * 1024 * 1024;
+const AFISHA_MATERIAL_ALLOWED_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.webp', '.gif', '.pdf', '.txt', '.md', '.doc', '.docx',
+    '.ppt', '.pptx', '.xls', '.xlsx', '.csv', '.zip'
+]);
+const AFISHA_MATERIAL_ALLOWED_KINDS = new Set(['note', 'link', 'file']);
+
+function afishaMaterialKind(value) {
+    const kind = String(value || '').trim().toLowerCase();
+    return AFISHA_MATERIAL_ALLOWED_KINDS.has(kind) ? kind : 'note';
+}
+
+function materialFileExt(file) {
+    return path.extname(file?.originalname || '').toLowerCase();
+}
+
+function validateMaterialUpload(file) {
+    const ext = materialFileExt(file);
+    if (!AFISHA_MATERIAL_ALLOWED_EXTENSIONS.has(ext)) {
+        const err = new Error('Непідтримуваний формат матеріалу');
+        err.statusCode = 400;
+        throw err;
+    }
+}
+
+const materialUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: AFISHA_MATERIAL_UPLOAD_LIMIT_BYTES,
+        files: 1
+    },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateMaterialUpload(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
+});
+
+function handleMaterialUpload(req, res, next) {
+    materialUpload.single('file')(req, res, err => {
+        if (!err) return next();
+        const status = err.statusCode || (err.code === 'LIMIT_FILE_SIZE' ? 413 : 400);
+        const message = err.code === 'LIMIT_FILE_SIZE'
+            ? 'Матеріал завеликий. Максимум 8 МБ'
+            : (err.message || 'Не вдалося завантажити матеріал');
+        return res.status(status).json({ error: message });
+    });
+}
+
+function safeDownloadName(value) {
+    return String(value || 'afisha-material')
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 180) || 'afisha-material';
+}
+
+function materialMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        event_id: row.event_id,
+        kind: row.kind,
+        title: row.title,
+        description: row.description || '',
+        url: row.url || '',
+        original_name: row.original_name || '',
+        mime_type: row.mime_type || '',
+        file_size: row.file_size || 0,
+        uploaded_by: row.uploaded_by || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        download_url: row.kind === 'file' ? `/api/afisha/${row.event_id}/materials/${row.id}/download` : null
+    };
+}
+
+async function loadAfishaEvent(id) {
+    const eventId = parseInt(id, 10);
+    if (!Number.isFinite(eventId)) return null;
+    const event = await pool.query('SELECT * FROM afisha WHERE id = $1 LIMIT 1', [eventId]);
+    return event.rows[0] || null;
+}
 
 router.get('/', async (req, res) => {
     try {
@@ -349,6 +437,157 @@ router.post('/undistribute/:date', async (req, res) => {
         res.json({ success: true, reset: result.rowCount });
     } catch (err) {
         log.error('Undistribute error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v0.63.45: Event-scoped Afisha materials workspace.
+router.get('/:id/materials', async (req, res) => {
+    try {
+        const event = await loadAfishaEvent(req.params.id);
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+
+        const materials = await pool.query(
+            `SELECT id, event_id, kind, title, description, url, original_name, mime_type,
+                    file_size, uploaded_by, created_at, updated_at
+             FROM afisha_event_materials
+             WHERE event_id = $1
+             ORDER BY created_at DESC, id DESC`,
+            [event.id]
+        );
+        res.json({ success: true, event, materials: materials.rows.map(materialMeta) });
+    } catch (err) {
+        if (err.message?.includes('does not exist')) return res.json({ success: true, materials: [] });
+        log.error('List materials error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/materials', async (req, res) => {
+    try {
+        const event = await loadAfishaEvent(req.params.id);
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+
+        const kind = afishaMaterialKind(req.body.kind);
+        if (kind === 'file') return res.status(400).json({ error: 'Для файлу використайте завантаження матеріалу' });
+
+        const title = String(req.body.title || '').trim();
+        const description = String(req.body.description || '').trim();
+        const url = String(req.body.url || '').trim();
+        if (!title) return res.status(400).json({ error: 'Назва матеріалу обовʼязкова' });
+        if (kind === 'link' && !url) return res.status(400).json({ error: 'Для посилання потрібен URL' });
+
+        const inserted = await pool.query(
+            `INSERT INTO afisha_event_materials
+                (event_id, kind, title, description, url, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, event_id, kind, title, description, url, original_name, mime_type,
+                       file_size, uploaded_by, created_at, updated_at`,
+            [event.id, kind, title, description || null, kind === 'link' ? url : null, req.user?.username || null]
+        );
+
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_material_create', req.user?.username || 'system', JSON.stringify({ afisha_id: event.id, material_id: inserted.rows[0].id, kind, title })]
+        ).catch(err => log.error('History log error', err));
+
+        res.json({ success: true, material: materialMeta(inserted.rows[0]) });
+    } catch (err) {
+        log.error('Create material error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/materials/upload', handleMaterialUpload, async (req, res) => {
+    try {
+        const event = await loadAfishaEvent(req.params.id);
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+        if (!req.file) return res.status(400).json({ error: 'Додайте файл матеріалу' });
+        if (!req.file.buffer?.length) return res.status(400).json({ error: 'Файл матеріалу порожній' });
+
+        const title = String(req.body.title || req.file.originalname || '').trim();
+        const description = String(req.body.description || '').trim();
+        if (!title) return res.status(400).json({ error: 'Назва матеріалу обовʼязкова' });
+
+        const inserted = await pool.query(
+            `INSERT INTO afisha_event_materials
+                (event_id, kind, title, description, original_name, mime_type, file_size, file_data, uploaded_by)
+             VALUES ($1, 'file', $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, event_id, kind, title, description, url, original_name, mime_type,
+                       file_size, uploaded_by, created_at, updated_at`,
+            [
+                event.id,
+                title,
+                description || null,
+                req.file.originalname || title,
+                req.file.mimetype || 'application/octet-stream',
+                req.file.size || req.file.buffer.length,
+                req.file.buffer,
+                req.user?.username || null
+            ]
+        );
+
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_material_upload', req.user?.username || 'system', JSON.stringify({ afisha_id: event.id, material_id: inserted.rows[0].id, title, file: req.file.originalname })]
+        ).catch(err => log.error('History log error', err));
+
+        res.json({ success: true, material: materialMeta(inserted.rows[0]) });
+    } catch (err) {
+        log.error('Upload material error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/:id/materials/:materialId/download', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id, 10);
+        const materialId = parseInt(req.params.materialId, 10);
+        if (!Number.isFinite(eventId) || !Number.isFinite(materialId)) return res.status(400).json({ error: 'Invalid id' });
+
+        const result = await pool.query(
+            `SELECT id, event_id, title, original_name, mime_type, file_size, file_data
+             FROM afisha_event_materials
+             WHERE id = $1 AND event_id = $2 AND kind = 'file'`,
+            [materialId, eventId]
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+
+        const file = result.rows[0];
+        const filename = safeDownloadName(file.original_name || file.title);
+        const asciiName = filename.replace(/[^\x20-\x7E]/g, '_');
+        res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+        res.setHeader('Content-Length', file.file_size || file.file_data.length);
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        res.send(file.file_data);
+    } catch (err) {
+        log.error('Download material error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.delete('/:id/materials/:materialId', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id, 10);
+        const materialId = parseInt(req.params.materialId, 10);
+        if (!Number.isFinite(eventId) || !Number.isFinite(materialId)) return res.status(400).json({ error: 'Invalid id' });
+
+        const deleted = await pool.query(
+            `DELETE FROM afisha_event_materials
+             WHERE id = $1 AND event_id = $2
+             RETURNING id, event_id, kind, title`,
+            [materialId, eventId]
+        );
+        if (!deleted.rows.length) return res.status(404).json({ error: 'Not found' });
+
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_material_delete', req.user?.username || 'system', JSON.stringify(deleted.rows[0])]
+        ).catch(err => log.error('History log error', err));
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Delete material error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

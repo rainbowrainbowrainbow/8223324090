@@ -887,13 +887,17 @@ function accountCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
-function showOneTimeCredentialModal(credential, title = 'One-time credentials') {
+function showOneTimeCredentialModal(credential, title = 'One-time credentials', payload = {}) {
     if (!credential) return;
     const username = credential.username || '';
     const password = accountCredentialPassword(credential);
     const text = `Логін: ${username}\nПароль: ${password}`;
+    const active = payload.isActive !== false;
+    const statusMessage = active
+        ? ''
+        : '\n\nУвага: пароль оновлено, але акаунт вимкнений. Активуйте акаунт перед входом.';
     if (typeof confirmModal === 'function') {
-        confirmModal(`${title}\n\n${text}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
+        confirmModal(`${title}\n\n${text}${statusMessage}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
             type: 'warning',
             okText: 'Скопіювати',
             cancelText: 'Закрити'
@@ -1344,7 +1348,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
         return;
     }
     if (response.credential) {
-        showOneTimeCredentialModal(response.credential, `Акаунт ${response.user?.username || result.username} створено`);
+        showOneTimeCredentialModal(response.credential, `Акаунт ${response.user?.username || result.username} створено`, response);
     } else {
         showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте пароль користувачу напряму.`, 'success');
     }
@@ -1481,14 +1485,27 @@ async function openAccountPasswordModal(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
-    const result = await formModal(`Пароль · ${user.username}`, [
+    const fields = [
         { key: 'mode', label: 'Режим', type: 'select', defaultValue: 'issue', options: [
             { value: 'issue', label: 'Згенерувати одноразовий пароль' },
             { value: 'manual', label: 'Ввести новий пароль вручну' }
         ] },
         { key: 'newPassword', label: 'Новий пароль вручну', type: 'password', placeholder: 'Заповніть тільки для ручного режиму' },
         { key: 'confirmPassword', label: 'Повторити пароль вручну', type: 'password' }
-    ], {
+    ];
+    if (user.is_active === false) {
+        fields.push({
+            key: 'activateOnReset',
+            label: 'Статус акаунта після зміни',
+            type: 'select',
+            defaultValue: 'activate',
+            options: [
+                { value: 'activate', label: 'Активувати акаунт і дозволити вхід' },
+                { value: 'keep', label: 'Лишити вимкненим' }
+            ]
+        });
+    }
+    const result = await formModal(`Пароль · ${user.username}`, fields, {
         icon: '🔐',
         type: 'warning',
         okText: 'Оновити доступ',
@@ -1505,10 +1522,11 @@ async function openAccountPasswordModal(userId, button) {
         showNotification('Паролі не збігаються', 'error');
         return;
     }
+    const activateOnReset = user.is_active === false && result.activateOnReset !== 'keep';
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
         method: 'POST',
-        body: issueOneTime ? { issueOneTime: true } : { newPassword: password }
+        body: issueOneTime ? { issueOneTime: true, activateOnReset } : { newPassword: password, activateOnReset }
     });
     if (button) button.disabled = false;
     if (!response?.success) {
@@ -1516,7 +1534,7 @@ async function openAccountPasswordModal(userId, button) {
         return;
     }
     if (response.credential) {
-        showOneTimeCredentialModal(response.credential, `Пароль для ${response.username || user.username} перевипущено`);
+        showOneTimeCredentialModal(response.credential, `Пароль для ${response.username || user.username} перевипущено`, response);
     } else {
         showManualPasswordResetResult(response, user);
     }

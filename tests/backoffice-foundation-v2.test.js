@@ -181,7 +181,12 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(usersRoute, /credential:\s*issueOneTime \?/);
         assert.match(usersRoute, /function resetPasswordFromPayload/);
         assert.match(usersRoute, /body\.newPassword,\s*body\.password,\s*body\.manualPassword/);
+        assert.match(usersRoute, /function shouldActivateAfterPasswordReset/);
+        assert.match(usersRoute, /activateOnReset/);
+        assert.match(usersRoute, /is_active = CASE WHEN \$3::boolean THEN true ELSE is_active END/);
+        assert.match(usersRoute, /activatedByReset/);
         assert.match(usersRoute, /password_hash_verified_after_reset_failed/);
+        assert.match(usersRoute, /password_hash_verified_after_create_failed/);
         assert.match(usersRoute, /loginAliases/);
 
         assert.match(staffRoute, /staff_overlay_account_linked/);
@@ -197,6 +202,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(hrPage, /openAccountCreateForStaff/);
         assert.match(hrPage, /openAccountLinkForStaff/);
         assert.match(hrPage, /showOneTimeCredentialModal/);
+        assert.match(hrPage, /user\.is_active === false/);
+        assert.match(hrPage, /activateOnReset/);
+        assert.match(hrPage, /showOneTimeCredentialModal\(response\.credential,[\s\S]*response\)/);
         assert.match(hrPage, /showManualPasswordResetResult/);
         assert.match(hrPage, /Логін для входу/);
         assert.match(staffPage, /createAccountForLinkingStaff/);

@@ -747,6 +747,10 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
             const username = await uniqueUsername(client, suggestUsernameForStaff(staff));
             const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
+            const hashVerified = await bcrypt.compare(password, passwordHash);
+            if (!hashVerified) {
+                throw new Error('bulk_account_password_hash_verification_failed');
+            }
             const role = staffRoleToAccountRole(staff.role_type);
 
             const userResult = await client.query(

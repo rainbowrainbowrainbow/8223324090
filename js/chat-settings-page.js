@@ -4,7 +4,33 @@
     var _state = {
         chatAi: null,
         guardian: null,
-        integrations: null
+        integrations: null,
+        modelOptions: null,
+        defaultModels: null
+    };
+
+    var FALLBACK_MODEL_OPTIONS = {
+        auto: [{ value: '', label: 'Автоматично за provider' }],
+        openai: [
+            { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
+            { value: 'gpt-5.5', label: 'GPT-5.5' },
+            { value: 'gpt-5.4', label: 'GPT-5.4' },
+            { value: 'gpt-5.4-nano', label: 'GPT-5.4 nano' },
+            { value: 'gpt-5-mini', label: 'GPT-5 mini' },
+            { value: 'gpt-5-nano', label: 'GPT-5 nano' },
+            { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' }
+        ],
+        anthropic: [
+            { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+            { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' }
+        ],
+        openrouter: [
+            { value: 'openai/gpt-5.4-mini', label: 'OpenAI GPT-5.4 mini' },
+            { value: 'openai/gpt-5.5', label: 'OpenAI GPT-5.5' },
+            { value: 'openai/gpt-5.4-nano', label: 'OpenAI GPT-5.4 nano' },
+            { value: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+            { value: 'google/gemini-flash-1.5', label: 'Gemini Flash 1.5' }
+        ]
     };
 
     function $(id) {
@@ -104,14 +130,63 @@
         if (el) el.value = value || '';
     }
 
+    function _providerFor(id, fallback) {
+        return $(id)?.value || fallback || 'openai';
+    }
+
+    function _modelOptions(provider) {
+        var options = _state.modelOptions || FALLBACK_MODEL_OPTIONS;
+        return options[provider] || options.auto || FALLBACK_MODEL_OPTIONS.auto;
+    }
+
+    function _defaultModel(provider) {
+        var defaults = _state.defaultModels || {};
+        if (provider === 'auto') return '';
+        return defaults[provider] || (_modelOptions(provider).find(function (item) { return item.value; }) || {}).value || '';
+    }
+
+    function _fillModelSelect(id, provider, value) {
+        var el = $(id);
+        if (!el) return;
+        var normalizedProvider = provider || 'openai';
+        var options = _modelOptions(normalizedProvider);
+        var selected = value || _defaultModel(normalizedProvider);
+        el.innerHTML = options.map(function (item) {
+            var optionValue = item.value || '';
+            var label = item.label || optionValue || 'Автоматично';
+            var desc = item.description ? ' title="' + _escapeAttr(item.description) + '"' : '';
+            return '<option value="' + _escapeAttr(optionValue) + '"' + desc + '>' + _escapeHtml(label) + '</option>';
+        }).join('');
+        if (!options.some(function (item) { return (item.value || '') === selected; })) selected = _defaultModel(normalizedProvider);
+        el.value = selected || '';
+    }
+
+    function _syncModelSelect(providerId, modelId, preferredModel) {
+        _fillModelSelect(modelId, _providerFor(providerId), preferredModel);
+    }
+
+    function _escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function _escapeAttr(value) {
+        return _escapeHtml(value).replace(/'/g, '&#39;');
+    }
+
     function _render(data) {
         _state.chatAi = data.chatAi || {};
         _state.guardian = data.guardian || {};
         _state.integrations = data.integrations || {};
+        _state.modelOptions = data.modelOptions || FALLBACK_MODEL_OPTIONS;
+        _state.defaultModels = data.defaultModels || {};
 
         _fillCheckbox('chatAiEnabled', _state.chatAi.enabled);
         _fillValue('chatAiProvider', _state.chatAi.requestedProvider || _state.chatAi.provider || 'auto');
-        _fillValue('chatAiModel', _state.chatAi.model || '');
+        _fillModelSelect('chatAiModel', _providerFor('chatAiProvider'), _state.chatAi.model || '');
         if ($('chatAiKeySource')) $('chatAiKeySource').textContent = _state.chatAi.keySource || data.keySource || 'crm_ai_default';
         _setStatus($('chatAiStatus'), _state.chatAi);
 
@@ -125,7 +200,7 @@
         _fillCheckbox('guardianSecurityLogEnabled', _state.guardian.securityLogEnabled);
         _fillCheckbox('guardianAnalyticsEnabled', _state.guardian.analyticsEnabled);
         _fillValue('guardianProvider', _state.guardian.provider || 'auto');
-        _fillValue('guardianModel', _state.guardian.model || '');
+        _fillModelSelect('guardianModel', _providerFor('guardianProvider'), _state.guardian.model || _state.guardian.ai?.model || '');
         _setStatus($('guardianAiStatus'), _state.guardian.ai || {});
     }
 
@@ -222,6 +297,12 @@
         $('chatAiTestBtn')?.addEventListener('click', _testChatAi);
         $('chatIntegrationsSaveBtn')?.addEventListener('click', _saveIntegrations);
         $('guardianSaveBtn')?.addEventListener('click', _saveGuardian);
+        $('chatAiProvider')?.addEventListener('change', function () {
+            _syncModelSelect('chatAiProvider', 'chatAiModel');
+        });
+        $('guardianProvider')?.addEventListener('change', function () {
+            _syncModelSelect('guardianProvider', 'guardianModel');
+        });
     }
 
     function _revealShell() {

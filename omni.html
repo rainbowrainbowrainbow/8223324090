@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.64.7">
-    <link rel="stylesheet" href="css/layout.css?v=0.64.7">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.7">
-    <link rel="stylesheet" href="css/pages.css?v=0.64.7">
-    <link rel="stylesheet" href="css/modals.css?v=0.64.7">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.7">
-    <link rel="stylesheet" href="css/responsive.css?v=0.64.7">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.7">
+    <link rel="stylesheet" href="css/base.css?v=0.66.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1387,6 +1387,486 @@
             color: var(--text-primary, #1a202c);
         }
 
+        .omni-ai-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 2050;
+            background: rgba(15,23,42,0.34);
+        }
+
+        .omni-ai-backdrop[hidden],
+        .omni-ai-drawer[hidden] {
+            display: none;
+        }
+
+        .omni-ai-drawer {
+            position: fixed;
+            top: 56px;
+            right: 0;
+            bottom: 0;
+            z-index: 2060;
+            width: min(560px, 100vw);
+            background: #F8FAFC;
+            color: #0F172A;
+            border-left: 1px solid rgba(148,163,184,0.34);
+            box-shadow: -22px 0 70px rgba(15,23,42,0.28);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .omni-ai-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(148,163,184,0.26);
+            background: #FFFFFF;
+        }
+
+        .omni-ai-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+
+        .omni-ai-subtitle {
+            margin-top: 4px;
+            color: #64748B;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .omni-ai-close {
+            width: 38px;
+            height: 38px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #F8FAFC;
+            color: #334155;
+            font-size: 20px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .omni-ai-body {
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .omni-ai-panel {
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #FFFFFF;
+            padding: 12px;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+        }
+
+        .omni-ai-status {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .omni-ai-status-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: #E0F2FE;
+            color: #0369A1;
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .omni-ai-status-pill.warning {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .omni-ai-status-pill.error {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .omni-ai-actions,
+        .omni-ai-row-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .omni-ai-btn {
+            min-height: 38px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #F8FAFC;
+            color: #334155;
+            padding: 8px 11px;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .omni-ai-btn:hover,
+        .omni-ai-btn:focus-visible {
+            border-color: #0F766E;
+            outline: none;
+            background: #ECFDF5;
+        }
+
+        .omni-ai-btn.primary {
+            border-color: #0F766E;
+            background: #0F766E;
+            color: #FFFFFF;
+        }
+
+        .omni-ai-btn.accent {
+            border-color: #2563EB;
+            background: #2563EB;
+            color: #FFFFFF;
+        }
+
+        .omni-ai-btn:disabled {
+            opacity: .56;
+            cursor: not-allowed;
+        }
+
+        .omni-ai-section-title {
+            margin: 0 0 8px;
+            font-size: 13px;
+            font-weight: 900;
+            color: #0F172A;
+        }
+
+        .omni-ai-summary {
+            color: #334155;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .omni-ai-needs {
+            display: grid;
+            gap: 7px;
+        }
+
+        .omni-ai-need {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            padding: 9px 10px;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            background: #F8FAFC;
+        }
+
+        .omni-ai-need strong {
+            display: block;
+            font-size: 12px;
+            font-weight: 900;
+            color: #0F172A;
+        }
+
+        .omni-ai-need span {
+            display: block;
+            margin-top: 2px;
+            color: #64748B;
+            font-size: 12px;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+        }
+
+        .omni-ai-need-state {
+            min-width: 82px;
+            border-radius: 999px;
+            padding: 4px 8px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        .omni-ai-need-state.found {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .omni-ai-need-state.missing {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .omni-ai-need-state.optional {
+            background: #E0F2FE;
+            color: #075985;
+        }
+
+        .omni-ai-draft-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .omni-ai-field {
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 9px;
+            background: #F8FAFC;
+            min-width: 0;
+        }
+
+        .omni-ai-field span {
+            display: block;
+            color: #64748B;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .omni-ai-field strong {
+            display: block;
+            margin-top: 3px;
+            color: #0F172A;
+            font-size: 13px;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .omni-ai-reply-box {
+            width: 100%;
+            min-height: 104px;
+            resize: vertical;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 10px;
+            background: #FFFFFF;
+            color: #0F172A;
+            font: inherit;
+            font-size: 14px;
+            line-height: 1.42;
+        }
+
+        .omni-ai-settings summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 900;
+            color: #0F172A;
+        }
+
+        .omni-ai-settings-grid {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .omni-ai-setting-row {
+            display: grid;
+            grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.4fr) 72px;
+            gap: 7px;
+            align-items: center;
+        }
+
+        .omni-ai-setting-row input,
+        .omni-ai-setting-row select,
+        .omni-ai-script-rules {
+            width: 100%;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 8px 9px;
+            background: #FFFFFF;
+            color: #0F172A;
+            font: inherit;
+            font-size: 12px;
+        }
+
+        .omni-ai-setting-row label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .omni-ai-script-rules {
+            min-height: 120px;
+            resize: vertical;
+            line-height: 1.42;
+        }
+
+        .omni-ai-score-strip {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .omni-ai-score-box,
+        .omni-ai-scenario-box,
+        .omni-ai-material,
+        .omni-ai-action,
+        .omni-ai-template-row {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .omni-ai-score-box strong {
+            display: block;
+            font-size: 26px;
+            font-weight: 950;
+            line-height: 1;
+            color: #0F766E;
+        }
+        .omni-ai-score-box span,
+        .omni-ai-scenario-box span,
+        .omni-ai-material span,
+        .omni-ai-action span {
+            display: block;
+            margin-top: 4px;
+            color: #64748B;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .omni-ai-score-box.hot strong { color: #B45309; }
+        .omni-ai-score-box.cold strong { color: #475569; }
+        .omni-ai-scenario-box strong {
+            display: block;
+            color: #0F172A;
+            font-size: 14px;
+            font-weight: 950;
+        }
+        .omni-ai-materials,
+        .omni-ai-actions-list,
+        .omni-ai-templates,
+        .omni-ai-metrics,
+        .omni-ai-history-list {
+            display: grid;
+            gap: 8px;
+        }
+        .omni-ai-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .omni-ai-metric,
+        .omni-ai-history-item {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .omni-ai-metric strong {
+            display: block;
+            color: #0F172A;
+            font-size: 20px;
+            font-weight: 950;
+            line-height: 1.1;
+        }
+        .omni-ai-metric span,
+        .omni-ai-history-item span {
+            display: block;
+            margin-top: 4px;
+            color: #64748B;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .omni-ai-material {
+            display: grid;
+            gap: 8px;
+        }
+        .omni-ai-material-head,
+        .omni-ai-action-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .omni-ai-material-title,
+        .omni-ai-action-title {
+            color: #0F172A;
+            font-weight: 950;
+        }
+        .omni-ai-material-price {
+            color: #0F766E;
+            font-size: 12px;
+            font-weight: 950;
+            white-space: nowrap;
+        }
+        .omni-ai-material-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .omni-ai-material-tags b {
+            border-radius: 999px;
+            background: rgba(14, 165, 233, 0.12);
+            color: #0369A1;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 900;
+        }
+        .omni-ai-settings-block {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid #E2E8F0;
+        }
+        .omni-ai-settings-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .omni-ai-material-row,
+        .omni-ai-source-row,
+        .omni-ai-scenario-row,
+        .omni-ai-guardrail-row,
+        .omni-ai-template-row {
+            display: grid;
+            grid-template-columns: minmax(90px, 0.8fr) minmax(140px, 1.4fr) minmax(120px, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .omni-ai-material-row textarea,
+        .omni-ai-guardrail-row textarea,
+        .omni-ai-template-row textarea,
+        .omni-ai-test-box {
+            width: 100%;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #F8FAFC;
+            color: #0F172A;
+            padding: 9px 10px;
+            font: inherit;
+            resize: vertical;
+        }
+        .omni-ai-material-row textarea,
+        .omni-ai-template-row textarea {
+            grid-column: 1 / -1;
+            min-height: 58px;
+        }
+        .omni-ai-test-box {
+            min-height: 96px;
+            margin-top: 8px;
+        }
+        .omni-ai-test-result {
+            margin-top: 8px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .omni-workspace-shell {
@@ -1445,7 +1925,8 @@
                 overflow-y: auto;
             }
             .omni-accounts-grid,
-            .omni-health-hero {
+            .omni-health-hero,
+            .omni-ai-metrics {
                 grid-template-columns: 1fr;
             }
             .omni-health-row {
@@ -1466,6 +1947,20 @@
             }
             .omni-connection-actions button {
                 width: 100%;
+            }
+            .omni-ai-drawer {
+                top: 0;
+                width: 100vw;
+            }
+            .omni-ai-draft-grid,
+            .omni-ai-setting-row,
+            .omni-ai-score-strip,
+            .omni-ai-material-row,
+            .omni-ai-source-row,
+            .omni-ai-scenario-row,
+            .omni-ai-guardrail-row,
+            .omni-ai-template-row {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -1524,6 +2019,9 @@
         .dark-mode .omni-accounts-panel,
         .dark-mode .omni-account-card,
         .dark-mode .omni-connection-dialog,
+        .dark-mode .omni-ai-drawer,
+        .dark-mode .omni-ai-head,
+        .dark-mode .omni-ai-panel,
         .dark-mode .omni-chat-empty-card,
         .dark-mode .omni-health-kpi,
         .dark-mode .omni-health-list,
@@ -1541,6 +2039,49 @@
             background: rgba(15,23,42,0.92);
             color: #F8FAFC;
             border-color: rgba(148,163,184,0.28);
+        }
+        .dark-mode .omni-ai-title,
+        .dark-mode .omni-ai-section-title,
+        .dark-mode .omni-ai-settings summary,
+        .dark-mode .omni-ai-need strong,
+        .dark-mode .omni-ai-field strong {
+            color: #F8FAFC;
+        }
+        .dark-mode .omni-ai-subtitle,
+        .dark-mode .omni-ai-summary,
+        .dark-mode .omni-ai-need span,
+        .dark-mode .omni-ai-field span,
+        .dark-mode .omni-ai-status {
+            color: #CBD5E1;
+        }
+        .dark-mode .omni-ai-need,
+        .dark-mode .omni-ai-field,
+        .dark-mode .omni-ai-btn,
+        .dark-mode .omni-ai-score-box,
+        .dark-mode .omni-ai-scenario-box,
+        .dark-mode .omni-ai-material,
+        .dark-mode .omni-ai-action,
+        .dark-mode .omni-ai-template-row {
+            background: rgba(15,23,42,0.72);
+            border-color: rgba(148,163,184,0.20);
+            color: #F8FAFC;
+        }
+        .dark-mode .omni-ai-reply-box,
+        .dark-mode .omni-ai-setting-row input,
+        .dark-mode .omni-ai-setting-row select,
+        .dark-mode .omni-ai-script-rules,
+        .dark-mode .omni-ai-material-row textarea,
+        .dark-mode .omni-ai-guardrail-row textarea,
+        .dark-mode .omni-ai-template-row textarea,
+        .dark-mode .omni-ai-test-box {
+            background: rgba(15,23,42,0.92);
+            color: #F8FAFC;
+            border-color: rgba(148,163,184,0.28);
+        }
+        .dark-mode .omni-ai-scenario-box strong,
+        .dark-mode .omni-ai-material-title,
+        .dark-mode .omni-ai-action-title {
+            color: #F8FAFC;
         }
         .dark-mode .omni-account-cap.on { color: #6EE7B7; }
         .dark-mode .omni-account-cap.off { color: #FCA5A5; }
@@ -1686,7 +2227,7 @@
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <button type="button" id="omniToggleAI" title="AI авто-відповіді">AI</button>
+                            <button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
                             <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
@@ -1727,6 +2268,25 @@
         </div>
     </div>
 
+    <div class="omni-ai-backdrop" id="omniLeadAssistantBackdrop" hidden></div>
+    <aside class="omni-ai-drawer" id="omniLeadAssistantDrawer" hidden role="dialog" aria-modal="true" aria-labelledby="omniLeadAssistantTitle">
+        <div class="omni-ai-head">
+            <div>
+                <h2 class="omni-ai-title" id="omniLeadAssistantTitle">AI лід з діалогу</h2>
+                <div class="omni-ai-subtitle" id="omniLeadAssistantSubtitle">OmniClaw</div>
+            </div>
+            <button type="button" class="omni-ai-close" id="omniLeadAssistantClose" aria-label="Закрити AI панель">×</button>
+        </div>
+        <div class="omni-ai-body">
+            <div class="omni-ai-panel" id="omniLeadAssistantStatus"></div>
+            <div class="omni-ai-panel" id="omniLeadAssistantContent"></div>
+            <details class="omni-ai-panel omni-ai-settings" id="omniLeadAssistantSettingsPanel">
+                <summary>Скрипт і поля виявлення</summary>
+                <div id="omniLeadAssistantSettings"></div>
+            </details>
+        </div>
+    </aside>
+
     <!-- Profile modal -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium">
@@ -1742,12 +2302,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.64.7"></script>
-    <script src="js/api.js?v=0.64.7"></script>
-    <script src="js/auth.js?v=0.64.7"></script>
-    <script src="js/components/sidebar.js?v=0.64.7"></script>
+    <script src="js/config.js?v=0.66.2"></script>
+    <script src="js/api.js?v=0.66.2"></script>
+    <script src="js/auth.js?v=0.66.2"></script>
+    <script src="js/components/sidebar.js?v=0.66.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.64.7"></script>
+    <script src="js/ws.js?v=0.66.2"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -1798,8 +2358,30 @@
         const replyExpectedEl = $('omniReplyExpected');
         const sendTruthEl = $('omniSendTruth');
         const caseContextEl = $('omniCaseContext');
+        const leadAssistantDrawer = $('omniLeadAssistantDrawer');
+        const leadAssistantBackdrop = $('omniLeadAssistantBackdrop');
+        const leadAssistantClose = $('omniLeadAssistantClose');
+        const leadAssistantSubtitle = $('omniLeadAssistantSubtitle');
+        const leadAssistantStatus = $('omniLeadAssistantStatus');
+        const leadAssistantContent = $('omniLeadAssistantContent');
+        const leadAssistantSettingsEl = $('omniLeadAssistantSettings');
         let connectionModalState = null;
         let isSending = false;
+        let leadAssistantState = {
+            open: false,
+            loading: false,
+            creating: false,
+            creatingTask: false,
+            savingSettings: false,
+            testingScript: false,
+            analysis: null,
+            settings: null,
+            salesContext: null,
+            analytics: null,
+            testAnalysis: null,
+            testTranscript: '',
+            error: ''
+        };
 
         // ---- Auth ----
         function getHeaders() {
@@ -2600,6 +3182,665 @@
             ).join('');
         }
 
+        function leadAssistantNotify(message, type) {
+            if (typeof showNotification === 'function') showNotification(message, type || 'info');
+        }
+
+        function leadAssistantStatusTone(provider) {
+            if (!provider) return '';
+            if (provider.status === 'ok') return '';
+            if (provider.status === 'missing_key' || provider.status === 'provider_error' || provider.status === 'unparseable') return 'error';
+            return 'warning';
+        }
+
+        function renderLeadAssistantStatus() {
+            if (!leadAssistantStatus) return;
+            const analysis = leadAssistantState.analysis;
+            const provider = analysis?.provider;
+            const conv = currentConversation();
+            const loadingText = leadAssistantState.loading ? 'Аналізуємо діалог...' : 'Готово до аналізу';
+            const modelText = provider?.model || leadAssistantState.settings?.model || 'OpenAI';
+            const statusText = provider?.status === 'missing_key'
+                ? 'OPENAI_API_KEY не налаштовано'
+                : (provider?.status === 'ok' ? 'OpenAI готовий' : (provider?.status || loadingText));
+            leadAssistantStatus.innerHTML =
+                '<div class="omni-ai-status">' +
+                    '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : loadingText) + '</span>' +
+                    '<span class="omni-ai-status-pill ' + leadAssistantStatusTone(provider) + '">' + esc(statusText) + '</span>' +
+                '</div>' +
+                '<div class="omni-ai-actions" style="margin-top:10px">' +
+                    '<button type="button" class="omni-ai-btn primary" data-ai-action="reanalyze"' + (leadAssistantState.loading ? ' disabled' : '') + '>Оновити аналіз</button>' +
+                    '<button type="button" class="omni-ai-btn accent" data-ai-action="create-lead"' + (!analysis || leadAssistantState.creating ? ' disabled' : '') + '>Створити лід</button>' +
+                    '<button type="button" class="omni-ai-btn" data-ai-action="create-followup"' + (!analysis || leadAssistantState.creatingTask ? ' disabled' : '') + '>Follow-up задача</button>' +
+                    '<button type="button" class="omni-ai-btn" data-ai-action="insert-reply"' + (!analysis?.suggestedReply ? ' disabled' : '') + '>Вставити відповідь</button>' +
+                    '<span class="omni-ai-status" style="margin-left:auto">' + esc(modelText) + '</span>' +
+                '</div>';
+        }
+
+        function leadAssistantFieldValue(value) {
+            if (value === null || value === undefined || value === '') return '—';
+            return String(value);
+        }
+
+        function renderLeadAssistantScore(analysis) {
+            const score = analysis?.leadScore || {};
+            const scenario = analysis?.scenario || {};
+            const tone = score.temperature || 'warm';
+            return '<div class="omni-ai-score-strip">' +
+                '<div class="omni-ai-score-box ' + esc(tone) + '">' +
+                    '<strong>' + esc(score.score ?? '—') + '</strong>' +
+                    '<span>' + esc(score.label || 'AI score') + '</span>' +
+                '</div>' +
+                '<div class="omni-ai-scenario-box">' +
+                    '<strong>' + esc(scenario.label || 'Сценарій не визначено') + '</strong>' +
+                    '<span>' + esc((scenario.nextStepGoal || 'next step') + (scenario.confidence ? ' · ' + Math.round(scenario.confidence * 100) + '%' : '')) + '</span>' +
+                    (score.blockers?.length ? '<span>Блокує: ' + esc(score.blockers.join(', ')) + '</span>' : '') +
+                '</div>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantMaterials(materials) {
+            if (!materials?.length) {
+                return '<div class="omni-ai-summary">Поки немає релевантних каталогів для вставки. Додайте матеріали в налаштуваннях або уточніть потребу клієнта.</div>';
+            }
+            return '<div class="omni-ai-materials">' + materials.map((item, idx) => {
+                const price = item.price ? item.price + ' грн' + (item.unit ? '/' + item.unit : '') : '';
+                const tags = (item.tags || []).slice(0, 5).map(tag => '<b>' + esc(tag) + '</b>').join('');
+                return '<div class="omni-ai-material">' +
+                    '<div class="omni-ai-material-head">' +
+                        '<div class="omni-ai-material-title">' + esc(item.title || 'Матеріал') + '</div>' +
+                        (price ? '<div class="omni-ai-material-price">' + esc(price) + '</div>' : '') +
+                    '</div>' +
+                    (item.description ? '<span>' + esc(item.description) + '</span>' : '') +
+                    (item.reason ? '<span>' + esc(item.reason) + '</span>' : '') +
+                    (tags ? '<div class="omni-ai-material-tags">' + tags + '</div>' : '') +
+                    '<div class="omni-ai-row-actions">' +
+                        '<button type="button" class="omni-ai-btn primary" data-ai-action="insert-material" data-ai-material-index="' + idx + '">Вставити</button>' +
+                        '<button type="button" class="omni-ai-btn" data-ai-action="append-material" data-ai-material-index="' + idx + '">Додати до відповіді</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('') + '</div>';
+        }
+
+        function renderLeadAssistantActions(actions) {
+            if (!actions?.length) return '';
+            return '<div class="omni-ai-actions-list">' + actions.map(action =>
+                '<div class="omni-ai-action">' +
+                    '<div class="omni-ai-action-head">' +
+                        '<div class="omni-ai-action-title">' + esc(action.label || action.id) + '</div>' +
+                        '<span>' + esc(action.priority || 'normal') + '</span>' +
+                    '</div>' +
+                    (action.reason ? '<span>' + esc(action.reason) + '</span>' : '') +
+                    (action.id === 'follow_up_task' ? '<div class="omni-ai-row-actions" style="margin-top:8px"><button type="button" class="omni-ai-btn primary" data-ai-action="create-followup"' + (leadAssistantState.creatingTask ? ' disabled' : '') + '>Створити задачу</button></div>' : '') +
+                '</div>'
+            ).join('') + '</div>';
+        }
+
+        function renderLeadAssistantContent() {
+            if (!leadAssistantContent) return;
+            if (leadAssistantState.loading && !leadAssistantState.analysis) {
+                leadAssistantContent.innerHTML = '<div class="omni-ai-summary">Зчитую історію повідомлень і збираю draft ліда.</div>';
+                return;
+            }
+            if (leadAssistantState.error) {
+                leadAssistantContent.innerHTML = '<div class="omni-ai-summary">' + esc(leadAssistantState.error) + '</div>';
+                return;
+            }
+            const analysis = leadAssistantState.analysis;
+            if (!analysis) {
+                leadAssistantContent.innerHTML = '<div class="omni-ai-summary">Натисніть «Оновити аналіз», щоб зібрати лід з поточної розмови.</div>';
+                return;
+            }
+            const lead = analysis.lead || {};
+            const needs = analysis.needs || [];
+            const materials = analysis.recommendedMaterials || [];
+            const actions = analysis.recommendedActions || [];
+            const fields = [
+                ['Клієнт', lead.clientName],
+                ['Телефон', lead.phone],
+                ['Подія', lead.eventType],
+                ['Дата', lead.eventDate || lead.eventDateText],
+                ['Діти', lead.childrenCount],
+                ['Вік', lead.childAge],
+                ['Бюджет', lead.budget ? lead.budget + ' грн' : null],
+                ['Формат', lead.programPreferences]
+            ];
+            leadAssistantContent.innerHTML =
+                renderLeadAssistantScore(analysis) +
+                '<div class="omni-ai-section-title">Закріплений чеклист потреб</div>' +
+                '<div class="omni-ai-needs">' + needs.map(item =>
+                    '<div class="omni-ai-need">' +
+                        '<div><strong>' + esc(item.label) + '</strong><span>' + esc(item.value || item.question || '') + '</span></div>' +
+                        '<div class="omni-ai-need-state ' + esc(item.status || 'optional') + '">' + esc(item.status === 'found' ? 'є' : (item.required ? 'треба' : 'опц.')) + '</div>' +
+                    '</div>'
+                ).join('') + '</div>' +
+                '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
+                    '<div class="omni-ai-section-title">Draft ліда</div>' +
+                    '<div class="omni-ai-draft-grid">' + fields.map(([label, value]) =>
+                        '<div class="omni-ai-field"><span>' + esc(label) + '</span><strong>' + esc(leadAssistantFieldValue(value)) + '</strong></div>'
+                    ).join('') + '</div>' +
+                '</div>' +
+                '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
+                    '<div class="omni-ai-section-title">Каталоги і вкладення</div>' +
+                    renderLeadAssistantMaterials(materials) +
+                '</div>' +
+                (actions.length ? '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
+                    '<div class="omni-ai-section-title">Наступні дії</div>' +
+                    renderLeadAssistantActions(actions) +
+                '</div>' : '') +
+                '<div class="omni-ai-panel" style="margin:12px 0 0;padding:0;border:0;box-shadow:none">' +
+                    '<div class="omni-ai-section-title">Наступна відповідь</div>' +
+                    '<textarea class="omni-ai-reply-box" id="omniLeadAssistantReply">' + esc(analysis.suggestedReply || '') + '</textarea>' +
+                    '<div class="omni-ai-row-actions" style="margin-top:8px">' +
+                        '<button type="button" class="omni-ai-btn primary" data-ai-action="insert-reply">Вставити в поле</button>' +
+                        '<button type="button" class="omni-ai-btn" data-ai-action="copy-question">Взяти питання</button>' +
+                    '</div>' +
+                '</div>' +
+                (analysis.summary ? '<div class="omni-ai-summary" style="margin-top:10px">' + esc(analysis.summary) + '</div>' : '');
+        }
+
+        function renderLeadAssistantAnalytics() {
+            const analytics = leadAssistantState.analytics;
+            if (!analytics) return '';
+            const scenarioText = (analytics.scenarios || [])
+                .slice(0, 3)
+                .map(item => (item.label || item.id) + ': ' + item.count)
+                .join(' · ') || 'сценарії ще не накопичені';
+            return '<div class="omni-ai-settings-block">' +
+                '<div class="omni-ai-section-title">Аналітика AI ліда</div>' +
+                '<div class="omni-ai-metrics">' +
+                    '<div class="omni-ai-metric"><strong>' + esc(String(analytics.totalAnalyses || 0)) + '</strong><span>аналізів діалогів</span></div>' +
+                    '<div class="omni-ai-metric"><strong>' + esc(String(analytics.totalCreatedLeads || 0)) + '</strong><span>створених лідів</span></div>' +
+                    '<div class="omni-ai-metric"><strong>' + esc(String(analytics.averageScore ?? '—')) + '</strong><span>середній score</span></div>' +
+                '</div>' +
+                '<div class="omni-ai-summary" style="margin-top:8px">' + esc(scenarioText) + '</div>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantHistory(history) {
+            const rows = Array.isArray(history) ? history.slice(0, 5) : [];
+            if (!rows.length) return '';
+            return '<div class="omni-ai-settings-block">' +
+                '<div class="omni-ai-section-title">Історія скриптів</div>' +
+                '<div class="omni-ai-history-list">' + rows.map(item =>
+                    '<div class="omni-ai-history-item">' +
+                        '<strong>' + esc('v' + (item.revision ?? 0)) + '</strong>' +
+                        '<span>' + esc([item.updatedAt ? new Date(item.updatedAt).toLocaleString('uk-UA') : null, item.updatedBy].filter(Boolean).join(' · ') || 'попередня версія') + '</span>' +
+                        (item.summary ? '<span>' + esc(item.summary) + '</span>' : '') +
+                    '</div>'
+                ).join('') + '</div>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantSettings() {
+            if (!leadAssistantSettingsEl) return;
+            const settings = leadAssistantState.settings || {};
+            const fields = Array.isArray(settings.requiredFields) ? settings.requiredFields : [];
+            const sources = Array.isArray(settings.catalogSources) ? settings.catalogSources : [];
+            const materials = Array.isArray(settings.manualMaterials) ? settings.manualMaterials : [];
+            const scenarios = Array.isArray(settings.scenarios) ? settings.scenarios : [];
+            const guardrails = Array.isArray(settings.guardrails) ? settings.guardrails : [];
+            const templates = Array.isArray(settings.replyTemplates) ? settings.replyTemplates : [];
+            const revisionLabel = settings.revision ? ('v' + settings.revision) : 'draft';
+            const updatedMeta = settings.updatedAt ? (' · ' + new Date(settings.updatedAt).toLocaleString('uk-UA')) : '';
+            leadAssistantSettingsEl.innerHTML =
+                '<div class="omni-ai-summary">Конфіг скрипту: ' + esc(revisionLabel) + esc(updatedMeta) + (settings.updatedBy ? ' · ' + esc(settings.updatedBy) : '') + '</div>' +
+                renderLeadAssistantAnalytics() +
+                '<div class="omni-ai-section-title">Поля виявлення</div>' +
+                '<div class="omni-ai-settings-grid" id="omniLeadAssistantFields">' +
+                    fields.map(field => renderLeadAssistantSettingRow(field)).join('') +
+                '</div>' +
+                '<div class="omni-ai-row-actions" style="margin-top:8px">' +
+                    '<button type="button" class="omni-ai-btn" data-ai-action="add-field">Додати поле</button>' +
+                '</div>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Сценарії продажу</div>' +
+                    '<div id="omniLeadAssistantScenarios">' + scenarios.map(renderLeadAssistantScenarioRow).join('') + '</div>' +
+                    '<div class="omni-ai-settings-toolbar"><button type="button" class="omni-ai-btn" data-ai-action="add-scenario">Додати сценарій</button></div>' +
+                '</div>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Джерела каталогів CRM</div>' +
+                    '<div id="omniLeadAssistantSources">' + sources.map(renderLeadAssistantSourceRow).join('') + '</div>' +
+                    '<div class="omni-ai-summary">AI підтягує активні продукти, торти, меню та catalog_items. Зараз доступно: ' + esc(leadAssistantState.salesContext?.materialCount ?? '—') + ' матеріалів.</div>' +
+                '</div>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Ручні вкладення і посилання</div>' +
+                    '<div id="omniLeadAssistantMaterials">' + materials.map(renderLeadAssistantMaterialRow).join('') + '</div>' +
+                    '<div class="omni-ai-settings-toolbar"><button type="button" class="omni-ai-btn" data-ai-action="add-material">Додати матеріал</button></div>' +
+                '</div>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Guardrails</div>' +
+                    '<div id="omniLeadAssistantGuardrails">' + guardrails.map(renderLeadAssistantGuardrailRow).join('') + '</div>' +
+                    '<div class="omni-ai-settings-toolbar"><button type="button" class="omni-ai-btn" data-ai-action="add-guardrail">Додати правило</button></div>' +
+                '</div>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Шаблони відповідей</div>' +
+                    '<div id="omniLeadAssistantTemplates">' + templates.map(renderLeadAssistantTemplateRow).join('') + '</div>' +
+                    '<div class="omni-ai-settings-toolbar"><button type="button" class="omni-ai-btn" data-ai-action="add-template">Додати шаблон</button></div>' +
+                '</div>' +
+                renderLeadAssistantHistory(settings.history || []) +
+                '<div class="omni-ai-section-title" style="margin-top:12px">Правила скрипту</div>' +
+                '<textarea class="omni-ai-script-rules" id="omniLeadAssistantRules">' + esc(settings.scriptRules || '') + '</textarea>' +
+                '<div class="omni-ai-settings-block">' +
+                    '<div class="omni-ai-section-title">Тест скрипту</div>' +
+                    '<textarea class="omni-ai-test-box" id="omniLeadAssistantTestTranscript" placeholder="Клієнт: Хочу день народження на 12 дітей, 7 років...">' + esc(leadAssistantState.testTranscript || '') + '</textarea>' +
+                    '<div class="omni-ai-settings-toolbar">' +
+                        '<button type="button" class="omni-ai-btn" data-ai-action="test-script"' + (leadAssistantState.testingScript ? ' disabled' : '') + '>Протестувати</button>' +
+                    '</div>' +
+                    '<div class="omni-ai-test-result" id="omniLeadAssistantTestResult">' + renderLeadAssistantTestResult() + '</div>' +
+                '</div>' +
+                '<div class="omni-ai-setting-row" style="margin-top:8px">' +
+                    '<input type="text" id="omniLeadAssistantModel" value="' + esc(settings.model || '') + '" placeholder="gpt-4.1-mini">' +
+                    '<select id="omniLeadAssistantTone">' +
+                        '<option value="friendly_short"' + (settings.tone === 'friendly_short' ? ' selected' : '') + '>Тепло і коротко</option>' +
+                        '<option value="sales_direct"' + (settings.tone === 'sales_direct' ? ' selected' : '') + '>Прямий продаж</option>' +
+                        '<option value="premium_care"' + (settings.tone === 'premium_care' ? ' selected' : '') + '>Premium care</option>' +
+                    '</select>' +
+                    '<label><input type="checkbox" id="omniLeadAssistantEnabled"' + (settings.enabled === false ? '' : ' checked') + '> Увімкнено</label>' +
+                    '<button type="button" class="omni-ai-btn primary" data-ai-action="save-settings"' + (leadAssistantState.savingSettings ? ' disabled' : '') + '>Зберегти</button>' +
+                '</div>';
+        }
+
+        function renderLeadAssistantSettingRow(field) {
+            const key = field.key || '';
+            return '<div class="omni-ai-setting-row" data-ai-field>' +
+                '<input type="text" data-ai-field-key value="' + esc(key) + '" placeholder="field_key">' +
+                '<input type="text" data-ai-field-label value="' + esc(field.label || '') + '" placeholder="Назва поля">' +
+                '<input type="text" data-ai-field-question value="' + esc(field.question || '') + '" placeholder="Питання менеджеру">' +
+                '<label><input type="checkbox" data-ai-field-required' + (field.required === false ? '' : ' checked') + '> required</label>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantScenarioRow(item = {}) {
+            return '<div class="omni-ai-scenario-row" data-ai-scenario>' +
+                '<input type="text" data-ai-scenario-id value="' + esc(item.id || '') + '" placeholder="birthday">' +
+                '<input type="text" data-ai-scenario-label value="' + esc(item.label || '') + '" placeholder="Назва сценарію">' +
+                '<input type="text" data-ai-scenario-keywords value="' + esc((item.keywords || []).join(', ')) + '" placeholder="ключові слова">' +
+                '<label><input type="checkbox" data-ai-scenario-enabled' + (item.enabled === false ? '' : ' checked') + '> on</label>' +
+                '<input type="text" data-ai-scenario-fields value="' + esc((item.requiredFieldKeys || []).join(', ')) + '" placeholder="required field keys">' +
+                '<input type="text" data-ai-scenario-tags value="' + esc((item.catalogTags || []).join(', ')) + '" placeholder="catalog tags">' +
+                '<input type="text" data-ai-scenario-goal value="' + esc(item.nextStepGoal || '') + '" placeholder="next step goal">' +
+                '<button type="button" class="omni-ai-btn" data-ai-action="remove-row">×</button>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantSourceRow(item = {}) {
+            return '<div class="omni-ai-source-row" data-ai-source>' +
+                '<input type="text" data-ai-source-id value="' + esc(item.id || '') + '" placeholder="program_products">' +
+                '<input type="text" data-ai-source-label value="' + esc(item.label || '') + '" placeholder="Назва">' +
+                '<select data-ai-source-source>' +
+                    '<option value="products"' + (item.source === 'products' ? ' selected' : '') + '>products</option>' +
+                    '<option value="catalog_items"' + (item.source === 'catalog_items' ? ' selected' : '') + '>catalog_items</option>' +
+                '</select>' +
+                '<label><input type="checkbox" data-ai-source-enabled' + (item.enabled === false ? '' : ' checked') + '> on</label>' +
+                '<input type="text" data-ai-source-domain value="' + esc(item.domain || '') + '" placeholder="program/kitchen">' +
+                '<input type="text" data-ai-source-kitchen value="' + esc(item.kitchenType || '') + '" placeholder="cake/menu">' +
+                '<input type="text" data-ai-source-tags value="' + esc((item.tags || []).join(', ')) + '" placeholder="tags">' +
+                '<input type="number" min="1" max="40" data-ai-source-limit value="' + esc(item.maxItems || 10) + '">' +
+            '</div>';
+        }
+
+        function renderLeadAssistantMaterialRow(item = {}) {
+            return '<div class="omni-ai-material-row" data-ai-material>' +
+                '<input type="text" data-ai-material-id value="' + esc(item.id || '') + '" placeholder="material_id">' +
+                '<input type="text" data-ai-material-title value="' + esc(item.title || '') + '" placeholder="Назва">' +
+                '<input type="text" data-ai-material-url value="' + esc(item.url || '') + '" placeholder="https:// або /page">' +
+                '<label><input type="checkbox" data-ai-material-enabled' + (item.enabled === false ? '' : ' checked') + '> on</label>' +
+                '<input type="text" data-ai-material-type value="' + esc(item.type || 'link') + '" placeholder="link/pdf/image">' +
+                '<input type="text" data-ai-material-tags value="' + esc((item.tags || []).join(', ')) + '" placeholder="tags">' +
+                '<input type="text" data-ai-material-scenarios value="' + esc((item.scenarioIds || []).join(', ')) + '" placeholder="scenarios">' +
+                '<button type="button" class="omni-ai-btn" data-ai-action="remove-row">×</button>' +
+                '<textarea data-ai-material-description placeholder="Опис для менеджера/AI">' + esc(item.description || '') + '</textarea>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantGuardrailRow(item = {}) {
+            return '<div class="omni-ai-guardrail-row" data-ai-guardrail>' +
+                '<input type="text" data-ai-guardrail-id value="' + esc(item.id || '') + '" placeholder="rule_id">' +
+                '<input type="text" data-ai-guardrail-label value="' + esc(item.label || '') + '" placeholder="Назва">' +
+                '<select data-ai-guardrail-severity>' +
+                    '<option value="blocker"' + (item.severity === 'blocker' ? ' selected' : '') + '>blocker</option>' +
+                    '<option value="warning"' + (item.severity === 'warning' ? ' selected' : '') + '>warning</option>' +
+                    '<option value="style"' + (item.severity === 'style' ? ' selected' : '') + '>style</option>' +
+                '</select>' +
+                '<label><input type="checkbox" data-ai-guardrail-enabled' + (item.enabled === false ? '' : ' checked') + '> on</label>' +
+                '<textarea data-ai-guardrail-text placeholder="Що AI не має робити">' + esc(item.text || '') + '</textarea>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantTemplateRow(item = {}) {
+            return '<div class="omni-ai-template-row" data-ai-template>' +
+                '<input type="text" data-ai-template-key value="' + esc(item.key || '') + '" placeholder="template_key">' +
+                '<input type="text" data-ai-template-title value="' + esc(item.title || '') + '" placeholder="Назва">' +
+                '<span></span>' +
+                '<label><input type="checkbox" data-ai-template-enabled' + (item.enabled === false ? '' : ' checked') + '> on</label>' +
+                '<textarea data-ai-template-text placeholder="Текст шаблону. Можна {{question}} або {{materials}}">' + esc(item.text || '') + '</textarea>' +
+            '</div>';
+        }
+
+        function renderLeadAssistantTestResult() {
+            const test = leadAssistantState.testAnalysis;
+            if (leadAssistantState.testingScript) return 'Тестую сценарій...';
+            if (!test) return '';
+            const score = test.leadScore ? test.leadScore.score + '/100 ' + test.leadScore.label : 'без score';
+            const materials = (test.recommendedMaterials || []).map(item => item.title).slice(0, 3).join(', ') || 'матеріали не підібрані';
+            return esc((test.scenario?.label || 'Сценарій') + ' · ' + score + ' · ' + materials);
+        }
+
+        function renderLeadAssistant() {
+            renderLeadAssistantStatus();
+            renderLeadAssistantContent();
+            renderLeadAssistantSettings();
+        }
+
+        async function loadLeadAssistantSettings() {
+            const res = await api('/lead-assistant/settings');
+            if (res.success) {
+                leadAssistantState.settings = res.settings || {};
+                const ctx = await api('/lead-assistant/sales-context');
+                if (ctx.success) leadAssistantState.salesContext = ctx.salesContext || null;
+                const analytics = await api('/lead-assistant/analytics');
+                if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
+            } else {
+                leadAssistantState.error = res.error || 'Не вдалося завантажити налаштування AI ліда';
+            }
+        }
+
+        async function analyzeLeadAssistant() {
+            if (!currentConvId) return;
+            leadAssistantState.loading = true;
+            leadAssistantState.error = '';
+            renderLeadAssistant();
+            const res = await api('/conversations/' + currentConvId + '/lead-assistant/analyze', { method: 'POST' });
+            leadAssistantState.loading = false;
+            if (res.success) {
+                leadAssistantState.analysis = res.analysis;
+                if (res.analysis?.settings) leadAssistantState.settings = res.analysis.settings;
+                const analytics = await api('/lead-assistant/analytics');
+                if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
+            } else {
+                leadAssistantState.error = res.error || 'AI аналіз недоступний';
+            }
+            renderLeadAssistant();
+        }
+
+        async function openLeadAssistantPanel() {
+            if (!currentConvId) return;
+            leadAssistantState.open = true;
+            if (leadAssistantDrawer) leadAssistantDrawer.hidden = false;
+            if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = false;
+            const conv = currentConversation();
+            if (leadAssistantSubtitle) leadAssistantSubtitle.textContent = conv ? (conv.customerName || conv.externalId || 'Розмова') : 'OmniClaw';
+            if (!leadAssistantState.settings) await loadLeadAssistantSettings();
+            renderLeadAssistant();
+            await analyzeLeadAssistant();
+        }
+
+        function closeLeadAssistantPanel() {
+            leadAssistantState.open = false;
+            if (leadAssistantDrawer) leadAssistantDrawer.hidden = true;
+            if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = true;
+        }
+
+        function aiCsv(value) {
+            return String(value || '').split(/[,\n]/).map(item => item.trim()).filter(Boolean);
+        }
+
+        function collectLeadAssistantSettings() {
+            const rows = Array.from(document.querySelectorAll('[data-ai-field]'));
+            const requiredFields = rows.map((row, idx) => ({
+                key: row.querySelector('[data-ai-field-key]')?.value || ('custom_' + (idx + 1)),
+                label: row.querySelector('[data-ai-field-label]')?.value || '',
+                question: row.querySelector('[data-ai-field-question]')?.value || '',
+                required: !!row.querySelector('[data-ai-field-required]')?.checked
+            })).filter(field => field.key || field.label || field.question);
+            const scenarios = Array.from(document.querySelectorAll('[data-ai-scenario]')).map((row, idx) => ({
+                id: row.querySelector('[data-ai-scenario-id]')?.value || ('scenario_' + (idx + 1)),
+                label: row.querySelector('[data-ai-scenario-label]')?.value || '',
+                keywords: aiCsv(row.querySelector('[data-ai-scenario-keywords]')?.value),
+                requiredFieldKeys: aiCsv(row.querySelector('[data-ai-scenario-fields]')?.value),
+                catalogTags: aiCsv(row.querySelector('[data-ai-scenario-tags]')?.value),
+                nextStepGoal: row.querySelector('[data-ai-scenario-goal]')?.value || '',
+                enabled: !!row.querySelector('[data-ai-scenario-enabled]')?.checked
+            })).filter(item => item.id || item.label);
+            const catalogSources = Array.from(document.querySelectorAll('[data-ai-source]')).map((row, idx) => ({
+                id: row.querySelector('[data-ai-source-id]')?.value || ('source_' + (idx + 1)),
+                label: row.querySelector('[data-ai-source-label]')?.value || '',
+                source: row.querySelector('[data-ai-source-source]')?.value || 'products',
+                domain: row.querySelector('[data-ai-source-domain]')?.value || null,
+                kitchenType: row.querySelector('[data-ai-source-kitchen]')?.value || null,
+                tags: aiCsv(row.querySelector('[data-ai-source-tags]')?.value),
+                maxItems: Number(row.querySelector('[data-ai-source-limit]')?.value || 10),
+                enabled: !!row.querySelector('[data-ai-source-enabled]')?.checked
+            })).filter(item => item.id || item.label);
+            const manualMaterials = Array.from(document.querySelectorAll('[data-ai-material]')).map((row, idx) => ({
+                id: row.querySelector('[data-ai-material-id]')?.value || ('material_' + (idx + 1)),
+                title: row.querySelector('[data-ai-material-title]')?.value || '',
+                type: row.querySelector('[data-ai-material-type]')?.value || 'link',
+                url: row.querySelector('[data-ai-material-url]')?.value || '',
+                description: row.querySelector('[data-ai-material-description]')?.value || '',
+                tags: aiCsv(row.querySelector('[data-ai-material-tags]')?.value),
+                scenarioIds: aiCsv(row.querySelector('[data-ai-material-scenarios]')?.value),
+                enabled: !!row.querySelector('[data-ai-material-enabled]')?.checked
+            })).filter(item => item.title || item.url);
+            const guardrails = Array.from(document.querySelectorAll('[data-ai-guardrail]')).map((row, idx) => ({
+                id: row.querySelector('[data-ai-guardrail-id]')?.value || ('guardrail_' + (idx + 1)),
+                label: row.querySelector('[data-ai-guardrail-label]')?.value || '',
+                severity: row.querySelector('[data-ai-guardrail-severity]')?.value || 'warning',
+                text: row.querySelector('[data-ai-guardrail-text]')?.value || '',
+                enabled: !!row.querySelector('[data-ai-guardrail-enabled]')?.checked
+            })).filter(item => item.text || item.label);
+            const replyTemplates = Array.from(document.querySelectorAll('[data-ai-template]')).map((row, idx) => ({
+                key: row.querySelector('[data-ai-template-key]')?.value || ('template_' + (idx + 1)),
+                title: row.querySelector('[data-ai-template-title]')?.value || '',
+                text: row.querySelector('[data-ai-template-text]')?.value || '',
+                enabled: !!row.querySelector('[data-ai-template-enabled]')?.checked
+            })).filter(item => item.text || item.title);
+            return {
+                enabled: !!$('omniLeadAssistantEnabled')?.checked,
+                model: $('omniLeadAssistantModel')?.value || '',
+                tone: $('omniLeadAssistantTone')?.value || 'friendly_short',
+                scriptRules: $('omniLeadAssistantRules')?.value || '',
+                requiredFields,
+                scenarios,
+                catalogSources,
+                manualMaterials,
+                guardrails,
+                replyTemplates
+            };
+        }
+
+        async function saveLeadAssistantSettings() {
+            const payload = collectLeadAssistantSettings();
+            leadAssistantState.savingSettings = true;
+            renderLeadAssistantSettings();
+            const res = await api('/lead-assistant/settings', {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+            leadAssistantState.savingSettings = false;
+            if (res.success) {
+                leadAssistantState.settings = res.settings;
+                leadAssistantNotify('Налаштування AI ліда збережено', 'success');
+                await analyzeLeadAssistant();
+            } else {
+                leadAssistantNotify(res.error || 'Не вдалося зберегти налаштування', 'error');
+                renderLeadAssistantSettings();
+            }
+        }
+
+        function addLeadAssistantField() {
+            const grid = $('omniLeadAssistantFields');
+            if (!grid) return;
+            const idx = grid.querySelectorAll('[data-ai-field]').length + 1;
+            grid.insertAdjacentHTML('beforeend', renderLeadAssistantSettingRow({
+                key: 'custom_' + idx,
+                label: '',
+                question: '',
+                required: true
+            }));
+        }
+
+        function addLeadAssistantScenario() {
+            const grid = $('omniLeadAssistantScenarios');
+            if (!grid) return;
+            const idx = grid.querySelectorAll('[data-ai-scenario]').length + 1;
+            grid.insertAdjacentHTML('beforeend', renderLeadAssistantScenarioRow({
+                id: 'custom_scenario_' + idx,
+                label: '',
+                keywords: [],
+                requiredFieldKeys: [],
+                catalogTags: [],
+                nextStepGoal: 'qualify_lead',
+                enabled: true
+            }));
+        }
+
+        function addLeadAssistantMaterial() {
+            const grid = $('omniLeadAssistantMaterials');
+            if (!grid) return;
+            const idx = grid.querySelectorAll('[data-ai-material]').length + 1;
+            grid.insertAdjacentHTML('beforeend', renderLeadAssistantMaterialRow({
+                id: 'material_' + idx,
+                title: '',
+                type: 'link',
+                url: '',
+                description: '',
+                tags: [],
+                scenarioIds: [],
+                enabled: true
+            }));
+        }
+
+        function addLeadAssistantGuardrail() {
+            const grid = $('omniLeadAssistantGuardrails');
+            if (!grid) return;
+            const idx = grid.querySelectorAll('[data-ai-guardrail]').length + 1;
+            grid.insertAdjacentHTML('beforeend', renderLeadAssistantGuardrailRow({
+                id: 'guardrail_' + idx,
+                label: '',
+                text: '',
+                severity: 'warning',
+                enabled: true
+            }));
+        }
+
+        function addLeadAssistantTemplate() {
+            const grid = $('omniLeadAssistantTemplates');
+            if (!grid) return;
+            const idx = grid.querySelectorAll('[data-ai-template]').length + 1;
+            grid.insertAdjacentHTML('beforeend', renderLeadAssistantTemplateRow({
+                key: 'template_' + idx,
+                title: '',
+                text: '',
+                enabled: true
+            }));
+        }
+
+        function removeLeadAssistantConfigRow(target) {
+            const row = target.closest('[data-ai-scenario], [data-ai-material], [data-ai-field], [data-ai-guardrail], [data-ai-template]');
+            if (row) row.remove();
+        }
+
+        function leadAssistantReplyText() {
+            return $('omniLeadAssistantReply')?.value || leadAssistantState.analysis?.suggestedReply || '';
+        }
+
+        function insertLeadAssistantReply(text) {
+            const reply = String(text || leadAssistantReplyText() || '').trim();
+            if (!reply) return;
+            input.value = reply;
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            input.focus();
+            leadAssistantNotify('Відповідь вставлено в діалог', 'success');
+        }
+
+        function materialTextByIndex(index) {
+            const material = leadAssistantState.analysis?.recommendedMaterials?.[Number(index)];
+            return material?.attachText || material?.url || material?.title || '';
+        }
+
+        function insertLeadAssistantMaterial(index, append) {
+            const text = materialTextByIndex(index);
+            if (!text) return;
+            if (append) {
+                const current = String($('omniLeadAssistantReply')?.value || leadAssistantReplyText() || '').trim();
+                const next = [current, text].filter(Boolean).join('\n\n');
+                const replyBox = $('omniLeadAssistantReply');
+                if (replyBox) replyBox.value = next;
+                else insertLeadAssistantReply(next);
+                leadAssistantNotify('Матеріал додано до AI відповіді', 'success');
+                return;
+            }
+            insertLeadAssistantReply(text);
+        }
+
+        async function testLeadAssistantScript() {
+            const transcript = $('omniLeadAssistantTestTranscript')?.value || '';
+            if (!transcript.trim()) {
+                leadAssistantNotify('Вставте приклад переписки для тесту', 'warning');
+                return;
+            }
+            leadAssistantState.testTranscript = transcript;
+            const payload = collectLeadAssistantSettings();
+            leadAssistantState.testingScript = true;
+            renderLeadAssistantSettings();
+            const res = await api('/lead-assistant/test', {
+                method: 'POST',
+                body: JSON.stringify({ transcript, settings: payload })
+            });
+            leadAssistantState.testingScript = false;
+            if (res.success) {
+                leadAssistantState.testAnalysis = res.analysis;
+                leadAssistantNotify('Тест скрипту готовий', 'success');
+            } else {
+                leadAssistantNotify(res.error || 'Не вдалося протестувати скрипт', 'error');
+            }
+            renderLeadAssistantSettings();
+        }
+
+        async function createLeadFromAssistant() {
+            if (!currentConvId || !leadAssistantState.analysis || leadAssistantState.creating) return;
+            leadAssistantState.creating = true;
+            renderLeadAssistantStatus();
+            const res = await api('/conversations/' + currentConvId + '/lead-assistant/create-lead', {
+                method: 'POST',
+                body: JSON.stringify({ analysis: leadAssistantState.analysis })
+            });
+            leadAssistantState.creating = false;
+            renderLeadAssistantStatus();
+            if (res.success) {
+                leadAssistantNotify(res.created ? 'Лід створено з Omni-діалогу' : 'Лід вже був привʼязаний до розмови', 'success');
+                await loadCaseContext(currentConvId);
+                await loadConversations();
+                const analytics = await api('/lead-assistant/analytics');
+                if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
+                renderLeadAssistant();
+            } else {
+                leadAssistantNotify(res.error || 'Не вдалося створити лід', 'error');
+            }
+        }
+
+        async function createFollowUpFromAssistant() {
+            if (!currentConvId || !leadAssistantState.analysis || leadAssistantState.creatingTask) return;
+            leadAssistantState.creatingTask = true;
+            renderLeadAssistant();
+            const res = await api('/conversations/' + currentConvId + '/lead-assistant/follow-up-task', {
+                method: 'POST',
+                body: JSON.stringify({ analysis: leadAssistantState.analysis })
+            });
+            leadAssistantState.creatingTask = false;
+            if (res.success) {
+                leadAssistantNotify(res.created ? 'Follow-up задачу створено' : 'Follow-up задача вже існує', 'success');
+                const analytics = await api('/lead-assistant/analytics');
+                if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
+            } else {
+                leadAssistantNotify(res.error || 'Не вдалося створити follow-up задачу', 'error');
+            }
+            renderLeadAssistant();
+        }
+
         function setConversationUrl(convId, replace) {
             const url = new URL(window.location.href);
             if (convId) url.searchParams.set('conversation', String(convId));
@@ -2720,8 +3961,14 @@
 
             const aiBtn = $('omniToggleAI');
             const aiEnabled = conv.meta && conv.meta.ai_enabled;
-            aiBtn.style.background = aiEnabled ? '#667eea' : '';
-            aiBtn.style.color = aiEnabled ? '#fff' : '';
+            const leadLinked = conv.meta && (conv.meta.lead_id || conv.meta.leadId || conv.meta.leadAssistant?.leadId);
+            aiBtn.style.background = leadLinked ? '#0F766E' : (aiEnabled ? '#667eea' : '');
+            aiBtn.style.color = (leadLinked || aiEnabled) ? '#fff' : '';
+            aiBtn.title = leadLinked ? 'AI лід привʼязано' : 'AI лід і потреби';
+            if (leadAssistantState.open) {
+                leadAssistantState.analysis = null;
+                openLeadAssistantPanel();
+            }
             setSendFeedback(null);
             if (replyExpectedEl) replyExpectedEl.checked = false;
             updateSendControls(conv);
@@ -2797,16 +4044,7 @@
         }
 
         async function toggleAI() {
-            if (!currentConvId) return;
-            const conv = conversations.find(c => c.id === currentConvId);
-            if (!conv) return;
-            const aiEnabled = conv.meta && conv.meta.ai_enabled;
-            // Toggle AI via PATCH meta
-            await api('/conversations/' + currentConvId, {
-                method: 'PATCH',
-                body: JSON.stringify({ meta: { ai_enabled: !aiEnabled } })
-            });
-            loadConversations();
+            await openLeadAssistantPanel();
         }
 
         // ---- Helpers ----
@@ -2851,6 +4089,30 @@
 
         $('omniCloseConv').addEventListener('click', closeConversation);
         $('omniToggleAI').addEventListener('click', toggleAI);
+        if (leadAssistantClose) leadAssistantClose.addEventListener('click', closeLeadAssistantPanel);
+        if (leadAssistantBackdrop) leadAssistantBackdrop.addEventListener('click', closeLeadAssistantPanel);
+        if (leadAssistantDrawer) {
+            leadAssistantDrawer.addEventListener('click', async e => {
+                const btn = e.target.closest('[data-ai-action]');
+                if (!btn) return;
+                const action = btn.dataset.aiAction;
+                if (action === 'reanalyze') await analyzeLeadAssistant();
+                if (action === 'create-lead') await createLeadFromAssistant();
+                if (action === 'create-followup') await createFollowUpFromAssistant();
+                if (action === 'insert-reply') insertLeadAssistantReply();
+                if (action === 'copy-question') insertLeadAssistantReply(leadAssistantState.analysis?.nextBestQuestion || '');
+                if (action === 'save-settings') await saveLeadAssistantSettings();
+                if (action === 'add-field') addLeadAssistantField();
+                if (action === 'add-scenario') addLeadAssistantScenario();
+                if (action === 'add-material') addLeadAssistantMaterial();
+                if (action === 'add-guardrail') addLeadAssistantGuardrail();
+                if (action === 'add-template') addLeadAssistantTemplate();
+                if (action === 'remove-row') removeLeadAssistantConfigRow(btn);
+                if (action === 'insert-material') insertLeadAssistantMaterial(btn.dataset.aiMaterialIndex, false);
+                if (action === 'append-material') insertLeadAssistantMaterial(btn.dataset.aiMaterialIndex, true);
+                if (action === 'test-script') await testLeadAssistantScript();
+            });
+        }
 
         // Channel filters
         $('omniFilters').addEventListener('click', e => {
@@ -2902,6 +4164,10 @@
             });
         }
         document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && leadAssistantState.open) {
+                closeLeadAssistantPanel();
+                return;
+            }
             if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
         });
         document.addEventListener('click', async e => {
@@ -3036,7 +4302,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.64.7"></script>
-    <script src="js/alerts.js?v=0.64.7"></script>
+    </script><script src="js/ui.js?v=0.66.2"></script>
+    <script src="js/alerts.js?v=0.66.2"></script>
 </body>
 </html>

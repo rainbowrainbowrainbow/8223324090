@@ -11,6 +11,16 @@ const { createLogger } = require('../utils/logger');
 const { authenticateToken: auth, requireMinRole } = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
 const {
+    getLeadAssistantSettings,
+    saveLeadAssistantSettings,
+    getLeadAssistantSalesContext,
+    getLeadAssistantAnalytics,
+    analyzeConversationLead,
+    testLeadAssistantScript,
+    createLeadFromConversation,
+    createLeadAssistantFollowUpTask,
+} = require('../services/omniLeadAssistant');
+const {
     getOmniAccountStatusesAsync,
     getOmniAccountStatusAsync,
     upsertOmniConnection,
@@ -231,6 +241,7 @@ router.post('/webhook/binotel', async (req, res) => {
 // ═══════════════════════════════════════════════
 
 const manageConnections = requireMinRole('manager');
+const manageLeadAssistantSettings = requireMinRole('senior_manager');
 
 async function auditConnectionAction(req, action, channel, result) {
     logAdminAction(`omni_connection_${action}`, 'omni_connections', {
@@ -375,6 +386,132 @@ router.get('/conversations/:id/context', auth, async (req, res) => {
     } catch (err) {
         log.error('Resolve conversation context error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка звʼязування CRM-контексту' });
+    }
+});
+
+// Omni lead assistant settings: pinned discovery fields and reply rules.
+router.get('/lead-assistant/settings', auth, async (req, res) => {
+    try {
+        res.json({ success: true, settings: await getLeadAssistantSettings() });
+    } catch (err) {
+        log.error('Get Omni lead assistant settings error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити налаштування AI ліда' });
+    }
+});
+
+router.put('/lead-assistant/settings', auth, manageLeadAssistantSettings, async (req, res) => {
+    try {
+        const settings = await saveLeadAssistantSettings(req.body || {}, {
+            username: req.user?.username || req.user?.name || null
+        });
+        await logAdminAction('omni_lead_assistant_settings_update', 'settings', {
+            username: req.user?.username || req.user?.name || null,
+            target: 'omni_lead_assistant_config',
+            details: {
+                model: settings.model,
+                fields: settings.requiredFields.map(field => field.key),
+                enabled: settings.enabled,
+                revision: settings.revision,
+            },
+            ip: req.ip,
+            requestId: req.headers['x-request-id'] || null,
+        }).catch(() => {});
+        res.json({ success: true, settings });
+    } catch (err) {
+        log.error('Save Omni lead assistant settings error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося зберегти налаштування AI ліда' });
+    }
+});
+
+router.get('/lead-assistant/analytics', auth, async (req, res) => {
+    try {
+        res.json({ success: true, analytics: await getLeadAssistantAnalytics() });
+    } catch (err) {
+        log.error('Get Omni lead assistant analytics error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити аналітику AI ліда' });
+    }
+});
+
+router.get('/lead-assistant/sales-context', auth, async (req, res) => {
+    try {
+        const settings = await getLeadAssistantSettings();
+        const salesContext = await getLeadAssistantSalesContext(settings, {}, {
+            businessContext: req.query.businessContext || req.query.business_context
+        });
+        res.json({ success: true, salesContext });
+    } catch (err) {
+        log.error('Get Omni lead assistant sales context error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити каталоги для AI ліда' });
+    }
+});
+
+router.post('/lead-assistant/test', auth, async (req, res) => {
+    try {
+        const analysis = await testLeadAssistantScript(req.body || {});
+        res.json({ success: true, analysis });
+    } catch (err) {
+        log.error('Test Omni lead assistant script error:', err.message);
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Не вдалося протестувати AI скрипт' });
+    }
+});
+
+router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const result = await createLeadAssistantFollowUpTask(id, req.body?.analysis, {
+            user: req.user,
+            date: req.body?.date || req.body?.followUpDate || req.body?.follow_up_date,
+            priority: req.body?.priority,
+            assignedTo: req.body?.assignedTo || req.body?.assigned_to,
+            leadId: req.body?.leadId || req.body?.lead_id,
+        });
+        res.status(result.created ? 201 : 200).json({
+            success: true,
+            created: result.created,
+            task: result.task,
+            analysis: result.analysis,
+            link: result.link,
+        });
+    } catch (err) {
+        log.error('Omni lead assistant follow-up task error:', err.message);
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Помилка створення follow-up задачі з Omni-діалогу' });
+    }
+});
+
+// Analyze an Omni dialogue and return a structured lead draft + needs checklist.
+router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const analysis = await analyzeConversationLead(id);
+        res.json({ success: true, analysis });
+    } catch (err) {
+        log.error('Omni lead assistant analysis error:', err.message);
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Помилка AI аналізу діалогу' });
+    }
+});
+
+// Create and link a CRM lead from the latest assistant draft.
+router.post('/conversations/:id/lead-assistant/create-lead', auth, async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const analysis = req.body?.analysis || await analyzeConversationLead(id);
+        const result = await createLeadFromConversation(id, analysis, {
+            businessContext: req.body?.businessContext || req.body?.business_context,
+            user: req.user,
+        });
+        res.status(result.created ? 201 : 200).json({
+            success: true,
+            created: result.created,
+            lead: result.lead,
+            analysis: result.analysis,
+            link: result.lead?.id ? `/sales-funnel?lead=${encodeURIComponent(result.lead.id)}` : null,
+        });
+    } catch (err) {
+        log.error('Omni create lead from assistant error:', err.message);
+        res.status(err.status || 500).json({ success: false, error: err.message || 'Помилка створення ліда з діалогу' });
     }
 });
 

@@ -4,6 +4,66 @@
 
 ---
 
+## v0.66.2 - CRM 66.2: Account password reset activation
+
+### HR Accounts / password reset activation / 25.05.2026 [codex]
+- **Reset пароля тепер може одразу активувати вимкнений акаунт** - `/api/users/:id/reset-password` приймає `activateOnReset`, оновлює `users.is_active` і повертає `wasActive`, `isActive` та `activated`.
+- **HR-інтерфейс більше не видає "робочий" пароль до заблокованого акаунта мовчки** - для вимкнених акаунтів модалка пароля показує селектор статусу й за замовчуванням активує акаунт після reset-а.
+- **One-time credential modal показує статус** - якщо backend повертає неактивний акаунт, оператор бачить попередження перед передачею пароля.
+- **Login-діагностика стала кориснішою без витоку даних** - користувач і далі бачить єдину помилку, але серверні логи розрізняють `inactive_account`, `password_mismatch` і `user_not_found`.
+- **Regression guardrail** - backoffice contract test фіксує `activateOnReset`, а users API smoke покриває перевипуск пароля для вимкненого акаунта.
+
+---
+
+## v0.66.1 - CRM 66.1: Dashboard assistant cleanup
+
+### Dashboard / assistant rail cleanup / 25.05.2026 [codex]
+- **З дашборда прибрано верхній widget Помічника** - shared `CrmAssistantRail` більше не монтується на сторінці `data-crm-page="dashboard"`.
+- **Прибрано overlay з контекстними chips** - блок `Екран / Роль / Фокус` і швидкі команди `/brief`, `/leads`, `/shift` більше не перекривають перший екран дашборда.
+- **Інші сторінки не зачеплені** - shared assistant rail лишився доступним на решті CRM-сторінок.
+- **Regression guardrail** - UI smoke перевіряє suppress-контракт dashboard, щоб assistant top widget не повернувся випадково.
+
+---
+
+## v0.66.0 - CRM 66.0: Chat AI model selectors
+
+### Chat settings / AI model selectors / 25.05.2026 [codex]
+- **Поле моделі в налаштуваннях чату стало selector-ом** - `chatAiModel` і `guardianModel` більше не вводяться вручну, а підтягують готовий список моделей під вибраний provider.
+- **OpenAI отримав актуальний список і mini-default** - у selector є `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano` та сумісні fallback-и, але для Chat AI і Guardian дефолтною моделлю лишилась дешевша `gpt-5.4-mini`.
+- **Захищено від provider/model mismatch** - backend більше не приймає комбінацію на кшталт `OpenAI + claude-haiku-*`; якщо модель не належить provider, вона замінюється на provider default.
+- **Налаштування стали простішими для користувача** - при зміні provider модель автоматично перебудовується, а ключі лишаються в одному shared source `crm_ai_default`.
+- **OpenAI-виклик переведено на Responses API** - shared Chat AI більше не залежить від старого `chat/completions` контракту для нових `gpt-5.4-*` моделей.
+- **Regression guardrail** - `tests/chat-ai-model-selectors.test.js` і UI smoke фіксують `gpt-5.4-mini` default, model selector UI і блокування неправильних model id.
+
+---
+
+## v0.65.0 - CRM 65.0: Omni AI sales operating layer
+
+### OmniClaw / AI sales operating layer / 25.05.2026 [codex]
+- **AI-панель Omni стала конструктором продажного сценарію** - окрім draft ліда, вона визначає сценарій запиту, рахує lead score, показує блокери і підказує наступні дії менеджеру.
+- **Каталоги і вкладення підвʼязані до існуючої CRM** - backend підтягує активні `products` для програм, тортів і меню, а також `catalog_items`; релевантні матеріали можна вставити в чат одним кліком.
+- **Сценарії, guardrails і шаблони відповідей редагуються в drawer** - senior manager+ може налаштувати keywords, required fields, catalog tags, цілі наступного кроку, правила “не вигадувати ціни/знижки/доступність” і готові reply templates.
+- **Тестовий режим скрипту працює без реального діалогу** - у налаштуваннях можна вставити приклад переписки й одразу побачити scenario, score, missing needs і рекомендовані каталоги.
+- **Аналіз тепер лишає слід у Omni-розмові** - останній AI summary, scenario, score, missing needs і рекомендовані action/material ids записуються в `conversations.meta.leadAssistant`, не затираючи вже привʼязаний lead.
+- **Follow-up задача створюється з того самого drawer** - менеджер може одним кліком поставити задачу повернутись до ліда; Tasker отримує `source_type='omni_lead_followup'`, дедуплікацію і посилання назад на Omni-діалог.
+- **Налаштування скриптів отримали revision history** - кожне збереження фіксує `revision`, автора, час і snapshot попередньої конфігурації, а UI показує історію й базову аналітику AI лідів.
+- **Створений лід отримує більше контексту продажу** - у notes/raw payload зберігаються scenario, score, рекомендовані матеріали, а перший рекомендований program product привʼязується як `program_id`.
+- **Regression guardrail** - `tests/omni-lead-assistant.test.js` і `tests/omni-lead-assistant-materials.test.js` покривають нормалізацію скриптів, історію конфігів, follow-up draft, каталоги, recommendation logic і AI score/actions.
+
+---
+
+## v0.64.8 - CRM 64.8: Omni AI lead intake
+
+### OmniClaw / AI lead intake / 25.05.2026 [codex]
+- **AI-панель у діалозі OmniClaw створює draft ліда з переписки** - кнопка `AI` у відкритій розмові аналізує історію повідомлень, витягує імʼя, контакт, тип події, дату, кількість дітей, вік, бюджет і побажання до програми.
+- **Закріплений чеклист потреб показує, що вже зібрано і що ще треба дізнатись** - менеджер бачить required/optional поля, наступне найкраще питання і готову відповідь, яку можна одразу вставити в поле повідомлення.
+- **Створення ліда привʼязує CRM-кейс до Omni-розмови** - backend створює `lead`, додає customer card draft, записує `conversations.meta.lead_id`, а existing context після цього відкриває точний кейс у воронці.
+- **Скрипти і required-поля налаштовуються без коду** - у drawer є редактор полів виявлення, питань, правил скрипту, tone і OpenAI model; збереження доступне senior manager+.
+- **OpenAI boundary лишається серверним** - фронт не бачить ключ, аналіз іде через `/api/omni/conversations/:id/lead-assistant/*`, а без `OPENAI_API_KEY` сервіс повертає локальний fallback draft замість падіння UI.
+- **Regression guardrail** - `tests/omni-lead-assistant.test.js` покриває нормалізацію скрипту, fallback extraction, pinned needs checklist і draft створення ліда з Omni conversation.
+
+---
+
 ## v0.64.7 - CRM 64.7: Omni dialog channel badges
 
 ### OmniClaw / inbox / 25.05.2026 [codex]

@@ -532,9 +532,25 @@
         return host;
     }
 
+    function isDashboardAssistantSuppressed() {
+        return document.body?.dataset?.crmPage === 'dashboard';
+    }
+
+    function removeMountedAssistantRail() {
+        document.getElementById('dashboardAssistantRail')?.remove();
+        document.getElementById('crmAssistantRail')?.remove();
+        document.getElementById('crmAssistantRailHost')?.remove();
+        document.querySelector('.header .header-content')?.classList.remove('assistant-rail-mounted');
+    }
+
     function ensureMounted() {
         const headerContent = document.querySelector('.header .header-content');
         if (!headerContent) return false;
+
+        if (isDashboardAssistantSuppressed()) {
+            removeMountedAssistantRail();
+            return false;
+        }
 
         const legacyDashboardRail = document.getElementById('dashboardAssistantRail');
         if (legacyDashboardRail) legacyDashboardRail.remove();
@@ -2309,6 +2325,7 @@
     }
 
     function expand() {
+        if (isDashboardAssistantSuppressed()) return false;
         const prev = document.getElementById('crmAssistantPanelOverlay');
         if (prev) {
             document.getElementById('crmAssistantRail')?.setAttribute('data-expanded', 'true');

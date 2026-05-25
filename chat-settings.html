@@ -10,15 +10,15 @@
     <title>Event Genix | Налаштування чату</title>
     <meta name="description" content="Event Genix — налаштування Chat AI, Guardian та інтеграцій">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.64.7">
-    <link rel="stylesheet" href="css/layout.css?v=0.64.7">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.7">
-    <link rel="stylesheet" href="css/pages.css?v=0.64.7">
-    <link rel="stylesheet" href="css/modals.css?v=0.64.7">
-    <link rel="stylesheet" href="css/chat.css?v=0.64.7">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.7">
-    <link rel="stylesheet" href="css/responsive.css?v=0.64.7">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.7">
+    <link rel="stylesheet" href="css/base.css?v=0.66.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.2">
+    <link rel="stylesheet" href="css/chat.css?v=0.66.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -84,7 +84,7 @@
                     <div class="chat-settings-section-head">
                         <div>
                             <h2 id="chatAiTitle">AI для чату</h2>
-                            <p>Єдиний provider/model overlay поверх shared key source.</p>
+                            <p>Оберіть provider і готову модель. Ключі лишаються на сервері.</p>
                         </div>
                         <span class="chat-settings-status" id="chatAiStatus">Завантаження</span>
                     </div>
@@ -104,7 +104,7 @@
                         </label>
                         <label>
                             <span>Модель</span>
-                            <input type="text" id="chatAiModel" placeholder="За замовчуванням для provider">
+                            <select id="chatAiModel"></select>
                         </label>
                         <div class="chat-settings-keyline">
                             <span>Ключ / джерело</span>
@@ -137,7 +137,7 @@
                     <div class="chat-settings-section-head">
                         <div>
                             <h2 id="chatGuardianTitle">Guardian / Security</h2>
-                            <p>Дайджест, журнал безпеки й аналітика працюють через спільний AI contract.</p>
+                            <p>Дайджест, журнал безпеки й аналітика працюють через той самий список моделей.</p>
                         </div>
                         <span class="chat-settings-status" id="guardianAiStatus">Завантаження</span>
                     </div>
@@ -159,7 +159,7 @@
                         </label>
                         <label>
                             <span>Guardian model</span>
-                            <input type="text" id="guardianModel" placeholder="За замовчуванням для provider">
+                            <select id="guardianModel"></select>
                         </label>
                     </div>
                     <button type="button" class="chat-settings-primary" id="guardianSaveBtn">Зберегти Guardian</button>
@@ -182,14 +182,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.64.7"></script>
-    <script src="js/notification.js?v=0.64.7"></script>
-    <script src="js/api.js?v=0.64.7"></script>
-    <script src="js/auth.js?v=0.64.7"></script>
-    <script src="js/components/sidebar.js?v=0.64.7"></script>
+    <script src="js/config.js?v=0.66.2"></script>
+    <script src="js/notification.js?v=0.66.2"></script>
+    <script src="js/api.js?v=0.66.2"></script>
+    <script src="js/auth.js?v=0.66.2"></script>
+    <script src="js/components/sidebar.js?v=0.66.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/chat-settings-page.js?v=0.64.7"></script>
-    <script src="js/ui.js?v=0.64.7"></script>
-    <script src="js/alerts.js?v=0.64.7"></script>
+    <script src="js/chat-settings-page.js?v=0.66.2"></script>
+    <script src="js/ui.js?v=0.66.2"></script>
+    <script src="js/alerts.js?v=0.66.2"></script>
 </body>
 </html>

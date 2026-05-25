@@ -55,6 +55,14 @@ function resetPasswordFromPayload(body = {}) {
     return '';
 }
 
+function truthyResetFlag(value) {
+    return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+function shouldActivateAfterPasswordReset(body = {}) {
+    return truthyResetFlag(body.activateOnReset) || truthyResetFlag(body.activate) || truthyResetFlag(body.reactivate);
+}
+
 // GET /api/users — list all users for account management (creator/director/hr)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
@@ -290,6 +298,7 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
         const { id } = req.params;
         const manualPassword = resetPasswordFromPayload(req.body || {});
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true;
+        const activateOnReset = shouldActivateAfterPasswordReset(req.body || {});
 
         if (!manualPassword && !issueOneTime) {
             return res.status(400).json({ error: 'Потрібен новий пароль або one-time reissue' });
@@ -304,6 +313,9 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
         if (!canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
+        if (activateOnReset && target.rows[0].is_active === false && !canToggleAccount(req.user, target.rows[0])) {
+            return res.status(403).json({ error: 'Цей акаунт не можна активувати з поточного рівня доступу' });
+        }
 
         const hash = await bcrypt.hash(finalPassword, 10);
         const hashVerified = await bcrypt.compare(finalPassword, hash);
@@ -314,18 +326,27 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
             `UPDATE users
              SET password_hash = $1,
                  password_changed_at = NOW(),
-                 session_revoked_at = NOW()
+                 session_revoked_at = NOW(),
+                 is_active = CASE WHEN $3::boolean THEN true ELSE is_active END
              WHERE id = $2
              RETURNING id, username, is_active, password_changed_at, session_revoked_at`,
-            [hash, parseInt(id)]
+            [hash, parseInt(id), activateOnReset]
         );
+        const activatedByReset = activateOnReset && target.rows[0].is_active === false && updated.rows[0]?.is_active !== false;
+        if (activatedByReset) {
+            try {
+                await pool.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
+            } catch (linkErr) {
+                log.warn(`Password reset activated ${target.rows[0].username}, but staff profile activation failed: ${linkErr.message}`);
+            }
+        }
         await revokeAllUserTokens(parseInt(id));
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
             eventType: issueOneTime ? 'password_one_time_reissued' : 'password_reset_by_admin',
             reason: 'account_management',
-            details: { sessionsRevoked: true, oneTimeIssued: issueOneTime },
+            details: { sessionsRevoked: true, oneTimeIssued: issueOneTime, activateOnReset, activatedByReset },
             req
         });
 
@@ -336,6 +357,8 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
             login: target.rows[0].username,
             loginAliases: Array.isArray(target.rows[0].login_aliases) ? target.rows[0].login_aliases : [],
             isActive: updated.rows[0]?.is_active !== false,
+            wasActive: target.rows[0].is_active !== false,
+            activated: activatedByReset,
             passwordChangedAt: updated.rows[0]?.password_changed_at || null,
             sessionRevokedAt: updated.rows[0]?.session_revoked_at || null,
             credential: issueOneTime ? oneTimeCredential(target.rows[0].username, finalPassword, 'password_reissue') : null
@@ -436,8 +459,12 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
 
         await client.query('BEGIN');
         const hash = await bcrypt.hash(finalPassword, 10);
+        const hashVerified = await bcrypt.compare(finalPassword, hash);
+        if (!hashVerified) {
+            throw new Error('password_hash_verified_after_create_failed');
+        }
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist',
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, is_active',
             [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
         );
 

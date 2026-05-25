@@ -76,6 +76,20 @@ describe('Users', () => {
         assert.ok(res.data.success);
     });
 
+    it('POST /api/users/:id/reset-password — can reactivate disabled account on reissue', async () => {
+        if (!createdUserId) return;
+        const res = await authRequest('POST', `/api/users/${createdUserId}/reset-password`, {
+            issueOneTime: true,
+            activateOnReset: true
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.wasActive, false);
+        assert.equal(res.data.isActive, true);
+        assert.equal(res.data.activated, true);
+        assert.ok(res.data.credential);
+    });
+
     it('PATCH /api/users/:id/active — reactivate user', async () => {
         if (!createdUserId) return;
         const res = await authRequest('PATCH', `/api/users/${createdUserId}/active`, {

@@ -155,10 +155,14 @@ router.post('/login', async (req, res) => {
 
         // v39.9: Unified error message prevents username enumeration
         const user = result.rows[0];
-        const valid = user && user.is_active !== false && await bcrypt.compare(password, user?.password_hash || '').catch(() => false);
+        const passwordMatches = user && user.is_active !== false
+            ? await bcrypt.compare(password, user.password_hash || '').catch(() => false)
+            : false;
+        const valid = user && user.is_active !== false && passwordMatches;
 
         if (!valid) {
-            log.warn(`Login failed for "${loginIdentifier}" (invalid credentials)`);
+            const reason = !user ? 'user_not_found' : (user.is_active === false ? 'inactive_account' : 'password_mismatch');
+            log.warn(`Login failed for "${loginIdentifier}" (${reason})`);
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 

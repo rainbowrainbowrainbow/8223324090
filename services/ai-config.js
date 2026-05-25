@@ -22,15 +22,15 @@ const SETTINGS_KEYS = {
 const PROVIDERS = ['auto', 'openrouter', 'anthropic', 'openai'];
 
 const DEFAULT_MODELS = {
-    openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free',
+    openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini',
     anthropic: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-    openai: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    openai: process.env.OPENAI_MODEL || 'gpt-5.4-mini'
 };
 
 const DEFAULT_AI_SETTINGS = {
     enabled: true,
-    provider: 'auto',
-    model: '',
+    provider: 'openai',
+    model: DEFAULT_MODELS.openai,
     keySource: KEY_SOURCE
 };
 
@@ -46,9 +46,35 @@ const DEFAULT_GUARDIAN_SETTINGS = {
     digestEnabled: true,
     securityLogEnabled: true,
     analyticsEnabled: true,
-    provider: 'auto',
-    model: '',
+    provider: 'openai',
+    model: DEFAULT_MODELS.openai,
     keySource: KEY_SOURCE
+};
+
+const BASE_MODEL_OPTIONS = {
+    auto: [
+        { value: '', label: 'Автоматично за provider', description: 'CRM сама вибере дефолтну модель для доступного provider.' }
+    ],
+    openai: [
+        { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini', description: 'Рекомендовано: швидка і дешевша mini-модель для чату, summary та Guardian.' },
+        { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Flagship-модель для складного reasoning і coding, дорожча за mini.' },
+        { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Сильніша модель для складних відповідей, дорожча за mini.' },
+        { value: 'gpt-5.4-nano', label: 'GPT-5.4 nano', description: 'Найшвидший і найдешевший варіант для простих задач.' },
+        { value: 'gpt-5-mini', label: 'GPT-5 mini', description: 'Попередня mini-модель для сумісності.' },
+        { value: 'gpt-5-nano', label: 'GPT-5 nano', description: 'Попередня nano-модель для простих сценаріїв.' },
+        { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini', description: 'Сумісний нерозмірковий fallback.' }
+    ],
+    anthropic: [
+        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', description: 'Швидкий Anthropic fallback для коротких задач.' },
+        { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', description: 'Сильніший Anthropic fallback для складніших задач.' }
+    ],
+    openrouter: [
+        { value: 'openai/gpt-5.4-mini', label: 'OpenAI GPT-5.4 mini', description: 'Рекомендований OpenAI mini через OpenRouter.' },
+        { value: 'openai/gpt-5.5', label: 'OpenAI GPT-5.5', description: 'Flagship OpenAI через OpenRouter для складніших задач.' },
+        { value: 'openai/gpt-5.4-nano', label: 'OpenAI GPT-5.4 nano', description: 'Дешевший OpenAI nano через OpenRouter.' },
+        { value: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5', description: 'Швидкий Anthropic fallback через OpenRouter.' },
+        { value: 'google/gemini-flash-1.5', label: 'Gemini Flash 1.5', description: 'Швидкий універсальний fallback через OpenRouter.' }
+    ]
 };
 
 function normalizeScope(scope) {
@@ -63,6 +89,36 @@ function normalizeProvider(provider) {
 
 function normalizeModel(model) {
     return String(model || '').trim().slice(0, 128);
+}
+
+function modelOptionsForProvider(provider) {
+    const normalized = normalizeProvider(provider);
+    const base = (BASE_MODEL_OPTIONS[normalized] || BASE_MODEL_OPTIONS.auto).map(option => ({ ...option }));
+    const defaultModel = DEFAULT_MODELS[normalized];
+    if (defaultModel && !base.some(option => option.value === defaultModel)) {
+        base.unshift({
+            value: defaultModel,
+            label: `${defaultModel} (env default)`,
+            description: 'Модель задана через backend env.'
+        });
+    }
+    return base;
+}
+
+function getAIModelOptions() {
+    return PROVIDERS.reduce((acc, provider) => {
+        acc[provider] = modelOptionsForProvider(provider);
+        return acc;
+    }, {});
+}
+
+function normalizeModelForProvider(model, provider) {
+    const normalizedProvider = normalizeProvider(provider);
+    const value = normalizeModel(model);
+    if (normalizedProvider === 'auto') return '';
+    const allowed = modelOptionsForProvider(normalizedProvider).map(option => option.value).filter(Boolean);
+    if (!value) return DEFAULT_MODELS[normalizedProvider] || '';
+    return allowed.includes(value) ? value : (DEFAULT_MODELS[normalizedProvider] || allowed[0] || '');
 }
 
 function getProviderKey(provider) {
@@ -124,7 +180,7 @@ function sanitizeAISettings(input, fallback) {
     return {
         enabled: base.enabled !== false,
         provider,
-        model: normalizeModel(base.model),
+        model: normalizeModelForProvider(base.model, provider),
         keySource: KEY_SOURCE
     };
 }
@@ -229,7 +285,8 @@ function publicAIConfig(config) {
         keySource: config.keySource,
         keyConfigured: config.keyConfigured,
         status: config.status,
-        availableProviders: config.availableProviders
+        availableProviders: config.availableProviders,
+        defaultModels: DEFAULT_MODELS
     };
 }
 
@@ -294,8 +351,23 @@ async function callAnthropic(config, systemPrompt, userMessage, maxTokens) {
     };
 }
 
+function extractOpenAIResponseText(payload) {
+    if (payload && typeof payload.output_text === 'string' && payload.output_text.trim()) {
+        return payload.output_text.trim();
+    }
+
+    const chunks = [];
+    for (const item of payload?.output || []) {
+        for (const content of item?.content || []) {
+            if (typeof content?.text === 'string') chunks.push(content.text);
+            if (typeof content?.output_text === 'string') chunks.push(content.output_text);
+        }
+    }
+    return chunks.join('\n').trim();
+}
+
 async function callOpenAI(config, systemPrompt, userMessage, maxTokens) {
-    const resp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+    const resp = await fetchWithTimeout('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
             'Authorization': 'Bearer ' + getProviderKey('openai'),
@@ -303,11 +375,10 @@ async function callOpenAI(config, systemPrompt, userMessage, maxTokens) {
         },
         body: JSON.stringify({
             model: config.model,
-            max_tokens: maxTokens,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userMessage }
-            ]
+            instructions: systemPrompt || '',
+            input: userMessage || '',
+            store: false,
+            max_output_tokens: maxTokens
         })
     });
 
@@ -320,7 +391,7 @@ async function callOpenAI(config, systemPrompt, userMessage, maxTokens) {
     }
     const data = await resp.json();
     return {
-        text: data.choices?.[0]?.message?.content?.trim() || '',
+        text: extractOpenAIResponseText(data),
         usage: data.usage || {}
     };
 }
@@ -408,7 +479,9 @@ async function getChatSettingsBundle() {
             ai: publicAIConfig(guardianConfig)
         },
         integrations,
-        keySource: KEY_SOURCE
+        keySource: KEY_SOURCE,
+        modelOptions: getAIModelOptions(),
+        defaultModels: DEFAULT_MODELS
     };
 }
 
@@ -416,6 +489,9 @@ module.exports = {
     SETTINGS_KEYS,
     KEY_SOURCE,
     DEFAULT_MODELS,
+    BASE_MODEL_OPTIONS,
+    getAIModelOptions,
+    normalizeModelForProvider,
     getAvailableProviders,
     hasAnySharedAIKey,
     getUnifiedAIConfig,

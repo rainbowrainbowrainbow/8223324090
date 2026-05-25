@@ -612,7 +612,18 @@ async function resolveConversationContext(conversationId) {
     if (exact.customer) reasons.push('conversation.customer_id');
   }
 
-  if (exact.customer?.leadId) {
+  const metaLeadId = normalizeOptionalPositiveInt(
+    rawConversation.meta?.lead_id
+    || rawConversation.meta?.leadId
+    || rawConversation.meta?.crm?.leadId
+    || rawConversation.meta?.leadAssistant?.leadId
+  );
+  if (metaLeadId) {
+    exact.lead = await findLeadById(metaLeadId);
+    if (exact.lead) reasons.push('conversation.meta.lead_id');
+  }
+
+  if (!exact.lead && exact.customer?.leadId) {
     exact.lead = await findLeadById(exact.customer.leadId);
     if (exact.lead) reasons.push('customers.lead_id');
   }

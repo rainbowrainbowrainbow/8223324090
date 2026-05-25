@@ -511,20 +511,7 @@
 
     function ensureAssistantRailHost(headerContent) {
         let status = headerContent.querySelector('#crmAssistantTopStatus');
-        if (!status) {
-            status = document.createElement('div');
-            status.id = 'crmAssistantTopStatus';
-            status.className = 'crm-assistant-top-status';
-            status.innerHTML = `
-                <span class="crm-assistant-top-status-dot" aria-hidden="true"></span>
-                <span>Помічник</span>
-                <span aria-hidden="true">·</span>
-                <strong id="crmAssistantTopStatusLabel">готова</strong>
-            `;
-            const firstControl = headerContent.querySelector('.btn-search, .user-panel');
-            if (firstControl) headerContent.insertBefore(status, firstControl);
-            else headerContent.prepend(status);
-        }
+        if (status) status.remove();
 
         let host = document.getElementById('crmAssistantRailHost');
         if (!host) {
@@ -567,52 +554,38 @@
         rail.setAttribute('data-mode', state.mode);
         rail.setAttribute('data-ai-state', UI_STATES[state.mode] || 'ready');
         rail.setAttribute('aria-live', 'polite');
-        rail.setAttribute('aria-label', 'Стан голосового AI-помічника');
+        rail.setAttribute('aria-label', 'AI command bar CRM');
         rail.innerHTML = `
-            <div class="assistant-rail-presence">
-                <button type="button" class="assistant-rail-avatar assistant-rail-avatar-btn" id="crmAssistantRailAvatar" title="Відкрити повну AI-картку" aria-label="Відкрити повну AI-картку">
-                    <span class="assistant-rail-avatar-core" aria-hidden="true">
-                        <span class="assistant-rail-avatar-screen">
-                            <span class="assistant-rail-avatar-eye assistant-rail-avatar-eye--left"></span>
-                            <span class="assistant-rail-avatar-eye assistant-rail-avatar-eye--right"></span>
-                            <span class="assistant-rail-avatar-mouth"></span>
-                        </span>
-                    </span>
-                </button>
-                <div class="assistant-rail-presence-copy">
-                    <div class="assistant-rail-topline">
-                        <span class="assistant-rail-name">Помічник</span>
-                        <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
-                        <span class="assistant-rail-signal-chip" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
-                        <span class="assistant-rail-engine" id="crmAssistantVoiceStateLabel">Текстовий режим</span>
-                    </div>
-                    <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
-                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Поясни, що найважливіше на поточній сторінці">
-                            <span>Екран</span><strong id="crmAssistantPageChip">Сторінка</strong>
-                        </button>
-                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Що мені робити далі в моїй ролі?">
-                            <span>Роль</span><strong id="crmAssistantRoleChip">CRM</strong>
-                        </button>
-                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Покажи ризики, сигнали і наступну дію">
-                            <span>Фокус</span><strong id="crmAssistantFocusChip">Готово</strong>
-                        </button>
-                    </div>
-                    <div class="assistant-rail-prompts" aria-label="Швидкі запити до Помічника">
-                        <button type="button" data-crm-assistant-inline-prompt="Брифінг на сьогодні">› Брифінг</button>
-                        <button type="button" data-crm-assistant-inline-prompt="Хто гарячі ліди?">› Гарячі ліди</button>
-                        <button type="button" data-crm-assistant-inline-prompt="Скласти зміну">› Зміна</button>
-                    </div>
+            <form class="assistant-rail-inline-form assistant-command-form" id="crmAssistantInlineForm" role="search" aria-label="AI command bar">
+                <span class="assistant-command-mark" aria-hidden="true">AI</span>
+                <span class="assistant-rail-inline-search" aria-hidden="true">⌕</span>
+                <input id="crmAssistantInlineInput" type="text" maxlength="240" autocomplete="off" placeholder="Запитати CRM або /команда">
+                <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
+                <span class="assistant-rail-signal-chip" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
+                <span class="assistant-rail-engine" id="crmAssistantVoiceStateLabel">Текстовий режим</span>
+            </form>
+            <div class="assistant-command-panel" id="crmAssistantCommandPanel">
+                <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap" role="button" tabindex="0" title="Відкрити відповідь у чаті" aria-label="Відкрити відповідь Помічника у чаті">
+                    <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
+                </div>
+                <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
+                    <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Поясни, що найважливіше на поточній сторінці">
+                        <span>Екран</span><strong id="crmAssistantPageChip">Сторінка</strong>
+                    </button>
+                    <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Що мені робити далі в моїй ролі?">
+                        <span>Роль</span><strong id="crmAssistantRoleChip">CRM</strong>
+                    </button>
+                    <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Покажи ризики, сигнали і наступну дію">
+                        <span>Фокус</span><strong id="crmAssistantFocusChip">Готово</strong>
+                    </button>
+                </div>
+                <div class="assistant-rail-prompts" aria-label="Швидкі запити до Помічника">
+                    <button type="button" data-crm-assistant-inline-prompt="Брифінг на сьогодні">/brief</button>
+                    <button type="button" data-crm-assistant-inline-prompt="Хто гарячі ліди?">/leads</button>
+                    <button type="button" data-crm-assistant-inline-prompt="Скласти зміну">/shift</button>
                 </div>
             </div>
-            <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap" role="button" tabindex="0" title="Відкрити відповідь у чаті" aria-label="Відкрити відповідь Помічника у чаті">
-                <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
-            </div>
             <div class="assistant-rail-actions" aria-label="Керування AI-помічником">
-                <form class="assistant-rail-inline-form" id="crmAssistantInlineForm" role="search">
-                    <span class="assistant-rail-inline-search" aria-hidden="true">⌕</span>
-                    <input id="crmAssistantInlineInput" type="text" maxlength="240" autocomplete="off" placeholder="Запитати або /команда">
-                    <span class="assistant-rail-inline-hint" aria-hidden="true">/</span>
-                </form>
                 <button type="button" class="assistant-rail-btn assistant-rail-btn-primary" id="crmAssistantMicBtn" title="Голосовий ввід з авто-паузою" aria-label="Голосовий ввід з авто-паузою">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
                 </button>
@@ -647,7 +620,6 @@
         rail.addEventListener('keydown', event => {
             if (event.key === 'Enter' || event.key === ' ') primeAssistantVoicePlayback();
         });
-        document.getElementById('crmAssistantRailAvatar')?.addEventListener('click', expand);
         document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
         document.getElementById('crmAssistantStopBtn')?.addEventListener('click', stopAssistantActivity);
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);

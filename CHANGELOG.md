@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.50 - CRM 63.50: єдиний toolbar таймлайну
+
+### Таймлайн / toolbar / visual system / 25.05.2026 [codex]
+- **Toolbar-кнопки уніфіковано** - `Компакт`, `Кімнати`, `Продажі`, `Експорт`, `Дії` і `Бізнес` приведено до одного CRM glass-control стилю.
+- **`Бізнес` більше не окремий темний блок** - injected `timeline-business-switch` отримав той самий font, height, radius, border, hover/focus і select rhythm, що й решта панелі.
+- **Open/active/focus стани вирівняні** - `Дії` з `aria-expanded="true"`, checked `Компакт`, active `Кімнати` і keyboard focus читаються в одній візуальній мові.
+- **Функціональність не змінювалась** - HTML hooks і JS handlers для toggle, dropdown, export, sales і business switch лишилися без перейменувань; UI smoke закріплює новий styling contract.
+
+---
+
 ## v0.63.49 - CRM 63.49: меню 2026 у продуктах
 
 ### Продукти / кухня / меню 2026 / 25.05.2026 [codex]

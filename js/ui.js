@@ -1308,7 +1308,9 @@ function _timelineResponsiveHeaderWidth() {
 function applyTimelineResponsiveDensity() {
     if (typeof CONFIG === 'undefined' || !CONFIG.TIMELINE) return false;
     syncTimelineViewportMetrics();
-    const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
+    const level = typeof normalizeTimelineZoomLevel === 'function'
+        ? normalizeTimelineZoomLevel(AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES)
+        : (AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 30);
     const compact = !!AppState.compactMode;
     const viewportWidth = _timelineViewportWidth();
     const nextHeaderWidth = compact
@@ -1389,10 +1391,13 @@ function toggleCompactMode(event) {
 // ==========================================
 
 function changeZoom(level) {
-    AppState.zoomLevel = level;
-    CONFIG.TIMELINE.CELL_MINUTES = level;
+    const nextLevel = typeof normalizeTimelineZoomLevel === 'function'
+        ? normalizeTimelineZoomLevel(level)
+        : (parseInt(level, 10) || 30);
+    AppState.zoomLevel = nextLevel;
+    CONFIG.TIMELINE.CELL_MINUTES = nextLevel;
     const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('zoom_level') : 'pzp_zoom_level';
-    localStorage.setItem(key, level);
+    localStorage.setItem(key, nextLevel);
     applyTimelineResponsiveDensity();
     updateZoomButtons();
     renderTimeline();

@@ -87,6 +87,15 @@ function timelineConfigStorageKey(name) {
     return `pzp_${name}`;
 }
 
+const TIMELINE_ZOOM_LEVELS = [15, 30, 60];
+const TIMELINE_DEFAULT_ZOOM_MINUTES = 30;
+
+function normalizeTimelineZoomLevel(value, fallback = TIMELINE_DEFAULT_ZOOM_MINUTES) {
+    const parsed = Number.parseInt(value, 10);
+    if (TIMELINE_ZOOM_LEVELS.includes(parsed)) return parsed;
+    return TIMELINE_ZOOM_LEVELS.includes(fallback) ? fallback : 30;
+}
+
 // ==========================================
 // КОСТЮМИ
 // ==========================================
@@ -118,8 +127,8 @@ const CONFIG = {
         WEEKDAY_END: 20,
         WEEKEND_START: 10,
         WEEKEND_END: 20,
-        CELL_WIDTH: 50,
-        CELL_MINUTES: 15
+        CELL_WIDTH: 80,
+        CELL_MINUTES: TIMELINE_DEFAULT_ZOOM_MINUTES
     },
     MIN_PAUSE: 15,
     GOOGLE_SHEETS_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRF9EgIT8-T_3vMO8L8dPRnXGZx3B-jrhsroSsEl0xYWlQgK1BFrcxi1awavvLSOxY9vPqcONRYpPk0/pub?gid=0&single=true&output=csv'
@@ -256,7 +265,7 @@ const AppState = {
     cachedLines: {},
     multiDayMode: false,
     daysToShow: 3,
-    zoomLevel: 15,
+    zoomLevel: TIMELINE_DEFAULT_ZOOM_MINUTES,
     compactMode: false,
     darkMode: false,
     undoStack: [],

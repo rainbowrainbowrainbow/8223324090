@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.56 - CRM 63.56: таймлайн 30 хв
+
+### Таймлайн / default granularity / 25.05.2026 [codex]
+- **30 хв стало дефолтним кроком таймлайну** - чистий старт без збереженого вибору відкриває розклад у режимі `30хв`, а не `15хв`.
+- **Active state і сітка синхронні** - `CONFIG.TIMELINE.CELL_MINUTES`, `AppState.zoomLevel` і кнопка `30хв` тепер беруть один canonical fallback.
+- **Ручне перемикання збережено** - якщо користувач явно обрав `15хв`, `30хв` або `60хв`, валідний localStorage preference лишається робочим; невалідне старе значення очищається.
+- **Regression guardrail** - UI smoke перевіряє default `30`, fallback boot logic і те, що responsive density читає нормалізований zoom.
+
+---
+
 ## v0.63.55 - CRM 63.55: компактний таймлайн
 
 ### Таймлайн / compact mode / usability density / 25.05.2026 [codex]

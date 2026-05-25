@@ -140,7 +140,13 @@ function loadPreferences() {
     const darkIcon = document.getElementById('darkModeIcon');
     if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
     AppState.compactMode = localStorage.getItem(timelineStorageKey('compact_mode')) === 'true';
-    AppState.zoomLevel = parseInt(localStorage.getItem(timelineStorageKey('zoom_level'))) || 15;
+    const zoomKey = timelineStorageKey('zoom_level');
+    const savedZoomRaw = localStorage.getItem(zoomKey);
+    const savedZoom = Number.parseInt(savedZoomRaw, 10);
+    AppState.zoomLevel = normalizeTimelineZoomLevel(savedZoom);
+    if (savedZoomRaw && !TIMELINE_ZOOM_LEVELS.includes(savedZoom)) {
+        localStorage.removeItem(zoomKey);
+    }
     AppState.statusFilter = localStorage.getItem(timelineStorageKey('status_filter')) || 'all';
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
     const compactToggle = document.getElementById('compactModeToggle');

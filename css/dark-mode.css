@@ -3638,6 +3638,71 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     padding: 0 !important;
 }
 
+/* v0.63.54: timeline utility buttons align with the main control system. */
+.timeline-dashboard-page .v32-controls .toggle-mini,
+.timeline-dashboard-page .v32-controls .btn-room-load,
+.timeline-dashboard-page .v32-controls .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    display: inline-grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: max-content !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    border-radius: 11px !important;
+    font-family: inherit !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+
+.timeline-dashboard-page .v32-controls .timeline-control-icon {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-grid;
+    place-items: center;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+    transform: translateY(-0.5px);
+}
+
+.timeline-dashboard-page .v32-controls .timeline-control-icon--dots {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    transform: translateY(-1px);
+}
+
+.timeline-dashboard-page .v32-controls .toggle-mini-label,
+.timeline-dashboard-page .v32-controls .btn-room-load span:not(.timeline-control-icon),
+.timeline-dashboard-page .v32-controls .btn-menu-toggle span:not(.timeline-control-icon) {
+    color: inherit !important;
+    font: inherit !important;
+    line-height: 1 !important;
+}
+
+.timeline-dashboard-page .v32-controls .admin-dropdown[data-menu-scope="timeline-actions"] {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+}
+
+.timeline-dashboard-page .action-buttons:not(:has(> :not(.hidden):not([hidden]))) {
+    display: none !important;
+}
+
+@media (max-width: 900px) {
+    .timeline-dashboard-page .v32-controls .admin-dropdown[data-menu-scope="timeline-actions"] {
+        margin-left: 0;
+    }
+}
+
 .timeline-dashboard-page .working-hours {
     color: var(--eg-text-muted);
     font-size: 11px;

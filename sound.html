@@ -11,16 +11,16 @@
     <title>Event Genix | Звук</title>
     <meta name="description" content="Event Genix — Звуковий модуль">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.45">
-    <link rel="stylesheet" href="css/auth.css?v=0.63.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.45">
-    <link rel="stylesheet" href="css/sound.css?v=0.63.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.45">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.45">
+    <link rel="stylesheet" href="css/base.css?v=0.63.46">
+    <link rel="stylesheet" href="css/auth.css?v=0.63.46">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.46">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.46">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.46">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.46">
+    <link rel="stylesheet" href="css/sound.css?v=0.63.46">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.46">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.46">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.46">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -110,14 +110,89 @@
 
                 <!-- ═══ TAB: Announcements ═══ -->
                 <div class="sound-tab-panel" id="tabAnnouncements">
-                    <div class="sound-toolbar">
-                        <div class="sound-header-actions">
-                            <button type="button" class="btn-primary-sm" id="createAnnouncementBtn">➕ Нове оголошення</button>
-                            <button type="button" class="btn-outline" id="announcementsRefreshBtn">🔄 Оновити</button>
+                    <section class="sound-announcement-command" aria-label="Керування оголошеннями">
+                        <div class="sound-command-copy">
+                            <span class="sound-command-kicker">Голосові оголошення</span>
+                            <h2>Оголошення для залу, зон і швидкого TTS</h2>
+                            <p>Створюйте текст, генеруйте голос через підключений TTS, програвайте або плануйте оголошення з одного робочого екрана.</p>
                         </div>
-                    </div>
-                    <div id="announcementsContainer">
-                        <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження оголошень...</p></div>
+                        <div class="sound-command-actions">
+                            <button type="button" class="sound-primary-action" id="createAnnouncementBtn">Нове оголошення</button>
+                            <button type="button" class="sound-secondary-action" id="announcementsRefreshBtn">Оновити</button>
+                        </div>
+                    </section>
+
+                    <div class="sound-announcement-stats" id="announcementStats" aria-live="polite"></div>
+
+                    <div class="sound-announcement-layout">
+                        <section class="sound-announcement-feed" aria-label="Список оголошень">
+                            <div id="announcementsContainer" class="sound-announcements-grid">
+                                <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження оголошень...</p></div>
+                            </div>
+                        </section>
+
+                        <aside class="sound-tts-panel" aria-labelledby="soundTtsPanelTitle">
+                            <div class="sound-tts-panel-head">
+                                <span class="sound-tts-icon">TTS</span>
+                                <div>
+                                    <h3 id="soundTtsPanelTitle">Підключення голосу</h3>
+                                    <p id="ttsConfigStatus">Перевіряємо налаштування...</p>
+                                </div>
+                            </div>
+
+                            <form id="ttsSettingsForm" class="sound-tts-form">
+                                <label class="sound-setting-row">
+                                    <span>Увімкнути TTS</span>
+                                    <input type="checkbox" id="ttsEnabled" checked>
+                                </label>
+                                <label>
+                                    <span>Провайдер</span>
+                                    <select id="ttsProvider">
+                                        <option value="kie_ai">Kie.ai / ElevenLabs</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>API key</span>
+                                    <input type="password" id="ttsApiKey" autocomplete="off" placeholder="Вставте ключ або залиште порожнім">
+                                </label>
+                                <label>
+                                    <span>Модель</span>
+                                    <input type="text" id="ttsModel" value="elevenlabs/text-to-speech-multilingual-v2">
+                                </label>
+                                <div class="sound-tts-split">
+                                    <label>
+                                        <span>Голос</span>
+                                        <select id="ttsVoice">
+                                            <option value="Rachel">Rachel</option>
+                                            <option value="Adam">Adam</option>
+                                            <option value="Bella">Bella</option>
+                                            <option value="Antoni">Antoni</option>
+                                            <option value="Elli">Elli</option>
+                                            <option value="Josh">Josh</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Мова</span>
+                                        <select id="ttsLanguage">
+                                            <option value="uk">Українська</option>
+                                            <option value="en">English</option>
+                                            <option value="pl">Polski</option>
+                                            <option value="de">Deutsch</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="sound-tts-actions">
+                                    <button type="button" class="sound-primary-action" id="ttsSaveSettingsBtn">Зберегти</button>
+                                    <button type="button" class="sound-secondary-action" id="ttsTestSettingsBtn">Перевірити</button>
+                                </div>
+                            </form>
+
+                            <div class="sound-tts-sample">
+                                <label for="ttsSampleText">Швидкий тест голосу</label>
+                                <textarea id="ttsSampleText" rows="3" placeholder="Наприклад: Увага, через десять хвилин починається програма."></textarea>
+                                <button type="button" class="sound-secondary-action" id="ttsSampleGenerateBtn">Згенерувати в бібліотеку</button>
+                            </div>
+                        </aside>
                     </div>
                 </div>
 
@@ -189,11 +264,19 @@
                 <div class="form-group">
                     <label for="annPriority">Пріоритет</label>
                     <select id="annPriority" class="form-input">
-                        <option value="normal">Звичайний</option>
-                        <option value="high">Високий</option>
-                        <option value="urgent">Терміновий</option>
+                        <option value="3">Звичайний</option>
+                        <option value="7">Високий</option>
+                        <option value="10">Терміновий</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="annDuration">Тривалість, сек</label>
+                    <input type="number" id="annDuration" class="form-input" min="5" max="600" value="30">
+                </div>
+                <label class="sound-modal-check">
+                    <input type="checkbox" id="annGenerateTts">
+                    <span>Одразу згенерувати голос через TTS після збереження</span>
+                </label>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-outline" id="announcementModalCancel">Скасувати</button>
@@ -250,11 +333,11 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=0.63.45"></script>
-    <script src="js/notification.js?v=0.63.45"></script>
-    <script src="js/api.js?v=0.63.45"></script>
-    <script src="js/auth.js?v=0.63.45"></script>
-    <script src="js/components/sidebar.js?v=0.63.45"></script>
+    <script src="js/config.js?v=0.63.46"></script>
+    <script src="js/notification.js?v=0.63.46"></script>
+    <script src="js/api.js?v=0.63.46"></script>
+    <script src="js/auth.js?v=0.63.46"></script>
+    <script src="js/components/sidebar.js?v=0.63.46"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     (async function() {
@@ -275,7 +358,7 @@
         document.getElementById('loginOverlay')?.classList.remove('hidden');
     })();
     </script>
-    <script src="js/ui.js?v=0.63.45"></script>
-    <script src="js/alerts.js?v=0.63.45"></script>
-    <script src="js/sound-page.js?v=0.63.45"></script></body>
+    <script src="js/ui.js?v=0.63.46"></script>
+    <script src="js/alerts.js?v=0.63.46"></script>
+    <script src="js/sound-page.js?v=0.63.46"></script></body>
 </html>

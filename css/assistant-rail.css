@@ -8396,3 +8396,234 @@ html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn {
         right: 0;
     }
 }
+
+/* v0.63.40: hotfix AI Command Bar header geometry. */
+.header .header-content.assistant-rail-mounted,
+.header-content.assistant-rail-mounted {
+    min-height: 66px !important;
+    height: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    align-content: center !important;
+    gap: 10px !important;
+    overflow: visible !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+.header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+.crm-assistant-rail-host {
+    position: relative !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 16 !important;
+    flex: 1 1 760px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: min(860px, calc(100vw - 560px)) !important;
+    min-height: 0 !important;
+    margin: 0 10px 0 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    transform: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    pointer-events: auto !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+.header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail {
+    position: relative !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 50px !important;
+    height: 50px !important;
+    max-height: 50px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(260px, 1fr) repeat(5, 42px) !important;
+    grid-template-areas: "command mic stop voice replay expand" !important;
+    align-items: center !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before,
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after,
+.crm-assistant-rail::before,
+.crm-assistant-rail::after {
+    content: none !important;
+    display: none !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-top-status,
+.header .header-content.assistant-rail-mounted .assistant-rail-presence,
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar-btn,
+.crm-assistant-top-status,
+.crm-assistant-rail .assistant-rail-presence,
+.crm-assistant-rail .assistant-rail-avatar,
+.crm-assistant-rail .assistant-rail-avatar-btn {
+    display: none !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-command-form,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail .assistant-rail-inline-form,
+.assistant-command-form,
+.crm-assistant-rail .assistant-rail-inline-form,
+body.dark-mode .crm-assistant-rail .assistant-rail-inline-form {
+    grid-area: command !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 50px !important;
+    height: 50px !important;
+    max-height: 50px !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    display: grid !important;
+    grid-template-columns: auto auto minmax(120px, 1fr) auto !important;
+    align-items: center !important;
+    gap: 9px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(45, 212, 191, 0.22) !important;
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(11, 22, 38, 0.88)),
+        radial-gradient(circle at 10% 50%, rgba(20, 184, 166, 0.18), transparent 44%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 12px 28px rgba(2, 8, 23, 0.18) !important;
+}
+
+.assistant-command-form .assistant-rail-signal-chip {
+    display: none !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail .assistant-rail-actions,
+.crm-assistant-rail .assistant-rail-actions {
+    grid-area: auto !important;
+    display: contents !important;
+    min-width: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail .assistant-rail-btn,
+.crm-assistant-rail .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    max-width: 42px !important;
+    max-height: 42px !important;
+    margin: 0 !important;
+    justify-self: center !important;
+    align-self: center !important;
+    border-radius: 14px !important;
+    transform: none !important;
+}
+
+#crmAssistantMicBtn {
+    grid-area: mic !important;
+}
+
+#crmAssistantStopBtn {
+    grid-area: stop !important;
+}
+
+#crmAssistantVoiceToggle {
+    grid-area: voice !important;
+}
+
+#crmAssistantReplayBtn {
+    grid-area: replay !important;
+}
+
+#crmAssistantExpandBtn {
+    grid-area: expand !important;
+}
+
+.assistant-command-panel {
+    left: 0 !important;
+    right: 218px !important;
+    top: calc(100% + 8px) !important;
+    width: auto !important;
+    max-height: min(360px, calc(100vh - 96px)) !important;
+    overflow: auto !important;
+}
+
+@media (max-width: 1280px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+    .header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+    .crm-assistant-rail-host {
+        flex-basis: 660px !important;
+        max-width: min(720px, calc(100vw - 470px)) !important;
+    }
+
+    .assistant-command-form .assistant-rail-state {
+        display: none !important;
+    }
+
+    .assistant-command-panel {
+        right: 218px !important;
+    }
+}
+
+@media (max-width: 980px) {
+    .header .header-content.assistant-rail-mounted,
+    .header-content.assistant-rail-mounted {
+        min-height: 118px !important;
+        align-items: center !important;
+        align-content: center !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+    .header-content.assistant-rail-mounted > .crm-assistant-rail-host,
+    .crm-assistant-rail-host {
+        order: 20 !important;
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 8px 0 0 !important;
+    }
+}
+
+@media (max-width: 680px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+    .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+    .crm-assistant-rail-host .crm-assistant-rail,
+    .crm-assistant-rail {
+        height: auto !important;
+        max-height: none !important;
+        grid-template-columns: repeat(5, 42px) minmax(0, 1fr) !important;
+        grid-template-areas:
+            "command command command command command command"
+            "mic stop voice replay expand ." !important;
+    }
+
+    .assistant-command-form,
+    .crm-assistant-rail .assistant-rail-inline-form,
+    body.dark-mode .crm-assistant-rail .assistant-rail-inline-form {
+        grid-template-columns: auto minmax(120px, 1fr) auto !important;
+    }
+
+    .assistant-command-form .assistant-rail-inline-search,
+    .assistant-command-form .assistant-rail-signal-chip {
+        display: none !important;
+    }
+
+    .assistant-command-panel {
+        top: calc(50px + 8px) !important;
+        right: 0 !important;
+    }
+}

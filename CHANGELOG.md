@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.40 - CRM 63.40: компактний AI Command Bar
+
+### Помічник / header geometry / hotfix [codex]
+- **Виправлено розвалений topbar layout** - `AI Command Bar` більше не створює великий темний блок у шапці.
+- **Поле і кнопки знову в одному рядку** - input, mic, stop, voice, replay і expand зафіксовані в єдиній compact grid-геометрії.
+- **Dropdown лишився dropdown** - quick/context panel відкривається під полем і не займає постійне місце у header.
+- **Guardrail** - UI smoke перевіряє hotfix geometry для command/actions row.
+
+---
+
 ## v0.63.39 - CRM 63.39: фінальний деплой AI Command Bar
 
 ### Реліз / деплой / cache-bust [codex]

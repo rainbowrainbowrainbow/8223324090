@@ -2884,7 +2884,6 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-subtasks" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
                 <div class="cabinet-task-subtasks-head">
                     <span>Підзадачі</span>
-                    <button type="button" class="cabinet-subtask-add" onclick="addCabinetSubtask()">+ Підзадача</button>
                 </div>
                 <div class="cabinet-decomposition-controls">
                     <select id="cabinetDecompositionMode" aria-label="Режим декомпозиції">
@@ -2914,6 +2913,9 @@ function renderCabinetTaskComposer(options = {}) {
                 </div>
                 <div id="cabinetDecompositionSuggestions" class="cabinet-decomposition-suggestions" hidden></div>
                 <div id="cabinetSubtaskDraftStatus" class="cabinet-subtask-status" aria-live="polite"></div>
+                <div class="cabinet-subtask-list-toolbar">
+                    <button type="button" class="cabinet-subtask-add" onclick="addCabinetSubtask()">+ Підзадача</button>
+                </div>
                 <div id="cabinetSubtaskList" class="cabinet-subtask-list"></div>
             </div>
         </form>`;

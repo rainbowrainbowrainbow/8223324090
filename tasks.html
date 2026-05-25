@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.46">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.46">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.46">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.46">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.46">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.46">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.46">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.46">
+    <link rel="stylesheet" href="css/base.css?v=0.63.47">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.47">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.47">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.47">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.47">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.47">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.47">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.47">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -598,6 +598,16 @@
         .task-subtasks-group {
             grid-column: 1 / -1;
             grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .task-subtask-list-toolbar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin-top: 2px;
+        }
+        .task-subtask-list-toolbar .task-subtask-add {
+            min-width: max-content;
         }
         .task-decomposition-controls {
             grid-column: 1 / -1;
@@ -1544,6 +1554,12 @@
             .task-saved-template-controls {
                 grid-template-columns: 1fr;
             }
+            .task-subtask-list-toolbar {
+                justify-content: stretch;
+            }
+            .task-subtask-list-toolbar .task-subtask-add {
+                width: 100%;
+            }
             .task-batch-toolbar {
                 align-items: stretch;
                 flex-direction: column;
@@ -1843,7 +1859,6 @@
                     </div>
                     <div class="task-composer-group task-subtasks-group">
                         <span class="task-composer-label">Підзадачі</span>
-                        <button type="button" id="taskSubtaskAddBtn" class="task-subtask-add">+ Підзадача</button>
                         <div class="task-decomposition-controls">
                             <select id="taskDecompositionMode" aria-label="Режим декомпозиції">
                                 <option value="none">Без декомпозиції</option>
@@ -1872,6 +1887,9 @@
                         </div>
                         <div id="taskDecompositionSuggestions" class="task-decomposition-suggestions" hidden></div>
                         <div id="taskSubtaskDraftStatus" class="task-subtask-status" aria-live="polite"></div>
+                        <div class="task-subtask-list-toolbar">
+                            <button type="button" id="taskSubtaskAddBtn" class="task-subtask-add">+ Підзадача</button>
+                        </div>
                         <div class="task-subtasks-list" id="taskSubtasksList"></div>
                     </div>
                 </div>
@@ -1965,14 +1983,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.46"></script>
-    <script src="js/notification.js?v=0.63.46"></script>
-    <script src="js/api.js?v=0.63.46"></script>
-    <script src="js/auth.js?v=0.63.46"></script>
-    <script src="js/components/sidebar.js?v=0.63.46"></script>
+    <script src="js/config.js?v=0.63.47"></script>
+    <script src="js/notification.js?v=0.63.47"></script>
+    <script src="js/api.js?v=0.63.47"></script>
+    <script src="js/auth.js?v=0.63.47"></script>
+    <script src="js/components/sidebar.js?v=0.63.47"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.63.46"></script>
-    <script src="js/tasks-page.js?v=0.63.46"></script>
-    <script src="js/alerts.js?v=0.63.46"></script><script src="js/ui.js?v=0.63.46"></script>
+    <script src="js/task-create.js?v=0.63.47"></script>
+    <script src="js/tasks-page.js?v=0.63.47"></script>
+    <script src="js/alerts.js?v=0.63.47"></script><script src="js/ui.js?v=0.63.47"></script>
 </body>
 </html>

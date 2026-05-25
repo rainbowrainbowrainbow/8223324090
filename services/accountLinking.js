@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('./authIdentity');
+const { uniquePasswordCandidates } = require('./credentialInput');
 
 function appError(message, statusCode = 400, code = 'account_link_error', details = {}) {
     const err = new Error(message);
@@ -71,7 +72,10 @@ async function verifyIssuedCredential({ client = pool, username, password } = {}
     const user = result.rows[0] || null;
     const isActive = !!user && user.is_active !== false;
     const passwordMatches = isActive
-        ? await bcrypt.compare(String(password), user.password_hash || '').catch(() => false)
+        ? await uniquePasswordCandidates(password).reduce(async (matchedPromise, candidate) => {
+            if (await matchedPromise) return true;
+            return bcrypt.compare(candidate, user.password_hash || '').catch(() => false);
+        }, Promise.resolve(false))
         : false;
 
     return {

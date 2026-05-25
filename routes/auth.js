@@ -18,6 +18,11 @@ const {
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
+const {
+    normalizeLoginCredentialPayload,
+    normalizeManualPassword,
+    uniquePasswordCandidates
+} = require('../services/credentialInput');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
 const {
@@ -136,9 +141,9 @@ function profileTaskWorkloadDateSql(alias = 'tasks') {
 
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        const loginIdentifier = normalizeLoginIdentifier(username);
-        if (!loginIdentifier || !password) {
+        const credentials = normalizeLoginCredentialPayload(req.body || {});
+        const loginIdentifier = normalizeLoginIdentifier(credentials.username);
+        if (!loginIdentifier || !credentials.password) {
             return res.status(400).json({ error: 'Введіть ім\'я та пароль' });
         }
 
@@ -156,13 +161,16 @@ router.post('/login', async (req, res) => {
         // v39.9: Unified error message prevents username enumeration
         const user = result.rows[0];
         const passwordMatches = user && user.is_active !== false
-            ? await bcrypt.compare(password, user.password_hash || '').catch(() => false)
+            ? await credentials.passwordCandidates.reduce(async (matchedPromise, candidate) => {
+                if (await matchedPromise) return true;
+                return bcrypt.compare(candidate, user.password_hash || '').catch(() => false);
+            }, Promise.resolve(false))
             : false;
         const valid = user && user.is_active !== false && passwordMatches;
 
         if (!valid) {
             const reason = !user ? 'user_not_found' : (user.is_active === false ? 'inactive_account' : 'password_mismatch');
-            log.warn(`Login failed for "${loginIdentifier}" (${reason})`);
+            log.warn(`Login failed for "${loginIdentifier}" (${reason}${credentials.parsedCredentialBlock ? ', parsed_credential_block' : ''})`);
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 
@@ -1033,7 +1041,8 @@ router.get('/action-log', authenticateToken, async (req, res) => {
 // v10.4: Change password
 router.put('/password', authenticateToken, async (req, res) => {
     try {
-        const { currentPassword, newPassword } = req.body;
+        const currentPassword = req.body?.currentPassword;
+        const newPassword = normalizeManualPassword(req.body?.newPassword);
         if (!currentPassword || !newPassword) {
             return res.status(400).json({ error: 'Введіть поточний і новий паролі' });
         }
@@ -1047,7 +1056,10 @@ router.put('/password', authenticateToken, async (req, res) => {
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        const valid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+        const valid = await uniquePasswordCandidates(currentPassword).reduce(async (matchedPromise, candidate) => {
+            if (await matchedPromise) return true;
+            return bcrypt.compare(candidate, result.rows[0].password_hash || '').catch(() => false);
+        }, Promise.resolve(false));
         if (!valid) {
             return res.status(401).json({ error: 'Невірний поточний пароль' });
         }

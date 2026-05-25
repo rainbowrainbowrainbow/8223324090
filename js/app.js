@@ -224,10 +224,57 @@ function initConnectionStatusListeners() {
     });
 }
 
+function parseLoginCredentialBlock(value) {
+    const text = String(value || '')
+        .normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u043b\u043e\u0433\u0456\u043d/ig, 'login')
+        .replace(/\u043f\u0430\u0440\u043e\u043b\u044c/ig, 'password')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .trim();
+    if (!text) return { username: '', password: '', hasBlock: false };
+
+    const username = text.match(/(?:^|\n|\r|;|\t|\s)(?:login|username|user|логін)\s*[:=]\s*([^\n\r;]+)/i)?.[1]?.trim() || '';
+    const password = text.match(/(?:^|\n|\r|;|\t|\s)(?:password|pass|pwd|пароль)\s*[:=]\s*([^\n\r;]+)/i)?.[1]?.trim() || '';
+    return { username, password, hasBlock: Boolean(username || password) };
+}
+
+function applyLoginCredentialBlock(value) {
+    const parsed = parseLoginCredentialBlock(value);
+    if (!parsed.username || !parsed.password) return false;
+    const usernameEl = document.getElementById('username');
+    const passwordEl = document.getElementById('password');
+    if (!usernameEl || !passwordEl) return false;
+    usernameEl.value = parsed.username;
+    passwordEl.value = parsed.password;
+    return true;
+}
+
+function bindSmartCredentialPaste() {
+    const usernameEl = document.getElementById('username');
+    const passwordEl = document.getElementById('password');
+    [usernameEl, passwordEl].forEach((el) => {
+        if (!el) return;
+        el.addEventListener('paste', (event) => {
+            const text = event.clipboardData?.getData('text') || '';
+            if (applyLoginCredentialBlock(text)) event.preventDefault();
+        });
+        el.addEventListener('input', () => {
+            applyLoginCredentialBlock(el.value);
+        });
+    });
+}
+
 function initAuthListeners() {
+    bindSmartCredentialPaste();
     document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const result = await login(document.getElementById('username')?.value, document.getElementById('password')?.value);
+        const usernameEl = document.getElementById('username');
+        const passwordEl = document.getElementById('password');
+        applyLoginCredentialBlock(usernameEl?.value);
+        applyLoginCredentialBlock(passwordEl?.value);
+        const result = await login(usernameEl?.value, passwordEl?.value);
         if (!result.success) {
             document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.7 - CRM 66.7: Smart credential paste
+
+### Auth / credentials UX / 25.05.2026 [codex]
+- **Вхід став стійким до copy-paste блоків** - форму входу можна заповнити вставкою всього тексту `Логін: ...` / `Пароль: ...`; frontend сам розкладає значення по полях.
+- **Backend приймає той самий формат без ручної чистки** - `/api/auth/login` нормалізує credential block, invisible characters, зайві пробіли та перенос рядка перед bcrypt-перевіркою.
+- **Manual create/reset/change password очищає типові оболонки** - якщо оператор випадково вставив `Пароль: ...`, у hash потрапляє сам пароль, а не підпис поля.
+- **Issued credential verification не розходиться з login flow** - перевірка виданого пароля використовує ті самі password candidates, що й реальний login.
+- **Regression guardrail** - `tests/account-issued-credential.test.js` покриває parser/normalizer, labeled-password verify та copy-paste login payload; UI smoke фіксує smart paste на формі входу.
+
+---
+
 ## v0.66.6 - CRM 66.6: Issued credential verification tests
 
 ### HR / staff accounts / password verification / 25.05.2026 [codex]

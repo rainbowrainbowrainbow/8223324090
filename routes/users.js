@@ -8,6 +8,7 @@ const { pool } = require('../db');
 const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS, revokeAllUserTokens } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { normalizeManualPassword } = require('../services/credentialInput');
 const {
     linkUserToStaffProfile,
     unlinkUserFromStaffProfiles,
@@ -50,7 +51,7 @@ function resetPasswordFromPayload(body = {}) {
     const candidates = [body.newPassword, body.password, body.manualPassword];
     for (const candidate of candidates) {
         if (candidate === undefined || candidate === null) continue;
-        const value = String(candidate);
+        const value = normalizeManualPassword(candidate);
         if (value.length > 0) return value;
     }
     return '';
@@ -438,7 +439,7 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
         if (username.length < 3 || username.length > 50 || !/^[a-zA-Z0-9._-]+$/.test(username)) {
             return res.status(400).json({ error: 'Логін має містити 3-50 символів: латиниця, цифри, крапка, дефіс або підкреслення' });
         }
-        const finalPassword = issueOneTime ? generateOneTimePassword() : String(password || '');
+        const finalPassword = issueOneTime ? generateOneTimePassword() : normalizeManualPassword(password);
         if (finalPassword.length < 6) {
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }

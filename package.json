@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.6",
+  "version": "0.66.7",
   "eventGenix": {
-    "releaseLabel": "CRM 66.6: Issued credential verification tests"
+    "releaseLabel": "CRM 66.7: Smart credential paste"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

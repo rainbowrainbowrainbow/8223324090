@@ -43,6 +43,17 @@ const log = createLogger('Server');
 // Validate environment variables before anything else
 validateEnv();
 
+async function telegramInboxOwnsGlobalBotToken() {
+    if (!TELEGRAM_BOT_TOKEN) return false;
+    try {
+        const { isTelegramInboxConnectionUsingToken } = require('./services/omni-accounts');
+        return await isTelegramInboxConnectionUsingToken(TELEGRAM_BOT_TOKEN);
+    } catch (err) {
+        log.warn('Could not check Omni Telegram inbox webhook ownership', { error: err.message });
+        return false;
+    }
+}
+
 // --- Express app setup ---
 const app = express();
 app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
@@ -484,7 +495,7 @@ app.get('/catalog/:slug/:token', async (req, res) => {
             }).join('')+'</div>';
             return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
         }).join('');
-        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.64.3"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.64.4"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
     } catch (err) {
         res.status(500).send('Помилка сервера');
     }
@@ -554,7 +565,12 @@ initDatabase().then(() => {
             ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
             : null;
         if (appUrl) {
-            ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+            const omniOwnsTelegramWebhook = await telegramInboxOwnsGlobalBotToken();
+            if (omniOwnsTelegramWebhook) {
+                log.warn('Skipping legacy Telegram webhook auto-setup because the same bot token is bound as Omni Telegram inbox');
+            } else {
+                ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+            }
             ensureReportBotWebhook(appUrl).catch(err => log.error('Report bot webhook setup error', err));
         }
 

@@ -4,12 +4,13 @@
 
 ---
 
-## v0.64.3 - CRM 64.3: Telegram inbox webhook
+## v0.64.4 - CRM 64.4: Telegram inbox webhook ownership
 
 ### OmniClaw / Telegram inbox / 25.05.2026 [codex]
 - **Telegram inbox webhook відкрито для Telegram provider updates** - `/api/omni/webhook/telegram` додано в централізований public auth boundary, щоб Telegram міг доставляти повідомлення без CRM user JWT.
-- **Report bot і Omni inbox лишаються розділеними** - webhook нового `@Park_Dialog_Bot` виставлено на production Omni endpoint `/api/omni/webhook/telegram`, а не на старий `/api/telegram/webhook` чи `/api/report-bot/webhook`.
-- **Regression guardrail** - `tests/auth-boundary.test.js` перевіряє, що Omni Telegram webhook проходить без JWT, а generic protected endpoints далі блокуються.
+- **Startup більше не перетирає Omni webhook** - якщо той самий bot token уже збережений як Omni Telegram inbox, legacy Telegram auto-setup не повертає його на старий `/api/telegram/webhook` після деплою або рестарту.
+- **Report bot і Omni inbox лишаються розділеними** - webhook нового `@Park_Dialog_Bot` виставлено на production Omni endpoint `/api/omni/webhook/telegram`, а не на `/api/report-bot/webhook`.
+- **Regression guardrail** - `tests/auth-boundary.test.js` перевіряє, що Omni Telegram webhook проходить без JWT, а `tests/omni-send-truth.test.js` фіксує ownership guard для startup webhook setup.
 
 ---
 

@@ -782,6 +782,16 @@ async function resolveOmniRuntimeConfig(channel) {
   return mergeRuntimeConfig(activeDefinitionForRow(def, row), row);
 }
 
+async function isTelegramInboxConnectionUsingToken(botToken) {
+  const token = String(botToken || '').trim();
+  if (!token) return false;
+  const def = providerDefinition('telegram');
+  const row = await loadConnectionRow('telegram');
+  if (!def || !row || row.status === 'disconnected' || row.status === 'needs_rebind') return false;
+  const rowRuntime = runtimeValuesFromConnection(activeDefinitionForRow(def, row), row);
+  return Boolean(rowRuntime.botToken && rowRuntime.botToken === token);
+}
+
 function userLabel(user = {}) {
   return user.name || user.username || user.role || 'system';
 }
@@ -1362,6 +1372,7 @@ module.exports = {
   isOmniChannelSendCapableAsync,
   getOmniUnavailableMessageAsync,
   resolveOmniRuntimeConfig,
+  isTelegramInboxConnectionUsingToken,
   upsertOmniConnection,
   recheckOmniConnection,
   testOmniConnection,

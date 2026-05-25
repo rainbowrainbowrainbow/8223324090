@@ -214,6 +214,44 @@ test('profile overdue to today move persists through reschedule endpoint with to
     assert.match(calls[0].payload.deadline, /^20\d{2}-\d{2}-\d{2}T18:00:00$/);
 });
 
+test('profile overdue to today move resolves the task due value before guarding reschedule', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    const notices = [];
+    vm.runInContext(`
+        myCabinetData = {
+            all: [{
+                id: 78,
+                title: 'Old task',
+                deadline: '2000-01-01T09:00:00.000Z',
+                controlMeta: { canReschedule: true }
+            }],
+            today: [],
+            overdue: [{
+                id: 78,
+                title: 'Old task',
+                deadline: '2000-01-01T09:00:00.000Z',
+                controlMeta: { canReschedule: true }
+            }],
+            waiting: [],
+            private: []
+        };
+    `, ctx);
+    ctx.apiPost = async (url, payload) => {
+        calls.push({ url, payload });
+        return { success: true };
+    };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.refreshMyCabinetTab = async () => {};
+
+    await ctx.moveCabinetTaskToToday(78, 'drag');
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/tasks/78/reschedule');
+    assert.equal(calls[0].payload.sourceSurface, 'profile_my_cabinet_overdue_to_today_drop');
+    assert.equal(notices.at(-1)?.type, 'success');
+});
+
 test('task reschedule keeps scheduled tasks in the same today projection contract', () => {
     const source = fs.readFileSync(path.join(ROOT, 'services', 'taskExecution.js'), 'utf8');
     const routeSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');

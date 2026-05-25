@@ -2506,7 +2506,7 @@ function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}) {
 }
 
 function cabinetTaskCanMoveToToday(task = {}, dueState = null) {
-    const state = dueState || getCabinetTaskDueState(task);
+    const state = dueState || getCabinetTaskDueState(task, cabinetTaskDueValue(task));
     return state?.key === 'overdue' && cabinetTaskAllowsReschedule(task);
 }
 
@@ -2563,6 +2563,17 @@ function cabinetTaskDueKey(task = {}) {
     const raw = task.scheduledStartAt || task.scheduled_start_at || task.deadline || task.remindAt || task.remind_at || task.date || '';
     const key = String(raw || '').slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+}
+
+function cabinetTaskDueValue(task = {}) {
+    return task.scheduledStartAt
+        || task.scheduled_start_at
+        || task.schedule?.startAt
+        || task.deadline
+        || task.remindAt
+        || task.remind_at
+        || task.date
+        || '';
 }
 
 function cabinetTaskScheduleStartTime(task = {}) {
@@ -2704,7 +2715,7 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '') {
 function renderCabinetTaskCard(task, compact = false) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
-    const due = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline || task.remindAt || task.remind_at || task.date;
+    const due = cabinetTaskDueValue(task);
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
@@ -3414,7 +3425,7 @@ async function moveCabinetTaskToToday(taskId, method = 'button') {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     const task = findCabinetTask(id) || {};
-    const dueState = getCabinetTaskDueState(task);
+    const dueState = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
     if (dueState.key !== 'overdue') {
         if (typeof showNotification === 'function') showNotification('Ця задача вже не прострочена', 'info');
         return;

@@ -691,10 +691,10 @@
         const holdMs = Math.min(9000, Math.max(3800, String(text || '').length * 55));
         speakingIdleTimer = window.setTimeout(() => {
             speakingIdleTimer = null;
-            if (state.mode === 'speaking' && state.lastSpokenLine === text) {
+            if ((state.mode === 'speaking' || state.mode === 'streaming') && state.lastSpokenLine === text) {
                 playbackRunId += 1;
                 releaseAudioPlayer();
-                setState({ mode: 'idle', playbackState: 'timeout', tickerText: '' });
+                setState({ mode: state.voiceEnabled ? 'idle' : 'muted', playbackState: 'timeout', tickerText: '' });
             }
         }, holdMs);
     }
@@ -1855,15 +1855,16 @@
         clearSpeakingIdleTimer();
         stopAudioPlayback();
         setState({
-            mode: shouldPlayAudio ? 'thinking' : state.voiceEnabled ? 'idle' : 'muted',
+            mode: shouldPlayAudio ? 'thinking' : 'streaming',
             subtitle: text,
             tickerText: '',
             lastSpokenLine: text,
-            playbackState: shouldPlayAudio ? 'voice-loading' : state.voiceEnabled ? 'text' : 'muted'
+            playbackState: shouldPlayAudio ? 'voice-loading' : 'text'
         });
         renderHistory();
         if (options.showGuide !== false) guideReplyTarget(reply);
         if (!shouldPlayAudio) {
+            scheduleSpeakingIdleFallback(text);
             return;
         }
         try {

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.63.39 - CRM 63.39: фінальний деплой AI Command Bar
+
+### Реліз / деплой / cache-bust [codex]
+- **Піднято релізний маркер до `0.63.39`** - виконано окремий patch-реліз після впровадження `AI Command Bar`.
+- **Оновлено cache-bust для live assets** - HTML entrypoints, service worker і lock-файли синхронізовані з новою версією.
+- **Збережено попередній функціональний пакет** - зміни `AI Command Bar` з `0.63.38` залишаються активними, цей реліз фіксує фінальну delivery-версію.
+
+---
+
 ## v0.63.38 - CRM 63.38: AI Command Bar у шапці
 
 ### Помічник / topbar / command bar [codex]

@@ -10,6 +10,7 @@ function read(relPath) {
 }
 
 const migration = read('db/migrations/201_kitchen_cakes_catalog.sql');
+const menuMigration = read('db/migrations/220_kitchen_menu_2026_catalog.sql');
 
 const expectedCakes = [
     ['Три шоколади', 110, 1, 'Три шари ніжного мусу на основі бельгійського шоколаду. Легкий, повітряний, делікатний смак із мʼякою шоколадною гармонією.'],
@@ -70,4 +71,47 @@ test('products runtime exposes kitchen cake price unit through canonical API and
     assert.match(programsPage, /function renderKitchenPrice\(product\)/);
     assert.match(programsPage, /product\.servingUnit/);
     assert.match(programsPage, /getKitchenType\(p\) === activeKitchenTab/);
+});
+
+test('menu 2026 migration seeds the full operator-provided product menu', () => {
+    const rowMatches = [...menuMigration.matchAll(/^\('menu_2026_[^']+',\s*'MENU-(\d{3})',/gm)];
+    const sectionMatches = [...menuMigration.matchAll(/^\('menu_2026_[^']+',\s*'MENU-\d{3}',\s*'[^']+',\s*'([^']+)'/gm)];
+    const countsBySection = sectionMatches.reduce((acc, match) => {
+        acc[match[1]] = (acc[match[1]] || 0) + 1;
+        return acc;
+    }, {});
+
+    assert.equal(rowMatches.length, 85);
+    assert.deepEqual(countsBySection, {
+        'Холодні закуски': 10,
+        'Салати': 8,
+        'Гарячі закуски': 7,
+        'Бургери': 4,
+        'Піца': 10,
+        'Додатки до піци': 6,
+        'Мангальне меню': 5,
+        'Основні страви': 9,
+        'Перші страви': 2,
+        'Гарніри': 5,
+        'Гарячі напої': 10,
+        'Коктейлі та холодні напої': 9
+    });
+    assert.match(menuMigration, /'MENU-001', 'Сирне плато', 'Холодні закуски'/);
+    assert.match(menuMigration, /'MENU-040', 'Сирний бортик з крем-сиром', 'Додатки до піци'/);
+    assert.match(menuMigration, /'MENU-077', 'Сік в асортименті', 'Коктейлі та холодні напої'/);
+    assert.match(menuMigration, /'MENU-085', 'Швепс', 'Коктейлі та холодні напої'/);
+});
+
+test('menu 2026 migration is scoped to kitchen menu products and preserves price rules', () => {
+    assert.match(menuMigration, /business_context = 'event_genix'/);
+    assert.match(menuMigration, /domain = 'kitchen'/);
+    assert.match(menuMigration, /kitchen_type = 'menu'/);
+    assert.match(menuMigration, /availability_status = 'active'/);
+    assert.match(menuMigration, /updated_by = 'migration_220_kitchen_menu_2026_catalog'/);
+    assert.match(menuMigration, /ON CONFLICT \(id\) DO UPDATE SET/);
+    assert.match(menuMigration, /lower\(trim\(p\.name\)\) = lower\(trim\(c\.name\)\)/);
+    assert.match(menuMigration, /INSERT INTO price_rules/);
+    assert.match(menuMigration, /'грн\/' \|\| serving_unit/);
+    assert.match(menuMigration, /'0,2 л \/ 1 л - 50 \/ 180 грн'/);
+    assert.doesNotMatch(menuMigration, /kitchen_type = 'cake'/);
 });

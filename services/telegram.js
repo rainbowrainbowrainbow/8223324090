@@ -594,6 +594,55 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
     });
 }
 
+async function getTelegramRuntimeToken() {
+    const runtime = await resolveOmniRuntimeConfig('telegram');
+    return runtime.botToken || TELEGRAM_BOT_TOKEN || '';
+}
+
+async function getTelegramBotConfigStatus() {
+    let runtime = {};
+    try {
+        runtime = await resolveOmniRuntimeConfig('telegram');
+    } catch (err) {
+        log.warn(`Telegram runtime status lookup failed: ${err.message}`);
+    }
+
+    const token = runtime.botToken || TELEGRAM_BOT_TOKEN || '';
+    const defaultChatId = runtime.defaultChatId || TELEGRAM_DEFAULT_CHAT_ID || '';
+    return {
+        configured: Boolean(token),
+        status: token ? 'ready' : 'missing_token',
+        tokenSource: runtime.botToken ? 'omni_accounts' : (TELEGRAM_BOT_TOKEN ? 'env' : 'missing'),
+        defaultChatConfigured: Boolean(defaultChatId),
+        webhookSecretConfigured: Boolean(WEBHOOK_SECRET),
+        webhookSet
+    };
+}
+
+async function downloadTelegramFileById(fileId) {
+    if (!fileId) throw new Error('telegram_file_id_required');
+    const token = await getTelegramRuntimeToken();
+    if (!token) throw new Error('telegram_token_not_configured');
+
+    const fileResult = await telegramRequest('getFile', { file_id: fileId });
+    if (!fileResult?.ok || !fileResult.result?.file_path) {
+        throw new Error(fileResult?.description || 'telegram_get_file_failed');
+    }
+
+    const filePath = fileResult.result.file_path;
+    const url = `https://api.telegram.org/file/bot${token}/${filePath}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`telegram_file_download_${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || '';
+    return {
+        buffer,
+        filePath,
+        mimeType: contentType.split(';')[0] || null,
+        size: buffer.length
+    };
+}
+
 async function scheduleAutoDelete(chatId, messageId) {
     try {
         const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('auto_delete_enabled', 'auto_delete_hours')");
@@ -639,6 +688,7 @@ module.exports = {
     telegramRequest, sendTelegramMessage, sendTelegramPhoto, editTelegramMessage, deleteTelegramMessage,
     getConfiguredChatId, getConfiguredThreadId,
     notifyTelegram, ensureWebhook, getTelegramChatId, scheduleAutoDelete,
+    getTelegramRuntimeToken, getTelegramBotConfigStatus, downloadTelegramFileById,
     setWebhookFlag, getWebhookFlag, getBotUsername,
     drainTelegramRequests, getInFlightCount,
     processRetryQueue

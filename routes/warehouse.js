@@ -5,6 +5,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const warehousePhotoIntake = require('../services/warehousePhotoIntake');
 
 const log = createLogger('Warehouse');
 
@@ -350,6 +351,74 @@ router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req,
 });
 
 // GET /api/warehouse/categories — List unique categories
+// GET /api/warehouse/photo-intake/status - Telegram photo intake readiness
+router.get('/photo-intake/status', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const status = await warehousePhotoIntake.getIntakeStatus();
+        res.json({ success: true, status });
+    } catch (err) {
+        log.error('Warehouse photo intake status error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// GET /api/warehouse/photo-intake - recent Telegram photo intake queue
+router.get('/photo-intake', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const items = await warehousePhotoIntake.listIntakes({
+            status: req.query.status || 'all',
+            limit: req.query.limit || 30
+        });
+        res.json({ success: true, items });
+    } catch (err) {
+        log.error('Warehouse photo intake list error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// GET /api/warehouse/photo-intake/:id - single Telegram photo intake detail
+router.get('/photo-intake/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const item = await warehousePhotoIntake.getIntake(req.params.id);
+        if (!item) return res.status(404).json({ success: false, error: 'intake_not_found' });
+        res.json({ success: true, item });
+    } catch (err) {
+        log.error('Warehouse photo intake detail error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/warehouse/photo-intake/:id/confirm - write reviewed draft into warehouse truth
+router.post('/photo-intake/:id/confirm', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const result = await warehousePhotoIntake.confirmIntake(req.params.id, {
+            actor: req.user?.username || req.user?.name || 'crm',
+            draft: req.body?.draft || req.body || {},
+            warehouseStockId: req.body?.warehouseStockId || req.body?.stockId || null
+        });
+        if (!result.success) return res.status(result.status || 400).json(result);
+        res.json(result);
+    } catch (err) {
+        log.error('Warehouse photo intake confirm error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/warehouse/photo-intake/:id/cancel - cancel a Telegram photo intake draft
+router.post('/photo-intake/:id/cancel', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const result = await warehousePhotoIntake.cancelIntake(req.params.id, {
+            actor: req.user?.username || req.user?.name || 'crm',
+            notes: req.body?.notes || null
+        });
+        if (!result.success) return res.status(result.status || 400).json(result);
+        res.json(result);
+    } catch (err) {
+        log.error('Warehouse photo intake cancel error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/categories', async (req, res) => {
     try {
         const result = await pool.query(

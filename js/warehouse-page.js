@@ -45,6 +45,8 @@ let searchQuery = '';
 let canManage = false;
 let warehouseLocations = [];
 let warehouseContractors = [];
+let warehousePhotoIntakes = [];
+let warehouseIntakeStatus = null;
 
 // Modal state
 let qtyModalMode = null; // 'use' or 'restock'
@@ -100,6 +102,7 @@ async function initPage() {
     setupEventListeners();
     await Promise.all([loadLocationsSummary(), loadWarehouseContractors({ silent: true })]);
     await Promise.all([loadStock(), loadHistory()]);
+    await loadWarehousePhotoIntake({ silent: true });
     switchStockMode('locations');
 }
 
@@ -124,6 +127,8 @@ function setupEventListeners() {
         document.getElementById('lowStockToggle')?.classList.toggle('active', lowStockFilter);
         renderStock();
     });
+
+    document.getElementById('refreshIntakeBtn')?.addEventListener('click', () => loadWarehousePhotoIntake());
 
     // Qty modal
     document.getElementById('qtyModalCancel')?.addEventListener('click', () => closeQtyModal(false));
@@ -378,6 +383,199 @@ function renderStock() {
             </div>
         </div>`;
     }).join('');
+}
+
+// ==========================================
+// TELEGRAM PHOTO INTAKE
+// ==========================================
+
+function intakeStatusLabel(status) {
+    const map = {
+        needs_review: 'На перевірці',
+        draft: 'Чернетка',
+        failed: 'Потрібна ручна дія',
+        confirmed: 'Записано',
+        cancelled: 'Скасовано'
+    };
+    return map[status] || status || 'Невідомо';
+}
+
+function intakeStatusTone(status) {
+    if (status === 'confirmed') return 'ok';
+    if (status === 'cancelled') return 'muted';
+    if (status === 'failed') return 'danger';
+    return 'warn';
+}
+
+async function loadWarehousePhotoIntake(opts = {}) {
+    const statusEl = document.getElementById('warehouseBotStatus');
+    const listEl = document.getElementById('warehouseIntakeList');
+    if (!statusEl || !listEl) return;
+    if (!opts.silent) {
+        statusEl.innerHTML = '<div class="wh-intake-loading">Оновлюємо стан Telegram intake...</div>';
+    }
+    const [statusResp, listResp] = await Promise.all([
+        apiGetWarehousePhotoIntakeStatus(),
+        apiGetWarehousePhotoIntakes({ limit: 12 })
+    ]);
+    warehouseIntakeStatus = statusResp?.status || null;
+    warehousePhotoIntakes = listResp?.items || [];
+    renderWarehousePhotoIntake();
+}
+
+function renderWarehousePhotoIntake() {
+    renderWarehouseBotStatus();
+    renderWarehouseIntakeList();
+}
+
+function renderWarehouseBotStatus() {
+    const el = document.getElementById('warehouseBotStatus');
+    if (!el) return;
+    const telegram = warehouseIntakeStatus?.telegram || {};
+    const vision = warehouseIntakeStatus?.vision || {};
+    const counts = warehouseIntakeStatus?.counts || {};
+    const last = warehouseIntakeStatus?.lastIntake || null;
+    const statusCards = [
+        {
+            title: 'Telegram',
+            tone: telegram.configured ? 'ok' : 'danger',
+            value: telegram.configured ? 'Підключено' : 'Немає токена',
+            meta: telegram.tokenSource ? `джерело: ${telegram.tokenSource}` : 'потрібен TELEGRAM_BOT_TOKEN або Omni Telegram'
+        },
+        {
+            title: 'Vision',
+            tone: vision.configured ? 'ok' : 'warn',
+            value: vision.configured ? 'Готово' : 'Немає ключа',
+            meta: `${vision.provider || 'openai'} · ${vision.model || 'model'}`
+        },
+        {
+            title: 'Черга',
+            tone: (counts.needs_review || counts.failed || 0) ? 'warn' : 'ok',
+            value: `${counts.needs_review || 0} на перевірці`,
+            meta: `${counts.confirmed || 0} записано · ${counts.failed || 0} з помилкою`
+        },
+        {
+            title: 'Останній intake',
+            tone: last ? intakeStatusTone(last.status) : 'muted',
+            value: last ? intakeStatusLabel(last.status) : 'Ще немає',
+            meta: last?.created_at ? new Date(last.created_at).toLocaleString('uk-UA') : 'очікуємо перше фото'
+        }
+    ];
+    el.innerHTML = statusCards.map(card => `
+        <div class="wh-intake-status-card wh-intake-status-card--${card.tone}">
+            <span>${escapeHtml(card.title)}</span>
+            <strong>${escapeHtml(card.value)}</strong>
+            <small>${escapeHtml(card.meta)}</small>
+        </div>
+    `).join('');
+}
+
+function renderWarehouseIntakeList() {
+    const el = document.getElementById('warehouseIntakeList');
+    if (!el) return;
+    if (!warehousePhotoIntakes.length) {
+        el.innerHTML = '<div class="wh-intake-empty">Фото-intake ще немає. Надішліть фото товару в Telegram-бот, і чернетка зʼявиться тут.</div>';
+        return;
+    }
+    el.innerHTML = warehousePhotoIntakes.map(renderWarehouseIntakeCard).join('');
+}
+
+function renderWarehouseIntakeCard(intake) {
+    const draft = intake.draft || {};
+    const candidates = intake.matchCandidates || [];
+    const editable = ['needs_review', 'draft', 'failed'].includes(intake.status);
+    const categoryOptions = CATEGORIES.filter(c => c.id !== 'all').map(c =>
+        `<option value="${c.id}" ${draft.category === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
+    ).join('');
+    const locationOptions = ['<option value="">Без складу</option>'].concat(
+        warehouseLocations.map(loc => `<option value="${loc.id}" ${String(draft.locationId || '') === String(loc.id) ? 'selected' : ''}>${escapeHtml(loc.name)}</option>`)
+    ).join('');
+    const stockOptions = ['<option value="">Створити нову позицію</option>'].concat(
+        candidates.map(c => `<option value="${c.stockId}">Поповнити: ${escapeHtml(c.name)} · ${Math.round((c.score || 0) * 100)}%</option>`)
+    ).join('');
+
+    return `<article class="wh-intake-card" data-intake-card="${intake.id}">
+        <div class="wh-intake-card-head">
+            <div>
+                <div class="wh-intake-kicker">Telegram intake #${intake.id}</div>
+                <strong>${escapeHtml(draft.name || 'Назву потрібно уточнити')}</strong>
+            </div>
+            <span class="wh-intake-badge wh-intake-badge--${intakeStatusTone(intake.status)}">${escapeHtml(intakeStatusLabel(intake.status))}</span>
+        </div>
+        <div class="wh-intake-meta">
+            <span>${intake.photoCount || 0} фото</span>
+            <span>${Math.round((intake.confidence || draft.confidence || 0) * 100)}% впевненості</span>
+            ${intake.telegram?.username ? `<span>@${escapeHtml(intake.telegram.username)}</span>` : ''}
+            ${intake.createdAt ? `<span>${new Date(intake.createdAt).toLocaleString('uk-UA')}</span>` : ''}
+        </div>
+        ${intake.failureReason ? `<div class="wh-intake-warning">${escapeHtml(intake.failureReason)}</div>` : ''}
+        ${editable ? `
+            <div class="wh-intake-form">
+                <label>Назва<input data-intake-field="name" value="${escapeHtml(draft.name || '')}" placeholder="Наприклад: паперові стакани"></label>
+                <label>К-сть<input data-intake-field="quantity" type="number" min="1" value="${draft.quantity || 1}"></label>
+                <label>Одиниця
+                    <select data-intake-field="unit">
+                        ${['шт','рул','уп','кг','л','м','компл','набір'].map(u => `<option value="${u}" ${(draft.unit || 'шт') === u ? 'selected' : ''}>${u}</option>`).join('')}
+                    </select>
+                </label>
+                <label>Категорія<select data-intake-field="category">${categoryOptions}</select></label>
+                <label>Склад<select data-intake-field="locationId">${locationOptions}</select></label>
+                <label class="wh-intake-wide">Дія<select data-intake-field="warehouseStockId">${stockOptions}</select></label>
+                <label class="wh-intake-wide">Нотатка<input data-intake-field="notes" value="${escapeHtml(draft.notes || '')}" placeholder="Що видно на фото або що уточнив оператор"></label>
+            </div>
+            <div class="wh-intake-actions">
+                <button type="button" class="btn-page-primary" onclick="confirmWarehouseIntake(${intake.id})">Записати у склад</button>
+                <button type="button" class="btn-page-secondary" onclick="cancelWarehouseIntake(${intake.id})">Скасувати</button>
+            </div>
+        ` : `
+            <div class="wh-intake-readonly">
+                ${escapeHtml(draft.quantity || 1)} ${escapeHtml(draft.unit || 'шт')} · ${escapeHtml(CAT_MAP[draft.category]?.name || draft.category || 'категорія')}
+                ${intake.confirmedStockId ? `· stock #${intake.confirmedStockId}` : ''}
+            </div>
+        `}
+    </article>`;
+}
+
+function collectWarehouseIntakePayload(id) {
+    const root = document.querySelector(`[data-intake-card="${id}"]`);
+    if (!root) return {};
+    const field = name => root.querySelector(`[data-intake-field="${name}"]`);
+    return {
+        warehouseStockId: field('warehouseStockId')?.value || null,
+        draft: {
+            name: field('name')?.value.trim() || '',
+            quantity: parseInt(field('quantity')?.value, 10) || 1,
+            unit: field('unit')?.value || 'шт',
+            category: field('category')?.value || 'consumable',
+            locationId: field('locationId')?.value || null,
+            notes: field('notes')?.value.trim() || ''
+        }
+    };
+}
+
+async function confirmWarehouseIntake(id) {
+    const payload = collectWarehouseIntakePayload(id);
+    if (!payload.draft.name) {
+        showNotification('Вкажіть назву позиції перед записом у склад', 'error');
+        return;
+    }
+    const result = await apiConfirmWarehousePhotoIntake(id, payload);
+    if (result?.success) {
+        showNotification(result.action === 'restock_existing' ? 'Залишок поповнено з Telegram intake' : 'Нову позицію створено з Telegram intake', 'success');
+        await Promise.all([loadStock(), loadHistory(), loadWarehousePhotoIntake({ silent: true })]);
+    } else {
+        showNotification(result?.error || 'Не вдалося записати intake у склад', 'error');
+    }
+}
+
+async function cancelWarehouseIntake(id) {
+    const result = await apiCancelWarehousePhotoIntake(id, 'cancelled in warehouse page');
+    if (result?.success) {
+        showNotification('Telegram intake скасовано', 'success');
+        await loadWarehousePhotoIntake({ silent: true });
+    } else {
+        showNotification(result?.error || 'Не вдалося скасувати intake', 'error');
+    }
 }
 
 // ==========================================

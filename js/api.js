@@ -1533,6 +1533,68 @@ async function apiGetWarehouseHistory(filters = {}) {
     }
 }
 
+async function apiGetWarehousePhotoIntakeStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/photo-intake/status`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehousePhotoIntakeStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetWarehousePhotoIntakes(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        if (filters.limit) params.set('limit', filters.limit);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/warehouse/photo-intake${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, items: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehousePhotoIntakes error:', err);
+        return { success: false, items: [], error: err.message };
+    }
+}
+
+async function apiConfirmWarehousePhotoIntake(id, payload) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/photo-intake/${id}/confirm`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API confirmWarehousePhotoIntake error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiCancelWarehousePhotoIntake(id, notes) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/photo-intake/${id}/cancel`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ notes: notes || null })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API cancelWarehousePhotoIntake error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiGetContractors(filters = {}) {
     try {
         const params = new URLSearchParams();

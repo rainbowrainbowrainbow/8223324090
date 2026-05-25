@@ -16,6 +16,7 @@ const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
+const warehousePhotoIntake = require('../services/warehousePhotoIntake');
 
 const log = createLogger('TelegramRoute');
 
@@ -176,6 +177,41 @@ async function editCallbackMessageFinal(message, finalText, context = 'callback'
 async function answerStaleCallback(callbackQueryId, message, text = 'Вже оброблено') {
     await answerCallback(callbackQueryId, text);
     await clearInlineKeyboard(message, 'stale callback');
+}
+
+function getPublicAppUrl(req) {
+    if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
+    return `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
+}
+
+async function sendWarehouseIntakeReply(req, message, intake) {
+    const chatId = message.chat.id;
+    const payload = {
+        chat_id: chatId,
+        text: warehousePhotoIntake.buildTelegramSummary(intake),
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '✅ Підтвердити', callback_data: `wh_intake_confirm:${intake.id}` },
+                    { text: '✏️ Редагувати в CRM', url: `${getPublicAppUrl(req)}/warehouse` }
+                ],
+                [
+                    { text: '❌ Скасувати', callback_data: `wh_intake_cancel:${intake.id}` }
+                ]
+            ]
+        }
+    };
+    if (message.message_thread_id) payload.message_thread_id = message.message_thread_id;
+    return telegramRequest('sendMessage', payload);
+}
+
+function hasWarehousePhotoInput(message) {
+    if (!message) return false;
+    if (Array.isArray(message.photo) && message.photo.length) return true;
+    return Boolean(message.document?.file_id && String(message.document.mime_type || '').startsWith('image/'));
 }
 
 function parseTaskCallback(data) {
@@ -479,11 +515,80 @@ router.post('/webhook', async (req, res) => {
             await handleBotCommand(botChatId, botThreadId, update.message.text, fromUsername);
         }
 
+        if (update.message && hasWarehousePhotoInput(update.message)) {
+            try {
+                const result = await warehousePhotoIntake.createTelegramPhotoIntake(update.message);
+                if (result.ok && result.intake) {
+                    await sendWarehouseIntakeReply(req, update.message, result.intake);
+                } else {
+                    await sendTelegramMessage(
+                        update.message.chat.id,
+                        '📦 <b>Склад</b>\nФото отримано, але не вдалося створити чернетку. Спробуйте ще раз або додайте позицію у CRM вручну.',
+                        { parse_mode: 'HTML' }
+                    );
+                }
+            } catch (err) {
+                log.error('Warehouse photo intake webhook error', err);
+                await sendTelegramMessage(
+                    update.message.chat.id,
+                    '📦 <b>Склад</b>\nФото не записано у склад. Я залишив запис без blind write; перевірте налаштування бота/vision у CRM.',
+                    { parse_mode: 'HTML' }
+                ).catch(() => {});
+            }
+            return res.sendStatus(200);
+        }
+
         if (update.callback_query) {
             const { id, data, message } = update.callback_query;
             const chatId = message.chat.id;
 
-            if (data.startsWith('add_anim:')) {
+            if (data.startsWith('wh_intake_confirm:')) {
+                const intakeId = safeParseInt(data.split(':')[1]);
+                if (!intakeId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                const cbFrom = update.callback_query.from || {};
+                const actor = await resolveActorName(
+                    cbFrom.username || null,
+                    cbFrom.id || null,
+                    cbFrom.first_name || null
+                );
+                const result = await warehousePhotoIntake.confirmIntake(intakeId, { actor });
+                if (!result.success) {
+                    const needsCrm = result.error === 'ambiguous_match_requires_manual_choice'
+                        || result.error === 'draft_requires_name_quantity_unit_category';
+                    await answerCallback(
+                        id,
+                        needsCrm ? 'Потрібне редагування в CRM перед записом' : 'Не вдалося підтвердити',
+                        { show_alert: true }
+                    );
+                    return res.sendStatus(200);
+                }
+                await answerCallback(id, 'Записано у склад');
+                await editCallbackMessageFinal(
+                    message,
+                    `✅ <b>Записано у склад</b> (${actor}). Stock #${result.stockId}, intake #${intakeId}`,
+                    'warehouse intake confirm'
+                );
+                return res.sendStatus(200);
+
+            } else if (data.startsWith('wh_intake_cancel:')) {
+                const intakeId = safeParseInt(data.split(':')[1]);
+                if (!intakeId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                const cbFrom = update.callback_query.from || {};
+                const actor = await resolveActorName(
+                    cbFrom.username || null,
+                    cbFrom.id || null,
+                    cbFrom.first_name || null
+                );
+                const result = await warehousePhotoIntake.cancelIntake(intakeId, { actor, notes: 'cancelled from Telegram' });
+                if (!result.success) {
+                    await answerStaleCallback(id, message, 'Intake вже оброблено');
+                    return res.sendStatus(200);
+                }
+                await answerCallback(id, 'Скасовано');
+                await editCallbackMessageFinal(message, `❌ <b>Скасовано</b> (${actor})`, 'warehouse intake cancel');
+                return res.sendStatus(200);
+
+            } else if (data.startsWith('add_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
                 if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 log.info('Animator approval callback received', {

@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.63.56">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.56">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.56">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.56">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.56">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.56">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.56">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.56">
+    <link rel="stylesheet" href="css/base.css?v=0.63.57">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.57">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.57">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.57">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.57">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.57">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.57">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.57">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -577,6 +577,94 @@
             background: rgba(16,185,129,.06);
             font-weight: 700;
         }
+        .wh-intake-panel {
+            margin: 0 0 18px;
+            padding: 18px;
+            border: 1px solid rgba(16,185,129,.18);
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(16,185,129,.10), rgba(15,23,42,.04));
+            box-shadow: 0 18px 36px rgba(15,23,42,.08);
+        }
+        .wh-intake-panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .wh-intake-panel-kicker,
+        .wh-intake-kicker {
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--primary-dark);
+        }
+        .wh-intake-panel-title { font-size: 18px; font-weight: 900; color: var(--gray-800); margin-top: 3px; }
+        .wh-intake-panel-subtitle { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+        .wh-intake-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .wh-intake-status-card,
+        .wh-intake-card {
+            border: 1px solid rgba(148,163,184,.22);
+            border-radius: 14px;
+            background: rgba(255,255,255,.78);
+            box-shadow: var(--shadow-xs);
+        }
+        body.dark-mode .wh-intake-status-card,
+        body.dark-mode .wh-intake-card { background: rgba(15,23,42,.72); border-color: rgba(148,163,184,.18); }
+        .wh-intake-status-card { padding: 12px; display: grid; gap: 3px; border-left: 3px solid rgba(148,163,184,.45); }
+        .wh-intake-status-card--ok { border-left-color: #10B981; }
+        .wh-intake-status-card--warn { border-left-color: #F59E0B; }
+        .wh-intake-status-card--danger { border-left-color: #EF4444; }
+        .wh-intake-status-card span,
+        .wh-intake-status-card small { font-size: 11px; color: var(--gray-500); }
+        .wh-intake-status-card strong { font-size: 15px; color: var(--gray-800); }
+        .wh-intake-list { display: grid; gap: 10px; }
+        .wh-intake-card { padding: 14px; }
+        .wh-intake-card-head,
+        .wh-intake-meta,
+        .wh-intake-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .wh-intake-card-head { justify-content: space-between; margin-bottom: 8px; }
+        .wh-intake-card-head strong { color: var(--gray-800); }
+        .wh-intake-meta { font-size: 12px; color: var(--gray-500); margin-bottom: 10px; }
+        .wh-intake-badge { border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 900; }
+        .wh-intake-badge--ok { background: rgba(16,185,129,.14); color: #047857; }
+        .wh-intake-badge--warn { background: rgba(245,158,11,.16); color: #92400E; }
+        .wh-intake-badge--danger { background: rgba(239,68,68,.15); color: #B91C1C; }
+        .wh-intake-badge--muted { background: rgba(148,163,184,.16); color: var(--gray-500); }
+        .wh-intake-warning {
+            margin-bottom: 10px;
+            padding: 9px 10px;
+            border-radius: 10px;
+            background: rgba(245,158,11,.12);
+            color: #92400E;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .wh-intake-form { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(90px, .5fr) minmax(96px, .5fr) minmax(140px, .8fr); gap: 10px; }
+        .wh-intake-form label { display: grid; gap: 5px; font-size: 11px; font-weight: 800; color: var(--gray-500); }
+        .wh-intake-form input,
+        .wh-intake-form select {
+            min-height: 40px;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            padding: 9px 10px;
+            background: var(--white);
+            color: var(--gray-800);
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .wh-intake-wide { grid-column: span 2; }
+        .wh-intake-actions { margin-top: 12px; }
+        .wh-intake-empty,
+        .wh-intake-loading,
+        .wh-intake-readonly {
+            padding: 14px;
+            border: 1px dashed rgba(148,163,184,.28);
+            border-radius: 12px;
+            color: var(--gray-500);
+            font-size: 13px;
+        }
         .wh-form-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -675,6 +763,9 @@
             .warehouse-location-cards { grid-template-columns: 1fr; }
             .wh-stock-mode-switcher { width: 100%; }
             .wh-stock-mode-btn { flex: 1; }
+            .wh-intake-panel-head { flex-direction: column; }
+            .wh-intake-form { grid-template-columns: 1fr; }
+            .wh-intake-wide { grid-column: auto; }
         }
     </style>
 </head>
@@ -744,6 +835,23 @@
             <div id="stockTab">
             <!-- Alert banner -->
             <div id="lowStockBanner" class="wh-alert-banner" style="display:none;"></div>
+
+            <section class="wh-intake-panel" aria-labelledby="warehouseIntakeTitle">
+                <div class="wh-intake-panel-head">
+                    <div>
+                        <div class="wh-intake-panel-kicker">Telegram bot</div>
+                        <h2 id="warehouseIntakeTitle" class="wh-intake-panel-title">Фото-приймання на склад</h2>
+                        <div class="wh-intake-panel-subtitle">Бот приймає фото, vision створює чернетку, а склад оновлюється тільки після підтвердження.</div>
+                    </div>
+                    <button type="button" id="refreshIntakeBtn" class="btn-page-secondary">Оновити intake</button>
+                </div>
+                <div id="warehouseBotStatus" class="wh-intake-status-grid">
+                    <div class="wh-intake-loading">Завантажуємо стан бота...</div>
+                </div>
+                <div id="warehouseIntakeList" class="wh-intake-list">
+                    <div class="wh-intake-loading">Завантажуємо чергу фото...</div>
+                </div>
+            </section>
 
             <div class="page-header">
                 <h2>Склад</h2>
@@ -1205,14 +1313,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.63.56"></script>
-    <script src="js/notification.js?v=0.63.56"></script>
-    <script src="js/api.js?v=0.63.56"></script>
-    <script src="js/auth.js?v=0.63.56"></script>
-    <script src="js/components/sidebar.js?v=0.63.56"></script>
+    <script src="js/config.js?v=0.63.57"></script>
+    <script src="js/notification.js?v=0.63.57"></script>
+    <script src="js/api.js?v=0.63.57"></script>
+    <script src="js/auth.js?v=0.63.57"></script>
+    <script src="js/components/sidebar.js?v=0.63.57"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/warehouse-page.js?v=0.63.56"></script>
-    <script src="js/alerts.js?v=0.63.56"></script><script>
+    <script src="js/warehouse-page.js?v=0.63.57"></script>
+    <script src="js/alerts.js?v=0.63.57"></script><script>
     // ─── Pinata Tab (v33.5) ──────────────────
     async function loadPinataTab() {
         try {
@@ -1292,6 +1400,6 @@
         loadPinataTab();
     }
     </script>
-    <script src="js/ui.js?v=0.63.56"></script>
+    <script src="js/ui.js?v=0.63.57"></script>
 </body>
 </html>

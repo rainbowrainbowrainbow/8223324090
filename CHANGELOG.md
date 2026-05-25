@@ -4,6 +4,18 @@
 
 ---
 
+## v0.63.57 - CRM 63.57: Telegram фото для складу
+
+### Склад / Telegram photo intake / vision / 25.05.2026 [codex]
+- **Telegram став реальним intake-каналом складу** - фото з webhook створює durable чернетку `warehouse_photo_intakes` із Telegram source id, фото-референсами, draft JSON, confidence, статусом і дедуплікацією по `chat_id + message_id`.
+- **Blind write заблоковано** - vision/підпис тільки готують чернетку; `warehouse_stock`, `warehouse_history` і `warehouse_stock_movements` оновлюються лише після явного підтвердження з Telegram або CRM.
+- **Vision path підключено серверно** - OpenAI Responses vision читає фото через Telegram `getFile`, повертає структуровані поля складу, а без `OPENAI_API_KEY` чесно переводить intake у ручну перевірку без фейкового успіху.
+- **CRM `Склад` отримав control center для бота** - сторінка показує стан Telegram/vision, чергу intake, останні фото-операції, inline-редагування draft, вибір існуючої позиції або створення нової.
+- **Safety rules зафіксовано** - match candidates, ambiguous-match блокування, required name/quantity/unit/category, cancel/confirm callbacks і окрема інструкція `docs/warehouse-telegram-bot-instructions.md`.
+- **Regression guardrail** - додано unit/static тест `tests/warehouse-photo-intake.test.js`, який фіксує нормалізацію draft, API/webhook/UI точки входу та заборону витоку OpenAI secret у статус.
+
+---
+
 ## v0.63.56 - CRM 63.56: таймлайн 30 хв
 
 ### Таймлайн / default granularity / 25.05.2026 [codex]

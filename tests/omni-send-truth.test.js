@@ -795,4 +795,24 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /Наслідки відключення/);
         assert.match(omniHtml, /Порядок підключення/);
     });
+
+    it('renders unique social channel identity in every Omni dialog row', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
+
+        assert.match(omniHtml, /CHANNEL_VISUALS/);
+        assert.match(omniHtml, /telegram:\s*\{\s*key:\s*'telegram'/);
+        assert.match(omniHtml, /viber:\s*\{\s*key:\s*'viber'/);
+        assert.match(omniHtml, /sms:\s*\{\s*key:\s*'sms'/);
+        assert.match(omniHtml, /facebook:\s*\{\s*key:\s*'facebook'/);
+        assert.match(omniHtml, /instagram:\s*\{\s*key:\s*'instagram'/);
+        assert.match(omniHtml, /binotel:\s*\{\s*key:\s*'binotel'/);
+        assert.match(omniHtml, /function renderChannelDot/);
+        assert.match(omniHtml, /function renderChannelBadge/);
+        assert.match(omniHtml, /renderChannelDot\(c\.channel\)/);
+        assert.match(omniHtml, /renderChannelBadge\(c\.channel,\s*'list'\)/);
+        assert.match(omniHtml, /renderChannelBadge\(conv\.channel,\s*'header'\)/);
+        assert.match(omniHtml, /omni-channel-badge--telegram/);
+        assert.match(omniHtml, /omni-channel-dot--instagram/);
+    });
 });

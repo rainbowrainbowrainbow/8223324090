@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.64.6",
+  "version": "0.64.7",
   "eventGenix": {
-    "releaseLabel": "CRM 64.6: Telegram inbox send and webhook lock"
+    "releaseLabel": "CRM 64.7: Omni dialog channel badges"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

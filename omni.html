@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.64.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.64.6">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.64.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.64.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.64.6">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.6">
+    <link rel="stylesheet" href="css/base.css?v=0.64.7">
+    <link rel="stylesheet" href="css/layout.css?v=0.64.7">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.64.7">
+    <link rel="stylesheet" href="css/pages.css?v=0.64.7">
+    <link rel="stylesheet" href="css/modals.css?v=0.64.7">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.64.7">
+    <link rel="stylesheet" href="css/responsive.css?v=0.64.7">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.64.7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -642,6 +642,11 @@
             background: var(--accent-bg, rgba(245,200,66,0.1));
         }
 
+        .omni-conv-avatar-shell {
+            position: relative;
+            flex-shrink: 0;
+        }
+
         .omni-conv-avatar {
             width: 40px;
             height: 40px;
@@ -662,18 +667,44 @@
         .omni-conv-avatar.ch-instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
         .omni-conv-avatar.ch-binotel { background: #ff6b35; }
 
+        .omni-channel-dot {
+            position: absolute;
+            right: -3px;
+            bottom: -3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 900;
+            color: #fff;
+            border: 2px solid var(--bg-secondary, #15132b);
+            box-shadow: 0 4px 10px rgba(0,0,0,.28);
+            line-height: 1;
+        }
+
         .omni-conv-info {
             flex: 1;
             min-width: 0;
         }
 
+        .omni-conv-title-row {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+            margin-bottom: 2px;
+        }
+
         .omni-conv-name {
             font-weight: 700;
             font-size: 14px;
-            margin-bottom: 2px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            min-width: 0;
         }
 
         .omni-conv-preview {
@@ -704,6 +735,104 @@
             display: inline-block;
             margin-top: 4px;
         }
+
+        .omni-channel-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-width: 0;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 999px;
+            font-size: 10px;
+            line-height: 1;
+            font-weight: 900;
+            letter-spacing: .02em;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .omni-channel-badge-icon {
+            font-size: 10px;
+            line-height: 1;
+            font-weight: 900;
+        }
+
+        .omni-channel-badge--list {
+            padding: 4px 7px;
+        }
+
+        .omni-channel-badge--header {
+            padding: 5px 9px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .omni-channel-badge--telegram,
+        .omni-channel-dot--telegram {
+            background: rgba(0,136,204,.18);
+            color: #7dd3fc;
+            border-color: rgba(0,136,204,.5);
+        }
+
+        .omni-channel-dot--telegram { background: #0088cc; color: #fff; }
+
+        .omni-channel-badge--viber,
+        .omni-channel-dot--viber {
+            background: rgba(115,96,242,.2);
+            color: #c7bfff;
+            border-color: rgba(115,96,242,.55);
+        }
+
+        .omni-channel-dot--viber { background: #7360f2; color: #fff; }
+
+        .omni-channel-badge--sms,
+        .omni-channel-dot--sms {
+            background: rgba(72,187,120,.16);
+            color: #86efac;
+            border-color: rgba(72,187,120,.45);
+        }
+
+        .omni-channel-dot--sms { background: #22a65a; color: #fff; }
+
+        .omni-channel-badge--facebook,
+        .omni-channel-dot--facebook {
+            background: rgba(24,119,242,.18);
+            color: #93c5fd;
+            border-color: rgba(24,119,242,.5);
+        }
+
+        .omni-channel-dot--facebook { background: #1877f2; color: #fff; }
+
+        .omni-channel-badge--instagram,
+        .omni-channel-dot--instagram {
+            background: linear-gradient(45deg, rgba(240,148,51,.24), rgba(220,39,67,.22), rgba(188,24,136,.22));
+            color: #ffd6ec;
+            border-color: rgba(220,39,67,.42);
+        }
+
+        .omni-channel-dot--instagram {
+            background: linear-gradient(45deg, #f09433, #dc2743, #bc1888);
+            color: #fff;
+        }
+
+        .omni-channel-badge--binotel,
+        .omni-channel-dot--binotel {
+            background: rgba(255,107,53,.18);
+            color: #fdba74;
+            border-color: rgba(255,107,53,.48);
+        }
+
+        .omni-channel-dot--binotel { background: #ff6b35; color: #fff; }
+
+        .omni-channel-badge--unknown,
+        .omni-channel-dot--unknown {
+            background: rgba(148,163,184,.18);
+            color: #cbd5e1;
+            border-color: rgba(148,163,184,.38);
+        }
+
+        .omni-channel-dot--unknown { background: #64748b; color: #fff; }
 
         .omni-conv-waiting {
             display: inline-flex;
@@ -1613,12 +1742,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.64.6"></script>
-    <script src="js/api.js?v=0.64.6"></script>
-    <script src="js/auth.js?v=0.64.6"></script>
-    <script src="js/components/sidebar.js?v=0.64.6"></script>
+    <script src="js/config.js?v=0.64.7"></script>
+    <script src="js/api.js?v=0.64.7"></script>
+    <script src="js/auth.js?v=0.64.7"></script>
+    <script src="js/components/sidebar.js?v=0.64.7"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.64.6"></script>
+    <script src="js/ws.js?v=0.64.7"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -1702,10 +1831,20 @@
         }
 
         // ---- Channel icons ----
-        const CHANNEL_ICONS = {
-            telegram: 'TG', viber: 'Vi', sms: 'SM',
-            facebook: 'FB', instagram: 'IG', binotel: 'Bi'
+        const CHANNEL_VISUALS = {
+            telegram: { key: 'telegram', label: 'Telegram', short: 'TG', icon: '↗' },
+            viber: { key: 'viber', label: 'Viber', short: 'VB', icon: '☎' },
+            sms: { key: 'sms', label: 'SMS', short: 'SMS', icon: '✉' },
+            facebook: { key: 'facebook', label: 'Facebook', short: 'FB', icon: 'f' },
+            instagram: { key: 'instagram', label: 'Instagram', short: 'IG', icon: '◎' },
+            binotel: { key: 'binotel', label: 'Телефонія', short: 'Tel', icon: '☎' },
+            report_bot: { key: 'telegram', label: 'Telegram reports', short: 'TG', icon: '↗' },
+            unknown: { key: 'unknown', label: 'Канал', short: 'CH', icon: '•' }
         };
+
+        const CHANNEL_ICONS = Object.fromEntries(
+            Object.entries(CHANNEL_VISUALS).map(([channel, visual]) => [channel, visual.short])
+        );
 
         const CHANNEL_NAMES = {
             telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
@@ -1713,6 +1852,25 @@
             report_bot: 'Бот звітів'
         };
         const SEND_DISABLED_CHANNELS = new Set(['binotel']);
+
+        function getChannelVisual(channel) {
+            const key = String(channel || '').toLowerCase().trim();
+            return CHANNEL_VISUALS[key] || { ...CHANNEL_VISUALS.unknown, label: CHANNEL_NAMES[key] || key || CHANNEL_VISUALS.unknown.label };
+        }
+
+        function renderChannelDot(channel) {
+            const visual = getChannelVisual(channel);
+            return '<span class="omni-channel-dot omni-channel-dot--' + esc(visual.key) + '" title="' + esc('Канал: ' + visual.label) + '" aria-hidden="true">' + esc(visual.icon) + '</span>';
+        }
+
+        function renderChannelBadge(channel, variant = 'list') {
+            const visual = getChannelVisual(channel);
+            const text = variant === 'header' ? visual.label : visual.short;
+            return '<span class="omni-channel-badge omni-channel-badge--' + esc(visual.key) + ' omni-channel-badge--' + esc(variant) + '" aria-label="' + esc('Канал: ' + visual.label) + '" title="' + esc('Канал: ' + visual.label) + '">' +
+                '<span class="omni-channel-badge-icon" aria-hidden="true">' + esc(visual.icon) + '</span>' +
+                '<span>' + esc(text) + '</span>' +
+            '</span>';
+        }
 
         function setOmniMode(mode) {
             const nextMode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
@@ -2225,9 +2383,15 @@
                 const badge = c.unreadCount > 0 ? '<span class="omni-conv-badge">' + c.unreadCount + '</span>' : '';
                 const waiting = replyWaitingBadge(c);
                 return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '">' +
-                    '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
+                    '<div class="omni-conv-avatar-shell">' +
+                        '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
+                        renderChannelDot(c.channel) +
+                    '</div>' +
                     '<div class="omni-conv-info">' +
-                        '<div class="omni-conv-name">' + esc(c.customerName || c.externalId) + '</div>' +
+                        '<div class="omni-conv-title-row">' +
+                            '<div class="omni-conv-name">' + esc(c.customerName || c.externalId) + '</div>' +
+                            renderChannelBadge(c.channel, 'list') +
+                        '</div>' +
                         '<div class="omni-conv-preview">' + esc(c.lastMessage || '') + '</div>' +
                     '</div>' +
                     '<div class="omni-conv-meta">' +
@@ -2550,7 +2714,7 @@
             quickRepliesEl.style.display = 'flex';
 
             $('omniChatName').textContent = conv.customerName || conv.externalId;
-            $('omniChatChannel').innerHTML = esc(CHANNEL_NAMES[conv.channel] || conv.channel) + replyWaitingBadge(conv, 'omni-reply-state');
+            $('omniChatChannel').innerHTML = renderChannelBadge(conv.channel, 'header') + replyWaitingBadge(conv, 'omni-reply-state');
             $('omniChatAvatar').className = 'omni-conv-avatar ch-' + conv.channel;
             $('omniChatAvatar').textContent = (conv.customerName || conv.externalId || '?').slice(0, 2).toUpperCase();
 
@@ -2872,7 +3036,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.64.6"></script>
-    <script src="js/alerts.js?v=0.64.6"></script>
+    </script><script src="js/ui.js?v=0.64.7"></script>
+    <script src="js/alerts.js?v=0.64.7"></script>
 </body>
 </html>

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.3 - CRM 66.3: Timeline toolbar layout fix
+
+### Timeline / header controls / 25.05.2026 [codex]
+- **Верхній тулбар таймлайну більше не накладає контроли** - дата, статуси, період, zoom/utility-кнопки й праві дії отримали стабільні grid-areas для desktop і laptop ширин.
+- **Меню `Дії` не обрізається всередині тулбара** - timeline control panel більше не кліпить dropdown через laptop `overflow: hidden`, а contextual action menu має власний stacking layer над сіткою.
+- **Праві дії лишилися доступними** - `Продажі`, `Експорт` і contextual `Дії` розведені по явних рядках/колонках без приховування функцій.
+- **Regression guardrail** - UI smoke фіксує новий responsive-контракт: visible overflow для тулбара, явні grid areas і високий z-index для action menu.
+
+---
+
 ## v0.66.2 - CRM 66.2: Account password reset activation
 
 ### HR Accounts / password reset activation / 25.05.2026 [codex]

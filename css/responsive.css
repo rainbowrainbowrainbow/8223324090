@@ -182,6 +182,145 @@
     }
 }
 
+/* v0.66.3: timeline toolbar header keeps action menus outside clipping containers. */
+@media (min-width: 769px) {
+    body.timeline-dashboard-page .control-panel {
+        position: relative;
+        z-index: 30;
+        isolation: isolate;
+        overflow: visible !important;
+        align-items: stretch !important;
+    }
+
+    body.timeline-dashboard-page .control-panel > * {
+        min-width: 0 !important;
+    }
+
+    body.timeline-dashboard-page .date-controls,
+    body.timeline-dashboard-page .status-filter-controls,
+    body.timeline-dashboard-page .view-mode-controls,
+    body.timeline-dashboard-page .v32-controls,
+    body.timeline-dashboard-page .action-buttons {
+        align-self: center;
+    }
+
+    body.timeline-dashboard-page .v32-controls {
+        min-height: 42px;
+        align-items: center;
+        row-gap: 6px;
+    }
+
+    body.timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] {
+        position: relative;
+        z-index: 60;
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content {
+        z-index: 300;
+        max-width: min(280px, calc(100vw - 32px));
+    }
+
+    body.timeline-dashboard-page .timeline-container {
+        position: relative;
+        z-index: 1;
+    }
+}
+
+@media (min-width: 1181px) and (max-width: 1536px) {
+    body.timeline-dashboard-page .control-panel {
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 0.84fr) minmax(max-content, auto) !important;
+        grid-template-rows: auto auto !important;
+        gap: 8px 10px !important;
+        grid-template-areas:
+            "date status view"
+            "tools tools actions";
+    }
+
+    body.timeline-dashboard-page .date-controls {
+        grid-area: date !important;
+        justify-content: flex-start !important;
+    }
+
+    body.timeline-dashboard-page .status-filter-controls {
+        grid-area: status !important;
+        justify-self: stretch !important;
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .view-mode-controls {
+        grid-area: view !important;
+        justify-self: end !important;
+        width: auto !important;
+    }
+
+    body.timeline-dashboard-page .view-mode-controls .period-selector {
+        width: auto !important;
+    }
+
+    body.timeline-dashboard-page .v32-controls {
+        grid-area: tools !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+        max-width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .action-buttons {
+        grid-area: actions !important;
+        justify-self: end !important;
+        align-self: center !important;
+        flex-wrap: wrap !important;
+        max-width: 100% !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1180px) {
+    body.timeline-dashboard-page .control-panel {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.82fr) !important;
+        grid-template-rows: auto auto auto !important;
+        grid-template-areas:
+            "date status"
+            "tools view"
+            "actions actions";
+        gap: 8px 10px !important;
+    }
+
+    body.timeline-dashboard-page .date-controls {
+        grid-area: date !important;
+        justify-content: flex-start !important;
+    }
+
+    body.timeline-dashboard-page .status-filter-controls {
+        grid-area: status !important;
+        justify-self: stretch !important;
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .view-mode-controls {
+        grid-area: view !important;
+        justify-self: stretch !important;
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .view-mode-controls .period-selector {
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .v32-controls {
+        grid-area: tools !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+        max-width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .action-buttons {
+        grid-area: actions !important;
+        justify-self: end !important;
+        flex-wrap: wrap !important;
+        max-width: 100% !important;
+    }
+}
+
 /* v5.35: Backdrop fade-in animation */
 @keyframes backdropFadeIn {
     from { opacity: 0; }

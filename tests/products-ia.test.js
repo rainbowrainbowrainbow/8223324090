@@ -38,6 +38,11 @@ test('products compatibility page keeps business-aware products IA with restored
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
+    assert.match(html, /product-doc-modal-card/);
+    assert.match(html, /id="productDocFeedback"/);
+    assert.match(html, /id="productDocCloseBtn"/);
+    assert.match(html, /id="productDocUrlError"/);
+    assert.match(html, /product-doc-check-card/);
     assert.match(sidebar, /href: '\/programs'/);
     assert.match(sidebar, /href: '\/programs#animation'/);
     assert.match(sidebar, /href: '\/programs#kitchen-cakes'/);
@@ -78,6 +83,12 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /sourceDocumentVerifiedManual/);
     assert.match(pageJs, /sourceCardMatchesDocument/);
     assert.match(pageJs, /openProductDocumentModal/);
+    assert.match(pageJs, /validateProductDocumentPayload/);
+    assert.match(pageJs, /setProductDocumentSaving/);
+    assert.match(pageJs, /normalizeProductDocumentError/);
+    assert.match(pageJs, /productDocumentSaving/);
+    assert.match(pageJs, /Щоб закрити без змін/);
+    assert.match(pageJs, /confirmModal\('Відвʼязати документ від цієї картки продукту\?'/);
     assert.match(apiJs, /apiGetProductCatalogs/);
     assert.match(apiJs, /apiUpdateProductDocument/);
     assert.match(apiJs, /addProductBusinessContextParam/);

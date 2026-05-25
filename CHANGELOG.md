@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.51 - CRM 63.51: документи продуктів
+
+### Products / document-link modal / 25.05.2026 [codex]
+- **Modal `Документ програми` приведено до сучасного CRM UI** - додано polished shell, header, mode note, field rhythm, checkbox cards, inline feedback і responsive action footer.
+- **Create/edit/save flow став робочим до backend-запиту** - URL, назва й тип документа валідовуються у frontend, помилки показуються біля полів українською, а backend validation errors нормалізуються для користувача.
+- **Стан після save/unlink синхронний із карткою** - успішний `PATCH /api/products/:id/source-document` одразу оновлює product card, edit mode відкривається з prefilled values, unlink проходить через shared confirm.
+- **Захист від випадкової втрати змін** - backdrop click більше не закриває modal мовчки, Escape/close/cancel лишаються явними шляхами виходу, loading state блокує повторні save/unlink натискання.
+- **Regression guardrail** - `products-ia.test.js` фіксує modal shell, validation/feedback hooks, loading state, guarded unlink і document-link API wiring.
+
+---
+
 ## v0.63.50 - CRM 63.50: єдиний toolbar таймлайну
 
 ### Таймлайн / toolbar / visual system / 25.05.2026 [codex]

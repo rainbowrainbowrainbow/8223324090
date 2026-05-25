@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.63.50">
-    <link rel="stylesheet" href="css/layout.css?v=0.63.50">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.50">
-    <link rel="stylesheet" href="css/pages.css?v=0.63.50">
-    <link rel="stylesheet" href="css/modals.css?v=0.63.50">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.50">
-    <link rel="stylesheet" href="css/responsive.css?v=0.63.50">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.50">
+    <link rel="stylesheet" href="css/base.css?v=0.63.51">
+    <link rel="stylesheet" href="css/layout.css?v=0.63.51">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.63.51">
+    <link rel="stylesheet" href="css/pages.css?v=0.63.51">
+    <link rel="stylesheet" href="css/modals.css?v=0.63.51">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.63.51">
+    <link rel="stylesheet" href="css/responsive.css?v=0.63.51">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.63.51">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -530,39 +530,253 @@
             line-height: 1.42;
         }
 
-        .product-doc-modal .modal-content {
-            max-width: 560px;
+        .product-doc-modal .product-doc-modal-card {
+            width: min(620px, calc(100vw - 28px));
+            max-width: 620px;
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid rgba(20, 184, 166, 0.22);
+            border-radius: 22px;
+            background:
+                radial-gradient(circle at 12% 0%, rgba(20, 184, 166, 0.16), transparent 34%),
+                var(--card-bg, #ffffff);
+            box-shadow: 0 28px 76px rgba(15, 23, 42, 0.24);
         }
 
-        .product-doc-modal .form-field {
-            margin-bottom: 12px;
+        .product-doc-modal-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 22px 24px 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .product-doc-modal-eyebrow {
+            margin: 0 0 6px;
+            color: var(--primary-dark, #0f766e);
+            font-size: 12px;
+            font-weight: 900;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .product-doc-modal h3 {
+            margin: 0;
+            color: var(--text-primary, #0f172a);
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1.12;
+        }
+
+        .product-doc-product-name {
+            margin: 8px 0 0;
+            color: var(--gray-500, #64748b);
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .product-doc-icon-close {
+            display: inline-grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 38px;
+            height: 38px;
+            border: 1px solid rgba(148, 163, 184, 0.26);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--gray-500, #64748b);
+            font: inherit;
+            font-size: 22px;
+            font-weight: 900;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .product-doc-icon-close:hover,
+        .product-doc-icon-close:focus-visible {
+            border-color: rgba(20, 184, 166, 0.38);
+            color: var(--text-primary, #0f172a);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
+        }
+
+        .product-doc-mode-note {
+            margin: 16px 24px 0;
+            padding: 12px 14px;
+            border: 1px solid rgba(20, 184, 166, 0.22);
+            border-radius: 14px;
+            background: rgba(20, 184, 166, 0.08);
+            color: var(--gray-600, #475569);
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.45;
+        }
+
+        .product-doc-form-grid {
+            display: grid;
+            gap: 14px;
+            padding: 18px 24px 0;
+        }
+
+        .product-doc-field {
+            display: grid;
+            gap: 7px;
+            margin: 0;
+        }
+
+        .product-doc-field label {
+            color: var(--gray-600, #475569);
+            font-size: 12px;
+            font-weight: 900;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .product-doc-required {
+            color: var(--danger-color, #ef4444);
         }
 
         .product-doc-modal input[type="text"],
         .product-doc-modal input[type="url"],
         .product-doc-modal select {
             width: 100%;
+            min-height: 46px;
+            padding: 0 14px;
+            border: 1px solid rgba(148, 163, 184, 0.26);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.82);
+            color: var(--text-primary, #0f172a);
+            font: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
         }
 
-        .product-doc-modal .doc-checkboxes {
-            display: grid;
-            gap: 8px;
-            margin: 12px 0;
+        .product-doc-modal input::placeholder {
+            color: rgba(100, 116, 139, 0.76);
         }
 
-        .product-doc-modal .doc-checkboxes label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .product-doc-modal input:focus-visible,
+        .product-doc-modal select:focus-visible {
+            border-color: rgba(20, 184, 166, 0.52);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
+        }
+
+        .product-doc-modal input[aria-invalid="true"],
+        .product-doc-modal select[aria-invalid="true"] {
+            border-color: rgba(239, 68, 68, 0.58);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+        }
+
+        .product-doc-field-hint,
+        .product-doc-field-error {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .product-doc-field-hint {
+            color: var(--gray-500, #64748b);
             font-weight: 700;
+        }
+
+        .product-doc-field-error {
+            min-height: 16px;
+            color: #dc2626;
+            font-weight: 900;
+        }
+
+        .product-doc-checks-panel {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            padding: 0 24px;
+            margin-top: 14px;
+        }
+
+        .product-doc-check-card {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: start;
+            gap: 10px;
+            min-width: 0;
+            padding: 13px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.035);
+            cursor: pointer;
+        }
+
+        .product-doc-check-card input {
+            width: 18px;
+            height: 18px;
+            margin-top: 1px;
+            accent-color: var(--primary-color, #14b8a6);
+        }
+
+        .product-doc-check-card strong {
+            display: block;
+            color: var(--text-primary, #0f172a);
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1.25;
+        }
+
+        .product-doc-check-card small {
+            display: block;
+            margin-top: 4px;
+            color: var(--gray-500, #64748b);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        .product-doc-check-card:has(input:checked) {
+            border-color: rgba(20, 184, 166, 0.36);
+            background: rgba(20, 184, 166, 0.10);
+        }
+
+        .product-doc-feedback {
+            min-height: 20px;
+            margin: 14px 24px 0;
+            color: var(--gray-500, #64748b);
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        .product-doc-feedback.is-error {
+            color: #dc2626;
+        }
+
+        .product-doc-feedback.is-saving {
+            color: var(--primary-dark, #0f766e);
         }
 
         .product-doc-modal-actions {
             display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 18px 24px 22px;
+            border-top: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .product-doc-modal-actions-main {
+            display: flex;
             flex-wrap: wrap;
-            gap: 8px;
             justify-content: flex-end;
-            margin-top: 16px;
+            gap: 8px;
+        }
+
+        .product-doc-modal-actions button {
+            min-height: 42px;
         }
 
         body.dark-mode .product-ia-tabs,
@@ -587,18 +801,65 @@
             border-color: rgba(255, 255, 255, 0.10);
         }
 
+        body.dark-mode .product-doc-modal .product-doc-modal-card,
+        [data-theme="dark"] .product-doc-modal .product-doc-modal-card {
+            background:
+                radial-gradient(circle at 12% 0%, rgba(20, 184, 166, 0.16), transparent 34%),
+                rgba(17, 24, 39, 0.98);
+            border-color: rgba(255, 255, 255, 0.10);
+            box-shadow: 0 32px 88px rgba(0, 0, 0, 0.46);
+        }
+
+        body.dark-mode .product-doc-modal-head,
+        body.dark-mode .product-doc-modal-actions,
+        [data-theme="dark"] .product-doc-modal-head,
+        [data-theme="dark"] .product-doc-modal-actions {
+            border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        body.dark-mode .product-doc-modal input[type="text"],
+        body.dark-mode .product-doc-modal input[type="url"],
+        body.dark-mode .product-doc-modal select,
+        body.dark-mode .product-doc-icon-close,
+        [data-theme="dark"] .product-doc-modal input[type="text"],
+        [data-theme="dark"] .product-doc-modal input[type="url"],
+        [data-theme="dark"] .product-doc-modal select,
+        [data-theme="dark"] .product-doc-icon-close {
+            background: rgba(15, 23, 42, 0.72);
+            border-color: rgba(255, 255, 255, 0.12);
+            color: #f8fafc;
+        }
+
+        body.dark-mode .product-doc-mode-note,
+        body.dark-mode .product-doc-check-card,
+        [data-theme="dark"] .product-doc-mode-note,
+        [data-theme="dark"] .product-doc-check-card {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        body.dark-mode .product-doc-check-card:has(input:checked),
+        [data-theme="dark"] .product-doc-check-card:has(input:checked) {
+            background: rgba(20, 184, 166, 0.13);
+            border-color: rgba(45, 212, 191, 0.34);
+        }
+
         body.dark-mode .product-doc-empty,
         [data-theme="dark"] .product-doc-empty {
             background: rgba(245, 158, 11, 0.08);
         }
 
         body.dark-mode .product-doc-title,
+        body.dark-mode .product-doc-modal h3,
+        body.dark-mode .product-doc-check-card strong,
         body.dark-mode .product-catalog-title,
         body.dark-mode .business-context-select,
         body.dark-mode .business-variant-head h3,
         body.dark-mode .maysternya-product-card h4,
         body.dark-mode .kitchen-detail-item span,
         [data-theme="dark"] .product-doc-title,
+        [data-theme="dark"] .product-doc-modal h3,
+        [data-theme="dark"] .product-doc-check-card strong,
         [data-theme="dark"] .product-catalog-title,
         [data-theme="dark"] .business-context-select,
         [data-theme="dark"] .business-variant-head h3,
@@ -634,6 +895,34 @@
             .product-doc-actions button {
                 width: 100%;
                 justify-content: center;
+            }
+
+            .product-doc-checks-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .product-doc-modal-head,
+            .product-doc-form-grid,
+            .product-doc-checks-panel,
+            .product-doc-feedback,
+            .product-doc-modal-actions {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .product-doc-mode-note {
+                margin-left: 16px;
+                margin-right: 16px;
+            }
+
+            .product-doc-modal-actions {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .product-doc-modal-actions-main,
+            .product-doc-modal-actions button {
+                width: 100%;
             }
 
             .product-catalog-card {
@@ -897,34 +1186,68 @@
         </main>
     </div>
 
-    <div id="productDocumentModal" class="modal hidden product-doc-modal" role="dialog" aria-modal="true" aria-labelledby="productDocModalTitle">
-        <div class="modal-content modal-medium">
-            <h3 id="productDocModalTitle">Документ програми</h3>
-            <p id="productDocProductName" class="muted"></p>
-            <div class="form-field">
-                <label for="productDocUrl">URL документа</label>
-                <input type="url" id="productDocUrl" placeholder="https://docs.google.com/document/d/...">
+    <div id="productDocumentModal" class="modal hidden product-doc-modal" role="dialog" aria-modal="true" aria-labelledby="productDocModalTitle" aria-describedby="productDocModeNote productDocFeedback">
+        <div class="modal-content modal-medium product-doc-modal-card">
+            <div class="product-doc-modal-head">
+                <div>
+                    <p class="product-doc-modal-eyebrow">Products · документ</p>
+                    <h3 id="productDocModalTitle">Документ програми</h3>
+                    <p id="productDocProductName" class="product-doc-product-name"></p>
+                </div>
+                <button type="button" id="productDocCloseBtn" class="product-doc-icon-close" aria-label="Закрити модальне вікно">×</button>
             </div>
-            <div class="form-field">
-                <label for="productDocTitle">Назва документа</label>
-                <input type="text" id="productDocTitle" placeholder="Анімація — базова картка v2">
+
+            <p id="productDocModeNote" class="product-doc-mode-note">Додайте посилання на Google Doc, PDF або інший документ, який є джерелом правди для цієї картки продукту.</p>
+
+            <div class="product-doc-form-grid">
+                <div class="form-field product-doc-field" data-doc-field="url">
+                    <label for="productDocUrl">URL документа <span class="product-doc-required">*</span></label>
+                    <input type="url" id="productDocUrl" placeholder="https://docs.google.com/document/d/..." autocomplete="off" aria-describedby="productDocUrlHint productDocUrlError">
+                    <p id="productDocUrlHint" class="product-doc-field-hint">Підтримуються тільки http/https посилання.</p>
+                    <p id="productDocUrlError" class="product-doc-field-error" role="alert"></p>
+                </div>
+                <div class="form-field product-doc-field" data-doc-field="title">
+                    <label for="productDocTitle">Назва документа <span class="product-doc-required">*</span></label>
+                    <input type="text" id="productDocTitle" placeholder="Анімація — базова картка v2" autocomplete="off" maxlength="240" aria-describedby="productDocTitleHint productDocTitleError">
+                    <p id="productDocTitleHint" class="product-doc-field-hint">Назва буде показана у картці продукту.</p>
+                    <p id="productDocTitleError" class="product-doc-field-error" role="alert"></p>
+                </div>
+                <div class="form-field product-doc-field" data-doc-field="kind">
+                    <label for="productDocKind">Тип документа <span class="product-doc-required">*</span></label>
+                    <select id="productDocKind" aria-describedby="productDocKindError">
+                        <option value="google_doc">Google Doc</option>
+                        <option value="pdf">PDF</option>
+                        <option value="link">Інший URL</option>
+                    </select>
+                    <p id="productDocKindError" class="product-doc-field-error" role="alert"></p>
+                </div>
             </div>
-            <div class="form-field">
-                <label for="productDocKind">Тип документа</label>
-                <select id="productDocKind">
-                    <option value="google_doc">Google Doc</option>
-                    <option value="pdf">PDF</option>
-                    <option value="link">Інший URL</option>
-                </select>
+
+            <div class="product-doc-checks-panel">
+                <label class="product-doc-check-card" for="productDocVerified">
+                    <input type="checkbox" id="productDocVerified">
+                    <span>
+                        <strong>Картку перевірено вручну</strong>
+                        <small>Позначає, що менеджер звірив дані в CRM із документом.</small>
+                    </span>
+                </label>
+                <label class="product-doc-check-card" for="productDocMatches">
+                    <input type="checkbox" id="productDocMatches">
+                    <span>
+                        <strong>Картка відповідає документу</strong>
+                        <small>Вмикайте тільки коли опис, ціна й умови збігаються з джерелом.</small>
+                    </span>
+                </label>
             </div>
-            <div class="doc-checkboxes">
-                <label><input type="checkbox" id="productDocVerified"> Картку перевірено вручну</label>
-                <label><input type="checkbox" id="productDocMatches"> Картка відповідає документу</label>
-            </div>
+
+            <p id="productDocFeedback" class="product-doc-feedback" role="status" aria-live="polite"></p>
+
             <div class="product-doc-modal-actions">
                 <button type="button" id="productDocUnlinkBtn" class="btn-page-danger">Відвʼязати</button>
-                <button type="button" id="productDocCancelBtn" class="btn-page-secondary">Скасувати</button>
-                <button type="button" id="productDocSaveBtn" class="btn-page-primary">Зберегти</button>
+                <div class="product-doc-modal-actions-main">
+                    <button type="button" id="productDocCancelBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="button" id="productDocSaveBtn" class="btn-page-primary">Зберегти</button>
+                </div>
             </div>
         </div>
     </div>
@@ -944,13 +1267,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.63.50"></script>
-    <script src="js/config.js?v=0.63.50"></script>
-    <script src="js/notification.js?v=0.63.50"></script>
-    <script src="js/api.js?v=0.63.50"></script>
-    <script src="js/auth.js?v=0.63.50"></script>
-    <script src="js/components/sidebar.js?v=0.63.50"></script>
+    <script src="js/ui.js?v=0.63.51"></script>
+    <script src="js/config.js?v=0.63.51"></script>
+    <script src="js/notification.js?v=0.63.51"></script>
+    <script src="js/api.js?v=0.63.51"></script>
+    <script src="js/auth.js?v=0.63.51"></script>
+    <script src="js/components/sidebar.js?v=0.63.51"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.63.50"></script><script src="js/alerts.js?v=0.63.50"></script>
+    <script src="js/programs-page.js?v=0.63.51"></script><script src="js/alerts.js?v=0.63.51"></script>
 </body>
 </html>

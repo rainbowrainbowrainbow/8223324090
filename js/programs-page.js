@@ -112,9 +112,18 @@ async function initPage() {
     document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
     document.getElementById('productDocSaveBtn')?.addEventListener('click', saveProductDocument);
     document.getElementById('productDocCancelBtn')?.addEventListener('click', closeProductDocumentModal);
+    document.getElementById('productDocCloseBtn')?.addEventListener('click', closeProductDocumentModal);
+    document.getElementById('productDocKind')?.addEventListener('change', syncProductDocumentKindHint);
     document.getElementById('productDocUnlinkBtn')?.addEventListener('click', unlinkProductDocument);
     document.getElementById('productDocumentModal')?.addEventListener('click', (event) => {
-        if (event.target?.id === 'productDocumentModal') closeProductDocumentModal();
+        if (event.target?.id === 'productDocumentModal') {
+            setProductDocumentFeedback('Щоб закрити без змін, натисніть «Скасувати».', 'error');
+        }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !productDocumentSaving && !document.getElementById('productDocumentModal')?.classList.contains('hidden')) {
+            closeProductDocumentModal();
+        }
     });
 }
 
@@ -215,6 +224,10 @@ let allProducts = [];
 let productCatalogs = [];
 let catalogEntriesLoaded = false;
 let editingDocumentProductId = null;
+let productDocumentSaving = false;
+let productDocumentLastFocus = null;
+
+const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
 
 const MENU_SECTION_ORDER = [
     'Холодні закуски',
@@ -770,64 +783,243 @@ function renderDocumentPanel(product, canManage) {
 // PRODUCT DOCUMENT MODAL
 // ==========================================
 
+function getProductDocumentElements() {
+    return {
+        modal: document.getElementById('productDocumentModal'),
+        title: document.getElementById('productDocModalTitle'),
+        productName: document.getElementById('productDocProductName'),
+        modeNote: document.getElementById('productDocModeNote'),
+        url: document.getElementById('productDocUrl'),
+        docTitle: document.getElementById('productDocTitle'),
+        kind: document.getElementById('productDocKind'),
+        verified: document.getElementById('productDocVerified'),
+        matches: document.getElementById('productDocMatches'),
+        unlink: document.getElementById('productDocUnlinkBtn'),
+        save: document.getElementById('productDocSaveBtn'),
+        cancel: document.getElementById('productDocCancelBtn'),
+        close: document.getElementById('productDocCloseBtn'),
+        feedback: document.getElementById('productDocFeedback')
+    };
+}
+
+function setProductDocumentFeedback(message = '', type = '') {
+    const feedback = document.getElementById('productDocFeedback');
+    if (!feedback) return;
+    feedback.textContent = message;
+    feedback.classList.toggle('is-error', type === 'error');
+    feedback.classList.toggle('is-saving', type === 'saving');
+}
+
+function setProductDocumentFieldError(fieldId, message = '') {
+    const input = document.getElementById(fieldId);
+    const errorEl = document.getElementById(`${fieldId}Error`);
+    if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    if (errorEl) errorEl.textContent = message;
+}
+
+function clearProductDocumentValidation() {
+    ['productDocUrl', 'productDocTitle', 'productDocKind'].forEach(id => setProductDocumentFieldError(id, ''));
+    setProductDocumentFeedback('');
+}
+
+function syncProductDocumentKindHint() {
+    const kind = document.getElementById('productDocKind')?.value || 'google_doc';
+    const url = document.getElementById('productDocUrl');
+    const hint = document.getElementById('productDocUrlHint');
+    const hintText = {
+        google_doc: 'Посилання на Google Doc з описом, умовами або техкартою програми.',
+        pdf: 'Пряме http/https посилання на PDF-документ.',
+        link: 'Будь-який робочий http/https URL, що є джерелом для картки.'
+    };
+    if (hint) hint.textContent = hintText[kind] || hintText.link;
+    if (url && !url.value) {
+        url.placeholder = kind === 'pdf'
+            ? 'https://example.com/program.pdf'
+            : kind === 'link'
+                ? 'https://example.com/program-source'
+                : 'https://docs.google.com/document/d/...';
+    }
+}
+
+function setProductDocumentSaving(isSaving, action = 'save') {
+    productDocumentSaving = isSaving;
+    const elements = getProductDocumentElements();
+    [elements.url, elements.docTitle, elements.kind, elements.verified, elements.matches, elements.cancel, elements.close].forEach(el => {
+        if (el) el.disabled = isSaving;
+    });
+    if (elements.save) {
+        elements.save.disabled = isSaving;
+        elements.save.textContent = isSaving ? 'Зберігаю…' : 'Зберегти';
+    }
+    if (elements.unlink) {
+        elements.unlink.disabled = isSaving;
+        if (isSaving && action === 'unlink') elements.unlink.textContent = 'Відвʼязую…';
+        else elements.unlink.textContent = 'Відвʼязати';
+    }
+    if (isSaving) {
+        setProductDocumentFeedback(action === 'unlink' ? 'Відвʼязую документ…' : 'Зберігаю документ…', 'saving');
+    }
+}
+
+function readProductDocumentPayload() {
+    const elements = getProductDocumentElements();
+    return {
+        businessContext: getProductApiBusinessContext(),
+        sourceDocumentUrl: elements.url?.value.trim() || '',
+        sourceDocumentTitle: elements.docTitle?.value.trim() || '',
+        sourceDocumentKind: elements.kind?.value || 'google_doc',
+        sourceDocumentVerifiedManual: elements.verified?.checked === true,
+        sourceCardMatchesDocument: elements.matches?.checked === true
+    };
+}
+
+function validateProductDocumentPayload(payload) {
+    const errors = {};
+    if (!payload.sourceDocumentUrl) {
+        errors.productDocUrl = 'Вставте URL документа.';
+    } else {
+        try {
+            const parsed = new URL(payload.sourceDocumentUrl);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                errors.productDocUrl = 'URL має починатися з http або https.';
+            }
+        } catch {
+            errors.productDocUrl = 'Вставте коректний URL документа.';
+        }
+    }
+    if (!payload.sourceDocumentTitle) {
+        errors.productDocTitle = 'Вкажіть назву документа.';
+    }
+    if (!SOURCE_DOCUMENT_KIND_VALUES.has(payload.sourceDocumentKind)) {
+        errors.productDocKind = 'Оберіть тип документа.';
+    }
+    return errors;
+}
+
+function showProductDocumentValidation(errors) {
+    clearProductDocumentValidation();
+    Object.entries(errors).forEach(([fieldId, message]) => setProductDocumentFieldError(fieldId, message));
+    const firstField = Object.keys(errors)[0];
+    if (firstField) {
+        document.getElementById(firstField)?.focus();
+        setProductDocumentFeedback('Перевірте обовʼязкові поля перед збереженням.', 'error');
+    }
+}
+
+function normalizeProductDocumentError(message) {
+    if (!message) return 'Не вдалося зберегти документ.';
+    if (message.includes('source_document_url must be a valid URL')) return 'Вставте коректний URL документа.';
+    if (message.includes('source_document_url must be http(s)')) return 'URL має починатися з http або https.';
+    if (message.includes('source_document_title is required')) return 'Вкажіть назву документа.';
+    if (message.includes('source_document_kind must be')) return 'Оберіть тип документа.';
+    return message;
+}
+
 function openProductDocumentModal(productId) {
     const product = allProducts.find(item => item.id === productId);
     if (!product) return;
     editingDocumentProductId = productId;
-    document.getElementById('productDocProductName').textContent = product.name || product.code || product.id;
-    document.getElementById('productDocUrl').value = product.sourceDocumentUrl || '';
-    document.getElementById('productDocTitle').value = product.sourceDocumentTitle || '';
-    document.getElementById('productDocKind').value = product.sourceDocumentKind || 'google_doc';
-    document.getElementById('productDocVerified').checked = product.sourceDocumentVerifiedManual === true;
-    document.getElementById('productDocMatches').checked = product.sourceCardMatchesDocument === true;
-    document.getElementById('productDocUnlinkBtn').style.display = product.sourceDocumentUrl ? '' : 'none';
-    document.getElementById('productDocumentModal').classList.remove('hidden');
+    productDocumentLastFocus = document.activeElement;
+    const hasDocument = Boolean(product.sourceDocumentUrl);
+    const elements = getProductDocumentElements();
+    clearProductDocumentValidation();
+    setProductDocumentSaving(false);
+    if (elements.title) elements.title.textContent = hasDocument ? 'Редагувати документ програми' : 'Привʼязати документ програми';
+    if (elements.productName) elements.productName.textContent = product.name || product.code || product.id;
+    if (elements.modeNote) {
+        elements.modeNote.textContent = hasDocument
+            ? 'Оновіть URL, назву, тип або статус ручної перевірки. Після збереження картка продукту оновиться одразу.'
+            : 'Додайте посилання на Google Doc, PDF або інший документ, який є джерелом правди для цієї картки продукту.';
+    }
+    if (elements.url) elements.url.value = product.sourceDocumentUrl || '';
+    if (elements.docTitle) elements.docTitle.value = product.sourceDocumentTitle || '';
+    if (elements.kind) elements.kind.value = SOURCE_DOCUMENT_KIND_VALUES.has(product.sourceDocumentKind) ? product.sourceDocumentKind : 'google_doc';
+    if (elements.verified) elements.verified.checked = product.sourceDocumentVerifiedManual === true;
+    if (elements.matches) elements.matches.checked = product.sourceCardMatchesDocument === true;
+    if (elements.unlink) elements.unlink.hidden = !hasDocument;
+    syncProductDocumentKindHint();
+    elements.modal?.classList.remove('hidden');
+    requestAnimationFrame(() => (hasDocument ? elements.docTitle : elements.url)?.focus());
 }
 
 function closeProductDocumentModal() {
+    if (productDocumentSaving) return;
     editingDocumentProductId = null;
+    clearProductDocumentValidation();
     document.getElementById('productDocumentModal')?.classList.add('hidden');
+    if (productDocumentLastFocus && typeof productDocumentLastFocus.focus === 'function' && productDocumentLastFocus.isConnected) {
+        productDocumentLastFocus.focus();
+    }
+    productDocumentLastFocus = null;
 }
 
 async function saveProductDocument() {
-    if (!editingDocumentProductId) return;
-    const payload = {
-        businessContext: getProductApiBusinessContext(),
-        sourceDocumentUrl: document.getElementById('productDocUrl')?.value.trim(),
-        sourceDocumentTitle: document.getElementById('productDocTitle')?.value.trim(),
-        sourceDocumentKind: document.getElementById('productDocKind')?.value,
-        sourceDocumentVerifiedManual: document.getElementById('productDocVerified')?.checked,
-        sourceCardMatchesDocument: document.getElementById('productDocMatches')?.checked
-    };
+    if (!editingDocumentProductId || productDocumentSaving) return;
+    const payload = readProductDocumentPayload();
+    const errors = validateProductDocumentPayload(payload);
+    if (Object.keys(errors).length > 0) {
+        showProductDocumentValidation(errors);
+        return;
+    }
 
-    const result = await apiUpdateProductDocument(editingDocumentProductId, payload);
-    if (result?.success && result.product) {
-        updateProductInState(result.product);
-        renderProducts();
-        closeProductDocumentModal();
-        showNotification('Документ привʼязано', 'success');
-    } else {
-        showNotification(result?.error || 'Не вдалося зберегти документ', 'error');
+    setProductDocumentSaving(true);
+    try {
+        const result = await apiUpdateProductDocument(editingDocumentProductId, payload);
+        if (result?.success && result.product) {
+            updateProductInState(result.product);
+            renderProducts();
+            setProductDocumentSaving(false);
+            closeProductDocumentModal();
+            showNotification('Документ збережено', 'success');
+        } else {
+            setProductDocumentSaving(false);
+            const message = normalizeProductDocumentError(result?.error || 'Не вдалося зберегти документ');
+            setProductDocumentFeedback(message, 'error');
+            showNotification(message, 'error');
+        }
+    } catch (err) {
+        setProductDocumentSaving(false);
+        setProductDocumentFeedback('Не вдалося зберегти документ. Спробуйте ще раз.', 'error');
+        showNotification(err?.message || 'Не вдалося зберегти документ', 'error');
     }
 }
 
 async function unlinkProductDocument() {
-    if (!editingDocumentProductId) return;
-    const result = await apiUpdateProductDocument(editingDocumentProductId, {
-        businessContext: getProductApiBusinessContext(),
-        sourceDocumentUrl: '',
-        sourceDocumentTitle: '',
-        sourceDocumentKind: null,
-        sourceDocumentVerifiedManual: false,
-        sourceCardMatchesDocument: false
-    });
-    if (result?.success && result.product) {
-        updateProductInState(result.product);
-        renderProducts();
-        closeProductDocumentModal();
-        showNotification('Документ відвʼязано', 'success');
-    } else {
-        showNotification(result?.error || 'Не вдалося відвʼязати документ', 'error');
+    if (!editingDocumentProductId || productDocumentSaving) return;
+    if (typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Відвʼязати документ від цієї картки продукту?', {
+            type: 'warning',
+            okText: 'Відвʼязати',
+            cancelText: 'Скасувати'
+        });
+        if (!confirmed) return;
+    }
+    setProductDocumentSaving(true, 'unlink');
+    try {
+        const result = await apiUpdateProductDocument(editingDocumentProductId, {
+            businessContext: getProductApiBusinessContext(),
+            sourceDocumentUrl: '',
+            sourceDocumentTitle: '',
+            sourceDocumentKind: null,
+            sourceDocumentVerifiedManual: false,
+            sourceCardMatchesDocument: false
+        });
+        if (result?.success && result.product) {
+            updateProductInState(result.product);
+            renderProducts();
+            setProductDocumentSaving(false, 'unlink');
+            closeProductDocumentModal();
+            showNotification('Документ відвʼязано', 'success');
+        } else {
+            setProductDocumentSaving(false, 'unlink');
+            const message = normalizeProductDocumentError(result?.error || 'Не вдалося відвʼязати документ');
+            setProductDocumentFeedback(message, 'error');
+            showNotification(message, 'error');
+        }
+    } catch (err) {
+        setProductDocumentSaving(false, 'unlink');
+        setProductDocumentFeedback('Не вдалося відвʼязати документ. Спробуйте ще раз.', 'error');
+        showNotification(err?.message || 'Не вдалося відвʼязати документ', 'error');
     }
 }
 

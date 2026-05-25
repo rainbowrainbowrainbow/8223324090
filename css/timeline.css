@@ -1248,35 +1248,43 @@ body.dragging-active {
 }
 
 .timeline-container.compact {
-    max-height: clamp(380px, calc(100vh - 214px), 68vh);
-    max-height: clamp(380px, calc(var(--eg-viewport-height, 100vh) - 214px), 68vh);
+    max-height: clamp(420px, calc(100vh - 184px), 78vh);
+    max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
 }
 
 .timeline-container.compact .timeline-scroll {
-    padding: var(--timeline-scroll-pad, 10px);
+    padding: var(--timeline-scroll-pad, 8px);
 }
 
 .timeline-container.compact .timeline-lines {
-    gap: 4px;
+    gap: 3px;
 }
 
 .timeline-container.compact .time-scale {
-    margin-bottom: 6px;
-    padding-top: 2px;
-    padding-bottom: 2px;
+    margin-bottom: 4px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+.timeline-container.compact .time-mark {
+    font-size: 9px;
+}
+
+.timeline-container.compact .time-mark.hour {
+    font-size: 10px;
 }
 
 .timeline-container.compact .timeline-line {
-    min-height: var(--timeline-line-min-h, 42px);
+    min-height: var(--timeline-line-min-h, 36px);
 }
 
 .timeline-container.compact .line-header {
-    padding: 6px 8px;
-    border-left-width: 3px;
+    padding: 4px 6px;
+    border-left-width: 2px;
 }
 
 .timeline-container.compact .line-name {
-    font-size: clamp(10px, 0.8vw, 12px);
+    font-size: 11px;
     line-height: 1.05;
 }
 
@@ -1287,10 +1295,10 @@ body.dragging-active {
 }
 
 .timeline-container.compact .booking-block {
-    top: 3px;
-    bottom: 3px;
-    padding: 3px 6px;
-    border-radius: 6px;
+    top: 2px;
+    bottom: 2px;
+    padding: 2px 5px;
+    border-radius: 5px;
     border-left-width: 2px;
 }
 
@@ -1299,7 +1307,7 @@ body.dragging-active {
 }
 
 .timeline-container.compact .booking-block .title {
-    font-size: 10px;
+    font-size: 9.5px;
     line-height: 1.05;
 }
 
@@ -1374,8 +1382,8 @@ body.dragging-active {
     }
 
     .timeline-container.compact {
-        max-height: calc(100vh - 188px);
-        max-height: calc(var(--eg-viewport-height, 100vh) - 188px);
+        max-height: calc(100vh - 158px);
+        max-height: calc(var(--eg-viewport-height, 100vh) - 158px);
     }
 }
 
@@ -1385,7 +1393,7 @@ body.dragging-active {
     }
 
     .timeline-container.compact {
-        max-height: clamp(380px, calc(var(--eg-viewport-height, 100dvh) - 214px), 68dvh);
+        max-height: clamp(400px, calc(var(--eg-viewport-height, 100dvh) - 190px), 76dvh);
     }
 }
 

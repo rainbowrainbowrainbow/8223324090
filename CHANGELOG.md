@@ -4,6 +4,17 @@
 
 ---
 
+## v0.63.55 - CRM 63.55: компактний таймлайн
+
+### Таймлайн / compact mode / usability density / 25.05.2026 [codex]
+- **`Компакт` став справжнім density-режимом** - compact тепер застосовується як окремий клас на timeline shell, тому стискає не тільки ширину клітинок, а й верхню панель, row headers, time scale, рядки та booking-картки.
+- **Верхній control strip займає менше місця** - date controls, zoom/status/period сегменти, business selector і utility-кнопки отримали щільніші висоти, padding і icon rhythm саме в compact mode.
+- **У сітці видно більше корисного розкладу** - compact зменшує ширину клітинок, header width, висоту lane, gap між рядками, chrome карток і внутрішні відступи без зміни drag/click hooks.
+- **Normal mode не стискали** - звичайний режим лишився з попередніми розмірами, а 30/60-хв zoom readability rules отримали compact-safe fallback.
+- **Regression guardrail** - UI smoke перевіряє клас `timeline-compact-mode`, fit-screen compact path і CSS-контракт для toolbar/cards density.
+
+---
+
 ## v0.63.54 - CRM 63.54: кнопки таймлайну
 
 ### Таймлайн / toolbar / visual polish / 25.05.2026 [codex]

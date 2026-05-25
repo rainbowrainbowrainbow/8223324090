@@ -3925,6 +3925,185 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     box-shadow: none !important;
 }
 
+/* v0.63.55: operational compact timeline density across toolbar, lanes, and cards. */
+body.timeline-dashboard-page.timeline-compact-mode .control-panel {
+    gap: 6px 8px !important;
+    padding: 7px 9px !important;
+    border-radius: 14px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .date-controls,
+body.timeline-dashboard-page.timeline-compact-mode .v32-controls,
+body.timeline-dashboard-page.timeline-compact-mode .action-buttons,
+body.timeline-dashboard-page.timeline-compact-mode .view-mode-controls,
+body.timeline-dashboard-page.timeline-compact-mode .timeline-business-switch {
+    min-height: 34px !important;
+    padding: 2px !important;
+    gap: 5px !important;
+    border-radius: 12px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .status-filter-controls,
+body.timeline-dashboard-page.timeline-compact-mode .period-selector,
+body.timeline-dashboard-page.timeline-compact-mode .zoom-controls {
+    min-height: 34px !important;
+    padding: 2px !important;
+    gap: 2px !important;
+    border-radius: 12px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn),
+body.timeline-dashboard-page.timeline-compact-mode :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo),
+body.timeline-dashboard-page.timeline-compact-mode .timeline-business-switch select {
+    min-height: 30px !important;
+    height: 30px !important;
+    padding: 0 9px !important;
+    border-radius: 9px !important;
+    font-size: 11px !important;
+    font-weight: 850 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .btn-nav {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode input[type="date"] {
+    min-height: 30px !important;
+    height: 30px !important;
+    width: 144px !important;
+    padding: 0 9px !important;
+    font-size: 12px !important;
+    border-radius: 9px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .day-label {
+    padding: 3px 9px !important;
+    font-size: 11px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .working-hours {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .v32-controls .timeline-control-icon {
+    width: 14px;
+    min-width: 14px;
+    height: 14px;
+    font-size: 12px;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .v32-controls .timeline-control-icon--dots {
+    font-size: 16px;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .timeline-container {
+    border-radius: 14px !important;
+    max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .timeline-scroll {
+    padding: var(--timeline-scroll-pad, 8px) !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .time-scale {
+    margin-left: var(--timeline-line-header-w, 92px) !important;
+    margin-bottom: 4px !important;
+    padding: 3px 0 5px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .time-mark {
+    width: var(--timeline-cell-w, 28px) !important;
+    min-width: var(--timeline-cell-w, 28px) !important;
+    font-size: 9px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .time-mark.hour {
+    font-size: 10px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .timeline-lines {
+    gap: 3px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .timeline-line,
+body.timeline-dashboard-page.timeline-compact-mode .timeline-line:nth-child(even) {
+    min-height: var(--timeline-line-min-h, 36px) !important;
+    border-radius: 8px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .line-header,
+body.timeline-dashboard-page.timeline-compact-mode .timeline-line:nth-child(even) .line-header,
+body.timeline-dashboard-page.timeline-compact-mode .line-header:hover {
+    width: var(--timeline-line-header-w, 92px) !important;
+    min-width: var(--timeline-line-header-w, 92px) !important;
+    padding: 5px 6px !important;
+    border-radius: 8px 0 0 8px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .line-name {
+    font-size: 11px !important;
+    line-height: 1.04 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .line-sub {
+    margin-top: 1px !important;
+    font-size: 8.5px !important;
+    line-height: 1.05 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .line-grid {
+    border-radius: 0 8px 8px 0 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .booking-block {
+    top: 2px !important;
+    bottom: 2px !important;
+    padding: 2px 6px !important;
+    border-radius: 7px !important;
+    border-left-width: 2px !important;
+    min-width: 28px;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .booking-block .title {
+    font-size: 10px !important;
+    line-height: 1.05 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .booking-block .subtitle,
+body.timeline-dashboard-page.timeline-compact-mode .booking-block .note-text {
+    margin-top: 0 !important;
+    font-size: 8.5px !important;
+    line-height: 1.05 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .booking-block .user-letter {
+    width: 13px !important;
+    height: 13px !important;
+    top: 2px !important;
+    right: 3px !important;
+    font-size: 7.5px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .booking-block.graduation-parent {
+    min-width: 92px;
+    padding: 3px 5px 4px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .btn-add-line-big {
+    margin-top: 7px !important;
+    padding: 9px 12px !important;
+    border-radius: 11px !important;
+    font-size: 12px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .btn-add-line-big span:first-child {
+    font-size: 18px !important;
+}
+
 .timeline-dashboard-page .btn-add-line-big {
     margin-top: 12px;
     padding: 14px 16px;

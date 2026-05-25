@@ -233,9 +233,12 @@ body.dark-mode .night-settings-select {
 }
 
 /* v0.56.5: keep compact zoom modes genuinely compact after zoom readability rules. */
-.timeline-container.compact[data-zoom="30"] .timeline-line,
+.timeline-container.compact[data-zoom="30"] .timeline-line {
+    min-height: var(--timeline-line-min-h, 40px);
+}
+
 .timeline-container.compact[data-zoom="60"] .timeline-line {
-    min-height: var(--timeline-line-min-h, 48px);
+    min-height: var(--timeline-line-min-h, 46px);
 }
 
 .timeline-container.compact[data-zoom="30"] .booking-block .title,

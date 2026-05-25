@@ -1225,7 +1225,7 @@ function initNightSettings() {
 // ==========================================
 
 function _timelineBaseCellWidth(level, compact) {
-    if (compact) return level === 15 ? 32 : level === 30 ? 52 : 76;
+    if (compact) return level === 15 ? 28 : level === 30 ? 44 : 64;
     return level === 15 ? 50 : level === 30 ? 80 : 120;
 }
 
@@ -1243,7 +1243,10 @@ function syncTimelineViewportMetrics() {
     const width = _timelineViewportWidth();
     const height = _timelineViewportHeight();
     const timelinePage = document.body?.classList?.contains('timeline-dashboard-page');
+    const compactTimeline = !!(timelinePage && typeof AppState !== 'undefined' && AppState.compactMode);
     document.documentElement.classList.toggle('timeline-dashboard-root', !!timelinePage);
+    document.documentElement.classList.toggle('timeline-compact-mode', compactTimeline);
+    document.body?.classList?.toggle('timeline-compact-mode', compactTimeline);
     if (width > 0) document.documentElement.style.setProperty('--eg-viewport-width', `${width}px`);
     if (height > 0) document.documentElement.style.setProperty('--eg-viewport-height', `${height}px`);
 }
@@ -1308,10 +1311,24 @@ function applyTimelineResponsiveDensity() {
     const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
     const compact = !!AppState.compactMode;
     const viewportWidth = _timelineViewportWidth();
-    const nextHeaderWidth = _timelineResponsiveHeaderWidth();
-    const nextScrollPadding = compact ? (viewportWidth <= 768 ? 8 : 10) : (viewportWidth <= 1536 ? 14 : 20);
+    const nextHeaderWidth = compact
+        ? viewportWidth <= 375
+            ? 44
+            : viewportWidth <= 480
+                ? 58
+                : viewportWidth <= 768
+                    ? 72
+                    : viewportWidth <= 1180
+                        ? 74
+                        : viewportWidth <= 1366
+                            ? 80
+                            : viewportWidth <= 1536
+                                ? 84
+                                : 92
+        : _timelineResponsiveHeaderWidth();
+    const nextScrollPadding = compact ? (viewportWidth <= 768 ? 6 : 8) : (viewportWidth <= 1536 ? 14 : 20);
     const nextCellWidth = _timelineResponsiveCellWidth(level, compact, nextHeaderWidth, nextScrollPadding);
-    const nextLineHeight = compact ? (level === 15 ? 42 : level === 30 ? 48 : 54) : (level === 15 ? 64 : level === 30 ? 72 : 80);
+    const nextLineHeight = compact ? (level === 15 ? 36 : level === 30 ? 40 : 46) : (level === 15 ? 64 : level === 30 ? 72 : 80);
     const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
 
     CONFIG.TIMELINE.CELL_WIDTH = nextCellWidth;
@@ -1320,6 +1337,9 @@ function applyTimelineResponsiveDensity() {
     document.documentElement.style.setProperty('--timeline-line-header-w', `${nextHeaderWidth}px`);
     document.documentElement.style.setProperty('--timeline-scroll-pad', `${nextScrollPadding}px`);
     document.documentElement.style.setProperty('--timeline-line-min-h', `${nextLineHeight}px`);
+    document.documentElement.style.setProperty('--timeline-density', compact ? 'compact' : 'regular');
+    document.documentElement.classList.toggle('timeline-compact-mode', compact);
+    document.body?.classList?.toggle('timeline-compact-mode', compact);
 
     const container = document.querySelector('.timeline-container');
     if (container) {

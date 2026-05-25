@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.63.41",
+  "version": "0.63.42",
   "eventGenix": {
-    "releaseLabel": "CRM 63.41: AI Command Bar з живою відповіддю"
+    "releaseLabel": "CRM 63.42: utility rail для згорнутого меню"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

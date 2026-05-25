@@ -15,7 +15,10 @@ const Sidebar = (() => {
         identityMetaLoadedAt: 0,
         identityMetaDetails: {},
         roleRenderApplied: false,
-        extraEditingId: ''
+        extraEditingId: '',
+        railCloseTimer: null,
+        railActiveAnchor: null,
+        railPinned: false
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/dashboard', '/afisha', '/', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
@@ -23,6 +26,10 @@ const Sidebar = (() => {
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
+    const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
+    const UTILITY_RAIL_MAX_FAVORITES = 2;
+    const UTILITY_RAIL_MAX_GROUP_LINKS = 5;
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -475,6 +482,93 @@ const Sidebar = (() => {
         return _getSelectableExtraMenuItems(role).filter(item => selected.has(item.href) && (includeHidden || !item.hidden));
     }
 
+    function _railKeyForItem(item) {
+        return `${_normalizeExtraHref(item?.href || '')}|${item?.action || ''}`;
+    }
+
+    function _findNavItemByHref(href) {
+        const normalized = _normalizeExtraHref(href);
+        return NAV_ITEMS.find(item => item.href && _normalizeExtraHref(item.href) === normalized);
+    }
+
+    function _railRouteCue(item) {
+        const href = String(item?.href || '');
+        if (href.startsWith('/certificates')) return 'реєстр / видача / пакет';
+        if (href === '/sales-funnel') return 'воронка лідів';
+        if (href === '/omni') return 'комунікації';
+        if (href === '/finance') return 'фінанси';
+        if (href === '/center') return 'центр керування';
+        return href || 'CRM';
+    }
+
+    function _railMetaForItem(item) {
+        const statusText = _navStatusFor(item);
+        if (statusText) return statusText;
+        const href = String(item?.href || '');
+        if (href === '/dashboard') return _getSidebarSummaryState();
+        if (href === '/') return 'операційний таймлайн';
+        if (href === '/tasks') return 'особистий фокус задач';
+        if (href === '/chat') return 'командні повідомлення';
+        if (href.startsWith('/certificates')) return 'сертифікати та швидка видача';
+        if (href === '/afisha') return 'афіша та події';
+        if (href === '/customers') return 'клієнтська база';
+        if (href === '/sales-funnel') return 'ліди та продажі';
+        if (href === '/staff') return 'графік команди';
+        if (href === '/warehouse') return 'складські операції';
+        return item?.description || _getExtraGroupLabel(item?.group) || 'CRM сторінка';
+    }
+
+    function _railPrimaryItems(role) {
+        return UTILITY_RAIL_PRIMARY_HREFS
+            .map(_findNavItemByHref)
+            .filter(Boolean)
+            .filter(item => !role || hasAccess(item, role));
+    }
+
+    function _railFavoriteItems(role, usedKeys = new Set()) {
+        const seen = new Set(usedKeys);
+        const favorites = [];
+        _getExtraMenuItems(role).forEach(item => {
+            const key = _railKeyForItem(item);
+            if (!key || seen.has(key)) return;
+            if (item.href && !String(item.href).startsWith('/')) return;
+            seen.add(key);
+            favorites.push(item);
+        });
+        return favorites.slice(0, UTILITY_RAIL_MAX_FAVORITES);
+    }
+
+    function _railFlyoutGroups(role, currentPath, currentHash, usedKeys = new Set()) {
+        return UTILITY_RAIL_CONTEXT_GROUPS.map(groupKey => {
+            const group = NAV_ITEMS.find(item => item.type === 'group' && item.key === groupKey);
+            if (!group) return null;
+            const children = NAV_ITEMS
+                .filter(item => item.href && item.group === groupKey)
+                .filter(item => {
+                    if (role && !hasAccess(item, role)) return false;
+                    const href = String(item.href || '');
+                    if (!href.startsWith('/') && !href.startsWith('#')) return false;
+                    return !usedKeys.has(_railKeyForItem(item));
+                })
+                .slice(0, UTILITY_RAIL_MAX_GROUP_LINKS);
+            if (!children.length) return null;
+            return {
+                ...group,
+                children,
+                active: children.some(item => _isSidebarItemActive(item, currentPath, currentHash))
+            };
+        }).filter(Boolean);
+    }
+
+    function _buildUtilityRailModel(role, currentPath, currentHash) {
+        const primary = _railPrimaryItems(role);
+        const used = new Set(primary.map(_railKeyForItem));
+        const favorites = _railFavoriteItems(role, used);
+        favorites.forEach(item => used.add(_railKeyForItem(item)));
+        const groups = _railFlyoutGroups(role, currentPath, currentHash, used);
+        return { favorites, primary, groups };
+    }
+
     function _isExtraMenuEditorOpen() {
         try {
             return localStorage.getItem(EXTRA_MENU_EDIT_STORAGE_KEY) === 'true';
@@ -825,7 +919,7 @@ const Sidebar = (() => {
         _removeSidebarTodayDock();
         _syncGroupSignals();
         _ensureActiveIndicator();
-        _initCollapsedTooltips(container);
+        _initCollapsedRailInteractions(document.getElementById('sidebarNav'));
         _initSpotlight();
         _initRipple();
         _initMagnetic();
@@ -1058,23 +1152,276 @@ const Sidebar = (() => {
         else setTimeout(_updateActiveIndicator, 0);
     }
 
-    // ═══ COLLAPSED TOOLTIPS ═══
-    function _initCollapsedTooltips(container) {
-        container.querySelectorAll('.nav-link').forEach(el => {
-            const label = el.querySelector('.nav-text')?.textContent;
-            if (!label) return;
-            let tooltip = null;
-            el.addEventListener('mouseenter', () => {
-                if (!document.getElementById('sidebarNav')?.classList.contains('collapsed')) return;
-                tooltip = document.createElement('div');
-                tooltip.className = 'nav-tooltip';
-                tooltip.textContent = label;
-                document.body.appendChild(tooltip);
-                const rect = el.getBoundingClientRect();
-                tooltip.style.cssText = `position:fixed;left:${rect.right+8}px;top:${rect.top+rect.height/2}px;transform:translateY(-50%);background:#1e293b;color:#fff;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;z-index:9999;pointer-events:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.2);animation:tooltipIn 0.15s ease-out both;`;
+    // ═══ COLLAPSED UTILITY RAIL PREVIEWS ═══
+    function _isUtilityRailInteractionEnabled() {
+        const sidebar = document.getElementById('sidebarNav');
+        return Boolean(sidebar?.classList.contains('collapsed') && window.innerWidth > 768);
+    }
+
+    function _ensureRailFloat() {
+        let panel = document.getElementById('sidebarRailFloat');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'sidebarRailFloat';
+            panel.className = 'sidebar-rail-float';
+            panel.hidden = true;
+            document.body.appendChild(panel);
+        }
+        if (panel.dataset.sidebarRailFloatBound !== 'true') {
+            panel.dataset.sidebarRailFloatBound = 'true';
+            panel.addEventListener('pointerenter', _cancelRailFloatClose);
+            panel.addEventListener('pointerleave', (event) => {
+                if (_state.railActiveAnchor?.contains(event.relatedTarget)) return;
+                if (_state.railPinned) return;
+                _scheduleRailFloatClose(120);
             });
-            el.addEventListener('mouseleave', () => { if (tooltip) { tooltip.remove(); tooltip = null; } });
+            panel.addEventListener('focusout', () => {
+                setTimeout(() => {
+                    if (_state.railPinned) return;
+                    if (panel.contains(document.activeElement)) return;
+                    if (_state.railActiveAnchor?.contains(document.activeElement)) return;
+                    _closeRailFloat();
+                }, 0);
+            });
+            panel.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    const anchor = _state.railActiveAnchor;
+                    _closeRailFloat();
+                    anchor?.focus?.({ preventScroll: true });
+                }
+            });
+            panel.addEventListener('click', (event) => {
+                if (event.target.closest('a[href]')) _closeRailFloat();
+            });
+        }
+        return panel;
+    }
+
+    function _positionRailFloat(anchor, panel) {
+        if (!anchor || !panel) return;
+        const rect = anchor.getBoundingClientRect();
+        const sidebarRect = document.getElementById('sidebarNav')?.getBoundingClientRect();
+        const gap = 10;
+        panel.style.left = '0px';
+        panel.style.top = '0px';
+        const panelRect = panel.getBoundingClientRect();
+        const maxLeft = Math.max(12, window.innerWidth - panelRect.width - 12);
+        const preferredLeft = Math.max(rect.right + gap, (sidebarRect?.right || 0) + 8);
+        const left = Math.min(maxLeft, preferredLeft);
+        const maxTop = Math.max(12, window.innerHeight - panelRect.height - 12);
+        const top = Math.min(maxTop, Math.max(12, rect.top + (rect.height / 2) - (panelRect.height / 2)));
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+    }
+
+    function _renderRailPreviewPanel(anchor) {
+        const title = anchor.dataset.sidebarRailTitle || anchor.getAttribute('aria-label') || 'CRM';
+        const meta = anchor.dataset.sidebarRailMeta || '';
+        const cue = anchor.dataset.sidebarRailCue || '';
+        const kind = anchor.dataset.sidebarRailKind === 'favorite' ? 'Швидкий доступ' : 'Маршрут';
+        return `
+            <div class="sidebar-rail-preview-head">
+                <span>${_escHtml(kind)}</span>
+                <strong>${_escHtml(title)}</strong>
+            </div>
+            ${meta ? `<p>${_escHtml(meta)}</p>` : ''}
+            ${cue ? `<div class="sidebar-rail-preview-cue">${_escHtml(cue)}</div>` : ''}`;
+    }
+
+    function _renderRailFlyoutPanel(currentPath, currentHash) {
+        const user = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(user);
+        const { primary, favorites, groups } = _buildUtilityRailModel(role, currentPath, currentHash);
+        const usedCount = primary.length + favorites.length;
+        const sections = groups.map(group => {
+            const links = group.children.map(item => {
+                const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+                const onclickAttr = item.action
+                    ? ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`
+                    : '';
+                const badgeType = _badgeTypeFor(item);
+                return `<a href="${_escAttr(item.href)}" class="sidebar-rail-flyout-link${isActive ? ' active' : ''}" role="menuitem"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+                    ${_renderIcon(item.icon, 'sidebar-rail-flyout-icon')}
+                    <span class="sidebar-rail-flyout-copy">
+                        <span>${_escHtml(item.label)}</span>
+                        <small>${_escHtml(_railMetaForItem(item))}</small>
+                    </span>
+                    ${badgeType ? `<span class="sidebar-mini-badge sidebar-rail-flyout-badge" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
+                </a>`;
+            }).join('');
+            return `<section class="sidebar-rail-flyout-section${group.active ? ' has-active' : ''}" role="presentation">
+                <div class="sidebar-rail-flyout-section-head">
+                    ${_renderIcon(group.icon, 'sidebar-rail-flyout-group-icon')}
+                    <span>${_escHtml(group.label)}</span>
+                </div>
+                <div class="sidebar-rail-flyout-links">${links}</div>
+            </section>`;
+        }).join('');
+        return `
+            <div class="sidebar-rail-flyout-head">
+                <span>Контекстні розділи</span>
+                <strong>CRM command rail</strong>
+                <small>${_escHtml(`${usedCount} закріплено у rail, інші доступні тут`)}</small>
+            </div>
+            <div class="sidebar-rail-flyout-body" role="menu" aria-label="Контекстні розділи CRM">
+                ${sections || '<div class="sidebar-rail-flyout-empty">Для цієї ролі немає додаткових розділів.</div>'}
+            </div>`;
+    }
+
+    function _setRailActiveAnchor(anchor) {
+        if (_state.railActiveAnchor && _state.railActiveAnchor !== anchor && _state.railActiveAnchor.matches?.('[data-sidebar-rail-flyout]')) {
+            _state.railActiveAnchor.setAttribute('aria-expanded', 'false');
+        }
+        _state.railActiveAnchor = anchor;
+    }
+
+    function _showRailPreview(anchor) {
+        if (!_isUtilityRailInteractionEnabled() || !anchor) return;
+        _cancelRailFloatClose();
+        const panel = _ensureRailFloat();
+        panel.className = 'sidebar-rail-float sidebar-rail-preview';
+        panel.dataset.mode = 'preview';
+        panel.innerHTML = _renderRailPreviewPanel(anchor);
+        panel.hidden = false;
+        panel.style.visibility = 'hidden';
+        _state.railPinned = false;
+        _setRailActiveAnchor(anchor);
+        _positionRailFloat(anchor, panel);
+        panel.style.visibility = '';
+    }
+
+    function _showRailFlyout(anchor, focusFirst = false, options = {}) {
+        if (!_isUtilityRailInteractionEnabled() || !anchor) return;
+        _cancelRailFloatClose();
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        const currentHash = location.hash.replace('#', '');
+        const panel = _ensureRailFloat();
+        panel.className = 'sidebar-rail-float sidebar-rail-flyout';
+        panel.dataset.mode = 'flyout';
+        panel.innerHTML = _renderRailFlyoutPanel(currentPath, currentHash);
+        panel.hidden = false;
+        panel.style.visibility = 'hidden';
+        anchor.setAttribute('aria-expanded', 'true');
+        _state.railPinned = options.pinned === true;
+        _setRailActiveAnchor(anchor);
+        _positionRailFloat(anchor, panel);
+        panel.style.visibility = '';
+        if (focusFirst) {
+            setTimeout(() => panel.querySelector('a, button')?.focus?.({ preventScroll: true }), 0);
+        }
+        _syncNavStatusLabels();
+    }
+
+    function _closeRailFloat() {
+        _cancelRailFloatClose();
+        const panel = document.getElementById('sidebarRailFloat');
+        if (panel) {
+            panel.hidden = true;
+            panel.removeAttribute('data-mode');
+        }
+        if (_state.railActiveAnchor?.matches?.('[data-sidebar-rail-flyout]')) {
+            _state.railActiveAnchor.setAttribute('aria-expanded', 'false');
+        }
+        _state.railActiveAnchor = null;
+        _state.railPinned = false;
+    }
+
+    function _scheduleRailFloatClose(delay = 90) {
+        _cancelRailFloatClose();
+        _state.railCloseTimer = setTimeout(_closeRailFloat, delay);
+    }
+
+    function _cancelRailFloatClose() {
+        if (_state.railCloseTimer) {
+            clearTimeout(_state.railCloseTimer);
+            _state.railCloseTimer = null;
+        }
+    }
+
+    function _initCollapsedRailInteractions(sidebar) {
+        if (!sidebar || sidebar.dataset.sidebarRailBound === 'true') return;
+        sidebar.dataset.sidebarRailBound = 'true';
+
+        sidebar.addEventListener('pointerover', (event) => {
+            const flyout = event.target.closest('[data-sidebar-rail-flyout]');
+            const item = event.target.closest('[data-sidebar-rail-item]');
+            const anchor = flyout || item;
+            if (!anchor || !sidebar.contains(anchor)) return;
+            if (flyout) _showRailFlyout(flyout);
+            else _showRailPreview(item);
         });
+
+        sidebar.addEventListener('pointerout', (event) => {
+            const anchor = event.target.closest('[data-sidebar-rail-flyout], [data-sidebar-rail-item]');
+            if (!anchor || !sidebar.contains(anchor) || anchor.contains(event.relatedTarget)) return;
+            const panel = document.getElementById('sidebarRailFloat');
+            if (panel?.contains(event.relatedTarget)) return;
+            if (_state.railPinned) return;
+            _scheduleRailFloatClose(panel?.dataset.mode === 'flyout' ? 140 : 70);
+        });
+
+        sidebar.addEventListener('focusin', (event) => {
+            const flyout = event.target.closest('[data-sidebar-rail-flyout]');
+            const item = event.target.closest('[data-sidebar-rail-item]');
+            const anchor = flyout || item;
+            if (!anchor || !sidebar.contains(anchor)) return;
+            if (flyout) _showRailFlyout(flyout);
+            else _showRailPreview(item);
+        });
+
+        sidebar.addEventListener('focusout', () => {
+            setTimeout(() => {
+                if (_state.railPinned) return;
+                const panel = document.getElementById('sidebarRailFloat');
+                if (panel?.contains(document.activeElement)) return;
+                if (sidebar.contains(document.activeElement)) return;
+                _closeRailFloat();
+            }, 0);
+        });
+
+        sidebar.addEventListener('click', (event) => {
+            const flyout = event.target.closest('[data-sidebar-rail-flyout]');
+            if (flyout && sidebar.contains(flyout)) {
+                event.preventDefault();
+                event.stopPropagation();
+                const panel = document.getElementById('sidebarRailFloat');
+                if (panel && !panel.hidden && panel.dataset.mode === 'flyout' && _state.railActiveAnchor === flyout && _state.railPinned) {
+                    _closeRailFloat();
+                } else {
+                    _showRailFlyout(flyout, false, { pinned: true });
+                }
+                return;
+            }
+            if (event.target.closest('[data-sidebar-rail-item]')) _scheduleRailFloatClose(0);
+        });
+
+        sidebar.addEventListener('keydown', (event) => {
+            const flyout = event.target.closest('[data-sidebar-rail-flyout]');
+            if (event.key === 'Escape') {
+                _closeRailFloat();
+                return;
+            }
+            if (!flyout || !sidebar.contains(flyout)) return;
+            if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                _showRailFlyout(flyout, true);
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            const panel = document.getElementById('sidebarRailFloat');
+            if (!panel || panel.hidden) return;
+            if (panel.contains(event.target)) return;
+            if (_state.railActiveAnchor?.contains(event.target)) return;
+            _closeRailFloat();
+        }, true);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') _closeRailFloat();
+        });
+        window.addEventListener('resize', _closeRailFloat);
+        window.addEventListener('scroll', _closeRailFloat, true);
     }
 
     // ═══ LIVE BADGES ═══
@@ -1995,28 +2342,44 @@ const Sidebar = (() => {
         _queueActiveIndicatorUpdate();
     }
 
-    function _miniRailItems(role) {
-        const seen = new Set();
-        return NAV_ITEMS.filter(item => {
-            if (!item.href || item.type === 'group') return false;
-            if (role && !hasAccess(item, role)) return false;
-            const key = `${item.href}|${item.action || ''}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-    }
-
-    function _renderSidebarMiniLink(item, currentPath, currentHash) {
+    function _renderSidebarMiniLink(item, currentPath, currentHash, options = {}) {
         const isActive = _isSidebarItemActive(item, currentPath, currentHash);
         const onclickAttr = item.action
             ? ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`
             : '';
         const badgeType = _badgeTypeFor(item);
-        return `<a href="${_escAttr(item.href)}" class="sidebar-mini-link${isActive ? ' active' : ''}" title="${_escAttr(item.label)}" aria-label="${_escAttr(item.label)}"${onclickAttr}>
+        const kind = options.kind || 'route';
+        const meta = _railMetaForItem(item);
+        const cue = options.cue || _railRouteCue(item);
+        return `<a href="${_escAttr(item.href)}" class="sidebar-mini-link sidebar-mini-link--${_escAttr(kind)}${isActive ? ' active' : ''}" aria-label="${_escAttr(item.label)}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}
+            data-sidebar-rail-item
+            data-sidebar-rail-kind="${_escAttr(kind)}"
+            data-sidebar-rail-title="${_escAttr(item.label)}"
+            data-sidebar-rail-meta="${_escAttr(meta)}"
+            data-sidebar-rail-cue="${_escAttr(cue)}">
+            <span class="sidebar-mini-current" aria-hidden="true"></span>
             ${_renderIcon(item.icon, 'sidebar-mini-icon')}
             ${badgeType ? `<span class="sidebar-mini-badge" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
         </a>`;
+    }
+
+    function _renderSidebarRailSection(kind, label, body) {
+        if (!body) return '';
+        return `<div class="sidebar-rail-section sidebar-rail-section--${_escAttr(kind)}" role="group" aria-label="${_escAttr(label)}">${body}</div>`;
+    }
+
+    function _renderSidebarRailFlyoutButton(groups) {
+        if (!groups.length) return '';
+        const total = groups.reduce((sum, group) => sum + group.children.length, 0);
+        const active = groups.some(group => group.active);
+        return `<button type="button" class="sidebar-mini-link sidebar-mini-link--flyout${active ? ' active' : ''}" aria-label="Інші розділи CRM" aria-haspopup="menu" aria-expanded="false"
+            data-sidebar-rail-flyout
+            data-sidebar-rail-title="Розділи CRM"
+            data-sidebar-rail-meta="${_escAttr(`${total} сторінок за вашим доступом`)}"
+            data-sidebar-rail-cue="Продажі / продукт / команда / система">
+            <span class="sidebar-mini-current" aria-hidden="true"></span>
+            ${_renderIcon('system', 'sidebar-mini-icon')}
+        </button>`;
     }
 
     function _ensureSidebarMiniRail(role, currentPath, currentHash) {
@@ -2029,12 +2392,19 @@ const Sidebar = (() => {
             rail.className = 'sidebar-mini-rail';
             rail.setAttribute('aria-label', 'Згорнуте меню сторінок');
         }
-        rail.innerHTML = _miniRailItems(role)
-            .map(item => _renderSidebarMiniLink(item, currentPath, currentHash))
-            .join('');
+        const model = _buildUtilityRailModel(role, currentPath, currentHash);
+        const favorites = model.favorites.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'favorite', cue: 'Швидкий доступ' })).join('');
+        const primary = model.primary.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'primary' })).join('');
+        const utility = _renderSidebarRailFlyoutButton(model.groups);
+        rail.innerHTML = [
+            _renderSidebarRailSection('favorites', 'Швидкий доступ', favorites),
+            _renderSidebarRailSection('primary', 'Основні маршрути', primary),
+            _renderSidebarRailSection('utility', 'Контекстні розділи', utility)
+        ].join('');
         const anchor = document.getElementById('sidebarCommandDeck') || sidebar.querySelector('.sidebar-links');
         if (anchor && rail.parentElement !== sidebar) sidebar.insertBefore(rail, anchor);
         else if (!rail.parentElement) sidebar.appendChild(rail);
+        _initCollapsedRailInteractions(sidebar);
     }
 
     // ═══ TOGGLE SIDEBAR (mobile/desktop) ══════════════════════════

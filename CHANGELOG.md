@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.42 - CRM 63.42: utility rail для згорнутого меню
+
+### Sidebar / collapsed utility rail / 25.05.2026 [codex]
+- **Згорнуте меню стало utility rail** - замість повного списку однакових іконок rail показує швидкий доступ, основні маршрути і один контекстний вхід до інших розділів.
+- **Швидкий доступ бере участь у collapsed mode** - rail використовує існуючі favorites з quick access і не створює другу систему налаштувань.
+- **Preview cards і flyout замінили label-only tooltip** - hover і keyboard focus відкривають короткий опис маршруту або керований flyout із доступними групами CRM.
+- **Guardrail** - UI smoke перевіряє utility rail contract, відсутність raw `.nav-tooltip`, preview/flyout класи і незмінний fixed-width collapsed rail.
+
+---
+
 ## v0.63.41 - CRM 63.41: AI Command Bar з живою відповіддю
 
 ### Помічник / command bar / live reply panel [codex]

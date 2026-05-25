@@ -2,6 +2,7 @@ const { getKyivDateStr } = require('./booking');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 const { enrichQueueBuckets } = require('./queueIntelligence');
 const { buildTaskVisibilityScope, taskOwnerState } = require('./taskPolicy');
+const { normalizeSubtaskSummary } = require('./taskSubtasks');
 const { getVisibleBookingScope, resolveBookingDerivedLinkedRoute } = require('./bookingVisibility');
 const { attachTaskSchedule, canonicalTaskOrderSql } = require('./taskScheduling');
 
@@ -211,6 +212,7 @@ function bookingDerivedTaskRoute(row, actor = null) {
 
 function taskItem(row, bucket, options = {}) {
     const scheduled = attachTaskSchedule(row);
+    const subtaskSummary = normalizeSubtaskSummary(row);
     const sourceType = row.task_source_type || row.source_type || null;
     const sourceId = row.task_source_id || row.source_id || null;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
@@ -236,6 +238,11 @@ function taskItem(row, bucket, options = {}) {
         subtitle: row.description || null,
         dueAt,
         priority: priority(row.priority),
+        subtasks: subtaskSummary.subtasks,
+        subtaskCount: subtaskSummary.subtaskCount,
+        subtaskDoneCount: subtaskSummary.subtaskDoneCount,
+        subtaskProgress: subtaskSummary.subtaskProgress,
+        subtaskProgressPercent: subtaskSummary.subtaskProgressPercent,
         confidence: hasExactCase ? 'exact' : (row.deadline ? 'durable' : 'suggested'),
         actionLabel: hasExactCase ? 'Відкрити кейс' : 'Відкрити задачу',
         href: hrefForTask(row, options.actor),
@@ -249,6 +256,10 @@ function taskItem(row, bucket, options = {}) {
             legacyOwner: row.owner || null,
             taskSourceType: sourceType,
             taskSourceId: sourceId,
+            subtaskCount: subtaskSummary.subtaskCount,
+            subtaskDoneCount: subtaskSummary.subtaskDoneCount,
+            subtaskProgress: subtaskSummary.subtaskProgress,
+            subtaskProgressPercent: subtaskSummary.subtaskProgressPercent,
             linkedBookingVisible,
             bookingLinkedRoute: bookingRoute ? {
                 href: bookingRoute.href,
@@ -496,9 +507,35 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
                sb.id AS linked_booking_id, sb.date AS linked_booking_date,
                CASE WHEN sb.id IS NULL THEN false ELSE true END AS linked_booking_visible,
                sb.customer_id AS linked_customer_id,
-               rcm.conversation_id AS linked_conversation_id
+               rcm.conversation_id AS linked_conversation_id,
+               COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
+               COALESCE(st.total, 0)::int AS subtask_count,
+               COALESCE(st.done, 0)::int AS subtask_done_count
         FROM tasks t
         LEFT JOIN users ou ON ou.id = t.owner_user_id
+        LEFT JOIN (
+            SELECT task_id,
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (WHERE is_done = true)::int AS done
+            FROM task_subtasks
+            GROUP BY task_id
+        ) st ON st.task_id = t.id
+        LEFT JOIN (
+            SELECT task_id,
+                   json_agg(json_build_object(
+                       'id', id,
+                       'task_id', task_id,
+                       'title', title,
+                       'is_done', is_done,
+                       'sort_order', sort_order,
+                       'source_type', COALESCE(source_type, 'manual'),
+                       'created_at', created_at,
+                       'completed_at', completed_at,
+                       'updated_at', updated_at
+                   ) ORDER BY sort_order ASC, id ASC) AS subtasks
+            FROM task_subtasks
+            GROUP BY task_id
+        ) subtask_rows ON subtask_rows.task_id = t.id
         LEFT JOIN leads sl ON t.source_type = 'lead' AND t.source_id = sl.id::text
         LEFT JOIN bookings sb ON t.source_type = 'booking' AND t.source_id = sb.id::text
             AND ${bookingVisibility.condition}

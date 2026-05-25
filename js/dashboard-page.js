@@ -2955,6 +2955,7 @@ const DashboardPage = (() => {
                         <h4>Чому тут</h4>
                         <p>${escapeHtml(reason)}</p>
                     </div>
+                    ${renderWorkQueueTaskSubtasksCard(selected)}
                     <div class="work-queue-triage-card">
                         <h4>Відповідальний / ризик</h4>
                         <div class="work-queue-triage-metrics">
@@ -3097,6 +3098,9 @@ const DashboardPage = (() => {
         const escalationLink = isWaitingReply && item.meta?.replyEscalationHref
             ? `<a class="work-queue-escalation-link" href="${escapeHtml(item.meta.replyEscalationHref)}">Ескалація</a>`
             : '';
+        const subtaskPreview = item.sourceType === 'task'
+            ? renderDashboardTaskSubtasks(item, { variant: 'queue', limit: 3 })
+            : '';
         const detailButton = `
             <button type="button" class="work-queue-detail-btn" onclick="DashboardPage.selectTriageItem('${encodedItemId}')">
                 Деталі
@@ -3108,10 +3112,11 @@ const DashboardPage = (() => {
                 ${selectionControl}
                 <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
                     <span class="work-queue-dot" aria-hidden="true"></span>
-                    <span class="work-queue-text">
+                    <div class="work-queue-text">
                         <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>
                         <span class="work-queue-meta">${meta}${item.subtitle ? ' · ' + escapeHtml(String(item.subtitle).slice(0, 90)) : ''}</span>
-                    </span>
+                        ${subtaskPreview}
+                    </div>
                     <span class="work-queue-action">${escapeHtml(humanizeQueueActionLabel(item.actionLabel || 'Відкрити'))}</span>
                 </a>
                 <div class="work-queue-reply-row">${actionRow}</div>
@@ -6188,6 +6193,62 @@ const DashboardPage = (() => {
         `;
     }
 
+    function dashboardTaskSubtaskSummary(task = {}) {
+        let subtasks = task.subtasks;
+        if (typeof subtasks === 'string') {
+            try { subtasks = JSON.parse(task.subtasks); } catch { subtasks = []; }
+        }
+        subtasks = (Array.isArray(subtasks) ? subtasks : [])
+            .map(item => ({
+                title: String(item?.title || item?.name || '').trim(),
+                isDone: item?.isDone === true || item?.is_done === true || item?.done === true || item?.isDone === 'true' || item?.is_done === 'true' || item?.isDone === 1 || item?.is_done === 1
+            }))
+            .filter(item => item.title);
+        const totalValue = task.subtaskCount ?? task.subtask_count ?? subtasks.length;
+        const doneValue = task.subtaskDoneCount ?? task.subtask_done_count ?? subtasks.filter(item => item.isDone).length;
+        const parsedTotal = Number.parseInt(totalValue, 10);
+        const total = Math.max(0, Number.isFinite(parsedTotal) ? parsedTotal : (subtasks.length || 0));
+        const parsedDone = Number.parseInt(doneValue, 10);
+        const done = Math.max(0, Math.min(total, Number.isFinite(parsedDone) ? parsedDone : (subtasks.filter(item => item.isDone).length || 0)));
+        const progress = total > 0 ? Math.round((done / total) * 100) : null;
+        return { subtasks, total, done, progress, hidden: Math.max(0, total - subtasks.length) };
+    }
+
+    function renderDashboardTaskSubtasks(task, options = {}) {
+        const summary = dashboardTaskSubtaskSummary(task);
+        if (!summary.total) return '';
+        const limit = Math.max(1, Number.parseInt(options.limit, 10) || 3);
+        const variant = options.variant || 'widget';
+        const preview = summary.subtasks.slice(0, limit).map(item => `
+            <span class="dashboard-task-subtask ${item.isDone ? 'is-done' : ''}">
+                <span aria-hidden="true">${item.isDone ? '✓' : '•'}</span>
+                ${escapeHtml(item.title)}
+            </span>
+        `).join('');
+        const overflow = Math.max(0, summary.total - Math.min(summary.total, summary.subtasks.length, limit));
+        return `
+            <div class="dashboard-task-subtasks ${escapeHtml(variant)}" aria-label="Підзадачі ${summary.done} з ${summary.total}">
+                <div class="dashboard-task-subtasks-head">
+                    <span>Підзадачі</span>
+                    <strong>${summary.done}/${summary.total}${summary.progress !== null ? ` · ${summary.progress}%` : ''}</strong>
+                </div>
+                <div class="dashboard-task-subtasks-bar" aria-hidden="true"><span style="width:${Math.max(0, Math.min(100, summary.progress || 0))}%"></span></div>
+                ${preview ? `<div class="dashboard-task-subtask-list">${preview}${overflow ? `<span class="dashboard-task-subtask is-more">+${overflow}</span>` : ''}</div>` : '<div class="dashboard-task-subtask-list"><span class="dashboard-task-subtask is-more">деталі на сторінці задачі</span></div>'}
+            </div>
+        `;
+    }
+
+    function renderWorkQueueTaskSubtasksCard(item) {
+        const preview = renderDashboardTaskSubtasks(item, { variant: 'triage', limit: 5 });
+        if (!preview) return '';
+        return `
+            <div class="work-queue-triage-card task-subtasks-card">
+                <h4>Декомпозиція задачі</h4>
+                ${preview}
+            </div>
+        `;
+    }
+
     function renderTasks(data, container) {
         if (!data.tasks || data.tasks.length === 0) {
             container.innerHTML = '<div class="widget-empty">Немає активних задач</div>';
@@ -6200,11 +6261,13 @@ const DashboardPage = (() => {
             const catInfo = { event: '🎉', purchase: '🛒', admin: '📎', trampoline: '🤸', personal: '👤', improvement: '⚡' };
             const catIcon = catInfo[t.category] || '📋';
             const statusLabel = t.status === 'in_progress' ? 'В роботі' : t.status === 'todo' ? 'Todo' : t.status;
+            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget', limit: 3 });
             return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
                 <div class="widget-task-icon ${priorityCls}"></div>
                 <div class="widget-task-info">
                     <div class="widget-task-title">${escapeHtml(t.title)}</div>
                     <div class="widget-task-meta">${catIcon} ${statusLabel}${deadline ? ' · ' + deadline : ''}</div>
+                    ${subtaskPreview}
                 </div>
                 <div class="widget-task-arrow">›</div>
             </div>`;
@@ -6221,11 +6284,13 @@ const DashboardPage = (() => {
         const items = tasks.slice(0, 5).map(t => {
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
             const priorityCls = t.priority || 'medium';
+            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'widget', limit: 2 });
             return `<div class="widget-task-item" onclick="DashboardPage.openTask(${Number(t.id) || 0})" title="Відкрити задачу">
                 <div class="widget-task-icon ${priorityCls}"></div>
                 <div class="widget-task-info">
                     <div class="widget-task-title">${escapeHtml(t.title || 'Задача без назви')}</div>
                     <div class="widget-task-meta">${deadline || 'Без дедлайну'}${t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : ''}</div>
+                    ${subtaskPreview}
                 </div>
                 <div class="widget-task-arrow">›</div>
             </div>`;
@@ -6292,12 +6357,14 @@ const DashboardPage = (() => {
             const overdueClass = t.isOverdue ? ' is-overdue' : '';
             const owner = t.ownerLabel || t.assigned_to || t.owner || '';
             const creator = t.creatorLabel || t.created_by || '';
+            const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: fullscreen ? 'tasker-fullscreen' : 'tasker', limit: fullscreen ? 5 : 3 });
             return `<button type="button" class="personal-tasker-row${overdueClass}" onclick="DashboardPage.openTask(${Number(t.id) || 0})">
                 <span class="personal-tasker-priority ${escapeHtml(priority)}"></span>
-                <span class="personal-tasker-row-main">
+                <div class="personal-tasker-row-main">
                     <strong>${escapeHtml(t.title || 'Задача без назви')}</strong>
                     <em>${escapeHtml(taskerStatusLabel(t.status))} · ${escapeHtml(deadline)}${owner ? ' · ' + escapeHtml(owner) : ''}${creator && fullscreen ? ' · поставив ' + escapeHtml(creator) : ''}</em>
-                </span>
+                    ${subtaskPreview}
+                </div>
                 <span class="personal-tasker-open">›</span>
             </button>`;
         }).join('');
@@ -6818,16 +6885,18 @@ const DashboardPage = (() => {
             <div class="stat-item"><div class="stat-value" style="color:#ef4444">${s.overdue || 0}</div><div class="stat-label">Прострочено</div></div>
         </div>`;
         if (data.tasks?.length) {
-            html += '<div style="max-height:200px;overflow-y:auto">';
+            html += '<div class="team-task-widget-list">';
             data.tasks.slice(0, 10).forEach(t => {
-                const overdue = t.is_overdue ? ' style="border-left:3px solid #ef4444"' : '';
+                const overdue = t.is_overdue ? ' is-overdue' : '';
                 const pIcon = t.priority === 'high' ? '🔴 ' : '';
-                html += `<div style="padding:6px 8px;border-radius:6px;margin-bottom:4px;background:var(--gray-50,rgba(0,0,0,0.02));font-size:12px;cursor:pointer"${overdue} onclick="window.location='/tasks?open=${t.id}'">
-                    <div style="font-weight:600">${pIcon}${escapeHtml(t.title?.slice(0, 50) || '')}</div>
-                    <div style="color:var(--gray-400);font-size:11px;margin-top:2px">
+                const subtaskPreview = renderDashboardTaskSubtasks(t, { variant: 'team', limit: 2 });
+                html += `<div class="team-task-widget-row${overdue}" onclick="window.location='/tasks?open=${t.id}'">
+                    <div class="team-task-widget-title">${pIcon}${escapeHtml(t.title?.slice(0, 50) || '')}</div>
+                    <div class="team-task-widget-meta">
                         ${t.assigned_to ? '👤 ' + escapeHtml(t.assigned_to) : '— нікому'}
                         ${t.deadline ? ' · ⏰ ' + new Date(t.deadline).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : ''}
                     </div>
+                    ${subtaskPreview}
                 </div>`;
             });
             html += '</div>';

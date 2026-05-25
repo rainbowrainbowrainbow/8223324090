@@ -10,6 +10,7 @@ const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
+const { normalizeSubtaskSummary } = require('../services/taskSubtasks');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
@@ -31,15 +32,53 @@ function buildOwnTaskFilter(user, params, alias = 't') {
     return `AND (${typed} OR ${legacy})`;
 }
 
+const TASK_WIDGET_SUBTASK_SELECT = `
+                           COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
+                           COALESCE(st.total, 0)::int AS subtask_count,
+                           COALESCE(st.done, 0)::int AS subtask_done_count`;
+
+const TASK_WIDGET_SUBTASK_JOINS = `
+                    LEFT JOIN (
+                        SELECT task_id,
+                               COUNT(*)::int AS total,
+                               COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                        FROM task_subtasks
+                        GROUP BY task_id
+                    ) st ON st.task_id = t.id
+                    LEFT JOIN (
+                        SELECT task_id,
+                               json_agg(json_build_object(
+                                   'id', id,
+                                   'task_id', task_id,
+                                   'title', title,
+                                   'is_done', is_done,
+                                   'sort_order', sort_order,
+                                   'source_type', COALESCE(source_type, 'manual'),
+                                   'created_at', created_at,
+                                   'completed_at', completed_at,
+                                   'updated_at', updated_at
+                               ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                        FROM task_subtasks
+                        GROUP BY task_id
+                    ) subtask_rows ON subtask_rows.task_id = t.id`;
+
 function taskWidgetPayload(rows = []) {
     return rows.map(row => {
         const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
         const ownerState = taskOwnerState(row);
+        const subtaskSummary = normalizeSubtaskSummary(row);
         return {
             ...row,
             ownerLabel,
             ownerState,
             ownerUserId: row.owner_user_id || null,
+            subtasks: subtaskSummary.subtasks,
+            subtask_count: subtaskSummary.subtaskCount,
+            subtask_done_count: subtaskSummary.subtaskDoneCount,
+            subtaskCount: subtaskSummary.subtaskCount,
+            subtaskDoneCount: subtaskSummary.subtaskDoneCount,
+            subtaskProgress: subtaskSummary.subtaskProgress,
+            subtaskProgressPercent: subtaskSummary.subtaskProgressPercent,
             intelligence: deriveTaskIntelligence({ ...row, owner_label: ownerLabel, ownerState })
         };
     });
@@ -659,9 +698,11 @@ router.get('/widgets/:type', async (req, res) => {
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
                            t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
-                           u.name AS owner_name, u.username AS owner_username
+                           u.name AS owner_name, u.username AS owner_username,
+                           ${TASK_WIDGET_SUBTASK_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
+                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${visibility}
                     ${ownFilter}
@@ -687,10 +728,12 @@ router.get('/widgets/:type', async (req, res) => {
                            t.created_by, t.created_by_user_id, t.completed_at,
                            t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                            u.name AS owner_name, u.username AS owner_username,
-                           cu.name AS creator_name, cu.username AS creator_username
+                           cu.name AS creator_name, cu.username AS creator_username,
+                           ${TASK_WIDGET_SUBTASK_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
                     LEFT JOIN users cu ON cu.id = t.created_by_user_id
+                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') != 'archived'
                     ${visibility}
                     ORDER BY
@@ -712,9 +755,11 @@ router.get('/widgets/:type', async (req, res) => {
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
                            t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
-                           u.name AS owner_name, u.username AS owner_username
+                           u.name AS owner_name, u.username AS owner_username,
+                           ${TASK_WIDGET_SUBTASK_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
+                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${ownFilter}
                     ORDER BY
@@ -1267,9 +1312,11 @@ router.get('/widgets/:type', async (req, res) => {
                     SELECT t.id, t.title, t.assigned_to, t.owner, t.owner_user_id,
                            u.name AS owner_name, u.username AS owner_username,
                            t.status, t.priority, t.deadline, t.updated_at, t.created_at,
-                           CASE WHEN t.deadline < NOW() THEN true ELSE false END AS is_overdue
+                           CASE WHEN t.deadline < NOW() THEN true ELSE false END AS is_overdue,
+                           ${TASK_WIDGET_SUBTASK_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
+                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${visibility}
                     ORDER BY

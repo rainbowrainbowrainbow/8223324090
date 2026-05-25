@@ -3929,7 +3929,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     display: grid;
     grid-template-columns: 7px minmax(0, 1fr) auto;
     gap: 5px;
-    align-items: center;
+    align-items: flex-start;
     min-height: 34px;
     padding: 3px 6px;
     color: inherit;
@@ -3979,6 +3979,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
 .work-queue-dot {
     width: 6px;
     height: 6px;
+    margin-top: 4px;
     border-radius: 999px;
     background: #3B82F6;
 }
@@ -4072,6 +4073,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
 .work-queue-action {
     color: var(--primary, #4A90D9);
     max-width: 118px;
+    margin-top: 1px;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 10px;
@@ -4648,7 +4650,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
 
 .widget-task-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     padding: 10px 12px;
     background: rgba(0,0,0,0.02);
@@ -4702,6 +4704,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
 .widget-task-icon {
     width: 8px;
     height: 8px;
+    margin-top: 5px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -4718,6 +4721,94 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.dashboard-task-subtasks {
+    display: grid;
+    gap: 4px;
+    margin-top: 7px;
+    padding: 7px;
+    border: 1px solid rgba(20, 184, 166, 0.16);
+    border-radius: 8px;
+    background: rgba(20, 184, 166, 0.055);
+}
+
+.dashboard-task-subtasks.queue {
+    margin-top: 4px;
+    padding: 5px;
+    border-radius: 7px;
+}
+
+.dashboard-task-subtasks.triage {
+    margin-top: 0;
+    background: rgba(15, 23, 42, 0.035);
+}
+
+.dashboard-task-subtasks-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #0F766E;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.dashboard-task-subtasks-head strong {
+    color: #0F172A;
+    font-size: 10px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.dashboard-task-subtasks-bar {
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.10);
+}
+
+.dashboard-task-subtasks-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #14B8A6, #22C55E);
+}
+
+.dashboard-task-subtask-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+}
+
+.dashboard-task-subtask {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    min-width: 0;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #334155;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.dashboard-task-subtask.is-done {
+    color: #0F766E;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
+.dashboard-task-subtask.is-more {
+    color: #64748B;
+    background: rgba(148, 163, 184, 0.12);
+    text-decoration: none;
 }
 
 .personal-tasker {
@@ -4858,7 +4949,7 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     display: grid;
     grid-template-columns: 9px minmax(0, 1fr) 14px;
     gap: 10px;
-    align-items: center;
+    align-items: flex-start;
     width: 100%;
     border: 1px solid rgba(148,163,184,0.16);
     border-radius: 12px;
@@ -5647,6 +5738,43 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     border-color: rgba(148,163,184,0.18);
 }
 
+.dark-mode .dashboard-task-subtasks {
+    border-color: rgba(45, 212, 191, 0.18);
+    background: rgba(20, 184, 166, 0.10);
+}
+
+.dark-mode .dashboard-task-subtasks-head {
+    color: #5EEAD4;
+}
+
+.dark-mode .dashboard-task-subtasks-head strong,
+.dark-mode .team-task-widget-title {
+    color: #E2E8F0;
+}
+
+.dark-mode .dashboard-task-subtasks-bar {
+    background: rgba(148, 163, 184, 0.20);
+}
+
+.dark-mode .dashboard-task-subtask {
+    background: rgba(15, 23, 42, 0.62);
+    color: #CBD5E1;
+}
+
+.dark-mode .dashboard-task-subtask.is-done {
+    color: #5EEAD4;
+}
+
+.dark-mode .team-task-widget-row {
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.56);
+}
+
+.dark-mode .team-task-widget-row:hover {
+    border-color: rgba(45, 212, 191, 0.28);
+    background: rgba(20, 184, 166, 0.14);
+}
+
 .dark-mode .personal-tasker-tab.active {
     background: rgba(20,184,166,0.18);
     border-color: rgba(45,212,191,0.38);
@@ -6218,6 +6346,42 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     gap: 16px;
     padding: 16px 20px;
     overflow: hidden;
+}
+
+.team-task-widget-list {
+    display: grid;
+    gap: 5px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.team-task-widget-row {
+    padding: 7px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: var(--gray-50, rgba(0, 0, 0, 0.02));
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.team-task-widget-row:hover {
+    border-color: rgba(20, 184, 166, 0.22);
+    background: rgba(20, 184, 166, 0.08);
+}
+
+.team-task-widget-row.is-overdue {
+    border-left: 3px solid #EF4444;
+}
+
+.team-task-widget-title {
+    font-weight: 800;
+    color: var(--gray-900, #111827);
+}
+
+.team-task-widget-meta {
+    color: var(--gray-500, #64748B);
+    font-size: 11px;
+    margin-top: 2px;
 }
 
 .settings-config-column {

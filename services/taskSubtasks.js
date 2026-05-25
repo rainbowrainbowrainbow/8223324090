@@ -103,6 +103,37 @@ function sortSubtaskRows(rows = []) {
         .sort((a, b) => (a.sortOrder - b.sortOrder) || ((a.id || 0) - (b.id || 0)));
 }
 
+function normalizeSubtaskRows(value) {
+    let rows = value;
+    if (typeof value === 'string') {
+        try {
+            rows = JSON.parse(value);
+        } catch {
+            rows = [];
+        }
+    }
+    return sortSubtaskRows(Array.isArray(rows) ? rows : []);
+}
+
+function normalizeSubtaskSummary(row = {}) {
+    const subtasks = normalizeSubtaskRows(row.subtasks);
+    const totalRaw = row.subtask_count ?? row.subtaskCount;
+    const doneRaw = row.subtask_done_count ?? row.subtaskDoneCount;
+    const parsedTotal = Number.parseInt(totalRaw, 10);
+    const total = Math.max(0, Number.isFinite(parsedTotal) ? parsedTotal : (subtasks.length || 0));
+    const doneFromRows = subtasks.filter(item => item.isDone || item.is_done).length;
+    const parsedDone = Number.parseInt(doneRaw, 10);
+    const done = Math.max(0, Math.min(total, Number.isFinite(parsedDone) ? parsedDone : (doneFromRows || 0)));
+    const progress = subtaskProgress(done, total);
+    return {
+        subtasks,
+        subtaskCount: total,
+        subtaskDoneCount: done,
+        subtaskProgress: progress,
+        subtaskProgressPercent: progress || 0
+    };
+}
+
 async function listTaskSubtasks(db, taskId) {
     const result = await db.query(
         `SELECT *
@@ -210,6 +241,8 @@ module.exports = {
     listTaskSubtasks,
     normalizeSubtaskInput,
     normalizeSubtaskRow,
+    normalizeSubtaskRows,
+    normalizeSubtaskSummary,
     normalizeSubtaskSourceType,
     normalizeSubtasksInput,
     replaceTaskSubtasks,

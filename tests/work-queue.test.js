@@ -403,7 +403,13 @@ function createFakePool() {
                     linked_booking_id: null,
                     linked_booking_date: null,
                     linked_customer_id: null,
-                    created_at: '2026-05-10T10:00:00Z'
+                    created_at: '2026-05-10T10:00:00Z',
+                    subtasks: [
+                        { id: 11, task_id: 1, title: 'Порахувати витрати', is_done: true, sort_order: 0, source_type: 'manual' },
+                        { id: 12, task_id: 1, title: 'Надіслати звіт', is_done: false, sort_order: 1, source_type: 'manual' }
+                    ],
+                    subtask_count: 2,
+                    subtask_done_count: 1
                 }] };
             }
 
@@ -689,6 +695,11 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.overdue.items[0].href, '/sales-funnel?lead=10');
         assert.equal(buckets.overdue.items[0].meta.ownerUserId, 20);
         assert.equal(buckets.overdue.items[0].meta.ownerState, 'typed');
+        assert.equal(buckets.overdue.items[0].subtaskCount, 2);
+        assert.equal(buckets.overdue.items[0].subtaskDoneCount, 1);
+        assert.equal(buckets.overdue.items[0].subtaskProgressPercent, 50);
+        assert.deepEqual(buckets.overdue.items[0].subtasks.map(item => item.title), ['Порахувати витрати', 'Надіслати звіт']);
+        assert.equal(buckets.overdue.items[0].meta.subtaskCount, 2);
         assert.equal(buckets.overdue.items[0].execution.depth, 'limited_task_inline');
         assert.equal(buckets.overdue.items[0].execution.routeOutOnly, false);
         assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_mark_done'));
@@ -1395,6 +1406,13 @@ describe('work queue endpoint', () => {
                         subtitle: 'Task context',
                         dueAt: '2026-05-13T08:00:00Z',
                         priority: 'high',
+                        subtasks: [
+                            { id: 1, title: 'Перший крок', isDone: true, sortOrder: 0 },
+                            { id: 2, title: 'Другий крок', isDone: false, sortOrder: 1 }
+                        ],
+                        subtaskCount: 2,
+                        subtaskDoneCount: 1,
+                        subtaskProgressPercent: 50,
                         confidence: 'durable',
                         actionLabel: 'Відкрити задачу',
                         intelligence: {
@@ -1423,6 +1441,9 @@ describe('work queue endpoint', () => {
                             assignedTo: 'Manager User',
                             ownerUserId: 20,
                             ownerState: 'typed',
+                            subtaskCount: 2,
+                            subtaskDoneCount: 1,
+                            subtaskProgressPercent: 50,
                             signal: 'task_due_overdue'
                         }
                     }]
@@ -1585,6 +1606,9 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Overdue task/);
+        assert.ok(workspace.querySelector('.task-subtasks-card .dashboard-task-subtasks.triage'));
+        assert.match(workspace.textContent, /Перший крок/);
+        assert.match(workspace.textContent, /1\/2/);
         assert.match(workspace.textContent, /Історія дій по задачі/);
         assert.match(workspace.textContent, /Задачу виконано/);
         assert.match(workspace.textContent, /Дії по задачі працюють через перевірку видимості задачі/);

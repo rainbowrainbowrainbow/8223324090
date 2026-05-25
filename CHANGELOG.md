@@ -4,6 +4,17 @@
 
 ---
 
+## v0.64.1 - CRM 64.1: підзадачі у dashboard widgets
+
+### Dashboard / task widgets / декомпозиція задач / 25.05.2026 [codex]
+- **Віджети задач показують реальну декомпозицію** - `Мої задачі`, `Мій фокус`, `Особистий tasker`, `Задачі команди` і work queue тепер отримують `task_subtasks` з canonical task truth, а не тільки shell батьківської задачі.
+- **Підзадачі мають progress-preview прямо у dashboard** - картки показують `done/total`, відсоток, компактний список перших кроків і overflow-індикатор, без перетворення widget на повну сторінку задач.
+- **Payload синхронізовано з counts** - dashboard endpoints і `services/workQueue.js` віддають `subtasks`, `subtaskCount`, `subtaskDoneCount`, `subtaskProgress` та `subtaskProgressPercent` з одного агрегату `task_subtasks`.
+- **Plain tasks не ламаються** - якщо підзадач немає, додатковий блок не рендериться і стара компактна картка лишається чистою.
+- **Regression guardrail** - `tests/work-queue.test.js`, `tests/task-subtasks.test.js` і `tests/ui-check.js` перевіряють backend contract, triage rendering і статичний UI contract.
+
+---
+
 ## v0.64.0 - CRM 64: перенос задач у Мій день
 
 ### Профіль / Мій день / drag-and-drop задач / 25.05.2026 [codex]

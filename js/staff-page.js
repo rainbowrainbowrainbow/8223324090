@@ -978,11 +978,17 @@ function getCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
-function showOneTimeCredential(credential, title = 'One-time credentials') {
+function showOneTimeCredential(credential, title = 'One-time credentials', payload = {}) {
     if (!credential) return;
     const text = `Логін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
+    const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
+    const readinessMessage = hasReadiness
+        ? (payload.loginReady
+            ? '\n\nПеревірено сервером: цей логін і пароль готові до входу.'
+            : `\n\nУвага: сервер не підтвердив готовність входу (${payload.loginReadyReason || 'невідомо'}).`)
+        : '';
     if (typeof confirmModal === 'function') {
-        confirmModal(`${title}\n\n${text}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
+        confirmModal(`${title}\n\n${text}${readinessMessage}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
             type: 'warning',
             okText: 'Скопіювати',
             cancelText: 'Закрити'
@@ -1257,7 +1263,7 @@ async function createAccountForLinkingStaff() {
         }
         closeLinkModal();
         if (data.credential) {
-            showOneTimeCredential(data.credential, `Акаунт ${data.user?.username || result.username} створено`);
+            showOneTimeCredential(data.credential, `Акаунт ${data.user?.username || result.username} створено`, data);
         } else {
             showNotification(`Акаунт ${data.user?.username || result.username} створено`, 'success');
         }

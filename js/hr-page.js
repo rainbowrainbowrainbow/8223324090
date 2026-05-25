@@ -893,11 +893,17 @@ function showOneTimeCredentialModal(credential, title = 'One-time credentials', 
     const password = accountCredentialPassword(credential);
     const text = `Логін: ${username}\nПароль: ${password}`;
     const active = payload.isActive !== false;
+    const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
+    const readinessMessage = hasReadiness
+        ? (payload.loginReady
+            ? '\n\nПеревірено сервером: цей логін і пароль готові до входу.'
+            : `\n\nУвага: сервер не підтвердив готовність входу (${payload.loginReadyReason || 'невідомо'}).`)
+        : '';
     const statusMessage = active
         ? ''
         : '\n\nУвага: пароль оновлено, але акаунт вимкнений. Активуйте акаунт перед входом.';
     if (typeof confirmModal === 'function') {
-        confirmModal(`${title}\n\n${text}${statusMessage}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
+        confirmModal(`${title}\n\n${text}${statusMessage}${readinessMessage}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
             type: 'warning',
             okText: 'Скопіювати',
             cancelText: 'Закрити'
@@ -919,11 +925,18 @@ function showManualPasswordResetResult(payload = {}, user = {}) {
     const username = payload.login || payload.username || user.username || '';
     const copyText = username ? `Логін: ${username}` : '';
     const active = payload.isActive !== false;
+    const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
+    const readinessMessage = hasReadiness && active
+        ? (payload.loginReady
+            ? 'Сервер перевірив: новий пароль готовий до входу.'
+            : `Сервер не підтвердив готовність входу: ${payload.loginReadyReason || 'невідомо'}.`)
+        : '';
     const message = [
         username ? `Логін для входу: ${username}` : 'Пароль оновлено.',
         active
             ? 'Пароль оновлено, старі сесії скинуто. Користувач може входити з новим паролем.'
-            : 'Пароль оновлено, але акаунт вимкнений. Активуйте акаунт перед входом.'
+            : 'Пароль оновлено, але акаунт вимкнений. Активуйте акаунт перед входом.',
+        readinessMessage
     ].join('\n');
 
     if (typeof confirmModal === 'function' && username) {

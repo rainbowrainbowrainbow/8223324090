@@ -13,7 +13,8 @@ const {
     unlinkUserFromStaffProfiles,
     getAccountLinkConflicts,
     generateOneTimePassword,
-    oneTimeCredential
+    oneTimeCredential,
+    verifyIssuedCredential
 } = require('../services/accountLinking');
 
 const log = createLogger('Users');
@@ -340,13 +341,20 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
                 log.warn(`Password reset activated ${target.rows[0].username}, but staff profile activation failed: ${linkErr.message}`);
             }
         }
+        const loginCheck = await verifyIssuedCredential({
+            username: updated.rows[0]?.username || target.rows[0].username,
+            password: finalPassword
+        });
+        if (updated.rows[0]?.is_active !== false && !loginCheck.loginReady) {
+            throw new Error(`password_login_ready_check_failed_after_reset:${loginCheck.reason}`);
+        }
         await revokeAllUserTokens(parseInt(id));
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
             eventType: issueOneTime ? 'password_one_time_reissued' : 'password_reset_by_admin',
             reason: 'account_management',
-            details: { sessionsRevoked: true, oneTimeIssued: issueOneTime, activateOnReset, activatedByReset },
+            details: { sessionsRevoked: true, oneTimeIssued: issueOneTime, activateOnReset, activatedByReset, loginReady: loginCheck.loginReady },
             req
         });
 
@@ -359,6 +367,8 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
             isActive: updated.rows[0]?.is_active !== false,
             wasActive: target.rows[0].is_active !== false,
             activated: activatedByReset,
+            loginReady: loginCheck.loginReady,
+            loginReadyReason: loginCheck.reason,
             passwordChangedAt: updated.rows[0]?.password_changed_at || null,
             sessionRevokedAt: updated.rows[0]?.session_revoked_at || null,
             credential: issueOneTime ? oneTimeCredential(target.rows[0].username, finalPassword, 'password_reissue') : null
@@ -467,6 +477,14 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
             'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, is_active',
             [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
         );
+        const loginCheck = await verifyIssuedCredential({
+            client,
+            username: result.rows[0].username,
+            password: finalPassword
+        });
+        if (!loginCheck.loginReady) {
+            throw new Error(`password_login_ready_check_failed_after_create:${loginCheck.reason}`);
+        }
 
         if (staffId) {
             await linkUserToStaffProfile(client, {
@@ -483,7 +501,7 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId, oneTimeIssued: issueOneTime },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
             client
         });
@@ -508,6 +526,8 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
         res.json({
             success: true,
             user: result.rows[0],
+            loginReady: loginCheck.loginReady,
+            loginReadyReason: loginCheck.reason,
             credential: issueOneTime ? oneTimeCredential(result.rows[0].username, finalPassword, 'account_create') : null
         });
     } catch (err) {

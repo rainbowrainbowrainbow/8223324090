@@ -170,6 +170,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(accountLinkingService, /async function unlinkStaffAccount/);
         assert.match(accountLinkingService, /async function unlinkUserFromStaffProfiles/);
         assert.match(accountLinkingService, /function oneTimeCredential/);
+        assert.match(accountLinkingService, /async function verifyIssuedCredential/);
+        const oneTimeChars = accountLinkingService.match(/const chars = '([^']+)'/)?.[1] || '';
+        assert.ok(oneTimeChars && !/[ILO0l1]/.test(oneTimeChars), 'one-time passwords avoid visually ambiguous characters');
         assert.match(accountLinkingService, /async function getAccountLinkConflicts/);
         assert.match(accountLinkingService, /staff_already_linked/);
         assert.match(accountSecurityService, /delete clone\.manualPassword/);
@@ -187,10 +190,14 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(usersRoute, /activatedByReset/);
         assert.match(usersRoute, /password_hash_verified_after_reset_failed/);
         assert.match(usersRoute, /password_hash_verified_after_create_failed/);
+        assert.match(usersRoute, /password_login_ready_check_failed_after_reset/);
+        assert.match(usersRoute, /password_login_ready_check_failed_after_create/);
+        assert.match(usersRoute, /loginReady/);
         assert.match(usersRoute, /loginAliases/);
 
         assert.match(staffRoute, /staff_overlay_account_linked/);
         assert.match(staffRoute, /bulk_account_created_with_staff_link/);
+        assert.match(staffRoute, /bulk_account_login_ready_check_failed/);
         assert.match(staffRoute, /credentialsPolicy/);
         assert.match(staffRoute, /router\.post\('\/bulk-pdf'[\s\S]*res\.status\(410\)/);
         assert.match(staffRoute, /function staffRoleToAccountRole/);

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.5 - CRM 66.5: Password readiness guard
+
+### HR / staff accounts / password readiness / 25.05.2026 [codex]
+- **One-time паролі більше не містять візуально небезпечну `L`** - генератор прибрав символ, який легко плутається з `l`, `I` або українською `І` при ручному переписуванні пароля.
+- **Create/reset акаунта тепер перевіряє пароль після запису в БД** - backend робить read-after-write перевірку через той самий login identity lookup, яким користується `/api/auth/login`, і не повертає "готовий" пароль, якщо він не проходить bcrypt/login check.
+- **HR і Staff показують оператору login-ready статус** - модалки one-time/manual reset тепер прямо пишуть, чи сервер підтвердив, що логін і пароль готові до входу.
+- **Bulk staff account creation отримав той самий guardrail** - масове створення акаунтів перевіряє кожен виданий пароль до commit і повертає `loginReady` у результаті.
+- **Regression guardrail** - `tests/backoffice-foundation-v2.test.js` фіксує безпечний alphabet для one-time паролів і серверну login-ready перевірку для create/reset/bulk flows.
+
+---
+
 ## v0.66.4 - CRM 66.4: Detailed menu tech cards
 
 ### Products / menu tech cards / warehouse / procurement / 25.05.2026 [codex]

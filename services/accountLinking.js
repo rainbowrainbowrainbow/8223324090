@@ -1,8 +1,10 @@
 'use strict';
 
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
+const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('./authIdentity');
 
 function appError(message, statusCode = 400, code = 'account_link_error', details = {}) {
     const err = new Error(message);
@@ -38,13 +40,46 @@ function suggestUsernameForStaff(staff = {}) {
 }
 
 function generateOneTimePassword(length = 10) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     const bytes = crypto.randomBytes(length);
     let password = '';
     for (let i = 0; i < length; i += 1) {
         password += chars[bytes[i] % chars.length];
     }
     return password;
+}
+
+async function verifyIssuedCredential({ client = pool, username, password } = {}) {
+    const loginIdentifier = normalizeLoginIdentifier(username);
+    if (!loginIdentifier || !password) {
+        return {
+            loginReady: false,
+            reason: 'missing_login_or_password',
+            username: username || '',
+            isActive: false
+        };
+    }
+
+    const result = await client.query(
+        `SELECT u.id, u.username, u.password_hash, u.is_active
+         FROM users u
+         WHERE ${LOGIN_IDENTITY_WHERE_SQL}
+         ORDER BY CASE WHEN LOWER(u.username) = $1 THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [loginIdentifier]
+    );
+    const user = result.rows[0] || null;
+    const isActive = !!user && user.is_active !== false;
+    const passwordMatches = isActive
+        ? await bcrypt.compare(String(password), user.password_hash || '').catch(() => false)
+        : false;
+
+    return {
+        loginReady: Boolean(user && isActive && passwordMatches),
+        reason: !user ? 'user_not_found' : (!isActive ? 'inactive_account' : (passwordMatches ? 'ready' : 'password_mismatch')),
+        username: user?.username || username,
+        isActive
+    };
 }
 
 async function uniqueUsername(client, baseUsername) {
@@ -420,6 +455,7 @@ module.exports = {
     normalizeUsername,
     suggestUsernameForStaff,
     generateOneTimePassword,
+    verifyIssuedCredential,
     uniqueUsername,
     oneTimeCredential,
     linkUserToStaffProfile,

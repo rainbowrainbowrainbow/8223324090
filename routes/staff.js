@@ -44,7 +44,8 @@ const {
     generateOneTimePassword,
     oneTimeCredential,
     suggestUsernameForStaff,
-    uniqueUsername
+    uniqueUsername,
+    verifyIssuedCredential
 } = require('../services/accountLinking');
 
 const { requireRole, authenticateToken } = require('../middleware/auth');
@@ -757,6 +758,14 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
                 'INSERT INTO users (username, password_hash, role, name, password_changed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username, name, role',
                 [username, passwordHash, role, staff.name]
             );
+            const loginCheck = await verifyIssuedCredential({
+                client,
+                username: userResult.rows[0].username,
+                password
+            });
+            if (!loginCheck.loginReady) {
+                throw new Error(`bulk_account_login_ready_check_failed:${loginCheck.reason}`);
+            }
 
             await linkUserToStaffProfile(client, {
                 userId: userResult.rows[0].id,
@@ -771,7 +780,7 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
                 target: userResult.rows[0],
                 eventType: 'account_created',
                 reason: 'staff_bulk_create',
-                details: { role, staffId: staff.id, oneTimeIssued: true },
+                details: { role, staffId: staff.id, oneTimeIssued: true, loginReady: loginCheck.loginReady },
                 req,
                 client
             });
@@ -782,6 +791,8 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
                 username,
                 role,
                 department: staff.department,
+                loginReady: loginCheck.loginReady,
+                loginReadyReason: loginCheck.reason,
                 credential: oneTimeCredential(username, password, 'staff_bulk_create')
             });
         }

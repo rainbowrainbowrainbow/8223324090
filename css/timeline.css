@@ -226,6 +226,11 @@
     transition: background var(--speed-fast);
 }
 
+.timeline-line > .line-header,
+.timeline-line > .line-grid {
+    min-height: inherit;
+}
+
 .timeline-line:nth-child(even) {
     background: var(--gray-50);
 }
@@ -879,8 +884,9 @@ body.dark-mode .booking-banquet-unlink-btn {
 
 .pending-grid {
     display: flex !important;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: flex-start;
+    position: relative;
     background: repeating-linear-gradient(
         -45deg,
         rgba(245,158,11,0.04),
@@ -891,14 +897,23 @@ body.dark-mode .booking-banquet-unlink-btn {
     border: 2px dashed var(--warning) !important;
     border-left: none !important;
     border-radius: 0 8px 8px 0 !important;
-    min-height: 64px;
+    min-height: inherit;
+}
+
+.pending-grid .grid-cell {
+    cursor: default;
+    pointer-events: none;
 }
 
 .pending-overlay {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
     padding: 0 20px;
+    pointer-events: none;
 }
 
 .pending-pulse {

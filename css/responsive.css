@@ -651,7 +651,7 @@
 
     /* v7.8.7: Compact pending line on mobile */
     .pending-grid {
-        min-height: 44px;
+        min-height: inherit;
         border-width: 1.5px !important;
     }
 

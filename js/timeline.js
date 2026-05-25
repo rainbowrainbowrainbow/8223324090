@@ -215,6 +215,34 @@ function getLineSubtitle(line) {
     return 'редагувати';
 }
 
+function getTimelineCellWidth(anchor) {
+    const localCell = anchor?.querySelector?.('.grid-cell') || anchor?.closest?.('.line-grid')?.querySelector?.('.grid-cell');
+    const measured = localCell?.getBoundingClientRect?.().width;
+    if (Number.isFinite(measured) && measured > 0) return measured;
+
+    if (typeof window !== 'undefined') {
+        const cssValue = window.getComputedStyle(document.documentElement).getPropertyValue('--timeline-cell-w');
+        const cssWidth = parseFloat(cssValue);
+        if (Number.isFinite(cssWidth) && cssWidth > 0) return cssWidth;
+    }
+
+    return CONFIG.TIMELINE.CELL_WIDTH;
+}
+
+function timelineMinutesToPixels(minutes, anchor) {
+    return (minutes / CONFIG.TIMELINE.CELL_MINUTES) * getTimelineCellWidth(anchor);
+}
+
+function timelineDurationWidth(duration, anchor) {
+    return timelineMinutesToPixels(duration, anchor) - 4;
+}
+
+function getTimelineLineGrid(lineId) {
+    const id = String(lineId ?? '');
+    return Array.from(document.querySelectorAll('.line-grid[data-line-id]'))
+        .find(grid => String(grid.dataset.lineId) === id) || null;
+}
+
 function getLeadConversionContextFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const leadId = parseInt(params.get('leadId') || params.get('lead'), 10);
@@ -719,8 +747,8 @@ function createBookingBlock(booking, startHour) {
         ? { ...booking, duration: effectiveDuration }
         : booking;
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
-    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
-    const width = (effectiveDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    const left = timelineMinutesToPixels(startMin);
+    const width = timelineDurationWidth(effectiveDuration);
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
@@ -1146,9 +1174,9 @@ function createAfishaBlock(event, startHour) {
     if (startMin < 0) return null;
 
     const block = document.createElement('div');
-    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+    const left = timelineMinutesToPixels(startMin);
     const duration = event.duration || (event.type === 'birthday' ? 15 : 60);
-    const width = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    const width = timelineDurationWidth(duration);
 
     const typeClass = event.type || 'event';
     const isBirthday = event.type === 'birthday';
@@ -1445,7 +1473,7 @@ function _collectRelatedBookings(draggedBooking) {
 function _findRelatedBlocks(relatedBookings) {
     const results = [];
     for (const rb of relatedBookings) {
-        const lineGrid = document.querySelector(`.line-grid[data-line-id="${rb.booking.lineId}"]`);
+        const lineGrid = getTimelineLineGrid(rb.booking.lineId);
         const block = lineGrid?.querySelector(`.booking-block[data-booking-id="${rb.booking.id}"]`) ||
             document.querySelector(`.booking-block[data-booking-id="${rb.booking.id}"]`);
         if (block) {
@@ -1491,7 +1519,7 @@ function _handleBookingDragMove(e) {
 // --- Update block position during drag ---
 function _updateBookingDragPosition(clientX, clientY) {
     const s = _bookingDragState;
-    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellW = getTimelineCellWidth(s.grid);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
 
     // --- Horizontal: time shift ---
@@ -1529,7 +1557,7 @@ function _updateBookingDragPosition(clientX, clientY) {
 
     // v12.6: Visually move block to target line via translateY
     if (s.newLineId !== s.startLineId && s.originalGridRect) {
-        const targetGrid = document.querySelector(`.line-grid[data-line-id="${s.newLineId}"]`);
+        const targetGrid = getTimelineLineGrid(s.newLineId);
         if (targetGrid) {
             const targetRect = targetGrid.getBoundingClientRect();
             const yOffset = targetRect.top - s.originalGridRect.top;
@@ -1582,7 +1610,7 @@ function _highlightTargetLine(lineId) {
     document.querySelectorAll('.line-grid.drag-target, .line-grid.drag-invalid').forEach(el => {
         el.classList.remove('drag-target', 'drag-invalid');
     });
-    const targetGrid = document.querySelector(`.line-grid[data-line-id="${lineId}"]`);
+    const targetGrid = getTimelineLineGrid(lineId);
     if (targetGrid) targetGrid.classList.add('drag-target');
 }
 
@@ -1597,10 +1625,10 @@ function _clearDropIndicators() {
 // --- Show ghost landing preview on target line ---
 function _showDropGhost(targetLineId, newMin, duration, startHour) {
     _removeDropGhost();
-    const targetGrid = document.querySelector(`.line-grid[data-line-id="${targetLineId}"]`);
+    const targetGrid = getTimelineLineGrid(targetLineId);
     if (!targetGrid) return;
 
-    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellW = getTimelineCellWidth(targetGrid);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
     const left = ((newMin - startHour * 60) / cellM) * cellW;
     const width = (duration / cellM) * cellW - 4;
@@ -1669,7 +1697,7 @@ function _updateConflictPreview(newMin, lineId, timeDelta) {
     if (ghost) ghost.classList.toggle('conflict', hasConflict);
 
     // Update target line indicator
-    const targetGrid = document.querySelector(`.line-grid[data-line-id="${lineId}"]`);
+    const targetGrid = getTimelineLineGrid(lineId);
     if (targetGrid && lineId !== s.startLineId) {
         targetGrid.classList.toggle('drag-target', !hasConflict);
         targetGrid.classList.toggle('drag-invalid', hasConflict);
@@ -1823,7 +1851,7 @@ function _validateDragDrop(state, timeDelta) {
             const otherEnd = otherStart + other.duration;
             if (rbNewMin < otherEnd && rbNewEnd > otherStart) {
                 // Get line name for specific error
-                const lineGrid = document.querySelector(`.line-grid[data-line-id="${rb.booking.lineId}"]`);
+                const lineGrid = getTimelineLineGrid(rb.booking.lineId);
                 const lineHeader = lineGrid ? lineGrid.parentElement.querySelector('.line-name') : null;
                 const lineName = lineHeader ? lineHeader.textContent : "пов'язаний аніматор";
                 return { valid: false, error: `Накладка у ${lineName}!` };
@@ -2106,7 +2134,7 @@ function layoutGraduationSegmentTrack(block, segments, parentDuration) {
         const durEl = el.querySelector('.graduation-segment-duration');
         if (durEl) durEl.textContent = `${safeNumber(segment.durationMin, 0)} хв`;
     });
-    const widthPx = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    const widthPx = timelineDurationWidth(duration, block);
     block.style.width = `${widthPx}px`;
     const badge = block.querySelector('.duration-badge');
     if (badge) badge.textContent = `${duration}хв`;
@@ -2279,7 +2307,7 @@ function _handleGraduationSegmentDragMove(e) {
     if (!s) return;
     e.preventDefault();
     const deltaX = e.clientX - s.startX;
-    const deltaMin = Math.round((deltaX / CONFIG.TIMELINE.CELL_WIDTH) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
+    const deltaMin = Math.round((deltaX / getTimelineCellWidth(s.block)) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
     const segment = s.segments.find(item => String(item.id) === String(s.segmentId));
     if (!segment) return;
     segment.startOffsetMin = Math.max(0, s.startOffsetMin + deltaMin);
@@ -2306,7 +2334,7 @@ function _handleGraduationSegmentResizeMove(e) {
     if (!s) return;
     e.preventDefault();
     const deltaX = e.clientX - s.startX;
-    const deltaMin = Math.round((deltaX / CONFIG.TIMELINE.CELL_WIDTH) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
+    const deltaMin = Math.round((deltaX / getTimelineCellWidth(s.block)) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
     const segment = s.segments.find(item => String(item.id) === String(s.segmentId));
     if (!segment) return;
     segment.durationMin = Math.max(5, Math.min(240, s.startDurationMin + deltaMin));
@@ -2411,7 +2439,7 @@ function initBookingResize(handle, block, booking, startHour) {
 function _handleResizeMove(e) {
     if (!_resizeState) return;
     const s = _resizeState;
-    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellW = getTimelineCellWidth(s.block);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
 
     e.preventDefault();
@@ -2484,7 +2512,7 @@ async function _handleResizeEnd(e) {
         if (conflictWith && conflictWith.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(conflictWith.id);
         _triggerHaptic('error');
         // Rollback visual
-        const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+        const origWidth = timelineDurationWidth(s.originalDuration, s.block);
         s.block.style.width = `${origWidth}px`;
         const badge = s.block.querySelector('.duration-badge');
         if (badge) badge.textContent = `${s.originalDuration}хв`;
@@ -2512,7 +2540,7 @@ async function _handleResizeEnd(e) {
         showNotification(result.error || 'Помилка зміни тривалості', 'error');
         if (result.conflictBookingId && typeof revealHiddenBooking === 'function') revealHiddenBooking(result.conflictBookingId);
         // Rollback
-        const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+        const origWidth = timelineDurationWidth(s.originalDuration, s.block);
         s.block.style.width = `${origWidth}px`;
         const badge = s.block.querySelector('.duration-badge');
         if (badge) badge.textContent = `${s.originalDuration}хв`;
@@ -2541,7 +2569,7 @@ function _handleResizeCancel(e) {
     try { s.block.querySelector('.resize-handle')?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
 
     // Rollback visual
-    const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    const origWidth = timelineDurationWidth(s.originalDuration, s.block);
     s.block.style.width = `${origWidth}px`;
     const badge = s.block.querySelector('.duration-badge');
     if (badge) badge.textContent = `${s.originalDuration}хв`;
@@ -2676,7 +2704,7 @@ function _beginAfishaDrag(block, event, startHour, clientX) {
     rangeEl.className = 'afisha-drag-range';
     const rangeLeftMin = minAllowed - startHour * 60;
     const rangeRightMin = maxAllowed - startHour * 60;
-    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellW = getTimelineCellWidth(grid);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
     rangeEl.style.left = `${(rangeLeftMin / cellM) * cellW}px`;
     rangeEl.style.width = `${((rangeRightMin - rangeLeftMin) / cellM) * cellW}px`;
@@ -2720,7 +2748,7 @@ function _moveAfishaDrag(clientX) {
     if (Math.abs(deltaX) > 8) s.moved = true;
     if (!s.moved) return;
 
-    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellW = getTimelineCellWidth(s.grid);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
     const deltaMin = (deltaX / cellW) * cellM;
 
@@ -3015,6 +3043,8 @@ async function renderMultiDayTimeline() {
 function renderPendingLine() {
     const container = document.getElementById('timelineLines');
     if (!container) return;
+    document.getElementById('pendingAnimatorLine')?.remove();
+    const selectedDate = new Date(AppState.selectedDate);
 
     const pendingEl = document.createElement('div');
     pendingEl.className = 'timeline-line pending-line';
@@ -3025,7 +3055,8 @@ function renderPendingLine() {
             <span class="line-name">⏳ Очікування...</span>
             <span class="line-sub pending-timer">0 сек</span>
         </div>
-        <div class="line-grid pending-grid">
+        <div class="line-grid pending-grid" aria-label="Очікування підтвердження аніматора">
+            ${renderGridCells('pending', selectedDate)}
             <div class="pending-overlay">
                 <div class="pending-pulse"></div>
                 <span class="pending-text">Очікування підтвердження в Telegram...</span>

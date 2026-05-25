@@ -4,6 +4,16 @@
 
 ---
 
+## v0.63.48 - CRM 63.48: вирівнювання ліній таймлайну
+
+### Таймлайн / лінії / drag geometry / 25.05.2026 [codex]
+- **Pending/new assistant lane вирівняно зі звичайними лініями** - рядок очікування додавання аніматора тепер рендерить ті самі time-grid cells, тому не стискається і не з'їжджає відносно розкладу.
+- **Позиційна математика читає фактичну ширину клітинки** - booking, afisha, drag ghost, resize і graduation-сегменти більше не покладаються на жорсткі `50px`, а беруть реальний `--timeline-cell-w` або виміряну grid-cell ширину.
+- **Lane height contract закріплено CSS-ом** - header і grid у кожному `.timeline-line` успадковують одну висоту, pending overlay лежить поверх grid без зміни геометрії.
+- **Regression guardrail** - UI smoke перевіряє measured-cell helper, pending grid cells і responsive `min-height: inherit`, щоб нова лінія аніматора не поверталась до зміщеного layout.
+
+---
+
 ## v0.63.47 - CRM 63.47: нижча кнопка підзадач
 
 ### Задачі / підзадачі / layout polish / 25.05.2026 [codex]

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.64.6 - CRM 64.6: Telegram inbox send and webhook lock
+
+### OmniClaw / Telegram inbox / 25.05.2026 [codex]
+- **Відповіді з CRM у приватний Telegram inbox більше не падають через thread id** - Omni-відправка явно вимикає глобальний `message_thread_id`, який потрібен для групових форум-тредів, але ламає приватні діалоги з помилкою `Bad Request: message thread not found`.
+- **Startup більше не повертає inbox-бот на legacy webhook** - якщо в CRM є активне Telegram inbox-підключення, legacy Telegram auto-setup пропускається навіть тоді, коли токен не вдалося порівняти напряму.
+- **Групові Telegram-нотифікації не зламані** - спільний `sendTelegramMessage` зберігає стару поведінку з налаштованим thread id для службових груп, а `skipThread` використовується тільки для прямих inbox-чатів.
+- **Regression guardrail** - `tests/omni-send-truth.test.js` перевіряє і private-reply без forum-thread, і захист від повторного legacy webhook ownership drift.
+
+---
+
 ## v0.64.5 - CRM 64.5: Telegram inbox private replies
 
 ### OmniClaw / Telegram inbox / 25.05.2026 [codex]

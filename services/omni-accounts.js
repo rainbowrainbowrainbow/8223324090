@@ -792,6 +792,13 @@ async function isTelegramInboxConnectionUsingToken(botToken) {
   return Boolean(rowRuntime.botToken && rowRuntime.botToken === token);
 }
 
+async function hasActiveTelegramInboxConnection() {
+  const row = await loadConnectionRow('telegram');
+  if (!row || row.status === 'disconnected' || row.status === 'needs_rebind') return false;
+  if (isReportBotShapedConnection(row)) return false;
+  return true;
+}
+
 function userLabel(user = {}) {
   return user.name || user.username || user.role || 'system';
 }
@@ -1373,6 +1380,7 @@ module.exports = {
   getOmniUnavailableMessageAsync,
   resolveOmniRuntimeConfig,
   isTelegramInboxConnectionUsingToken,
+  hasActiveTelegramInboxConnection,
   upsertOmniConnection,
   recheckOmniConnection,
   testOmniConnection,

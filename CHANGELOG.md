@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.14 - CRM 66.14: реальний dock Помічника
+
+### Таймлайн / AI-помічник / 26.05.2026 [codex]
+- **Dock Помічника прив'язано до реального mount-стану** - `js/assistant-rail.js` ставить `assistant-rail-timeline-mounted` на фактичний `.header-content` і `data-crm-page="timeline"` на host, тому timeline CSS більше не залежить тільки від body-селектора.
+- **Старий CSS link примусово оновлюється** - `js/auth.js` міняє stale `assistant-rail.css` href на поточний version tag, якщо вже авторизована сторінка мала старий link після deploy.
+- **Помічник стає в normal topbar flow** - `css/assistant-rail.css` кладе command bar у ліву зону header grid, залишає пошук/user controls справа і не дає помічнику нависати над timeline controls.
+- **Regression guardrail** - `tests/ui-check.js` перевіряє mount-клас, `data-crm-page="timeline"`, CSS grid contract і refresh stale CSS link.
+
+---
+
 ## v0.66.13 - CRM 66.13: фікс позиції Помічника
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

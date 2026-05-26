@@ -324,12 +324,19 @@ function ensureCrmAssistantRailAssets() {
     const foundationJsPath = '/js/assistant-foundation.js';
     const outputFormatJsPath = '/js/assistant-output-format.js';
     const railJsPath = '/js/assistant-rail.js';
-    if (!document.querySelector('link[data-crm-assistant-rail-css]')) {
+    const expectedRailCssHref = `${railCssPath}${suffix}`;
+    const existingRailCss = document.querySelector('link[data-crm-assistant-rail-css]');
+    if (!existingRailCss) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = `${railCssPath}${suffix}`;
+        link.href = expectedRailCssHref;
         link.dataset.crmAssistantRailCss = 'true';
         document.head.appendChild(link);
+    } else {
+        const currentHref = existingRailCss.getAttribute('href') || '';
+        if (currentHref !== expectedRailCssHref) {
+            existingRailCss.href = expectedRailCssHref;
+        }
     }
 
     function loadAssistantScript(path, markerAttr, isReady, errorCode) {

@@ -509,6 +509,13 @@
         }
     }
 
+    function isTimelineAssistantPage() {
+        return Boolean(
+            document.body?.classList?.contains('timeline-dashboard-page') ||
+            document.querySelector('.timeline-container, .timeline-scroll, .control-panel .date-controls')
+        );
+    }
+
     function ensureAssistantRailHost(headerContent) {
         let status = headerContent.querySelector('#crmAssistantTopStatus');
         if (status) status.remove();
@@ -521,6 +528,10 @@
             host.setAttribute('aria-hidden', 'false');
         }
         host.dataset.mount = 'top-menu';
+        const isTimeline = isTimelineAssistantPage();
+        if (isTimeline) host.dataset.crmPage = 'timeline';
+        else delete host.dataset.crmPage;
+
         const firstHeaderControl = headerContent.querySelector('#globalHeaderSearchBtn, .btn-search, .user-panel');
         if (host.parentElement !== headerContent) {
             if (firstHeaderControl) headerContent.insertBefore(host, firstHeaderControl);
@@ -529,6 +540,8 @@
             headerContent.insertBefore(host, firstHeaderControl);
         }
         headerContent.classList.add('assistant-rail-mounted');
+        headerContent.classList.toggle('assistant-rail-timeline-mounted', isTimeline);
+        headerContent.closest('.header')?.classList.toggle('assistant-rail-timeline-header', isTimeline);
         return host;
     }
 
@@ -540,7 +553,9 @@
         document.getElementById('dashboardAssistantRail')?.remove();
         document.getElementById('crmAssistantRail')?.remove();
         document.getElementById('crmAssistantRailHost')?.remove();
-        document.querySelector('.header .header-content')?.classList.remove('assistant-rail-mounted');
+        const headerContent = document.querySelector('.header .header-content');
+        headerContent?.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
+        headerContent?.closest('.header')?.classList.remove('assistant-rail-timeline-header');
     }
 
     function ensureMounted() {

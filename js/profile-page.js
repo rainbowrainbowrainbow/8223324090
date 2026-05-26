@@ -21,6 +21,15 @@ let leaderboardData = null;
 let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'professions';
+let activeProfessionKey = null;
+let profileMaterialsState = {
+    key: null,
+    loading: false,
+    loaded: false,
+    articles: [],
+    materials: [],
+    error: ''
+};
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
@@ -462,6 +471,63 @@ function profileProfessionEntries() {
     return unique.length ? unique : [profileProfessionEntry('default', { primary: true })];
 }
 
+function profileProfessionKeys() {
+    return profileProfessionEntries().map(entry => entry.key);
+}
+
+function ensureActiveProfessionKey() {
+    const keys = profileProfessionKeys();
+    if (!keys.length) {
+        activeProfessionKey = 'default';
+        return activeProfessionKey;
+    }
+    if (!activeProfessionKey || !keys.includes(normalizeProfileProfessionKey(activeProfessionKey))) {
+        activeProfessionKey = keys[0];
+    }
+    return activeProfessionKey;
+}
+
+function profileActiveProfessionEntry() {
+    const activeKey = ensureActiveProfessionKey();
+    return profileProfessionEntries().find(entry => entry.key === activeKey)
+        || profileProfessionEntries()[0]
+        || profileProfessionEntry('default', { primary: true });
+}
+
+function profileTrainingRoleKey(key = ensureActiveProfessionKey()) {
+    const normalized = normalizeProfileProfessionKey(key);
+    const knownTrainingRoles = new Set(['animator', 'admin', 'manager']);
+    if (knownTrainingRoles.has(normalized)) return normalized;
+    if (/admin|reception|cashier|operator/.test(normalized)) return 'admin';
+    if (/manager|director|creator|sales|lead/.test(normalized)) return 'manager';
+    if (/animator|quest|host|show|photo|mk|pinata/.test(normalized)) return 'animator';
+    return normalized || 'all';
+}
+
+function profileWorkHubTabOrder() {
+    return [
+        { id: 'professions', label: 'Професії' },
+        { id: 'checklists', label: 'Чеклісти' },
+        { id: 'materials', label: 'Матеріали' },
+        { id: 'myday', label: 'Мій день', ownOnly: true },
+        { id: 'mytasks', label: 'Мої задачі', ownOnly: true },
+        { id: 'settings', label: 'Налаштування', ownOnly: true }
+    ];
+}
+
+function profileSecondaryTabOrder() {
+    return [
+        { id: 'achievements', label: 'Досягнення' },
+        { id: 'leaderboard', label: 'Рейтинг' },
+        { id: 'inventory', label: 'Інвентар', ownOnly: true },
+        { id: 'shop', label: 'Магазин', ownOnly: true },
+        { id: 'quests', label: 'Щоденні', ownOnly: true },
+        { id: 'season', label: 'Сезон' },
+        { id: 'teams', label: 'Команди' },
+        { id: 'referral', label: 'Реферали', ownOnly: true }
+    ];
+}
+
 const PROFILE_CREATOR_ONLY_TABS = new Set(['inventory', 'shop']);
 const PROFILE_ALWAYS_SOON_TABS = new Set(['quests', 'season', 'teams', 'referral']);
 const PROFILE_SOON_TAB_COPY = {
@@ -690,7 +756,7 @@ async function initProfilePage() {
     isOwnProfile = viewUserId === currentUserId;
     const requestedTab = params.get('tab');
     const normalizedRequestedTab = requestedTab === 'profile' ? 'professions' : requestedTab;
-    const allowedOwnTabs = ['professions', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
     if (isOwnProfile && normalizedRequestedTab && allowedOwnTabs.includes(normalizedRequestedTab)) {
         activeTab = normalizedRequestedTab;
     }
@@ -732,6 +798,7 @@ async function loadProfileData(userId) {
     syncCabinetPulseCounts(results[10], results[11]);
     profileSecurityData = results[12];
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
+    ensureActiveProfessionKey();
 }
 
 function profileCockpitWidgetDef(id) {
@@ -959,6 +1026,52 @@ function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()
         </div>`;
 }
 
+function renderProfileProfessionSwitcher(entries = profileProfessionEntries()) {
+    const active = profileActiveProfessionEntry();
+    return `
+        <div class="profile-work-hub-context" aria-label="Активна професія профілю">
+            <div class="profile-work-hub-context-copy">
+                <span class="profile-kicker">Активна професія</span>
+                <strong>${escapeHtml(active.title)}</strong>
+                <small>${escapeHtml(active.department || active.shortInfo || 'Професійний контекст')}</small>
+            </div>
+            <div class="profile-profession-switcher" role="list" aria-label="Перемикач професій">
+                ${entries.map(entry => `
+                    <button type="button"
+                        class="profile-profession-switch ${entry.key === active.key ? 'active' : ''}"
+                        style="--profession-color:${escapeHtml(entry.color)}"
+                        onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')"
+                        aria-pressed="${entry.key === active.key ? 'true' : 'false'}">
+                        <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
+                        <b>${escapeHtml(entry.title)}</b>
+                    </button>
+                `).join('')}
+            </div>
+        </div>`;
+}
+
+function renderProfileWorkHubTabs() {
+    return `
+        <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Робочий хаб профілю">
+            ${profileWorkHubTabOrder().map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly })).join('')}
+        </div>`;
+}
+
+function renderProfileSecondaryTabs() {
+    const body = profileSecondaryTabOrder()
+        .map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly }))
+        .filter(Boolean)
+        .join('');
+    if (!body) return '';
+    return `
+        <details class="profile-secondary-work-menu">
+            <summary>Ще в профілі</summary>
+            <div class="profile-secondary-tabs" role="tablist" aria-label="Додаткові розділи профілю">
+                ${body}
+            </div>
+        </details>`;
+}
+
 // ==========================================
 // RENDER
 // ==========================================
@@ -1013,21 +1126,11 @@ function renderProfile() {
             ${renderProfileProfessionHeaderPanel(professionEntries)}
         </div>
 
-        <!-- TABS -->
-        <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Розділи профілю">
-            ${renderProfilePrimaryTab('professions', 'Мої професії')}
-            ${renderProfilePrimaryTab('myday', 'Мій день', { ownOnly: true })}
-            ${renderProfilePrimaryTab('mytasks', 'Мої задачі', { ownOnly: true })}
-            ${renderProfilePrimaryTab('settings', 'Налаштування', { ownOnly: true })}
-            ${renderProfilePrimaryTab('achievements', 'Досягнення')}
-            ${renderProfilePrimaryTab('inventory', 'Інвентар', { ownOnly: true })}
-            ${renderProfilePrimaryTab('shop', 'Магазин', { ownOnly: true })}
-            ${renderProfilePrimaryTab('leaderboard', 'Рейтинг')}
-            ${renderProfilePrimaryTab('quests', 'Щоденні', { ownOnly: true })}
-            ${renderProfilePrimaryTab('season', 'Сезон')}
-            ${renderProfilePrimaryTab('teams', 'Команди')}
-            ${renderProfilePrimaryTab('referral', 'Реферали', { ownOnly: true })}
-        </div>
+        <section class="profile-work-hub" aria-label="Робочий доступ профілю">
+            ${renderProfileProfessionSwitcher(professionEntries)}
+            ${renderProfileWorkHubTabs()}
+            ${renderProfileSecondaryTabs()}
+        </section>
 
         <div id="tabContent">
             ${renderTabContent()}
@@ -1054,6 +1157,7 @@ async function switchTab(tab) {
     if (!locked && tab === 'season' && !seasonalQuests) await loadSeasonalQuests();
     if (!locked && tab === 'teams' && !teamsData) await loadTeamsData();
     if (!locked && tab === 'referral' && !referralData) await loadReferralData();
+    if (!locked && tab === 'materials') await loadProfileWorkMaterials(profileActiveProfessionEntry().key);
 
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
@@ -1067,12 +1171,26 @@ async function switchTab(tab) {
     });
 }
 
+async function setProfileProfessionContext(key) {
+    const normalized = normalizeProfileProfessionKey(key);
+    if (!profileProfessionKeys().includes(normalized)) return;
+    activeProfessionKey = normalized;
+    if (activeTab === 'materials') {
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) tabContent.innerHTML = renderProfileMaterialsTab();
+        await loadProfileWorkMaterials(normalized);
+    }
+    renderProfile();
+}
+
 function renderTabContent() {
     const locked = profileTabLock(activeTab);
     if (locked) return renderProfileComingSoon(activeTab);
     switch (activeTab) {
         case 'profile':
         case 'professions': return renderProfileProfessionsTab();
+        case 'checklists': return renderProfileChecklistsTab();
+        case 'materials': return renderProfileMaterialsTab();
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyTasksTab();
         case 'settings': return renderProfileSettingsTab();
@@ -1181,6 +1299,242 @@ function renderProfileProfessionChecklist() {
     return renderProfileProfessionFallbackChecklist(checklistItems.length ? checklistItems : profileProfessionGuide().checklist);
 }
 
+function renderProfileChecklistItemsForProfession(entry = profileActiveProfessionEntry()) {
+    const items = Array.isArray(entry.checklist) ? entry.checklist : [];
+    if (!items.length) {
+        return `
+            <div class="profile-empty-professional">
+                Чекліст для професії "${escapeHtml(entry.title)}" ще не доданий в HR каталозі.
+            </div>`;
+    }
+    return renderProfileProfessionFallbackChecklist(items);
+}
+
+function renderProfileChecklistsTab() {
+    const active = profileActiveProfessionEntry();
+    const tasks = profileProfessionChecklistTasks();
+    return `
+        <div class="profile-professions-hub profile-work-hub-grid">
+            <section class="profile-work-panel profile-work-panel-primary profile-role-focus-panel" style="--profession-color:${escapeHtml(active.color)}">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Чекліст активної професії</span>
+                        <h2>${escapeHtml(active.title)}</h2>
+                    </div>
+                    <span>${escapeHtml(active.department || active.key)}</span>
+                </div>
+                <p>${escapeHtml(active.shortInfo || 'HR опис професії ще не заповнений.')}</p>
+                ${renderProfileChecklistItemsForProfession(active)}
+            </section>
+            <section class="profile-work-panel profile-work-panel-tasks">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Живі checklist-задачі</span>
+                        <h2>З task engine</h2>
+                    </div>
+                    <a href="/tasks?category=checklist">Задачі</a>
+                </div>
+                ${tasks.length
+                    ? `<div class="profile-work-list">${tasks.map(task => renderProfileTaskRow(task, 'Чекліст')).join('')}</div>`
+                    : '<div class="profile-empty-professional">Активних checklist-задач для цього профілю зараз немає.</div>'}
+            </section>
+            <section class="profile-work-panel profile-work-panel-wide">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Усі професійні чеклісти</span>
+                        <h2>Швидкий доступ</h2>
+                    </div>
+                    <a href="/hr?tab=checklists">HR чеклісти</a>
+                </div>
+                <div class="profile-profession-roster">
+                    ${profileProfessionEntries().map(entry => `
+                        <article class="profile-profession-card ${entry.key === active.key ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
+                            <div class="profile-profession-card-head">
+                                <span>${entry.key === active.key ? 'Активна' : (entry.primary ? 'Основна' : 'Додаткова')}</span>
+                                <button type="button" class="profile-inline-switch" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">Відкрити</button>
+                            </div>
+                            <h3>${escapeHtml(entry.title)}</h3>
+                            ${renderProfileChecklistItemsForProfession(entry)}
+                        </article>
+                    `).join('')}
+                </div>
+            </section>
+        </div>`;
+}
+
+function profileMaterialMatchesProfession(item, entry) {
+    if (!item || !entry) return false;
+    const haystack = [
+        item.role,
+        item.category,
+        item.title,
+        item.summary,
+        item.content,
+        item.description
+    ].map(value => String(value || '').toLowerCase()).join(' ');
+    const keys = [
+        entry.key,
+        entry.title,
+        entry.department,
+        profileTrainingRoleKey(entry.key)
+    ].map(value => String(value || '').toLowerCase()).filter(Boolean);
+    return keys.some(key => haystack.includes(key));
+}
+
+function profileNormalizeMaterialDate(value) {
+    if (!value) return '';
+    try {
+        return new Date(value).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    } catch {
+        return '';
+    }
+}
+
+async function loadProfileWorkMaterials(key = profileActiveProfessionEntry().key, options = {}) {
+    const normalized = normalizeProfileProfessionKey(key) || profileActiveProfessionEntry().key;
+    if (!options.force && profileMaterialsState.loaded && profileMaterialsState.key === normalized) return profileMaterialsState;
+    profileMaterialsState = {
+        key: normalized,
+        loading: true,
+        loaded: false,
+        articles: [],
+        materials: [],
+        error: ''
+    };
+    const tabContent = document.getElementById('tabContent');
+    if (activeTab === 'materials' && tabContent) tabContent.innerHTML = renderProfileMaterialsTab();
+    try {
+        const trainingRole = encodeURIComponent(profileTrainingRoleKey(normalized));
+        const [knowledgeBase, legacyMaterials] = await Promise.all([
+            apiGet(`/training/knowledge-base?role=${trainingRole}`),
+            apiGet('/training/materials?page=1&limit=30')
+        ]);
+        const entry = profileProfessionEntry(normalized, { primary: normalized === profilePrimaryProfessionKey() });
+        const articles = Array.isArray(knowledgeBase?.articles) ? knowledgeBase.articles : [];
+        const allMaterials = Array.isArray(legacyMaterials?.materials) ? legacyMaterials.materials : [];
+        const relevantMaterials = allMaterials
+            .filter(item => profileMaterialMatchesProfession(item, entry))
+            .slice(0, 8);
+        profileMaterialsState = {
+            key: normalized,
+            loading: false,
+            loaded: true,
+            articles,
+            materials: relevantMaterials,
+            error: ''
+        };
+    } catch (error) {
+        console.warn('Profile materials load failed', error);
+        profileMaterialsState = {
+            key: normalized,
+            loading: false,
+            loaded: true,
+            articles: [],
+            materials: [],
+            error: 'Не вдалося завантажити матеріали. Спробуйте оновити сторінку.'
+        };
+    }
+    if (activeTab === 'materials') {
+        const currentTabContent = document.getElementById('tabContent');
+        if (currentTabContent) {
+            currentTabContent.innerHTML = renderProfileMaterialsTab();
+            attachProfileListeners();
+        }
+    }
+    return profileMaterialsState;
+}
+
+function renderProfileMaterialArticleCard(article) {
+    const href = `/training?article=${encodeURIComponent(article.id || '')}`;
+    const read = Boolean(article.user_completed_at || article.userCompletedAt);
+    return `
+        <a class="profile-material-card ${read ? 'is-read' : ''}" href="${href}">
+            <span>${escapeHtml(article.icon || '📄')}</span>
+            <b>${escapeHtml(article.title || 'Матеріал без назви')}</b>
+            <small>${escapeHtml(article.summary || article.category || 'Training knowledge base')}</small>
+            <em>${escapeHtml(article.difficulty || 'base')} · ${escapeHtml(String(article.read_time_minutes || 5))} хв${read ? ' · прочитано' : ''}</em>
+        </a>`;
+}
+
+function renderProfileLegacyMaterialCard(material) {
+    return `
+        <article class="profile-material-card">
+            <span>📎</span>
+            <b>${escapeHtml(material.title || 'Матеріал')}</b>
+            <small>${escapeHtml(material.content || material.category || '').slice(0, 180)}</small>
+            <em>${escapeHtml(material.category || 'training')} ${profileNormalizeMaterialDate(material.created_at || material.createdAt)}</em>
+        </article>`;
+}
+
+function renderProfileMaterialsTab() {
+    const active = profileActiveProfessionEntry();
+    const state = profileMaterialsState.key === active.key ? profileMaterialsState : {
+        loading: false,
+        loaded: false,
+        articles: [],
+        materials: [],
+        error: ''
+    };
+    const articles = state.articles || [];
+    const materials = state.materials || [];
+    return `
+        <div class="profile-professions-hub profile-materials-hub">
+            <section class="profile-work-panel profile-work-panel-primary profile-role-focus-panel" style="--profession-color:${escapeHtml(active.color)}">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Матеріали активної професії</span>
+                        <h2>${escapeHtml(active.title)}</h2>
+                    </div>
+                    <a href="/training">Навчання</a>
+                </div>
+                <p>${escapeHtml(active.shortInfo || 'Опис професії буде показано після заповнення HR каталогу.')}</p>
+                ${renderProfileProfessionResponsibilities((active.responsibilities || []).slice(0, 6))}
+            </section>
+            <section class="profile-work-panel profile-work-panel-tasks">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Джерела</span>
+                        <h2>Що показуємо</h2>
+                    </div>
+                    <button type="button" class="profile-inline-switch" onclick="loadProfileWorkMaterials('${escapeHtml(active.key)}', { force: true })">Оновити</button>
+                </div>
+                <div class="profile-profession-signal-grid">
+                    <div><b>${articles.length}</b><span>training articles</span></div>
+                    <div><b>${materials.length}</b><span>approved materials</span></div>
+                    <div><b>${(active.checklist || []).length}</b><span>пункти checklist</span></div>
+                </div>
+            </section>
+            <section class="profile-work-panel profile-work-panel-wide">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Training knowledge base</span>
+                        <h2>Матеріали для ${escapeHtml(active.title)}</h2>
+                    </div>
+                    <span>${state.loading ? 'завантаження' : `${articles.length} матеріалів`}</span>
+                </div>
+                ${state.loading
+                    ? '<div class="profile-empty-professional">Завантажую матеріали для активної професії...</div>'
+                    : state.error
+                        ? `<div class="profile-empty-professional">${escapeHtml(state.error)}</div>`
+                        : articles.length
+                            ? `<div class="profile-material-grid">${articles.map(renderProfileMaterialArticleCard).join('')}</div>`
+                            : `<div class="profile-empty-professional">Матеріали для професії "${escapeHtml(active.title)}" ще не додані в Training knowledge base.</div>`}
+            </section>
+            <section class="profile-work-panel profile-work-panel-wide">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Додаткові матеріали</span>
+                        <h2>Approved training notes</h2>
+                    </div>
+                    <a href="/training">Відкрити training</a>
+                </div>
+                ${materials.length
+                    ? `<div class="profile-material-grid">${materials.map(renderProfileLegacyMaterialCard).join('')}</div>`
+                    : '<div class="profile-empty-professional">Додаткові approved materials для цієї професії не знайдені. Це чесний empty state, без fake-карток.</div>'}
+            </section>
+        </div>`;
+}
+
 function renderProfileProfessionResponsibilities(items = []) {
     return `
         <div class="profile-profession-responsibilities">
@@ -1192,7 +1546,8 @@ function renderProfileProfessionCard(entry) {
     return `
         <article class="profile-profession-card ${entry.primary ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
             <div class="profile-profession-card-head">
-                <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
+                <span>${entry.key === profileActiveProfessionEntry().key ? 'Активна' : (entry.primary ? 'Основна' : 'Додаткова')}</span>
+                <button type="button" class="profile-inline-switch" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">Обрати</button>
                 ${entry.department ? `<small>${escapeHtml(entry.department)}</small>` : ''}
             </div>
             <h3>${escapeHtml(entry.title)}</h3>
@@ -1215,27 +1570,28 @@ function renderProfileProfessionsTab() {
     const guide = context.guide;
     const nextShift = p.nextShift || p.todayShift || null;
     const professions = context.professions || profileProfessionEntries();
-    const primaryProfession = professions[0];
+    const activeProfession = profileActiveProfessionEntry();
 
     return `
         <div class="profile-professions-hub">
             <section class="profile-work-panel profile-profession-hero">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Професійний контекст</span>
-                        <h2>${escapeHtml(primaryProfession.title)}</h2>
+                        <span class="profile-kicker">Активний професійний контекст</span>
+                        <h2>${escapeHtml(activeProfession.title)}</h2>
                     </div>
-                    <span>${escapeHtml(context.position || context.roleLabel)}</span>
+                    <span>${escapeHtml(activeProfession.department || context.position || context.roleLabel)}</span>
                 </div>
-                <p>${escapeHtml(guide.focus)}</p>
+                <p>${escapeHtml(activeProfession.shortInfo || guide.focus)}</p>
                 <div class="profile-profession-meta">
-                    <span>Основна: ${escapeHtml(primaryProfession.title)}</span>
+                    <span>Основна: ${escapeHtml(professions[0]?.title || activeProfession.title)}</span>
+                    <span>Активна: ${escapeHtml(activeProfession.title)}</span>
                     ${professions.length > 1 ? `<span>${professions.length - 1} додаткові професії</span>` : ''}
                     ${context.department ? `<span>Зона: ${escapeHtml(context.department)}</span>` : ''}
                     ${context.username ? `<span>@${escapeHtml(context.username)}</span>` : ''}
                     <span>${context.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
                 </div>
-                ${renderProfileProfessionResponsibilities(guide.responsibilities)}
+                ${renderProfileProfessionResponsibilities(activeProfession.responsibilities || guide.responsibilities)}
             </section>
 
             <section class="profile-work-panel profile-profession-roster-panel">
@@ -1247,7 +1603,10 @@ function renderProfileProfessionsTab() {
                     <a href="/hr#team">Редагувати в HR</a>
                 </div>
                 <div class="profile-profession-roster">
-                    ${professions.map(renderProfileProfessionCard).join('')}
+                    ${professions.map(entry => renderProfileProfessionCard({
+                        ...entry,
+                        primary: entry.key === activeProfession.key ? true : entry.primary
+                    })).join('')}
                 </div>
             </section>
 

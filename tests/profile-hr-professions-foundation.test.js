@@ -85,13 +85,33 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
     it('rebuilds profile around professions instead of the header cockpit strip', () => {
         assert.match(profilePage, /function renderProfileProfessionHeaderPanel/);
         assert.match(profilePage, /function profileProfessionEntries/);
+        assert.match(profilePage, /function profileActiveProfessionEntry/);
+        assert.match(profilePage, /function setProfileProfessionContext/);
         assert.match(profilePage, /function renderProfileProfessionCard/);
         assert.match(profilePage, /staffProfile/);
         assert.match(profilePage, /professionCatalog/);
         assert.doesNotMatch(profilePage, /renderProfileCockpitWidgetStrip\(\{ context: 'header'/);
+        assert.match(profilePage, /profileWorkHubTabOrder/);
+        assert.match(profilePage, /label: 'Професії'/);
+        assert.match(profilePage, /label: 'Чеклісти'/);
+        assert.match(profilePage, /label: 'Матеріали'/);
         assert.match(profileHtml, /\.profile-profession-header-panel/);
+        assert.match(profileHtml, /\.profile-work-hub-context/);
+        assert.match(profileHtml, /\.profile-profession-switcher/);
         assert.match(profileHtml, /\.profile-profession-roster-panel/);
         assert.match(profileHtml, /\.profile-profession-card/);
+    });
+
+    it('makes profile top menu a real work hub for checklists and materials', () => {
+        assert.match(profilePage, /case 'checklists': return renderProfileChecklistsTab\(\)/);
+        assert.match(profilePage, /case 'materials': return renderProfileMaterialsTab\(\)/);
+        assert.match(profilePage, /apiGet\(`\/training\/knowledge-base\?role=\$\{trainingRole\}`\)/);
+        assert.match(profilePage, /apiGet\('\/training\/materials\?page=1&limit=30'\)/);
+        assert.match(profilePage, /renderProfileChecklistItemsForProfession/);
+        assert.match(profilePage, /profileMaterialMatchesProfession/);
+        assert.match(profileHtml, /\.profile-material-grid/);
+        assert.match(profileHtml, /\.profile-secondary-work-menu/);
+        assert.match(profileHtml, /\.profile-material-card/);
     });
 
     it('adds HR professions and checklist surfaces plus safe edit controls', () => {

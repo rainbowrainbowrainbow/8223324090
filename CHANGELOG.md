@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.33 - CRM 66.33: робочий хаб профілю
+
+### Профіль / work hub / професії / 26.05.2026 [codex]
+- **Top menu профілю став work hub** - primary row тепер веде до `Професії`, `Чеклісти`, `Матеріали`, `Мій день`, `Мої задачі` і `Налаштування`, а gamification/secondary surfaces перенесені в контрольований overflow.
+- **Професії стали активним контекстом** - основна і додаткові професії показуються у верхньому перемикачі, а вибір професії оновлює профільні картки, чеклісти й матеріали.
+- **Чеклісти підключені до HR каталогу** - вкладка `Чеклісти` бере role checklist з `hr_professions.checklist`, показує live task checklist і дає чесний empty state, якщо для професії ще нічого не задано.
+- **Матеріали підключені до реальних джерел** - вкладка `Матеріали` агрегує Training knowledge base, approved training materials і опис професії без mock-карток.
+- **Regression coverage** - оновлено `tests/profile-hr-professions-foundation.test.js` і `tests/ui-check.js`, щоб фіксувати work hub, active profession switch, checklist/material routes і secondary overflow.
+
+---
+
 ## v0.66.32 - CRM 66.32: бронювання з клієнтом і меню
 
 ### Бронювання / клієнти / меню / 26.05.2026 [codex]

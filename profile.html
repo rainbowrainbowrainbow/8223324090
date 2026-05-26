@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.32">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.32">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.32">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.32">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.32">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.32">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.32">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.32">
+    <link rel="stylesheet" href="css/base.css?v=0.66.33">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.33">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.33">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.33">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.33">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.33">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.33">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.33">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1549,6 +1549,151 @@
             margin-bottom: 18px;
         }
 
+        .profile-work-hub {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .profile-work-hub-context {
+            display: grid;
+            grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+            gap: 12px;
+            align-items: stretch;
+            padding: 12px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.05));
+            border: 1px solid rgba(16, 185, 129, 0.20);
+        }
+
+        .profile-work-hub-context-copy {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .profile-work-hub-context-copy strong,
+        .profile-work-hub-context-copy small {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-work-hub-context-copy strong {
+            color: var(--gray-900);
+            font-size: 18px;
+            font-weight: 900;
+        }
+
+        .profile-work-hub-context-copy small {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 750;
+            white-space: nowrap;
+        }
+
+        .profile-profession-switcher {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .profile-profession-switch {
+            min-width: 150px;
+            max-width: 230px;
+            flex: 1 1 150px;
+            text-align: left;
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            border-radius: 14px;
+            padding: 10px 12px;
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--profession-color, #10b981) 12%, transparent), transparent 52%),
+                rgba(255,255,255,0.78);
+            cursor: pointer;
+            font: inherit;
+            transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+        }
+
+        .profile-profession-switch:hover,
+        .profile-profession-switch:focus-visible {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--profession-color, #10b981) 42%, rgba(148, 163, 184, 0.20));
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            outline: none;
+        }
+
+        .profile-profession-switch.active {
+            border-color: color-mix(in srgb, var(--profession-color, #10b981) 58%, rgba(148, 163, 184, 0.18));
+            box-shadow: inset 4px 0 0 var(--profession-color, #10b981), 0 14px 26px rgba(15, 23, 42, 0.08);
+        }
+
+        .profile-profession-switch span,
+        .profile-profession-switch b {
+            display: block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .profile-profession-switch span {
+            color: var(--gray-500);
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .profile-profession-switch b {
+            margin-top: 3px;
+            color: var(--gray-900);
+            font-size: 13px;
+            font-weight: 900;
+        }
+
+        .profile-work-hub .profile-work-tabs {
+            margin-bottom: 0;
+        }
+
+        .profile-secondary-work-menu {
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: rgba(255,255,255,0.58);
+            overflow: hidden;
+        }
+
+        .profile-secondary-work-menu summary {
+            cursor: pointer;
+            padding: 10px 14px;
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 900;
+            list-style: none;
+        }
+
+        .profile-secondary-work-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .profile-secondary-work-menu summary::after {
+            content: '↓';
+            margin-left: 8px;
+            color: var(--gray-400);
+        }
+
+        .profile-secondary-work-menu[open] summary::after {
+            content: '↑';
+        }
+
+        .profile-secondary-work-menu .profile-secondary-tabs {
+            padding: 0 10px 10px;
+        }
+
         .profile-work-overview {
             display: grid;
             grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -1620,6 +1765,115 @@
 
         .profile-profession-links-panel {
             grid-column: span 3;
+        }
+
+        .profile-work-hub-grid,
+        .profile-materials-hub {
+            align-items: stretch;
+        }
+
+        .profile-role-focus-panel {
+            border-color: color-mix(in srgb, var(--profession-color, #10b981) 28%, rgba(148, 163, 184, 0.20));
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--profession-color, #10b981) 9%, transparent), transparent 42%),
+                var(--white);
+        }
+
+        .profile-role-focus-panel p {
+            margin: 0 0 14px;
+            color: var(--gray-600);
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.55;
+        }
+
+        .profile-inline-switch {
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background: rgba(15, 23, 42, 0.04);
+            color: var(--gray-700);
+            border-radius: 999px;
+            padding: 5px 9px;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .profile-inline-switch:hover,
+        .profile-inline-switch:focus-visible {
+            border-color: rgba(16, 185, 129, 0.38);
+            color: #047857;
+            outline: none;
+        }
+
+        .profile-material-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+        }
+
+        .profile-material-card {
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 6px 10px;
+            align-items: start;
+            min-height: 112px;
+            padding: 13px;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            background: var(--gray-50);
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .profile-material-card:hover,
+        .profile-material-card:focus-visible {
+            border-color: rgba(16, 185, 129, 0.34);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.07);
+            outline: none;
+        }
+
+        .profile-material-card > span {
+            grid-row: span 3;
+            width: 34px;
+            height: 34px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            background: rgba(16, 185, 129, 0.10);
+            font-size: 17px;
+        }
+
+        .profile-material-card b,
+        .profile-material-card small,
+        .profile-material-card em {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-material-card b {
+            color: var(--gray-900);
+            font-size: 14px;
+            line-height: 1.25;
+        }
+
+        .profile-material-card small {
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        .profile-material-card em {
+            color: var(--gray-400);
+            font-size: 11px;
+            font-style: normal;
+            font-weight: 850;
+        }
+
+        .profile-material-card.is-read {
+            border-color: rgba(16, 185, 129, 0.34);
         }
 
         .profile-profession-hero p {
@@ -2402,11 +2656,22 @@
         body.dark-mode .profile-profession-header-chip,
         body.dark-mode .profile-profession-header-empty,
         body.dark-mode .profile-work-panel,
-        body.dark-mode .profile-work-tabs {
+        body.dark-mode .profile-work-tabs,
+        body.dark-mode .profile-work-hub-context,
+        body.dark-mode .profile-secondary-work-menu {
             background: linear-gradient(135deg, var(--profile-dark-surface), rgba(15, 23, 42, 0.74));
             border-color: var(--profile-dark-border);
             color: var(--profile-dark-secondary);
             box-shadow: 0 20px 48px rgba(0,0,0,0.28);
+        }
+
+        body.dark-mode .profile-work-hub-context-copy,
+        body.dark-mode .profile-profession-switch,
+        body.dark-mode .profile-material-card {
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--profession-color, #10b981) 10%, transparent), transparent 50%),
+                var(--profile-dark-surface-soft);
+            border-color: var(--profile-dark-border);
         }
 
         body.dark-mode .profile-identity-copy h1,
@@ -2416,6 +2681,9 @@
         body.dark-mode .profile-cockpit-widget b,
         body.dark-mode .profile-profession-header-main h2,
         body.dark-mode .profile-profession-header-chip b,
+        body.dark-mode .profile-work-hub-context-copy strong,
+        body.dark-mode .profile-profession-switch b,
+        body.dark-mode .profile-material-card b,
         body.dark-mode .profile-profession-card h3,
         body.dark-mode .profile-widget-config-head h3,
         body.dark-mode .profile-widget-config-item b,
@@ -2440,6 +2708,11 @@
         body.dark-mode .profile-profession-header-main p,
         body.dark-mode .profile-profession-header-chip span,
         body.dark-mode .profile-profession-header-empty,
+        body.dark-mode .profile-work-hub-context-copy small,
+        body.dark-mode .profile-profession-switch span,
+        body.dark-mode .profile-secondary-work-menu summary,
+        body.dark-mode .profile-material-card small,
+        body.dark-mode .profile-material-card em,
         body.dark-mode .profile-profession-card p,
         body.dark-mode .profile-profession-card-checklist span,
         body.dark-mode .profile-cockpit-widget-label,
@@ -3460,6 +3733,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .profile-work-hub-context {
+                grid-template-columns: 1fr;
+            }
+
             .profile-cockpit-strip--header {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -3553,6 +3830,30 @@
             .profile-primary-tab {
                 padding: 9px 12px;
                 font-size: 12px;
+            }
+
+            .profile-work-hub-context {
+                padding: 10px;
+            }
+
+            .profile-profession-switcher {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .profile-profession-switcher::-webkit-scrollbar {
+                display: none;
+            }
+
+            .profile-profession-switch {
+                min-width: 168px;
+                flex: 0 0 168px;
+            }
+
+            .profile-material-grid {
+                grid-template-columns: 1fr;
             }
 
             .profile-primary-tab.is-soon {
@@ -3733,16 +4034,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.32"></script>
-    <script src="js/notification.js?v=0.66.32"></script>
-    <script src="js/api.js?v=0.66.32"></script>
-    <script src="js/auth.js?v=0.66.32"></script>
-    <script src="js/components/sidebar.js?v=0.66.32"></script>
+    <script src="js/config.js?v=0.66.33"></script>
+    <script src="js/notification.js?v=0.66.33"></script>
+    <script src="js/api.js?v=0.66.33"></script>
+    <script src="js/auth.js?v=0.66.33"></script>
+    <script src="js/components/sidebar.js?v=0.66.33"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.66.32"></script>
-    <script src="js/achievement-popup.js?v=0.66.32"></script>
-    <script src="js/task-create.js?v=0.66.32"></script>
-    <script src="js/profile-page.js?v=0.66.32"></script>
-    <script src="js/alerts.js?v=0.66.32"></script>
+    <script src="js/ui.js?v=0.66.33"></script>
+    <script src="js/achievement-popup.js?v=0.66.33"></script>
+    <script src="js/task-create.js?v=0.66.33"></script>
+    <script src="js/profile-page.js?v=0.66.33"></script>
+    <script src="js/alerts.js?v=0.66.33"></script>
 </body>
 </html>

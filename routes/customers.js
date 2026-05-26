@@ -17,6 +17,11 @@ const {
     requireBusinessContext,
     pushBusinessContextCondition
 } = require('../services/businessContext');
+const {
+    normalizeCustomerSource,
+    getCustomerSourceLabel,
+    customerSourceSqlExpression
+} = require('../services/customerSource');
 
 const log = createLogger('Customers');
 
@@ -123,7 +128,7 @@ function normalizeCustomerPayload(body = {}) {
         instagram: cleanText(body.instagram)?.replace(/^@+/, '') || null,
         childName: cleanText(body.childName ?? body.child_name),
         childBirthday: childBirthday || null,
-        source: cleanText(body.source),
+        source: normalizeCustomerSource(body.source),
         notes: cleanText(body.notes),
         socialIdentities: normalizeSocialIdentities(
             body.socialIdentities ?? body.social_identities,
@@ -549,7 +554,7 @@ router.get('/export', exportLimiter, async (req, res) => {
             escapeCsv(formatSocialIdentities(r.social_identities, { instagram: r.instagram })),
             escapeCsv(r.child_name || ''),
             r.child_birthday ? formatDate(r.child_birthday) : '',
-            escapeCsv(r.source || ''),
+            escapeCsv(getCustomerSourceLabel(r.source)),
             escapeCsv(r.notes || ''),
             r.total_bookings || 0,
             r.total_spent || 0,
@@ -620,7 +625,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
                 socialIdentities: formatSocialIdentities(r.social_identities, { instagram: r.instagram }),
                 childName: r.child_name || '',
                 childBday: r.child_birthday || '',
-                source: r.source || '',
+                source: getCustomerSourceLabel(r.source),
                 bookings: r.total_bookings || 0,
                 spent: r.total_spent || 0,
                 firstVisit: r.first_visit || '',
@@ -650,9 +655,10 @@ router.get('/stats', async (req, res) => {
         const totalParams = [];
         const totalContextSql = customerContextCondition(totalParams, businessContext);
         const totalResult = await pool.query(`SELECT COUNT(*) FROM customers WHERE ${totalContextSql}`, totalParams);
+        const sourceExpr = customerSourceSqlExpression('source');
         const sourceResult = await pool.query(
-            `SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS count
-             FROM customers WHERE ${totalContextSql} GROUP BY source ORDER BY count DESC`,
+            `SELECT ${sourceExpr} AS source, COUNT(*) AS count
+             FROM customers WHERE ${totalContextSql} GROUP BY ${sourceExpr} ORDER BY count DESC`,
             totalParams
         );
         const topResult = await pool.query(
@@ -1163,8 +1169,8 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             conditions.push(`c.total_bookings >= $${params.length}`);
         }
         if (filters?.source) {
-            params.push(filters.source);
-            conditions.push(`c.source = $${params.length}`);
+            params.push(normalizeCustomerSource(filters.source, { unknownAsNull: false }));
+            conditions.push(`${customerSourceSqlExpression('c.source')} = $${params.length}`);
         }
         const where = 'WHERE ' + conditions.join(' AND ');
 
@@ -1235,7 +1241,11 @@ router.get('/', async (req, res) => {
                 : '';
             conditions.push(`(c.name ILIKE $${params.length} OR c.phone ILIKE $${params.length} OR c.instagram ILIKE $${params.length} OR c.child_name ILIKE $${params.length}${socialIdentitySearch})`);
         }
-        if (source) { params.push(source); conditions.push(`c.source = $${params.length}`); }
+        if (source) {
+            const normalizedSource = normalizeCustomerSource(source, { unknownAsNull: false });
+            params.push(normalizedSource);
+            conditions.push(`${customerSourceSqlExpression('c.source')} = $${params.length}`);
+        }
         if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`c.last_visit >= $${params.length}::date`); }
         if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`c.last_visit <= $${params.length}::date`); }
         if (tag) { params.push(tag); conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
@@ -1502,7 +1512,8 @@ function mapCustomerRow(row) {
         childName: row.child_name || null,
         childBirthday: row.child_birthday || null,
         socialIdentities: normalizeSocialIdentities(row.social_identities, { instagram: row.instagram }),
-        source: row.source || null,
+        source: normalizeCustomerSource(row.source, { unknownAsNull: false }),
+        sourceLabel: getCustomerSourceLabel(row.source),
         notes: row.notes || null,
         // v33.3: Prefer live aggregation from bookings JOIN when available
         totalBookings: row.real_total_bookings != null ? parseInt(row.real_total_bookings) : (row.total_bookings || 0),

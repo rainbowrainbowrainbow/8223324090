@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.38 - CRM 66.38: чисті джерела клієнтів
+
+### Customers / source taxonomy / 26.05.2026 [codex]
+- **Dropdown "Звідки дізналися" відредаговано людською мовою** - незграбне `Рекомендація` замінено на `За рекомендацією`, а `Повторний` на `Повторне звернення`.
+- **Labels вирівняно по всій customer UI** - modal, source filter, badges, detail card і stats тепер користуються одним display contract без raw developer wording.
+- **Старі дані не ламаються** - backend нормалізує `recommendation`, `Рекомендація`, `repeat`, `Повторний`, порожні значення та невідомі джерела у стабільні canonical keys.
+- **Booking/lead customer creation теж захищено** - клієнти, створені з бронювання або ліда, проходять через той самий source normalizer.
+- **Regression guard** - додано `tests/customer-source-taxonomy.test.js` для dropdown wording, legacy aliases, backend SQL grouping і route wiring.
+
+---
+
 ## v0.66.37 - CRM 66.37: єдина картка ліда і клієнта
 
 ### Leads / Customers / entity workspace / 26.05.2026 [codex]

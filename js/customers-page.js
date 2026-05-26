@@ -37,20 +37,56 @@ const CrmState = {
 };
 
 const SOURCE_LABELS = {
-    telegram:       '🔵 TG',
-    facebook:       '🔷 FB',
-    instagram:      '🟣 IG',
-    viber:          '🟢 Viber',
-    tiktok:         '⚫ TikTok',
-    turbo:          '🟠 Turbo',
-    bnderoga:       '🟡 BnD',
-    google:         '🔍 Google',
-    recommendation: '🤝 Рекомендація',
-    repeat:         '🔄 Повторний',
-    manual:         '✏️ Ручний',
+    telegram:       'Telegram',
+    facebook:       'Facebook',
+    instagram:      'Instagram',
+    viber:          'Viber',
+    tiktok:         'TikTok',
+    turbo:          'Turbo',
+    bnderoga:       'BnD',
+    google:         'Google',
+    recommendation: 'За рекомендацією',
+    repeat:         'Повторне звернення',
+    manual:         'Ручне внесення',
+    lead:           'Лід',
     other:          'Інше',
     unknown:        'Не вказано'
 };
+
+const SOURCE_ALIASES = {
+    unknown: ['', 'unknown', 'null', 'undefined', 'не вказано', 'невідомо', 'невідоме джерело'],
+    telegram: ['telegram', 'tg', 'телеграм'],
+    facebook: ['facebook', 'fb', 'фейсбук'],
+    instagram: ['instagram', 'insta', 'ig', 'інстаграм'],
+    viber: ['viber', 'вайбер'],
+    tiktok: ['tiktok', 'tik tok', 'тік ток', 'тікток'],
+    turbo: ['turbo', 'турбо'],
+    bnderoga: ['bnderoga', 'bnd', 'бендерога'],
+    google: ['google', 'гугл'],
+    recommendation: ['recommendation', 'recommend', 'referral', 'рекомендація', 'за рекомендацією', 'рекомендовано'],
+    repeat: ['repeat', 'returning', 'повторний', 'повторне звернення', 'повторне', 'постійний'],
+    manual: ['manual', 'operator', 'ручний', 'ручне внесення', 'вручну'],
+    lead: ['lead', 'лід', 'з ліда'],
+    other: ['other', 'інше', 'інший', 'інше джерело']
+};
+
+const SOURCE_BY_ALIAS = Object.entries(SOURCE_ALIASES).reduce((map, [source, aliases]) => {
+    aliases.forEach(alias => map.set(alias, source));
+    return map;
+}, new Map());
+
+function normalizeCustomerSource(value) {
+    const key = String(value ?? '').trim().toLowerCase();
+    return SOURCE_BY_ALIAS.get(key) || (SOURCE_LABELS[key] ? key : 'other');
+}
+
+function getCustomerSourceLabel(value) {
+    return SOURCE_LABELS[normalizeCustomerSource(value)] || SOURCE_LABELS.other;
+}
+
+function getCustomerSourceBadgeKey(value) {
+    return normalizeCustomerSource(value) || 'unknown';
+}
 
 const RFM_SEGMENTS = {
     champion: { label: 'Чемпіони', icon: '🏆', color: '#059669' },
@@ -504,7 +540,7 @@ function getCustomerFilterSummary() {
         f.journeyLabel ? { label: 'Сегмент клієнтів', value: f.journeyLabel } : null,
         f.search ? { label: 'Пошук', value: f.search } : null,
         f.tag ? { label: 'Тег', value: f.tag } : null,
-        f.source ? { label: 'Джерело', value: SOURCE_LABELS[f.source] || f.source } : null,
+        f.source ? { label: 'Джерело', value: getCustomerSourceLabel(f.source) } : null,
         f.dateFrom ? { label: 'Візити від', value: f.dateFrom } : null,
         f.dateTo ? { label: 'Візити до', value: f.dateTo } : null
     ].filter(Boolean);
@@ -714,7 +750,8 @@ function renderCustomerTable() {
     }
 
     tbody.innerHTML = CrmState.customers.map(c => {
-        const sourceLabel = SOURCE_LABELS[c.source] || c.source || '—';
+        const sourceKey = getCustomerSourceBadgeKey(c.source);
+        const sourceLabel = getCustomerSourceLabel(c.source);
         const tagsHtml = (c.tags || []).map(t =>
             `<span class="crm-tag-pill" style="background:${escapeHtml(t.color)}20;color:${escapeHtml(t.color)};border:1px solid ${escapeHtml(t.color)}40">${escapeHtml(t.tag)}</span>`
         ).join('');
@@ -727,7 +764,7 @@ function renderCustomerTable() {
             </td>
             <td>${escapeHtml(c.phone) || '—'}</td>
             <td>${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
-            <td>${c.source ? `<span class="badge badge-source badge-source-${escapeHtml(c.source)}">${escapeHtml(sourceLabel)}</span>` : '—'}</td>
+            <td><span class="badge badge-source badge-source-${escapeHtml(sourceKey)}">${escapeHtml(sourceLabel)}</span></td>
             <td><span class="badge badge-visits">${c.totalBookings}</span></td>
             <td><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>
             <td>${formatDate(c.lastVisit)}</td>
@@ -862,7 +899,7 @@ async function showCustomerDetail(id) {
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Джерело</div>
-                        <div class="field-value">${SOURCE_LABELS[customer.source] || escapeHtml(customer.source) || '—'}</div>
+                        <div class="field-value">${escapeHtml(getCustomerSourceLabel(customer.source))}</div>
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Клієнт з</div>
@@ -1072,7 +1109,8 @@ function openEditModal(customer) {
     document.getElementById('editInstagram').value = customer?.instagram || '';
     document.getElementById('editChildName').value = customer?.childName || '';
     document.getElementById('editChildBirthday').value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
-    document.getElementById('editSource').value = customer?.source || '';
+    const source = normalizeCustomerSource(customer?.source);
+    document.getElementById('editSource').value = source === 'unknown' ? '' : source;
     document.getElementById('editSocialIdentities').value = formatSocialIdentitiesInput(customer?.socialIdentities || []);
     document.getElementById('editNotes').value = customer?.notes || '';
 

@@ -21,6 +21,7 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     normalizeBusinessContext
 } = require('../services/businessContext');
+const { normalizeCustomerSource } = require('../services/customerSource');
 const {
     bookingAccessDeniedPayload,
     buildBookingVisibilityScope,
@@ -692,7 +693,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 const custResult = await client.query(
                     `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
                      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, normalizeCustomerSource(c.source)]
                 );
                 customerId = custResult.rows[0].id;
             }
@@ -1072,7 +1073,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 const custResult = await client.query(
                     `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
                      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, normalizeCustomerSource(c.source)]
                 );
                 customerId = custResult.rows[0].id;
             }
@@ -1784,7 +1785,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 const custResult = await client.query(
                     `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
                      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, normalizeCustomerSource(c.source)]
                 );
                 updateCustomerId = custResult.rows[0].id;
             }

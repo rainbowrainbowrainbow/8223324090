@@ -39,6 +39,7 @@ const {
     requireBusinessContext,
     pushBusinessContextCondition
 } = require('../services/businessContext');
+const { normalizeCustomerSource, getCustomerSourceLabel } = require('../services/customerSource');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
@@ -658,6 +659,7 @@ router.patch('/:id', async (req, res) => {
                     );
                     const custId = bk.rows[0]?.customer_id;
                     if (!custId) return;
+                    const customerSource = normalizeCustomerSource(updatedLead.source || 'lead', { unknownAsNull: false });
                     await pool.query(
                         `UPDATE customers
                          SET source = COALESCE(NULLIF(source, ''), $1),
@@ -666,8 +668,8 @@ router.patch('/:id', async (req, res) => {
                          WHERE id = $4
                            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
                            AND (source IS NULL OR source = '')`,
-                        [updatedLead.source || 'lead', updatedLead.id,
-                         `Конвертований з ліду #${updatedLead.id} (${updatedLead.source || 'невідоме джерело'})`,
+                        [customerSource, updatedLead.id,
+                         `Конвертований з ліду #${updatedLead.id} (${getCustomerSourceLabel(customerSource)})`,
                          custId, businessContext]
                     );
                     log.info(`[Lead→Customer] Lead ${updatedLead.id} → customer ${custId}, source: ${updatedLead.source}`);
@@ -751,7 +753,7 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                     leadId,
                     lead.phone || null,
                     normalizeInstagram(lead.instagram) || null,
-                    lead.source || 'lead',
+                    normalizeCustomerSource(lead.source || 'lead', { unknownAsNull: false }),
                     customerId,
                     JSON.stringify(mergeLeadSocialIdentities(existing.rows[0].social_identities, lead)),
                     businessContext
@@ -769,7 +771,7 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                     lead.phone || null,
                     normalizeInstagram(lead.instagram) || null,
                     null,
-                    lead.source || lead.source_channel || 'lead',
+                    normalizeCustomerSource(lead.source || lead.source_channel || 'lead', { unknownAsNull: false }),
                     [lead.notes, lead.child_age ? `Вік дитини з ліда: ${lead.child_age}` : null].filter(Boolean).join('\n') || null,
                     leadId,
                     JSON.stringify(leadSocialIdentities(lead))

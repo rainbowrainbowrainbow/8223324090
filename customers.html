@@ -30,15 +30,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.37">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.37">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.37">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.37">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.37">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.66.37">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.37">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.37">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.37">
+    <link rel="stylesheet" href="css/base.css?v=0.66.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.38">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.66.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.38">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -252,7 +252,12 @@
         .badge-source-turbo     { background: rgba(255,149,0,0.12);  color: #E86F00; }
         .badge-source-bnderoga  { background: rgba(255,200,0,0.12);  color: #B8860B; }
         .badge-source-google    { background: rgba(66,133,244,0.12); color: #4285F4; }
+        .badge-source-recommendation { background: rgba(16,185,129,0.12); color: #059669; }
+        .badge-source-repeat    { background: rgba(139,92,246,0.12); color: #7C3AED; }
         .badge-source-manual    { background: rgba(100,100,100,0.1); color: #666;    }
+        .badge-source-lead      { background: rgba(14,165,233,0.12); color: #0284C7; }
+        .badge-source-other,
+        .badge-source-unknown   { background: rgba(100,116,139,0.12); color: #64748B; }
 
         .badge-visits {
             background: rgba(59,130,246,0.1);
@@ -1410,17 +1415,18 @@
                     </select>
                     <select id="sourceFilter" class="crm-filter-select">
                         <option value="">Всі джерела</option>
-                        <option value="telegram">🔵 Telegram</option>
-                        <option value="facebook">🔷 Facebook</option>
-                        <option value="instagram">🟣 Instagram</option>
-                        <option value="viber">🟢 Viber</option>
-                        <option value="tiktok">⚫ TikTok</option>
-                        <option value="turbo">🟠 Turbo</option>
-                        <option value="bnderoga">🟡 BnD</option>
-                        <option value="google">🔍 Google</option>
-                        <option value="recommendation">🤝 Рекомендація</option>
-                        <option value="repeat">🔄 Повторний</option>
-                        <option value="manual">✏️ Ручний</option>
+                        <option value="unknown">Не вказано</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="google">Google</option>
+                        <option value="recommendation">За рекомендацією</option>
+                        <option value="repeat">Повторне звернення</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="viber">Viber</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="turbo">Turbo</option>
+                        <option value="bnderoga">BnD</option>
+                        <option value="manual">Ручне внесення</option>
                         <option value="other">Інше</option>
                     </select>
                     <select id="sortFilter" class="crm-filter-select">
@@ -1536,8 +1542,15 @@
                         <option value="">Не вказано</option>
                         <option value="instagram">Instagram</option>
                         <option value="google">Google</option>
-                        <option value="recommendation">Рекомендація</option>
-                        <option value="repeat">Повторний</option>
+                        <option value="recommendation">За рекомендацією</option>
+                        <option value="repeat">Повторне звернення</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="viber">Viber</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="turbo">Turbo</option>
+                        <option value="bnderoga">BnD</option>
+                        <option value="manual">Ручне внесення</option>
                         <option value="other">Інше</option>
                         </select>
                     </div>
@@ -1587,13 +1600,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.37"></script>
-    <script src="js/notification.js?v=0.66.37"></script>
-    <script src="js/api.js?v=0.66.37"></script>
-    <script src="js/auth.js?v=0.66.37"></script>
-    <script src="js/ui.js?v=0.66.37"></script>
-    <script src="js/components/sidebar.js?v=0.66.37"></script>
+    <script src="js/config.js?v=0.66.38"></script>
+    <script src="js/notification.js?v=0.66.38"></script>
+    <script src="js/api.js?v=0.66.38"></script>
+    <script src="js/auth.js?v=0.66.38"></script>
+    <script src="js/ui.js?v=0.66.38"></script>
+    <script src="js/components/sidebar.js?v=0.66.38"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.66.37"></script><script src="js/alerts.js?v=0.66.37"></script>
+    <script src="js/customers-page.js?v=0.66.38"></script><script src="js/alerts.js?v=0.66.38"></script>
 </body>
 </html>

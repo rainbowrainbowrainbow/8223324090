@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.34">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.34">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.34">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.34">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.34">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.34">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.34">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.34">
-    <link rel="stylesheet" href="css/features.css?v=0.66.34">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.34">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.34">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.34">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.34">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.34">
+    <link rel="stylesheet" href="css/base.css?v=0.66.35">
+    <link rel="stylesheet" href="css/auth.css?v=0.66.35">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.35">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.35">
+    <link rel="stylesheet" href="css/timeline.css?v=0.66.35">
+    <link rel="stylesheet" href="css/panel.css?v=0.66.35">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.35">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.35">
+    <link rel="stylesheet" href="css/features.css?v=0.66.35">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.35">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.35">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.35">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.35">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.35">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.34 CRM 66.34: стабільні акаунти">✨ 0.66.34 CRM 66.34: стабільні акаунти</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.66.35 CRM 66.35: login не викидає після 403">✨ 0.66.35 CRM 66.35: login не викидає після 403</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.34 — CRM 66.34: стабільні акаунти</p>
+                <p class="tagline">AI First CRM v0.66.35 — CRM 66.35: login не викидає після 403</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.34: CRM 66.34: стабільні акаунти</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.35: CRM 66.35: login не викидає після 403</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1331,6 +1331,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.66.35 — CRM 66.35: login не викидає після 403</h4>
+                    <ul>
+                        <li><b>Нові акаунти більше не викидає після login</b> — <code>403 Forbidden</code> більше не чистить сесію; це лише відмова в конкретній дії, а не зламаний токен.</li>
+                        <li><b>Відтворено live-кейс 1234567</b> — login був успішний, але <code>/tasks</code> отримував <code>403</code> на role-limited запиті й старий handler повертав користувача на форму входу.</li>
+                        <li><b>Refresh retry став чесним</b> — токен оновлюється тільки на <code>401</code>, а <code>403</code> не видаляє <code>pzp_token</code>, <code>pzp_access_token</code>, refresh token і поточного користувача.</li>
+                        <li><b>Staff account actions вирівняні</b> — staff account link/create/bulk-create використовують shared refresh-aware auth fetch замість прямої залежності від legacy token.</li>
+                        <li><b>Regression guard</b> — auth frontend tests покривають role-limited <code>403</code>, який не має logout-ити animator/інші нижчі ролі.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.66.34 — CRM 66.34: стабільні акаунти</h4>
                     <ul>
@@ -9585,29 +9595,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.34"></script>
-    <script src="js/timeline-visibility.js?v=0.66.34"></script>
-    <script src="js/config.js?v=0.66.34"></script>
-    <script src="js/api.js?v=0.66.34"></script>
-    <script src="js/ui.js?v=0.66.34"></script>
-    <script src="js/auth.js?v=0.66.34"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.34"></script>
-    <script src="js/timeline.js?v=0.66.34"></script>
-    <script src="js/booking.js?v=0.66.34"></script>
-    <script src="js/settings.js?v=0.66.34"></script>
-    <script src="js/booking-form.js?v=0.66.34"></script>
-    <script src="js/booking-linked.js?v=0.66.34"></script>
-    <script src="js/settings-dashboard.js?v=0.66.34"></script>
-    <script src="js/settings-history.js?v=0.66.34"></script>
-    <script src="js/settings-afisha.js?v=0.66.34"></script>
-    <script src="js/settings-certificates.js?v=0.66.34"></script>
-    <script src="js/offline.js?v=0.66.34"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.34"></script>
-    <script src="js/search.js?v=0.66.34"></script>
-    <script src="js/ws.js?v=0.66.34"></script>
-    <script src="js/app.js?v=0.66.34"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.34"></script>
-    <script src="js/components/sidebar.js?v=0.66.34"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.34"></script>
+    <script src="js/timeline-context.js?v=0.66.35"></script>
+    <script src="js/timeline-visibility.js?v=0.66.35"></script>
+    <script src="js/config.js?v=0.66.35"></script>
+    <script src="js/api.js?v=0.66.35"></script>
+    <script src="js/ui.js?v=0.66.35"></script>
+    <script src="js/auth.js?v=0.66.35"></script>
+    <script src="js/timeline-interaction-model.js?v=0.66.35"></script>
+    <script src="js/timeline.js?v=0.66.35"></script>
+    <script src="js/booking.js?v=0.66.35"></script>
+    <script src="js/settings.js?v=0.66.35"></script>
+    <script src="js/booking-form.js?v=0.66.35"></script>
+    <script src="js/booking-linked.js?v=0.66.35"></script>
+    <script src="js/settings-dashboard.js?v=0.66.35"></script>
+    <script src="js/settings-history.js?v=0.66.35"></script>
+    <script src="js/settings-afisha.js?v=0.66.35"></script>
+    <script src="js/settings-certificates.js?v=0.66.35"></script>
+    <script src="js/offline.js?v=0.66.35"></script>
+    <script src="js/crm-feature-registry.js?v=0.66.35"></script>
+    <script src="js/search.js?v=0.66.35"></script>
+    <script src="js/ws.js?v=0.66.35"></script>
+    <script src="js/app.js?v=0.66.35"></script>
+    <script src="js/kleshnya-widget.js?v=0.66.35"></script>
+    <script src="js/components/sidebar.js?v=0.66.35"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.35"></script>
 </body>
 </html>

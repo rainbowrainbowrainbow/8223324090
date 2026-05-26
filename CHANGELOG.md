@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.35 - CRM 66.35: login не викидає після 403
+
+### Auth / login / role-limited APIs / 26.05.2026 [codex]
+- **Нові акаунти більше не викидає після успішного login** - frontend більше не трактує `403 Forbidden` як зламану сесію; `403` означає лише "немає прав на конкретну дію", а не logout.
+- **Відтворений live-кейс `1234567 / 1234567`** - backend login повертав `200`, але `/tasks` робив role-limited запит `/api/tasks/owners`, отримував `403`, після чого старий `handleAuthError()` чистив токени і повертав користувача на форму входу.
+- **Refresh retry став чесним** - `apiFetchWithAuthRetry()` оновлює токен тільки на `401`, а `403` передає caller-у без очищення `pzp_token`, `pzp_access_token`, refresh token і `pzp_current_user`.
+- **Staff account actions вирівняно з refresh-aware auth** - staff account link/create/bulk-create більше не залежать тільки від legacy `pzp_token` і використовують shared auth retry helper.
+- **Regression guard** - `tests/auth-frontend-session.test.js` покриває role-limited `403`, який не має чистити сесію для animator/інших нижчих ролей.
+
+---
+
 ## v0.66.34 - CRM 66.34: стабільні акаунти
 
 ### Auth / акаунти / refresh session / 26.05.2026 [codex]

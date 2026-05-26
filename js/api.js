@@ -162,7 +162,7 @@ async function safeFetch(url, opts = {}) {
         if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     }
     const res = await fetch(url, opts);
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
         if (typeof handleAuthError === 'function') handleAuthError(res);
         return null;
     }
@@ -214,7 +214,7 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
     request.headers = apiWithBearer(originalHeaders, token);
 
     let response = await fetch(url, request);
-    if ((response.status === 401 || response.status === 403) && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
+    if (response.status === 401 && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
         const refreshedToken = await apiRefreshAuthToken();
         if (refreshedToken) {
             response = await fetch(url, {
@@ -223,7 +223,7 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
             });
         }
     }
-    if (response && (response.status === 401 || response.status === 403) && typeof handleAuthError === 'function') {
+    if (response && response.status === 401 && typeof handleAuthError === 'function') {
         if (handleAuthError(response)) return null;
     }
     return response;
@@ -231,7 +231,10 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
 
 // v5.0: Handle 401/403 — redirect to login
 function handleAuthError(response) {
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 403) {
+        return false;
+    }
+    if (response.status === 401) {
         // In embedded mode (iframe), never redirect — parent page handles auth
         const isEmbedded = document.documentElement.classList.contains('embed-mode')
             || (window.self !== window.top);

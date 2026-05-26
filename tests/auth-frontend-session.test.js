@@ -113,6 +113,44 @@ test('apiFetchWithAuthRetry refreshes before protected task mutations when the l
     assert.equal(store.get('pzp_refresh_token'), 'task-refresh-new');
 });
 
+test('apiFetchWithAuthRetry preserves session on forbidden role-scoped API responses', async () => {
+    const calls = [];
+    const { context, store } = loadApi(async (url, options = {}) => {
+        calls.push({ url, options });
+        assert.equal(url, '/api/tasks/owners');
+        assert.equal(options.headers.Authorization, 'Bearer animator-token');
+        return response(403, { error: 'Forbidden' });
+    }, {
+        pzp_token: 'animator-token',
+        pzp_access_token: 'animator-token',
+        pzp_refresh_token: 'animator-refresh',
+        pzp_current_user: JSON.stringify({ id: 39, username: '1234567', role: 'animator' })
+    });
+
+    const res = await context.apiFetchWithAuthRetry('/api/tasks/owners');
+    assert.equal(res.status, 403);
+    assert.deepEqual(calls.map(call => call.url), ['/api/tasks/owners']);
+    assert.equal(store.get('pzp_token'), 'animator-token');
+    assert.equal(store.get('pzp_access_token'), 'animator-token');
+    assert.equal(store.get('pzp_refresh_token'), 'animator-refresh');
+    assert.match(store.get('pzp_current_user'), /1234567/);
+});
+
+test('handleAuthError treats 403 as authorization failure without logging the user out', () => {
+    const { context, store } = loadApi(async () => response(500), {
+        pzp_token: 'still-valid-token',
+        pzp_access_token: 'still-valid-access',
+        pzp_refresh_token: 'still-valid-refresh',
+        pzp_current_user: JSON.stringify({ username: 'role-limited' })
+    });
+
+    assert.equal(context.handleAuthError(response(403)), false);
+    assert.equal(store.get('pzp_token'), 'still-valid-token');
+    assert.equal(store.get('pzp_access_token'), 'still-valid-access');
+    assert.equal(store.get('pzp_refresh_token'), 'still-valid-refresh');
+    assert.match(store.get('pzp_current_user'), /role-limited/);
+});
+
 test('auth headers and session detection accept access-only or refresh-only storage', () => {
     const { context: accessContext } = loadApi(async () => response(500), {
         pzp_access_token: 'access-only'

@@ -941,12 +941,24 @@ function renderLoadView() {
 // ACCOUNT LINKING (v39.1)
 // ==========================================
 
+async function staffApiFetch(path, options = {}) {
+    const request = {
+        ...options,
+        headers: { ...(options.headers || {}) }
+    };
+    if (typeof apiFetchWithAuthRetry === 'function') {
+        return apiFetchWithAuthRetry(path, request);
+    }
+    const token = localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token');
+    if (token && !request.headers.Authorization) {
+        request.headers.Authorization = `Bearer ${token}`;
+    }
+    return fetch(path, request);
+}
+
 async function fetchLinkStatus() {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/staff/link-status', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await staffApiFetch('/api/staff/link-status');
         const data = await res.json();
         if (data.success) {
             StaffState.linkData = data.data;
@@ -961,10 +973,7 @@ async function fetchLinkStatus() {
 
 async function fetchAllUsers() {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/users', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await staffApiFetch('/api/users');
         const data = await res.json();
         StaffState.allUsers = Array.isArray(data) ? data : (data.data || []);
         return StaffState.allUsers;
@@ -1183,10 +1192,9 @@ async function confirmLinkAccount() {
     if (!StaffState.linkingStaffId || !StaffState.selectedUserId) return;
 
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/staff/${StaffState.linkingStaffId}/link`, {
+        const res = await staffApiFetch(`/api/staff/${StaffState.linkingStaffId}/link`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: StaffState.selectedUserId })
         });
         const data = await res.json();
@@ -1243,10 +1251,9 @@ async function createAccountForLinkingStaff() {
         return;
     }
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/users', {
+        const res = await staffApiFetch('/api/users', {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: String(result.username || '').trim(),
                 password: issueOneTime ? undefined : password,
@@ -1288,10 +1295,9 @@ async function handleBulkCreate() {
 
     showNotification('Створюємо акаунти...');
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/staff/bulk-create-accounts', {
+        const res = await staffApiFetch('/api/staff/bulk-create-accounts', {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' }
         });
         const data = await res.json();
 

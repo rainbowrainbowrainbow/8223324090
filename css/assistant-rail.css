@@ -9541,3 +9541,71 @@ body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .s
         max-width: none !important;
     }
 }
+
+/* v0.66.15: timeline assistant is a normal row in the timeline content.
+   This removes the header overlap class of bugs entirely: on timeline, the
+   assistant is inserted before .control-panel and participates in page flow. */
+body.timeline-dashboard-page.timeline-assistant-main-mounted .header .header-content {
+    min-height: 58px !important;
+    height: auto !important;
+}
+
+body.timeline-dashboard-page.timeline-assistant-main-mounted .header .header-content > .crm-assistant-rail-host {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted {
+    padding-top: 16px !important;
+}
+
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > #crmAssistantRailHost.timeline-assistant-main-host,
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .crm-assistant-rail-host.timeline-assistant-main-host {
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    display: block !important;
+    width: min(920px, 100%) !important;
+    min-width: 0 !important;
+    max-width: 920px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    margin: 0 0 12px !important;
+    padding: 0 !important;
+    transform: none !important;
+    z-index: 1 !important;
+}
+
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > #crmAssistantRailHost.timeline-assistant-main-host .crm-assistant-rail,
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .crm-assistant-rail-host.timeline-assistant-main-host .crm-assistant-rail {
+    width: 100% !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    margin: 0 !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > #crmAssistantRailHost.timeline-assistant-main-host .assistant-command-form,
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .crm-assistant-rail-host.timeline-assistant-main-host .assistant-command-form,
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > #crmAssistantRailHost.timeline-assistant-main-host .crm-assistant-rail .assistant-rail-inline-form,
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .crm-assistant-rail-host.timeline-assistant-main-host .crm-assistant-rail .assistant-rail-inline-form {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+}
+
+body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .control-panel {
+    margin-top: 0 !important;
+}
+
+@media (max-width: 980px) {
+    body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > #crmAssistantRailHost.timeline-assistant-main-host,
+    body.timeline-dashboard-page .main-content.timeline-assistant-main-mounted > .crm-assistant-rail-host.timeline-assistant-main-host {
+        width: 100% !important;
+        max-width: none !important;
+    }
+}

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.14",
+  "version": "0.66.15",
   "eventGenix": {
-    "releaseLabel": "CRM 66.14: реальний dock Помічника"
+    "releaseLabel": "CRM 66.15: Помічник без overlay на таймлайні"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

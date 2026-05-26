@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.15 - CRM 66.15: Помічник без overlay на таймлайні
+
+### Таймлайн / AI-помічник / 26.05.2026 [codex]
+- **Помічник прибрано з overlay/header-геометрії таймлайну** - на таймлайні `js/assistant-rail.js` монтує AI command bar у `main-content` перед `.control-panel`, а не в header поверх кнопок дат.
+- **Панель дат фізично нижче Помічника** - `css/assistant-rail.css` задає `position: static` для `timeline-assistant-main-host`, стабільні 48px висоти та звичайний нижній відступ.
+- **Header більше не бореться з Помічником** - timeline branch прибирає `assistant-rail-mounted` із header, щоб старі topbar/flex/grid override-и не могли знову зсунути command bar.
+- **Regression guardrail** - `tests/ui-check.js` фіксує монтаж перед `.control-panel`, static positioning і refresh stale CSS link.
+
+---
+
 ## v0.66.14 - CRM 66.14: реальний dock Помічника
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

@@ -529,8 +529,28 @@
         }
         host.dataset.mount = 'top-menu';
         const isTimeline = isTimelineAssistantPage();
-        if (isTimeline) host.dataset.crmPage = 'timeline';
-        else delete host.dataset.crmPage;
+        if (isTimeline) {
+            const timelineMain = document.querySelector('#main-content.main-content, main.main-content, .main-content');
+            const controlPanel = timelineMain?.querySelector?.('.control-panel');
+            if (timelineMain && controlPanel) {
+                host.dataset.mount = 'timeline-main';
+                host.dataset.crmPage = 'timeline';
+                host.classList.add('timeline-assistant-main-host');
+                timelineMain.classList.add('timeline-assistant-main-mounted');
+                document.body?.classList?.add('timeline-assistant-main-mounted');
+                headerContent.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
+                headerContent.closest('.header')?.classList.remove('assistant-rail-timeline-header');
+                if (host.parentElement !== timelineMain || host.nextElementSibling !== controlPanel) {
+                    timelineMain.insertBefore(host, controlPanel);
+                }
+                return host;
+            }
+        }
+
+        delete host.dataset.crmPage;
+        host.classList.remove('timeline-assistant-main-host');
+        document.querySelector('.main-content.timeline-assistant-main-mounted')?.classList.remove('timeline-assistant-main-mounted');
+        document.body?.classList?.remove('timeline-assistant-main-mounted');
 
         const firstHeaderControl = headerContent.querySelector('#globalHeaderSearchBtn, .btn-search, .user-panel');
         if (host.parentElement !== headerContent) {
@@ -556,6 +576,8 @@
         const headerContent = document.querySelector('.header .header-content');
         headerContent?.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
         headerContent?.closest('.header')?.classList.remove('assistant-rail-timeline-header');
+        document.querySelector('.main-content.timeline-assistant-main-mounted')?.classList.remove('timeline-assistant-main-mounted');
+        document.body?.classList?.remove('timeline-assistant-main-mounted');
     }
 
     function ensureMounted() {

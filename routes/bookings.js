@@ -347,26 +347,6 @@ async function findAtomicRoomConflict(client, candidate, excludeIds) {
     }) || null;
 }
 
-async function findAtomicAnimatorConflict(client, candidate, excludeIds) {
-    const animId = parseInt(candidate.hosts, 10);
-    if (!animId) return null;
-    const result = await client.query(
-        `SELECT id, time, duration, label, program_code
-         FROM bookings
-         WHERE (hosts = $1 OR second_animator = $1::text)
-           AND date = $2 AND business_context = $3 AND status != 'cancelled' AND linked_to IS NULL
-           AND id != ALL($4::text[])`,
-        [animId, candidate.date, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
-    );
-    const start = timeToMinutes(candidate.time);
-    const end = start + (parseInt(candidate.duration, 10) || 0);
-    return result.rows.find(other => {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
-        return start < otherEnd && end > otherStart;
-    }) || null;
-}
-
 async function updateAtomicLinkedBookingFields(client, id, patch) {
     const entries = Object.entries(patch);
     if (!entries.length) {
@@ -1465,16 +1445,6 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             });
         }
 
-        const mainAnimatorConflict = await findAtomicAnimatorConflict(client, mainCandidate, groupIds);
-        if (mainAnimatorConflict) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                error: `Аніматор зайнятий: ${mainAnimatorConflict.label || mainAnimatorConflict.program_code || mainAnimatorConflict.id}`,
-                conflictBookingId: mainAnimatorConflict.id
-            });
-        }
-
         for (const candidate of linkedCandidates) {
             const linkedLineConflict = await findAtomicLineConflict(client, candidate, groupIds);
             if (linkedLineConflict) {
@@ -1756,34 +1726,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
-        // v33.3: Animator conflict detection
-        if (b.hosts && !b.linkedTo) {
-            const animId = parseInt(b.hosts);
-            if (animId) {
-                const startMinutes = timeToMinutes(b.time);
-                const endMinutes = startMinutes + (parseInt(b.duration) || 0);
-                const animConflict = await client.query(`
-                    SELECT id, time, duration, label, program_code FROM bookings
-                    WHERE (hosts = $1 OR second_animator = $1::text)
-                      AND date = $2 AND id != $3
-                      AND business_context = $4
-                      AND status != 'cancelled' AND linked_to IS NULL
-                `, [animId, b.date, id, businessContext]);
-
-                for (const ac of animConflict.rows) {
-                    const acStart = timeToMinutes(ac.time);
-                    const acEnd = acStart + (ac.duration || 0);
-                    if (startMinutes < acEnd && endMinutes > acStart) {
-                        await client.query('ROLLBACK');
-                        return res.status(409).json({
-                            success: false,
-                            error: `Аніматор вже зайнятий о ${ac.time} (${ac.label || ac.program_code})`,
-                            conflictBookingId: ac.id
-                        });
-                    }
-                }
-            }
-        }
+        // Primary animator occupancy is represented by line_id. Do not use
+        // bookings.hosts here: in this CRM it is the host count from product
+        // setup, so treating hosts=1 as staff id 1 creates false conflicts.
 
         // v38.5.0: Status whitelist — prevent invalid status values and transitions
         const VALID_STATUSES = ['confirmed', 'preliminary', 'cancelled'];

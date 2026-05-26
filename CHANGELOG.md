@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.24 - CRM 66.24: фікс hosts-конфлікту таймлайну
+
+### Таймлайн / drag conflict / 26.05.2026 [codex]
+- **Cross-line drag fix** - прибрано помилкову server-side перевірку, яка трактувала `bookings.hosts` як ID аніматора під час `linked-atomic` збереження.
+- **Правда по зайнятості** - основна зайнятість аніматора знову перевіряється через реальну лінію `line_id`, а не через кількість ведучих у продукті.
+- **False conflict Pin+1L закрито** - перенос на іншу лінію більше не має блокуватись чужим бронюванням з таким самим `hosts: 1` на іншій лінії.
+- **Regression guard** - додано тест `linked-atomic cross-line move does not treat hosts count as animator identity`.
+
+---
+
 ## v0.66.23 - CRM 66.23: release guardrails таймлайну
 
 ### Таймлайн / deploy + cache proof / 26.05.2026 [codex]

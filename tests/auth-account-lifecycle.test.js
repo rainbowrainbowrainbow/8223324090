@@ -50,7 +50,8 @@ function createFakePool() {
             avatar_color: null,
             avatar_url: null
         }],
-        refreshTokens: []
+        refreshTokens: [],
+        securityEvents: []
     };
 
     function publicUser(row) {
@@ -142,6 +143,7 @@ function createFakePool() {
                 token_hash: tokenHash,
                 device_info: deviceInfo,
                 ip_address: ipAddress,
+                created_at: new Date(),
                 expires_at: expiresAt,
                 revoked_at: null,
                 replaced_by: null
@@ -155,9 +157,88 @@ function createFakePool() {
             return { rows: row ? [row] : [] };
         }
 
+        if (/SELECT id, device_info, ip_address, created_at, expires_at FROM refresh_tokens WHERE user_id = \$1/i.test(text)) {
+            const rows = state.refreshTokens
+                .filter(item => Number(item.user_id) === Number(params[0]) && !item.revoked_at && new Date(item.expires_at) > new Date())
+                .map(item => ({
+                    id: item.id,
+                    device_info: item.device_info,
+                    ip_address: item.ip_address,
+                    created_at: item.created_at || new Date(),
+                    expires_at: item.expires_at
+                }));
+            return { rows };
+        }
+
         if (/SELECT id, username, role, extra_roles, page_allowlist, name, is_active FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [publicUser(row)] : [] };
+        }
+
+        if (/SELECT id, username, role, extra_roles, page_allowlist FROM users WHERE id = \$1/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                page_allowlist: row.page_allowlist || []
+            }] : [] };
+        }
+
+        if (/SELECT id, username, role, extra_roles FROM users WHERE id = \$1/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                role: row.role,
+                extra_roles: row.extra_roles || []
+            }] : [] };
+        }
+
+        if (/SELECT id, username, name, role, extra_roles, is_active, login_aliases FROM users WHERE id = \$1/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                is_active: row.is_active,
+                login_aliases: row.login_aliases || []
+            }] : [] };
+        }
+
+        if (/SELECT id, username, name, role, created_at, last_seen_at, password_changed_at, session_revoked_at FROM users WHERE id = \$1 AND is_active = true/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]) && item.is_active !== false);
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                created_at: row.created_at || new Date(),
+                last_seen_at: row.last_seen_at || null,
+                password_changed_at: row.password_changed_at || null,
+                session_revoked_at: row.session_revoked_at || null
+            }] : [] };
+        }
+
+        if (/UPDATE refresh_tokens rt SET revoked_at = NOW\(\) FROM users u/i.test(text)) {
+            const row = state.refreshTokens.find(item => item.token_hash === params[0] && !item.revoked_at);
+            if (!row) return { rows: [], rowCount: 0 };
+            row.revoked_at = new Date();
+            const user = state.users.find(item => Number(item.id) === Number(row.user_id));
+            return {
+                rows: user ? [{
+                    id: user.id,
+                    username: user.username,
+                    role: user.role,
+                    extra_roles: user.extra_roles || [],
+                    page_allowlist: user.page_allowlist || [],
+                    name: user.name
+                }] : [],
+                rowCount: user ? 1 : 0
+            };
         }
 
         if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE token_hash = \$1/i.test(text)) {
@@ -195,7 +276,95 @@ function createFakePool() {
 
         if (/SELECT id FROM chat_channels WHERE is_default = true/i.test(text)) return { rows: [] };
         if (/INSERT INTO chat_channel_members/i.test(text)) return { rows: [], rowCount: 1 };
-        if (/INSERT INTO account_security_events/i.test(text)) return { rows: [], rowCount: 1 };
+        if (/SELECT password_hash FROM users WHERE username = \$1/i.test(text)) {
+            const row = state.users.find(item => item.username === params[0]);
+            return { rows: row ? [{ password_hash: row.password_hash }] : [] };
+        }
+        if (/UPDATE users SET password_hash = \$1,\s*password_changed_at = NOW\(\)\s*WHERE username = \$2\s*RETURNING id, username/i.test(text)) {
+            const row = state.users.find(item => item.username === params[1]);
+            if (row) {
+                row.password_hash = params[0];
+                row.password_changed_at = new Date();
+            }
+            return { rows: row ? [{ id: row.id, username: row.username }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\)\s*WHERE id = \$4\s*RETURNING id, username, role, extra_roles, page_allowlist/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[3]));
+            if (row) {
+                row.role = params[0];
+                if (Array.isArray(params[1])) row.extra_roles = params[1];
+                if (Array.isArray(params[2])) row.page_allowlist = params[2];
+            }
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                page_allowlist: row.page_allowlist || []
+            }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/UPDATE users SET password_hash = \$1,\s*password_changed_at = NOW\(\),\s*session_revoked_at = NOW\(\),\s*is_active = CASE WHEN \$3::boolean THEN true ELSE is_active END\s*WHERE id = \$2\s*RETURNING id, username, is_active, password_changed_at, session_revoked_at/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[1]));
+            if (row) {
+                row.password_hash = params[0];
+                row.password_changed_at = new Date();
+                row.session_revoked_at = new Date();
+                if (params[2]) row.is_active = true;
+            }
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                is_active: row.is_active,
+                password_changed_at: row.password_changed_at,
+                session_revoked_at: row.session_revoked_at
+            }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/UPDATE users SET is_active = \$1,\s*session_revoked_at = CASE WHEN \$1 = false THEN NOW\(\) ELSE session_revoked_at END\s*WHERE id = \$2/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[1]));
+            if (row) {
+                row.is_active = !!params[0];
+                if (!params[0]) row.session_revoked_at = new Date();
+            }
+            return { rows: [], rowCount: row ? 1 : 0 };
+        }
+        if (/UPDATE employee_profiles SET is_active = (false|true)/i.test(text)) return { rows: [], rowCount: 0 };
+        if (/SELECT id, actor_username, target_username, event_type, reason, details, ip_address, created_at FROM account_security_events/i.test(text)) {
+            const userId = Number(params[0]);
+            const limit = Number(params[1]) || 12;
+            const rows = state.securityEvents
+                .filter(event => Number(event.target_user_id) === userId || Number(event.actor_user_id) === userId)
+                .slice()
+                .sort((a, b) => b.id - a.id)
+                .slice(0, limit)
+                .map(event => ({
+                    id: event.id,
+                    actor_username: event.actor_username,
+                    target_username: event.target_username,
+                    event_type: event.event_type,
+                    reason: event.reason,
+                    details: event.details,
+                    ip_address: event.ip_address,
+                    created_at: event.created_at
+                }));
+            return { rows };
+        }
+        if (/INSERT INTO account_security_events/i.test(text)) {
+            const [actorUserId, actorUsername, targetUserId, targetUsername, eventType, reason, details, ipAddress, userAgent] = params;
+            state.securityEvents.push({
+                id: state.securityEvents.length + 1,
+                actor_user_id: actorUserId,
+                actor_username: actorUsername,
+                target_user_id: targetUserId,
+                target_username: targetUsername,
+                event_type: eventType,
+                reason,
+                details: typeof details === 'string' ? JSON.parse(details) : (details || {}),
+                ip_address: ipAddress,
+                user_agent: userAgent,
+                created_at: new Date()
+            });
+            return { rows: [], rowCount: 1 };
+        }
         if (/UPDATE employee_profiles SET last_activity_at/i.test(text)) return { rows: [], rowCount: 0 };
         if (/UPDATE users SET last_seen_at/i.test(text)) return { rows: [], rowCount: 1 };
 
@@ -341,6 +510,116 @@ test('created manual account can log in, verify, access protected API, reject wr
 
         const refreshAfterLogout = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: refresh.data.refreshToken });
         assert.equal(refreshAfterLogout.status, 401);
+    });
+});
+
+test('account security journal records semantic account, password, role, login, and logout events', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const create = await request(baseUrl, 'POST', '/api/users', {
+            username: 'audit.operator',
+            password: 'AuditPass789!',
+            name: 'Audit Operator',
+            role: 'animator',
+            extraRoles: ['instructor'],
+            pageAllowlist: ['/tasks']
+        }, creatorToken());
+        assert.equal(create.status, 200);
+        const userId = create.data.user.id;
+
+        const wrongPassword = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'audit.operator',
+            password: 'WrongAuditPass789!'
+        });
+        assert.equal(wrongPassword.status, 401);
+
+        const missingUser = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'missing.audit.operator',
+            password: 'WrongAuditPass789!'
+        });
+        assert.equal(missingUser.status, 401);
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'audit.operator',
+            password: 'AuditPass789!'
+        });
+        assert.equal(login.status, 200);
+
+        const accessUpdate = await request(baseUrl, 'PATCH', `/api/users/${userId}/role`, {
+            role: 'reception',
+            extraRoles: ['manager'],
+            pageAllowlist: ['/reports', '/tasks']
+        }, creatorToken());
+        assert.equal(accessUpdate.status, 200);
+        assert.deepEqual(accessUpdate.data.extraRoles, ['manager']);
+        assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
+
+        const passwordChange = await request(baseUrl, 'PUT', '/api/auth/password', {
+            currentPassword: 'AuditPass789!',
+            newPassword: 'AuditPass987!'
+        }, login.data.accessToken);
+        assert.equal(passwordChange.status, 200);
+
+        const logout = await request(baseUrl, 'POST', '/api/auth/logout', {
+            refreshToken: login.data.refreshToken
+        });
+        assert.equal(logout.status, 200);
+
+        const security = await request(baseUrl, 'GET', '/api/auth/security?limit=50', undefined, login.data.accessToken);
+        assert.equal(security.status, 200);
+        assert.ok(security.data.events.some(event => event.event_type === 'account_roles_updated'));
+
+        const reset = await request(baseUrl, 'POST', `/api/users/${userId}/reset-password`, {
+            newPassword: 'AuditReset789!'
+        }, creatorToken());
+        assert.equal(reset.status, 200);
+
+        const deactivate = await request(baseUrl, 'PATCH', `/api/users/${userId}/active`, {
+            isActive: false
+        }, creatorToken());
+        assert.equal(deactivate.status, 200);
+
+        const inactiveLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'audit.operator',
+            password: 'AuditReset789!'
+        });
+        assert.equal(inactiveLogin.status, 401);
+
+        const activate = await request(baseUrl, 'PATCH', `/api/users/${userId}/active`, {
+            isActive: true
+        }, creatorToken());
+        assert.equal(activate.status, 200);
+
+        const eventTypes = fakePool.state.securityEvents.map(event => event.event_type);
+        [
+            'account_created',
+            'login_failed',
+            'login_success',
+            'account_roles_updated',
+            'password_changed',
+            'session_logout',
+            'password_reset_by_admin',
+            'account_deactivated',
+            'account_activated'
+        ].forEach(type => assert.ok(eventTypes.includes(type), `missing account security event ${type}`));
+
+        const roleEvent = fakePool.state.securityEvents.find(event => event.event_type === 'account_roles_updated');
+        assert.equal(roleEvent.target_username, 'audit.operator');
+        assert.equal(roleEvent.actor_username, 'creator');
+        assert.equal(roleEvent.details.oldRole, 'animator');
+        assert.equal(roleEvent.details.newRole, 'reception');
+        assert.deepEqual(roleEvent.details.oldExtraRoles, ['instructor']);
+        assert.deepEqual(roleEvent.details.newExtraRoles, ['manager']);
+        assert.deepEqual(roleEvent.details.oldPageAllowlist, ['/tasks']);
+        assert.deepEqual(roleEvent.details.newPageAllowlist, ['/reports', '/tasks']);
+        assert.equal(roleEvent.details.changed.pageAllowlist, true);
+
+        const missingLoginEvent = fakePool.state.securityEvents.find(event => event.event_type === 'login_failed' && event.reason === 'user_not_found');
+        assert.ok(missingLoginEvent, 'nonexistent login attempt must be recorded without a subject account');
+        assert.equal(missingLoginEvent.target_username, null);
+        assert.equal(typeof missingLoginEvent.details.identifierHash, 'string');
+
+        const inactiveLoginEvent = fakePool.state.securityEvents.find(event => event.event_type === 'login_failed' && event.reason === 'inactive_account');
+        assert.equal(inactiveLoginEvent.target_username, 'audit.operator');
     });
 });
 

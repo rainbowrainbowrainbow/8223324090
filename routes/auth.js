@@ -10,6 +10,7 @@ const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const crypto = require('crypto');
 const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
@@ -160,6 +161,28 @@ function profileTaskWorkloadDateSql(alias = 'tasks') {
     )`;
 }
 
+function accountAuditIdentifierHash(value) {
+    const normalized = normalizeLoginIdentifier(value);
+    if (!normalized) return null;
+    return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+}
+
+async function recordLoginFailure({ user = null, loginIdentifier, reason, credentials = {}, req }) {
+    await recordAccountSecurityEvent({
+        actor: null,
+        target: user ? { id: user.id, username: user.username } : null,
+        eventType: 'login_failed',
+        reason,
+        details: {
+            reason,
+            identifierMatched: !!user,
+            identifierHash: accountAuditIdentifierHash(loginIdentifier),
+            parsedCredentialBlock: !!credentials.parsedCredentialBlock
+        },
+        req
+    });
+}
+
 router.post('/login', async (req, res) => {
     try {
         const credentials = normalizeLoginCredentialPayload(req.body || {});
@@ -191,6 +214,7 @@ router.post('/login', async (req, res) => {
 
         if (!valid) {
             const reason = !user ? 'user_not_found' : (user.is_active === false ? 'inactive_account' : 'password_mismatch');
+            await recordLoginFailure({ user, loginIdentifier, reason, credentials, req });
             log.warn(`Login failed for "${loginIdentifier}" (${reason}${credentials.parsedCredentialBlock ? ', parsed_credential_block' : ''})`);
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
@@ -203,6 +227,18 @@ router.post('/login', async (req, res) => {
         // Backward compat: also issue legacy long-lived token for existing clients
         const authUser = buildAuthUserPayload(user);
         const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '24h' });
+
+        await recordAccountSecurityEvent({
+            actor: user,
+            target: user,
+            eventType: 'login_success',
+            reason: 'auth_login',
+            details: {
+                refreshSessionCreated: true,
+                parsedCredentialBlock: !!credentials.parsedCredentialBlock
+            },
+            req
+        });
 
         log.info(`User "${user.username}" logged in (role: ${user.role})`);
 
@@ -1165,7 +1201,8 @@ router.get('/security', authenticateToken, async (req, res) => {
              LIMIT 20`,
             [req.user.id]
         );
-        const events = await listAccountSecurityEvents(req.user.id, 16);
+        const eventLimit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 50);
+        const events = await listAccountSecurityEvents(req.user.id, eventLimit);
 
         res.json({
             user: userResult.rows[0],
@@ -1348,7 +1385,17 @@ router.post('/logout', async (req, res) => {
                 return res.status(401).json({ error: 'Invalid token' });
             }
         } else if (refreshToken) {
-            await revokeRefreshToken(refreshToken);
+            const revokedUser = await revokeRefreshToken(refreshToken);
+            if (revokedUser) {
+                await recordAccountSecurityEvent({
+                    actor: revokedUser,
+                    target: revokedUser,
+                    eventType: 'session_logout',
+                    reason: 'logout_current_device',
+                    details: { scope: 'current_device' },
+                    req
+                });
+            }
         }
 
         res.json({ success: true });

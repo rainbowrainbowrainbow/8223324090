@@ -1861,26 +1861,82 @@ function renderProfileSessionRow(session) {
 
 function accountSecurityEventLabel(type) {
     const labels = {
+        login_success: 'Вхід виконано',
+        login_failed: 'Невдала спроба входу',
+        session_logout: 'Вихід із пристрою',
         password_changed: 'Пароль змінено',
         password_reset_by_admin: 'Пароль скинуто адміністратором',
+        password_one_time_reissued: 'One-time пароль перевипущено',
         sessions_revoked: 'Сесії відкликано',
         account_created: 'Акаунт створено',
+        account_created_with_staff_link: 'Акаунт створено і привʼязано до працівника',
         account_profile_updated: 'Профіль акаунта змінено',
-        account_roles_updated: 'Ролі змінено',
+        account_profile_staff_linked: 'Акаунт привʼязано до працівника',
+        account_profile_staff_unlinked: 'Акаунт відвʼязано від працівника',
+        account_staff_unlinked: 'Акаунт відвʼязано від працівника',
+        bulk_account_created_with_staff_link: 'Акаунт створено масово',
+        account_roles_updated: 'Ролі та доступ змінено',
         account_activated: 'Акаунт активовано',
         account_deactivated: 'Акаунт деактивовано'
     };
     return labels[type] || type || 'Подія акаунта';
 }
 
+function accountSecurityReasonLabel(reason) {
+    const labels = {
+        auth_login: 'вхід',
+        password_mismatch: 'невірний пароль',
+        user_not_found: 'користувача не знайдено',
+        inactive_account: 'акаунт вимкнено',
+        self_service: 'самостійна дія',
+        account_management: 'керування акаунтом',
+        logout_current_device: 'поточний пристрій',
+        logout_all_devices: 'усі пристрої'
+    };
+    return labels[reason] || reason || '';
+}
+
+function accountSecurityEventDetails(event) {
+    const details = event.details && typeof event.details === 'object' ? event.details : {};
+    const type = event.event_type || event.eventType;
+    if (type === 'account_roles_updated') {
+        const parts = [];
+        if (details.oldRole || details.newRole) parts.push(`${details.oldRole || '—'} → ${details.newRole || '—'}`);
+        if (details.changed?.extraRoles) parts.push('додаткові ролі оновлено');
+        if (details.changed?.pageAllowlist) parts.push('сторінки доступу оновлено');
+        return parts.join(' · ');
+    }
+    if (type === 'login_failed') return accountSecurityReasonLabel(details.reason || event.reason);
+    if (type === 'login_success') return details.parsedCredentialBlock ? 'вхід із credential block' : 'сесію створено';
+    if (type === 'session_logout') return 'поточну refresh-сесію відкликано';
+    if (type === 'sessions_revoked') return details.scope === 'all_devices' ? 'усі активні сесії' : 'сесії відкликано';
+    if (type === 'password_reset_by_admin' || type === 'password_one_time_reissued') {
+        return details.sessionsRevoked ? 'старі сесії відкликано' : '';
+    }
+    if (type === 'account_created') {
+        return details.role ? `роль: ${details.role}` : '';
+    }
+    return '';
+}
+
 function renderProfileSecurityEventRow(event) {
     const actor = event.actor_username || event.actorUsername || 'CRM';
+    const target = event.target_username || event.targetUsername || '';
     const reason = event.reason || '';
+    const actorSubject = target && target !== actor
+        ? `${actor} → ${target}`
+        : actor;
+    const detail = accountSecurityEventDetails(event);
+    const meta = [
+        actorSubject,
+        accountSecurityReasonLabel(reason),
+        detail
+    ].filter(Boolean).join(' · ');
     return `
         <div class="profile-security-row">
             <div>
                 <b>${escapeHtml(accountSecurityEventLabel(event.event_type || event.eventType))}</b>
-                <span>${escapeHtml(actor)}${reason ? ' · ' + escapeHtml(reason) : ''}</span>
+                <span>${escapeHtml(meta)}</span>
             </div>
             <small>${profileFormatTime(event.created_at || event.createdAt)}</small>
         </div>`;

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.39 - CRM 66.39: повний журнал акаунтів
+
+### Auth / account journal / 26.05.2026 [codex]
+- **Журнал акаунта став domain-рівня** - login success/failure, current-device logout, password changes, admin reset, activation/deactivation і role/access changes пишуться як semantic `account_security_events`, а не губляться серед generic `api:PATCH`.
+- **Access editor більше не втрачає контекст** - role update зберігає `extra_roles` і `page_allowlist`, а audit metadata містить old/new role, additional roles і page allowlist.
+- **Actor + subject тепер видимі** - profile security journal показує хто діяв і чий акаунт змінено, тому admin-дії над іншим користувачем більше не виглядають як безконтекстний запис.
+- **Failed-login path без секретів** - wrong password, inactive account і nonexistent user логуються без паролів/токенів; для невідомого login зберігається тільки короткий hash і reason.
+- **Regression guard** - `tests/auth-account-lifecycle.test.js` покриває create, role/access, password change/reset, login success/failure, logout і journal listing.
+
+---
+
 ## v0.66.38 - CRM 66.38: чисті джерела клієнтів
 
 ### Customers / source taxonomy / 26.05.2026 [codex]

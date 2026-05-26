@@ -73,6 +73,16 @@ function normalizeStaffId(value) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : NaN;
 }
 
+function normalizeStoredArray(value) {
+    return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
+}
+
+function sameStringArray(left = [], right = []) {
+    const a = normalizeStoredArray(left);
+    const b = normalizeStoredArray(right);
+    return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
 function resetPasswordFromPayload(body = {}) {
     const candidates = [body.newPassword, body.password, body.manualPassword];
     for (const candidate of candidates) {
@@ -281,7 +291,7 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
             : null;
 
         // Cannot change own role (safety)
-        const target = await pool.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
@@ -297,26 +307,44 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         }
 
         const oldRole = target.rows[0].role;
-        await pool.query(
+        const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
+        const oldPageAllowlist = normalizeStoredArray(target.rows[0].page_allowlist);
+        const updated = await pool.query(
             `UPDATE users
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
                  page_allowlist = COALESCE($3::text[], page_allowlist)
-             WHERE id = $4`,
+             WHERE id = $4
+             RETURNING id, username, role, extra_roles, page_allowlist`,
             [role, normalizedExtraRoles, normalizedPageAllowlist, parseInt(id)]
         );
+        const updatedUser = updated.rows[0] || target.rows[0];
+        const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
+        const newPageAllowlist = normalizeStoredArray(updatedUser.page_allowlist);
 
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
             eventType: 'account_roles_updated',
             reason: 'account_management',
-            details: { oldRole, newRole: role, extraRoles: normalizedExtraRoles, pageAllowlistChanged: normalizedPageAllowlist !== null },
+            details: {
+                oldRole,
+                newRole: updatedUser.role,
+                oldExtraRoles,
+                newExtraRoles,
+                oldPageAllowlist,
+                newPageAllowlist,
+                changed: {
+                    role: oldRole !== updatedUser.role,
+                    extraRoles: !sameStringArray(oldExtraRoles, newExtraRoles),
+                    pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist)
+                }
+            },
             req
         });
 
-        log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${role}`);
-        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: role, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist });
+        log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${updatedUser.role}`);
+        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist });
     } catch (err) {
         log.error('Change role error', err);
         res.status(500).json({ error: 'Internal server error' });

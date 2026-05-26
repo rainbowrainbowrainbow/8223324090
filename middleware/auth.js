@@ -393,10 +393,17 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
  */
 async function revokeRefreshToken(refreshToken) {
     const tokenHash = hashRefreshToken(refreshToken);
-    await pool.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1',
+    const result = await pool.query(
+        `UPDATE refresh_tokens rt
+         SET revoked_at = NOW()
+         FROM users u
+         WHERE rt.token_hash = $1
+           AND rt.user_id = u.id
+           AND rt.revoked_at IS NULL
+         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.name`,
         [tokenHash]
     );
+    return result.rows[0] || null;
 }
 
 /**

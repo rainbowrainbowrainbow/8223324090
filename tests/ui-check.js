@@ -507,7 +507,7 @@ const criticalJS = [
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
-    'js/booking.js', 'js/timeline.js', 'js/settings.js',
+    'js/booking.js', 'js/timeline-interaction-model.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
 
@@ -602,6 +602,7 @@ const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
 const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
+const timelineInteractionModelCode = fs.readFileSync(path.join(ROOT, 'js/timeline-interaction-model.js'), 'utf8');
 const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
 const notificationCode = fs.readFileSync(path.join(ROOT, 'js/notification.js'), 'utf8');
 const graduationCode = fs.readFileSync(path.join(ROOT, 'js/graduation.js'), 'utf8');
@@ -1042,7 +1043,7 @@ check('Shared closeAllModals respects editable dirty surfaces', uiCode.includes(
 check('Shared formModal cancel/backdrop path asks dirty guard', uiCode.includes('const requestCancel = async') && uiCode.includes('confirmDiscardIfDirty(overlay') && uiCode.includes("overlay.addEventListener('click', (e) => { if (e.target === overlay) requestCancel(); });"));
 check('Lead edit backdrop and Escape route through guarded close', leadsCode.includes("overlay.id === 'leadModal'") && leadsCode.includes('closeLeadModal(false)') && leadsCode.includes('attemptCloseEditableSurface(modal'));
 check('Booking panel guards date changes and panel close', bookingCode.includes('async function closeBookingPanel') && bookingCode.includes('attemptCloseEditableSurface(panel') && appCodeForDismiss.includes('if (!await closeBookingPanel(false))') && timelineCode.includes('async function selectCell'));
-check('Timeline linked host blocks can initiate group drag', timelineCode.includes('function getBookingDragGroup') && timelineCode.includes('s.draggedBooking = booking') && timelineCode.includes('s.mainBooking = dragGroup.mainBooking') && timelineCode.includes('apiUpdateLinkedBookingsAtomic(mainBooking.id') && timelineCode.includes('if (!isViewer()) {') && timelineCode.includes('if (!isLinked) {') && timelineCss.includes('.booking-block.linked-ghost') && timelineCss.includes('cursor: grab'));
+check('Timeline linked host blocks use canonical interaction model for group drag', timelineCode.includes('function getBookingDragGroup') && timelineCode.includes('s.draggedBooking = booking') && timelineCode.includes('s.mainBooking = dragGroup.mainBooking') && timelineCode.includes('apiUpdateLinkedBookingsAtomic(intent.mainBooking.id') && timelineCode.includes('model.buildDragAtomicPayload') && timelineInteractionModelCode.includes('function resolveTimelineBookingGroup') && timelineInteractionModelCode.includes('function buildDragInteractionIntent') && timelineCode.includes('if (!isViewer()) {') && timelineCode.includes('if (!isLinked) {') && timelineCss.includes('.booking-block.linked-ghost') && timelineCss.includes('cursor: grab'));
 check('Timeline lane geometry uses measured cells and pending assistant row keeps grid alignment', timelineCode.includes('function getTimelineCellWidth') && timelineCode.includes('timelineDurationWidth(effectiveDuration)') && timelineCode.includes('getTimelineCellWidth(s.grid)') && timelineCode.includes("renderGridCells('pending', selectedDate)") && timelineCss.includes('.timeline-line > .line-header') && timelineCss.includes('.pending-grid .grid-cell') && timelineCss.includes('min-height: inherit') && responsiveCss.includes('.pending-grid') && responsiveCss.includes('min-height: inherit'));
 check('Graduation timeline renders package components as persisted interactive nested segments', timelineCode.includes('function normalizeGraduationSegments') && timelineCode.includes('extra.graduationSegments') && timelineCode.includes('function initGraduationSegmentInteractions') && timelineCode.includes('data-graduation-segment-id') && timelineCode.includes('graduationSegmentsHaveOverlap') && timelineCode.includes('withGraduationSegmentExtraData') && timelineCode.includes('apiUpdateBooking(booking.id, payload)') && timelineCss.includes('.booking-block.graduation-parent') && timelineCss.includes('.graduation-segment-track') && timelineCss.includes('.graduation-segment-resize'));
 check('Task/customer/finance edit surfaces use shared dirty guard', tasksCode.includes('attemptCloseEditableSurface(overlay') && customersCode.includes('attemptCloseEditableSurface(modal') && financeCode.includes('attemptCloseEditableSurface(modal'));

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.19 - CRM 66.19: стабілізація таймлайну
+
+### Таймлайн / interaction engine / 26.05.2026 [codex]
+- **Єдина модель drag/resize** - додано `js/timeline-interaction-model.js`, щоб preview, validation, save payload і undo брали main/linked/group booking state з одного джерела.
+- **Linked secondary drag закрито матрицею** - перетягування пов'язаного блоку через лінії тепер формує atomic payload на main booking, але переносить саме dragged linked booking на target line.
+- **Resize вирівняно з group rules** - resize перевіряє всю linked-групу, виключає sibling bookings з власних конфліктів і зберігає main + linked через той самий `linked-atomic` контракт.
+- **Regression guardrail** - додано `tests/timeline-interaction-model.test.js` для main/secondary, same-line/cross-line, conflict і undo snapshot сценаріїв.
+
+---
+
 ## v0.66.18 - CRM 66.18: git-деплой актуального стану
 
 ### Release / deploy / 26.05.2026 [codex]

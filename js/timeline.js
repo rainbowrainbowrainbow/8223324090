@@ -1280,8 +1280,17 @@ let _resizeState = null;
 let _graduationSegmentDragState = null;
 let _graduationSegmentResizeState = null;
 let _banquetLinkDraft = null;
+let _timelineInteractionSaveInFlight = false;
 
 const BANQUET_LINK_SVG_NS = 'http://www.w3.org/2000/svg';
+
+function timelineInteractionModel() {
+    return window.TimelineInteractionModel || null;
+}
+
+function timelineInteractionUnavailable() {
+    showNotification('Модель таймлайну не завантажена. Оновіть сторінку.', 'error');
+}
 
 function getBookingBanquetLinks(booking) {
     return Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : [];
@@ -1317,6 +1326,7 @@ function initBookingDrag(block, booking, startHour) {
         if (_graduationSegmentDragState || _graduationSegmentResizeState) return;
         // Guard: another drag in progress
         if (_bookingDragState) return;
+        if (_timelineInteractionSaveInFlight) return;
         // Guard: multi-day mode
         if (AppState.multiDayMode) return;
         // Guard: banquet link handle owns its own tap/click flow
@@ -1440,6 +1450,10 @@ function _getTimelineCachedBookings() {
 
 function getBookingDragGroup(draggedBooking) {
     const allBookings = _getTimelineCachedBookings();
+    const model = timelineInteractionModel();
+    if (model?.resolveTimelineBookingGroup) {
+        return model.resolveTimelineBookingGroup(draggedBooking, allBookings);
+    }
     const mainId = draggedBooking.linkedTo || draggedBooking.id;
     const mainBooking = allBookings.find(b => String(b.id) === String(mainId)) || draggedBooking;
     const groupBookings = allBookings.filter(b =>
@@ -1666,6 +1680,17 @@ function _handleDragEdgeScroll(clientX) {
     }
 }
 
+function _buildDragIntentFromState(state, timeDelta = null, lineChanged = null) {
+    const model = timelineInteractionModel();
+    if (!model?.buildDragInteractionIntent) return null;
+    return model.buildDragInteractionIntent({
+        state,
+        timeDelta,
+        lineChanged,
+        allBookings: state.groupBookings || _getTimelineCachedBookings()
+    });
+}
+
 // --- Conflict preview during drag (visual only, uses cache) ---
 function _updateConflictPreview(newMin, lineId, timeDelta) {
     const s = _bookingDragState;
@@ -1673,24 +1698,15 @@ function _updateConflictPreview(newMin, lineId, timeDelta) {
 
     const dateStr = formatDate(AppState.selectedDate);
     const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
-    const newEnd = newMin + s.duration;
-    const excludeIds = s.groupBookingIds || new Set([String(s.booking.id), ...s.relatedBookings.map(rb => String(rb.booking.id))]);
-
-    // Check main booking conflicts on target line
-    const lineBookings = allBookings.filter(b =>
-        b.lineId === lineId &&
-        !excludeIds.has(String(b.id))
-    );
-
-    let hasConflict = false;
-    for (const other of lineBookings) {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + other.duration;
-        if (newMin < otherEnd && newEnd > otherStart) {
-            hasConflict = true;
-            break;
-        }
-    }
+    const intent = _buildDragIntentFromState({ ...s, currentMin: newMin, newLineId: lineId }, timeDelta, lineId !== s.startLineId);
+    const result = intent
+        ? timelineInteractionModel().evaluateTimelineCandidateConflicts(intent, allBookings, {
+            dayStartMin: s.dayStartMin,
+            dayEndMin: s.dayEndMin,
+            minPause: CONFIG.MIN_PAUSE
+        })
+        : { valid: true };
+    const hasConflict = !result.valid;
 
     // Update ghost visual
     const ghost = document.getElementById('dragGhostPreview');
@@ -1759,9 +1775,15 @@ async function _handleBookingDragEnd(e) {
     }
 
     // --- Save to server ---
-    // Null state BEFORE await so new drags aren't blocked during async save
+    // Keep a short global interaction lock while the canonical intent is saved.
+    _timelineInteractionSaveInFlight = true;
     _bookingDragState = null;
-    const saved = await _saveDragResult(s, timeDelta, lineChanged);
+    let saved = false;
+    try {
+        saved = await _saveDragResult(s, timeDelta, lineChanged);
+    } finally {
+        _timelineInteractionSaveInFlight = false;
+    }
 
     if (!saved) {
         _rollbackDragVisuals(s);
@@ -1802,72 +1824,42 @@ function _handleBookingDragCancel(e) {
 // --- Validate drag positions using cached data ---
 function _validateDragDrop(state, timeDelta) {
     const s = state;
-    const newMin = s.currentMin;
-    const newEnd = newMin + s.duration;
-
     const dateStr = formatDate(AppState.selectedDate);
     const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const intent = _buildDragIntentFromState(s, timeDelta, s.newLineId !== s.startLineId);
+    const model = timelineInteractionModel();
+    if (!intent || !model?.evaluateTimelineCandidateConflicts) {
+        timelineInteractionUnavailable();
+        return { valid: false, error: 'Модель таймлайну не завантажена' };
+    }
 
-    // 1. Boundary check for main booking
-    if (newMin < s.dayStartMin || newEnd > s.dayEndMin) {
+    const result = model.evaluateTimelineCandidateConflicts(intent, allBookings, {
+        dayStartMin: s.dayStartMin,
+        dayEndMin: s.dayEndMin,
+        minPause: CONFIG.MIN_PAUSE
+    });
+
+    if (!result.valid && result.type === 'boundary') {
         return { valid: false, error: 'Час виходить за межі робочого дня!' };
     }
 
-    // 2. Conflict check for main booking on target line
-    const excludeIds = s.groupBookingIds || new Set([String(s.booking.id), ...s.relatedBookings.map(rb => String(rb.booking.id))]);
-    const lineBookings = allBookings.filter(b =>
-        b.lineId === s.newLineId && !excludeIds.has(String(b.id))
-    );
-
-    for (const other of lineBookings) {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + other.duration;
-        if (newMin < otherEnd && newEnd > otherStart) {
-            // v43.5.0: Reveal blocker so user sees what's interfering
-            if (other.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(other.id);
-            const detail = ` (${other.label || other.programCode || ''} о ${other.time})`;
+    if (!result.valid && result.type === 'overlap') {
+        const other = result.conflictBooking;
+        if (other?.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(other.id);
+        const targetLine = result.candidate?.next?.lineId;
+        const draggedLine = intent.draggedBooking?.lineId;
+        const detail = other ? ` (${other.label || other.programCode || ''} о ${other.time})` : '';
+        if (String(targetLine) !== String(draggedLine) || result.candidate?.isDragged) {
             return { valid: false, error: `Час зайнятий на цій лінії${detail}` };
         }
+        const lineGrid = getTimelineLineGrid(targetLine);
+        const lineHeader = lineGrid ? lineGrid.parentElement.querySelector('.line-name') : null;
+        const lineName = lineHeader ? lineHeader.textContent : "пов'язаний аніматор";
+        return { valid: false, error: `Накладка у ${lineName}!` };
     }
 
-    // 3. Validate each related booking
-    for (const rb of s.relatedBookings) {
-        if (!rb.checkConflict) continue;
-        const rbNewMin = timeToMinutes(rb.booking.time) + timeDelta;
-        const rbNewEnd = rbNewMin + rb.booking.duration;
-
-        // Boundary check
-        if (rbNewMin < s.dayStartMin || rbNewEnd > s.dayEndMin) {
-            return { valid: false, error: "Пов'язане бронювання виходить за межі дня" };
-        }
-
-        // Conflict check on related booking's line
-        const rbLineBookings = allBookings.filter(b =>
-            b.lineId === rb.booking.lineId && !excludeIds.has(String(b.id))
-        );
-
-        for (const other of rbLineBookings) {
-            const otherStart = timeToMinutes(other.time);
-            const otherEnd = otherStart + other.duration;
-            if (rbNewMin < otherEnd && rbNewEnd > otherStart) {
-                // Get line name for specific error
-                const lineGrid = getTimelineLineGrid(rb.booking.lineId);
-                const lineHeader = lineGrid ? lineGrid.parentElement.querySelector('.line-name') : null;
-                const lineName = lineHeader ? lineHeader.textContent : "пов'язаний аніматор";
-                return { valid: false, error: `Накладка у ${lineName}!` };
-            }
-        }
-    }
-
-    // 4. Check "no pause" warning (non-blocking)
-    for (const other of lineBookings) {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + other.duration;
-        const gap = Math.max(otherStart - newEnd, newMin - otherEnd);
-        if (gap >= 0 && gap < CONFIG.MIN_PAUSE) {
-            showWarning('Немає 15-хвилинної паузи між програмами');
-            break;
-        }
+    if (result.pauseWarning) {
+        showWarning('Немає 15-хвилинної паузи між програмами');
     }
 
     return { valid: true };
@@ -1876,57 +1868,26 @@ function _validateDragDrop(state, timeDelta) {
 // --- Save drag result to server ---
 async function _saveDragResult(state, timeDelta, lineChanged) {
     const s = state;
-    const newTime = minutesToTime(s.currentMin);
 
     try {
-        const draggedId = String(s.draggedBooking?.id || s.booking.id);
-        const mainBooking = s.mainBooking || s.booking;
-        const mainId = String(mainBooking.id);
-        const draggedIsMain = draggedId === mainId;
-        const groupBookings = s.groupBookings || [s.booking, ...s.relatedBookings.map(rb => rb.booking)];
-        const mainPatch = {};
-        const linked = [];
-
-        if (draggedIsMain) {
-            mainPatch.time = newTime;
-            mainPatch.lineId = s.newLineId;
-        } else if (timeDelta !== 0) {
-            mainPatch.time = minutesToTime(timeToMinutes(mainBooking.time) + timeDelta);
+        const model = timelineInteractionModel();
+        const intent = _buildDragIntentFromState(s, timeDelta, lineChanged);
+        if (!intent || !model?.buildDragAtomicPayload || !model?.buildDragUndoSnapshot) {
+            timelineInteractionUnavailable();
+            return false;
         }
-
-        groupBookings
-            .filter(b => String(b.id) !== mainId)
-            .forEach(b => {
-                const isDragged = String(b.id) === draggedId;
-                const patch = {
-                    id: b.id,
-                    time: isDragged ? newTime : minutesToTime(timeToMinutes(b.time) + timeDelta)
-                };
-                if (isDragged && lineChanged) {
-                    patch.lineId = s.newLineId;
-                }
-                linked.push(patch);
-            });
-
-        const mainUpdate = {
-            ...mainBooking,
-            ...mainPatch
-        };
+        const mainUpdate = intent.mainCandidate?.next || intent.mainBooking;
         const historyData = {
             ...mainUpdate,
-            draggedBookingId: s.draggedBooking?.id || s.booking.id,
-            mainBookingId: mainBooking.id,
-            shiftMinutes: timeDelta,
-            lineSwitched: lineChanged,
-            oldLineId: s.startLineId,
-            oldTime: minutesToTime(s.startMin)
+            draggedBookingId: intent.draggedBooking?.id || s.booking.id,
+            mainBookingId: intent.mainBooking?.id,
+            shiftMinutes: intent.timeDelta,
+            lineSwitched: intent.lineChanged,
+            oldLineId: intent.startLineId,
+            oldTime: minutesToTime(intent.startMin)
         };
-        const atomicResult = await apiUpdateLinkedBookingsAtomic(mainBooking.id, {
-            main: mainPatch,
-            linked,
-            historyAction: 'drag',
-            historyData
-        });
+        const payload = model.buildDragAtomicPayload(intent, historyData);
+        const atomicResult = await apiUpdateLinkedBookingsAtomic(intent.mainBooking.id, payload);
         if (atomicResult && atomicResult.success === false) {
             showNotification(atomicResult.error || 'Помилка переміщення', 'error');
             if (atomicResult.conflictBookingId && typeof revealHiddenBooking === 'function') {
@@ -1935,32 +1896,12 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             return false;
         }
 
-        pushUndo('drag', {
-            bookingId: mainBooking.id,
-            draggedBookingId: s.draggedBooking?.id || s.booking.id,
-            oldTime: mainBooking.time,
-            oldLineId: mainBooking.lineId,
-            newTime: mainPatch.time || mainBooking.time,
-            newLineId: mainPatch.lineId || mainBooking.lineId,
-            timeDelta: -timeDelta,
-            linked: groupBookings
-                .filter(b => String(b.id) !== mainId)
-                .map(b => {
-                    const patch = linked.find(lb => String(lb.id) === String(b.id)) || {};
-                    return {
-                        id: b.id,
-                        oldTime: b.time,
-                        oldLineId: b.lineId,
-                        newTime: patch.time || b.time,
-                        newLineId: patch.lineId || b.lineId
-                    };
-                })
-        });
+        pushUndo('drag', model.buildDragUndoSnapshot(intent));
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await renderTimeline();
 
-        _showDragUndoToast(s.draggedBooking || s.booking, timeDelta, lineChanged);
+        _showDragUndoToast(s.draggedBooking || s.booking, intent.timeDelta, intent.lineChanged, intent.targetLineId);
 
         return true;
     } catch (error) {
@@ -2001,7 +1942,7 @@ function _rollbackDragVisuals(state) {
 }
 
 // --- Undo toast ---
-function _showDragUndoToast(booking, timeDelta, lineChanged) {
+function _showDragUndoToast(booking, timeDelta, lineChanged, targetLineId = null) {
     // Remove existing toast
     const existingToast = document.querySelector('.drag-undo-toast');
     if (existingToast) existingToast.remove();
@@ -2009,13 +1950,12 @@ function _showDragUndoToast(booking, timeDelta, lineChanged) {
     const label = booking.label || booking.programCode;
     let message;
     if (lineChanged && timeDelta !== 0) {
-        // v12.6: Show target line name in undo toast
-        const targetHeader = document.querySelector(`.line-header[data-line-id="${_bookingDragState?.newLineId || ''}"] .line-name`) ||
-            document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetHeader = document.querySelector(`.line-header[data-line-id="${targetLineId || ''}"] .line-name`) ||
+            document.querySelector(`.line-grid[data-line-id="${targetLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
         const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
         message = `${label} → ${targetName} (${timeDelta > 0 ? '+' : ''}${timeDelta} хв)`;
     } else if (lineChanged) {
-        const targetHeader = document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetHeader = document.querySelector(`.line-grid[data-line-id="${targetLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
         const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
         message = `${label} → ${targetName}`;
     } else {
@@ -2400,6 +2340,7 @@ function initBookingResize(handle, block, booking, startHour) {
         if (e.button !== 0) return;
         // Guard: drag in progress
         if (_bookingDragState) return;
+        if (_timelineInteractionSaveInFlight) return;
         if (_graduationSegmentDragState || _graduationSegmentResizeState) return;
         if (_afishaDragState) return;
         // Guard: multi-day mode
@@ -2487,28 +2428,36 @@ async function _handleResizeEnd(e) {
     // Client-side conflict check
     const dateStr = formatDate(AppState.selectedDate);
     const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
-    const newEndMin = timeToMinutes(s.booking.time) + s.newDuration;
-    const myStartMin = timeToMinutes(s.booking.time);
-
-    const lineBookings = allBookings.filter(b =>
-        b.lineId === s.booking.lineId && b.id !== s.booking.id
-    );
-
-    let conflict = false;
-    let conflictWith = null;
-    for (const other of lineBookings) {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + other.duration;
-        if (myStartMin < otherEnd && newEndMin > otherStart) {
-            conflict = true;
-            conflictWith = other;
-            break;
-        }
+    const model = timelineInteractionModel();
+    const resizeIntent = model?.buildResizeInteractionIntent?.({
+        booking: s.booking,
+        allBookings,
+        newDuration: s.newDuration
+    });
+    if (!resizeIntent || !model?.evaluateTimelineCandidateConflicts || !model?.buildResizeAtomicPayload || !model?.buildResizeUndoSnapshot) {
+        timelineInteractionUnavailable();
+        const origWidth = timelineDurationWidth(s.originalDuration, s.block);
+        s.block.style.width = `${origWidth}px`;
+        const badge = s.block.querySelector('.duration-badge');
+        if (badge) badge.textContent = `${s.originalDuration}хв`;
+        _resizeState = null;
+        return;
     }
 
-    if (conflict) {
+    const selectedDate = new Date(AppState.selectedDate);
+    const dayOfWeek = selectedDate.getDay();
+    const dayStartMin = (dayOfWeek === 0 || dayOfWeek === 6 ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START) * 60;
+    const validation = model.evaluateTimelineCandidateConflicts(resizeIntent, allBookings, {
+        dayStartMin,
+        dayEndMin: CONFIG.TIMELINE.WEEKEND_END * 60
+    });
+
+    if (!validation.valid) {
+        const conflictWith = validation.conflictBooking || null;
         const detail = conflictWith ? ` (${conflictWith.label || conflictWith.programCode || ''} о ${conflictWith.time})` : '';
-        showNotification(`Неможливо змінити тривалість — накладка${detail}`, 'error');
+        showNotification(validation.type === 'boundary'
+            ? 'Неможливо змінити тривалість — виходить за межі робочого дня'
+            : `Неможливо змінити тривалість — накладка${detail}`, 'error');
         if (conflictWith && conflictWith.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(conflictWith.id);
         _triggerHaptic('error');
         // Rollback visual
@@ -2521,20 +2470,20 @@ async function _handleResizeEnd(e) {
     }
 
     // Save to server
-    // Null state BEFORE await so new resizes aren't blocked during async save
+    _timelineInteractionSaveInFlight = true;
     _resizeState = null;
-    const linked = allBookings.filter(b => b.linkedTo === s.booking.id);
-    const result = await apiUpdateLinkedBookingsAtomic(s.booking.id, {
-        main: { duration: s.newDuration },
-        linked: linked.map(lb => ({ id: lb.id, duration: s.newDuration })),
-        historyAction: 'resize',
-        historyData: {
-            bookingId: s.booking.id,
-            oldDuration: s.originalDuration,
-            newDuration: s.newDuration,
-            linked: linked.map(l => l.id)
-        }
+    const payload = model.buildResizeAtomicPayload(resizeIntent, {
+        bookingId: resizeIntent.mainBooking.id,
+        oldDuration: resizeIntent.mainBooking.duration,
+        newDuration: s.newDuration,
+        linked: resizeIntent.linkedCandidates.map(candidate => candidate.id)
     });
+    let result;
+    try {
+        result = await apiUpdateLinkedBookingsAtomic(resizeIntent.mainBooking.id, payload);
+    } finally {
+        _timelineInteractionSaveInFlight = false;
+    }
 
     if (result && result.success === false) {
         showNotification(result.error || 'Помилка зміни тривалості', 'error');
@@ -2545,12 +2494,7 @@ async function _handleResizeEnd(e) {
         const badge = s.block.querySelector('.duration-badge');
         if (badge) badge.textContent = `${s.originalDuration}хв`;
     } else {
-        pushUndo('resize', {
-            bookingId: s.booking.id,
-            oldDuration: s.originalDuration,
-            newDuration: s.newDuration,
-            linked: linked.map(l => l.id)
-        });
+        pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent));
 
         delete AppState.cachedBookings[dateStr];
         await renderTimeline();
@@ -2589,7 +2533,6 @@ handleUndo = async function() {
     const lastItem = AppState.undoStack[AppState.undoStack.length - 1];
 
     if (lastItem.action === 'drag') {
-        AppState.undoStack.pop();
         const { bookingId, oldTime, oldLineId, linked } = lastItem.data;
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
@@ -2614,6 +2557,7 @@ handleUndo = async function() {
                 return;
             }
         }
+        AppState.undoStack.pop();
         showNotification('Перетягування скасовано', 'warning');
         AppState.cachedBookings = {};
         await renderTimeline();
@@ -2622,7 +2566,6 @@ handleUndo = async function() {
     }
 
     if (lastItem.action === 'resize') {
-        AppState.undoStack.pop();
         const { bookingId, oldDuration, linked } = lastItem.data;
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
@@ -2643,6 +2586,7 @@ handleUndo = async function() {
                 return;
             }
         }
+        AppState.undoStack.pop();
         showNotification('Зміну тривалості скасовано', 'warning');
         AppState.cachedBookings = {};
         await renderTimeline();

@@ -1,0 +1,52 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+
+function listJsFiles(dir) {
+    const files = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...listJsFiles(fullPath));
+        } else if (entry.isFile() && entry.name.endsWith('.js')) {
+            files.push(fullPath);
+        }
+    }
+    return files;
+}
+
+function stripLineComments(source) {
+    return source
+        .split(/\r?\n/)
+        .filter(line => !line.trim().startsWith('//'))
+        .join('\n');
+}
+
+test('booking hosts remains a host-count field, never a staff identity in runtime queries', () => {
+    const forbidden = [
+        /\b(?:WHERE|AND|OR|ON)\b.*\b\w*\.?hosts\s*=\s*\$\d+\b/i,
+        /\b(?:WHERE|AND|OR|ON)\b.*\b\w*\.?hosts\s*=\s*(?:ep\.staff_id|s\.id)\b/i,
+        /\b\w*\.?hosts\s+IN\s*\(/i,
+        /SELECT\s+DISTINCT\s+hosts\s+AS\s+staff_id\b/i
+    ];
+    const runtimeFiles = [
+        ...listJsFiles(path.join(ROOT, 'routes')),
+        ...listJsFiles(path.join(ROOT, 'services'))
+    ];
+    const offenders = [];
+
+    for (const file of runtimeFiles) {
+        const relative = path.relative(ROOT, file).replace(/\\/g, '/');
+        const body = stripLineComments(fs.readFileSync(file, 'utf8'));
+        for (const pattern of forbidden) {
+            if (pattern.test(body)) {
+                offenders.push(`${relative}: ${pattern}`);
+            }
+        }
+    }
+
+    assert.deepEqual(offenders, []);
+});

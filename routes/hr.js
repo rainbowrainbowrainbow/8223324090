@@ -1469,7 +1469,11 @@ router.get('/ratings', async (req, res) => {
                    COUNT(DISTINCT b.id) AS total_events,
                    COUNT(DISTINCT b.id) FILTER (WHERE b.date::date >= CURRENT_DATE - INTERVAL '30 days') AS events_30d
             FROM staff s
-            LEFT JOIN bookings b ON (b.hosts = s.id OR b.second_animator = s.id::text)
+            LEFT JOIN bookings b ON (
+                b.line_id = s.id::text
+                OR b.second_animator = s.id::text
+                OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(s.name))
+            )
                 AND b.status IN ('completed', 'confirmed')
             WHERE s.is_active = true AND s.role_type IN ('animator', 'host')
             GROUP BY s.id
@@ -1558,11 +1562,11 @@ router.post('/auto-assign', async (req, res) => {
             });
         }
 
-        // 4. Check booking conflicts — find busy animators by id
+        // 4. Check booking conflicts — find busy animators by line/second animator id.
         const booked = await pool.query(`
-            SELECT DISTINCT hosts AS staff_id FROM bookings
+            SELECT DISTINCT line_id::int AS staff_id FROM bookings
             WHERE date = $1 AND status IN ('confirmed', 'pending')
-              AND time < $2 AND hosts IS NOT NULL
+              AND time < $2 AND line_id ~ '^[0-9]+$'
             UNION
             SELECT DISTINCT second_animator::int AS staff_id FROM bookings
             WHERE date = $1 AND status IN ('confirmed', 'pending')

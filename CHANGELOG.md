@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.25 - CRM 66.25: системний guard hosts таймлайну
+
+### Таймлайн / hosts semantics / 26.05.2026 [codex]
+- **Системний guard для `hosts`** - додано `tests/booking-hosts-semantics.test.js`, який блокує runtime query/joins, де `bookings.hosts` знову використовують як staff id.
+- **Visibility scope виправлено** - акаунти аніматорів більше не отримують видимість бронювань через збіг `hosts = staff_id`; працюють реальні `line_id` та `second_animator`.
+- **HR/Payroll вирівняно** - рейтинги, auto-assign і payroll рахують зайнятість через лінію таймлайну або second animator, не через кількість ведучих у продукті.
+- **Regression coverage підключено в baseline** - новий guard-test додано до `npm run test:unit`, тому `npm test` ловить повернення цього класу бага.
+
+---
+
 ## v0.66.24 - CRM 66.24: фікс hosts-конфлікту таймлайну
 
 ### Таймлайн / drag conflict / 26.05.2026 [codex]

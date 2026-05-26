@@ -80,7 +80,7 @@ const BOOKING_VISIBILITY_MATRIX = [
         classification: 'compatible-fallback'
     },
     {
-        actor: 'staff profile assigned as booking primary line, legacy host, or second animator',
+        actor: 'staff profile assigned as booking primary line or second animator',
         view: true,
         edit: false,
         queue: true,
@@ -201,10 +201,6 @@ function bookingLineStaffId(booking = {}) {
     return normalizePositiveInteger(booking.line_id ?? booking.lineId);
 }
 
-function bookingHostStaffId(booking = {}) {
-    return normalizePositiveInteger(booking.hosts ?? booking.host_id ?? booking.hostId);
-}
-
 function bookingSecondAnimatorStaffId(booking = {}) {
     return normalizePositiveInteger(booking.second_animator ?? booking.secondAnimator);
 }
@@ -220,7 +216,6 @@ function staffScopedHostMatch(user, booking = {}) {
     if (!staffIds.length) return false;
     const bookingStaffIds = [
         bookingLineStaffId(booking),
-        bookingHostStaffId(booking),
         bookingSecondAnimatorStaffId(booking)
     ].filter(Boolean);
     return bookingStaffIds.some(staffId => staffIds.includes(staffId));
@@ -263,7 +258,7 @@ function classifyBookingVisibility(user, booking = {}) {
             canEdit: false,
             classification: 'fully-classified',
             scopeSource: 'staff-host-assignment',
-            reason: 'durable employee_profiles.staff_id assignment matches booking primary line/host/second animator'
+            reason: 'durable employee_profiles.staff_id assignment matches booking primary line or second animator'
         });
     }
 
@@ -315,7 +310,7 @@ function buildStaffHostCondition(user, params, alias) {
             WHERE ep.user_id = ${userRef}
               AND COALESCE(ep.is_active, true) IS TRUE
               AND ep.staff_id IS NOT NULL
-              AND (${alias}.line_id = ep.staff_id::text OR ${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
+              AND (${alias}.line_id = ep.staff_id::text OR ${alias}.second_animator = ep.staff_id::text)
         )`);
         conditions.push(`EXISTS (
             SELECT 1
@@ -330,7 +325,6 @@ function buildStaffHostCondition(user, params, alias) {
             WHERE u.id = ${userRef}
               AND (
                 ${alias}.line_id = s.id::text
-                OR ${alias}.hosts = s.id
                 OR ${alias}.second_animator = s.id::text
                 OR LOWER(BTRIM(COALESCE(${alias}.second_animator, ''))) = LOWER(BTRIM(s.name))
               )
@@ -340,9 +334,8 @@ function buildStaffHostCondition(user, params, alias) {
     const staffIds = userStaffIds(user);
     if (staffIds.length) {
         const lineRefs = staffIds.map(staffId => pushParam(params, String(staffId))).join(',');
-        const hostRefs = staffIds.map(staffId => pushParam(params, staffId)).join(',');
         const secondAnimatorRefs = staffIds.map(staffId => pushParam(params, String(staffId))).join(',');
-        conditions.push(`(${alias}.line_id IN (${lineRefs}) OR ${alias}.hosts IN (${hostRefs}) OR ${alias}.second_animator IN (${secondAnimatorRefs}))`);
+        conditions.push(`(${alias}.line_id IN (${lineRefs}) OR ${alias}.second_animator IN (${secondAnimatorRefs}))`);
     }
 
     if (!conditions.length) return 'FALSE';

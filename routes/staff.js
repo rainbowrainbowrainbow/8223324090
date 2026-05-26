@@ -933,14 +933,19 @@ router.get('/payroll', async (req, res) => {
         const payroll = [];
 
         for (const s of staff.rows) {
-            // Count bookings where staff is assigned as host or second animator
+            // Count bookings where staff is assigned by real timeline line or second animator.
+            // bookings.hosts is the product host count, not a staff id.
             const events = await pool.query(`
                 SELECT COUNT(*)::int AS count, COALESCE(SUM(duration), 0)::int AS total_minutes
                 FROM bookings
-                WHERE (hosts = $1 OR second_animator = $1::text)
+                WHERE (
+                    line_id = $1::text
+                    OR second_animator = $1::text
+                    OR LOWER(BTRIM(COALESCE(second_animator, ''))) = LOWER(BTRIM($4::text))
+                )
                   AND date >= $2 AND date <= $3
                   AND status != 'cancelled'
-            `, [s.id, mFrom, mTo]);
+            `, [s.id, mFrom, mTo, s.name]);
 
             const e = events.rows[0];
             const hoursWorked = Math.round(e.total_minutes / 60 * 10) / 10;

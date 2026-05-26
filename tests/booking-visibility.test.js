@@ -93,15 +93,15 @@ test('legacy created_by and second_animator matches are exact compatible fallbac
     const scope = getVisibleBookingScope(actor, params, 'b');
     assert.match(scope.sql, /employee_profiles ep/);
     assert.match(scope.sql, /b\.line_id = ep\.staff_id::text/);
-    assert.match(scope.sql, /b\.hosts = ep\.staff_id/);
+    assert.doesNotMatch(scope.sql, /b\.hosts = ep\.staff_id/);
     assert.match(scope.sql, /b\.created_by IN \(\$2,\$3\)/);
     assert.match(scope.sql, /b\.second_animator IN \(\$2,\$3\)/);
     assert.deepEqual(params, [44, 'animator-one', 'Animator One']);
 });
 
-test('durable staff host assignment promotes booking visibility without edit rights', () => {
+test('durable staff line assignment promotes booking visibility without edit rights', () => {
     const actor = { id: 77, username: 'host-user', role: 'animator', staffIds: [501] };
-    const booking = { id: 'BK-STAFF', hosts: 501, created_by: 'someone-else' };
+    const booking = { id: 'BK-STAFF', line_id: '501', hosts: 1, created_by: 'someone-else' };
 
     assert.deepEqual(userStaffIds(actor), [501]);
     const decision = classifyBookingVisibility(actor, booking);
@@ -114,6 +114,16 @@ test('durable staff host assignment promotes booking visibility without edit rig
     const secondAnimator = classifyBookingVisibility(actor, { second_animator: '501' });
     assert.equal(secondAnimator.canView, true);
     assert.equal(secondAnimator.scopeSource, 'staff-host-assignment');
+});
+
+test('booking hosts count alone does not grant staff visibility', () => {
+    const actor = { id: 77, username: 'host-user', role: 'animator', staffIds: [501] };
+    const booking = { id: 'BK-HOST-COUNT', line_id: '777', hosts: 501, created_by: 'someone-else' };
+
+    const decision = classifyBookingVisibility(actor, booking);
+    assert.equal(decision.canView, false);
+    assert.equal(decision.canEdit, false);
+    assert.equal(decision.scopeSource, 'deny');
 });
 
 test('durable staff primary line assignment makes animator timeline bookings visible', () => {
@@ -142,11 +152,12 @@ test('query scope adds batch-safe employee profile staff assignment condition', 
     assert.match(scope.condition, /FROM employee_profiles ep/);
     assert.match(scope.condition, /ep\.user_id = \$1/);
     assert.match(scope.condition, /b\.line_id = ep\.staff_id::text/);
-    assert.match(scope.condition, /b\.hosts = ep\.staff_id/);
+    assert.doesNotMatch(scope.condition, /b\.hosts = ep\.staff_id/);
     assert.match(scope.condition, /b\.second_animator = ep\.staff_id::text/);
     assert.match(scope.condition, /FROM users u/);
     assert.match(scope.condition, /JOIN staff s/);
     assert.match(scope.condition, /b\.line_id = s\.id::text/);
+    assert.doesNotMatch(scope.condition, /b\.hosts = s\.id/);
     assert.match(scope.scopeSource, /staff-host/);
     assert.deepEqual(params, [77, 'host-user']);
 });
@@ -157,11 +168,11 @@ test('query scope accepts proven staffIds when actor is resolved outside users t
     const scope = getVisibleBookingScope(actor, params, 'b');
 
     assert.match(scope.condition, /b\.line_id IN \(\$1\)/);
-    assert.match(scope.condition, /b\.hosts IN \(\$2\)/);
-    assert.match(scope.condition, /b\.second_animator IN \(\$3\)/);
+    assert.doesNotMatch(scope.condition, /b\.hosts IN/);
+    assert.match(scope.condition, /b\.second_animator IN \(\$2\)/);
     assert.equal(scope.scopeSource, 'staff-host-or-legacy-token-match');
     assert.equal(scope.reasonCode, 'staff_host_scope');
-    assert.deepEqual(params, ['501', 501, '501', 'telegram-host']);
+    assert.deepEqual(params, ['501', '501', 'telegram-host']);
 });
 
 test('booking-derived linked routes prefer exact visible child route then parent booking fallback', () => {

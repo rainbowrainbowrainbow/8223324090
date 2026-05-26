@@ -143,6 +143,108 @@ test('timeline drag matrix rejects an occupied linked secondary cross-line targe
     });
 });
 
+test('timeline drag ignores invisible non-target blockers but still rejects target-line blockers', async (t) => {
+    await t.test('main cross-line drag only conflicts with the target line', () => {
+        const { main, linked } = baseGroup();
+        const offTargetBlocker = booking({
+            id: 'BK-off-target',
+            time: '14:30',
+            lineId: 'line-99',
+            duration: 60,
+            label: 'Pin+1L'
+        });
+        const targetBlocker = booking({
+            id: 'BK-target',
+            time: '14:30',
+            lineId: 'line-3',
+            duration: 60,
+            label: 'Real target blocker'
+        });
+        const freeIntent = model.buildDragInteractionIntent({
+            draggedBooking: main,
+            allBookings: [main, linked, offTargetBlocker],
+            startMin: minutes(main.time),
+            currentMin: minutes('14:30'),
+            startLineId: main.lineId,
+            targetLineId: 'line-3'
+        });
+        const free = evaluateTwice(freeIntent, [main, linked, offTargetBlocker]);
+
+        assert.deepEqual(summarizeConflict(free.preview), summarizeConflict(free.final));
+        assert.equal(free.final.valid, true);
+        assert.equal(model.buildDragAtomicPayload(freeIntent).main.lineId, 'line-3');
+
+        const blockedIntent = model.buildDragInteractionIntent({
+            draggedBooking: main,
+            allBookings: [main, linked, offTargetBlocker, targetBlocker],
+            startMin: minutes(main.time),
+            currentMin: minutes('14:30'),
+            startLineId: main.lineId,
+            targetLineId: 'line-3'
+        });
+        const blocked = evaluateTwice(blockedIntent, [main, linked, offTargetBlocker, targetBlocker]);
+
+        assert.deepEqual(summarizeConflict(blocked.preview), summarizeConflict(blocked.final));
+        assert.deepEqual(summarizeConflict(blocked.final), {
+            valid: false,
+            type: 'overlap',
+            candidateId: 'BK-main',
+            conflictId: 'BK-target'
+        });
+    });
+
+    await t.test('linked secondary cross-line drag only conflicts with the dragged target line', () => {
+        const { main, linked } = baseGroup();
+        const offTargetBlocker = booking({
+            id: 'BK-off-target',
+            time: '14:40',
+            lineId: 'line-99',
+            duration: 60,
+            label: 'Pin+1L'
+        });
+        const targetBlocker = booking({
+            id: 'BK-target',
+            time: '14:40',
+            lineId: 'line-4',
+            duration: 60,
+            label: 'Real target blocker'
+        });
+        const freeIntent = model.buildDragInteractionIntent({
+            draggedBooking: linked,
+            allBookings: [main, linked, offTargetBlocker],
+            startMin: minutes(linked.time),
+            currentMin: minutes('14:40'),
+            startLineId: linked.lineId,
+            targetLineId: 'line-4'
+        });
+        const free = evaluateTwice(freeIntent, [main, linked, offTargetBlocker]);
+
+        assert.deepEqual(summarizeConflict(free.preview), summarizeConflict(free.final));
+        assert.equal(free.final.valid, true);
+        assert.deepEqual(model.buildDragAtomicPayload(freeIntent).linked, [
+            { id: 'BK-linked', time: '14:40', lineId: 'line-4' }
+        ]);
+
+        const blockedIntent = model.buildDragInteractionIntent({
+            draggedBooking: linked,
+            allBookings: [main, linked, offTargetBlocker, targetBlocker],
+            startMin: minutes(linked.time),
+            currentMin: minutes('14:40'),
+            startLineId: linked.lineId,
+            targetLineId: 'line-4'
+        });
+        const blocked = evaluateTwice(blockedIntent, [main, linked, offTargetBlocker, targetBlocker]);
+
+        assert.deepEqual(summarizeConflict(blocked.preview), summarizeConflict(blocked.final));
+        assert.deepEqual(summarizeConflict(blocked.final), {
+            valid: false,
+            type: 'overlap',
+            candidateId: 'BK-linked',
+            conflictId: 'BK-target'
+        });
+    });
+});
+
 test('timeline resize regression matrix covers free, occupied, and undo paths', async (t) => {
     await t.test('main resize free target updates group and undo restores persisted duration', () => {
         const { main, linked } = baseGroup();

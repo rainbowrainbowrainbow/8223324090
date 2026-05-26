@@ -261,6 +261,51 @@ test('linked-atomic cross-line move does not treat hosts count as animator ident
     });
 });
 
+test('linked-atomic Maysternya drag ignores same-time blockers from another timeline context', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-2026-0001',
+            business_context: 'maysternya_doli',
+            time: '14:00',
+            line_id: 'line-1',
+            room: 'Room A',
+            hosts: 1
+        }),
+        bookingRow({
+            id: 'BK-2026-0002',
+            business_context: 'maysternya_doli',
+            time: '14:15',
+            line_id: 'line-2',
+            room: 'Room A',
+            linked_to: 'BK-2026-0001',
+            hosts: 1
+        }),
+        bookingRow({
+            id: 'BK-2026-0003',
+            business_context: 'event_genix',
+            time: '14:00',
+            line_id: 'line-3',
+            room: 'Room B',
+            label: 'Event Genix blocker',
+            hosts: 1
+        })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { lineId: 'line-3' },
+            linked: [],
+            historyAction: 'drag',
+            historyData: { reason: 'context-isolation-regression' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').line_id, 'line-3');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0003').business_context, 'event_genix');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0003').line_id, 'line-3');
+        assert.equal(state.histories[0].data.reason, 'context-isolation-regression');
+    });
+});
+
 test('linked-atomic rolls back before any update when a linked target conflicts', async () => {
     await withApp([
         bookingRow({ id: 'BK-2026-0001', time: '10:00', line_id: 'line-1' }),

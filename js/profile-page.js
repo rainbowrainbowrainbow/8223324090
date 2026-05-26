@@ -2233,12 +2233,110 @@ function cabinetList(name) {
 function findCabinetTask(taskId) {
     const id = Number(taskId);
     if (!Number.isInteger(id) || id <= 0) return null;
-    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe'];
+    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
     for (const bucket of buckets) {
         const found = cabinetList(bucket).find(task => Number(task.id || task.taskId || task.task_id) === id);
         if (found) return found;
     }
     return null;
+}
+
+function cabinetCompletedHistoryList() {
+    return cabinetList('completedHistory');
+}
+
+function cabinetCompletedHistoryCounts(data = myCabinetData) {
+    const history = Array.isArray(data?.completedHistory) ? data.completedHistory : [];
+    const quick = data?.stats?.taskQuick || {};
+    const total = Number(quick.completedTotal ?? quick.completed ?? history.length) || history.length;
+    const shown = Number(quick.completedHistoryShown ?? history.length) || history.length;
+    const overflow = Number(quick.completedHistoryOverflow ?? Math.max(0, total - shown)) || 0;
+    return { total, shown: Math.min(shown, history.length), overflow };
+}
+
+function cabinetTaskCompletedAt(task = {}) {
+    return task.completedAt || task.completed_at || task.updatedAt || task.updated_at || task.createdAt || task.created_at || '';
+}
+
+function cabinetTaskPriorityLabel(priority = '') {
+    const labels = {
+        critical: 'Критично',
+        high: 'Високий',
+        medium: 'Середній',
+        normal: 'Звичайний',
+        low: 'Низький'
+    };
+    return labels[String(priority || '').toLowerCase()] || priority || 'Звичайний';
+}
+
+function cabinetTaskCategoryLabel(task = {}) {
+    const category = cabinetTaskCategory(task);
+    const found = CABINET_TASK_CATEGORIES.find(([value]) => value === category);
+    return found?.[1] || taskKindLabel(task) || 'Задача';
+}
+
+function cabinetCompletedHistoryDetail(task = {}) {
+    const parts = [
+        task.title || 'Без назви',
+        cabinetTaskCompletedAt(task) ? `виконано ${profileFormatTime(cabinetTaskCompletedAt(task))}` : 'час виконання не вказано',
+        cabinetTaskPriorityLabel(task.priority),
+        cabinetTaskCategoryLabel(task)
+    ].filter(Boolean);
+    return parts.join(' · ');
+}
+
+function renderCabinetCompletedHistoryTile(task = {}, index = 0) {
+    const taskId = Number(task.id || task.taskId || task.task_id || 0);
+    const stableId = Number.isInteger(taskId) && taskId > 0 ? taskId : `x${index}`;
+    const detailId = `cabinetCompletedDetail${stableId}`;
+    const title = task.title || 'Без назви';
+    const completedAt = cabinetTaskCompletedAt(task);
+    const completedLabel = completedAt ? profileFormatTime(completedAt) : 'час не вказано';
+    const priority = String(task.priority || 'normal').toLowerCase();
+    const priorityLabel = cabinetTaskPriorityLabel(priority);
+    const categoryLabel = cabinetTaskCategoryLabel(task);
+    const subSummary = cabinetSubtaskSummary(task);
+    const subtaskLabel = subSummary.total ? `${subSummary.done}/${subSummary.total} підзадач` : '';
+    const tooltip = cabinetCompletedHistoryDetail(task);
+    return `
+        <span class="cabinet-completed-item" role="listitem">
+        <button type="button"
+                class="cabinet-completed-tile cabinet-completed-tile--${escapeHtml(priority)}"
+                aria-label="${escapeHtml(tooltip)}"
+                aria-describedby="${escapeHtml(detailId)}"
+                title="${escapeHtml(tooltip)}">
+            <span class="cabinet-completed-mark" aria-hidden="true"></span>
+            <span id="${escapeHtml(detailId)}" class="cabinet-completed-detail" role="tooltip">
+                <b>${escapeHtml(title)}</b>
+                <span>${escapeHtml(completedLabel)}</span>
+                <small>${escapeHtml([priorityLabel, categoryLabel, subtaskLabel].filter(Boolean).join(' · '))}</small>
+            </span>
+        </button>
+        </span>`;
+}
+
+function renderCabinetCompletedHistoryStrip() {
+    const history = cabinetCompletedHistoryList();
+    const counts = cabinetCompletedHistoryCounts();
+    const visible = history.slice(0, 36);
+    const total = Math.max(counts.total, visible.length);
+    const overflow = Math.max(counts.overflow, total - visible.length);
+    return `
+        <section class="cabinet-completed-strip" aria-label="Компактна історія виконаних задач">
+            <div class="cabinet-completed-strip-head">
+                <div>
+                    <span class="cabinet-kicker">Історія закриття</span>
+                    <b>${formatCabinetPulseCount(total)}</b>
+                </div>
+                <small>${visible.length ? `останні ${visible.length} виконаних` : 'ще немає виконаних задач'}</small>
+            </div>
+            ${visible.length ? `
+                <div class="cabinet-completed-track" role="list" aria-label="Останні виконані задачі">
+                    ${visible.map((task, index) => renderCabinetCompletedHistoryTile(task, index)).join('')}
+                    ${overflow > 0 ? `<span class="cabinet-completed-overflow" role="listitem" title="Ще ${formatCabinetPulseCount(overflow)} виконаних задач у повній історії">+${formatCabinetPulseCount(overflow)}</span>` : ''}
+                </div>
+            ` : '<div class="cabinet-completed-empty">Коли задача буде виконана, вона зʼявиться тут маленьким маркером з деталями.</div>'}
+        </section>`;
 }
 
 function normalizedCabinetTaskToken(value, fallback = '') {
@@ -3525,6 +3623,7 @@ function renderMyDayTab() {
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
+            ${renderCabinetCompletedHistoryStrip()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
                 ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.', false, {

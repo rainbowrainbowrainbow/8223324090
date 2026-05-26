@@ -110,7 +110,8 @@ test('profile my day and my tasks keep distinct presentation scopes', () => {
             today: [],
             overdue: [],
             waiting: [],
-            private: []
+            private: [],
+            completedHistory: []
         };
         myTasksSegment = 'all';
         cabinetTaskComposerExpanded = false;
@@ -129,6 +130,53 @@ test('profile my day and my tasks keep distinct presentation scopes', () => {
     assert.match(myTasksHtml, /data-cabinet-active-segment="all"/);
     assert.match(myTasksHtml, /Повний список задач/);
     assert.match(myTasksHtml, /Додати в Мій день/);
+});
+
+test('profile my day renders compact completed task history with hover/focus details', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = {
+            all: [],
+            today: [],
+            overdue: [],
+            waiting: [],
+            private: [],
+            completedHistory: [
+                {
+                    id: 501,
+                    title: 'Закрити закупівлю',
+                    status: 'done',
+                    priority: 'high',
+                    category: 'purchase',
+                    completedAt: '2026-05-26T09:30:00.000Z',
+                    subtask_count: 2,
+                    subtask_done_count: 2
+                }
+            ],
+            stats: {
+                taskQuick: {
+                    completedTotal: 4,
+                    completedHistoryShown: 1,
+                    completedHistoryOverflow: 3
+                }
+            }
+        };
+        cabinetTaskComposerExpanded = false;
+    `, ctx);
+
+    const stripHtml = ctx.renderCabinetCompletedHistoryStrip();
+    const myDayHtml = ctx.renderMyDayTab();
+
+    assert.match(stripHtml, /cabinet-completed-strip/);
+    assert.match(stripHtml, /cabinet-completed-tile/);
+    assert.match(stripHtml, /role="tooltip"/);
+    assert.match(stripHtml, /aria-describedby="cabinetCompletedDetail501"/);
+    assert.match(stripHtml, /Закрити закупівлю/);
+    assert.match(stripHtml, /Високий/);
+    assert.match(stripHtml, /Закупівлі/);
+    assert.match(stripHtml, /\+3/);
+    assert.match(myDayHtml, /cabinet-completed-strip/);
+    assert.match(myDayHtml, /Компактна історія виконаних задач/);
 });
 
 test('profile my tasks no longer forces the daily quick mode when switching tabs', () => {

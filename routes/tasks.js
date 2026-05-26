@@ -1291,6 +1291,7 @@ router.get('/my-cabinet', async (req, res) => {
         const today = todayKyivDate();
         const tomorrow = addDays(today, 1);
         const nextWeek = addDays(today, 7);
+        const completedHistoryLimit = 36;
 
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
@@ -1336,6 +1337,45 @@ router.get('/my-cabinet', async (req, res) => {
             ownParams
         );
         const rows = result.rows.map(normalizeTaskPayload);
+
+        const completedHistoryParams = [...ownParams, completedHistoryLimit];
+        const completedHistoryResult = await pool.query(
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
+                    COALESCE(st.total, 0)::int AS subtask_count,
+                    COALESCE(st.done, 0)::int AS subtask_done_count
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             LEFT JOIN (
+                SELECT task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                FROM task_subtasks
+                GROUP BY task_id
+             ) st ON st.task_id = t.id
+             LEFT JOIN (
+                SELECT task_id,
+                       json_agg(json_build_object(
+                           'id', id,
+                           'task_id', task_id,
+                           'title', title,
+                           'is_done', is_done,
+                           'sort_order', sort_order,
+                           'source_type', COALESCE(source_type, 'manual'),
+                           'created_at', created_at,
+                           'completed_at', completed_at,
+                           'updated_at', updated_at
+                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
+                FROM task_subtasks
+                GROUP BY task_id
+             ) subtask_rows ON subtask_rows.task_id = t.id
+             WHERE ${ownMatch}
+               AND COALESCE(t.status, 'todo') = 'done'
+             ORDER BY COALESCE(t.completed_at, t.updated_at, t.created_at) DESC, t.id DESC
+             LIMIT $${completedHistoryParams.length}`,
+            completedHistoryParams
+        );
+        const completedHistory = completedHistoryResult.rows.map(normalizeTaskPayload);
 
         const buckets = {
             focus: [],
@@ -1391,6 +1431,7 @@ router.get('/my-cabinet', async (req, res) => {
             private: buckets.private,
             overdue: buckets.overdue,
             inbox: buckets.inbox,
+            completedHistory,
             all: rows,
             preferences: prefs,
             stats: {
@@ -1400,6 +1441,8 @@ router.get('/my-cabinet', async (req, res) => {
                     completed: quickStats.done_today || 0,
                     completedToday: quickStats.done_today || 0,
                     completedTotal: quickStats.done_total || 0,
+                    completedHistoryShown: completedHistory.length,
+                    completedHistoryOverflow: Math.max(0, Number(quickStats.done_total || 0) - completedHistory.length),
                     remaining: quickStats.remaining_today || buckets.today.length,
                     scope: 'completed_today_and_active_today_or_undated'
                 },

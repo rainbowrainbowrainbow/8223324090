@@ -9,6 +9,9 @@ function _escHtml(str) {
 }
 
 let profileModalPasswordBaseline = '';
+const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
+const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
+const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
 
 (function initSidebarSmartMenuLoader() {
     function assetVersion() {
@@ -163,7 +166,7 @@ async function checkSession() {
     const token = localStorage.getItem('pzp_token');
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
-    if (token && savedUser) {
+    if ((token || hasStoredRefreshSession()) && savedUser) {
         // Verify token with server
         const user = await apiVerifyToken();
         if (user) {
@@ -183,8 +186,7 @@ async function login(username, password) {
     try {
         const data = await apiLogin(username, password);
         AppState.currentUser = data.user;
-        localStorage.setItem('pzp_token', data.token);
-        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+        rememberAuthSession(data);
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         // v0.60.44: role-aware shell start page. This is UI routing only;
@@ -208,6 +210,7 @@ async function login(username, password) {
 function logout() {
     // v9.1: Disconnect WebSocket on logout
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+    revokeStoredRefreshToken();
     clearAuthenticatedPageShell();
 
     AppState.currentUser = null;
@@ -239,8 +242,38 @@ initSharedLogoutBinding();
 
 function clearAuthStorage() {
     localStorage.removeItem('pzp_token');
+    localStorage.removeItem(AUTH_ACCESS_TOKEN_KEY);
+    localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_REFRESH_EXPIRES_KEY);
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
+}
+
+function rememberAuthSession(data = {}) {
+    const accessToken = data.accessToken || data.token || '';
+    const legacyToken = data.token || accessToken;
+    if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
+    if (accessToken) localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, accessToken);
+    if (data.refreshToken) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
+    if (data.refreshExpiresAt) localStorage.setItem(AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
+    if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+}
+
+function hasStoredRefreshSession() {
+    return Boolean(localStorage.getItem(AUTH_REFRESH_TOKEN_KEY));
+}
+
+function revokeStoredRefreshToken() {
+    const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
+    if (!refreshToken) return;
+    try {
+        fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+            keepalive: true
+        }).catch(() => {});
+    } catch {}
 }
 
 function clearPrivateClientCaches() {

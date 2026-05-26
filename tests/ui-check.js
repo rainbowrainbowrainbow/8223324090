@@ -526,6 +526,7 @@ check('Copilot workflow and cases calls use mounted /api/copilot contract', copi
 // Check shared logout binding ownership
 console.log('\nshared logout binding');
 const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+const apiCodeForAuthSession = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const htmlFiles = fs.readdirSync(ROOT).filter(file => file.endsWith('.html'));
 const brokenRootFavicons = htmlFiles.filter(file => /<link[^>]+href=["']images\/favicon\.ico["']/i.test(fs.readFileSync(path.join(ROOT, file), 'utf8')));
 const pagesWithLogoutButton = htmlFiles
@@ -540,6 +541,17 @@ const inlineLogoutOwners = pagesWithLogoutButton.filter(page => (
 check('Auth exposes shared bindLogoutButton', authCode.includes('function bindLogoutButton()') && authCode.includes("btn.dataset.logoutBound === '1'"));
 check('Shared logout binding calls canonical logout', authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding auto-initializes', authCode.includes('initSharedLogoutBinding();') && authCode.includes("document.addEventListener('DOMContentLoaded', bindLogoutButton"));
+check('Auth stores refresh sessions, refreshes verify, and revokes logout sessions',
+    authCode.includes("const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token'")
+    && authCode.includes('function rememberAuthSession')
+    && authCode.includes('function hasStoredRefreshSession')
+    && authCode.includes('function revokeStoredRefreshToken')
+    && authCode.includes("fetch('/api/auth/logout'")
+    && authCode.includes('localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY)')
+    && apiCodeForAuthSession.includes('function apiRefreshAuthToken')
+    && apiCodeForAuthSession.includes('`${API_BASE}/auth/refresh`')
+    && apiCodeForAuthSession.includes('const refreshedToken = await apiRefreshAuthToken()')
+    && apiCodeForAuthSession.includes('function clearApiAuthSessionStorage'));
 check('Assistant idle hints are opt-in instead of boot-time default', authCode.includes('function shouldEnableAssistantIdleHints') && authCode.includes('eg_crm_assistant_idle_hints') && authCode.includes('shouldEnableAssistantIdleHints() && typeof IdleHints') && !authCode.includes("if (typeof IdleHints !== 'undefined') IdleHints.init();"));
 check('Root CRM pages do not reference missing favicon.ico asset', brokenRootFavicons.length === 0);
 check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => getHtmlScripts(page.html).includes('js/auth.js')));

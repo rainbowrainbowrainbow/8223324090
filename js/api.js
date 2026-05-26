@@ -4,6 +4,9 @@
  */
 
 const API_BASE = '/api';
+const API_AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
+const API_AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
+const API_AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
 
 function formatApiErrorPayload(payload = {}, fallback = 'API error') {
     if (typeof window !== 'undefined' && window.CrmApiErrors) {
@@ -180,9 +183,7 @@ function handleAuthError(response) {
         if (typeof clearAuthStorage === 'function') {
             clearAuthStorage();
         } else {
-            localStorage.removeItem('pzp_token');
-            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-            localStorage.removeItem(CONFIG.STORAGE.SESSION);
+            clearApiAuthSessionStorage();
         }
         if (typeof clearPrivateClientCaches === 'function') clearPrivateClientCaches();
         if (typeof showLoginScreen === 'function') showLoginScreen();
@@ -858,13 +859,62 @@ async function apiLogin(username, password) {
     return await response.json();
 }
 
+function clearApiAuthSessionStorage() {
+    localStorage.removeItem('pzp_token');
+    localStorage.removeItem(API_AUTH_ACCESS_TOKEN_KEY);
+    localStorage.removeItem(API_AUTH_REFRESH_TOKEN_KEY);
+    localStorage.removeItem(API_AUTH_REFRESH_EXPIRES_KEY);
+    localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
+    localStorage.removeItem(CONFIG.STORAGE.SESSION);
+}
+
+function rememberApiAuthSession(data = {}) {
+    const accessToken = data.accessToken || data.token || '';
+    const legacyToken = data.token || accessToken;
+    if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
+    if (accessToken) localStorage.setItem(API_AUTH_ACCESS_TOKEN_KEY, accessToken);
+    if (data.refreshToken) localStorage.setItem(API_AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
+    if (data.refreshExpiresAt) localStorage.setItem(API_AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
+    if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+}
+
+async function apiRefreshAuthToken() {
+    const refreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+    if (!refreshToken) return null;
+    try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.accessToken) {
+            clearApiAuthSessionStorage();
+            return null;
+        }
+        rememberApiAuthSession(data);
+        return data.accessToken;
+    } catch (err) {
+        console.warn('[Auth] refresh failed:', err?.message || err);
+        return null;
+    }
+}
+
 async function apiVerifyToken() {
-    const token = localStorage.getItem('pzp_token');
+    let token = localStorage.getItem('pzp_token');
+    if (!token) token = await apiRefreshAuthToken();
     if (!token) return null;
     try {
-        const response = await fetch(`${API_BASE}/auth/verify`, {
+        let response = await fetch(`${API_BASE}/auth/verify`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (!response.ok && (response.status === 401 || response.status === 403)) {
+            const refreshedToken = await apiRefreshAuthToken();
+            if (!refreshedToken) return null;
+            response = await fetch(`${API_BASE}/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            });
+        }
         if (!response.ok) return null;
         const data = await response.json();
         return data.user;

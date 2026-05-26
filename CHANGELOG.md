@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.28 - CRM 66.28: стабільні auth-сесії
+
+### Auth / session repair / 26.05.2026 [codex]
+- **Повна сесія після login** - frontend зберігає accessToken, refreshToken і refresh expiry поруч із legacy `pzp_token`, тому нові акаунти працюють через той самий login contract після створення.
+- **Refresh після reload або expired token** - `apiVerifyToken()` робить один bounded refresh через `/api/auth/refresh`, оновлює localStorage і повторює verify без нескінченного loop.
+- **Logout закриває серверну сесію** - shared logout викликає `/api/auth/logout` з refresh token і чистить усі auth/session keys на клієнті.
+- **Regression coverage** - додано `tests/auth-account-lifecycle.test.js` і `tests/auth-frontend-session.test.js` для create -> login -> verify -> protected route -> refresh -> logout і frontend refresh behavior.
+
+---
+
 ## v0.66.27 - CRM 66.27: безпечне закриття HR ролей
 
 ### HR / оргструктура / safe dismiss / 26.05.2026 [codex]

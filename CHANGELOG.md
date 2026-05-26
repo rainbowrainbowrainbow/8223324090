@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.34 - CRM 66.34: стабільні акаунти
+
+### Auth / акаунти / refresh session / 26.05.2026 [codex]
+- **Frontend session більше не залежить тільки від legacy `pzp_token`** - shared API layer читає `pzp_token`, `pzp_access_token` і refresh-сесію як один auth contract.
+- **HR account center став refresh-aware** - `hrFetch` і `crmApiFetch` використовують bounded refresh retry для `/api/hr/*` і `/api/users/*`, тому створення акаунта, reset password і account actions не падають через відсутній legacy token при валідному refresh.
+- **Profile і Staff не редіректять до refresh** - сторінки більше не роблять `pzp_token` precheck перед `apiVerifyToken()`, тож валідна refresh-сесія може відновити користувача після reload.
+- **Backend account lifecycle підтверджено** - create user перевіряє bcrypt hash через той самий login identity helper, login повертає accessToken + refreshToken, logout відкликає refresh token.
+- **Regression coverage** - оновлено `tests/auth-frontend-session.test.js` для access-only/refresh-only storage, account/profile/staff bootstrap і HR refresh-aware account requests.
+
+---
+
 ## v0.66.33 - CRM 66.33: робочий хаб профілю
 
 ### Профіль / work hub / професії / 26.05.2026 [codex]

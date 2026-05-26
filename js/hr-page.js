@@ -205,10 +205,8 @@ function formatResumeFileSize(bytes) {
 }
 
 async function hrFetch(path, options = {}, legacyBody = undefined) {
-    const token = localStorage.getItem('pzp_token');
     const isFormData = typeof FormData !== 'undefined' && options?.body instanceof FormData;
     const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (typeof options === 'string') {
         options = {
             method: options,
@@ -217,7 +215,11 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
     } else if (options && options.body && typeof options.body !== 'string' && !(typeof FormData !== 'undefined' && options.body instanceof FormData)) {
         options = { ...options, body: JSON.stringify(options.body) };
     }
-    const resp = await fetch(`/api/hr${path}`, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+    const request = { ...options, headers: { ...headers, ...(options.headers || {}) } };
+    const resp = typeof apiFetchWithAuthRetry === 'function'
+        ? await apiFetchWithAuthRetry(`/api/hr${path}`, request)
+        : await fetch(`/api/hr${path}`, request);
+    if (!resp) return null;
     if (resp.status === 401 || resp.status === 403) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
@@ -227,14 +229,16 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
 }
 
 async function crmApiFetch(path, options = {}) {
-    const token = localStorage.getItem('pzp_token');
     const headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (options && options.body && typeof options.body !== 'string') {
         options = { ...options, body: JSON.stringify(options.body) };
     }
-    const resp = await fetch(path, { headers, ...options });
-    if (resp.status === 401) {
+    const request = { ...options, headers: { ...headers, ...(options.headers || {}) } };
+    const resp = typeof apiFetchWithAuthRetry === 'function'
+        ? await apiFetchWithAuthRetry(path, request)
+        : await fetch(path, request);
+    if (!resp) return null;
+    if (resp.status === 401 || resp.status === 403) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
         return null;
@@ -251,9 +255,6 @@ async function crmApiFetch(path, options = {}) {
 async function initPage() {
     try {
     initDarkMode();
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
-
     const user = await apiVerifyToken();
     if (!user) { window.location.href = '/'; return; }
 

@@ -7,6 +7,9 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+const STAFF_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
 
 function response(status, body = {}) {
     return {
@@ -110,6 +113,23 @@ test('apiFetchWithAuthRetry refreshes before protected task mutations when the l
     assert.equal(store.get('pzp_refresh_token'), 'task-refresh-new');
 });
 
+test('auth headers and session detection accept access-only or refresh-only storage', () => {
+    const { context: accessContext } = loadApi(async () => response(500), {
+        pzp_access_token: 'access-only'
+    });
+    assert.equal(accessContext.apiHasStoredAuthSession(), true);
+    assert.equal(accessContext.getAuthHeaders(false).Authorization, 'Bearer access-only');
+
+    const { context: refreshContext } = loadApi(async () => response(500), {
+        pzp_refresh_token: 'refresh-only'
+    });
+    assert.equal(refreshContext.apiHasStoredAuthSession(), true);
+    assert.equal(refreshContext.getAuthHeaders(false).Authorization, undefined);
+
+    const { context: emptyContext } = loadApi(async () => response(500));
+    assert.equal(emptyContext.apiHasStoredAuthSession(), false);
+});
+
 test('tasks page lets apiVerifyToken own refresh-token bootstrap instead of prechecking legacy token', () => {
     const initStart = TASKS_PAGE_CODE.indexOf('async function initPage()');
     const verifyCall = TASKS_PAGE_CODE.indexOf('user = await apiVerifyToken()', initStart);
@@ -118,6 +138,26 @@ test('tasks page lets apiVerifyToken own refresh-token bootstrap instead of prec
     assert.ok(verifyCall > initStart);
     assert.doesNotMatch(initAuthBlock, /localStorage\.getItem\('pzp_token'\)/);
     assert.doesNotMatch(initAuthBlock, /window\.location\.href = '\/'/);
+});
+
+test('account/profile/staff surfaces do not block refresh-token bootstrap with legacy token prechecks', () => {
+    for (const [name, code] of [
+        ['hr', HR_PAGE_CODE],
+        ['profile', PROFILE_PAGE_CODE],
+        ['staff', STAFF_PAGE_CODE]
+    ]) {
+        const initStart = code.indexOf('async function initPage()') >= 0
+            ? code.indexOf('async function initPage()')
+            : code.indexOf('async function initProfilePage()');
+        const verifyCall = code.indexOf('apiVerifyToken()', initStart);
+        const initAuthBlock = code.slice(initStart, verifyCall);
+        assert.ok(initStart >= 0, `${name} init function missing`);
+        assert.ok(verifyCall > initStart, `${name} verify call missing`);
+        assert.doesNotMatch(initAuthBlock, /localStorage\.getItem\('pzp_token'\)/, `${name} prechecks legacy token before refresh`);
+        assert.doesNotMatch(initAuthBlock, /window\.location\.href = '\/'/, `${name} redirects before refresh`);
+    }
+    assert.match(HR_PAGE_CODE, /apiFetchWithAuthRetry\(`\/api\/hr\$\{path\}`/);
+    assert.match(HR_PAGE_CODE, /apiFetchWithAuthRetry\(path, request\)/);
 });
 
 test('apiVerifyToken retries verify once after an expired stored token', async () => {

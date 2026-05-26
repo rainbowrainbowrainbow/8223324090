@@ -737,15 +737,10 @@ async function initProfilePage() {
         document.documentElement.style.colorScheme = 'dark';
     }
 
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
-
     // Get current user
     try {
-        const r = await fetch('/api/auth/verify', { headers: getAuthHeaders(false) });
-        if (!r.ok) { window.location.href = '/'; return; }
-        const data = await r.json();
-        const user = data.user || data;
+        const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
+        if (!user) { window.location.href = '/'; return; }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
         currentUserId = user.id;
     } catch (e) { window.location.href = '/'; return; }

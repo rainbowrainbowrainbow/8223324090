@@ -8,6 +8,14 @@ const API_AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
 const API_AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
 const API_AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
 
+function getStoredAuthToken() {
+    return localStorage.getItem('pzp_token') || localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY);
+}
+
+function apiHasStoredAuthSession() {
+    return Boolean(getStoredAuthToken() || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY));
+}
+
 function formatApiErrorPayload(payload = {}, fallback = 'API error') {
     if (typeof window !== 'undefined' && window.CrmApiErrors) {
         return window.CrmApiErrors.format(payload, fallback);
@@ -150,7 +158,7 @@ if (typeof window !== 'undefined') {
 async function safeFetch(url, opts = {}) {
     if (!opts.headers) opts.headers = {};
     if (!opts.headers['Authorization']) {
-        const token = localStorage.getItem('pzp_token');
+        const token = getStoredAuthToken();
         if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     }
     const res = await fetch(url, opts);
@@ -165,7 +173,7 @@ async function safeFetch(url, opts = {}) {
 }
 
 function getAuthHeaders(withContentType = true) {
-    const token = localStorage.getItem('pzp_token');
+    const token = getStoredAuthToken();
     const headers = {};
     if (withContentType) headers['Content-Type'] = 'application/json';
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -201,7 +209,7 @@ function apiWithBearer(headers = {}, token = '', force = false) {
 async function apiFetchWithAuthRetry(url, opts = {}) {
     const request = { ...opts };
     const originalHeaders = apiHeaderObject(opts.headers || {});
-    let token = localStorage.getItem('pzp_token') || localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY);
+    let token = getStoredAuthToken();
     if (!token && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) token = await apiRefreshAuthToken();
     request.headers = apiWithBearer(originalHeaders, token);
 
@@ -950,7 +958,7 @@ async function apiRefreshAuthToken() {
 }
 
 async function apiVerifyToken() {
-    let token = localStorage.getItem('pzp_token');
+    let token = getStoredAuthToken();
     if (!token) token = await apiRefreshAuthToken();
     if (!token) return null;
     try {

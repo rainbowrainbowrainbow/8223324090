@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.17",
+  "version": "0.66.18",
   "eventGenix": {
-    "releaseLabel": "CRM 66.17: Помічник таймлайну як на інших сторінках"
+    "releaseLabel": "CRM 66.18: git-деплой актуального стану"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

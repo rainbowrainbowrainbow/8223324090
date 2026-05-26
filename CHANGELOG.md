@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.18 - CRM 66.18: git-деплой актуального стану
+
+### Release / deploy / 26.05.2026 [codex]
+- **Актуальний стан задеплоєно через git** - поточний `HEAD` був синхронний з `origin/deployed`, реліз фіксує повторний deploy-marker для live-середовища.
+- **Cache-busting оновлено** - усі HTML/CSS/JS asset tags переведено на `?v=0.66.18`, щоб браузер і Service Worker не тримали старі файли.
+- **Service Worker cache оновлено** - cache names піднято до `event-genix-v0.66.18` і `event-genix-api-v0.66.18`.
+- **Без нової бізнес-логіки** - реліз не змінює API, DB, auth, timeline drag/drop або assistant runtime; це контрольний git-деплой актуального стану.
+
+---
+
 ## v0.66.17 - CRM 66.17: Помічник таймлайну як на інших сторінках
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

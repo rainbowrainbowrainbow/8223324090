@@ -4,12 +4,12 @@
 
 ---
 
-## v0.66.10 - CRM 66.10: Timeline assistant suppression
+## v0.66.11 - CRM 66.11: Timeline assistant topbar alignment
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]
-- **Помічник прибрано з верхнього рядка таймлайну** - shared AI top widget більше не монтується на `timeline-dashboard-page`, тому не може перекрити дату, статуси чи перемикач періоду.
-- **Toolbar знову лишається робочою зоною** - пошук, тема й вихід залишаються у header, а control panel таймлайну не отримує плаваючий AI overlay.
-- **Regression guardrail** - UI smoke перевіряє, що timeline suppress-ить shared assistant top widget, як dashboard.
+- **Помічник повернуто у header як на інших сторінках** - shared AI command bar на таймлайні знову монтується, але стоїть зліва в стандартному topbar перед пошуком і user controls.
+- **Toolbar таймлайну не перекривається** - дата, статуси й перемикач періоду лишаються нижче header, без плаваючого AI overlay поверх робочої панелі.
+- **Regression guardrail** - UI smoke перевіряє left-docked timeline topbar contract і забороняє випадково suppress-ити timeline assistant.
 
 ---
 

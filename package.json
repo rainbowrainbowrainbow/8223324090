@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.10",
+  "version": "0.66.11",
   "eventGenix": {
-    "releaseLabel": "CRM 66.10: Timeline assistant suppression"
+    "releaseLabel": "CRM 66.11: Timeline assistant topbar alignment"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

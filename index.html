@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.26">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.26">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.26">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.26">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.26">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.26">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.26">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.26">
-    <link rel="stylesheet" href="css/features.css?v=0.66.26">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.26">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.26">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.26">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.26">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.26">
+    <link rel="stylesheet" href="css/base.css?v=0.66.27">
+    <link rel="stylesheet" href="css/auth.css?v=0.66.27">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.27">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.27">
+    <link rel="stylesheet" href="css/timeline.css?v=0.66.27">
+    <link rel="stylesheet" href="css/panel.css?v=0.66.27">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.27">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.27">
+    <link rel="stylesheet" href="css/features.css?v=0.66.27">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.27">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.27">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.27">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.27">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.27">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.26 CRM 66.26: регресійні guard-и таймлайну">✨ 0.66.26 CRM 66.26: регресійні guard-и таймлайну</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.66.27 CRM 66.27: безпечне закриття HR ролей">✨ 0.66.27 CRM 66.27: безпечне закриття HR ролей</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.26 — CRM 66.26: регресійні guard-и таймлайну</p>
+                <p class="tagline">AI First CRM v0.66.27 — CRM 66.27: безпечне закриття HR ролей</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.26: CRM 66.26: регресійні guard-и таймлайну</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.27: CRM 66.27: безпечне закриття HR ролей</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1265,12 +1265,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.66.26 — CRM 66.26: регресійні guard-и таймлайну</h4>
+                    <h4>v0.66.27 — CRM 66.27: безпечне закриття HR ролей</h4>
                     <ul>
-                        <li><b>Невидимі блокери закрито guard-ами</b> — drag тепер покрито тестом, який ігнорує бронювання на нецільовій лінії та блокує тільки реальний конфлікт на target line.</li>
-                        <li><b>Main і linked secondary покрито</b> — regression matrix перевіряє cross-line drag для основного та пов'язаного блоку окремо.</li>
-                        <li><b>Maysternya Doli ізольовано</b> — <code>linked-atomic</code> тест доводить, що <code>/maysternya-doli</code> не блокується бронями з основного Event Genix таймлайну.</li>
-                        <li><b>Full baseline пройдено</b> — нові guard-и входять у <code>npm test</code>, щоб цей клас бага ловився до деплою.</li>
+                        <li><b>Backdrop не закриває редактор ролі</b> — у HR → Структура випадковий клік по затемненню більше не закриває вікно.</li>
+                        <li><b>Закриття тільки навмисне</b> — <code>×</code>, <code>Скасувати</code> і Escape проходять через один guarded close path.</li>
+                        <li><b>Dirty guard збережено</b> — якщо поля змінені, CRM питає підтвердження перед закриттям без збереження.</li>
+                        <li><b>Regression coverage</b> — додано поведінковий тест і UI smoke guard для HR role editor.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9461,29 +9461,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.26"></script>
-    <script src="js/timeline-visibility.js?v=0.66.26"></script>
-    <script src="js/config.js?v=0.66.26"></script>
-    <script src="js/api.js?v=0.66.26"></script>
-    <script src="js/ui.js?v=0.66.26"></script>
-    <script src="js/auth.js?v=0.66.26"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.26"></script>
-    <script src="js/timeline.js?v=0.66.26"></script>
-    <script src="js/booking.js?v=0.66.26"></script>
-    <script src="js/settings.js?v=0.66.26"></script>
-    <script src="js/booking-form.js?v=0.66.26"></script>
-    <script src="js/booking-linked.js?v=0.66.26"></script>
-    <script src="js/settings-dashboard.js?v=0.66.26"></script>
-    <script src="js/settings-history.js?v=0.66.26"></script>
-    <script src="js/settings-afisha.js?v=0.66.26"></script>
-    <script src="js/settings-certificates.js?v=0.66.26"></script>
-    <script src="js/offline.js?v=0.66.26"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.26"></script>
-    <script src="js/search.js?v=0.66.26"></script>
-    <script src="js/ws.js?v=0.66.26"></script>
-    <script src="js/app.js?v=0.66.26"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.26"></script>
-    <script src="js/components/sidebar.js?v=0.66.26"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.26"></script>
+    <script src="js/timeline-context.js?v=0.66.27"></script>
+    <script src="js/timeline-visibility.js?v=0.66.27"></script>
+    <script src="js/config.js?v=0.66.27"></script>
+    <script src="js/api.js?v=0.66.27"></script>
+    <script src="js/ui.js?v=0.66.27"></script>
+    <script src="js/auth.js?v=0.66.27"></script>
+    <script src="js/timeline-interaction-model.js?v=0.66.27"></script>
+    <script src="js/timeline.js?v=0.66.27"></script>
+    <script src="js/booking.js?v=0.66.27"></script>
+    <script src="js/settings.js?v=0.66.27"></script>
+    <script src="js/booking-form.js?v=0.66.27"></script>
+    <script src="js/booking-linked.js?v=0.66.27"></script>
+    <script src="js/settings-dashboard.js?v=0.66.27"></script>
+    <script src="js/settings-history.js?v=0.66.27"></script>
+    <script src="js/settings-afisha.js?v=0.66.27"></script>
+    <script src="js/settings-certificates.js?v=0.66.27"></script>
+    <script src="js/offline.js?v=0.66.27"></script>
+    <script src="js/crm-feature-registry.js?v=0.66.27"></script>
+    <script src="js/search.js?v=0.66.27"></script>
+    <script src="js/ws.js?v=0.66.27"></script>
+    <script src="js/app.js?v=0.66.27"></script>
+    <script src="js/kleshnya-widget.js?v=0.66.27"></script>
+    <script src="js/components/sidebar.js?v=0.66.27"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.27"></script>
 </body>
 </html>

@@ -2272,6 +2272,32 @@ function closeCompanyOrgNodeEditor() {
     document.getElementById('hrOrgNodeEditorOverlay')?.remove();
 }
 
+async function requestCloseCompanyOrgNodeEditor(reason = 'button') {
+    const overlay = document.getElementById('hrOrgNodeEditorOverlay');
+    if (!overlay) return true;
+    const closeNow = () => closeCompanyOrgNodeEditor();
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            reason,
+            message: 'Є незбережені зміни у ролі. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
+}
+
+function nudgeCompanyOrgNodeEditor(overlay) {
+    const dialog = overlay?.querySelector('.hr-org-node-modal');
+    if (!dialog) return;
+    dialog.classList.remove('is-dismiss-attention');
+    void dialog.offsetWidth;
+    dialog.classList.add('is-dismiss-attention');
+    window.setTimeout(() => dialog.classList.remove('is-dismiss-attention'), 240);
+    overlay.querySelector('input[name="title"]')?.focus();
+}
+
 function companyOrgNodeEditorOptions(source, selectedValue, labels) {
     return source.map(value => `<option value="${escapeHtml(value)}"${value === selectedValue ? ' selected' : ''}>${escapeHtml(labels[value] || value)}</option>`).join('');
 }
@@ -2345,14 +2371,21 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
         </div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener('click', event => {
-        if (event.target === overlay) closeCompanyOrgNodeEditor();
+        if (event.target !== overlay) return;
+        event.preventDefault();
+        event.stopPropagation();
+        nudgeCompanyOrgNodeEditor(overlay);
     });
     overlay.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closeCompanyOrgNodeEditor();
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        requestCloseCompanyOrgNodeEditor('escape');
     });
-    document.getElementById('hrOrgNodeEditorClose')?.addEventListener('click', closeCompanyOrgNodeEditor);
-    document.getElementById('hrOrgNodeEditorCancel')?.addEventListener('click', closeCompanyOrgNodeEditor);
+    document.getElementById('hrOrgNodeEditorClose')?.addEventListener('click', () => requestCloseCompanyOrgNodeEditor('close-button'));
+    document.getElementById('hrOrgNodeEditorCancel')?.addEventListener('click', () => requestCloseCompanyOrgNodeEditor('cancel-button'));
     document.getElementById('hrOrgNodeForm')?.addEventListener('submit', saveCompanyOrgNodeFromEditor);
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
     overlay.querySelector('input[name="title"]')?.focus();
 }
 

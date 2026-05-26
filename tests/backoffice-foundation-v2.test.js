@@ -178,6 +178,11 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(accountSecurityService, /delete clone\.manualPassword/);
 
         assert.match(usersRoute, /router\.get\('\/link-conflicts'/);
+        assert.match(usersRoute, /router\.get\('\/staff-options', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
+        assert.match(usersRoute, /router\.post\('\/:id\/reset-password', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
+        assert.match(usersRoute, /router\.post\('\/', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
+        assert.match(usersRoute, /function canCreateAccount/);
+        assert.match(usersRoute, /HR_PROTECTED_ROLES/);
         assert.match(usersRoute, /linkUserToStaffProfile/);
         assert.match(usersRoute, /unlinkUserFromStaffProfiles/);
         assert.match(usersRoute, /password_one_time_reissued/);
@@ -206,6 +211,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(employeesRoute, /employee_profile_account_unlinked/);
 
         assert.match(hrPage, /function renderAccountConflictSummary/);
+        assert.match(hrPage, /ACCOUNT_SECURITY_ROLES = \['creator', 'director', 'hr'\]/);
+        assert.match(hrPage, /function canManageAccountProfile/);
+        assert.match(hrPage, /HR_ACCOUNT_PROTECTED_ROLES/);
         assert.match(hrPage, /openAccountCreateForStaff/);
         assert.match(hrPage, /openAccountLinkForStaff/);
         assert.match(hrPage, /showOneTimeCredentialModal/);

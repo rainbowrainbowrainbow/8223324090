@@ -797,9 +797,20 @@ let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
 let accountDeepLinkApplied = false;
+const ACCOUNT_SECURITY_ROLES = ['creator', 'director', 'hr'];
+const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
+const HR_ACCOUNT_PROTECTED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
 
 function canManageAccountSecurity() {
-    return ['creator', 'director'].includes(AppState.currentUser?.role);
+    return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
+}
+
+function canManageAccountProfile() {
+    return ACCOUNT_PROFILE_ROLES.includes(AppState.currentUser?.role);
+}
+
+function canManageAccountAccess() {
+    return ACCOUNT_PROFILE_ROLES.includes(AppState.currentUser?.role);
 }
 
 function canLinkAccounts() {
@@ -817,7 +828,11 @@ function getAccountRoleOptions(defaultRole = 'animator') {
     const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
     const currentRole = AppState.currentUser?.role;
     return roles
-        .filter(role => currentRole === 'creator' || role !== 'creator')
+        .filter(role => {
+            if (currentRole === 'creator') return true;
+            if (currentRole === 'hr') return !HR_ACCOUNT_PROTECTED_ROLES.includes(role);
+            return role !== 'creator';
+        })
         .map(role => ({ value: role, label: ROLE_LABELS[role] || role }))
         .sort((a, b) => a.label.localeCompare(b.label, 'uk'))
         .map(option => ({ ...option, selected: option.value === defaultRole }));
@@ -1236,6 +1251,8 @@ function renderAccountCenter() {
     if (!root) return;
     renderAccountConflictSummary();
     const canManageSecurity = canManageAccountSecurity();
+    const canManageProfile = canManageAccountProfile();
+    const canManageAccess = canManageAccountAccess();
     const filters = getAccountCenterFilterState();
     const query = filters.query.toLowerCase();
     const activeOnly = filters.activeOnly;
@@ -1294,9 +1311,9 @@ function renderAccountCenter() {
             <div class="hr-account-actions">
                 <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
                 ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
-                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
+                ${canManageProfile ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
                 ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
-                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
+                ${canManageAccess ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
                 <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
             </div>
         </article>`;
@@ -1305,7 +1322,7 @@ function renderAccountCenter() {
 
 window.openAccountCreateModal = async function(button, context = {}) {
     if (!canManageAccountSecurity()) {
-        showNotification('Створення акаунтів доступне тільки creator/director', 'error');
+        showNotification('Створення акаунтів доступне тільки creator/director/hr', 'error');
         return;
     }
     await loadAccountRoleDefinitions();
@@ -1448,7 +1465,7 @@ window.openAccountForStaff = async function(staffId, button) {
 };
 
 async function openAccountProfileModal(userId, button) {
-    if (!canManageAccountSecurity()) {
+    if (!canManageAccountProfile()) {
         showNotification('Редагування профілю доступне тільки creator/director', 'error');
         return;
     }
@@ -1493,7 +1510,7 @@ async function openAccountProfileModal(userId, button) {
 
 async function openAccountPasswordModal(userId, button) {
     if (!canManageAccountSecurity()) {
-        showNotification('Зміна пароля доступна тільки creator/director', 'error');
+        showNotification('Зміна пароля доступна тільки creator/director/hr', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -1556,7 +1573,7 @@ async function openAccountPasswordModal(userId, button) {
 }
 
 async function openAccountAccessEditor(userId, button) {
-    if (!canManageAccountSecurity()) {
+    if (!canManageAccountAccess()) {
         showNotification('Зміна доступу доступна тільки creator/director', 'error');
         return;
     }

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.12 - CRM 66.12: акаунти та скидання паролів
+
+### HR / акаунти / 26.05.2026 [codex]
+- **Створення акаунтів з HR/Staff знову проходить через бекенд** - `/api/users` використовує спільний `ACCOUNT_MANAGER_ROLES`, тому дозволені оператори не впираються в старий creator/director-only guard.
+- **Скидання пароля вирівняно з центром акаунтів** - `/api/users/:id/reset-password` приймає той самий набір account-manager ролей і перевіряє protected-акаунти перед reset/reissue.
+- **HR-доступ став явним і безпечним** - HR може створювати та скидати паролі для непідвищених ролей, але не може зачепити creator/director/vice_director/senior_manager; профіль і доступ лишені для creator/director.
+- **Staff-options не блокує створення з привʼязкою** - `/api/users/staff-options` відкрито для account-manager ролей, щоб модалка створення могла підставити HR staff-профіль.
+- **Regression guardrail** - `tests/backoffice-foundation-v2.test.js` фіксує маршрути create/reset/staff-options і HR protected-role контракт.
+
+---
+
 ## v0.66.11 - CRM 66.11: Timeline assistant topbar alignment
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

@@ -23,17 +23,43 @@ const log = createLogger('Users');
 const ACCOUNT_MANAGER_ROLES = ['creator', 'director', 'hr'];
 const HR_PROTECTED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
 
+function normalizeRoleSet(...roleLists) {
+    const roles = [];
+    roleLists.flat().forEach(role => {
+        if (typeof role !== 'string') return;
+        const value = role.trim();
+        if (value && !roles.includes(value)) roles.push(value);
+    });
+    return roles;
+}
+
+function accountRoles(account = {}) {
+    return normalizeRoleSet([account.role], account.extra_roles, account.extraRoles);
+}
+
 function canToggleAccount(actor, target) {
     if (!actor || !target) return false;
     if (target.id === actor.id) return false;
-    if (actor.role !== 'creator' && target.role === 'creator') return false;
-    if (actor.role === 'hr' && HR_PROTECTED_ROLES.includes(target.role)) return false;
+    const targetRoles = accountRoles(target);
+    if (actor.role !== 'creator' && targetRoles.includes('creator')) return false;
+    if (actor.role === 'hr' && targetRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
     return true;
 }
 
 function canMutateSensitiveAccount(actor, target) {
     if (!actor || !target) return false;
-    if (actor.role !== 'creator' && target.role === 'creator') return false;
+    const targetRoles = accountRoles(target);
+    if (actor.role !== 'creator' && targetRoles.includes('creator')) return false;
+    if (actor.role === 'hr' && targetRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
+    return true;
+}
+
+function canCreateAccount(actor, primaryRole, extraRoles = []) {
+    if (!actor || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
+    const requestedRoles = normalizeRoleSet([primaryRole], extraRoles);
+    if (actor.role === 'creator') return true;
+    if (requestedRoles.includes('creator')) return false;
+    if (actor.role === 'hr' && requestedRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
     return true;
 }
 
@@ -106,7 +132,7 @@ router.get('/roles', async (req, res) => {
 });
 
 // GET /api/users/staff-options — staff profiles available for account linking
-router.get('/staff-options', requireRole('creator', 'director'), async (req, res) => {
+router.get('/staff-options', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT s.id, s.name, s.department, s.position,
@@ -164,7 +190,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
         }
 
         await client.query('BEGIN');
-        const target = await client.query('SELECT id, username, role FROM users WHERE id = $1 FOR UPDATE', [parseInt(id, 10)]);
+        const target = await client.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1 FOR UPDATE', [parseInt(id, 10)]);
         if (target.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Користувача не знайдено' });
@@ -255,7 +281,10 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
             : null;
 
         // Cannot change own role (safety)
-        const target = await pool.query('SELECT id, username, role FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1', [parseInt(id)]);
+        if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
+            return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
+        }
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
 
         if (target.rows[0].id === req.user.id) {
@@ -294,8 +323,8 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
     }
 });
 
-// POST /api/users/:id/reset-password — reset password (creator + director only)
-router.post('/:id/reset-password', requireRole('creator', 'director'), async (req, res) => {
+// POST /api/users/:id/reset-password — reset password (creator/director/hr, guarded)
+router.post('/:id/reset-password', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const { id } = req.params;
         const manualPassword = resetPasswordFromPayload(req.body || {});
@@ -310,7 +339,7 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
             return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
         }
 
-        const target = await pool.query('SELECT id, username, name, role, is_active, login_aliases FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, name, role, extra_roles, is_active, login_aliases FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
         if (!canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
@@ -386,7 +415,7 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
         const { id } = req.params;
         const { isActive } = req.body;
 
-        const target = await pool.query('SELECT id, username, role FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role, extra_roles FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
 
         if (!canToggleAccount(req.user, target.rows[0])) {
@@ -424,8 +453,8 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
     }
 });
 
-// POST /api/users — create new user (creator + director only)
-router.post('/', requireRole('creator', 'director'), async (req, res) => {
+// POST /api/users — create new user (creator/director/hr, guarded)
+router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const { password, name, role, extraRoles, pageAllowlist } = req.body;
@@ -458,9 +487,8 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : [];
 
-        // Director cannot create creator
-        if (req.user.role === 'director' && (primaryRole === 'creator' || normalizedExtraRoles.includes('creator'))) {
-            return res.status(403).json({ error: 'Тільки creator може створити creator' });
+        if (!canCreateAccount(req.user, primaryRole, normalizedExtraRoles)) {
+            return res.status(403).json({ error: 'Не можна створити акаунт з таким рівнем доступу' });
         }
 
         const existing = await pool.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [username]);

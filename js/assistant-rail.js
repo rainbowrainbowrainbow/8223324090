@@ -509,13 +509,6 @@
         }
     }
 
-    function isTimelineAssistantPage() {
-        return Boolean(
-            document.body?.classList?.contains('timeline-dashboard-page') ||
-            document.querySelector('.timeline-container, .timeline-scroll, .control-panel .date-controls')
-        );
-    }
-
     function ensureAssistantRailHost(headerContent) {
         let status = headerContent.querySelector('#crmAssistantTopStatus');
         if (status) status.remove();
@@ -528,25 +521,6 @@
             host.setAttribute('aria-hidden', 'false');
         }
         host.dataset.mount = 'top-menu';
-        const isTimeline = isTimelineAssistantPage();
-        if (isTimeline) {
-            const timelineMain = document.querySelector('#main-content.main-content, main.main-content, .main-content');
-            const controlPanel = timelineMain?.querySelector?.('.control-panel');
-            if (timelineMain && controlPanel) {
-                host.dataset.mount = 'timeline-main';
-                host.dataset.crmPage = 'timeline';
-                host.classList.add('timeline-assistant-main-host');
-                timelineMain.classList.add('timeline-assistant-main-mounted');
-                document.body?.classList?.add('timeline-assistant-main-mounted');
-                headerContent.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
-                headerContent.closest('.header')?.classList.remove('assistant-rail-timeline-header');
-                if (host.parentElement !== timelineMain || host.nextElementSibling !== controlPanel) {
-                    timelineMain.insertBefore(host, controlPanel);
-                }
-                return host;
-            }
-        }
-
         delete host.dataset.crmPage;
         host.classList.remove('timeline-assistant-main-host');
         document.querySelector('.main-content.timeline-assistant-main-mounted')?.classList.remove('timeline-assistant-main-mounted');
@@ -560,8 +534,8 @@
             headerContent.insertBefore(host, firstHeaderControl);
         }
         headerContent.classList.add('assistant-rail-mounted');
-        headerContent.classList.toggle('assistant-rail-timeline-mounted', isTimeline);
-        headerContent.closest('.header')?.classList.toggle('assistant-rail-timeline-header', isTimeline);
+        headerContent.classList.remove('assistant-rail-timeline-mounted');
+        headerContent.closest('.header')?.classList.remove('assistant-rail-timeline-header');
         return host;
     }
 

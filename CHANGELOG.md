@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.16 - CRM 66.16: стандартний Помічник на таймлайні
+
+### Таймлайн / AI-помічник / 26.05.2026 [codex]
+- **Таймлайн повернуто на стандартний shared topbar** - `js/assistant-rail.js` більше не має окремого `timeline-main` mount і монтує Помічника у header так само, як інші CRM-сторінки.
+- **Старі timeline override-и прибрано** - видалено CSS-блоки, які переносили command bar у grid/header-special або в `main-content`.
+- **Header-контракт один для всіх сторінок** - таймлайн тепер використовує той самий `flex-flow: row nowrap`, `position: static` і стандартну ширину topbar host.
+- **Regression guardrail** - `tests/ui-check.js` забороняє повернення `timeline-main`, `isTimelineAssistantPage` і монтажу перед `.control-panel`.
+
+---
+
 ## v0.66.15 - CRM 66.15: Помічник без overlay на таймлайні
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

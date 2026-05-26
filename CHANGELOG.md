@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.32 - CRM 66.32: бронювання з клієнтом і меню
+
+### Бронювання / клієнти / меню / 26.05.2026 [codex]
+- **Booking workspace став пакетним** - форма бронювання тепер веде оператора через подію/програму, клієнта, меню/сервісні позиції та підсумок перед збереженням.
+- **Клієнт більше не схований за toggle** - пошук існуючої картки або створення нового клієнта доступні прямо у бронюванні й обов'язкові для save.
+- **Меню має структуровані позиції** - позиції беруться з kitchen menu каталогу, мають кількість, ціну, subtotal і зберігаються у `extraData.bookingPackage` з legacy `banquet_menu`.
+- **Фінальний total став явним** - `bookings.price` дорівнює база програми + меню/сервіси, linked second animator rows не дублюють суму, а finance-запис створюється й синхронізується на create/full/edit.
+- **Audit і regression coverage** - update history отримує зміни клієнта/menu package, додано `tests/booking-package-contract.test.js` для package total, menu serialization, client-first UX і backend persistence.
+
+---
+
 ## v0.66.31 - CRM 66.31: професії профілю та HR чеклісти
 
 ### Профіль / HR / професії / 26.05.2026 [codex]

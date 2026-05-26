@@ -1886,6 +1886,25 @@ body.dark-mode .customer-data-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
 }
+body.dark-mode .booking-workspace-heading,
+body.dark-mode .booking-menu-workspace,
+body.dark-mode .booking-package-summary,
+body.dark-mode .booking-menu-position-row,
+body.dark-mode .booking-detail-package,
+body.dark-mode .booking-detail-package-header {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+}
+body.dark-mode .booking-workspace-heading strong,
+body.dark-mode .booking-menu-position-title,
+body.dark-mode .booking-detail-package-header {
+    color: #e2e8f0;
+}
+body.dark-mode .booking-menu-legacy textarea {
+    background: #111827;
+    color: #e2e8f0;
+    border-color: rgba(255,255,255,0.12);
+}
 body.dark-mode .customer-search-results {
     background: #1a1a2e;
     border-color: rgba(255,255,255,0.1);

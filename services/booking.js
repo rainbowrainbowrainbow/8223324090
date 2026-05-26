@@ -143,6 +143,7 @@ function mapBookingRow(row) {
         client_pinata_service_note: row.client_pinata_service_note
     });
 
+    const extraData = row.extra_data || null;
     return {
         id: row.id,
         businessContext: row.business_context || DEFAULT_TIMELINE_CONTEXT,
@@ -175,7 +176,8 @@ function mapBookingRow(row) {
         kidsCount: row.kids_count,
         updatedAt: row.updated_at,
         groupName: row.group_name || null,
-        extraData: row.extra_data || null,
+        extraData,
+        bookingPackage: extraData?.bookingPackage || null,
         skipNotification: row.skip_notification || false,
         customerId: row.customer_id || null,
         paymentMethod: row.payment_method || null,

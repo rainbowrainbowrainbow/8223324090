@@ -15,7 +15,9 @@ window.BookingForm = {
         const fields = ['roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
             'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
             'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
-            'clientPinataServicePrice', 'clientPinataServiceNote'];
+            'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',
+            'bookingMenuQuantity', 'bookingMenuUnitPrice', 'bookingMenuNote', 'banquetMenu',
+            'banquetGuests', 'banquetTables'];
         fields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -88,11 +90,11 @@ window.BookingForm = {
             if (!secondAnimator) return { valid: false, error: 'Оберіть другого аніматора — ця програма потребує 2 ведучих' };
         }
 
-        // v15.1: CRM — validate customer name if toggle is on
-        const customerToggle = document.getElementById('customerDataToggle');
-        if (customerToggle && customerToggle.checked) {
-            const customerName = document.getElementById('customerName')?.value?.trim();
-            if (!customerName) return { valid: false, error: "Вкажіть ім'я клієнта або вимкніть розділ «Дані клієнта»" };
+        const selectedCustomerId = document.getElementById('selectedCustomerId')?.value;
+        const customerName = document.getElementById('customerName')?.value?.trim();
+        if (!selectedCustomerId && !customerName) {
+            document.getElementById('customerName')?.setAttribute('aria-invalid', 'true');
+            return { valid: false, error: "Вкажіть клієнта або оберіть існуючу картку" };
         }
 
         return { valid: true };
@@ -171,9 +173,10 @@ window.BookingForm = {
 
         // v15.1: Reset CRM customer fields
         const customerToggle = document.getElementById('customerDataToggle');
-        if (customerToggle) customerToggle.checked = false;
-        document.getElementById('customerDataSection')?.classList.add('hidden');
+        if (customerToggle) customerToggle.checked = true;
+        document.getElementById('customerDataSection')?.classList.remove('hidden');
         if (typeof clearCustomerFields === 'function') clearCustomerFields();
+        if (typeof resetBookingPackageWorkspace === 'function') resetBookingPackageWorkspace();
     }
 };
 

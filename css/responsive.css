@@ -855,6 +855,19 @@
         border-width: 1.5px;
     }
 
+    .booking-menu-grid,
+    .booking-menu-banquet-meta,
+    .booking-menu-position-row,
+    .booking-detail-package-row {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-client-actions,
+    .booking-summary-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
     .program-search-input {
         padding: 8px 10px;
         font-size: 16px;

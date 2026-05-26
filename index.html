@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.31">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.31">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.31">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.31">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.31">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.31">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.31">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.31">
-    <link rel="stylesheet" href="css/features.css?v=0.66.31">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.31">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.31">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.31">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.31">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.31">
+    <link rel="stylesheet" href="css/base.css?v=0.66.32">
+    <link rel="stylesheet" href="css/auth.css?v=0.66.32">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.32">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.32">
+    <link rel="stylesheet" href="css/timeline.css?v=0.66.32">
+    <link rel="stylesheet" href="css/panel.css?v=0.66.32">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.32">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.32">
+    <link rel="stylesheet" href="css/features.css?v=0.66.32">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.32">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.32">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.32">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.32">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.32">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.31 CRM 66.31: професії профілю та HR чеклісти">✨ 0.66.31 CRM 66.31: професії профілю та HR чеклісти</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.66.32 CRM 66.32: бронювання з клієнтом і меню">✨ 0.66.32 CRM 66.32: бронювання з клієнтом і меню</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.31 — CRM 66.31: професії профілю та HR чеклісти</p>
+                <p class="tagline">AI First CRM v0.66.32 — CRM 66.32: бронювання з клієнтом і меню</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.31: CRM 66.31: професії профілю та HR чеклісти</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.32: CRM 66.32: бронювання з клієнтом і меню</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -332,7 +332,13 @@
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
 
-                <!-- ===== БЛОК 1: Списки та налаштування (вгорі) ===== -->
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">1</span>
+                    <div>
+                        <strong>Подія / програма</strong>
+                        <small>Кімната, програма, ведучі та операційні параметри події</small>
+                    </div>
+                </div>
 
                 <!-- Кімната -->
                 <div class="form-section">
@@ -412,63 +418,6 @@
                     <label>Група / Банкет (опційно)</label>
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
                 </div>
-
-                <!-- v15.1: CRM — Дані клієнта (toggle) -->
-                <div class="form-section">
-                    <label class="toggle-label crm-toggle-label">
-                        <input type="checkbox" id="customerDataToggle">
-                        <span class="toggle-text">Дані клієнта</span>
-                    </label>
-                </div>
-
-                <div id="customerDataSection" class="customer-data-section hidden">
-                    <div class="form-section">
-                        <label>Пошук клієнта</label>
-                        <div class="customer-search-wrap">
-                            <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
-                            <div id="customerSearchResults" class="customer-search-results hidden"></div>
-                        </div>
-                        <input type="hidden" id="selectedCustomerId">
-                    </div>
-                    <div class="customer-fields">
-                        <div class="form-section">
-                            <label>Ім'я клієнта <span class="required-mark">*</span></label>
-                            <input type="text" id="customerName" placeholder="Прізвище Ім'я">
-                        </div>
-                        <div class="form-section">
-                            <label>Телефон</label>
-                            <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
-                        </div>
-                        <div class="form-section">
-                            <label>Instagram</label>
-                            <input type="text" id="customerInstagram" placeholder="username">
-                        </div>
-                        <div class="form-section">
-                            <label>Ім'я дитини</label>
-                            <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
-                        </div>
-                        <div class="form-section">
-                            <label>Дата народження дитини</label>
-                            <input type="date" id="customerChildBirthday">
-                        </div>
-                        <div class="form-section">
-                            <label>Звідки дізналися</label>
-                            <select id="customerSource">
-                                <option value="">— не вказано —</option>
-                                <option value="instagram">Instagram</option>
-                                <option value="google">Google</option>
-                                <option value="recommendation">Рекомендація</option>
-                                <option value="repeat">Повторний клієнт</option>
-                                <option value="other">Інше</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="customerInfo" class="customer-info hidden">
-                        <span class="customer-info-badge" id="customerVisitBadge">0 візитів</span>
-                    </div>
-                </div>
-
-                <!-- ===== БЛОК 2: Програма (нижче) ===== -->
 
                 <!-- Програми іконками -->
                 <div class="form-section">
@@ -609,6 +558,124 @@
                         <div class="tshirt-size-item"><label for="tshirtL">L</label><input type="number" id="tshirtL" min="0" max="30" value="0"></div>
                         <div class="tshirt-size-item"><label for="tshirtXL">XL</label><input type="number" id="tshirtXL" min="0" max="30" value="0"></div>
                     </div>
+                </div>
+
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">2</span>
+                    <div>
+                        <strong>Клієнт</strong>
+                        <small>Знайдіть існуючу картку або створіть нового клієнта прямо тут</small>
+                    </div>
+                </div>
+                <input type="checkbox" id="customerDataToggle" checked hidden aria-hidden="true">
+                <div id="customerDataSection" class="customer-data-section">
+                    <div class="booking-client-actions">
+                        <button type="button" id="bookingClearCustomerBtn" class="booking-mini-action">+ Новий клієнт</button>
+                        <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Обов'язковий блок бронювання</span>
+                    </div>
+                    <div class="form-section">
+                        <label>Пошук клієнта</label>
+                        <div class="customer-search-wrap">
+                            <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
+                            <div id="customerSearchResults" class="customer-search-results hidden"></div>
+                        </div>
+                        <input type="hidden" id="selectedCustomerId">
+                    </div>
+                    <div class="customer-fields">
+                        <div class="form-section">
+                            <label>Ім'я клієнта <span class="required-mark">*</span></label>
+                            <input type="text" id="customerName" placeholder="Прізвище Ім'я">
+                        </div>
+                        <div class="form-section">
+                            <label>Телефон</label>
+                            <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
+                        </div>
+                        <div class="form-section">
+                            <label>Instagram</label>
+                            <input type="text" id="customerInstagram" placeholder="username">
+                        </div>
+                        <div class="form-section">
+                            <label>Ім'я дитини</label>
+                            <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
+                        </div>
+                        <div class="form-section">
+                            <label>Дата народження дитини</label>
+                            <input type="date" id="customerChildBirthday">
+                        </div>
+                        <div class="form-section">
+                            <label>Звідки дізналися</label>
+                            <select id="customerSource">
+                                <option value="">— не вказано —</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="google">Google</option>
+                                <option value="recommendation">Рекомендація</option>
+                                <option value="repeat">Повторний клієнт</option>
+                                <option value="lead">Лід</option>
+                                <option value="other">Інше</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="customerInfo" class="customer-info hidden">
+                        <span class="customer-info-badge" id="customerVisitBadge">0 візитів</span>
+                    </div>
+                </div>
+
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">3</span>
+                    <div>
+                        <strong>Меню / сервісні позиції</strong>
+                        <small>Позиції додаються до фінальної суми бронювання</small>
+                    </div>
+                </div>
+                <div id="banquetFields" class="booking-menu-workspace">
+                    <div class="booking-menu-grid">
+                        <div class="form-section">
+                            <label>Позиція</label>
+                            <select id="bookingMenuProductSelect">
+                                <option value="">Оберіть позицію з меню</option>
+                            </select>
+                        </div>
+                        <div class="form-section">
+                            <label>К-сть</label>
+                            <input type="number" id="bookingMenuQuantity" min="0.1" step="0.5" value="1">
+                        </div>
+                        <div class="form-section">
+                            <label>Ціна</label>
+                            <input type="number" id="bookingMenuUnitPrice" min="0" step="1" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <label>Коментар до позиції</label>
+                        <input type="text" id="bookingMenuNote" maxlength="500" placeholder="Напр: без горіхів, подати після квесту">
+                    </div>
+                    <button type="button" id="bookingMenuAddBtn" class="booking-menu-add-btn">+ Додати позицію</button>
+                    <div id="bookingMenuPositionsList" class="booking-menu-positions-list"></div>
+                    <input type="hidden" id="bookingMenuPositionsJson">
+                    <div class="booking-menu-legacy">
+                        <label for="banquetMenu">Legacy опис меню</label>
+                        <textarea id="banquetMenu" rows="3" placeholder="Автоматично формується з позицій; можна доповнити вручну"></textarea>
+                    </div>
+                    <div class="booking-menu-banquet-meta">
+                        <div class="form-section">
+                            <label>Гостей</label>
+                            <input type="number" id="banquetGuests" min="0" placeholder="0">
+                        </div>
+                        <div class="form-section">
+                            <label>Столів</label>
+                            <input type="number" id="banquetTables" min="0" placeholder="0">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">4</span>
+                    <div>
+                        <strong>Підсумок</strong>
+                        <small>Перевірте пакет перед збереженням</small>
+                    </div>
+                </div>
+                <div id="bookingPackageSummary" class="booking-package-summary">
+                    <div class="booking-summary-empty">Оберіть програму, клієнта і позиції меню — підсумок оновиться автоматично.</div>
                 </div>
 
                 <!-- v3.2: Статус бронювання -->
@@ -1264,6 +1331,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.66.32 — CRM 66.32: бронювання з клієнтом і меню</h4>
+                    <ul>
+                        <li><b>Booking workspace став пакетним</b> — форма бронювання тепер веде оператора через подію, клієнта, меню/сервісні позиції та підсумок перед збереженням.</li>
+                        <li><b>Клієнт більше не схований за toggle</b> — пошук існуючої картки або створення нового клієнта доступні прямо у бронюванні й обов'язкові для save.</li>
+                        <li><b>Меню має структуровані позиції</b> — позиції беруться з kitchen menu каталогу, мають кількість, ціну, subtotal і зберігаються у <code>extraData.bookingPackage</code> з legacy <code>banquet_menu</code>.</li>
+                        <li><b>Фінальний total став явним</b> — <code>bookings.price</code> тепер дорівнює база програми + меню/сервіси, а edit синхронізує audit і finance-запис.</li>
+                        <li><b>Regression guard</b> — додано <code>tests/booking-package-contract.test.js</code> для package total, меню serialization, client-first UX і backend persistence.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.66.31 — CRM 66.31: професії профілю та HR чеклісти</h4>
                     <ul>
@@ -9488,29 +9565,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.31"></script>
-    <script src="js/timeline-visibility.js?v=0.66.31"></script>
-    <script src="js/config.js?v=0.66.31"></script>
-    <script src="js/api.js?v=0.66.31"></script>
-    <script src="js/ui.js?v=0.66.31"></script>
-    <script src="js/auth.js?v=0.66.31"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.31"></script>
-    <script src="js/timeline.js?v=0.66.31"></script>
-    <script src="js/booking.js?v=0.66.31"></script>
-    <script src="js/settings.js?v=0.66.31"></script>
-    <script src="js/booking-form.js?v=0.66.31"></script>
-    <script src="js/booking-linked.js?v=0.66.31"></script>
-    <script src="js/settings-dashboard.js?v=0.66.31"></script>
-    <script src="js/settings-history.js?v=0.66.31"></script>
-    <script src="js/settings-afisha.js?v=0.66.31"></script>
-    <script src="js/settings-certificates.js?v=0.66.31"></script>
-    <script src="js/offline.js?v=0.66.31"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.31"></script>
-    <script src="js/search.js?v=0.66.31"></script>
-    <script src="js/ws.js?v=0.66.31"></script>
-    <script src="js/app.js?v=0.66.31"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.31"></script>
-    <script src="js/components/sidebar.js?v=0.66.31"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.31"></script>
+    <script src="js/timeline-context.js?v=0.66.32"></script>
+    <script src="js/timeline-visibility.js?v=0.66.32"></script>
+    <script src="js/config.js?v=0.66.32"></script>
+    <script src="js/api.js?v=0.66.32"></script>
+    <script src="js/ui.js?v=0.66.32"></script>
+    <script src="js/auth.js?v=0.66.32"></script>
+    <script src="js/timeline-interaction-model.js?v=0.66.32"></script>
+    <script src="js/timeline.js?v=0.66.32"></script>
+    <script src="js/booking.js?v=0.66.32"></script>
+    <script src="js/settings.js?v=0.66.32"></script>
+    <script src="js/booking-form.js?v=0.66.32"></script>
+    <script src="js/booking-linked.js?v=0.66.32"></script>
+    <script src="js/settings-dashboard.js?v=0.66.32"></script>
+    <script src="js/settings-history.js?v=0.66.32"></script>
+    <script src="js/settings-afisha.js?v=0.66.32"></script>
+    <script src="js/settings-certificates.js?v=0.66.32"></script>
+    <script src="js/offline.js?v=0.66.32"></script>
+    <script src="js/crm-feature-registry.js?v=0.66.32"></script>
+    <script src="js/search.js?v=0.66.32"></script>
+    <script src="js/ws.js?v=0.66.32"></script>
+    <script src="js/app.js?v=0.66.32"></script>
+    <script src="js/kleshnya-widget.js?v=0.66.32"></script>
+    <script src="js/components/sidebar.js?v=0.66.32"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.32"></script>
 </body>
 </html>

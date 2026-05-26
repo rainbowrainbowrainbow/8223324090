@@ -8,6 +8,7 @@ const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
+const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
 const {
@@ -635,6 +636,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
+        applyBookingPackage(b);
 
         if (!b.linkedTo) {
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, null, businessContext);
@@ -721,10 +723,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -1021,6 +1023,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
+        applyBookingPackage(main);
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 const linkedPinataFields = applyPinataNormalization(lb);
@@ -1080,10 +1083,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetTables || null, main.banquetMenu || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger
@@ -1118,6 +1121,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const linkedRows = [];
         if (Array.isArray(linked)) {
             for (const lb of linked) {
+                lb.price = 0;
+                lb.extraData = null;
                 const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0, null, businessContext);
                 if (lConflict.overlap) {
                     await client.query('ROLLBACK');
@@ -1142,6 +1147,19 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
             ['create', main.createdBy || req.user?.username, JSON.stringify(main)]
         );
+
+        if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
+            try {
+                await client.query(
+                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                     VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
+                             $1, $2, $3, $4, $5, $6)`,
+                    [main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
+                );
+            } catch (finErr) {
+                log.warn(`Finance auto-record failed (create/full, non-critical): ${finErr.message}`);
+            }
+        }
 
         await client.query('COMMIT');
 
@@ -1645,6 +1663,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (b.pinataFiller === undefined) b.pinataFiller = old.pinata_filler;
     if (b.clientPinataServicePrice === undefined) b.clientPinataServicePrice = old.client_pinata_service_price;
     if (b.clientPinataServiceNote === undefined) b.clientPinataServiceNote = old.client_pinata_service_note;
+    if (b.banquetGuests === undefined) b.banquetGuests = old.banquet_guests;
+    if (b.banquetTables === undefined) b.banquetTables = old.banquet_tables;
+    if (b.banquetMenu === undefined) b.banquetMenu = old.banquet_menu;
 
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
@@ -1670,6 +1691,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (pinataFields.error) {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
+        applyBookingPackage(b);
 
         await client.query('BEGIN');
 
@@ -1740,9 +1762,33 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         // CRM: resolve customer_id for update
-        const updateCustomerId = sideEffectsAllowedForContext(businessContext)
-            ? (b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null))
+        const customerIdProvided = Object.prototype.hasOwnProperty.call(b, 'customerId')
+            || Object.prototype.hasOwnProperty.call(b, 'customer_id');
+        let updateCustomerId = sideEffectsAllowedForContext(businessContext)
+            ? (customerIdProvided
+                ? (b.customerId || b.customer_id ? parseInt(b.customerId || b.customer_id) : null)
+                : (b.customer && b.customer.name ? null : (oldBooking.customer_id || null)))
             : null;
+        if (sideEffectsAllowedForContext(businessContext) && !updateCustomerId && b.customer && b.customer.name) {
+            const c = b.customer;
+            if (c.phone && c.phone.trim()) {
+                const existing = await client.query(
+                    "SELECT id FROM customers WHERE phone = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                    [c.phone.trim(), businessContext]
+                );
+                if (existing.rows.length > 0) {
+                    updateCustomerId = existing.rows[0].id;
+                }
+            }
+            if (!updateCustomerId) {
+                const custResult = await client.query(
+                    `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                    [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                );
+                updateCustomerId = custResult.rows[0].id;
+            }
+        }
         if (updateCustomerId) {
             const scopedCustomer = await client.query(
                 "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
@@ -1753,6 +1799,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 return res.status(400).json({ success: false, error: 'Customer does not belong to this business context' });
             }
         }
+        b.customerId = updateCustomerId;
 
         let updateResult;
         if (clientUpdatedAt) {
@@ -1764,7 +1811,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
                  payment_method=$26, pinata_mode=$27, client_pinata_service_price=$28,
-                 client_pinata_service_note=$29, pinata_number=$30, pinata_filler_number=$31
+                 client_pinata_service_note=$29, pinata_number=$30, pinata_filler_number=$31,
+                 banquet_guests=$32, banquet_tables=$33, banquet_menu=$34
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
@@ -1772,7 +1820,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
-                 b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber]
+                 b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
+                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -1782,7 +1831,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
                  payment_method=$25, pinata_mode=$26, client_pinata_service_price=$27,
-                 client_pinata_service_note=$28, pinata_number=$29, pinata_filler_number=$30
+                 client_pinata_service_note=$28, pinata_number=$29, pinata_filler_number=$30,
+                 banquet_guests=$31, banquet_tables=$32, banquet_menu=$33
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
@@ -1790,7 +1840,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
-                 b.pinataNumber, b.pinataFillerNumber]
+                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
             );
         }
 
@@ -1838,12 +1888,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
                             [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
-                             b.label, b.programName, b.category, b.duration, b.price, b.hosts,
+                             b.label, b.programName, b.category, b.duration, 0, b.hosts,
                              b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                              b.pinataFillerNumber, b.clientPinataServicePrice,
                              b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
                              b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
-                             b.extraData ? JSON.stringify(b.extraData) : null]
+                             null]
                         );
                     } else {
                         log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
@@ -1874,12 +1924,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
                         [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
-                         b.label, b.programName, b.category, b.duration, b.price, b.hosts,
+                         b.label, b.programName, b.category, b.duration, 0, b.hosts,
                          b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                          b.pinataFillerNumber, b.clientPinataServicePrice,
                          b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
                          b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
-                         b.extraData ? JSON.stringify(b.extraData) : null]
+                         null]
                     );
                 } else {
                     log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
@@ -1889,8 +1939,37 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['edit', req.user?.username, JSON.stringify(b)]
+            ['edit', req.user?.username, JSON.stringify({
+                ...b,
+                audit: bookingPackageAudit(oldBooking, b)
+            })]
         );
+
+        if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && newStatus !== 'preliminary') {
+            try {
+                const finUpdate = await client.query(
+                    `UPDATE finance_transactions
+                     SET amount = $1,
+                         description = $2,
+                         date = $3,
+                         payment_method = $4
+                     WHERE booking_id = $5
+                       AND type = 'income'
+                       AND certificate_id IS NULL`,
+                    [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id]
+                );
+                if (finUpdate.rowCount === 0) {
+                    await client.query(
+                        `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                         VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
+                                 $1, $2, $3, $4, $5, $6)`,
+                        [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
+                    );
+                }
+            } catch (finErr) {
+                log.warn(`Finance auto-record sync failed (update, non-critical): ${finErr.message}`);
+            }
+        }
 
         await client.query('COMMIT');
 

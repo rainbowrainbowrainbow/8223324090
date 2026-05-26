@@ -176,6 +176,7 @@ For user-visible or deployable product changes:
 4. Run `npm run version:sync` only when you intend to update generated version references.
 5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, changelog, service-worker caches, or `/api/version` ownership.
 6. After deploy, run `npm run version:smoke -- https://<live-crm-host>` and treat a mismatch as an incomplete deploy.
+7. For timeline releases, also run `npm run release:timeline-proof -- https://<live-crm-host>`; it proves `/`, `/maysternya-doli`, timeline assets, and Service Worker cache names are all on the current version.
 
 Documentation-only changes normally do not need a product version bump unless a release marker is explicitly requested.
 

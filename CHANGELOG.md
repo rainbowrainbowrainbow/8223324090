@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.23 - CRM 66.23: release guardrails таймлайну
+
+### Таймлайн / deploy + cache proof / 26.05.2026 [codex]
+- **Timeline release proof** - додано `npm run release:timeline-proof -- <live-url>`, що перевіряє `/`, `/maysternya-doli`, live timeline assets і Service Worker cache names.
+- **Stale asset blocker** - proof окремо читає `timeline-context.js`, `timeline-interaction-model.js`, `timeline.js` і ловить старі `?v=` на timeline contexts.
+- **Rollback path задокументовано** - `docs/TIMELINE_RELEASE_GUARDRAILS.md` описує `git ls-remote origin deployed`, `git revert`, повторний deploy і post-rollback proof.
+- **Regression guardrail** - додано `tests/timeline-release-proof.test.js`, включений у `test:unit`, з негативним кейсом stale asset на `/maysternya-doli`.
+
+---
+
 ## v0.66.22 - CRM 66.22: UAT matrix таймлайну
 
 ### Таймлайн / browser UAT + regression matrix / 26.05.2026 [codex]

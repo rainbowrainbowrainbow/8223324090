@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.22 - CRM 66.22: UAT matrix таймлайну
+
+### Таймлайн / browser UAT + regression matrix / 26.05.2026 [codex]
+- **Executable regression matrix** - додано `tests/timeline-regression-matrix.test.js` для main/linked, same-line/cross-line, free/occupied, drag/resize, undo і context parity.
+- **Authenticated browser UAT blocker задокументовано** - Phase 4 не видає login screen за перевірений timeline: live drag/resize UAT потребує реальної сесії або `TEST_USER`/`TEST_PASS`.
+- **Операторський UAT checklist** - додано `docs/TIMELINE_UAT_REGRESSION_MATRIX.md` з production сценаріями для `/` і `/maysternya-doli`, очікуваними результатами та evidence points.
+- **Proof stack guardrail** - `tests/ui-check.js` перевіряє, що матриця, lifecycle coverage і UAT-документ лишаються підключеними до fast baseline.
+
+---
+
 ## v0.66.21 - CRM 66.21: lifecycle таймлайну
 
 ### Таймлайн / lifecycle + cancel / 26.05.2026 [codex]

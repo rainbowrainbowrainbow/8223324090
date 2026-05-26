@@ -4,6 +4,15 @@
 
 ---
 
+## v0.66.9 - CRM 66.9: Timeline assistant docking
+
+### Таймлайн / AI-помічник / 26.05.2026 [codex]
+- **Помічник більше не з'їжджає на toolbar таймлайну** - shared AI command bar отримав окремий grid-докінг у header саме для `timeline-dashboard-page`, тому не переходить поверх date/status/view controls.
+- **Вузькі екрани мають зарезервований другий ряд** - якщо header мусить скластися, assistant займає власний ряд у sticky topbar, а контент таймлайну починається нижче нього.
+- **Regression guardrail** - UI smoke фіксує timeline-specific docking contract, grid areas і mobile assistant row, щоб глобальні assistant overrides не повернули перекриття.
+
+---
+
 ## v0.66.7 - CRM 66.7: Smart credential paste
 
 ### Auth / credentials UX / 25.05.2026 [codex]

@@ -9187,6 +9187,101 @@ html[data-theme="light"] body[data-crm-page="dashboard"] .crm-assistant-rail .as
     color: #1e293b !important;
 }
 
+/* v0.66.8: timeline assistant topbar docking.
+   Timeline has a dense toolbar immediately under the sticky header, so the
+   shared assistant must stay in a reserved header grid instead of inheriting
+   the global flex geometry that can wrap over page controls. */
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted {
+    min-height: 64px !important;
+    padding: 8px 14px !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(360px, 1fr) auto auto !important;
+    grid-template-areas: "toggle assistant search user" !important;
+    align-items: center !important;
+    align-content: center !important;
+    justify-content: stretch !important;
+    gap: 10px !important;
+    overflow: visible !important;
+}
+
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .sidebar-toggle {
+    grid-area: toggle !important;
+    align-self: center !important;
+    justify-self: start !important;
+}
+
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    grid-area: assistant !important;
+    position: static !important;
+    width: min(760px, 100%) !important;
+    min-width: 0 !important;
+    max-width: 760px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    align-self: center !important;
+    justify-self: center !important;
+    order: 0 !important;
+    transform: none !important;
+}
+
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted > :where(#globalHeaderSearchBtn, .btn-search, .header-search-btn) {
+    grid-area: search !important;
+    margin: 0 !important;
+    align-self: center !important;
+    justify-self: end !important;
+}
+
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .user-panel {
+    grid-area: user !important;
+    margin: 0 !important;
+    min-width: max-content !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    align-self: center !important;
+    justify-self: end !important;
+}
+
+.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+.timeline-dashboard-page .crm-assistant-rail-host .crm-assistant-rail {
+    height: 48px !important;
+    max-height: 48px !important;
+    align-items: center !important;
+}
+
+@media (max-width: 1180px) {
+    .timeline-dashboard-page .header .header-content.assistant-rail-mounted {
+        grid-template-columns: auto minmax(300px, 1fr) auto auto !important;
+        gap: 8px !important;
+    }
+
+    .timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        width: 100% !important;
+        max-width: none !important;
+        justify-self: stretch !important;
+    }
+}
+
+@media (max-width: 860px) {
+    .timeline-dashboard-page .header .header-content.assistant-rail-mounted {
+        min-height: 118px !important;
+        grid-template-columns: auto minmax(0, 1fr) auto !important;
+        grid-template-areas:
+            "toggle search user"
+            "assistant assistant assistant" !important;
+        align-content: center !important;
+        row-gap: 6px !important;
+    }
+
+    .timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        justify-self: stretch !important;
+    }
+}
+
 @media (max-width: 1320px) {
     body[data-crm-page="dashboard"] .header .header-content.assistant-rail-mounted {
         grid-template-columns: auto auto minmax(430px, 1fr) auto auto !important;

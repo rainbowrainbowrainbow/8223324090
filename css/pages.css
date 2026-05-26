@@ -2691,6 +2691,12 @@ body.dark-mode .operations-pack-bar select {
 
 .cert-page-actions .cert-page-action-link {
     border-color: rgba(148, 163, 184, 0.32);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1.15;
+    text-align: center;
 }
 
 .cert-page-actions .cert-page-action-link.is-active,
@@ -2699,16 +2705,6 @@ body.dark-mode .operations-pack-bar select {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(20, 184, 166, 0.9));
     color: #ffffff;
     box-shadow: 0 12px 28px rgba(16, 185, 129, 0.24);
-}
-
-.cert-page-actions .cert-page-action-link.is-active::before,
-.cert-page-actions .cert-page-action-link[aria-current="page"]::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: currentColor;
-    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18);
 }
 
 .cert-page-actions .cert-page-action-link:focus-visible {

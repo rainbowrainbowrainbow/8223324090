@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.39">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.39">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.39">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.39">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.39">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.39">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.39">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.39">
-    <link rel="stylesheet" href="css/features.css?v=0.66.39">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.39">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.39">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.39">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.39">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.39">
+    <link rel="stylesheet" href="css/base.css?v=0.66.40">
+    <link rel="stylesheet" href="css/auth.css?v=0.66.40">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.40">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.40">
+    <link rel="stylesheet" href="css/timeline.css?v=0.66.40">
+    <link rel="stylesheet" href="css/panel.css?v=0.66.40">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.40">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.40">
+    <link rel="stylesheet" href="css/features.css?v=0.66.40">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.40">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.40">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.40">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.40">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.40">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.39 CRM 66.39: повний журнал акаунтів">✨ 0.66.39 CRM 66.39: повний журнал акаунтів</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.66.40 CRM 66.40: чистий стан сертифікатів">✨ 0.66.40 CRM 66.40: чистий стан сертифікатів</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.39 — CRM 66.39: повний журнал акаунтів</p>
+                <p class="tagline">AI First CRM v0.66.40 — CRM 66.40: чистий стан сертифікатів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.39: CRM 66.39: повний журнал акаунтів</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.40: CRM 66.40: чистий стан сертифікатів</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1332,13 +1332,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.66.39 — CRM 66.39: повний журнал акаунтів</h4>
+                    <h4>v0.66.40 — CRM 66.40: чистий стан сертифікатів</h4>
                     <ul>
-                        <li><b>Журнал акаунта став domain-рівня</b> — login success/failure, current-device logout, password changes, admin reset, activation/deactivation і role/access changes пишуться як semantic <code>account_security_events</code>.</li>
-                        <li><b>Access editor більше не втрачає контекст</b> — role update зберігає <code>extra_roles</code> і <code>page_allowlist</code>, а audit metadata містить old/new role, additional roles і page allowlist.</li>
-                        <li><b>Actor + subject тепер видимі</b> — profile security journal показує хто діяв і чий акаунт змінено, тому admin-дії над іншим користувачем більше не виглядають як безконтекстний запис.</li>
-                        <li><b>Failed-login path без секретів</b> — wrong password, inactive account і nonexistent user логуються без паролів/токенів; для невідомого login зберігається тільки короткий hash і reason.</li>
-                        <li><b>Regression guard</b> — auth lifecycle test покриває create, role/access, password change/reset, login success/failure, logout і journal listing.</li>
+                        <li><b>Сертифікати</b> — header на <code>/certificates</code>, <code>/certificates/new</code> і <code>/certificates/batch</code> тепер підсвічує тільки поточний route через <code>is-active</code> + <code>aria-current</code>.</li>
+                        <li><b>Green first-letter glitch прибрано</b> — active-кнопка більше не малює внутрішній <code>::before</code>-маркер, який виглядав як окрема зелена підсвітка першої літери.</li>
+                        <li><b>CTA синхронізовано</b> — зелений primary-акцент тепер належить саме вибраному режиму: реєстр, одиночна видача або пакетна видача.</li>
+                        <li><b>Regression guard</b> — UI smoke перевіряє, що certificates nav не повертає pseudo-marker і зберігає route-driven active contract.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9633,29 +9632,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.39"></script>
-    <script src="js/timeline-visibility.js?v=0.66.39"></script>
-    <script src="js/config.js?v=0.66.39"></script>
-    <script src="js/api.js?v=0.66.39"></script>
-    <script src="js/ui.js?v=0.66.39"></script>
-    <script src="js/auth.js?v=0.66.39"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.39"></script>
-    <script src="js/timeline.js?v=0.66.39"></script>
-    <script src="js/booking.js?v=0.66.39"></script>
-    <script src="js/settings.js?v=0.66.39"></script>
-    <script src="js/booking-form.js?v=0.66.39"></script>
-    <script src="js/booking-linked.js?v=0.66.39"></script>
-    <script src="js/settings-dashboard.js?v=0.66.39"></script>
-    <script src="js/settings-history.js?v=0.66.39"></script>
-    <script src="js/settings-afisha.js?v=0.66.39"></script>
-    <script src="js/settings-certificates.js?v=0.66.39"></script>
-    <script src="js/offline.js?v=0.66.39"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.39"></script>
-    <script src="js/search.js?v=0.66.39"></script>
-    <script src="js/ws.js?v=0.66.39"></script>
-    <script src="js/app.js?v=0.66.39"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.39"></script>
-    <script src="js/components/sidebar.js?v=0.66.39"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.39"></script>
+    <script src="js/timeline-context.js?v=0.66.40"></script>
+    <script src="js/timeline-visibility.js?v=0.66.40"></script>
+    <script src="js/config.js?v=0.66.40"></script>
+    <script src="js/api.js?v=0.66.40"></script>
+    <script src="js/ui.js?v=0.66.40"></script>
+    <script src="js/auth.js?v=0.66.40"></script>
+    <script src="js/timeline-interaction-model.js?v=0.66.40"></script>
+    <script src="js/timeline.js?v=0.66.40"></script>
+    <script src="js/booking.js?v=0.66.40"></script>
+    <script src="js/settings.js?v=0.66.40"></script>
+    <script src="js/booking-form.js?v=0.66.40"></script>
+    <script src="js/booking-linked.js?v=0.66.40"></script>
+    <script src="js/settings-dashboard.js?v=0.66.40"></script>
+    <script src="js/settings-history.js?v=0.66.40"></script>
+    <script src="js/settings-afisha.js?v=0.66.40"></script>
+    <script src="js/settings-certificates.js?v=0.66.40"></script>
+    <script src="js/offline.js?v=0.66.40"></script>
+    <script src="js/crm-feature-registry.js?v=0.66.40"></script>
+    <script src="js/search.js?v=0.66.40"></script>
+    <script src="js/ws.js?v=0.66.40"></script>
+    <script src="js/app.js?v=0.66.40"></script>
+    <script src="js/kleshnya-widget.js?v=0.66.40"></script>
+    <script src="js/components/sidebar.js?v=0.66.40"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.40"></script>
 </body>
 </html>

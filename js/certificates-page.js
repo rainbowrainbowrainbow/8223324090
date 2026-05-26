@@ -138,9 +138,11 @@
     }
 
     function syncHeaderActiveState(mode) {
+        document.body?.setAttribute('data-cert-mode', mode);
         document.querySelectorAll('.cert-page-actions [data-cert-mode]').forEach((link) => {
             const active = link.dataset.certMode === mode;
             link.classList.toggle('is-active', active);
+            link.toggleAttribute('data-cert-primary-cta', active);
             if (active) link.setAttribute('aria-current', 'page');
             else link.removeAttribute('aria-current');
         });

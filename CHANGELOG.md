@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.40 - CRM 66.40: чистий стан сертифікатів
+
+### Сертифікати / навігація / 26.05.2026 [codex]
+- **Active state у header сертифікатів став route-driven і чистим** - `/certificates`, `/certificates/new` і `/certificates/batch` підсвічують тільки свій поточний режим через `is-active` + `aria-current`.
+- **Прибрано green first-letter glitch** - active-кнопка більше не має внутрішнього `::before`-маркера, який виглядав як окрема зелена підсвітка першої літери.
+- **CTA синхронізовано з вибраним режимом** - активний route-control отримує `data-cert-primary-cta`, тому зелений акцент належить саме поточному режиму: реєстр, одиночна видача або пакетна видача.
+- **Regression guard** - UI smoke перевіряє, що certificates nav не повертає pseudo-marker і зберігає semantic route-driven active contract.
+
+---
+
 ## v0.66.39 - CRM 66.39: повний журнал акаунтів
 
 ### Auth / account journal / 26.05.2026 [codex]

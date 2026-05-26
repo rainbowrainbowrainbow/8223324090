@@ -9335,3 +9335,101 @@ html[data-theme="light"] body[data-crm-page="dashboard"] .crm-assistant-rail .as
         overflow-x: auto !important;
     }
 }
+
+/* v0.66.13: timeline assistant hard-docked inside the header.
+   The timeline has dense controls immediately below the topbar, so the command
+   bar must be positioned by the header itself, not by inherited flex/grid
+   geometry from older assistant shells. */
+body.timeline-dashboard-page .header {
+    min-height: 76px !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted {
+    position: relative !important;
+    min-height: 76px !important;
+    height: 76px !important;
+    padding: 0 16px !important;
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    position: absolute !important;
+    left: 16px !important;
+    top: 14px !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: min(920px, calc(100% - 360px)) !important;
+    min-width: 520px !important;
+    max-width: 920px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    transform: none !important;
+    z-index: 1 !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+body.timeline-dashboard-page .crm-assistant-rail-host .crm-assistant-rail {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    margin: 0 !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .assistant-command-form,
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail .assistant-rail-inline-form {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > :where(#globalHeaderSearchBtn, .btn-search, .header-search-btn),
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .user-panel {
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .sidebar-toggle {
+    display: none !important;
+}
+
+@media (max-width: 1180px) {
+    body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        width: min(760px, calc(100% - 300px)) !important;
+        min-width: 420px !important;
+    }
+}
+
+@media (max-width: 860px) {
+    body.timeline-dashboard-page .header {
+        min-height: 124px !important;
+    }
+
+    body.timeline-dashboard-page .header .header-content.assistant-rail-mounted {
+        height: auto !important;
+        min-height: 124px !important;
+        padding: 8px 12px !important;
+        flex-wrap: wrap !important;
+        align-content: center !important;
+    }
+
+    body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        position: static !important;
+        order: 20 !important;
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: 48px !important;
+        margin: 4px 0 0 !important;
+    }
+}

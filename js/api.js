@@ -172,6 +172,55 @@ function getAuthHeaders(withContentType = true) {
     return headers;
 }
 
+function apiHeaderObject(headers = {}) {
+    if (!headers) return {};
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+        const result = {};
+        headers.forEach((value, key) => { result[key] = value; });
+        return result;
+    }
+    if (Array.isArray(headers)) return Object.fromEntries(headers);
+    return { ...headers };
+}
+
+function apiHasAuthHeader(headers = {}) {
+    return Object.keys(headers).some(key => String(key).toLowerCase() === 'authorization');
+}
+
+function apiWithBearer(headers = {}, token = '', force = false) {
+    const next = apiHeaderObject(headers);
+    if (token && (force || !apiHasAuthHeader(next))) {
+        Object.keys(next).forEach(key => {
+            if (String(key).toLowerCase() === 'authorization') delete next[key];
+        });
+        next.Authorization = `Bearer ${token}`;
+    }
+    return next;
+}
+
+async function apiFetchWithAuthRetry(url, opts = {}) {
+    const request = { ...opts };
+    const originalHeaders = apiHeaderObject(opts.headers || {});
+    let token = localStorage.getItem('pzp_token') || localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY);
+    if (!token && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) token = await apiRefreshAuthToken();
+    request.headers = apiWithBearer(originalHeaders, token);
+
+    let response = await fetch(url, request);
+    if ((response.status === 401 || response.status === 403) && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
+        const refreshedToken = await apiRefreshAuthToken();
+        if (refreshedToken) {
+            response = await fetch(url, {
+                ...opts,
+                headers: apiWithBearer(originalHeaders, refreshedToken, true)
+            });
+        }
+    }
+    if (response && (response.status === 401 || response.status === 403) && typeof handleAuthError === 'function') {
+        if (handleAuthError(response)) return null;
+    }
+    return response;
+}
+
 // v5.0: Handle 401/403 — redirect to login
 function handleAuthError(response) {
     if (response.status === 401 || response.status === 403) {

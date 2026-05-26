@@ -1792,10 +1792,10 @@ const CopilotPage = (() => {
         if (!title) return;
 
         try {
-            const token = localStorage.getItem('pzp_token');
-            const res = await fetch('/api/tasks', {
+            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+            const res = await fetchWithAuth('/api/tasks', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title, description,
                     assigned_to: assignee || undefined,

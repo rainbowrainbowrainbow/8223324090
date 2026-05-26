@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 
 function response(status, body = {}) {
     return {
@@ -73,6 +74,50 @@ test('apiVerifyToken refreshes a stored refresh session when the legacy token is
     assert.equal(store.get('pzp_access_token'), 'access-new');
     assert.equal(store.get('pzp_refresh_token'), 'refresh-new');
     assert.match(store.get('pzp_current_user'), /new\.operator/);
+});
+
+test('apiFetchWithAuthRetry refreshes before protected task mutations when the legacy token is missing', async () => {
+    const calls = [];
+    const { context, store } = loadApi(async (url, options = {}) => {
+        calls.push({ url, options });
+        if (url === '/api/auth/refresh') {
+            return response(200, {
+                accessToken: 'task-access-new',
+                refreshToken: 'task-refresh-new',
+                user: { id: 11, username: 'task.user' }
+            });
+        }
+        if (url === '/api/tasks') {
+            assert.equal(options.headers.Authorization, 'Bearer task-access-new');
+            assert.equal(options.headers['Content-Type'], 'application/json');
+            return response(200, { success: true, task: { id: 901 } });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    }, {
+        pzp_refresh_token: 'task-refresh-old',
+        pzp_current_user: JSON.stringify({ id: 11, username: 'task.user' })
+    });
+
+    const res = await context.apiFetchWithAuthRetry('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'refresh-protected task' })
+    });
+    const data = await res.json();
+    assert.equal(data.success, true);
+    assert.deepEqual(calls.map(call => call.url), ['/api/auth/refresh', '/api/tasks']);
+    assert.equal(store.get('pzp_token'), 'task-access-new');
+    assert.equal(store.get('pzp_refresh_token'), 'task-refresh-new');
+});
+
+test('tasks page lets apiVerifyToken own refresh-token bootstrap instead of prechecking legacy token', () => {
+    const initStart = TASKS_PAGE_CODE.indexOf('async function initPage()');
+    const verifyCall = TASKS_PAGE_CODE.indexOf('user = await apiVerifyToken()', initStart);
+    const initAuthBlock = TASKS_PAGE_CODE.slice(initStart, verifyCall);
+    assert.ok(initStart >= 0);
+    assert.ok(verifyCall > initStart);
+    assert.doesNotMatch(initAuthBlock, /localStorage\.getItem\('pzp_token'\)/);
+    assert.doesNotMatch(initAuthBlock, /window\.location\.href = '\/'/);
 });
 
 test('apiVerifyToken retries verify once after an expired stored token', async () => {

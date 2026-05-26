@@ -12,6 +12,8 @@ function readRepoFile(...parts) {
 describe('operations flow v2 comprehensive contracts', () => {
     const migration = readRepoFile('db', 'migrations', '178_operations_flow_v2_comprehensive.sql');
     const tasksRoute = readRepoFile('routes', 'tasks.js');
+    const chatRoute = readRepoFile('routes', 'chat.js');
+    const kleshnyaService = readRepoFile('services', 'kleshnya.js');
     const leadsRoute = readRepoFile('routes', 'leads.js');
     const customersRoute = readRepoFile('routes', 'customers.js');
     const analyticsRoute = readRepoFile('routes', 'analytics.js');
@@ -38,6 +40,18 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(tasksRoute, /IS DISTINCT FROM/);
         assert.match(tasksRoute, /COALESCE\(t\.assigned_to, ''\) IS DISTINCT FROM COALESCE/);
         assert.doesNotMatch(tasksRoute, /TaskEngineV2|taskRoutingV2|autoRouteChatTask/i);
+    });
+
+    it('keeps task create sources typed-owner aware instead of silently creating invisible legacy tasks', () => {
+        assert.match(kleshnyaService, /async function resolveTaskOwnerSnapshot/);
+        assert.match(kleshnyaService, /owner_user_id: ownerSnapshot\.owner_user_id/);
+        assert.match(kleshnyaService, /ownerSnapshot\.assigned_to, ownerSnapshot\.owner/);
+        assert.match(chatRoute, /owner_user_id/);
+        assert.match(chatRoute, /created_by_user_id/);
+        assert.match(chatRoute, /'personal', 'reminder', 'private', 'inbox'/);
+        assert.match(tasksRoute, /task: normalizeTaskPayload\(task\)/);
+        assert.match(tasksRoute, /const ownerUserId = parseInt\(task\.owner_user_id/);
+        assert.match(tasksRoute, /const FILTERABLE_STATUSES = \[\.\.\.VALID_STATUSES, 'archived', 'cancelled', 'overdue'\]/);
     });
 
     it('stores multi-celebrant lead data without breaking legacy single-child rows', () => {

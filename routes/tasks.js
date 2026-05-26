@@ -148,6 +148,7 @@ function taskAssigneeChanged(oldTask = {}, newTask = {}) {
 }
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
+const FILTERABLE_STATUSES = [...VALID_STATUSES, 'archived', 'cancelled', 'overdue'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_TYPES = ['human', 'bot'];
@@ -701,7 +702,7 @@ router.get('/', async (req, res) => {
         let idx = 1;
 
         if (status) {
-            const statuses = String(status).split(',').map(s => s.trim()).filter(s => VALID_STATUSES.includes(s));
+            const statuses = String(status).split(',').map(s => s.trim()).filter(s => FILTERABLE_STATUSES.includes(s));
             if (statuses.length === 1) {
                 conditions.push(`t.status = $${idx++}`);
                 params.push(statuses[0]);
@@ -2479,7 +2480,7 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             } catch (e) { /* gamification not ready */ }
         }
 
-        res.json({ success: true, task });
+        res.json({ success: true, task: normalizeTaskPayload(task) });
     } catch (err) {
         if (err.code || err.statusCode) {
             return sendTaskActionError(res, err);
@@ -2523,9 +2524,19 @@ router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'
         const task = result.rows[0];
         const coinsReward = reviewScore * 5;
         try {
-            const assignedTo = task.assigned_to;
-            if (assignedTo) {
-                const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [assignedTo]);
+            const ownerUserId = parseInt(task.owner_user_id || (/^\d+$/.test(String(task.assigned_to || '')) ? task.assigned_to : 0), 10) || null;
+            const assignedTo = String(task.assigned_to || task.owner || '').trim();
+            if (ownerUserId || assignedTo) {
+                const userResult = ownerUserId
+                    ? await pool.query('SELECT username FROM users WHERE id = $1', [ownerUserId])
+                    : await pool.query(
+                        `SELECT username
+                         FROM users
+                         WHERE LOWER(username) = LOWER($1) OR LOWER(COALESCE(name, '')) = LOWER($1)
+                         ORDER BY id
+                         LIMIT 1`,
+                        [assignedTo]
+                    );
                 if (userResult.rows.length > 0) {
                     const gamification = require('../services/gamification');
                     await gamification.awardCoins(userResult.rows[0].username, coinsReward, `Оцінка задачі: ${reviewScore}/10`, 'task_review');

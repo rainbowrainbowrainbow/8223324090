@@ -1372,8 +1372,8 @@
     }
 
     async function createTaskFromCommand(payload = {}) {
-        const token = readStorage('pzp_token', '');
-        if (!token) throw new Error('auth_required');
+        const sessionUser = getSessionUser();
+        const ownerUserId = sessionUser?.id || sessionUser?.userId || null;
         const body = {
             title: compactText(payload.title, 180),
             date: payload.date || assistantToday(0),
@@ -1387,16 +1387,16 @@
             workflow_state: payload.task_kind === 'waiting' ? 'waiting' : 'inbox',
             source_type: payload.source_type || 'assistant_command',
             source_id: payload.source_id || null,
-            source_module: payload.source_module || getPageId()
+            source_module: payload.source_module || getPageId(),
+            ownerUserId
         };
-        const response = await fetch('/api/tasks', {
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const response = await fetchWithAuth('/api/tasks', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
+        if (!response) throw new Error('auth_required');
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             const err = new Error(data.message || data.error || `task_create_http_${response.status}`);

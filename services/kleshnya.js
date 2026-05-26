@@ -57,6 +57,61 @@ function getCurrentMonth() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, created_by_user_id, created_by }) {
+    const explicitId = Number(owner_user_id || 0);
+    const initial = {
+        assigned_to: assigned_to || null,
+        owner: owner || null,
+        owner_user_id: Number.isInteger(explicitId) && explicitId > 0 ? explicitId : null
+    };
+    const createdById = Number(created_by_user_id || 0);
+    const lookupText = String(assigned_to || owner || created_by || '').trim();
+    const systemActors = new Set(['system', 'kleshnya', 'rule_engine', 'scheduler', 'graduation-ops', 'svitlana-bot']);
+
+    try {
+        let result = null;
+        if (Number.isInteger(explicitId) && explicitId > 0) {
+            result = await pool.query(
+                `SELECT id, username, name
+                 FROM users
+                 WHERE id = $1 AND COALESCE(is_active, true) = true
+                 LIMIT 1`,
+                [explicitId]
+            );
+        } else if (lookupText && !systemActors.has(lookupText.toLowerCase())) {
+            result = await pool.query(
+                `SELECT id, username, name
+                 FROM users
+                 WHERE COALESCE(is_active, true) = true
+                   AND (LOWER(username) = LOWER($1) OR LOWER(COALESCE(name, '')) = LOWER($1))
+                 ORDER BY id
+                 LIMIT 1`,
+                [lookupText]
+            );
+        } else if (Number.isInteger(createdById) && createdById > 0) {
+            result = await pool.query(
+                `SELECT id, username, name
+                 FROM users
+                 WHERE id = $1 AND COALESCE(is_active, true) = true
+                 LIMIT 1`,
+                [createdById]
+            );
+        }
+
+        const user = result?.rows?.[0];
+        if (!user) return initial;
+        const label = user.name || user.username || `User #${user.id}`;
+        return {
+            assigned_to: initial.assigned_to || label,
+            owner: initial.owner || label,
+            owner_user_id: user.id
+        };
+    } catch (err) {
+        log.warn(`Task owner resolution skipped: ${err.message}`);
+        return initial;
+    }
+}
+
 // --- Core functions ---
 
 /**
@@ -82,13 +137,20 @@ async function createTask(data) {
 
     if (!title || !title.trim()) throw new Error('title required');
 
+    const ownerSnapshot = await resolveTaskOwnerSnapshot({
+        assigned_to,
+        owner,
+        owner_user_id,
+        created_by_user_id,
+        created_by
+    });
     const policy = control_policy || { reminder_minutes: [60, 30, 10], escalation_after_minutes: 120 };
     const duplicate = await findActiveDuplicateTask(pool, {
         title,
         date,
         deadline,
         remind_at,
-        owner_user_id,
+        owner_user_id: ownerSnapshot.owner_user_id,
         category,
         subcategory,
         source_type,
@@ -124,8 +186,8 @@ async function createTask(data) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
                  $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,
                  $39,$40,$41,$42,$43,$44,$45) RETURNING *`,
-        [title.trim(), description || null, date || null, priority, assigned_to || null, owner || null,
-         owner_user_id || null, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
+        [title.trim(), description || null, date || null, priority, ownerSnapshot.assigned_to, ownerSnapshot.owner,
+         ownerSnapshot.owner_user_id, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
          category, subcategory || null, checklist_template_key || null,
          source_entity_type || null, source_entity_id || null, pack_id || null, pack_status || null,
@@ -143,11 +205,11 @@ async function createTask(data) {
     await logTaskAction(task.id, 'created', null, title, created_by);
 
     // Notify assigned person (fire-and-forget — never block task creation)
-    if (assigned_to && task_type === 'human') {
+    if (task.assigned_to && task_type === 'human') {
         notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
     }
 
-    log.info(`Task created: #${task.id} "${title}" [${task_type}] assigned=${assigned_to || '—'} owner=${owner || '—'}`);
+    log.info(`Task created: #${task.id} "${title}" [${task_type}] assigned=${task.assigned_to || '—'} owner=${task.owner || '—'}`);
     return task;
 }
 

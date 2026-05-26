@@ -1503,7 +1503,18 @@ body.dark-mode .batch-qty-option:has(input:focus-visible) {
 }
 
 .cert-image-preview {
-    margin-bottom: 12px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin: 0 auto 16px;
+}
+
+#certDetailModal .cert-detail-modal-content {
+    max-width: min(1040px, calc(100vw - 32px));
+}
+
+#certDetailModal .cert-image-preview {
+    max-width: 960px;
 }
 
 .cert-preview-fallback {
@@ -1519,8 +1530,12 @@ body.dark-mode .batch-qty-option:has(input:focus-visible) {
 
 .cert-image-preview canvas {
     display: block;
-    width: 100%;
-    height: auto;
+    width: min(100%, 960px);
+    max-width: 100%;
+    height: auto !important;
+    aspect-ratio: 3 / 2;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
 /* Certificate detail modal */

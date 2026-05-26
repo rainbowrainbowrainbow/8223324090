@@ -299,11 +299,13 @@
             const headers = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders()
                 : { 'Content-Type': 'application/json' };
-            const response = await fetch(`${base}/tasks`, {
+            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+            const response = await fetchWithAuth(`${base}/tasks`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(data)
             });
+            if (!response) return null;
             if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409 && typeof options.onDuplicate === 'function') {

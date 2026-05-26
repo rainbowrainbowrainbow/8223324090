@@ -1473,8 +1473,9 @@
         text-align: center;
     }
     .cert-image-preview canvas {
-        max-height: 42dvh;
-        object-fit: contain;
+        width: 100%;
+        max-width: 100%;
+        height: auto !important;
     }
     .cert-preview-fallback {
         font-size: 13px;

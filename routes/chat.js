@@ -205,15 +205,19 @@ async function createChatReminderTask({ pool, message, user, remindAtIso }) {
 
         const taskRes = await client.query(`
             INSERT INTO tasks (
-                title, description, deadline, priority, status, created_by, category,
-                task_type, dependency_ids, control_policy, source_type, source_id, type
+                title, description, deadline, priority, status, assigned_to, owner, owner_user_id,
+                created_by, created_by_user_id, category, task_type, dependency_ids, control_policy,
+                source_type, source_id, type, task_mode, task_kind, visibility, workflow_state,
+                remind_at, source_module
             )
             VALUES (
-                $1, $2, $3, 'normal', 'todo', $4, 'admin',
-                'human', ARRAY[]::INTEGER[], $5::jsonb, 'chat_reminder', $6, 'manual'
+                $1, $2, $3, 'normal', 'todo', $4, $4, $5,
+                $4, $5, 'admin', 'human', ARRAY[]::INTEGER[], $6::jsonb,
+                'chat_reminder', $7, 'manual', 'personal', 'reminder', 'private', 'inbox',
+                $3, 'chat'
             )
             RETURNING id
-        `, [title, description, remindAtIso, createdBy, controlPolicy, sourceId]);
+        `, [title, description, remindAtIso, createdBy, userId, controlPolicy, sourceId]);
 
         const taskId = taskRes.rows[0].id;
         await client.query(`

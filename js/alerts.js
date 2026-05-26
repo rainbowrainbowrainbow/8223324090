@@ -39,6 +39,14 @@ function _saveRead(s) { localStorage.setItem(_ALERTS_KEY, JSON.stringify([...s])
 function _getDismissed() { try { return new Set(JSON.parse(localStorage.getItem(_ALERTS_DISMISSED_KEY) || '[]')); } catch { return new Set(); } }
 function _saveDismissed(s) { localStorage.setItem(_ALERTS_DISMISSED_KEY, JSON.stringify([...s])); }
 
+function _alertCurrentUserId() {
+    const user = window.AppState?.currentUser || (() => {
+        try { return JSON.parse(localStorage.getItem('pzp_current_user') || 'null'); } catch { return null; }
+    })();
+    const id = Number(user?.id || user?.userId || 0);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 function _alertsFingerprint(alerts) {
     return (alerts || [])
         .map(a => [a.id || '', a.level || '', a.link || '', a.title || '', a.message || ''].join('::'))
@@ -57,9 +65,9 @@ function _replaceAlertsData(alerts) {
 async function loadAlertBell() {
     const badge = document.getElementById('alertBadge');
     try {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) return;
-        const res = await fetch('/api/dashboard/alerts', { headers: { 'Authorization': `Bearer ${token}` } });
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
+        if (!res) return;
         if (!res.ok) return;
         const data = await res.json();
         const alerts = data.alerts || [];
@@ -121,8 +129,9 @@ async function _renderPanel() {
     const p = document.getElementById('alertsPanel');
     if (!p) return;
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/dashboard/alerts', { headers: { 'Authorization': `Bearer ${token}` } });
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
+        if (!res) return;
         if (!res.ok) throw new Error('API error');
         const data = await res.json();
         const alerts = data.alerts || [];
@@ -260,12 +269,12 @@ function _isOmniAccountAlert(a) {
 async function _quickAction(alertId, action) {
     const alert = _alertsData.find(a => a.id === alertId);
     if (!alert) return;
-    const token = localStorage.getItem('pzp_token');
 
     if (action === 'confirm' && alert.bookingId) {
         try {
-            const res = await fetch(`/api/bookings/${encodeURIComponent(alert.bookingId)}/confirm`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+            const res = await fetchWithAuth(`/api/bookings/${encodeURIComponent(alert.bookingId)}/confirm`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ source: 'alerts' })
             });
             if (res.ok) {
@@ -285,8 +294,9 @@ async function _quickAction(alertId, action) {
         const taskId = alert.taskId;
         if (taskId) {
             try {
-                await fetch(`/api/tasks/${taskId}/reschedule`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+                await fetchWithAuth(`/api/tasks/${taskId}/reschedule`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         schedule: { date: newDate, slot: 'morning', durationMinutes: 30 },
                         sourceSurface: 'alerts_panel'
@@ -306,9 +316,10 @@ async function _quickAction(alertId, action) {
         ], { icon: '🛒' });
         if (!result) return;
         try {
-            await fetch('/api/tasks', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ title: `Замовити: ${result.name} (${result.qty} шт)`, description: result.note || '', priority: 'high', category: 'purchase', source_type: 'alert' })
+            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+            await fetchWithAuth('/api/tasks', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: `Замовити: ${result.name} (${result.qty} шт)`, description: result.note || '', priority: 'high', category: 'purchase', source_type: 'alert', ownerUserId: _alertCurrentUserId() })
             });
             if (typeof showNotification === 'function') showNotification('Задачу на замовлення створено!', 'success');
             _dismissAlert(alertId);
@@ -405,9 +416,9 @@ async function _submitAlertTask(btn, alertId) {
     if (!text) return;
     btn.disabled = true; btn.textContent = '⏳';
     try {
-        const token = localStorage.getItem('pzp_token');
-        const resp = await fetch('/api/tasks', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const resp = await fetchWithAuth('/api/tasks', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 title: text.slice(0, 100),
                 description: text,
@@ -420,10 +431,12 @@ async function _submitAlertTask(btn, alertId) {
                 source_type: 'alert',
                 source_id: alertId,
                 source_module: 'alerts',
+                ownerUserId: _alertCurrentUserId(),
                 related_entity_type: alert?.type || 'alert',
                 related_entity_id: alertId
             })
         });
+        if (!resp) return;
         if (resp.ok) {
             const data = await resp.json();
             const taskId = data.task?.id || data.id || '';

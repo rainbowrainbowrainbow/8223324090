@@ -733,8 +733,6 @@ function renderTasksFatalError(err) {
 async function initPage() {
     if (typeof initDarkMode === 'function') initDarkMode();
     bootStep('auth:start');
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
 
     let user;
     try {
@@ -915,14 +913,16 @@ async function apiCreateTask(data) {
         });
     }
     try {
-        const response = await fetch(`${API_BASE}/tasks`, {
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const response = await fetchWithAuth(`${API_BASE}/tasks`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
+        if (!response) return null;
         if (handleAuthError(response)) return null;
         if (response.status === 409) {
             const err = await response.json();
             showNotification(err.message || 'Активний дубль не створено', 'warning');
-            return null;
+            return { success: false, duplicate: true, ...err };
         }
         if (!response.ok) throw new Error('create task API error');
         return await response.json();
@@ -1967,10 +1967,10 @@ async function restoreTask(taskId) {
     const result = await apiPatchTaskStatus(taskId, 'todo');
     if (result?.success) {
         // Clear archive fields
-        const token = localStorage.getItem('pzp_token');
-        await fetch(`/api/tasks/${taskId}`, {
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        await fetchWithAuth(`/api/tasks/${taskId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'todo', health_score: 50 })
         }).catch(() => {});
         if (typeof showNotification === 'function') showNotification('Задачу відновлено', 'success');
@@ -3182,6 +3182,7 @@ async function addTask() {
         const data = buildTaskCreatePayload(drafts[i]);
         const result = await apiCreateTask(data);
         if (!result || !result.success) {
+            if (!createdTasks.length && result?.duplicate) return;
             if (createdTasks.length) {
                 showNotification(`Створено ${createdTasks.length} з ${drafts.length} задач. Задача #${i + 1} не збережена.`, 'warning');
                 await loadAllTasks();
@@ -3592,10 +3593,10 @@ async function markTaskWaiting(event, taskId) {
     }
     const task = allTasks.find(t => Number(t.id) === Number(taskId));
     if (!task) return;
-    const token = localStorage.getItem('pzp_token');
-    const response = await fetch(`/api/tasks/${taskId}`, {
+    const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+    const response = await fetchWithAuth(`/api/tasks/${taskId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             title: task.title,
             version: task.version,
@@ -3915,8 +3916,9 @@ function bindTaskDetailSubtasks() {
 
 async function openTaskDetail(taskId) {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/tasks/${taskId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await fetchWithAuth(`/api/tasks/${taskId}`, { headers: {} });
+        if (!res) return;
         if (!res.ok) { showNotification('Задачу не знайдено', 'error'); return; }
         const task = await res.json();
         const t = task.data || task;
@@ -4286,7 +4288,6 @@ async function saveTaskDetail(taskId) {
         return;
     }
     try {
-        const token = localStorage.getItem('pzp_token');
         const category = document.getElementById('_tdCategory')?.value || 'admin';
         const subcategory = selectedSubcategoryFor(category, '_tdSubcategory');
         const scheduleDate = document.getElementById('_tdScheduleDate')?.value || getTodayStr();
@@ -4317,11 +4318,13 @@ async function saveTaskDetail(taskId) {
             subtasks: readTaskDetailSubtasks(),
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
-        const res = await fetch(`/api/tasks/${taskId}`, {
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await fetchWithAuth(`/api/tasks/${taskId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
+        if (!res) return;
         if (res.ok) {
             await closeTaskDetailOverlay(true);
             showNotification('Задачу збережено');
@@ -4340,12 +4343,13 @@ async function quickChangeStatus(taskId, newStatus) {
         return;
     }
     try {
-        const token = localStorage.getItem('pzp_token');
-        await fetch(`/api/tasks/${taskId}/status`, {
+        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const res = await fetchWithAuth(`/api/tasks/${taskId}/status`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
         });
+        if (!res) return;
         await closeTaskDetailOverlay(true);
         showNotification('Статус змінено');
         await loadAllTasks();

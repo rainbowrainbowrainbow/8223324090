@@ -819,10 +819,10 @@
         try { userName = JSON.parse(user).name || JSON.parse(user).username; } catch (e) {}
 
         try {
-            var token = getToken();
-            var res = await fetch('/api/tasks', {
+            var fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+            var res = await fetchWithAuth('/api/tasks', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: emoji + ' ' + label + ': ' + title,
                     description: (reportDesc.value.trim() ? reportDesc.value.trim() + '\n\n' : '') + 'Від: ' + userName,

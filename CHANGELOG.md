@@ -4,6 +4,26 @@
 
 ---
 
+## v0.66.30 - CRM 66.30: превʼю сертифікатів без стискання
+
+### Сертифікати / detail modal / 26.05.2026 [codex]
+- **Legacy detail modal став ширшим** - `#certDetailModal` отримав certificate-specific modal width, тому превʼю більше не стискається у стандартний вузький `modal-content`.
+- **Canvas показується ratio-safe** - preview canvas отримує окремий клас і CSS з природним співвідношенням `3 / 2`, `height: auto` та без inline resize-стилів.
+- **Mobile стискання прибрано** - mobile CSS більше не ставить `max-height: 42dvh` прямо на canvas, щоб не ламати aspect ratio; touch fallback для iPhone лишився.
+- **Regression coverage** - UI smoke перевіряє legacy cert modal class, ratio-safe canvas styling і заборону повернення старого mobile max-height blocker.
+
+---
+
+## v0.66.29 - CRM 66.29: надійні задачі
+
+### Задачі / створення / видача / 26.05.2026 [codex]
+- **Refresh-aware створення задач** - `Tasks`, `Alerts`, `Assistant`, `Copilot` і `Kleshnya` використовують спільний auth fetch з одним refresh retry, тому валідна refresh-сесія більше не виглядає як "неавторизовано" під час створення чи оновлення задач.
+- **Typed owner для автоматичних джерел** - Kleshnya й chat reminders нормалізують `assigned_to`, `owner`, `owner_user_id`, `created_by_user_id`, `task_mode`, `visibility` і `workflow_state`, щоб задачі не створювались "невидимими" для відповідального.
+- **Чесні помилки й статуси** - duplicate create більше не перекривається generic error, фільтри підтримують архівні/скасовані статуси, PATCH status повертає нормалізовану задачу, а review/reward використовує реальний `owner_user_id`.
+- **Regression coverage** - додано фокусні тести для refresh-aware protected task mutations, відсутності legacy-token precheck, typed-owner джерел, chat reminders, normalized status payload і reward target resolution.
+
+---
+
 ## v0.66.28 - CRM 66.28: стабільні auth-сесії
 
 ### Auth / session repair / 26.05.2026 [codex]

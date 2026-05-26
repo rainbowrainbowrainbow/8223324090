@@ -2974,10 +2974,7 @@ async function showCertDetail(id, options = {}) {
             try {
                 const canvas = await generateCertificateCanvas(cert);
                 preview.innerHTML = '';
-                canvas.style.width = '100%';
-                canvas.style.height = 'auto';
-                canvas.style.borderRadius = '8px';
-                canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)';
+                canvas.className = 'cert-detail-preview-canvas';
                 preview.appendChild(canvas);
             } catch (previewErr) {
                 console.warn('Certificate preview generation failed:', previewErr);

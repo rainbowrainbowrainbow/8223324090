@@ -156,9 +156,19 @@ function createFakePool() {
                             description: params[1],
                             deadline: params[2],
                             created_by: params[3],
+                            assigned_to: params[3],
+                            owner: params[3],
+                            owner_user_id: params[4],
+                            created_by_user_id: params[4],
                             source_type: 'chat_reminder',
-                            source_id: params[5],
-                            status: 'todo'
+                            source_id: params[6],
+                            status: 'todo',
+                            task_mode: 'personal',
+                            task_kind: 'reminder',
+                            visibility: 'private',
+                            workflow_state: 'inbox',
+                            remind_at: params[2],
+                            source_module: 'chat'
                         };
                         pendingTasks.push(row);
                         state.taskInserts.push(row);
@@ -247,6 +257,9 @@ describe('chat reminder idempotency', () => {
         assert.equal(second.data.taskId, first.data.taskId);
         assert.equal(second.data.sourceId, first.data.sourceId);
         assert.equal(state.taskInserts.length, 1);
+        assert.equal(state.taskInserts[0].owner_user_id, 1);
+        assert.equal(state.taskInserts[0].visibility, 'private');
+        assert.equal(state.taskInserts[0].remind_at, remindAt);
         assert.equal(state.logInserts.length, 1);
         assert.equal(state.fallbackInserts.length, 0);
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);

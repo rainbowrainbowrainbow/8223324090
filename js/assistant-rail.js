@@ -533,7 +533,8 @@
     }
 
     function isDashboardAssistantSuppressed() {
-        return document.body?.dataset?.crmPage === 'dashboard';
+        return document.body?.dataset?.crmPage === 'dashboard'
+            || document.body?.classList?.contains('timeline-dashboard-page');
     }
 
     function removeMountedAssistantRail() {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.17 - CRM 66.17: Помічник таймлайну як на інших сторінках
+
+### Таймлайн / AI-помічник / 26.05.2026 [codex]
+- **Таймлайн примусово бере shared command bar** - фінальний CSS reset перекриває старі `.timeline-dashboard-page` правила, які стискали і зсували Помічника нижче header.
+- **Сітка як на інших сторінках** - rail знову має `grid-template-areas: "command mic stop voice replay expand"`, 48px висоту і стандартні 40px action-кнопки.
+- **Без наїзду на controls** - host стоїть у `.header-content` як `position: static`, а focus-only command panel більше не відкриває підказки поверх кнопок дат.
+- **Regression guardrail** - `tests/ui-check.js` перевіряє hard reset для timeline, shared grid, absolute panel і заборону повернення `timeline-main`.
+
+---
+
 ## v0.66.16 - CRM 66.16: стандартний Помічник на таймлайні
 
 ### Таймлайн / AI-помічник / 26.05.2026 [codex]

@@ -100,6 +100,13 @@ const CSS_SURFACE = [
         reason: 'Dashboard widget and onboarding styles.'
     },
     {
+        file: 'css/entity-card.css',
+        owner: 'leads-customers',
+        category: 'feature-shared',
+        status: 'active',
+        reason: 'Shared lead/customer entity workspace card shell and safe visual contract.'
+    },
+    {
         file: 'css/decision-screen.css',
         owner: 'dashboard',
         category: 'feature-shared',

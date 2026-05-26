@@ -825,11 +825,16 @@ async function showCustomerDetail(id) {
         const customer = await fetchCustomerDetail(id);
 
         let html = `
-            <div class="customer-detail-header">
-                <h3>${escapeHtml(customer.name)}</h3>
-                <div style="display:flex;gap:6px">
-                    <button class="btn-page-secondary" onclick="editCustomer(${customer.id})" style="font-size:12px;padding:6px 12px;min-height:36px;border-radius:var(--radius-sm)">✏️ Редагувати</button>
-                    <button class="btn-page-secondary" onclick="confirmDeleteCustomer(${customer.id})" style="font-size:12px;padding:6px 12px;min-height:36px;border-radius:var(--radius-sm);color:#DC2626">🗑 Видалити</button>
+            <div class="entity-card-shell entity-card-shell-view entity-card-customer" data-entity-card-mode="customer">
+            <div class="customer-detail-header entity-card-header">
+                <div class="entity-card-title-block">
+                    <span class="entity-card-kicker">Customer workspace</span>
+                    <h3>${escapeHtml(customer.name)}</h3>
+                    <div class="entity-card-meta">${escapeHtml(customer.phone) || 'телефон не вказано'}${customer.instagram ? ' · @' + escapeHtml(customer.instagram) : ''}</div>
+                </div>
+                <div class="entity-card-actions">
+                    <button class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
+                    <button class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
                 </div>
             </div>
             <div class="detail-section">
@@ -960,6 +965,7 @@ async function showCustomerDetail(id) {
             html += `</div></div>`;
         }
 
+        html += `</div>`;
         content.innerHTML = html;
 
         loadCommunicationHub(customer.id);
@@ -982,6 +988,61 @@ async function showCustomerDetail(id) {
     } catch (err) {
         content.innerHTML = `<div style="text-align:center;padding:20px;color:#DC2626">Помилка завантаження</div>`;
     }
+}
+
+function closeCustomerDetailModal() {
+    const modal = document.getElementById('customerDetailModal');
+    if (!modal) return true;
+    modal.dataset.backdropPointerDown = 'false';
+    modal.classList.add('hidden');
+    return true;
+}
+
+function bindEntityModalSafeClose(modal, closeFn) {
+    if (!modal || modal.dataset.entitySafeCloseBound === 'true') return;
+    modal.dataset.entitySafeCloseBound = 'true';
+    modal.dataset.backdropPointerDown = 'false';
+
+    const content = modal.querySelector('.modal-content');
+    if (content) {
+        content.addEventListener('pointerdown', (event) => {
+            modal.dataset.backdropPointerDown = 'false';
+            event.stopPropagation();
+        });
+        content.addEventListener('click', (event) => event.stopPropagation());
+    }
+
+    modal.addEventListener('pointerdown', (event) => {
+        modal.dataset.backdropPointerDown = String(event.target === modal);
+    });
+
+    modal.addEventListener('pointerup', (event) => {
+        const startedOnBackdrop = modal.dataset.backdropPointerDown === 'true';
+        modal.dataset.backdropPointerDown = 'false';
+        if (!startedOnBackdrop || event.target !== modal) return;
+        closeFn();
+    });
+}
+
+function bindCustomerEntityEscapeClose() {
+    if (bindCustomerEntityEscapeClose.bound) return;
+    bindCustomerEntityEscapeClose.bound = true;
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (document.querySelector('.confirm-overlay')) return;
+        const editModal = document.getElementById('customerEditModal');
+        const detailModal = document.getElementById('customerDetailModal');
+        if (editModal && !editModal.classList.contains('hidden')) {
+            event.preventDefault();
+            closeEditModal(false);
+            return;
+        }
+        if (detailModal && !detailModal.classList.contains('hidden')) {
+            event.preventDefault();
+            closeCustomerDetailModal();
+        }
+    });
 }
 
 // ==========================================
@@ -1093,7 +1154,7 @@ async function handleSave() {
 // Global function called from detail modal
 window.editCustomer = async function(id) {
     const customer = await fetchCustomerDetail(id);
-    document.getElementById('customerDetailModal')?.classList.add('hidden');
+    closeCustomerDetailModal();
     openEditModal(customer);
 };
 
@@ -1101,7 +1162,7 @@ window.confirmDeleteCustomer = async function(id) {
     if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await deleteCustomer(id);
-        document.getElementById('customerDetailModal')?.classList.add('hidden');
+        closeCustomerDetailModal();
         showNotification('Клієнта видалено');
         await refreshData();
     } catch (err) {
@@ -1623,18 +1684,18 @@ async function initPage() {
         btn.addEventListener('click', () => {
             const modal = btn.closest('.modal');
             if (modal?.id === 'customerEditModal') closeEditModal(false);
+            else if (modal?.id === 'customerDetailModal') closeCustomerDetailModal();
             else modal?.classList.add('hidden');
         });
     });
 
-    // Close modals on backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
-        modal.addEventListener('click', (e) => {
-            if (e.target !== modal) return;
-            if (modal.id === 'customerEditModal') closeEditModal(false);
-            else modal.classList.add('hidden');
-        });
+        if (modal.id === 'customerEditModal' || modal.id === 'customerDetailModal') return;
+        bindEntityModalSafeClose(modal, () => modal.classList.add('hidden'));
     });
+    bindEntityModalSafeClose(document.getElementById('customerDetailModal'), closeCustomerDetailModal);
+    bindEntityModalSafeClose(document.getElementById('customerEditModal'), () => closeEditModal(false));
+    bindCustomerEntityEscapeClose();
 
     // Load initial data
     await refreshData();

@@ -35,6 +35,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/dashboard.css` | dashboard | `page-scoped` | active | Dashboard widget and onboarding styles. |
 | `css/decision-screen.css` | dashboard | `feature-shared` | active | Decision overlay styles mounted from the dashboard page. |
 | `css/designs.css` | designs | `page-scoped` | active | Design catalog workspace styles. |
+| `css/entity-card.css` | leads-customers | `feature-shared` | active | Shared lead/customer entity workspace card shell and safe visual contract. |
 | `css/features.css` | timeline | `shell-large` | active-large | Root shell feature and modal adjunct styles; large-file consolidation candidate. |
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |

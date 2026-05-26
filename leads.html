@@ -11,14 +11,15 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.36">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.36">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.36">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.36">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.36">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.36">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.36">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.36">
+    <link rel="stylesheet" href="css/base.css?v=0.66.37">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.37">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.37">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.37">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.37">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.66.37">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.37">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.37">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.37">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -888,7 +889,7 @@
         </div>
 
         <div class="lead-workspace-backdrop" id="leadWorkspaceBackdrop" hidden></div>
-        <aside class="lead-workspace" id="leadWorkspace" aria-hidden="true" aria-labelledby="leadWorkspaceTitle" tabindex="-1" hidden>
+        <aside class="lead-workspace entity-card-shell entity-card-lead-workspace" id="leadWorkspace" data-entity-card-mode="lead" aria-hidden="true" aria-labelledby="leadWorkspaceTitle" tabindex="-1" hidden>
             <div class="lead-workspace-header">
                 <div class="lead-workspace-title-wrap">
                     <h2 class="lead-workspace-title" id="leadWorkspaceTitle">Робочий простір ліда</h2>
@@ -1019,8 +1020,15 @@
 
     <!-- Customer Card Modal -->
     <div class="lead-modal-overlay" id="customerCardModal" role="dialog" aria-modal="true">
-        <div class="lead-modal" style="width:min(92vw,580px);">
-            <h2>Карта клієнта</h2>
+        <div class="lead-modal entity-card-shell entity-card-shell-edit entity-card-lead-customer" data-entity-card-mode="lead-customer">
+            <div class="entity-card-header entity-card-header-compact">
+                <div class="entity-card-title-block">
+                    <span class="entity-card-kicker">Lead + customer</span>
+                    <h2>Карта клієнта</h2>
+                    <div class="entity-card-meta">Єдиний контекст ліда, контакту і майбутньої картки клієнта</div>
+                </div>
+                <button type="button" class="entity-card-icon-close" onclick="closeCustomerCardModal(false)" aria-label="Закрити картку клієнта">&times;</button>
+            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>Ім'я *</label>
@@ -1192,13 +1200,13 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.66.36"></script>
-    <script src="js/notification.js?v=0.66.36"></script>
-    <script src="js/api.js?v=0.66.36"></script>
-    <script src="js/auth.js?v=0.66.36"></script>
-    <script src="js/components/sidebar.js?v=0.66.36"></script>
+    <script src="js/config.js?v=0.66.37"></script>
+    <script src="js/notification.js?v=0.66.37"></script>
+    <script src="js/api.js?v=0.66.37"></script>
+    <script src="js/auth.js?v=0.66.37"></script>
+    <script src="js/components/sidebar.js?v=0.66.37"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.66.36"></script>
-    <script src="js/ui.js?v=0.66.36"></script>
-    <script src="js/alerts.js?v=0.66.36"></script></body>
+    <script src="js/leads-page.js?v=0.66.37"></script>
+    <script src="js/ui.js?v=0.66.37"></script>
+    <script src="js/alerts.js?v=0.66.37"></script></body>
 </html>

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.37 - CRM 66.37: єдина картка ліда і клієнта
+
+### Leads / Customers / entity workspace / 26.05.2026 [codex]
+- **Картка клієнта отримала спільний entity shell** - customer detail modal тепер має ширший робочий простір, сильніший header, action rail і секції у тому ж візуальному контракті, що lead workspace.
+- **Lead customer-card вирівняно з тим самим shell** - модалка картки з ліда використовує `entity-card-shell`, явну кнопку закриття та спільну ієрархію header/action/body.
+- **Випадкове закриття customer card прибрано** - backdrop close працює тільки якщо pointerdown і pointerup були саме на зовнішньому overlay; кліки всередині контенту та scroll-зони не закривають картку.
+- **Regression guard** - додано `tests/entity-workspace-card.test.js`, який фіксує shared shell, close policy і dirty-guard шлях для lead customer-card.
+
+---
+
 ## v0.66.36 - CRM 66.36: закриття auth maintenance
 
 ### Auth / акаунти / production maintenance / 26.05.2026 [codex]

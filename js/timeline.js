@@ -1896,7 +1896,7 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             return false;
         }
 
-        pushUndo('drag', model.buildDragUndoSnapshot(intent));
+        pushUndo('drag', model.buildDragUndoSnapshot(intent, atomicResult));
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await renderTimeline();
@@ -2494,7 +2494,7 @@ async function _handleResizeEnd(e) {
         const badge = s.block.querySelector('.duration-badge');
         if (badge) badge.textContent = `${s.originalDuration}хв`;
     } else {
-        pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent));
+        pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
 
         delete AppState.cachedBookings[dateStr];
         await renderTimeline();
@@ -2530,25 +2530,34 @@ function _handleResizeCancel(e) {
 const _originalHandleUndo = handleUndo;
 handleUndo = async function() {
     if (AppState.undoStack.length === 0) return;
+    if (_timelineInteractionSaveInFlight) return;
     const lastItem = AppState.undoStack[AppState.undoStack.length - 1];
+    const model = timelineInteractionModel();
 
     if (lastItem.action === 'drag') {
-        const { bookingId, oldTime, oldLineId, linked } = lastItem.data;
-        const bookings = await getBookingsForDate(AppState.selectedDate);
-        const booking = bookings.find(b => b.id === bookingId);
-        if (booking) {
-            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
-                main: { time: oldTime, lineId: oldLineId },
-                linked: linked
-                    .filter(lb => bookings.some(b => b.id === lb.id))
-                    .map(lb => ({
-                        id: lb.id,
-                        time: lb.oldTime,
-                        lineId: lb.oldLineId
-                    })),
-                historyAction: 'undo_drag',
-                historyData: { ...booking, time: oldTime, lineId: oldLineId }
-            });
+        _timelineInteractionSaveInFlight = true;
+        try {
+            const { bookingId } = lastItem.data;
+            const bookings = await getBookingsForDate(AppState.selectedDate);
+            const booking = bookings.find(b => b.id === bookingId);
+            if (!booking) {
+                showNotification('Не вдалося скасувати перетягування: бронювання вже не знайдено', 'error');
+                return;
+            }
+            const payload = model?.buildDragUndoAtomicPayload
+                ? model.buildDragUndoAtomicPayload({
+                    ...lastItem.data,
+                    linked: (lastItem.data.linked || []).filter(lb => bookings.some(b => b.id === lb.id))
+                }, booking)
+                : {
+                    main: { time: lastItem.data.oldTime, lineId: lastItem.data.oldLineId },
+                    linked: (lastItem.data.linked || [])
+                        .filter(lb => bookings.some(b => b.id === lb.id))
+                        .map(lb => ({ id: lb.id, time: lb.oldTime, lineId: lb.oldLineId })),
+                    historyAction: 'undo_drag',
+                    historyData: { ...booking, time: lastItem.data.oldTime, lineId: lastItem.data.oldLineId }
+                };
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, payload);
             if (result && result.success === false) {
                 showNotification(result.error || 'Помилка скасування перетягування', 'error');
                 if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
@@ -2556,28 +2565,41 @@ handleUndo = async function() {
                 }
                 return;
             }
+            AppState.undoStack.pop();
+            showNotification('Перетягування скасовано', 'warning');
+            AppState.cachedBookings = {};
+            await renderTimeline();
+            updateUndoButton();
+            return;
+        } finally {
+            _timelineInteractionSaveInFlight = false;
         }
-        AppState.undoStack.pop();
-        showNotification('Перетягування скасовано', 'warning');
-        AppState.cachedBookings = {};
-        await renderTimeline();
-        updateUndoButton();
-        return;
     }
 
     if (lastItem.action === 'resize') {
-        const { bookingId, oldDuration, linked } = lastItem.data;
-        const bookings = await getBookingsForDate(AppState.selectedDate);
-        const booking = bookings.find(b => b.id === bookingId);
-        if (booking) {
-            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
-                main: { duration: oldDuration },
-                linked: linked
-                    .filter(lbId => bookings.some(b => b.id === lbId))
-                    .map(lbId => ({ id: lbId, duration: oldDuration })),
-                historyAction: 'undo_resize',
-                historyData: { ...booking, duration: oldDuration }
-            });
+        _timelineInteractionSaveInFlight = true;
+        try {
+            const { bookingId } = lastItem.data;
+            const bookings = await getBookingsForDate(AppState.selectedDate);
+            const booking = bookings.find(b => b.id === bookingId);
+            if (!booking) {
+                showNotification('Не вдалося скасувати зміну тривалості: бронювання вже не знайдено', 'error');
+                return;
+            }
+            const payload = model?.buildResizeUndoAtomicPayload
+                ? model.buildResizeUndoAtomicPayload({
+                    ...lastItem.data,
+                    linked: (lastItem.data.linked || []).filter(lbId => bookings.some(b => b.id === lbId))
+                }, booking)
+                : {
+                    main: { duration: lastItem.data.oldDuration },
+                    linked: (lastItem.data.linked || [])
+                        .filter(lbId => bookings.some(b => b.id === lbId))
+                        .map(lbId => ({ id: lbId, duration: lastItem.data.oldDuration })),
+                    historyAction: 'undo_resize',
+                    historyData: { ...booking, duration: lastItem.data.oldDuration }
+                };
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, payload);
             if (result && result.success === false) {
                 showNotification(result.error || 'Помилка скасування зміни тривалості', 'error');
                 if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
@@ -2585,13 +2607,15 @@ handleUndo = async function() {
                 }
                 return;
             }
+            AppState.undoStack.pop();
+            showNotification('Зміну тривалості скасовано', 'warning');
+            AppState.cachedBookings = {};
+            await renderTimeline();
+            updateUndoButton();
+            return;
+        } finally {
+            _timelineInteractionSaveInFlight = false;
         }
-        AppState.undoStack.pop();
-        showNotification('Зміну тривалості скасовано', 'warning');
-        AppState.cachedBookings = {};
-        await renderTimeline();
-        updateUndoButton();
-        return;
     }
 
     // Fall through to original handler for other actions

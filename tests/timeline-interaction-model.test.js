@@ -100,6 +100,26 @@ test('resize intent updates the whole linked group and excludes siblings from co
     assert.equal(result.valid, true);
 });
 
+test('resize intent rejects a newly occupied target window', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', duration: 60 });
+    const blocker = booking({ id: 'BK-blocker', time: '15:10', lineId: 'line-1', duration: 30 });
+
+    const intent = model.buildResizeInteractionIntent({
+        booking: main,
+        allBookings: [main, blocker],
+        newDuration: 90
+    });
+    const result = model.evaluateTimelineCandidateConflicts(intent, [main, blocker], {
+        dayStartMin: 12 * 60,
+        dayEndMin: 20 * 60
+    });
+
+    assert.equal(result.valid, false);
+    assert.equal(result.type, 'overlap');
+    assert.equal(result.conflictBooking.id, 'BK-blocker');
+    assert.equal(result.candidate.id, 'BK-main');
+});
+
 test('drag undo snapshot preserves old and new linked positions', () => {
     const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1' });
     const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', linkedTo: 'BK-main' });
@@ -124,4 +144,52 @@ test('drag undo snapshot preserves old and new linked positions', () => {
         newTime: '15:15',
         newLineId: 'line-4'
     }]);
+});
+
+test('drag undo snapshot uses persisted saved rows when server result is available', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1' });
+    const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', linkedTo: 'BK-main' });
+
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: linked,
+        allBookings: [main, linked],
+        startMin: 14 * 60 + 15,
+        currentMin: 15 * 60 + 15,
+        startLineId: 'line-2',
+        targetLineId: 'line-4'
+    });
+    const snapshot = model.buildDragUndoSnapshot(intent, {
+        booking: { ...main, time: '15:00', lineId: 'line-1' },
+        linkedBookings: [{ ...linked, time: '15:15', lineId: 'line-4' }]
+    });
+    const payload = model.buildDragUndoAtomicPayload(snapshot, { ...main, time: '15:00' });
+
+    assert.equal(snapshot.newTime, '15:00');
+    assert.equal(snapshot.linked[0].newLineId, 'line-4');
+    assert.deepEqual(payload.main, { time: '14:00', lineId: 'line-1' });
+    assert.deepEqual(payload.linked, [{ id: 'BK-linked', time: '14:15', lineId: 'line-2' }]);
+    assert.equal(payload.historyAction, 'undo_drag');
+});
+
+test('resize undo snapshot and payload use persisted saved duration', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', duration: 60 });
+    const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', linkedTo: 'BK-main', duration: 60 });
+
+    const intent = model.buildResizeInteractionIntent({
+        booking: main,
+        allBookings: [main, linked],
+        newDuration: 90
+    });
+    const snapshot = model.buildResizeUndoSnapshot(intent, {
+        booking: { ...main, duration: 90 },
+        linkedBookings: [{ ...linked, duration: 90 }]
+    });
+    const payload = model.buildResizeUndoAtomicPayload(snapshot, { ...main, duration: 90 });
+
+    assert.equal(snapshot.oldDuration, 60);
+    assert.equal(snapshot.newDuration, 90);
+    assert.deepEqual(snapshot.linked, ['BK-linked']);
+    assert.deepEqual(payload.main, { duration: 60 });
+    assert.deepEqual(payload.linked, [{ id: 'BK-linked', duration: 60 }]);
+    assert.equal(payload.historyAction, 'undo_resize');
 });

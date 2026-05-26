@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.19",
+  "version": "0.66.20",
   "eventGenix": {
-    "releaseLabel": "CRM 66.19: стабілізація таймлайну"
+    "releaseLabel": "CRM 66.20: undo/resize truth таймлайну"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

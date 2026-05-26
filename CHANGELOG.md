@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.20 - CRM 66.20: undo/resize truth таймлайну
+
+### Таймлайн / resize + undo / 26.05.2026 [codex]
+- **Undo snapshot бере persisted result** - drag і resize тепер формують undo metadata після успішного `linked-atomic` save з фактично збережених main/linked rows.
+- **Undo payload централізовано** - rollback для drag і resize будується через shared interaction model, а не через окрему ad hoc реконструкцію у `timeline.js`.
+- **Interaction lock закриває undo path** - під час undo save/render новий drag або resize не стартує, щоб не створювати overlap між async persistence і UI state.
+- **Resize conflict regression** - поведінкові тести покривають free resize, occupied resize rejection, group-safe resize payload і undo payload truth.
+
+---
+
 ## v0.66.19 - CRM 66.19: стабілізація таймлайну
 
 ### Таймлайн / interaction engine / 26.05.2026 [codex]

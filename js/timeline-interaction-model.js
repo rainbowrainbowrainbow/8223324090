@@ -60,6 +60,15 @@
         return minutesToTimeValue(timeToMinutesValue(time) + (Number(delta) || 0));
     }
 
+    function savedMainFromResult(saveResult) {
+        return saveResult?.booking || null;
+    }
+
+    function savedLinkedById(saveResult) {
+        const rows = Array.isArray(saveResult?.linkedBookings) ? saveResult.linkedBookings : [];
+        return new Map(rows.filter(row => row?.id).map(row => [idOf(row.id), row]));
+    }
+
     function resolveTimelineBookingGroup(actorBooking, allBookings) {
         if (!actorBooking) {
             return {
@@ -209,23 +218,48 @@
         };
     }
 
-    function buildDragUndoSnapshot(intent) {
+    function buildDragUndoSnapshot(intent, saveResult = null) {
+        const savedMain = savedMainFromResult(saveResult);
+        const savedLinked = savedLinkedById(saveResult);
         const mainNext = intent.mainCandidate?.next || intent.mainBooking || {};
         return {
             bookingId: intent.mainBooking?.id,
             draggedBookingId: intent.draggedBooking?.id,
             oldTime: intent.mainBooking?.time,
             oldLineId: intent.mainBooking?.lineId,
-            newTime: mainNext.time,
-            newLineId: mainNext.lineId,
+            newTime: savedMain?.time || mainNext.time,
+            newLineId: savedMain?.lineId || mainNext.lineId,
             timeDelta: -intent.timeDelta,
-            linked: intent.linkedCandidates.map(candidate => ({
-                id: candidate.id,
-                oldTime: candidate.old.time,
-                oldLineId: candidate.old.lineId,
-                newTime: candidate.next.time,
-                newLineId: candidate.next.lineId
-            }))
+            linked: intent.linkedCandidates.map(candidate => {
+                const savedRow = savedLinked.get(idOf(candidate.id));
+                return {
+                    id: candidate.id,
+                    oldTime: candidate.old.time,
+                    oldLineId: candidate.old.lineId,
+                    newTime: savedRow?.time || candidate.next.time,
+                    newLineId: savedRow?.lineId || candidate.next.lineId
+                };
+            })
+        };
+    }
+
+    function buildDragUndoAtomicPayload(snapshot, currentBooking = null) {
+        return {
+            main: {
+                time: snapshot.oldTime,
+                lineId: snapshot.oldLineId
+            },
+            linked: (snapshot.linked || []).map(item => ({
+                id: item.id,
+                time: item.oldTime,
+                lineId: item.oldLineId
+            })),
+            historyAction: 'undo_drag',
+            historyData: {
+                ...(currentBooking || {}),
+                time: snapshot.oldTime,
+                lineId: snapshot.oldLineId
+            }
         };
     }
 
@@ -279,12 +313,28 @@
         };
     }
 
-    function buildResizeUndoSnapshot(intent) {
+    function buildResizeUndoSnapshot(intent, saveResult = null) {
+        const savedMain = savedMainFromResult(saveResult);
         return {
             bookingId: intent.mainBooking?.id,
             oldDuration: intent.mainBooking?.duration,
-            newDuration: intent.newDuration,
+            newDuration: savedMain?.duration || intent.newDuration,
             linked: intent.linkedCandidates.map(candidate => candidate.id)
+        };
+    }
+
+    function buildResizeUndoAtomicPayload(snapshot, currentBooking = null) {
+        return {
+            main: { duration: snapshot.oldDuration },
+            linked: (snapshot.linked || []).map(id => ({
+                id,
+                duration: snapshot.oldDuration
+            })),
+            historyAction: 'undo_resize',
+            historyData: {
+                ...(currentBooking || {}),
+                duration: snapshot.oldDuration
+            }
         };
     }
 
@@ -355,9 +405,11 @@
         buildDragInteractionIntent,
         buildDragAtomicPayload,
         buildDragUndoSnapshot,
+        buildDragUndoAtomicPayload,
         buildResizeInteractionIntent,
         buildResizeAtomicPayload,
         buildResizeUndoSnapshot,
+        buildResizeUndoAtomicPayload,
         evaluateTimelineCandidateConflicts
     };
 });

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.21 - CRM 66.21: lifecycle таймлайну
+
+### Таймлайн / lifecycle + cancel / 26.05.2026 [codex]
+- **Єдиний cleanup для interaction state** - drag, resize, graduation segments, banquet-link draft і afisha drag тепер мають спільний teardown перед rerender/date/zoom/visibility interruptions.
+- **Pointer lifecycle закрито** - `pointercancel`, `lostpointercapture`, `visibilitychange` і `window.blur` прибирають ghost preview, target highlight, resize classes і body lock без завислого стану.
+- **Save lock тримається до render/rollback** - drag і resize не відпускають critical interaction lock до завершення save result handling, rerender або rollback.
+- **Lifecycle regression tests** - додано `tests/timeline-lifecycle.test.js` для pointercancel rollback, lost pointer capture, save-lock blocking, render cleanup і resize cancel parity.
+
+---
+
 ## v0.66.20 - CRM 66.20: undo/resize truth таймлайну
 
 ### Таймлайн / resize + undo / 26.05.2026 [codex]

@@ -311,6 +311,9 @@ async function renderTimeline() {
     // console.log('[Timeline] renderTimeline START gen=' + thisGen + ' date=' + formatDate(selectedDate));
 
     try {
+        if (hasActiveTimelineInteractionState()) {
+            cancelActiveTimelineInteractions('render');
+        }
 
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
@@ -1284,6 +1287,75 @@ let _timelineInteractionSaveInFlight = false;
 
 const BANQUET_LINK_SVG_NS = 'http://www.w3.org/2000/svg';
 
+function _samePointerId(state, event) {
+    if (!state || !event || state.pointerId === undefined || event.pointerId === undefined) return true;
+    return String(state.pointerId) === String(event.pointerId);
+}
+
+function hasActiveTimelineInteractionState() {
+    return Boolean(
+        _bookingDragState ||
+        _resizeState ||
+        _graduationSegmentDragState ||
+        _graduationSegmentResizeState ||
+        _banquetLinkDraft ||
+        _afishaDragState
+    );
+}
+
+function _cleanupBookingDragState(state = _bookingDragState, options = {}) {
+    const s = state;
+    if (!s) return false;
+
+    if (s.longPressTimer) {
+        clearTimeout(s.longPressTimer);
+        s.longPressTimer = null;
+    }
+    if (s.scrollInterval) {
+        clearInterval(s.scrollInterval);
+        s.scrollInterval = null;
+    }
+    try { s.block?.releasePointerCapture?.(s.pointerId); } catch (err) { /* ignore */ }
+
+    if (options.rollback !== false && s.moved) {
+        _rollbackDragVisuals(s);
+    } else {
+        s.block?.classList?.remove('dragging', 'long-press-pending');
+        if (s.block?.style) s.block.style.transform = '';
+        if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el?.classList?.remove('dragging-related'));
+        if (s.timeLabel) s.timeLabel.remove();
+        if (s.countLabel) s.countLabel.remove();
+        _clearDropIndicators();
+        document.body.classList.remove('dragging-active');
+    }
+
+    if (_bookingDragState === s) _bookingDragState = null;
+    return true;
+}
+
+function cancelActiveTimelineInteractions(reason = 'unknown') {
+    let cancelled = false;
+    if (_bookingDragState) cancelled = _cleanupBookingDragState(_bookingDragState, { rollback: true }) || cancelled;
+    if (_resizeState) {
+        _handleResizeCancel({ type: reason });
+        cancelled = true;
+    }
+    if (_graduationSegmentDragState || _graduationSegmentResizeState) {
+        _handleGraduationSegmentCancel();
+        cancelled = true;
+    }
+    if (_banquetLinkDraft) {
+        cancelBanquetLinkDraft(false);
+        cancelled = true;
+    }
+    if (_afishaDragState) {
+        _cancelAfishaDragVisuals();
+        cancelled = true;
+    }
+    document.body.classList.remove('dragging-active');
+    return cancelled;
+}
+
 function timelineInteractionModel() {
     return window.TimelineInteractionModel || null;
 }
@@ -1367,6 +1439,12 @@ function initBookingDrag(block, booking, startHour) {
                 longPressTimer: null
             };
         }
+    });
+
+    block.addEventListener('lostpointercapture', (e) => {
+        const s = _bookingDragState;
+        if (!s || s.block !== block || s.completing || !_samePointerId(s, e)) return;
+        _handleBookingDragCancel(e);
     });
 }
 
@@ -1501,6 +1579,7 @@ function _findRelatedBlocks(relatedBookings) {
 function _handleBookingDragMove(e) {
     if (!_bookingDragState) return;
     const s = _bookingDragState;
+    if (!_samePointerId(s, e)) return;
 
     const dx = e.clientX - s.startX;
     const dy = e.clientY - s.startY;
@@ -1724,6 +1803,8 @@ function _updateConflictPreview(newMin, lineId, timeDelta) {
 async function _handleBookingDragEnd(e) {
     if (!_bookingDragState) return;
     const s = _bookingDragState;
+    if (!_samePointerId(s, e)) return;
+    s.completing = true;
 
     // Clear long-press timer
     if (s.longPressTimer) clearTimeout(s.longPressTimer);
@@ -1743,9 +1824,7 @@ async function _handleBookingDragEnd(e) {
 
     if (!s.moved) {
         // No drag happened — pass through to click handler
-        if (s.timeLabel) s.timeLabel.remove();
-        if (s.countLabel) s.countLabel.remove();
-        _bookingDragState = null;
+        _cleanupBookingDragState(s, { rollback: false });
         return; // click event will fire naturally
     }
 
@@ -1758,8 +1837,7 @@ async function _handleBookingDragEnd(e) {
     const lineChanged = s.newLineId !== s.startLineId;
 
     if (timeDelta === 0 && !lineChanged) {
-        _rollbackDragVisuals(s);
-        _bookingDragState = null;
+        _cleanupBookingDragState(s, { rollback: true });
         return;
     }
 
@@ -1769,8 +1847,7 @@ async function _handleBookingDragEnd(e) {
     if (!validationResult.valid) {
         showNotification(validationResult.error, 'error');
         _triggerHaptic('error');
-        _rollbackDragVisuals(s);
-        _bookingDragState = null;
+        _cleanupBookingDragState(s, { rollback: true });
         return;
     }
 
@@ -1781,44 +1858,24 @@ async function _handleBookingDragEnd(e) {
     let saved = false;
     try {
         saved = await _saveDragResult(s, timeDelta, lineChanged);
+        if (!saved) {
+            _rollbackDragVisuals(s);
+        } else {
+            _triggerHaptic('success');
+        }
     } finally {
+        if (s.timeLabel) s.timeLabel.remove();
+        if (s.countLabel) s.countLabel.remove();
         _timelineInteractionSaveInFlight = false;
     }
-
-    if (!saved) {
-        _rollbackDragVisuals(s);
-    } else {
-        _triggerHaptic('success');
-    }
-
-    // Remove time label and count label
-    if (s.timeLabel) s.timeLabel.remove();
-    if (s.countLabel) s.countLabel.remove();
 }
 
 // --- Handle pointer cancel ---
 function _handleBookingDragCancel(e) {
     if (!_bookingDragState) return;
     const s = _bookingDragState;
-
-    if (s.longPressTimer) clearTimeout(s.longPressTimer);
-    if (s.scrollInterval) clearInterval(s.scrollInterval);
-
-    try { s.block.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
-
-    if (s.moved) {
-        _rollbackDragVisuals(s);
-    }
-
-    s.block.classList.remove('dragging', 'long-press-pending');
-    s.block.style.transform = ''; // v12.6: Reset cross-line Y offset
-    if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el.classList.remove('dragging-related'));
-    _clearDropIndicators();
-    document.body.classList.remove('dragging-active');
-
-    if (s.timeLabel) s.timeLabel.remove();
-    if (s.countLabel) s.countLabel.remove();
-    _bookingDragState = null;
+    if (!_samePointerId(s, e)) return;
+    _cleanupBookingDragState(s, { rollback: true });
 }
 
 // --- Validate drag positions using cached data ---
@@ -2330,6 +2387,10 @@ document.addEventListener('pointercancel', (e) => {
     _handleResizeCancel(e);
 });
 
+window.addEventListener('blur', () => {
+    cancelActiveTimelineInteractions('window-blur');
+});
+
 // ==========================================
 // RESIZE BOOKING BLOCKS (Feature #14)
 // ==========================================
@@ -2365,6 +2426,7 @@ function initBookingResize(handle, block, booking, startHour) {
             minDuration: minDuration,
             maxDuration: booking.category === 'graduation' ? 480 : 240,
             pointerId: e.pointerId,
+            handle: handle,
             newDuration: booking.duration
         };
 
@@ -2375,11 +2437,18 @@ function initBookingResize(handle, block, booking, startHour) {
         // Hide tooltip
         hideTooltip();
     });
+
+    handle.addEventListener('lostpointercapture', (e) => {
+        const s = _resizeState;
+        if (!s || s.handle !== handle || s.completing || !_samePointerId(s, e)) return;
+        _handleResizeCancel(e);
+    });
 }
 
 function _handleResizeMove(e) {
     if (!_resizeState) return;
     const s = _resizeState;
+    if (!_samePointerId(s, e)) return;
     const cellW = getTimelineCellWidth(s.block);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
 
@@ -2414,11 +2483,13 @@ function _handleResizeMove(e) {
 async function _handleResizeEnd(e) {
     if (!_resizeState) return;
     const s = _resizeState;
+    if (!_samePointerId(s, e)) return;
+    s.completing = true;
 
     s.block.classList.remove('resizing');
     document.body.classList.remove('dragging-active');
 
-    try { s.block.querySelector('.resize-handle')?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+    try { (s.handle || s.block.querySelector('.resize-handle'))?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
 
     if (s.newDuration === s.originalDuration) {
         _resizeState = null;
@@ -2481,36 +2552,35 @@ async function _handleResizeEnd(e) {
     let result;
     try {
         result = await apiUpdateLinkedBookingsAtomic(resizeIntent.mainBooking.id, payload);
+        if (result && result.success === false) {
+            showNotification(result.error || 'Помилка зміни тривалості', 'error');
+            if (result.conflictBookingId && typeof revealHiddenBooking === 'function') revealHiddenBooking(result.conflictBookingId);
+            const origWidth = timelineDurationWidth(s.originalDuration, s.block);
+            s.block.style.width = `${origWidth}px`;
+            const badge = s.block.querySelector('.duration-badge');
+            if (badge) badge.textContent = `${s.originalDuration}хв`;
+        } else {
+            pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
+
+            delete AppState.cachedBookings[dateStr];
+            await renderTimeline();
+            showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
+            _triggerHaptic('success');
+        }
     } finally {
         _timelineInteractionSaveInFlight = false;
-    }
-
-    if (result && result.success === false) {
-        showNotification(result.error || 'Помилка зміни тривалості', 'error');
-        if (result.conflictBookingId && typeof revealHiddenBooking === 'function') revealHiddenBooking(result.conflictBookingId);
-        // Rollback
-        const origWidth = timelineDurationWidth(s.originalDuration, s.block);
-        s.block.style.width = `${origWidth}px`;
-        const badge = s.block.querySelector('.duration-badge');
-        if (badge) badge.textContent = `${s.originalDuration}хв`;
-    } else {
-        pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
-
-        delete AppState.cachedBookings[dateStr];
-        await renderTimeline();
-        showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
-        _triggerHaptic('success');
     }
 }
 
 function _handleResizeCancel(e) {
     if (!_resizeState) return;
     const s = _resizeState;
+    if (!_samePointerId(s, e)) return;
 
     s.block.classList.remove('resizing');
     document.body.classList.remove('dragging-active');
 
-    try { s.block.querySelector('.resize-handle')?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+    try { (s.handle || s.block.querySelector('.resize-handle'))?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
 
     // Rollback visual
     const origWidth = timelineDurationWidth(s.originalDuration, s.block);
@@ -2625,28 +2695,14 @@ handleUndo = async function() {
 // Extend changeZoom() to cancel drag/resize on zoom change
 const _originalChangeZoom = changeZoom;
 changeZoom = function(level) {
-    _handleGraduationSegmentCancel();
-    if (_bookingDragState) {
-        _rollbackDragVisuals(_bookingDragState);
-        _bookingDragState = null;
-    }
-    if (_resizeState) {
-        _handleResizeCancel(null);
-    }
+    cancelActiveTimelineInteractions('zoom-change');
     return _originalChangeZoom.call(this, level);
 };
 
 // Extend changeDate() to cancel drag/resize on date change
 const _originalChangeDate = changeDate;
 changeDate = function(days) {
-    _handleGraduationSegmentCancel();
-    if (_bookingDragState) {
-        _rollbackDragVisuals(_bookingDragState);
-        _bookingDragState = null;
-    }
-    if (_resizeState) {
-        _handleResizeCancel(null);
-    }
+    cancelActiveTimelineInteractions('date-change');
     return _originalChangeDate.call(this, days);
 };
 
@@ -2655,6 +2711,16 @@ changeDate = function(days) {
 // ==========================================
 
 let _afishaDragState = null;
+
+function _cancelAfishaDragVisuals() {
+    if (!_afishaDragState) return false;
+    const s = _afishaDragState;
+    s.block?.classList?.remove('dragging');
+    if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
+    if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
+    _afishaDragState = null;
+    return true;
+}
 
 function _beginAfishaDrag(block, event, startHour, clientX) {
     hideTooltip();
@@ -2841,24 +2907,9 @@ document.addEventListener('mouseup', () => _endAfishaDrag());
 
 // Safety: if user switches tab or phone locks during drag — reset all states on return
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-    if (_bookingDragState) {
-        _rollbackDragVisuals(_bookingDragState);
-        if (_bookingDragState.timeLabel) _bookingDragState.timeLabel.remove();
-        if (_bookingDragState.countLabel) _bookingDragState.countLabel.remove();
-        _bookingDragState = null;
+    if (document.visibilityState === 'hidden' || hasActiveTimelineInteractionState()) {
+        cancelActiveTimelineInteractions('visibilitychange');
     }
-    if (_resizeState) {
-        _handleResizeCancel(null);
-    }
-    if (_afishaDragState) {
-        const s = _afishaDragState;
-        s.block.classList.remove('dragging');
-        if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
-        if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
-        _afishaDragState = null;
-    }
-    document.body.classList.remove('dragging-active');
 });
 
 document.addEventListener('touchmove', (e) => {

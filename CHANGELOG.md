@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.36 - CRM 66.36: закриття auth maintenance
+
+### Auth / акаунти / production maintenance / 26.05.2026 [codex]
+- **Тестовий акаунт закрито** - production-користувача `1234567` деактивовано, а його активні refresh-сесії відкликано.
+- **Доступ для Zhenya оновлено** - пароль змінено через production maintenance без запису секретів у репозиторій, старі сесії користувача відкликано.
+- **Live auth перевірено після maintenance** - `/api/auth/login` і `/api/auth/verify` підтвердили валідний вхід для `Zhenya`, а тестовий акаунт тепер отримує `401`.
+- **Release closure** - зафіксовано окремий release-marker, щоб live-стан після auth/account maintenance був видимий у версії CRM.
+
+---
+
 ## v0.66.35 - CRM 66.35: login не викидає після 403
 
 ### Auth / login / role-limited APIs / 26.05.2026 [codex]

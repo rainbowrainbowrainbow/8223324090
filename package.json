@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.35",
+  "version": "0.66.36",
   "eventGenix": {
-    "releaseLabel": "CRM 66.35: login не викидає після 403"
+    "releaseLabel": "CRM 66.36: закриття auth maintenance"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

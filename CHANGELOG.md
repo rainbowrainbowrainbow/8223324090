@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.31 - CRM 66.31: професії профілю та HR чеклісти
+
+### Профіль / HR / професії / 26.05.2026 [codex]
+- **Профіль став profession-first** - верхній блок профілю більше не тримає noisy widget cockpit як головний сигнал, а показує основну професію, додаткові професії, опис, відповідальності та чекліст.
+- **HR каталог професій** - додано окремі поверхні `Професії` і `Чеклісти`, редагування key/title/department/short_info/responsibilities/checklist/color/sort_order/is_active та безпечне закриття форми без випадкового backdrop dismiss.
+- **Кілька професій на співробітника** - `staff.role_type` лишається основною професією для графіка/таймлайну, а `staff.secondary_professions` зберігає додаткові професії без дублів і не ламає існуюче групування.
+- **Regression coverage** - додано `tests/profile-hr-professions-foundation.test.js`, оновлено UI smoke і покрито професійний контракт, HR чеклісти, profile payload та staff/timeline compatibility.
+
+---
+
 ## v0.66.30 - CRM 66.30: превʼю сертифікатів без стискання
 
 ### Сертифікати / detail modal / 26.05.2026 [codex]

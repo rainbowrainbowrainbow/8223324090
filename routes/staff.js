@@ -38,6 +38,7 @@ const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegr
 const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { normalizeSecondaryProfessions } = require('../services/professions');
 const {
     linkUserToStaffProfile,
     unlinkStaffAccount,
@@ -401,14 +402,16 @@ router.get('/', async (req, res) => {
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
 router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address } = req.body;
+        const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
         if (!name || !department || !position) {
             return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
         }
+        const primaryRole = role_type || roleType || null;
+        const secondaryRoles = normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, primaryRole);
         const result = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username, role_type, address)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null, role_type || roleType || null, address || null]
+            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username, role_type, address, secondary_professions)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null, primaryRole, address || null, JSON.stringify(secondaryRoles)]
         );
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -421,19 +424,29 @@ router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_man
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
 router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address } = req.body;
+        const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
         // Only update telegram_username if explicitly passed (even empty string clears it)
         const tgUser = telegramUsername !== undefined ? (telegramUsername || null) : undefined;
+        const primaryRole = role_type || roleType || null;
+        const hasSecondaryProfessions = Object.prototype.hasOwnProperty.call(req.body || {}, 'secondary_professions')
+            || Object.prototype.hasOwnProperty.call(req.body || {}, 'secondaryProfessions');
+        let effectivePrimaryRole = primaryRole;
+        if (hasSecondaryProfessions && !effectivePrimaryRole) {
+            const currentStaff = await pool.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
+            effectivePrimaryRole = currentStaff.rows[0]?.role_type || null;
+        }
+        const secondaryRoles = normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, effectivePrimaryRole);
         const result = await pool.query(
             `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
              position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
              is_active=COALESCE($7,is_active),
              telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END,
              role_type=COALESCE($11,role_type),
-             address=COALESCE($12,address)
+             address=COALESCE($12,address),
+             secondary_professions = CASE WHEN $13::boolean THEN $14::jsonb ELSE secondary_professions END
              WHERE id=$8 RETURNING *`,
             [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
-             telegramUsername !== undefined, tgUser, role_type || roleType || null, address || null]
+             telegramUsername !== undefined, tgUser, primaryRole, address || null, hasSecondaryProfessions, JSON.stringify(secondaryRoles)]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         res.json({ success: true, data: result.rows[0] });

@@ -849,7 +849,8 @@ function formModal(title, fields, options = {}) {
             type = 'success',
             icon: customIcon,
             compact = false,
-            className = ''
+            className = '',
+            closeOnBackdrop = true
         } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
         const icon = customIcon || icons[type] || '📝';
@@ -868,16 +869,17 @@ function formModal(title, fields, options = {}) {
             const defVal = (f.defaultValue != null ? String(f.defaultValue) : '').replace(/"/g,'&quot;');
             const ph = (f.placeholder || '').replace(/"/g,'&quot;');
             const baseStyle = 'width:100%;padding:10px 14px;border:2px solid rgba(139,92,246,0.3);border-radius:10px;font-size:15px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1a1a2e);outline:none;transition:border-color 0.2s;';
+            const hint = f.hint ? `<div class="form-modal-field-hint" style="margin-top:4px;font-size:12px;line-height:1.35;color:var(--text-secondary,#666);">${String(f.hint).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : '';
 
             if (f.type === 'select' && f.options) {
                 const opts = renderSelectOptions(f, f.options);
-                return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select></div>`;
+                return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select>${hint}</div>`;
             }
             if (f.type === 'textarea') {
-                return `<div style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea></div>`;
+                return `<div style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea>${hint}</div>`;
             }
             const inputType = f.type || 'text';
-            return `<div style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}"></div>`;
+            return `<div style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}">${hint}</div>`;
         }).join('');
 
         const overlay = document.createElement('div');
@@ -940,7 +942,7 @@ function formModal(title, fields, options = {}) {
             }
             close(vals);
         });
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) requestCancel(); });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay && closeOnBackdrop) requestCancel(); });
 
         // Focus management
         overlay.querySelectorAll('.fm-field').forEach(el => {

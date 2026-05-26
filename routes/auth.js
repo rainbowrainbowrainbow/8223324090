@@ -34,6 +34,10 @@ const {
     recordAccountSecurityEvent,
     listAccountSecurityEvents
 } = require('../services/accountSecurity');
+const {
+    normalizeProfessionCatalogRow,
+    normalizeSecondaryProfessions
+} = require('../services/professions');
 
 const log = createLogger('Auth');
 const PROFILE_COCKPIT_WIDGET_IDS = Object.freeze([
@@ -109,6 +113,23 @@ function normalizeProfileCockpitWidgets(value) {
     });
     const selected = Array.from(seen);
     return selected.length ? selected : [...DEFAULT_PROFILE_COCKPIT_WIDGETS];
+}
+
+function normalizeProfileStaffProfile(row) {
+    if (!row) return null;
+    const primaryRole = row.role_type || row.profile_role || '';
+    return {
+        id: row.id,
+        employeeProfileId: row.employee_profile_id || null,
+        name: row.name || row.full_name || '',
+        department: row.department || row.profile_department || '',
+        position: row.position || '',
+        role_type: primaryRole,
+        roleType: primaryRole,
+        secondary_professions: normalizeSecondaryProfessions(row.secondary_professions, primaryRole),
+        secondaryProfessions: normalizeSecondaryProfessions(row.secondary_professions, primaryRole),
+        phone: row.phone || null
+    };
 }
 
 function profileTaskOwnerWhere(user, alias = '') {
@@ -511,6 +532,32 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  FROM certificates
                  WHERE issued_by_name = $1`,
                 [username]
+            ),
+            // 25: Staff profile bridge for profession-centered profile surface
+            pool.query(
+                `SELECT s.id, ep.id AS employee_profile_id, s.name, s.department, s.position,
+                        s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                        s.phone, ep.role AS profile_role, ep.department AS profile_department, ep.full_name
+                 FROM staff s
+                 LEFT JOIN employee_profiles ep
+                   ON ep.staff_id = s.id
+                  AND ep.user_id = $1
+                  AND COALESCE(ep.is_active, true) = true
+                 WHERE ep.user_id = $1
+                    OR LOWER(s.name) = LOWER($2)
+                 ORDER BY CASE WHEN ep.user_id = $1 THEN 0 ELSE 1 END,
+                          COALESCE(s.is_active, true) DESC,
+                          s.id
+                 LIMIT 1`,
+                [user.id, user.name || user.display_name || username]
+            ),
+            // 26: Active HR profession catalog for profile cards and checklist previews
+            pool.query(
+                `SELECT id, key, title, department, short_info, responsibilities, checklist,
+                        color, sort_order, is_active
+                 FROM hr_professions
+                 WHERE is_active = true
+                 ORDER BY sort_order ASC, title ASC`
             )
         ]);
 
@@ -601,6 +648,13 @@ router.get('/profile', authenticateToken, async (req, res) => {
         if (certTotalR && certTotalR.rows[0]) {
             certificates.total = Number(certTotalR.rows[0].total || 0);
         }
+
+        const staffProfileR = get(25);
+        const staffProfile = normalizeProfileStaffProfile(staffProfileR?.rows?.[0] || null);
+        const professionCatalogR = get(26);
+        const professionCatalog = professionCatalogR
+            ? professionCatalogR.rows.map(normalizeProfessionCatalogRow)
+            : [];
 
         // Recent activity
         const histR = get(11);
@@ -736,6 +790,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
             deltas,
             team: isAdminRole ? team : [],
             dayProgress,
+            staffProfile,
+            professionCatalog,
             profilePreferences: {
                 cockpitWidgets: normalizeProfileCockpitWidgets(user.profile_cockpit_widgets)
             },

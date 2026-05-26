@@ -1486,6 +1486,13 @@ async function openAddStaffModal() {
             optionsBy: STAFF_ROLE_OPTIONS_BY_DEPT,
             dependsOn: 'department'
         },
+        {
+            key: 'secondary_professions',
+            label: 'Додаткові професії',
+            type: 'textarea',
+            placeholder: 'host, instructor',
+            hint: 'Основна роль лишається джерелом групування графіка.'
+        },
         { key: 'phone', label: 'Телефон', placeholder: '+380...' },
         { key: 'address', label: 'Адреса', placeholder: 'Місто, вулиця, будинок' }
     ], { icon: '👤', okText: 'Додати' });
@@ -1500,6 +1507,7 @@ async function openAddStaffModal() {
                 department: result.department,
                 position: result.position || '',
                 role_type: result.role_type || 'animator',
+                secondary_professions: String(result.secondary_professions || '').split(/[\n,;]+/).map(item => item.trim()).filter(Boolean),
                 phone: result.phone || '',
                 address: result.address || ''
             })

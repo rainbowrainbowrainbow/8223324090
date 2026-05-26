@@ -369,6 +369,99 @@ const PROFILE_PROFESSION_GUIDES = {
     }
 };
 
+function normalizeProfileProfessionKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .slice(0, 64);
+}
+
+function normalizeProfileProfessionList(value, exclude = []) {
+    const source = Array.isArray(value)
+        ? value
+        : (typeof value === 'string'
+            ? (() => {
+                try {
+                    const parsed = JSON.parse(value);
+                    return Array.isArray(parsed) ? parsed : value.split(/[\n,;]+/);
+                } catch {
+                    return value.split(/[\n,;]+/);
+                }
+            })()
+            : []);
+    const blocked = new Set(exclude.map(normalizeProfileProfessionKey).filter(Boolean));
+    const seen = new Set();
+    const result = [];
+    source.forEach(item => {
+        const key = normalizeProfileProfessionKey(item);
+        if (!key || blocked.has(key) || seen.has(key)) return;
+        seen.add(key);
+        result.push(key);
+    });
+    return result;
+}
+
+function profileProfessionCatalog() {
+    return Array.isArray(profileData?.professionCatalog) ? profileData.professionCatalog : [];
+}
+
+function profileStaffProfile() {
+    return profileData?.staffProfile || {};
+}
+
+function profileProfessionByKey(key) {
+    const normalized = normalizeProfileProfessionKey(key);
+    return profileProfessionCatalog().find(item => normalizeProfileProfessionKey(item.key) === normalized) || null;
+}
+
+function profilePrimaryProfessionKey() {
+    const staff = profileStaffProfile();
+    return normalizeProfileProfessionKey(staff.role_type || staff.roleType || profileRole(profileData) || 'default');
+}
+
+function profileSecondaryProfessionKeys() {
+    const primary = profilePrimaryProfessionKey();
+    const staff = profileStaffProfile();
+    return normalizeProfileProfessionList(staff.secondary_professions || staff.secondaryProfessions, [primary]);
+}
+
+function profileProfessionEntry(key, options = {}) {
+    const normalized = normalizeProfileProfessionKey(key) || 'default';
+    const catalog = profileProfessionByKey(normalized);
+    const guide = PROFILE_PROFESSION_GUIDES[normalized] || PROFILE_PROFESSION_GUIDES.default;
+    const title = catalog?.title || profileRoleLabel(normalized);
+    return {
+        key: normalized,
+        title,
+        department: catalog?.department || '',
+        shortInfo: catalog?.shortInfo || catalog?.short_info || guide.focus,
+        responsibilities: Array.isArray(catalog?.responsibilities) && catalog.responsibilities.length
+            ? catalog.responsibilities
+            : guide.responsibilities,
+        checklist: Array.isArray(catalog?.checklist) && catalog.checklist.length
+            ? catalog.checklist
+            : guide.checklist,
+        color: catalog?.color || '#10b981',
+        primary: options.primary === true
+    };
+}
+
+function profileProfessionEntries() {
+    const primary = profilePrimaryProfessionKey();
+    const keys = [primary, ...profileSecondaryProfessionKeys()].filter(Boolean);
+    const unique = [];
+    const seen = new Set();
+    keys.forEach((key, index) => {
+        const normalized = normalizeProfileProfessionKey(key);
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        unique.push(profileProfessionEntry(normalized, { primary: index === 0 }));
+    });
+    return unique.length ? unique : [profileProfessionEntry('default', { primary: true })];
+}
+
 const PROFILE_CREATOR_ONLY_TABS = new Set(['inventory', 'shop']);
 const PROFILE_ALWAYS_SOON_TABS = new Set(['quests', 'season', 'teams', 'referral']);
 const PROFILE_SOON_TAB_COPY = {
@@ -843,6 +936,29 @@ function renderProfileWidgetSettingsPanel() {
         </section>`;
 }
 
+function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()) {
+    const primary = entries[0] || profileProfessionEntry('default', { primary: true });
+    const secondary = entries.slice(1, 4);
+    return `
+        <div class="profile-profession-header-panel">
+            <div class="profile-profession-header-main" style="--profession-color:${escapeHtml(primary.color)}">
+                <span class="profile-kicker">Основна професія</span>
+                <h2>${escapeHtml(primary.title)}</h2>
+                <p>${escapeHtml(primary.shortInfo || 'Професійний контекст буде показано після заповнення HR каталогу.')}</p>
+            </div>
+            <div class="profile-profession-header-stack">
+                ${secondary.length
+                    ? secondary.map(item => `
+                        <div class="profile-profession-header-chip" style="--profession-color:${escapeHtml(item.color)}">
+                            <b>${escapeHtml(item.title)}</b>
+                            <span>${escapeHtml(item.department || item.key)}</span>
+                        </div>
+                    `).join('')
+                    : '<div class="profile-profession-header-empty">Додаткові професії ще не призначені</div>'}
+            </div>
+        </div>`;
+}
+
 // ==========================================
 // RENDER
 // ==========================================
@@ -857,6 +973,9 @@ function renderProfile() {
     const username = profileUsername(p);
     const role = profileRole(p);
     const roleLabel = profileRoleLabel(role);
+    const professionEntries = profileProfessionEntries();
+    const primaryProfession = professionEntries[0];
+    const secondaryCount = Math.max(0, professionEntries.length - 1);
 
     // Active title
     const activeTitleDef = titlesData?.titles?.find(t => t.code === titlesData.activeTitle);
@@ -880,7 +999,9 @@ function renderProfile() {
                     <div class="profile-kicker">Особистий робочий профіль</div>
                     <h1>${escapeHtml(name)}</h1>
                     <div class="profile-role-line">
-                        <span>${escapeHtml(roleLabel)}</span>
+                        <span>${escapeHtml(primaryProfession.title)}</span>
+                        ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : ''}
+                        <span>Доступ: ${escapeHtml(roleLabel)}</span>
                         ${username ? `<span>@${escapeHtml(username)}</span>` : ''}
                         <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
                     </div>
@@ -889,7 +1010,7 @@ function renderProfile() {
                 </div>
             </div>
 
-            ${renderProfileCockpitWidgetStrip({ context: 'header', limit: 4 })}
+            ${renderProfileProfessionHeaderPanel(professionEntries)}
         </div>
 
         <!-- TABS -->
@@ -970,24 +1091,34 @@ function renderTabContent() {
 }
 
 function profileProfessionGuide(role = profileRole()) {
-    return PROFILE_PROFESSION_GUIDES[role] || PROFILE_PROFESSION_GUIDES.default;
+    const entry = profileProfessionEntry(role || profilePrimaryProfessionKey(), { primary: true });
+    return {
+        focus: entry.shortInfo,
+        responsibilities: entry.responsibilities,
+        checklist: entry.checklist
+    };
 }
 
 function profileProfessionContext() {
     const p = profileData || {};
     const user = profileUser(p);
-    const role = profileRole(p);
-    const roleLabel = profileRoleLabel(role);
+    const role = profilePrimaryProfessionKey();
+    const primaryProfession = profileProfessionEntry(role, { primary: true });
     const shift = p.nextShift || p.todayShift || {};
     return {
         role,
-        roleLabel,
+        roleLabel: primaryProfession.title,
         displayName: profileDisplayName(p),
         username: profileUsername(p),
-        department: shift.department || user.department || p.department || '',
-        position: shift.position || user.position || p.position || roleLabel,
+        department: primaryProfession.department || shift.department || user.department || p.department || '',
+        position: shift.position || user.position || p.position || primaryProfession.title,
         telegramConnected: Boolean(user.telegramConnected),
-        guide: profileProfessionGuide(role)
+        guide: {
+            focus: primaryProfession.shortInfo,
+            responsibilities: primaryProfession.responsibilities,
+            checklist: primaryProfession.checklist
+        },
+        professions: profileProfessionEntries()
     };
 }
 
@@ -1041,11 +1172,13 @@ function renderProfileProfessionFallbackChecklist(items = []) {
 
 function renderProfileProfessionChecklist() {
     const checklistTasks = profileProfessionChecklistTasks();
-    const guide = profileProfessionGuide();
+    const checklistItems = profileProfessionEntries()
+        .flatMap(entry => (entry.checklist || []).map(item => `${entry.title}: ${item}`))
+        .slice(0, 8);
     if (checklistTasks.length) {
         return `<div class="profile-work-list">${checklistTasks.map(task => renderProfileTaskRow(task, 'Чекліст')).join('')}</div>`;
     }
-    return renderProfileProfessionFallbackChecklist(guide.checklist);
+    return renderProfileProfessionFallbackChecklist(checklistItems.length ? checklistItems : profileProfessionGuide().checklist);
 }
 
 function renderProfileProfessionResponsibilities(items = []) {
@@ -1053,6 +1186,24 @@ function renderProfileProfessionResponsibilities(items = []) {
         <div class="profile-profession-responsibilities">
             ${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
         </div>`;
+}
+
+function renderProfileProfessionCard(entry) {
+    return `
+        <article class="profile-profession-card ${entry.primary ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
+            <div class="profile-profession-card-head">
+                <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
+                ${entry.department ? `<small>${escapeHtml(entry.department)}</small>` : ''}
+            </div>
+            <h3>${escapeHtml(entry.title)}</h3>
+            <p>${escapeHtml(entry.shortInfo || 'Короткий опис ще не заповнено в HR каталозі.')}</p>
+            ${renderProfileProfessionResponsibilities((entry.responsibilities || []).slice(0, 4))}
+            ${(entry.checklist || []).length ? `
+                <div class="profile-profession-card-checklist">
+                    ${(entry.checklist || []).slice(0, 3).map(item => `<span>${escapeHtml(item)}</span>`).join('')}
+                </div>
+            ` : ''}
+        </article>`;
 }
 
 function renderProfileProfessionsTab() {
@@ -1063,6 +1214,8 @@ function renderProfileProfessionsTab() {
     const context = profileProfessionContext();
     const guide = context.guide;
     const nextShift = p.nextShift || p.todayShift || null;
+    const professions = context.professions || profileProfessionEntries();
+    const primaryProfession = professions[0];
 
     return `
         <div class="profile-professions-hub">
@@ -1070,18 +1223,32 @@ function renderProfileProfessionsTab() {
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Професійний контекст</span>
-                        <h2>${escapeHtml(context.roleLabel)}</h2>
+                        <h2>${escapeHtml(primaryProfession.title)}</h2>
                     </div>
                     <span>${escapeHtml(context.position || context.roleLabel)}</span>
                 </div>
                 <p>${escapeHtml(guide.focus)}</p>
                 <div class="profile-profession-meta">
-                    <span>Роль: ${escapeHtml(context.roleLabel)}</span>
+                    <span>Основна: ${escapeHtml(primaryProfession.title)}</span>
+                    ${professions.length > 1 ? `<span>${professions.length - 1} додаткові професії</span>` : ''}
                     ${context.department ? `<span>Зона: ${escapeHtml(context.department)}</span>` : ''}
                     ${context.username ? `<span>@${escapeHtml(context.username)}</span>` : ''}
                     <span>${context.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
                 </div>
                 ${renderProfileProfessionResponsibilities(guide.responsibilities)}
+            </section>
+
+            <section class="profile-work-panel profile-profession-roster-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Професії працівника</span>
+                        <h2>Primary + additional</h2>
+                    </div>
+                    <a href="/hr#team">Редагувати в HR</a>
+                </div>
+                <div class="profile-profession-roster">
+                    ${professions.map(renderProfileProfessionCard).join('')}
+                </div>
             </section>
 
             <section class="profile-work-panel profile-profession-checklist-panel">

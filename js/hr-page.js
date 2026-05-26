@@ -57,6 +57,7 @@ let shiftTemplates = [];
 let editingShift = null; // { staffId, date, existing? }
 let contextStaffId = null;
 let pollTimer = null;
+let hrProfessions = [];
 
 // ==========================================
 // HELPERS
@@ -66,6 +67,76 @@ let pollTimer = null;
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function normalizeProfessionKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .slice(0, 64);
+}
+
+function normalizeProfessionList(value, exclude = []) {
+    const source = Array.isArray(value)
+        ? value
+        : (typeof value === 'string'
+            ? (() => {
+                try {
+                    const parsed = JSON.parse(value);
+                    return Array.isArray(parsed) ? parsed : value.split(/[\n,;]+/);
+                } catch {
+                    return value.split(/[\n,;]+/);
+                }
+            })()
+            : []);
+    const blocked = new Set(exclude.map(normalizeProfessionKey).filter(Boolean));
+    const seen = new Set();
+    const result = [];
+    source.forEach(item => {
+        const key = normalizeProfessionKey(item);
+        if (!key || blocked.has(key) || seen.has(key)) return;
+        seen.add(key);
+        result.push(key);
+    });
+    return result;
+}
+
+function professionTitle(key) {
+    const normalized = normalizeProfessionKey(key);
+    const profession = hrProfessions.find(item => normalizeProfessionKey(item.key) === normalized);
+    return profession?.title || ROLE_LABELS[normalized] || normalized;
+}
+
+function staffSecondaryProfessions(staff = {}) {
+    return normalizeProfessionList(staff.secondary_professions || staff.secondaryProfessions, [staff.role_type]);
+}
+
+function staffHasProfession(staff = {}, key = '') {
+    const normalized = normalizeProfessionKey(key);
+    if (!normalized) return true;
+    return normalizeProfessionKey(staff.role_type) === normalized || staffSecondaryProfessions(staff).includes(normalized);
+}
+
+function professionOptionsFromCatalog(current = '') {
+    const currentKey = normalizeProfessionKey(current);
+    const active = hrProfessions.filter(item => item.is_active !== false || normalizeProfessionKey(item.key) === currentKey);
+    const catalogOptions = active.map(item => ({
+        value: item.key,
+        label: `${item.title}${item.department ? ' · ' + item.department : ''}`
+    }));
+    const known = new Set(catalogOptions.map(item => item.value));
+    Object.entries(ROLE_LABELS).forEach(([value, label]) => {
+        if (!known.has(value)) catalogOptions.push({ value, label });
+    });
+    return catalogOptions.sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+}
+
+function renderProfessionChips(keys = []) {
+    const normalized = normalizeProfessionList(keys);
+    if (!normalized.length) return '';
+    return `<div class="hr-secondary-profession-row">${normalized.map(key => `<span class="hr-secondary-profession-chip">${escapeHtml(professionTitle(key))}</span>`).join('')}</div>`;
 }
 
 function formatDate(d) {
@@ -239,6 +310,11 @@ function initNewTabs() {
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
+    document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionEditor());
+    document.getElementById('editRoleType')?.addEventListener('change', () => {
+        const selected = readStaffSecondaryProfessionSelection();
+        populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
+    });
     document.getElementById('hrOrgAutoLayoutBtn')?.addEventListener('click', autoArrangeCompanyOrgChart);
     initCompanyOrgChart();
 }
@@ -290,6 +366,7 @@ async function activateHrTab(target, options = {}) {
     }
     const loaders = {
         today: loadToday, schedule: loadSchedule, team: loadTeam, structure: loadCompanyStructure,
+        professions: loadProfessions, checklists: loadProfessionChecklists,
         reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
         salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
         vacancies: loadVacancies, reserve: loadReservePool,
@@ -790,6 +867,133 @@ async function copyWeek() {
 // TAB 3: TEAM
 // ==========================================
 
+async function ensureProfessionsLoaded(options = {}) {
+    if (hrProfessions.length && !options.force) return hrProfessions;
+    const data = await hrFetch('/professions');
+    if (!data?.success) {
+        if (!options.silent) showNotification(data?.error || 'Не вдалося завантажити професії', 'error');
+        return hrProfessions;
+    }
+    hrProfessions = Array.isArray(data.data) ? data.data : [];
+    return hrProfessions;
+}
+
+async function loadProfessions() {
+    await ensureProfessionsLoaded({ force: true });
+    renderProfessions();
+}
+
+function renderProfessions() {
+    const root = document.getElementById('professionCatalogList');
+    if (!root) return;
+    if (!hrProfessions.length) {
+        root.innerHTML = '<div class="hr-account-empty">Каталог професій ще порожній.</div>';
+        return;
+    }
+    root.innerHTML = hrProfessions.map(item => `
+        <article class="hr-profession-card ${item.is_active === false ? 'inactive' : ''}">
+            <div class="hr-profession-card-head">
+                <div>
+                    <h4>${escapeHtml(item.title || item.key)}</h4>
+                    <span class="hr-profession-key">${escapeHtml(item.key)}</span>
+                </div>
+                ${item.department ? `<span class="hr-profession-chip">${escapeHtml(item.department)}</span>` : ''}
+            </div>
+            <p>${escapeHtml(item.shortInfo || item.short_info || 'Короткий опис ще не заповнений.')}</p>
+            <div class="hr-profession-list">
+                ${(item.responsibilities || []).slice(0, 4).map(text => `<span>${escapeHtml(text)}</span>`).join('') || '<span>Відповідальності ще не заповнені.</span>'}
+            </div>
+            <div class="hr-profession-actions">
+                <button type="button" onclick="openProfessionEditor(${Number(item.id)})">Редагувати</button>
+            </div>
+        </article>
+    `).join('');
+}
+
+async function loadProfessionChecklists() {
+    await ensureProfessionsLoaded({ force: true });
+    renderProfessionChecklists();
+}
+
+function renderProfessionChecklists() {
+    const root = document.getElementById('professionChecklistList');
+    if (!root) return;
+    const items = hrProfessions.filter(item => item.is_active !== false);
+    if (!items.length) {
+        root.innerHTML = '<div class="hr-account-empty">Активних професій для чеклістів немає.</div>';
+        return;
+    }
+    root.innerHTML = items.map(item => `
+        <article class="hr-checklist-card">
+            <div class="hr-checklist-card-head">
+                <div>
+                    <h4>${escapeHtml(item.title || item.key)}</h4>
+                    ${item.department ? `<span class="hr-profession-key">${escapeHtml(item.department)}</span>` : ''}
+                </div>
+                <button type="button" class="btn-secondary" onclick="openProfessionEditor(${Number(item.id)})">Змінити</button>
+            </div>
+            <p>${escapeHtml(item.shortInfo || item.short_info || 'Опис професії ще не заповнений.')}</p>
+            <div class="hr-checklist-list">
+                ${(item.checklist || []).map(text => `<span>${escapeHtml(text)}</span>`).join('') || '<span>Чекліст ще не заповнений.</span>'}
+            </div>
+        </article>
+    `).join('');
+}
+
+function normalizeProfessionTextList(value) {
+    if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean);
+    return String(value || '').split(/\n|;/).map(v => v.trim()).filter(Boolean);
+}
+
+async function openProfessionEditor(professionId = null) {
+    await ensureProfessionsLoaded({ silent: true });
+    const current = professionId ? hrProfessions.find(item => Number(item.id) === Number(professionId)) : null;
+    const result = await formModal(current ? `Професія · ${current.title}` : 'Нова професія', [
+        { key: 'key', label: 'Key', required: true, defaultValue: current?.key || '', placeholder: 'animator' },
+        { key: 'title', label: 'Назва', required: true, defaultValue: current?.title || '', placeholder: 'Аніматор' },
+        { key: 'department', label: 'Напрям', defaultValue: current?.department || '', placeholder: 'Аніматори / Зал / Кухня' },
+        { key: 'shortInfo', label: 'Короткий опис', type: 'textarea', defaultValue: current?.shortInfo || current?.short_info || '', placeholder: 'Що тримає ця професія' },
+        { key: 'responsibilities', label: 'Відповідальності, кожна з нового рядка', type: 'textarea', defaultValue: (current?.responsibilities || []).join('\n') },
+        { key: 'checklist', label: 'Чекліст, кожен пункт з нового рядка', type: 'textarea', defaultValue: (current?.checklist || []).join('\n') },
+        { key: 'color', label: 'Колір', defaultValue: current?.color || '#10b981', placeholder: '#10b981' },
+        { key: 'sortOrder', label: 'Порядок', type: 'number', defaultValue: current?.sortOrder ?? current?.sort_order ?? 100 },
+        { key: 'isActive', label: 'Статус', type: 'select', defaultValue: current?.is_active === false ? 'false' : 'true', options: [
+            { value: 'true', label: 'Активна' },
+            { value: 'false', label: 'Вимкнена' }
+        ] }
+    ], {
+        icon: '🧩',
+        type: 'info',
+        okText: current ? 'Зберегти' : 'Створити',
+        className: 'hr-profession-modal',
+        closeOnBackdrop: false
+    });
+    if (!result) return;
+    const body = {
+        key: result.key,
+        title: result.title,
+        department: result.department || null,
+        shortInfo: result.shortInfo || '',
+        responsibilities: normalizeProfessionTextList(result.responsibilities),
+        checklist: normalizeProfessionTextList(result.checklist),
+        color: result.color || null,
+        sortOrder: parseInt(result.sortOrder, 10) || 100,
+        isActive: result.isActive !== 'false'
+    };
+    const response = await hrFetch(current ? `/professions/${current.id}` : '/professions', {
+        method: current ? 'PUT' : 'POST',
+        body
+    });
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося зберегти професію', 'error');
+        return;
+    }
+    showNotification(current ? 'Професію оновлено' : 'Професію створено', 'success');
+    await ensureProfessionsLoaded({ force: true });
+    renderProfessions();
+    if (document.getElementById('tab-checklists')?.classList.contains('active')) renderProfessionChecklists();
+}
+
 let teamStaff = [];
 let accountUsers = [];
 let accountRoleHierarchy = [];
@@ -1025,6 +1229,7 @@ function applyAccountDeepLinkFilters() {
 }
 
 async function loadTeam() {
+    await ensureProfessionsLoaded({ silent: true });
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
     if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
@@ -1076,7 +1281,7 @@ function filterAndRenderTeam() {
         );
     }
     if (role) {
-        filtered = filtered.filter(s => s.role_type === role);
+        filtered = filtered.filter(s => staffHasProfession(s, role));
     }
 
     renderTeam(filtered);
@@ -1095,6 +1300,7 @@ function renderTeam(staff) {
             ? `<img src="${escapeHtml(s.photo_url)}" alt="${escapeHtml(s.name)}">`
             : initials;
         const roleLabel = ROLE_LABELS[s.role_type] || s.role_type || '';
+        const secondaryChips = renderProfessionChips(staffSecondaryProfessions(s));
         const hireStr = s.hire_date ? new Date(s.hire_date).toLocaleDateString('uk-UA') : '';
         const phone = s.phone || '';
         const emergency = s.emergency_contact
@@ -1117,7 +1323,8 @@ function renderTeam(staff) {
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
             <div class="hr-team-details">
                 <div class="hr-team-name">${escapeHtml(s.name)} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
-                <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
+                <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${escapeHtml(professionTitle(s.role_type) || roleLabel)}${hireStr ? ' · з ' + hireStr : ''}</div>
+                ${secondaryChips}
                 <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'} ${poolBadge}</div>
                 <div class="hr-team-contact">
                     ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}
@@ -1634,12 +1841,41 @@ async function toggleAccountActive(userId, isActive, button) {
     await loadAccountCenter();
 }
 
-function openStaffEdit(staffId) {
+function renderProfessionOptions(options, selectedValues = []) {
+    const selected = new Set(normalizeProfessionList(selectedValues));
+    return options.map(option => `<option value="${escapeHtml(option.value)}" ${selected.has(normalizeProfessionKey(option.value)) ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+}
+
+function readStaffSecondaryProfessionSelection() {
+    return Array.from(document.getElementById('editSecondaryProfessions')?.selectedOptions || [])
+        .map(option => option.value);
+}
+
+function populateSecondaryProfessionSelect(selected = [], primaryRole = '') {
+    const select = document.getElementById('editSecondaryProfessions');
+    if (!select) return;
+    const primary = normalizeProfessionKey(primaryRole);
+    const options = professionOptionsFromCatalog(primary).filter(option => normalizeProfessionKey(option.value) !== primary);
+    select.innerHTML = renderProfessionOptions(options, selected);
+}
+
+function populateStaffProfessionControls(staff = {}) {
+    const primarySelect = document.getElementById('editRoleType');
+    const primary = normalizeProfessionKey(staff.role_type || 'animator') || 'animator';
+    if (primarySelect) {
+        primarySelect.innerHTML = renderProfessionOptions(professionOptionsFromCatalog(primary), [primary]);
+        primarySelect.value = primary;
+    }
+    populateSecondaryProfessionSelect(staffSecondaryProfessions(staff), primary);
+}
+
+async function openStaffEdit(staffId) {
     const s = teamStaff.find(st => st.id === staffId);
     if (!s) return;
+    await ensureProfessionsLoaded({ silent: true });
 
     document.getElementById('editStaffId').value = staffId;
-    document.getElementById('editRoleType').value = s.role_type || 'animator';
+    populateStaffProfessionControls(s);
     document.getElementById('editPhone').value = s.phone || '';
     document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
     document.getElementById('editAddress').value = s.address || '';
@@ -1661,6 +1897,7 @@ async function saveStaffEdit() {
     const staffId = document.getElementById('editStaffId')?.value;
     const body = {
         role_type: document.getElementById('editRoleType')?.value,
+        secondary_professions: normalizeProfessionList(readStaffSecondaryProfessionSelection(), [document.getElementById('editRoleType')?.value]),
         phone: document.getElementById('editPhone')?.value || null,
         birth_date: document.getElementById('editBirthDate')?.value || null,
         address: document.getElementById('editAddress')?.value || null,

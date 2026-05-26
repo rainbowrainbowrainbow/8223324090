@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.30">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.30">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.30">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.30">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.30">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.30">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.30">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.30">
+    <link rel="stylesheet" href="css/base.css?v=0.66.31">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.31">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.31">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.31">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.31">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.31">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.31">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1409,12 +1409,132 @@
         }
         .btn-add:hover { opacity: 0.9; }
 
+        .hr-professions-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .hr-professions-head h3 {
+            margin: 0 0 4px;
+            color: var(--gray-800);
+        }
+        .hr-professions-head p {
+            margin: 0;
+            max-width: 760px;
+            color: var(--gray-500);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .hr-profession-grid,
+        .hr-checklist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+        }
+        .hr-profession-card,
+        .hr-checklist-card {
+            min-width: 0;
+            padding: 16px;
+            border-radius: 14px;
+            border: 1px solid var(--gray-100);
+            background: var(--white);
+            box-shadow: var(--shadow-xs);
+        }
+        .hr-profession-card.inactive { opacity: .62; }
+        .hr-profession-card-head,
+        .hr-checklist-card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: flex-start;
+        }
+        .hr-profession-card h4,
+        .hr-checklist-card h4 {
+            margin: 0;
+            color: var(--gray-800);
+            font-size: 16px;
+        }
+        .hr-profession-card p,
+        .hr-checklist-card p {
+            margin: 0 0 10px;
+            color: var(--gray-500);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .hr-profession-key,
+        .hr-profession-chip,
+        .hr-secondary-profession-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(16,185,129,0.09);
+            color: #047857;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .hr-profession-list,
+        .hr-checklist-list {
+            display: grid;
+            gap: 6px;
+            margin: 10px 0;
+        }
+        .hr-profession-list span,
+        .hr-checklist-list span {
+            display: block;
+            padding: 7px 9px;
+            border-radius: 10px;
+            background: var(--gray-50);
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .hr-profession-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        .hr-profession-actions button {
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            color: var(--gray-700);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .hr-secondary-profession-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .hr-modal .form-hint {
+            display: block;
+            margin-top: 4px;
+            color: var(--gray-500);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+        .hr-modal select[multiple] {
+            min-height: 132px;
+        }
+
         /* ==========================================
            DARK MODE
            ========================================== */
         body.dark-mode .hr-summary-card,
         body.dark-mode .hr-staff-row,
         body.dark-mode .hr-team-card,
+        body.dark-mode .hr-profession-card,
+        body.dark-mode .hr-checklist-card,
         body.dark-mode .hr-account-row,
         body.dark-mode .hr-report-stat,
         body.dark-mode .hr-modal {
@@ -1426,6 +1546,9 @@
         body.dark-mode .hr-summary-card .hr-summary-label { color: #9CA3AF; }
         body.dark-mode .hr-staff-name,
         body.dark-mode .hr-team-name,
+        body.dark-mode .hr-professions-head h3,
+        body.dark-mode .hr-profession-card h4,
+        body.dark-mode .hr-checklist-card h4,
         body.dark-mode .hr-account-title strong,
         body.dark-mode .hr-account-head h3,
         body.dark-mode .hr-today-date,
@@ -1434,7 +1557,16 @@
             color: #E2E8F0;
         }
         body.dark-mode .hr-staff-role,
-        body.dark-mode .hr-staff-dept { color: #9CA3AF; }
+        body.dark-mode .hr-staff-dept,
+        body.dark-mode .hr-professions-head p,
+        body.dark-mode .hr-profession-card p,
+        body.dark-mode .hr-checklist-card p,
+        body.dark-mode .hr-modal .form-hint { color: #9CA3AF; }
+        body.dark-mode .hr-profession-list span,
+        body.dark-mode .hr-checklist-list span {
+            background: rgba(15,23,42,0.38);
+            color: #CBD5E1;
+        }
         body.dark-mode .hr-clock-btn { background: #3D3D5C; color: #E2E8F0; border-color: #4A4A6A; }
         body.dark-mode .hr-clock-btn:hover { background: #4A4A6A; }
         body.dark-mode .hr-view-btn,
@@ -1890,6 +2022,8 @@
                 <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
                 <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
                 <button type="button" class="hr-tab" data-tab="team">Команда</button>
+                <button type="button" class="hr-tab" data-tab="professions">Професії</button>
+                <button type="button" class="hr-tab" data-tab="checklists">Чеклісти</button>
                 <button type="button" class="hr-tab" data-tab="accounts">Акаунти</button>
                 <button type="button" class="hr-tab" data-tab="structure">Структура</button>
                 <button type="button" class="hr-tab" data-tab="reserve">Резерв</button>
@@ -1973,6 +2107,30 @@
                     </label>
                 </div>
                 <div id="teamGrid" class="hr-team-grid"></div>
+            </div>
+
+            <!-- TAB 3A: PROFESSIONS -->
+            <div id="tab-professions" class="hr-tab-content">
+                <div class="hr-professions-head">
+                    <div>
+                        <h3>Каталог професій</h3>
+                        <p>Єдине джерело описів, відповідальностей і чеклістів для профілю, HR та призначень співробітників.</p>
+                    </div>
+                    <button type="button" id="btnAddProfession" class="btn-add">+ Професія</button>
+                </div>
+                <div id="professionCatalogList" class="hr-profession-grid"></div>
+            </div>
+
+            <!-- TAB 3B: CHECKLISTS -->
+            <div id="tab-checklists" class="hr-tab-content">
+                <div class="hr-professions-head">
+                    <div>
+                        <h3>HR чеклісти за професіями</h3>
+                        <p>Окрема операційна поверхня для onboarding, змін і контрольних пунктів по кожній професії.</p>
+                    </div>
+                    <button type="button" class="btn-secondary" onclick="loadProfessionChecklists()">Оновити</button>
+                </div>
+                <div id="professionChecklistList" class="hr-checklist-grid"></div>
             </div>
 
             <!-- TAB 3B: ACCOUNTS -->
@@ -2237,6 +2395,11 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Додаткові професії</label>
+                <select id="editSecondaryProfessions" multiple></select>
+                <small class="form-hint">Можна обрати кілька додаткових професій. Основна роль лишається джерелом групування графіка і таймлайну.</small>
+            </div>
+            <div class="form-group">
                 <label>Телефон</label>
                 <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
             </div>
@@ -2350,15 +2513,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.66.30"></script>
-    <script src="js/config.js?v=0.66.30"></script>
-    <script src="js/notification.js?v=0.66.30"></script>
-    <script src="js/api.js?v=0.66.30"></script>
-    <script src="js/auth.js?v=0.66.30"></script>
-    <script src="js/components/sidebar.js?v=0.66.30"></script>
+    <script src="js/ui.js?v=0.66.31"></script>
+    <script src="js/config.js?v=0.66.31"></script>
+    <script src="js/notification.js?v=0.66.31"></script>
+    <script src="js/api.js?v=0.66.31"></script>
+    <script src="js/auth.js?v=0.66.31"></script>
+    <script src="js/components/sidebar.js?v=0.66.31"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.66.30"></script>
-    <script src="js/alerts.js?v=0.66.30"></script><script>
+    <script src="js/hr-page.js?v=0.66.31"></script>
+    <script src="js/alerts.js?v=0.66.31"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

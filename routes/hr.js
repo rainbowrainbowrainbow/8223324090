@@ -13,6 +13,13 @@ const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const costumeInventory = require('../services/costumeInventory');
 const { requireRole } = require('../middleware/auth');
+const {
+    parseTextList,
+    normalizeProfessionKey,
+    normalizeSecondaryProfessions,
+    normalizeProfessionCatalogRow,
+    validateProfessionKeys
+} = require('../services/professions');
 
 // RBAC: HR module — management + HR + security + admin + manager
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'));
@@ -285,6 +292,51 @@ async function auditLog(action, staffId, performedBy, details, ipAddress) {
     }
 }
 
+async function activeProfessionKeySet(db = pool) {
+    const result = await db.query('SELECT key FROM hr_professions WHERE is_active = true');
+    return new Set(result.rows.map(row => normalizeProfessionKey(row.key)).filter(Boolean));
+}
+
+function normalizeProfessionPayload(body = {}, current = {}) {
+    const key = normalizeProfessionKey(body.key ?? current.key);
+    const title = String(body.title ?? current.title ?? '').replace(/\u0000/g, '').trim().slice(0, 120);
+    const department = String(body.department ?? current.department ?? '').replace(/\u0000/g, '').trim().slice(0, 80) || null;
+    const shortInfo = String(body.short_info ?? body.shortInfo ?? current.short_info ?? current.shortInfo ?? '').replace(/\u0000/g, '').trim().slice(0, 2000) || null;
+    const responsibilities = parseTextList(body.responsibilities ?? current.responsibilities, 16);
+    const checklist = parseTextList(body.checklist ?? current.checklist, 32);
+    const colorRaw = String(body.color ?? current.color ?? '').trim();
+    const color = /^#[0-9a-f]{6}$/i.test(colorRaw) ? colorRaw : (colorRaw ? colorRaw.slice(0, 20) : null);
+    const sortOrder = Number.isFinite(Number(body.sort_order ?? body.sortOrder ?? current.sort_order ?? current.sortOrder))
+        ? Math.round(Number(body.sort_order ?? body.sortOrder ?? current.sort_order ?? current.sortOrder))
+        : 100;
+    const isActive = body.is_active ?? body.isActive ?? current.is_active ?? current.isActive;
+    return {
+        key,
+        title,
+        department,
+        shortInfo,
+        responsibilities,
+        checklist,
+        color,
+        sortOrder,
+        isActive: isActive === undefined ? true : isActive !== false && isActive !== 'false'
+    };
+}
+
+async function validateStaffProfessionInput(roleType, secondaryProfessions) {
+    const activeKeys = await activeProfessionKeySet();
+    const primaryKey = normalizeProfessionKey(roleType);
+    if (primaryKey && !activeKeys.has(primaryKey)) {
+        return { error: `Невідома основна професія: ${primaryKey}` };
+    }
+    const normalizedSecondary = normalizeSecondaryProfessions(secondaryProfessions, primaryKey);
+    const invalid = validateProfessionKeys(normalizedSecondary, activeKeys);
+    if (invalid.length) {
+        return { error: `Невідомі додаткові професії: ${invalid.join(', ')}` };
+    }
+    return { secondaryProfessions: normalizedSecondary };
+}
+
 function toDateOnly(value) {
     if (!value) return null;
     if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -336,6 +388,107 @@ async function removeMirroredStaffSchedule(staffId, shiftDate, db = pool) {
 }
 
 // ==========================================
+// PROFESSIONS CATALOG
+// ==========================================
+
+router.get('/professions', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, key, title, department, short_info, responsibilities, checklist,
+                    color, sort_order, is_active, created_at, updated_at
+             FROM hr_professions
+             ORDER BY is_active DESC, sort_order ASC, title ASC`
+        );
+        res.json({
+            success: true,
+            data: result.rows.map(normalizeProfessionCatalogRow)
+        });
+    } catch (err) {
+        log.error('GET /hr/professions error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/professions', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+    try {
+        const payload = normalizeProfessionPayload(req.body);
+        if (!payload.key || !payload.title) {
+            return res.status(400).json({ success: false, error: 'Потрібні key і title професії' });
+        }
+        const result = await pool.query(
+            `INSERT INTO hr_professions (key, title, department, short_info, responsibilities, checklist, color, sort_order, is_active)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+             RETURNING *`,
+            [
+                payload.key,
+                payload.title,
+                payload.department,
+                payload.shortInfo,
+                JSON.stringify(payload.responsibilities),
+                JSON.stringify(payload.checklist),
+                payload.color,
+                payload.sortOrder,
+                payload.isActive
+            ]
+        );
+        await auditLog('profession_create', null, req.user?.username, { key: payload.key }, req.ip);
+        res.json({ success: true, data: normalizeProfessionCatalogRow(result.rows[0]) });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Професія з таким key вже існує' });
+        }
+        log.error('POST /hr/professions error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.put('/professions/:id', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+    try {
+        const current = await pool.query('SELECT * FROM hr_professions WHERE id = $1', [req.params.id]);
+        if (!current.rows.length) return res.status(404).json({ success: false, error: 'Професію не знайдено' });
+        const payload = normalizeProfessionPayload(req.body, current.rows[0]);
+        if (!payload.key || !payload.title) {
+            return res.status(400).json({ success: false, error: 'Потрібні key і title професії' });
+        }
+        const result = await pool.query(
+            `UPDATE hr_professions SET
+                key = $1,
+                title = $2,
+                department = $3,
+                short_info = $4,
+                responsibilities = $5::jsonb,
+                checklist = $6::jsonb,
+                color = $7,
+                sort_order = $8,
+                is_active = $9,
+                updated_at = NOW()
+             WHERE id = $10
+             RETURNING *`,
+            [
+                payload.key,
+                payload.title,
+                payload.department,
+                payload.shortInfo,
+                JSON.stringify(payload.responsibilities),
+                JSON.stringify(payload.checklist),
+                payload.color,
+                payload.sortOrder,
+                payload.isActive,
+                req.params.id
+            ]
+        );
+        await auditLog('profession_update', null, req.user?.username, { id: req.params.id, key: payload.key }, req.ip);
+        res.json({ success: true, data: normalizeProfessionCatalogRow(result.rows[0]) });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Професія з таким key вже існує' });
+        }
+        log.error('PUT /hr/professions/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
 // STAFF HR DATA
 // ==========================================
 
@@ -344,7 +497,8 @@ router.get('/staff', async (req, res) => {
     try {
         const { active, role_type, include_freelance } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
-                    role_type, hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
+                    role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     is_freelance, unique_person_key, hr_pool_status, blacklist_reason, blacklisted_at,
                     (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
@@ -358,7 +512,7 @@ router.get('/staff', async (req, res) => {
         }
         if (role_type) {
             params.push(role_type);
-            conds.push(`role_type = $${params.length}`);
+            conds.push(`(role_type = $${params.length} OR COALESCE(secondary_professions, '[]'::jsonb) ? $${params.length})`);
         }
         // v39.8: hide freelance placeholder slots by default
         if (include_freelance !== 'true') {
@@ -379,7 +533,8 @@ router.get('/staff/:id', async (req, res) => {
     try {
         const staff = await pool.query(
             `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
-                    role_type, hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
+                    role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     hr_pool_status, blacklist_reason, blacklisted_at
              FROM staff WHERE id = $1`, [req.params.id]
@@ -396,6 +551,21 @@ router.get('/staff/:id', async (req, res) => {
 router.put('/staff/:id', async (req, res) => {
     try {
         const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason } = req.body;
+        const hasSecondaryProfessions = Object.prototype.hasOwnProperty.call(req.body || {}, 'secondary_professions')
+            || Object.prototype.hasOwnProperty.call(req.body || {}, 'secondaryProfessions');
+        const secondaryInput = Object.prototype.hasOwnProperty.call(req.body || {}, 'secondary_professions')
+            ? req.body.secondary_professions
+            : req.body.secondaryProfessions;
+        let effectiveRoleType = role_type;
+        if (hasSecondaryProfessions && !effectiveRoleType) {
+            const currentStaff = await pool.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
+            if (!currentStaff.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
+            effectiveRoleType = currentStaff.rows[0].role_type;
+        }
+        const professionValidation = await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : []);
+        if (professionValidation.error) {
+            return res.status(400).json({ success: false, error: professionValidation.error });
+        }
         const result = await pool.query(
             `UPDATE staff SET
                 phone = COALESCE($1, phone),
@@ -420,9 +590,31 @@ router.put('/staff/:id', async (req, res) => {
                     WHEN $13::text = 'blacklisted' THEN COALESCE(blacklisted_at, NOW())
                     WHEN $13::text IS NOT NULL AND $13::text != 'blacklisted' THEN NULL
                     ELSE blacklisted_at
+                END,
+                secondary_professions = CASE
+                    WHEN $15::boolean THEN $16::jsonb
+                    ELSE secondary_professions
                 END
-             WHERE id = $15 RETURNING *`,
-            [phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills ? (Array.isArray(skills) ? skills : [skills]) : null, address, hr_pool_status, blacklist_reason, req.params.id]
+             WHERE id = $17 RETURNING *`,
+            [
+                phone,
+                emergency_contact,
+                emergency_phone,
+                role_type,
+                hourly_rate,
+                birth_date,
+                notes,
+                telegram_id,
+                telegram_username,
+                contract_type,
+                skills ? (Array.isArray(skills) ? skills : [skills]) : null,
+                address,
+                hr_pool_status,
+                blacklist_reason,
+                hasSecondaryProfessions,
+                JSON.stringify(professionValidation.secondaryProfessions || []),
+                req.params.id
+            ]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('staff_update', parseInt(req.params.id), req.user?.username, req.body, req.ip);

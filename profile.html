@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.30">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.30">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.30">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.30">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.30">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.30">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.30">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.30">
+    <link rel="stylesheet" href="css/base.css?v=0.66.31">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.31">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.31">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.31">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.31">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.31">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.31">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -997,6 +997,78 @@
             margin-bottom: 18px;
         }
 
+        .profile-profession-header-panel {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+            gap: 12px;
+            align-self: stretch;
+        }
+
+        .profile-profession-header-main,
+        .profile-profession-header-chip,
+        .profile-profession-header-empty {
+            min-width: 0;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--profession-color, #10b981) 12%, transparent), transparent 54%),
+                rgba(255,255,255,0.78);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+        }
+
+        .profile-profession-header-main {
+            padding: 16px;
+        }
+
+        .profile-profession-header-main h2 {
+            margin: 4px 0 8px;
+            color: var(--gray-900);
+            font-size: 22px;
+            line-height: 1.15;
+        }
+
+        .profile-profession-header-main p {
+            margin: 0;
+            color: var(--gray-600);
+            font-size: 13px;
+            font-weight: 750;
+            line-height: 1.45;
+        }
+
+        .profile-profession-header-stack {
+            display: grid;
+            gap: 8px;
+            align-content: start;
+        }
+
+        .profile-profession-header-chip,
+        .profile-profession-header-empty {
+            padding: 12px;
+        }
+
+        .profile-profession-header-chip b,
+        .profile-profession-header-chip span,
+        .profile-profession-header-empty {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-profession-header-chip b {
+            color: var(--gray-900);
+            font-size: 14px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .profile-profession-header-chip span,
+        .profile-profession-header-empty {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
         .profile-work-header::before {
             content: '';
             display: block;
@@ -1530,6 +1602,10 @@
             grid-column: span 7;
         }
 
+        .profile-profession-roster-panel {
+            grid-column: span 5;
+        }
+
         .profile-profession-checklist-panel {
             grid-column: span 5;
         }
@@ -1552,6 +1628,77 @@
             font-size: 14px;
             font-weight: 700;
             line-height: 1.55;
+        }
+
+        .profile-profession-roster {
+            display: grid;
+            gap: 10px;
+        }
+
+        .profile-profession-card {
+            min-width: 0;
+            padding: 13px;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--profession-color, #10b981) 11%, transparent), transparent 46%),
+                var(--gray-50);
+        }
+
+        .profile-profession-card.is-primary {
+            border-color: color-mix(in srgb, var(--profession-color, #10b981) 38%, rgba(148, 163, 184, 0.20));
+            box-shadow: inset 3px 0 0 var(--profession-color, #10b981);
+        }
+
+        .profile-profession-card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            color: var(--gray-500);
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .profile-profession-card h3 {
+            margin: 0 0 6px;
+            color: var(--gray-900);
+            font-size: 16px;
+        }
+
+        .profile-profession-card p {
+            margin: 0;
+            color: var(--gray-600);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .profile-profession-card-checklist {
+            display: grid;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .profile-profession-card-checklist span {
+            display: block;
+            padding-left: 12px;
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 750;
+            line-height: 1.35;
+            position: relative;
+        }
+
+        .profile-profession-card-checklist span::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: .55em;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--profession-color, #10b981);
         }
 
         .profile-profession-meta,
@@ -2251,6 +2398,9 @@
         }
 
         body.dark-mode .profile-work-header,
+        body.dark-mode .profile-profession-header-main,
+        body.dark-mode .profile-profession-header-chip,
+        body.dark-mode .profile-profession-header-empty,
         body.dark-mode .profile-work-panel,
         body.dark-mode .profile-work-tabs {
             background: linear-gradient(135deg, var(--profile-dark-surface), rgba(15, 23, 42, 0.74));
@@ -2264,6 +2414,9 @@
         body.dark-mode .profile-panel-head h2,
         body.dark-mode .profile-work-stat b,
         body.dark-mode .profile-cockpit-widget b,
+        body.dark-mode .profile-profession-header-main h2,
+        body.dark-mode .profile-profession-header-chip b,
+        body.dark-mode .profile-profession-card h3,
         body.dark-mode .profile-widget-config-head h3,
         body.dark-mode .profile-widget-config-item b,
         body.dark-mode .profile-quick-link-stack a,
@@ -2284,6 +2437,11 @@
 
         body.dark-mode .profile-work-stat span,
         body.dark-mode .profile-profession-hero p,
+        body.dark-mode .profile-profession-header-main p,
+        body.dark-mode .profile-profession-header-chip span,
+        body.dark-mode .profile-profession-header-empty,
+        body.dark-mode .profile-profession-card p,
+        body.dark-mode .profile-profession-card-checklist span,
         body.dark-mode .profile-cockpit-widget-label,
         body.dark-mode .profile-cockpit-widget small,
         body.dark-mode .profile-widget-config-head p,
@@ -2327,6 +2485,7 @@
         body.dark-mode .profile-profession-meta span,
         body.dark-mode .profile-profession-check-item,
         body.dark-mode .profile-profession-signal-grid div,
+        body.dark-mode .profile-profession-card,
         body.dark-mode .profile-cockpit-widget,
         body.dark-mode .profile-widget-config-panel,
         body.dark-mode .profile-widget-config-item,
@@ -3259,6 +3418,7 @@
             .profile-work-panel-progress,
             .profile-work-panel-activity,
             .profile-profession-hero,
+            .profile-profession-roster-panel,
             .profile-profession-checklist-panel,
             .profile-profession-ops-panel,
             .profile-profession-active-panel,
@@ -3294,6 +3454,10 @@
 
             .profile-work-summary {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .profile-profession-header-panel {
+                grid-template-columns: 1fr;
             }
 
             .profile-cockpit-strip--header {
@@ -3339,6 +3503,7 @@
 
             .profile-work-summary,
             .profile-cockpit-strip,
+            .profile-profession-header-panel,
             .profile-status-grid,
             .profile-compact-metrics,
             .profile-work-overview,
@@ -3359,6 +3524,7 @@
             .profile-work-panel-progress,
             .profile-work-panel-activity,
             .profile-profession-hero,
+            .profile-profession-roster-panel,
             .profile-profession-checklist-panel,
             .profile-profession-ops-panel,
             .profile-profession-active-panel,
@@ -3567,16 +3733,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.30"></script>
-    <script src="js/notification.js?v=0.66.30"></script>
-    <script src="js/api.js?v=0.66.30"></script>
-    <script src="js/auth.js?v=0.66.30"></script>
-    <script src="js/components/sidebar.js?v=0.66.30"></script>
+    <script src="js/config.js?v=0.66.31"></script>
+    <script src="js/notification.js?v=0.66.31"></script>
+    <script src="js/api.js?v=0.66.31"></script>
+    <script src="js/auth.js?v=0.66.31"></script>
+    <script src="js/components/sidebar.js?v=0.66.31"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.66.30"></script>
-    <script src="js/achievement-popup.js?v=0.66.30"></script>
-    <script src="js/task-create.js?v=0.66.30"></script>
-    <script src="js/profile-page.js?v=0.66.30"></script>
-    <script src="js/alerts.js?v=0.66.30"></script>
+    <script src="js/ui.js?v=0.66.31"></script>
+    <script src="js/achievement-popup.js?v=0.66.31"></script>
+    <script src="js/task-create.js?v=0.66.31"></script>
+    <script src="js/profile-page.js?v=0.66.31"></script>
+    <script src="js/alerts.js?v=0.66.31"></script>
 </body>
 </html>

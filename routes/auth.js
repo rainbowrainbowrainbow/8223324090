@@ -1300,6 +1300,15 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
             );
         } catch (e) { log.warn('Audit log failed for impersonation', e.message); }
 
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target,
+            eventType: 'account_impersonation_started',
+            reason: 'account_management',
+            details: { targetRole: target.role, expiresIn: '1h' },
+            req
+        });
+
         log.info(`Impersonation: ${req.user.username} → ${target.username} (${target.role})`);
         res.json({ token, user: authUser });
     } catch (err) {

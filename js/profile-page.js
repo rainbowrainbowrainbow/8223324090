@@ -1875,6 +1875,7 @@ function accountSecurityEventLabel(type) {
         account_profile_staff_unlinked: 'Акаунт відвʼязано від працівника',
         account_staff_unlinked: 'Акаунт відвʼязано від працівника',
         bulk_account_created_with_staff_link: 'Акаунт створено масово',
+        account_impersonation_started: 'Impersonation акаунта запущено',
         account_roles_updated: 'Ролі та доступ змінено',
         account_activated: 'Акаунт активовано',
         account_deactivated: 'Акаунт деактивовано'
@@ -1910,6 +1911,7 @@ function accountSecurityEventDetails(event) {
     if (type === 'login_success') return details.parsedCredentialBlock ? 'вхід із credential block' : 'сесію створено';
     if (type === 'session_logout') return 'поточну refresh-сесію відкликано';
     if (type === 'sessions_revoked') return details.scope === 'all_devices' ? 'усі активні сесії' : 'сесії відкликано';
+    if (type === 'account_impersonation_started') return details.targetRole ? `роль цілі: ${details.targetRole}` : '';
     if (type === 'password_reset_by_admin' || type === 'password_one_time_reissued') {
         return details.sessionsRevoked ? 'старі сесії відкликано' : '';
     }

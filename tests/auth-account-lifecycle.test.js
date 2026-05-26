@@ -276,6 +276,7 @@ function createFakePool() {
 
         if (/SELECT id FROM chat_channels WHERE is_default = true/i.test(text)) return { rows: [] };
         if (/INSERT INTO chat_channel_members/i.test(text)) return { rows: [], rowCount: 1 };
+        if (/INSERT INTO admin_audit_log/i.test(text)) return { rows: [], rowCount: 1 };
         if (/SELECT password_hash FROM users WHERE username = \$1/i.test(text)) {
             const row = state.users.find(item => item.username === params[0]);
             return { rows: row ? [{ password_hash: row.password_hash }] : [] };
@@ -553,6 +554,12 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(accessUpdate.data.extraRoles, ['manager']);
         assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
 
+        const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', {
+            userId
+        }, creatorToken());
+        assert.equal(impersonate.status, 200);
+        assert.ok(impersonate.data.token);
+
         const passwordChange = await request(baseUrl, 'PUT', '/api/auth/password', {
             currentPassword: 'AuditPass789!',
             newPassword: 'AuditPass987!'
@@ -595,6 +602,7 @@ test('account security journal records semantic account, password, role, login, 
             'login_failed',
             'login_success',
             'account_roles_updated',
+            'account_impersonation_started',
             'password_changed',
             'session_logout',
             'password_reset_by_admin',

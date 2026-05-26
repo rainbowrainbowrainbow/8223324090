@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.42 - CRM 66.42: робочий hub профілю
+
+### Profile / work access menu / 26.05.2026 [codex]
+- **Верхній menu профілю став робочим hub** - `Професії`, `Чеклісти` і `Матеріали` тепер перші core-входи з описами, метриками і активним станом.
+- **Професійний контекст видно прямо в navigation зоні** - menu показує активну професію і кількість професій, а profession switcher лишається поруч у цьому ж hub.
+- **Multi-profession flow керує checklist/material context** - перемикання професії оновлює активний контекст для чеклістів і матеріалів без другого джерела правди.
+- **Secondary tabs демотовано** - gamification/optional розділи лишаються в `Ще в профілі`, не забивають primary work row.
+- **Regression guard** - оновлено profile foundation/UI checks для core work-access tabs, ARIA active state і responsive menu contract.
+
+---
+
 ## v0.66.41 - CRM 66.41: компактна історія виконаних задач
 
 ### Profile / Мій день / 26.05.2026 [codex]

@@ -92,10 +92,15 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(profilePage, /professionCatalog/);
         assert.doesNotMatch(profilePage, /renderProfileCockpitWidgetStrip\(\{ context: 'header'/);
         assert.match(profilePage, /profileWorkHubTabOrder/);
+        assert.match(profilePage, /function renderProfileWorkAccessTab/);
+        assert.match(profilePage, /data-profile-core-access="true"/);
+        assert.match(profilePage, /aria-current="page"/);
         assert.match(profilePage, /label: 'Професії'/);
         assert.match(profilePage, /label: 'Чеклісти'/);
         assert.match(profilePage, /label: 'Матеріали'/);
         assert.match(profileHtml, /\.profile-profession-header-panel/);
+        assert.match(profileHtml, /\.profile-work-access-menu/);
+        assert.match(profileHtml, /\.profile-work-access-tab--core/);
         assert.match(profileHtml, /\.profile-work-hub-context/);
         assert.match(profileHtml, /\.profile-profession-switcher/);
         assert.match(profileHtml, /\.profile-profession-roster-panel/);
@@ -109,6 +114,9 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(profilePage, /apiGet\('\/training\/materials\?page=1&limit=30'\)/);
         assert.match(profilePage, /renderProfileChecklistItemsForProfession/);
         assert.match(profilePage, /profileMaterialMatchesProfession/);
+        assert.match(profilePage, /function profileWorkTabMetric/);
+        assert.match(profilePage, /Пункти активної професії та live-задачі/);
+        assert.match(profilePage, /Навчання, інструкції і робочі нотатки/);
         assert.match(profileHtml, /\.profile-material-grid/);
         assert.match(profileHtml, /\.profile-secondary-work-menu/);
         assert.match(profileHtml, /\.profile-material-card/);

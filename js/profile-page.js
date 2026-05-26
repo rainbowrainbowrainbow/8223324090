@@ -506,12 +506,48 @@ function profileTrainingRoleKey(key = ensureActiveProfessionKey()) {
 
 function profileWorkHubTabOrder() {
     return [
-        { id: 'professions', label: 'Професії' },
-        { id: 'checklists', label: 'Чеклісти' },
-        { id: 'materials', label: 'Матеріали' },
-        { id: 'myday', label: 'Мій день', ownOnly: true },
-        { id: 'mytasks', label: 'Мої задачі', ownOnly: true },
-        { id: 'settings', label: 'Налаштування', ownOnly: true }
+        {
+            id: 'professions',
+            label: 'Професії',
+            kicker: 'Профконтекст',
+            detail: 'Огляд, перемикання і база ролі',
+            core: true
+        },
+        {
+            id: 'checklists',
+            label: 'Чеклісти',
+            kicker: 'Контроль ролі',
+            detail: 'Пункти активної професії та live-задачі',
+            core: true
+        },
+        {
+            id: 'materials',
+            label: 'Матеріали',
+            kicker: 'База знань',
+            detail: 'Навчання, інструкції і робочі нотатки',
+            core: true
+        },
+        {
+            id: 'myday',
+            label: 'Мій день',
+            kicker: 'Виконання',
+            detail: 'Сьогоднішній особистий зріз',
+            ownOnly: true
+        },
+        {
+            id: 'mytasks',
+            label: 'Мої задачі',
+            kicker: 'Задачі',
+            detail: 'Фільтри і всі активні задачі',
+            ownOnly: true
+        },
+        {
+            id: 'settings',
+            label: 'Налаштування',
+            kicker: 'Акаунт',
+            detail: 'Профіль, avatar і безпека',
+            ownOnly: true
+        }
     ];
 }
 
@@ -598,6 +634,58 @@ function renderProfilePrimaryTab(tab, label, options = {}) {
         ? ' data-profile-locked="true" data-profile-soon="скоро"'
         : '';
     return `<button class="${classes}" data-profile-tab="${tab}" onclick="switchTab('${tab}')"${attrs}>${escapeHtml(label)}${options.suffix || ''}</button>`;
+}
+
+function profileWorkTabMetric(tabId) {
+    const active = profileActiveProfessionEntry();
+    const entries = profileProfessionEntries();
+    const quick = myCabinetData?.stats?.taskQuick || {};
+    switch (tabId) {
+        case 'professions':
+            return entries.length > 1 ? `${entries.length} професії` : '1 професія';
+        case 'checklists':
+            return `${(active.checklist || []).length || 0} пунктів`;
+        case 'materials': {
+            const loadedForActive = profileMaterialsState.loaded && profileMaterialsState.key === active.key;
+            if (!loadedForActive) return profileTrainingRoleKey(active.key);
+            const count = (profileMaterialsState.articles || []).length + (profileMaterialsState.materials || []).length;
+            return count ? `${count} матеріалів` : 'немає';
+        }
+        case 'myday':
+            return `${Number(quick.completedToday || quick.completed || 0)} виконано`;
+        case 'mytasks':
+            return `${cabinetList('all').length || Number(profileData?.tasks?.assigned || 0)} активні`;
+        case 'settings':
+            return 'безпека';
+        default:
+            return '';
+    }
+}
+
+function renderProfileWorkAccessTab(tab) {
+    if (tab.ownOnly && !isOwnProfile) return '';
+    const lock = profileTabLock(tab.id);
+    const active = activeTab === tab.id;
+    const classes = [
+        'profile-work-access-tab',
+        tab.core ? 'profile-work-access-tab--core' : 'profile-work-access-tab--support',
+        active ? 'active' : '',
+        lock ? 'is-soon is-locked' : ''
+    ].filter(Boolean).join(' ');
+    const attrs = [
+        `data-profile-tab="${escapeHtml(tab.id)}"`,
+        tab.core ? 'data-profile-core-access="true"' : '',
+        lock ? 'data-profile-locked="true" data-profile-soon="скоро"' : '',
+        `aria-selected="${active ? 'true' : 'false'}"`,
+        active ? 'aria-current="page"' : ''
+    ].filter(Boolean).join(' ');
+    return `
+        <button type="button" role="tab" class="${classes}" onclick="switchTab('${escapeHtml(tab.id)}')" ${attrs}>
+            <span class="profile-work-access-kicker">${escapeHtml(tab.kicker || '')}</span>
+            <b>${escapeHtml(tab.label)}</b>
+            <small>${escapeHtml(tab.detail || '')}</small>
+            <em>${escapeHtml(profileWorkTabMetric(tab.id))}</em>
+        </button>`;
 }
 
 function renderProfileComingSoon(tab) {
@@ -1045,11 +1133,23 @@ function renderProfileProfessionSwitcher(entries = profileProfessionEntries()) {
         </div>`;
 }
 
-function renderProfileWorkHubTabs() {
+function renderProfileWorkHubTabs(entries = profileProfessionEntries()) {
+    const active = profileActiveProfessionEntry();
+    const coreCount = profileWorkHubTabOrder().filter(tab => tab.core).length;
     return `
-        <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Робочий хаб профілю">
-            ${profileWorkHubTabOrder().map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly })).join('')}
-        </div>`;
+        <nav class="profile-work-access-menu" aria-label="Основний робочий доступ профілю">
+            <div class="profile-work-access-head">
+                <div>
+                    <span class="profile-kicker">Робочий hub</span>
+                    <strong>${escapeHtml(active.title)}</strong>
+                    <small>${escapeHtml(entries.length > 1 ? `${entries.length} професії в профілі` : 'одна активна професія')}</small>
+                </div>
+                <span>${coreCount} основні входи</span>
+            </div>
+            <div class="profile-primary-tabs profile-work-tabs profile-work-access-tabs" role="tablist" aria-label="Професії, чеклісти, матеріали та особиста робота">
+                ${profileWorkHubTabOrder().map(renderProfileWorkAccessTab).join('')}
+            </div>
+        </nav>`;
 }
 
 function renderProfileSecondaryTabs() {
@@ -1122,8 +1222,8 @@ function renderProfile() {
         </div>
 
         <section class="profile-work-hub" aria-label="Робочий доступ профілю">
+            ${renderProfileWorkHubTabs(professionEntries)}
             ${renderProfileProfessionSwitcher(professionEntries)}
-            ${renderProfileWorkHubTabs()}
             ${renderProfileSecondaryTabs()}
         </section>
 
@@ -1160,9 +1260,13 @@ async function switchTab(tab) {
         attachProfileListeners();
     }
     // Update tab buttons
-    document.querySelectorAll('.profile-primary-tab').forEach(btn => {
+    document.querySelectorAll('.profile-primary-tab, .profile-work-access-tab').forEach(btn => {
         const tabName = btn.dataset.profileTab || btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
-        btn.classList.toggle('active', tabName === tab);
+        const isActive = tabName === tab;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        if (isActive) btn.setAttribute('aria-current', 'page');
+        else btn.removeAttribute('aria-current');
     });
 }
 

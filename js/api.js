@@ -56,6 +56,7 @@ function timelineApiPayload(payload) {
 }
 
 const CRM_BUSINESS_STORAGE_KEY = 'pzp_crm_business_context';
+const CRM_BUSINESS_STORAGE_USER_KEY = 'pzp_crm_business_context_user';
 const CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY = 'pzp_products_business_context';
 const CRM_BUSINESS_DEFAULT_CONTEXT = 'event_genix';
 const CRM_BUSINESS_CONTEXTS = Object.freeze({
@@ -151,13 +152,22 @@ function crmBusinessContextFromUrl() {
     }
 }
 
-function crmBusinessContextFromStorage() {
+function crmBusinessStorageUserKey(user) {
+    if (!user) return '';
+    return String(user.id || user.username || user.name || '').trim();
+}
+
+function crmBusinessContextFromStorage(user = null) {
     try {
         const value = localStorage.getItem(CRM_BUSINESS_STORAGE_KEY)
             || localStorage.getItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
-        return value ? normalizeCrmBusinessContext(value) : CRM_BUSINESS_DEFAULT_CONTEXT;
+        if (!value) return null;
+        const currentUserKey = crmBusinessStorageUserKey(user);
+        const storedUserKey = String(localStorage.getItem(CRM_BUSINESS_STORAGE_USER_KEY) || '').trim();
+        if (currentUserKey && storedUserKey !== currentUserKey) return null;
+        return normalizeCrmBusinessContext(value);
     } catch {
-        return CRM_BUSINESS_DEFAULT_CONTEXT;
+        return null;
     }
 }
 
@@ -202,6 +212,14 @@ function crmBusinessExplicitForcedContext(user) {
         || null;
 }
 
+function crmBusinessExplicitDefaultContext(user) {
+    return user?.defaultBusinessContext
+        || user?.default_business_context
+        || user?.preferredBusinessContext
+        || user?.preferred_business_context
+        || null;
+}
+
 function crmBusinessAllowedContexts(user) {
     if (!user) return [CRM_BUSINESS_DEFAULT_CONTEXT];
     const assigned = crmBusinessAssignedContexts(user);
@@ -215,17 +233,39 @@ function crmBusinessAllowedContexts(user) {
     return Array.from(allowed);
 }
 
+function resolveCrmBusinessDefaultContext(user, allowed = crmBusinessAllowedContexts(user)) {
+    const normalizedAllowed = (Array.isArray(allowed) && allowed.length ? allowed : [CRM_BUSINESS_DEFAULT_CONTEXT])
+        .map(normalizeCrmBusinessContext)
+        .filter((key, index, arr) => CRM_BUSINESS_CONTEXTS[key] && arr.indexOf(key) === index);
+    const explicitDefault = crmBusinessExplicitDefaultContext(user);
+    if (explicitDefault) {
+        const key = normalizeCrmBusinessContext(explicitDefault);
+        if (normalizedAllowed.includes(key)) return key;
+    }
+    const explicitForced = crmBusinessExplicitForcedContext(user);
+    if (explicitForced) {
+        const key = normalizeCrmBusinessContext(explicitForced);
+        if (normalizedAllowed.includes(key)) return key;
+    }
+    const nonDefault = normalizedAllowed.filter(ctx => ctx !== CRM_BUSINESS_DEFAULT_CONTEXT);
+    if (nonDefault.length === 1) return nonDefault[0];
+    return normalizedAllowed.includes(CRM_BUSINESS_DEFAULT_CONTEXT)
+        ? CRM_BUSINESS_DEFAULT_CONTEXT
+        : (normalizedAllowed[0] || CRM_BUSINESS_DEFAULT_CONTEXT);
+}
+
 function resolveCrmBusinessPolicy(user) {
     const allowed = crmBusinessAllowedContexts(user);
     const serverPolicy = user?.businessContextPolicy || user?.business_context_policy || null;
     if (serverPolicy && Array.isArray(serverPolicy.allowed)) {
         const serverAllowed = serverPolicy.allowed.map(normalizeCrmBusinessContext).filter(key => CRM_BUSINESS_CONTEXTS[key]);
         if (serverAllowed.length) {
+            const serverDefault = normalizeCrmBusinessContext(serverPolicy.defaultContext || serverPolicy.default_context || serverPolicy.forced || serverAllowed[0]);
             return {
                 canSwitch: Boolean(serverPolicy.canSwitch || serverAllowed.length > 1),
                 forced: serverPolicy.forced ? normalizeCrmBusinessContext(serverPolicy.forced) : null,
                 allowed: serverAllowed,
-                defaultContext: normalizeCrmBusinessContext(serverPolicy.defaultContext || serverPolicy.forced || serverAllowed[0])
+                defaultContext: serverAllowed.includes(serverDefault) ? serverDefault : serverAllowed[0]
             };
         }
     }
@@ -236,11 +276,12 @@ function resolveCrmBusinessPolicy(user) {
     const forced = canSwitch
         ? null
         : normalizeCrmBusinessContext(explicit || (nonDefault.length === 1 ? nonDefault[0] : CRM_BUSINESS_DEFAULT_CONTEXT));
+    const defaultContext = resolveCrmBusinessDefaultContext(user, allowed);
     return {
         canSwitch,
         forced,
-        allowed: canSwitch ? allowed : [forced || CRM_BUSINESS_DEFAULT_CONTEXT],
-        defaultContext: forced || CRM_BUSINESS_DEFAULT_CONTEXT
+        allowed: canSwitch ? allowed : [forced || defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT],
+        defaultContext: forced || defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT
     };
 }
 
@@ -259,9 +300,11 @@ function sanitizeCrmBusinessContextForUser(context, user) {
 }
 
 function getCrmBusinessContext(user) {
+    const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
     const fromUrl = crmBusinessContextFromUrl();
-    const next = fromUrl || crmBusinessContextFromStorage();
-    return sanitizeCrmBusinessContextForUser(next, user || (typeof AppState !== 'undefined' ? AppState.currentUser : null));
+    const stored = crmBusinessContextFromStorage(activeUser);
+    const next = fromUrl || stored || resolveCrmBusinessPolicy(activeUser).defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    return sanitizeCrmBusinessContextForUser(next, activeUser);
 }
 
 function userCanAccessCrmBusinessContext(user, context) {
@@ -284,6 +327,8 @@ function setCrmBusinessContext(context, options = {}) {
     const key = sanitizeCrmBusinessContextForUser(context, user);
     try {
         localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, key);
+        const userKey = crmBusinessStorageUserKey(user);
+        if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
         localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
     } catch {}
     if (options.updateUrl !== false && typeof window !== 'undefined') {

@@ -8,6 +8,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const {
     allowedBusinessContextsForUser,
+    resolveDefaultBusinessContext,
     resolveBusinessContextPolicy
 } = require('../services/businessContext');
 
@@ -157,6 +158,7 @@ function buildAuthUserPayload(user) {
     const roles = normalizeRoleList({ ...user, extraRoles });
     const businessContexts = allowedBusinessContextsForUser(user);
     const businessContextPolicy = resolveBusinessContextPolicy(user);
+    const defaultBusinessContext = businessContextPolicy.defaultContext || resolveDefaultBusinessContext(user, businessContexts);
     return {
         id: user.id,
         username: user.username,
@@ -166,6 +168,8 @@ function buildAuthUserPayload(user) {
         pageAllowlist,
         businessContexts,
         business_contexts: businessContexts,
+        defaultBusinessContext,
+        default_business_context: defaultBusinessContext,
         businessContextPolicy,
         name: user.name
     };
@@ -371,7 +375,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, name, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 

@@ -1071,7 +1071,32 @@ function getAccountBusinessOptions(selected = []) {
 function formatAccountBusinessBadges(user = {}) {
     const values = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
     const catalog = new Map(getAccountBusinessCatalog().map(ctx => [ctx.key, ctx]));
-    return values.map(key => catalog.get(key)?.shortLabel || catalog.get(key)?.label || key).join(', ');
+    const defaultContext = getAccountDefaultBusinessValue(user, values);
+    const labels = values.map(key => catalog.get(key)?.shortLabel || catalog.get(key)?.label || key).join(', ');
+    const defaultLabel = catalog.get(defaultContext)?.shortLabel || catalog.get(defaultContext)?.label || defaultContext;
+    return `${labels}${defaultContext ? ` · деф: ${defaultLabel}` : ''}`;
+}
+
+function getAccountDefaultBusinessValue(user = {}, selected = null) {
+    const values = normalizeAccountBusinessSelection(selected || user.business_contexts || user.businessContexts);
+    const raw = user.defaultBusinessContext || user.default_business_context || user.defaultContext || user.default_context || '';
+    const normalized = raw ? normalizeAccountBusinessSelection([raw], []) : [];
+    if (normalized[0] && values.includes(normalized[0])) return normalized[0];
+    const nonDefault = values.filter(key => key !== 'event_genix');
+    if (nonDefault.length === 1) return nonDefault[0];
+    return values.includes('event_genix') ? 'event_genix' : (values[0] || 'event_genix');
+}
+
+function getAccountBusinessSelectOptions(selected = [], current = '') {
+    const values = normalizeAccountBusinessSelection(selected);
+    const requested = current ? normalizeAccountBusinessSelection([current], []) : [];
+    const currentKey = requested[0] || getAccountDefaultBusinessValue({}, values);
+    return getAccountBusinessCatalog()
+        .map(ctx => ({
+            value: ctx.key,
+            label: `${ctx.label || ctx.key}${values.includes(ctx.key) ? '' : ' · додасться до доступу'}`,
+            selected: ctx.key === currentKey
+        }));
 }
 
 function getAccountRoleOptions(defaultRole = 'animator') {
@@ -1592,6 +1617,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
     const defaultUsername = context.username || (contextStaff ? suggestAccountUsernameFromStaff(contextStaff) : '');
     const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
     const defaultBusinessContexts = normalizeAccountBusinessSelection(context.businessContexts || ['event_genix']);
+    const defaultBusinessContext = getAccountDefaultBusinessValue(context, defaultBusinessContexts);
     const result = await formModal('Створити CRM акаунт', [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
         { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
@@ -1600,6 +1626,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
+        { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
     ], {
@@ -1620,6 +1647,8 @@ window.openAccountCreateModal = async function(button, context = {}) {
         return;
     }
     if (button) button.disabled = true;
+    const selectedBusinessContexts = normalizeAccountBusinessSelection(result.businessContexts);
+    const selectedDefaultBusinessContext = getAccountDefaultBusinessValue({ defaultBusinessContext: result.defaultBusinessContext }, selectedBusinessContexts);
     const response = await crmApiFetch('/api/users', {
         method: 'POST',
         body: {
@@ -1629,7 +1658,8 @@ window.openAccountCreateModal = async function(button, context = {}) {
             name: String(result.name || '').trim(),
             role: result.role || 'animator',
             staffId: result.staffId || null,
-            businessContexts: normalizeAccountBusinessSelection(result.businessContexts),
+            businessContexts: selectedBusinessContexts,
+            defaultBusinessContext: selectedDefaultBusinessContext,
             extraRoles: normalizeAccountListInput(result.extraRoles),
             pageAllowlist: normalizeAccountListInput(result.pageAllowlist)
         }
@@ -1845,9 +1875,11 @@ async function openAccountAccessEditor(userId, button) {
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
     await loadAccountRoleDefinitions();
     const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
+    const currentDefaultBusinessContext = getAccountDefaultBusinessValue(user, currentBusinessContexts);
     const formResult = await formModal(`Доступ акаунта · ${user.username}`, [
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
+        { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' }
     ], {
@@ -1859,12 +1891,15 @@ async function openAccountAccessEditor(userId, button) {
     if (!formResult) return;
     const extraRoles = normalizeAccountListInput(formResult.extraRoles);
     const pageAllowlist = normalizeAccountListInput(formResult.pageAllowlist);
+    const selectedBusinessContexts = normalizeAccountBusinessSelection(formResult.businessContexts);
+    const selectedDefaultBusinessContext = getAccountDefaultBusinessValue({ defaultBusinessContext: formResult.defaultBusinessContext }, selectedBusinessContexts);
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
         method: 'PATCH',
         body: {
             role: formResult.role || user.role,
-            businessContexts: normalizeAccountBusinessSelection(formResult.businessContexts),
+            businessContexts: selectedBusinessContexts,
+            defaultBusinessContext: selectedDefaultBusinessContext,
             extraRoles,
             pageAllowlist
         }

@@ -42,6 +42,7 @@ function createFakePool() {
             extra_roles: [],
             page_allowlist: [],
             business_contexts: ['event_genix', 'dar', 'maysternya_doli', 'crm'],
+            default_business_context: 'event_genix',
             name: 'Creator',
             is_active: true,
             login_aliases: [],
@@ -64,6 +65,7 @@ function createFakePool() {
             extra_roles: row.extra_roles || [],
             page_allowlist: row.page_allowlist || [],
             business_contexts: row.business_contexts || ['event_genix'],
+            default_business_context: row.default_business_context || 'event_genix',
             is_active: row.is_active !== false,
             password_changed_at: row.password_changed_at || null,
             session_revoked_at: row.session_revoked_at || null
@@ -110,6 +112,7 @@ function createFakePool() {
                 extra_roles: user.extra_roles || [],
                 page_allowlist: user.page_allowlist || [],
                 business_contexts: user.business_contexts || ['event_genix'],
+                default_business_context: user.default_business_context || 'event_genix',
                 name: user.name,
                 is_active: user.is_active,
                 login_aliases: user.login_aliases || [],
@@ -119,8 +122,8 @@ function createFakePool() {
             }] : [] };
         }
 
-        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, password_changed_at\)/i.test(text)) {
-            const [username, passwordHash, name, role, extraRoles, pageAllowlist, businessContexts] = params;
+        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, password_changed_at\)/i.test(text)) {
+            const [username, passwordHash, name, role, extraRoles, pageAllowlist, businessContexts, defaultBusinessContext] = params;
             const row = {
                 id: state.nextUserId++,
                 username,
@@ -130,6 +133,7 @@ function createFakePool() {
                 extra_roles: Array.isArray(extraRoles) ? extraRoles : [],
                 page_allowlist: Array.isArray(pageAllowlist) ? pageAllowlist : [],
                 business_contexts: Array.isArray(businessContexts) ? businessContexts : ['event_genix'],
+                default_business_context: defaultBusinessContext || 'event_genix',
                 is_active: true,
                 login_aliases: [],
                 password_changed_at: new Date(),
@@ -174,12 +178,12 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, name, is_active FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [publicUser(row)] : [] };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{
                 id: row.id,
@@ -187,7 +191,8 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
-                business_contexts: row.business_contexts || ['event_genix']
+                business_contexts: row.business_contexts || ['event_genix'],
+                default_business_context: row.default_business_context || 'event_genix'
             }] : [] };
         }
 
@@ -241,6 +246,7 @@ function createFakePool() {
                     extra_roles: user.extra_roles || [],
                     page_allowlist: user.page_allowlist || [],
                     business_contexts: user.business_contexts || ['event_genix'],
+                    default_business_context: user.default_business_context || 'event_genix',
                     name: user.name
                 }] : [],
                 rowCount: user ? 1 : 0
@@ -274,7 +280,7 @@ function createFakePool() {
             return { rows: [], rowCount: count };
         }
 
-        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.business_contexts, u\.name/i.test(text)
+        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
             && /WHERE u\.username = \$1 AND u\.is_active = true/i.test(text)) {
             const row = state.users.find(item => item.username === params[0] && item.is_active !== false);
             return { rows: row ? [{ ...publicUser(row), avatar_emoji: null, avatar_color: null, avatar_url: null }] : [] };
@@ -295,13 +301,14 @@ function createFakePool() {
             }
             return { rows: row ? [{ id: row.id, username: row.username }] : [], rowCount: row ? 1 : 0 };
         }
-        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*business_contexts = COALESCE\(\$4::text\[\], business_contexts\)\s*WHERE id = \$5\s*RETURNING id, username, role, extra_roles, page_allowlist, business_contexts/i.test(text)) {
-            const row = state.users.find(item => Number(item.id) === Number(params[4]));
+        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*business_contexts = COALESCE\(\$4::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$5::text, default_business_context\)\s*WHERE id = \$6\s*RETURNING id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[5]));
             if (row) {
                 row.role = params[0];
                 if (Array.isArray(params[1])) row.extra_roles = params[1];
                 if (Array.isArray(params[2])) row.page_allowlist = params[2];
                 if (Array.isArray(params[3])) row.business_contexts = params[3];
+                if (params[4]) row.default_business_context = params[4];
             }
             return { rows: row ? [{
                 id: row.id,
@@ -309,7 +316,8 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
-                business_contexts: row.business_contexts || ['event_genix']
+                business_contexts: row.business_contexts || ['event_genix'],
+                default_business_context: row.default_business_context || 'event_genix'
             }] : [], rowCount: row ? 1 : 0 };
         }
         if (/UPDATE users SET password_hash = \$1,\s*password_changed_at = NOW\(\),\s*session_revoked_at = NOW\(\),\s*is_active = CASE WHEN \$3::boolean THEN true ELSE is_active END\s*WHERE id = \$2\s*RETURNING id, username, is_active, password_changed_at, session_revoked_at/i.test(text)) {
@@ -531,9 +539,11 @@ test('account security journal records semantic account, password, role, login, 
             role: 'animator',
             extraRoles: ['instructor'],
             pageAllowlist: ['/tasks'],
-            businessContexts: ['event_genix', 'dar']
+            businessContexts: ['event_genix', 'dar'],
+            defaultBusinessContext: 'dar'
         }, creatorToken());
         assert.equal(create.status, 200);
+        assert.equal(create.data.user.default_business_context, 'dar');
         const userId = create.data.user.id;
 
         const wrongPassword = await request(baseUrl, 'POST', '/api/auth/login', {
@@ -558,12 +568,14 @@ test('account security journal records semantic account, password, role, login, 
             role: 'reception',
             extraRoles: ['manager'],
             pageAllowlist: ['/reports', '/tasks'],
-            businessContexts: ['dar', 'crm']
+            businessContexts: ['dar', 'crm'],
+            defaultBusinessContext: 'crm'
         }, creatorToken());
         assert.equal(accessUpdate.status, 200);
         assert.deepEqual(accessUpdate.data.extraRoles, ['manager']);
         assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
         assert.deepEqual(accessUpdate.data.businessContexts, ['dar', 'crm']);
+        assert.equal(accessUpdate.data.defaultBusinessContext, 'crm');
 
         const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', {
             userId
@@ -632,8 +644,11 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(roleEvent.details.newPageAllowlist, ['/reports', '/tasks']);
         assert.deepEqual(roleEvent.details.oldBusinessContexts, ['event_genix', 'dar']);
         assert.deepEqual(roleEvent.details.newBusinessContexts, ['dar', 'crm']);
+        assert.equal(roleEvent.details.oldDefaultBusinessContext, 'dar');
+        assert.equal(roleEvent.details.newDefaultBusinessContext, 'crm');
         assert.equal(roleEvent.details.changed.pageAllowlist, true);
         assert.equal(roleEvent.details.changed.businessContexts, true);
+        assert.equal(roleEvent.details.changed.defaultBusinessContext, true);
 
         const missingLoginEvent = fakePool.state.securityEvents.find(event => event.event_type === 'login_failed' && event.reason === 'user_not_found');
         assert.ok(missingLoginEvent, 'nonexistent login attempt must be recorded without a subject account');

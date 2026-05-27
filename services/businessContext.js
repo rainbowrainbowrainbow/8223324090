@@ -136,6 +136,14 @@ function explicitForcedBusinessContext(user) {
     || null;
 }
 
+function explicitDefaultBusinessContext(user) {
+  return user?.defaultBusinessContext
+    || user?.default_business_context
+    || user?.preferredBusinessContext
+    || user?.preferred_business_context
+    || null;
+}
+
 function allowedBusinessContextsForUser(user) {
   if (!user) return [];
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
@@ -147,6 +155,25 @@ function allowedBusinessContextsForUser(user) {
     if (ctx.pageAllowlist && allowlist.includes(ctx.pageAllowlist)) allowed.add(ctx.key);
   });
   return Array.from(allowed);
+}
+
+function resolveDefaultBusinessContext(user, allowed = allowedBusinessContextsForUser(user)) {
+  const normalizedAllowed = normalizeBusinessContextList(allowed, [DEFAULT_BUSINESS_CONTEXT]);
+  const explicitDefault = explicitDefaultBusinessContext(user);
+  if (explicitDefault) {
+    const key = normalizeBusinessContext(explicitDefault);
+    if (normalizedAllowed.includes(key)) return key;
+  }
+  const explicitForced = explicitForcedBusinessContext(user);
+  if (explicitForced) {
+    const key = normalizeBusinessContext(explicitForced);
+    if (normalizedAllowed.includes(key)) return key;
+  }
+  const nonDefault = normalizedAllowed.filter(ctx => ctx !== DEFAULT_BUSINESS_CONTEXT);
+  if (nonDefault.length === 1) return nonDefault[0];
+  return normalizedAllowed.includes(DEFAULT_BUSINESS_CONTEXT)
+    ? DEFAULT_BUSINESS_CONTEXT
+    : (normalizedAllowed[0] || DEFAULT_BUSINESS_CONTEXT);
 }
 
 function resolveForcedBusinessContext(user) {
@@ -163,11 +190,12 @@ function resolveBusinessContextPolicy(user) {
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
   const canSwitch = Boolean(user && allowed.length > 1 && (isBusinessContextSwitchRole(user) || assigned.length > 1));
   const forced = canSwitch ? null : resolveForcedBusinessContext(user);
+  const defaultContext = resolveDefaultBusinessContext(user, allowed);
   return {
     canSwitch,
     forced,
-    allowed: canSwitch ? allowed : [forced || DEFAULT_BUSINESS_CONTEXT],
-    defaultContext: forced || DEFAULT_BUSINESS_CONTEXT
+    allowed: canSwitch ? allowed : [forced || defaultContext || DEFAULT_BUSINESS_CONTEXT],
+    defaultContext: forced || defaultContext || DEFAULT_BUSINESS_CONTEXT
   };
 }
 
@@ -231,6 +259,7 @@ module.exports = {
   businessContextFromRequest,
   allowedBusinessContextsForUser,
   canAccessBusinessContext,
+  resolveDefaultBusinessContext,
   resolveBusinessContextPolicy,
   requireBusinessContext,
   pushBusinessContextCondition,

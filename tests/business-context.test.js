@@ -42,6 +42,20 @@ test('account business_contexts limit switchers to assigned businesses', () => {
   assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'crm'), false);
 });
 
+test('default_business_context chooses the initial switcher value without narrowing access', () => {
+  const user = {
+    role: 'manager',
+    business_contexts: ['event_genix', 'maysternya_doli'],
+    default_business_context: 'maysternya_doli'
+  };
+  const policy = resolveBusinessContextPolicy(user);
+  assert.equal(policy.canSwitch, true);
+  assert.deepEqual(policy.allowed, ['event_genix', 'maysternya_doli']);
+  assert.equal(policy.defaultContext, 'maysternya_doli');
+  assert.equal(canAccessBusinessContext(user, 'event_genix'), true);
+  assert.equal(canAccessBusinessContext(user, 'maysternya_doli'), true);
+});
+
 test('locked roles are forced to explicit or allowlisted business context', () => {
   const forced = resolveBusinessContextPolicy({ role: 'manager', forcedBusinessContext: 'maysternya_doli' });
   assert.equal(forced.canSwitch, false);

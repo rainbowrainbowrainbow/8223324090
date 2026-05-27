@@ -11,7 +11,9 @@ const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { normalizeManualPassword } = require('../services/credentialInput');
 const {
     BUSINESS_CONTEXTS,
+    DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
+    normalizeBusinessContext,
     normalizeBusinessContextList
 } = require('../services/businessContext');
 const {
@@ -89,6 +91,26 @@ function normalizeAccountBusinessContexts(value, primaryRole = '') {
     return normalizeBusinessContextList(value, fallback).slice(0, Object.keys(BUSINESS_CONTEXTS).length);
 }
 
+function defaultBusinessContextForSelection(value, contexts, primaryRole = '') {
+    const selected = normalizeAccountBusinessContexts(contexts, primaryRole);
+    const requested = value === undefined || value === null || value === ''
+        ? null
+        : normalizeBusinessContext(value);
+    if (requested && BUSINESS_CONTEXTS[requested]) return requested;
+    const nonDefault = selected.filter(ctx => ctx !== DEFAULT_BUSINESS_CONTEXT);
+    if (nonDefault.length === 1) return nonDefault[0];
+    return selected.includes(DEFAULT_BUSINESS_CONTEXT)
+        ? DEFAULT_BUSINESS_CONTEXT
+        : (selected[0] || DEFAULT_BUSINESS_CONTEXT);
+}
+
+function businessContextsWithDefault(contexts, defaultContext, primaryRole = '') {
+    const selected = normalizeAccountBusinessContexts(contexts, primaryRole);
+    const key = normalizeBusinessContext(defaultContext || defaultBusinessContextForSelection(null, selected, primaryRole));
+    if (BUSINESS_CONTEXTS[key] && !selected.includes(key)) selected.push(key);
+    return selected.slice(0, Object.keys(BUSINESS_CONTEXTS).length);
+}
+
 function sameStringArray(left = [], right = []) {
     const a = normalizeStoredArray(left);
     const b = normalizeStoredArray(right);
@@ -119,7 +141,7 @@ router.use(authenticateToken);
 router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.is_active, u.created_at, u.last_seen_at,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
                     ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
                     s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
              FROM users u
@@ -241,7 +263,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
              SET username = $1,
                  name = $2
              WHERE id = $3
-             RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, is_active`,
+             RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, is_active`,
             [username, String(name).trim(), parseInt(id, 10)]
         );
 
@@ -291,6 +313,7 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
     try {
         const { id } = req.params;
         const { role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
 
         if (!role || !ROLE_HIERARCHY.includes(role)) {
             return res.status(400).json({ error: `Невалідна роль. Допустимі: ${ROLE_HIERARCHY.join(', ')}` });
@@ -302,12 +325,8 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : null;
-        const normalizedBusinessContexts = Array.isArray(businessContexts)
-            ? normalizeAccountBusinessContexts(businessContexts, role)
-            : null;
-
         // Cannot change own role (safety)
-        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist, business_contexts FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
@@ -326,20 +345,42 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
         const oldPageAllowlist = normalizeStoredArray(target.rows[0].page_allowlist);
         const oldBusinessContexts = normalizeStoredArray(target.rows[0].business_contexts);
+        const oldDefaultBusinessContext = target.rows[0].default_business_context
+            || defaultBusinessContextForSelection(null, oldBusinessContexts, oldRole);
+        const defaultNeedsUpdate = Object.prototype.hasOwnProperty.call(req.body, 'defaultBusinessContext')
+            || Object.prototype.hasOwnProperty.call(req.body, 'default_business_context')
+            || Array.isArray(businessContexts);
+        const normalizedDefaultBusinessContext = defaultNeedsUpdate
+            ? defaultBusinessContextForSelection(
+                requestedDefaultBusinessContext || oldDefaultBusinessContext,
+                Array.isArray(businessContexts) ? businessContexts : oldBusinessContexts,
+                role
+            )
+            : null;
+        const normalizedBusinessContexts = Array.isArray(businessContexts) || normalizedDefaultBusinessContext
+            ? businessContextsWithDefault(
+                Array.isArray(businessContexts) ? businessContexts : oldBusinessContexts,
+                normalizedDefaultBusinessContext || oldDefaultBusinessContext,
+                role
+            )
+            : null;
         const updated = await pool.query(
             `UPDATE users
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
                  page_allowlist = COALESCE($3::text[], page_allowlist),
-                 business_contexts = COALESCE($4::text[], business_contexts)
-             WHERE id = $5
-             RETURNING id, username, role, extra_roles, page_allowlist, business_contexts`,
-            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, parseInt(id)]
+                 business_contexts = COALESCE($4::text[], business_contexts),
+                 default_business_context = COALESCE($5::text, default_business_context)
+             WHERE id = $6
+             RETURNING id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context`,
+            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
         );
         const updatedUser = updated.rows[0] || target.rows[0];
         const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
         const newPageAllowlist = normalizeStoredArray(updatedUser.page_allowlist);
         const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
+        const newDefaultBusinessContext = updatedUser.default_business_context
+            || defaultBusinessContextForSelection(null, newBusinessContexts, updatedUser.role);
 
         await recordAccountSecurityEvent({
             actor: req.user,
@@ -355,18 +396,21 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
                 newPageAllowlist,
                 oldBusinessContexts,
                 newBusinessContexts,
+                oldDefaultBusinessContext,
+                newDefaultBusinessContext,
                 changed: {
                     role: oldRole !== updatedUser.role,
                     extraRoles: !sameStringArray(oldExtraRoles, newExtraRoles),
                     pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist),
-                    businessContexts: !sameStringArray(oldBusinessContexts, newBusinessContexts)
+                    businessContexts: !sameStringArray(oldBusinessContexts, newBusinessContexts),
+                    defaultBusinessContext: oldDefaultBusinessContext !== newDefaultBusinessContext
                 }
             },
             req
         });
 
         log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${updatedUser.role}`);
-        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist, businessContexts: newBusinessContexts });
+        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist, businessContexts: newBusinessContexts, defaultBusinessContext: newDefaultBusinessContext });
     } catch (err) {
         log.error('Change role error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -508,6 +552,7 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const { password, name, role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true || !password;
         const username = normalizeUsername(req.body.username);
         const staffId = normalizeStaffId(req.body.staffId);
@@ -536,8 +581,14 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : [];
-        const normalizedBusinessContexts = normalizeAccountBusinessContexts(
+        const normalizedDefaultBusinessContext = defaultBusinessContextForSelection(
+            requestedDefaultBusinessContext,
             Array.isArray(businessContexts) ? businessContexts : [],
+            primaryRole
+        );
+        const normalizedBusinessContexts = businessContextsWithDefault(
+            Array.isArray(businessContexts) ? businessContexts : [],
+            normalizedDefaultBusinessContext,
             primaryRole
         );
 
@@ -557,8 +608,8 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             throw new Error('password_hash_verified_after_create_failed');
         }
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, is_active',
-            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts]
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, is_active',
+            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, normalizedDefaultBusinessContext]
         );
         const loginCheck = await verifyIssuedCredential({
             client,
@@ -584,7 +635,7 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, businessContexts: normalizedBusinessContexts, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
             client
         });

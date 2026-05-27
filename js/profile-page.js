@@ -96,6 +96,8 @@ const CABINET_TASK_CATEGORIES = [
     ['checklist', 'Чек-лісти']
 ];
 
+const CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT = 36;
+
 const PROFILE_COCKPIT_DEFAULT_WIDGETS = [
     'active_tasks',
     'today_progress',
@@ -2361,6 +2363,86 @@ function cabinetTaskCompletedAt(task = {}) {
     return task.completedAt || task.completed_at || task.updatedAt || task.updated_at || task.createdAt || task.created_at || '';
 }
 
+function cabinetTaskCanonicalCompletedAt(task = {}) {
+    return task.completedAt || task.completed_at || '';
+}
+
+function cabinetKyivDateKey(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date).reduce((acc, part) => {
+            if (part.type !== 'literal') acc[part.type] = part.value;
+            return acc;
+        }, {});
+        return `${parts.year}-${parts.month}-${parts.day}`;
+    } catch (error) {
+        return date.toISOString().slice(0, 10);
+    }
+}
+
+function cabinetCompletedHistoryDayMeta(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) {
+        return {
+            key: 'unknown',
+            shortLabel: 'Без дати',
+            longLabel: 'Дата закриття не збережена',
+            statLabel: 'Без дати'
+        };
+    }
+    const key = cabinetKyivDateKey(date);
+    const today = cabinetKyivDateKey(new Date());
+    const yesterday = cabinetKyivDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    let relative = '';
+    if (key === today) relative = 'Сьогодні';
+    if (key === yesterday) relative = 'Вчора';
+    const shortDate = date.toLocaleDateString('uk-UA', {
+        timeZone: 'Europe/Kyiv',
+        day: '2-digit',
+        month: '2-digit'
+    });
+    const longDate = date.toLocaleDateString('uk-UA', {
+        timeZone: 'Europe/Kyiv',
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+    });
+    return {
+        key,
+        shortLabel: relative || shortDate,
+        longLabel: relative ? `${relative}, ${longDate}` : longDate,
+        statLabel: relative || shortDate
+    };
+}
+
+function groupCabinetCompletedHistoryByDay(tasks = []) {
+    return tasks.reduce((groups, task, index) => {
+        const completedAt = cabinetTaskCanonicalCompletedAt(task) || cabinetTaskCompletedAt(task);
+        const day = cabinetCompletedHistoryDayMeta(completedAt);
+        const last = groups[groups.length - 1];
+        if (!last || last.day.key !== day.key) {
+            groups.push({ day, tasks: [] });
+        }
+        groups[groups.length - 1].tasks.push({ task, index });
+        return groups;
+    }, []);
+}
+
+function closeCabinetCompletedDayDividers(except = null) {
+    document.querySelectorAll('.cabinet-completed-day-divider.is-open').forEach(divider => {
+        if (divider === except) return;
+        divider.classList.remove('is-open');
+        divider.querySelector('[data-cabinet-completed-day-divider]')?.setAttribute('aria-expanded', 'false');
+    });
+}
+
 function cabinetTaskPriorityLabel(priority = '') {
     const labels = {
         critical: 'Критично',
@@ -2418,10 +2500,68 @@ function renderCabinetCompletedHistoryTile(task = {}, index = 0) {
         </span>`;
 }
 
+function renderCabinetCompletedDayDivider(group = {}, groupIndex = 0) {
+    const day = group.day || cabinetCompletedHistoryDayMeta(null);
+    const count = group.tasks?.length || 0;
+    const safeKey = String(day.key || `day-${groupIndex}`).replace(/[^a-z0-9_-]/gi, '');
+    const detailId = `cabinetCompletedDay${safeKey}${groupIndex}`;
+    const label = `${day.longLabel}: ${formatCabinetPulseCount(count)} виконаних задач у видимій історії`;
+    return `
+        <span class="cabinet-completed-day-divider" role="listitem" data-day-key="${escapeHtml(day.key)}">
+            <button type="button"
+                    class="cabinet-completed-day-button"
+                    data-cabinet-completed-day-divider
+                    aria-expanded="false"
+                    aria-label="${escapeHtml(label)}"
+                    aria-describedby="${escapeHtml(detailId)}"
+                    title="${escapeHtml(label)}">
+                <span class="cabinet-completed-day-line" aria-hidden="true"></span>
+                <span class="cabinet-completed-day-dot" aria-hidden="true"></span>
+                <span class="cabinet-completed-day-count" aria-hidden="true">${formatCabinetPulseCount(count)}</span>
+                <span id="${escapeHtml(detailId)}" class="cabinet-completed-day-label" role="tooltip">
+                    <b>${escapeHtml(day.shortLabel)}</b>
+                    <span>${escapeHtml(day.longLabel)}</span>
+                    <small>${formatCabinetPulseCount(count)} виконаних у видимому вікні</small>
+                </span>
+            </button>
+        </span>`;
+}
+
+function renderCabinetCompletedDayGroup(group = {}, groupIndex = 0) {
+    const day = group.day || cabinetCompletedHistoryDayMeta(null);
+    const taskRows = Array.isArray(group.tasks) ? group.tasks : [];
+    return `
+        <span class="cabinet-completed-day-group"
+              role="group"
+              aria-label="${escapeHtml(`${day.longLabel}: ${formatCabinetPulseCount(taskRows.length)} виконаних задач`)}">
+            ${renderCabinetCompletedDayDivider(group, groupIndex)}
+            ${taskRows.map(({ task, index }) => renderCabinetCompletedHistoryTile(task, index)).join('')}
+        </span>`;
+}
+
+function renderCabinetCompletedDayStats(groups = [], overflow = 0) {
+    if (!groups.length) return '';
+    const stats = groups.map(group => {
+        const day = group.day || cabinetCompletedHistoryDayMeta(null);
+        const count = group.tasks?.length || 0;
+        return `<span class="cabinet-completed-day-stat" title="${escapeHtml(day.longLabel)}"><span>${escapeHtml(day.statLabel)}</span><b>${formatCabinetPulseCount(count)}</b></span>`;
+    }).join('');
+    const overflowHint = overflow > 0
+        ? `<span class="cabinet-completed-day-stat cabinet-completed-day-stat--muted" title="Ще ${formatCabinetPulseCount(overflow)} виконаних задач поза видимим вікном"><span>Поза вікном</span><b>+${formatCabinetPulseCount(overflow)}</b></span>`
+        : '';
+    return `
+        <div class="cabinet-completed-day-stats" aria-label="Статистика закриття за видимими днями">
+            <span class="cabinet-completed-day-stats-label">Видимі дні</span>
+            ${stats}
+            ${overflowHint}
+        </div>`;
+}
+
 function renderCabinetCompletedHistoryStrip() {
     const history = cabinetCompletedHistoryList();
     const counts = cabinetCompletedHistoryCounts();
-    const visible = history.slice(0, 36);
+    const visible = history.slice(0, CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT);
+    const groups = groupCabinetCompletedHistoryByDay(visible);
     const total = Math.max(counts.total, visible.length);
     const overflow = Math.max(counts.overflow, total - visible.length);
     return `
@@ -2434,9 +2574,12 @@ function renderCabinetCompletedHistoryStrip() {
                 <small>${visible.length ? `останні ${visible.length} виконаних` : 'ще немає виконаних задач'}</small>
             </div>
             ${visible.length ? `
-                <div class="cabinet-completed-track" role="list" aria-label="Останні виконані задачі">
-                    ${visible.map((task, index) => renderCabinetCompletedHistoryTile(task, index)).join('')}
+                <div class="cabinet-completed-history-body">
+                <div class="cabinet-completed-track" role="list" aria-label="Останні виконані задачі, згруповані за днем">
+                    ${groups.map((group, index) => renderCabinetCompletedDayGroup(group, index)).join('')}
                     ${overflow > 0 ? `<span class="cabinet-completed-overflow" role="listitem" title="Ще ${formatCabinetPulseCount(overflow)} виконаних задач у повній історії">+${formatCabinetPulseCount(overflow)}</span>` : ''}
+                </div>
+                ${renderCabinetCompletedDayStats(groups, overflow)}
                 </div>
             ` : '<div class="cabinet-completed-empty">Коли задача буде виконана, вона зʼявиться тут маленьким маркером з деталями.</div>'}
         </section>`;
@@ -4850,10 +4993,12 @@ function attachProfileListeners() {
         document.addEventListener('click', event => {
             if (!event.target.closest('.cabinet-task-actions, .cabinet-reschedule-wrap')) closeCabinetSnoozeMenus();
             if (!event.target.closest('.profile-cockpit-widget')) closeProfileWidgetTooltips();
+            if (!event.target.closest('.cabinet-completed-day-divider')) closeCabinetCompletedDayDividers();
         });
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') closeCabinetSnoozeMenus();
             if (event.key === 'Escape') closeProfileWidgetTooltips();
+            if (event.key === 'Escape') closeCabinetCompletedDayDividers();
         });
     }
 
@@ -4914,6 +5059,19 @@ function attachProfileListeners() {
 
     document.querySelector('[data-profile-widget-config-save]')?.addEventListener('click', () => saveProfileWidgetConfig());
     document.querySelector('[data-profile-widget-config-reset]')?.addEventListener('click', () => saveProfileWidgetConfig(PROFILE_COCKPIT_DEFAULT_WIDGETS));
+
+    document.querySelectorAll('[data-cabinet-completed-day-divider]').forEach(button => {
+        if (button.dataset.cabinetCompletedDayBound === 'true') return;
+        button.dataset.cabinetCompletedDayBound = 'true';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const divider = button.closest('.cabinet-completed-day-divider');
+            const open = !divider?.classList.contains('is-open');
+            closeCabinetCompletedDayDividers(open ? divider : null);
+            divider?.classList.toggle('is-open', open);
+            button.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+    });
 
     document.querySelectorAll('[data-cabinet-task-action]').forEach(button => {
         if (button.dataset.cabinetActionBound === 'true') return;

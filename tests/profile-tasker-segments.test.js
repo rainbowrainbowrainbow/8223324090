@@ -151,13 +151,21 @@ test('profile my day renders compact completed task history with hover/focus det
                     completedAt: '2026-05-26T09:30:00.000Z',
                     subtask_count: 2,
                     subtask_done_count: 2
+                },
+                {
+                    id: 502,
+                    title: 'Передати звіт',
+                    status: 'done',
+                    priority: 'normal',
+                    category: 'admin',
+                    completedAt: '2026-05-25T16:00:00.000Z'
                 }
             ],
             stats: {
                 taskQuick: {
                     completedTotal: 4,
-                    completedHistoryShown: 1,
-                    completedHistoryOverflow: 3
+                    completedHistoryShown: 2,
+                    completedHistoryOverflow: 2
                 }
             }
         };
@@ -171,10 +179,17 @@ test('profile my day renders compact completed task history with hover/focus det
     assert.match(stripHtml, /cabinet-completed-tile/);
     assert.match(stripHtml, /role="tooltip"/);
     assert.match(stripHtml, /aria-describedby="cabinetCompletedDetail501"/);
+    assert.match(stripHtml, /cabinet-completed-day-divider/);
+    assert.match(stripHtml, /data-cabinet-completed-day-divider/);
+    assert.match(stripHtml, /data-day-key="2026-05-26"/);
+    assert.match(stripHtml, /data-day-key="2026-05-25"/);
+    assert.match(stripHtml, /cabinet-completed-day-stats/);
+    assert.match(stripHtml, /Видимі дні/);
     assert.match(stripHtml, /Закрити закупівлю/);
+    assert.match(stripHtml, /Передати звіт/);
     assert.match(stripHtml, /Високий/);
     assert.match(stripHtml, /Закупівлі/);
-    assert.match(stripHtml, /\+3/);
+    assert.match(stripHtml, /\+2/);
     assert.match(myDayHtml, /cabinet-completed-strip/);
     assert.match(myDayHtml, /Компактна історія виконаних задач/);
 });

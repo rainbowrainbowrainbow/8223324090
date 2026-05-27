@@ -762,9 +762,187 @@ body.dark-mode .page-fatal-error {
     min-width: 0;
     min-height: 24px;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
     overflow: visible;
+}
+
+.cabinet-completed-history-body {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+}
+
+.cabinet-completed-day-group {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding-right: 2px;
+}
+
+.cabinet-completed-day-divider {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-right: 1px;
+}
+
+.cabinet-completed-day-button {
+    position: relative;
+    display: inline-grid;
+    width: 18px;
+    height: 24px;
+    min-width: 18px;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #0f766e;
+    cursor: help;
+    padding: 0;
+}
+
+.cabinet-completed-day-button:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.38);
+    outline-offset: 2px;
+}
+
+.cabinet-completed-day-line {
+    position: absolute;
+    left: 5px;
+    width: 2px;
+    height: 22px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(20, 184, 166, 0.12), rgba(20, 184, 166, 0.62), rgba(20, 184, 166, 0.12));
+}
+
+.cabinet-completed-day-dot {
+    position: relative;
+    z-index: 1;
+    width: 8px;
+    height: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.90);
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 4px 10px rgba(15, 118, 110, 0.22);
+}
+
+.cabinet-completed-day-count {
+    position: absolute;
+    left: 10px;
+    top: 1px;
+    color: #0f766e;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.cabinet-completed-day-label {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    z-index: var(--z-tooltip, 51000);
+    display: grid;
+    width: max-content;
+    min-width: 170px;
+    max-width: min(250px, 80vw);
+    gap: 3px;
+    padding: 9px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.98);
+    box-shadow: 0 18px 42px rgba(2, 6, 23, 0.30);
+    color: #f8fafc;
+    opacity: 0;
+    pointer-events: none;
+    text-align: left;
+    transform: translate(-50%, 5px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.cabinet-completed-day-label::after {
+    content: '';
+    position: absolute;
+    left: calc(50% - 5px);
+    top: 100%;
+    border: 5px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.98);
+}
+
+.cabinet-completed-day-label b {
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 950;
+    line-height: 1.15;
+}
+
+.cabinet-completed-day-label span,
+.cabinet-completed-day-label small {
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.cabinet-completed-day-button:hover .cabinet-completed-day-label,
+.cabinet-completed-day-button:focus-visible .cabinet-completed-day-label,
+.cabinet-completed-day-divider.is-open .cabinet-completed-day-label {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.cabinet-completed-day-stats {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.cabinet-completed-day-stats-label,
+.cabinet-completed-day-stat {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.cabinet-completed-day-stats-label {
+    color: var(--gray-500, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.cabinet-completed-day-stat {
+    gap: 5px;
+    padding: 4px 7px;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    background: rgba(20, 184, 166, 0.08);
+    color: #0f766e;
+    font-variant-numeric: tabular-nums;
+}
+
+.cabinet-completed-day-stat b {
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 950;
+}
+
+.cabinet-completed-day-stat--muted {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.08);
+    color: #64748b;
+}
+
+.cabinet-completed-day-stat--muted b {
+    color: #475569;
 }
 
 .cabinet-completed-item {
@@ -1212,6 +1390,47 @@ body.dark-mode .cabinet-completed-strip-head b {
 body.dark-mode .cabinet-completed-strip-head small,
 body.dark-mode .cabinet-completed-empty {
     color: var(--profile-dark-muted, #94a3b8);
+}
+
+body.dark-mode .cabinet-completed-day-button {
+    color: #5eead4;
+}
+
+body.dark-mode .cabinet-completed-day-line {
+    background: linear-gradient(180deg, rgba(94, 234, 212, 0.10), rgba(94, 234, 212, 0.56), rgba(94, 234, 212, 0.10));
+}
+
+body.dark-mode .cabinet-completed-day-dot {
+    border-color: rgba(15, 23, 42, 0.86);
+    box-shadow: 0 4px 12px rgba(45, 212, 191, 0.22);
+}
+
+body.dark-mode .cabinet-completed-day-count {
+    color: #99f6e4;
+}
+
+body.dark-mode .cabinet-completed-day-stats-label {
+    color: var(--profile-dark-muted, #94a3b8);
+}
+
+body.dark-mode .cabinet-completed-day-stat {
+    border-color: rgba(45, 212, 191, 0.22);
+    background: rgba(20, 184, 166, 0.13);
+    color: #99f6e4;
+}
+
+body.dark-mode .cabinet-completed-day-stat b {
+    color: #5eead4;
+}
+
+body.dark-mode .cabinet-completed-day-stat--muted {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.48);
+    color: #cbd5e1;
+}
+
+body.dark-mode .cabinet-completed-day-stat--muted b {
+    color: #e2e8f0;
 }
 
 body.dark-mode .cabinet-completed-tile {
@@ -2577,6 +2796,42 @@ body.dark-mode .cabinet-task-priority--critical {
 
     .cabinet-completed-track {
         gap: 5px;
+    }
+
+    .cabinet-completed-day-group {
+        gap: 4px;
+    }
+
+    .cabinet-completed-day-button {
+        width: 17px;
+        min-width: 17px;
+    }
+
+    .cabinet-completed-day-label {
+        left: 0;
+        max-width: min(250px, calc(100vw - 48px));
+        transform: translate(0, 5px);
+    }
+
+    .cabinet-completed-day-label::after {
+        left: 12px;
+    }
+
+    .cabinet-completed-day-button:hover .cabinet-completed-day-label,
+    .cabinet-completed-day-button:focus-visible .cabinet-completed-day-label,
+    .cabinet-completed-day-divider.is-open .cabinet-completed-day-label {
+        transform: translate(0, 0);
+    }
+
+    .cabinet-completed-day-stats {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
+    }
+
+    .cabinet-completed-day-stats-label {
+        flex: 0 0 auto;
     }
 
     .cabinet-completed-tile {

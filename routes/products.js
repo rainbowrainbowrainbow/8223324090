@@ -3,9 +3,9 @@
  */
 const router = require('express').Router();
 const crypto = require('crypto');
-const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
+const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -65,14 +65,10 @@ const KITCHEN_TYPES = new Set(['cake', 'menu']);
 const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
 const PRODUCT_TECH_CARD_MODES = new Set(['simple', 'detailed']);
 const PRODUCT_MUTATION_ROLES = ['admin', 'manager'];
-const productMenuAiRateLimit = rateLimit({
+const productMenuAiRateLimit = createWriteRateLimiter('product-menu-ai-draft', {
     windowMs: 60 * 1000,
     max: 12,
-    keyGenerator: (req) => String(req.user?.id || req.user?.username || req.ip || 'anon'),
-    message: { success: false, error: 'Забагато AI-запитів до меню. Зачекайте хвилину.' },
-    standardHeaders: false,
-    legacyHeaders: false,
-    validate: { ipv6SubnetOrKeyGenerator: false }
+    methods: ['POST']
 });
 const MENU_AI_BLOCK_KEYS = ['nameDescription', 'allergens', 'ingredients', 'priceCost'];
 const MENU_AI_BLOCK_KEY_SET = new Set(MENU_AI_BLOCK_KEYS);

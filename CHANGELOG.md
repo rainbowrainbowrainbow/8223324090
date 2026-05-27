@@ -4,6 +4,15 @@
 
 ---
 
+## v0.66.53 - CRM 66.53: аварійний запуск каталогу
+
+### Products / аварійний hotfix запуску / 27.05.2026 [codex]
+- **Прибрано startup crash у Products route** - AI rate-limit для меню переведено з `express-rate-limit` на існуючий repo-local `createWriteRateLimiter`, щоб production-старт більше не падав на `ERR_ERL_KEY_GEN_IPV6`.
+- **Міграція cleanup тепер проходить production schema** - `224_products_zagadky_shi_duplicate_cleanup` більше не записує `updated_by` довший за `VARCHAR(50)`, тому pending migration може безпечно повторитись після попереднього rollback.
+- **Regression guard** - додано перевірку, що Products route не повертає `express-rate-limit`, а migration operator markers поміщаються в `VARCHAR(50)`.
+
+---
+
 ## v0.66.52 - CRM 66.52: AI-картки меню
 
 ### Products / Menu tech cards / 27.05.2026 [codex]

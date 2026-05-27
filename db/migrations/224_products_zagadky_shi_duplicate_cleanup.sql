@@ -1,6 +1,6 @@
 -- MIGRATION_KIND: mixed
 -- SAFETY: Idempotently normalizes duplicate Event Genix program products named "Загадки ШІ". References move to one canonical row, duplicate product rows are soft-deactivated, and no historical bookings/reports are hard-deleted.
--- ROLLBACK: Reassign references from the canonical row back to exported duplicate IDs if required, then reactivate rows updated_by='migration_224_products_zagadky_shi_duplicate_cleanup' after confirming operator intent.
+-- ROLLBACK: Reassign references from the canonical row back to exported duplicate IDs if required, then reactivate rows updated_by='migration_224_zagadky_cleanup' after confirming operator intent.
 -- OPERATOR_APPROVAL: required
 -- DATA_SCOPE: products rows in business_context='event_genix' and domain='program' where the normalized product name is "Загадки ШІ", grouped within their existing product category.
 
@@ -76,7 +76,7 @@ WHERE t.id <> t.canonical_id
 UPDATE price_rules pr
 SET product_id = t.canonical_id,
     updated_at = NOW(),
-    updated_by = COALESCE(pr.updated_by, 'migration_224_products_zagadky_shi_duplicate_cleanup')
+    updated_by = COALESCE(pr.updated_by, 'migration_224_zagadky_cleanup')
 FROM tmp_products_zagadky_shi_duplicates t
 WHERE t.id <> t.canonical_id
   AND pr.product_id = t.id;
@@ -96,7 +96,7 @@ WHERE t.id <> t.canonical_id
 UPDATE product_stock_requirements psr
 SET product_id = t.canonical_id,
     updated_at = NOW(),
-    updated_by = COALESCE(psr.updated_by, 'migration_224_products_zagadky_shi_duplicate_cleanup')
+    updated_by = COALESCE(psr.updated_by, 'migration_224_zagadky_cleanup')
 FROM tmp_products_zagadky_shi_duplicates t
 WHERE t.id <> t.canonical_id
   AND psr.product_id = t.id;
@@ -140,7 +140,7 @@ UPDATE products p
 SET is_active = CASE WHEN p.id = t.canonical_id THEN true ELSE false END,
     availability_status = CASE WHEN p.id = t.canonical_id THEN 'active' ELSE 'hidden' END,
     updated_at = NOW(),
-    updated_by = 'migration_224_products_zagadky_shi_duplicate_cleanup'
+    updated_by = 'migration_224_zagadky_cleanup'
 FROM tmp_products_zagadky_shi_duplicates t
 WHERE p.id = t.id;
 

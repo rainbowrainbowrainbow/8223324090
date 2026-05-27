@@ -164,6 +164,7 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     const pageJs = read('js/programs-page.js');
     const productsRoute = read('routes/products.js');
     const cleanupMigration = read('db/migrations/224_products_zagadky_shi_duplicate_cleanup.sql');
+    const cleanupMarkers = [...cleanupMigration.matchAll(/'migration_[^']+'/g)].map(match => match[0].slice(1, -1));
 
     assert.match(pageJs, /apiGetProducts\(true, \{ businessContext: getProductApiBusinessContext\(\) \}\)/);
     assert.match(pageJs, /productSaveInFlight/);
@@ -177,6 +178,8 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.match(productsRoute, /PRODUCT_DUPLICATE_ACTIVE_SCOPE/);
     assert.match(productsRoute, /router\.delete\('\/:id', requireRole\(\.\.\.PRODUCT_MUTATION_ROLES\)/);
     assert.match(productsRoute, /availability_status = 'hidden'/);
+    assert.doesNotMatch(productsRoute, /express-rate-limit/);
+    assert.match(productsRoute, /createWriteRateLimiter\('product-menu-ai-draft'/);
 
     assert.match(cleanupMigration, /MIGRATION_KIND: mixed/);
     assert.match(cleanupMigration, /Загадки ШІ/);
@@ -185,6 +188,8 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.match(cleanupMigration, /UPDATE leads l[\s\S]*program_id = t\.canonical_id/);
     assert.match(cleanupMigration, /UPDATE automation_rules ar[\s\S]*trigger_condition = rr\.trigger_condition/);
     assert.match(cleanupMigration, /CREATE INDEX IF NOT EXISTS idx_products_active_scope_name_key/);
+    assert.ok(cleanupMarkers.length > 0, 'cleanup migration should keep an operator marker');
+    assert.ok(cleanupMarkers.every(marker => marker.length <= 50), 'cleanup migration updated_by markers must fit VARCHAR(50)');
 });
 
 test('design catalog deep links remain backed by the existing designs viewer', () => {

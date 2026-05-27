@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.60 - CRM 66.60: аварійний запуск продакшену
+
+### Release / production startup rollout / 27.05.2026 [codex]
+- **Піднято emergency release marker** - релізні маркери, cache-bust теги, Service Worker cache і `/api/version` синхронізовано на `0.66.60`, щоб live smoke чітко показував новий build.
+- **Products startup fix винесено в production rollout** - реліз включає прибраний прямий `express-rate-limit` startup crash у Products route та repo-local `createWriteRateLimiter` для меню AI endpoint.
+- **Міграція `224` захищена від production `VARCHAR(50)`** - canonical `product_code` для `booking_templates` обрізається до 50 символів, а `updated_by` marker лишається коротким для повторного запуску після failed migration.
+- **Regression guard збережено** - Products IA тест фіксує startup-safe limiter і migration hardening перед деплоєм.
+
+---
+
 ## v0.66.59 - CRM 66.59: стабілізація старту
 
 ### Products / hotfix startup і migration hardening / 27.05.2026 [codex]

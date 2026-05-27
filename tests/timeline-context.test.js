@@ -48,22 +48,27 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return '\/maysternya-doli'/);
     assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
     assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
-    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/' && current === 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
     assert.match(contextCode, /brandName: 'Майстерня Долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
 });
 
-test('creator sidebar access stays fully visible across business contexts', () => {
+test('Maysternya sidebar keeps sales tools visible without Park-only clutter', () => {
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
     assert.match(sidebarCode, /function _sidebarUserHasCreator/);
-    assert.match(sidebarCode, /const creatorSurface = _sidebarUserHasCreator\(user\) && !window\.RolePreview\?\.getPreviewRole\?\.\(\);/);
-    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/' && current === 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /if \(creatorSurface\) return true/);
+    assert.match(sidebarCode, /const MAYSTERNYA_SIDEBAR_HREFS = new Set/);
+    assert.match(sidebarCode, /'\/sales-funnel'/);
+    assert.match(sidebarCode, /'\/customers'/);
+    assert.match(sidebarCode, /'\/omni#accounts'/);
+    assert.match(sidebarCode, /function _isMaysternyaSidebarContext/);
+    assert.match(sidebarCode, /if \(_isMaysternyaSidebarContext\(user\) && !_isMaysternyaSidebarHrefAllowed\(item\)\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(creatorSurface && current !== 'maysternya_doli'\) return true/);
 });
 
 test('timeline root uses account default instead of stale stored business context', () => {

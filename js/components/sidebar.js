@@ -30,6 +30,19 @@ const Sidebar = (() => {
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
     const UTILITY_RAIL_MAX_FAVORITES = 2;
     const UTILITY_RAIL_MAX_GROUP_LINKS = 5;
+    const MAYSTERNYA_QUICK_ACCESS_HREFS = ['/maysternya-doli', '/sales-funnel', '/customers', '/omni#accounts', '/tasks', '/chat'];
+    const MAYSTERNYA_SIDEBAR_HREFS = new Set([
+        '/maysternya-doli',
+        '/tasks',
+        '/chat',
+        '/customers',
+        '/sales-funnel',
+        '/omni',
+        '/omni#accounts',
+        '/reports',
+        '#settings'
+    ]);
+    const MAYSTERNYA_ACCESS_OVERRIDES = new Set(['maysternya_doli', 'customers', 'leads', 'omni']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -70,6 +83,7 @@ const Sidebar = (() => {
         { href: '/customers',    icon: '👥', label: 'Клієнти',       access: 'customers',      group: 'sales' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'sales', statusKey: 'leads' },
         { href: '/omni',         icon: '✉', label: 'Комунікації',    access: 'omni',           group: 'sales', statusKey: 'omni' },
+        { href: '/omni#accounts', icon: '🔌', label: 'Підключення чатів', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
@@ -405,7 +419,8 @@ const Sidebar = (() => {
         return normalized;
     }
 
-    function _getRoleQuickAccessHrefs(role) {
+    function _getRoleQuickAccessHrefs(role, user = _getCurrentSidebarUser()) {
+        if (_isMaysternyaSidebarContext(user)) return MAYSTERNYA_QUICK_ACCESS_HREFS.slice();
         const configured = window.RoleShell?.getQuickAccessHrefs?.(role);
         const source = Array.isArray(configured) && configured.length ? configured : EXTRA_MENU_HREFS;
         return source.map(_normalizeExtraHref).filter(Boolean);
@@ -419,7 +434,7 @@ const Sidebar = (() => {
         const user = _getCurrentSidebarUser();
         const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user));
         const byHref = new Map(available.map(item => [item.href, item]));
-        return _getRoleQuickAccessHrefs(role)
+        return _getRoleQuickAccessHrefs(role, user)
             .map(href => byHref.get(href))
             .filter(Boolean)
             .map(item => ({
@@ -502,6 +517,7 @@ const Sidebar = (() => {
         const href = String(item?.href || '');
         if (href.startsWith('/certificates')) return 'реєстр / видача / пакет';
         if (href === '/sales-funnel') return 'воронка лідів';
+        if (href === '/omni#accounts') return 'підключення каналів';
         if (href === '/omni') return 'комунікації';
         if (href === '/finance') return 'фінанси';
         if (href === '/center') return 'центр керування';
@@ -517,6 +533,7 @@ const Sidebar = (() => {
         if (href === '/tasks') return 'особистий фокус задач';
         if (href === '/chat') return 'командні повідомлення';
         if (href.startsWith('/certificates')) return 'сертифікати та швидка видача';
+        if (href === '/omni#accounts') return 'канали та інтеграції';
         if (href === '/afisha') return 'афіша та події';
         if (href === '/customers') return 'клієнтська база';
         if (href === '/sales-funnel') return 'ліди та продажі';
@@ -525,11 +542,11 @@ const Sidebar = (() => {
         return item?.description || _getExtraGroupLabel(item?.group) || 'CRM сторінка';
     }
 
-    function _railPrimaryItems(role) {
+    function _railPrimaryItems(role, user = _getCurrentSidebarUser()) {
         return UTILITY_RAIL_PRIMARY_HREFS
             .map(_findNavItemByHref)
             .filter(Boolean)
-            .filter(item => !role || hasAccess(item, role));
+            .filter(item => (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user));
     }
 
     function _railFavoriteItems(role, usedKeys = new Set()) {
@@ -546,6 +563,7 @@ const Sidebar = (() => {
     }
 
     function _railFlyoutGroups(role, currentPath, currentHash, usedKeys = new Set()) {
+        const user = _getCurrentSidebarUser();
         return UTILITY_RAIL_CONTEXT_GROUPS.map(groupKey => {
             const group = NAV_ITEMS.find(item => item.type === 'group' && item.key === groupKey);
             if (!group) return null;
@@ -553,6 +571,7 @@ const Sidebar = (() => {
                 .filter(item => item.href && item.group === groupKey)
                 .filter(item => {
                     if (role && !hasAccess(item, role)) return false;
+                    if (!_businessAllowsSidebarItem(item, user)) return false;
                     const href = String(item.href || '');
                     if (!href.startsWith('/') && !href.startsWith('#')) return false;
                     return !usedKeys.has(_railKeyForItem(item));
@@ -903,7 +922,7 @@ const Sidebar = (() => {
             const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
 
             const statusText = _navStatusFor(item);
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
@@ -975,6 +994,7 @@ const Sidebar = (() => {
             if (Array.isArray(user?.extraRoles)) user.extraRoles.forEach(value => roles.add(value));
             if (Array.isArray(user?.extra_roles)) user.extra_roles.forEach(value => roles.add(value));
         }
+        if (!previewRole && _isMaysternyaSidebarContext(user) && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
         if (roles.has('creator')) return true;
         const access = SIDEBAR_ACCESS[item.access];
         if (access === true) return true;
@@ -1030,17 +1050,30 @@ const Sidebar = (() => {
         return roles.has('creator');
     }
 
+    function _isMaysternyaSidebarContext(user = _getCurrentSidebarUser()) {
+        const api = window.CrmBusinessContext;
+        if (api?.current) return api.current(user) === 'maysternya_doli';
+        const rawDefault = user?.defaultBusinessContext || user?.default_business_context || '';
+        return String(rawDefault).trim().toLowerCase() === 'maysternya_doli';
+    }
+
+    function _isMaysternyaSidebarHrefAllowed(item = {}) {
+        const href = _normalizeExtraHref(item.href || '');
+        return href ? MAYSTERNYA_SIDEBAR_HREFS.has(href) : true;
+    }
+
     function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
+        if (_isMaysternyaSidebarContext(user) && !_isMaysternyaSidebarHrefAllowed(item)) return false;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
         const current = api.current(user);
         const creatorSurface = _sidebarUserHasCreator(user) && !window.RolePreview?.getPreviewRole?.();
         if (moduleId === 'timeline') {
-            if (!creatorSurface && item.href === '/' && current === 'maysternya_doli') return false;
-            if (!creatorSurface && item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
+            if (item.href === '/' && current === 'maysternya_doli') return false;
+            if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
         }
-        if (creatorSurface) return true;
+        if (creatorSurface && current !== 'maysternya_doli') return true;
         return api.hasModule(current, moduleId);
     }
 
@@ -2324,8 +2357,9 @@ const Sidebar = (() => {
         if (!deck || !funnel) return;
         const user = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(user);
+        const leadItem = { href: '/sales-funnel', access: 'leads' };
         const canSeeFunnel = forceFunnelAccess === null
-            ? (role ? hasAccess({ access: 'leads' }, role) : true)
+            ? ((role ? hasAccess(leadItem, role) : true) && _businessAllowsSidebarItem(leadItem, user))
             : !!forceFunnelAccess;
         funnel.hidden = !canSeeFunnel;
         deck.classList.toggle('has-funnel', canSeeFunnel);

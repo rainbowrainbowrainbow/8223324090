@@ -1862,6 +1862,7 @@ function finishCanvasImageExport(canvas, filename, successMessage, touchWindow) 
 async function exportTimelineImage() {
     // v30.7: Support multi-day export
     if (AppState.multiDayMode) {
+        if (typeof normalizeTimelineModeState === 'function') normalizeTimelineModeState(AppState);
         return exportMultiDayImage();
     }
 
@@ -1906,6 +1907,7 @@ async function exportTimelineImage() {
 
 // v30.7: Multi-day PNG export — each day as a separate section
 async function exportMultiDayImage() {
+    if (typeof normalizeTimelineModeState === 'function') normalizeTimelineModeState(AppState);
     const touchWindow = openTouchImageExportWindow();
     try {
     const dates = [];
@@ -2057,6 +2059,7 @@ async function exportMultiDayImage() {
 // ==========================================
 
 function exportTimelinePdf() {
+    if (typeof normalizeTimelineModeState === 'function') normalizeTimelineModeState(AppState);
     // Add print class for CSS targeting
     document.body.classList.add('printing-timeline');
 

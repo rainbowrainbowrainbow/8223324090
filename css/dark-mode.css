@@ -3151,29 +3151,29 @@ body.dark-mode .guardian-stats-summary {
     --eg-shadow-panel: 0 12px 30px rgba(0,0,0,0.24);
     --eg-shadow-soft: 0 8px 22px rgba(0,0,0,0.18);
     --eg-event-quest: #8B5CF6;
-    --eg-event-quest-bg: rgba(139,92,246,0.16);
-    --eg-event-quest-border: rgba(139,92,246,0.45);
+    --eg-event-quest-bg: linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%);
+    --eg-event-quest-border: rgba(167,139,250,0.70);
     --eg-event-animation: #60A5FA;
-    --eg-event-animation-bg: rgba(96,165,250,0.14);
-    --eg-event-animation-border: rgba(96,165,250,0.40);
+    --eg-event-animation-bg: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    --eg-event-animation-border: rgba(147,197,253,0.68);
     --eg-event-show: #FB923C;
-    --eg-event-show-bg: rgba(251,146,60,0.14);
-    --eg-event-show-border: rgba(251,146,60,0.42);
+    --eg-event-show-bg: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
+    --eg-event-show-border: rgba(253,186,116,0.68);
     --eg-event-photo: #22D3EE;
-    --eg-event-photo-bg: rgba(34,211,238,0.13);
-    --eg-event-photo-border: rgba(34,211,238,0.38);
+    --eg-event-photo-bg: linear-gradient(135deg, #0891B2 0%, #0E7490 100%);
+    --eg-event-photo-border: rgba(103,232,249,0.64);
     --eg-event-masterclass: #A3E635;
-    --eg-event-masterclass-bg: rgba(163,230,53,0.13);
-    --eg-event-masterclass-border: rgba(163,230,53,0.36);
+    --eg-event-masterclass-bg: linear-gradient(135deg, #65A30D 0%, #3F6212 100%);
+    --eg-event-masterclass-border: rgba(190,242,100,0.60);
     --eg-event-pinata: #F472B6;
-    --eg-event-pinata-bg: rgba(244,114,182,0.14);
-    --eg-event-pinata-border: rgba(244,114,182,0.38);
+    --eg-event-pinata-bg: linear-gradient(135deg, #DB2777 0%, #9D174D 100%);
+    --eg-event-pinata-border: rgba(249,168,212,0.64);
     --eg-event-custom: #94A3B8;
-    --eg-event-custom-bg: rgba(148,163,184,0.14);
-    --eg-event-custom-border: rgba(148,163,184,0.36);
+    --eg-event-custom-bg: linear-gradient(135deg, #475569 0%, #334155 100%);
+    --eg-event-custom-border: rgba(203,213,225,0.48);
     --eg-event-preliminary: #FBBF24;
-    --eg-event-preliminary-bg: rgba(251,191,36,0.14);
-    --eg-event-preliminary-border: rgba(251,191,36,0.38);
+    --eg-event-preliminary-bg: linear-gradient(135deg, #D97706 0%, #92400E 100%);
+    --eg-event-preliminary-border: rgba(253,230,138,0.68);
     background-color: var(--eg-app-bg) !important;
     background-image: none !important;
     color: var(--eg-text-primary);
@@ -3849,13 +3849,34 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     font-weight: 800;
 }
 
+.timeline-dashboard-page .mini-booking-block {
+    color: var(--eg-text-primary) !important;
+    border: 1px solid var(--eg-event-custom-border);
+    border-left: 3px solid var(--eg-event-custom);
+    background: var(--eg-event-custom-bg);
+    box-shadow: none;
+    font-weight: 800;
+}
+
+.timeline-dashboard-page.dark-mode .booking-block,
+.timeline-dashboard-page.dark-mode .mini-booking-block {
+    color: #FFFFFF !important;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.28);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.10);
+}
+
 .timeline-dashboard-page .booking-block:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 18px rgba(15,23,42,0.10);
 }
 
-.timeline-dashboard-page.dark-mode .booking-block:hover {
-    box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+.timeline-dashboard-page .mini-booking-block:hover {
+    box-shadow: 0 8px 18px rgba(15,23,42,0.10);
+}
+
+.timeline-dashboard-page.dark-mode .booking-block:hover,
+.timeline-dashboard-page.dark-mode .mini-booking-block:hover {
+    box-shadow: 0 12px 26px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.14);
 }
 
 .timeline-dashboard-page .booking-block .title {
@@ -3868,6 +3889,13 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     color: var(--eg-text-secondary);
     opacity: 0.92;
     font-size: 10px;
+}
+
+.timeline-dashboard-page.dark-mode .booking-block .subtitle,
+.timeline-dashboard-page.dark-mode .booking-block .note-text,
+.timeline-dashboard-page.dark-mode .mini-booking-text {
+    color: rgba(255,255,255,0.90);
+    opacity: 1;
 }
 
 .timeline-dashboard-page .booking-block .user-letter {
@@ -3925,15 +3953,37 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     border-left-color: var(--eg-event-custom);
 }
 
+.timeline-dashboard-page .booking-block.banquet,
+.timeline-dashboard-page .booking-block.banquet-block,
+.timeline-dashboard-page .mini-booking-block.banquet,
+.timeline-dashboard-page .mini-booking-block.banquet-block {
+    background: var(--eg-event-preliminary-bg);
+    border-color: var(--eg-event-preliminary-border);
+    border-left-color: var(--eg-event-preliminary);
+}
+
 .timeline-dashboard-page .booking-block.preliminary,
 .timeline-dashboard-page .mini-booking-block.preliminary {
     border-style: dashed;
     border-color: var(--eg-event-preliminary-border);
 }
 
-.timeline-dashboard-page .booking-block.linked-ghost {
-    opacity: 0.62;
+.timeline-dashboard-page .booking-block.linked-ghost,
+.timeline-dashboard-page .mini-booking-block.linked-ghost {
+    opacity: 0.78;
     border-left-style: dashed;
+    cursor: grab;
+}
+
+body.timeline-dashboard-page.dark-mode .booking-block.linked-ghost,
+body.timeline-dashboard-page.dark-mode .mini-booking-block.linked-ghost {
+    opacity: 0.86;
+    filter: saturate(0.96) brightness(0.98);
+}
+
+body.timeline-dashboard-page.dark-mode .booking-block.linked-ghost:hover,
+body.timeline-dashboard-page.dark-mode .mini-booking-block.linked-ghost:hover {
+    opacity: 0.96;
 }
 
 .timeline-dashboard-page .afisha-block {

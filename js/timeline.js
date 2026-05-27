@@ -307,6 +307,9 @@ function normalizeTimelineLinesForContext(lines = []) {
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;
+    if (typeof normalizeTimelineModeState === 'function') {
+        normalizeTimelineModeState(AppState);
+    }
     const selectedDate = new Date(AppState.selectedDate);
     // console.log('[Timeline] renderTimeline START gen=' + thisGen + ' date=' + formatDate(selectedDate));
 
@@ -2925,6 +2928,9 @@ document.addEventListener('touchend', () => _endAfishaDrag());
 
 function buildMultiDayDates() {
     const dates = [];
+    if (typeof normalizeTimelineModeState === 'function') {
+        normalizeTimelineModeState(AppState);
+    }
     const startDate = new Date(AppState.selectedDate);
     for (let i = 0; i < AppState.daysToShow; i++) {
         const d = new Date(startDate);
@@ -2987,9 +2993,21 @@ function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
         const startMin = timeToMinutes(b.time) - timeToMinutes(`${start}:00`);
         const left = (startMin / 60) * (cellWidth * 4);
         const width = (b.duration / 60) * (cellWidth * 4) - 2;
+        const isPreliminary = b.status === 'preliminary';
+        const isLinked = !!b.linkedTo;
+        const filter = AppState.statusFilter || 'all';
+        const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
+        const classes = [
+            'mini-booking-block',
+            b.category,
+            isPreliminary ? 'preliminary' : '',
+            isLinked ? 'linked-ghost' : '',
+            isHidden ? 'status-hidden' : '',
+            b.category === 'banquet' ? 'banquet-block' : ''
+        ].filter(Boolean).map(escapeHtml).join(' ');
 
         html += `
-            <div class="mini-booking-block ${escapeHtml(b.category)}"
+            <div class="${classes}"
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
                  title="${escapeHtml((b.label || b.programCode) + ': ' + b.room + ' (' + b.time + ')')}">
@@ -3042,7 +3060,7 @@ async function renderMultiDayTimeline() {
     const _dowEl2 = document.getElementById('dayOfWeekLabel');
     if (_dowEl2) _dowEl2.textContent = `${formatDateUkr(dates[0])} — ${formatDateUkr(dates[dates.length - 1])}`;
     const _whEl2 = document.getElementById('workingHours');
-    if (_whEl2) _whEl2.textContent = `${AppState.daysToShow === 7 ? 'тиждень' : AppState.daysToShow + ' дні'}`;
+    if (_whEl2) _whEl2.textContent = 'тиждень';
 
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {

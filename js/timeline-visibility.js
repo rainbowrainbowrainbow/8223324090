@@ -12,7 +12,7 @@
     const TIMELINE_VISIBILITY_ELEMENTS = [
         { key: 'dateControls', label: 'Дата і навігація', selector: '.date-controls', area: 'Верхня панель' },
         { key: 'statusFilters', label: 'Фільтри статусів', selector: '.status-filter-controls', area: 'Верхня панель' },
-        { key: 'viewModes', label: 'День / 3 дні / тиждень', selector: '.view-mode-controls', area: 'Верхня панель' },
+        { key: 'viewModes', label: 'День / тиждень', selector: '.view-mode-controls', area: 'Верхня панель' },
         { key: 'zoomControls', label: 'Масштаб 15/30/60 хв', selector: '.zoom-controls', area: 'Верхня панель' },
         { key: 'compactToggle', label: 'Компактний режим', selector: '#compactModeToggle', area: 'Верхня панель', targetWrapper: true },
         { key: 'undo', label: 'Скасувати дію', selector: '#undoBtn', area: 'Верхня панель' },

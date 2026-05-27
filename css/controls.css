@@ -370,7 +370,8 @@ body.dark-mode .night-settings-select {
 }
 
 /* Hide filtered-out booking blocks */
-.booking-block.status-hidden {
+.booking-block.status-hidden,
+.mini-booking-block.status-hidden {
     display: none !important;
 }
 

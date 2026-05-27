@@ -84,6 +84,18 @@ function timelineStorageKey(name) {
     return `pzp_${name}`;
 }
 
+function syncTimelinePeriodSelector(root = document.getElementById('periodSelector')) {
+    if (typeof normalizeTimelineModeState === 'function') {
+        normalizeTimelineModeState(AppState);
+    }
+    if (!root) return;
+    const activePeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
+    root.querySelectorAll('.period-btn').forEach(btn => {
+        const period = Number.parseInt(btn.dataset.period, 10);
+        btn.classList.toggle('active', period === activePeriod);
+    });
+}
+
 function initializeApp() {
     initializeLocalData();
     initializeCostumes();
@@ -152,6 +164,7 @@ function loadPreferences() {
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.checked = AppState.compactMode;
+    syncTimelinePeriodSelector();
     if (typeof applyTimelineResponsiveDensity === 'function') {
         applyTimelineResponsiveDensity();
     } else if (AppState.compactMode) {
@@ -341,19 +354,14 @@ function initTimelineListeners() {
         periodSelector.querySelectorAll('.period-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const period = parseInt(btn.dataset.period);
-                periodSelector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
                 if (period === 1) {
                     AppState.multiDayMode = false;
+                    AppState.daysToShow = TIMELINE_PERIOD_DAY;
                 } else {
                     AppState.multiDayMode = true;
-                    AppState.daysToShow = period;
+                    AppState.daysToShow = TIMELINE_PERIOD_WEEK;
                 }
-                // Sync hidden inputs for backward compat
-                const multiDayModeCheckbox = document.getElementById('multiDayMode');
-                const daysCountSelect = document.getElementById('daysCount');
-                if (multiDayModeCheckbox) multiDayModeCheckbox.checked = AppState.multiDayMode;
-                if (daysCountSelect) daysCountSelect.value = String(AppState.daysToShow);
+                syncTimelinePeriodSelector(periodSelector);
                 renderTimeline();
             });
         });

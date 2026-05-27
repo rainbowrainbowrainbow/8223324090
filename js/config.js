@@ -89,11 +89,26 @@ function timelineConfigStorageKey(name) {
 
 const TIMELINE_ZOOM_LEVELS = [15, 30, 60];
 const TIMELINE_DEFAULT_ZOOM_MINUTES = 30;
+const TIMELINE_PERIOD_DAY = 1;
+const TIMELINE_PERIOD_WEEK = 7;
+const TIMELINE_SUPPORTED_PERIOD_DAYS = [TIMELINE_PERIOD_DAY, TIMELINE_PERIOD_WEEK];
 
 function normalizeTimelineZoomLevel(value, fallback = TIMELINE_DEFAULT_ZOOM_MINUTES) {
     const parsed = Number.parseInt(value, 10);
     if (TIMELINE_ZOOM_LEVELS.includes(parsed)) return parsed;
     return TIMELINE_ZOOM_LEVELS.includes(fallback) ? fallback : 30;
+}
+
+function normalizeTimelineModeState(state = AppState) {
+    if (!state) return { multiDayMode: false, daysToShow: TIMELINE_PERIOD_DAY };
+    const parsedDays = Number.parseInt(state.daysToShow, 10);
+    const normalizedDays = TIMELINE_SUPPORTED_PERIOD_DAYS.includes(parsedDays)
+        ? parsedDays
+        : (parsedDays >= 4 ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY);
+    const nextMultiDay = state.multiDayMode === true || normalizedDays === TIMELINE_PERIOD_WEEK;
+    state.multiDayMode = nextMultiDay;
+    state.daysToShow = nextMultiDay ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
+    return { multiDayMode: state.multiDayMode, daysToShow: state.daysToShow };
 }
 
 // ==========================================
@@ -264,7 +279,7 @@ const AppState = {
     cachedBookings: {},
     cachedLines: {},
     multiDayMode: false,
-    daysToShow: 3,
+    daysToShow: TIMELINE_PERIOD_DAY,
     zoomLevel: TIMELINE_DEFAULT_ZOOM_MINUTES,
     compactMode: false,
     darkMode: false,

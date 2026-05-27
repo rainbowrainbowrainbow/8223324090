@@ -42,7 +42,7 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /router\.post\('\/:id\/tech-card\/write-off'/);
     assert.match(productsRoute, /getTechCardIngredientRows/);
     assert.match(productsRoute, /buildTechCardProcurementSignals/);
-    assert.match(productsRoute, /warehouse_stock WHERE id = ANY\(\$1::int\[\]\) FOR UPDATE/);
+    assert.match(productsRoute, /warehouse_stock[\s\S]+WHERE id = ANY\(\$1::int\[\]\)[\s\S]+COALESCE\(business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$2[\s\S]+FOR UPDATE/);
     assert.match(productsRoute, /INSERT INTO warehouse_history/);
     assert.match(productsRoute, /INSERT INTO warehouse_stock_movements/);
     assert.match(productsRoute, /VALUES \(\$1, 'issue'/);

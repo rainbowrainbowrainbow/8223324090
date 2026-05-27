@@ -180,6 +180,10 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.match(productsRoute, /availability_status = 'hidden'/);
     assert.doesNotMatch(productsRoute, /express-rate-limit/);
     assert.match(productsRoute, /createWriteRateLimiter\('product-menu-ai-draft'/);
+    assert.match(productsRoute, /loadMenuAiWarehouseItems\(pool, businessContext\)/);
+    assert.match(productsRoute, /COALESCE\(ws\.business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$2/);
+    assert.match(productsRoute, /INSERT INTO warehouse_history \(stock_id, change, reason, created_by, business_context\)/);
+    assert.match(productsRoute, /warehouse_stock_movements \([\s\S]*business_context/);
 
     assert.match(cleanupMigration, /MIGRATION_KIND: mixed/);
     assert.match(cleanupMigration, /Загадки ШІ/);

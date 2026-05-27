@@ -493,7 +493,7 @@ function buildFallbackMenuAiDraft(currentCard = {}, warehouseItems = []) {
     }, { source: 'fallback', aiAvailable: false, currentCard, warehouseItems });
 }
 
-async function loadMenuAiWarehouseItems(client = pool) {
+async function loadMenuAiWarehouseItems(client = pool, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const result = await client.query(
         `SELECT
             ws.id,
@@ -506,13 +506,17 @@ async function loadMenuAiWarehouseItems(client = pool) {
             c.last_order_price,
             wl.name AS location_name
          FROM warehouse_stock ws
-         LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+         LEFT JOIN warehouse_locations wl
+           ON wl.id = ws.location_id
+          AND COALESCE(wl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
          LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
          WHERE ws.is_active = true
+           AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
          ORDER BY
             CASE WHEN ws.category IN ('food', 'consumable') THEN 0 ELSE 1 END,
             ws.name
-         LIMIT 250`
+         LIMIT 250`,
+        [businessContext]
     );
     return result.rows;
 }
@@ -736,7 +740,7 @@ async function getProductWithPriceRule(client, id, businessContext = DEFAULT_BUS
     return result.rows[0] || null;
 }
 
-async function getTechCardIngredientRows(client, productId) {
+async function getTechCardIngredientRows(client, productId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const result = await client.query(
         `SELECT
             psr.id,
@@ -758,12 +762,12 @@ async function getTechCardIngredientRows(client, productId) {
             ws.preferred_contractor_id,
             c.name AS preferred_contractor_name
          FROM product_stock_requirements psr
-         LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
-         LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+         LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id AND COALESCE(wl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
          LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
          WHERE psr.product_id = $1
          ORDER BY psr.sort_order, psr.id`,
-        [productId]
+        [productId, businessContext]
     );
     return result.rows;
 }
@@ -1059,7 +1063,7 @@ router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUT
             ? requestedBlock
             : 'all';
         const feedback = cleanNullableString(req.body?.feedback, 1000);
-        const warehouseItems = await loadMenuAiWarehouseItems();
+        const warehouseItems = await loadMenuAiWarehouseItems(pool, businessContext);
 
         let generatedDraft;
         let aiAvailable = true;
@@ -1442,7 +1446,7 @@ router.get('/:id/tech-card', async (req, res) => {
         const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
         if (!product) return res.status(404).json({ error: 'Product not found' });
 
-        const rows = await getTechCardIngredientRows(pool, req.params.id);
+        const rows = await getTechCardIngredientRows(pool, req.params.id, businessContext);
         res.json({
             success: true,
             product: mapProductRow(product),
@@ -1495,10 +1499,14 @@ router.put('/:id/tech-card', requireRole('admin', 'manager'), async (req, res) =
                 ? await client.query(
                     `SELECT ws.*, wl.name AS location_name, c.name AS preferred_contractor_name
                      FROM warehouse_stock ws
-                     LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                     LEFT JOIN warehouse_locations wl
+                       ON wl.id = ws.location_id
+                      AND COALESCE(wl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
                      LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
-                     WHERE ws.id = ANY($1::int[]) AND ws.is_active = true`,
-                    [stockIds]
+                     WHERE ws.id = ANY($1::int[])
+                       AND ws.is_active = true
+                       AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                    [stockIds, businessContext]
                 )
                 : { rows: [] };
             const stockById = new Map(stockRows.rows.map(row => [Number(row.id), row]));
@@ -1572,7 +1580,7 @@ router.put('/:id/tech-card', requireRole('admin', 'manager'), async (req, res) =
             }
         }
 
-        const savedRows = await getTechCardIngredientRows(client, id);
+        const savedRows = await getTechCardIngredientRows(client, id, businessContext);
         const savedProduct = await getProductWithPriceRule(client, id, businessContext);
         await client.query('COMMIT');
         res.json({
@@ -1635,12 +1643,12 @@ router.post('/:id/tech-card/write-off', requireRole('admin', 'manager'), async (
                 ws.preferred_contractor_id,
                 c.name AS preferred_contractor_name
              FROM product_stock_requirements psr
-             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
-             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id AND COALESCE(wl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
              WHERE psr.product_id = $1
              ORDER BY psr.sort_order, psr.id`,
-            [id]
+            [id, businessContext]
         );
 
         if (!ingredientRows.rowCount) {
@@ -1659,7 +1667,13 @@ router.post('/:id/tech-card/write-off', requireRole('admin', 'manager'), async (
         }
 
         const stockIds = [...new Set(ingredientRows.rows.map(row => Number(row.stock_id)))];
-        await client.query('SELECT id FROM warehouse_stock WHERE id = ANY($1::int[]) FOR UPDATE', [stockIds]);
+        await client.query(
+            `SELECT id FROM warehouse_stock
+             WHERE id = ANY($1::int[])
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [stockIds, businessContext]
+        );
         const lockedIngredientRows = await client.query(
             `SELECT
                 psr.*,
@@ -1673,12 +1687,17 @@ router.post('/:id/tech-card/write-off', requireRole('admin', 'manager'), async (
                 ws.preferred_contractor_id,
                 c.name AS preferred_contractor_name
              FROM product_stock_requirements psr
-             JOIN warehouse_stock ws ON ws.id = psr.stock_id AND ws.is_active = true
-             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             JOIN warehouse_stock ws
+               ON ws.id = psr.stock_id
+              AND ws.is_active = true
+              AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             LEFT JOIN warehouse_locations wl
+               ON wl.id = ws.location_id
+              AND COALESCE(wl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
              WHERE psr.product_id = $1
              ORDER BY psr.sort_order, psr.id`,
-            [id]
+            [id, businessContext]
         );
         if (lockedIngredientRows.rowCount !== ingredientRows.rowCount) {
             await client.query('ROLLBACK');
@@ -1728,25 +1747,25 @@ router.post('/:id/tech-card/write-off', requireRole('admin', 'manager'), async (
                  SET quantity = quantity - $1,
                      updated_at = NOW(),
                      updated_by = $2
-                 WHERE id = $3
+                 WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
                  RETURNING id, name, quantity, min_quantity, unit, location_id`,
-                [item.totalQuantity, req.user.username, item.stockId]
+                [item.totalQuantity, req.user.username, item.stockId, businessContext]
             );
             const updatedStock = update.rows[0];
             const writeOffReason = `${reason}: ${product.name} x${units}`;
 
             await client.query(
-                `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-                 VALUES ($1, $2, $3, $4)`,
-                [item.stockId, -item.totalQuantity, writeOffReason, req.user.username]
+                `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [item.stockId, -item.totalQuantity, writeOffReason, req.user.username, businessContext]
             );
             await client.query(
                 `INSERT INTO warehouse_stock_movements (
                     warehouse_stock_id, movement_type, from_location_id, to_location_id,
-                    quantity, reason, created_by
+                    quantity, reason, created_by, business_context
                  )
-                 VALUES ($1, 'issue', $2, NULL, $3, $4, $5)`,
-                [item.stockId, item.row.location_id || null, item.totalQuantity, writeOffReason, req.user.username]
+                 VALUES ($1, 'issue', $2, NULL, $3, $4, $5, $6)`,
+                [item.stockId, item.row.location_id || null, item.totalQuantity, writeOffReason, req.user.username, businessContext]
             );
 
             consumed.push({
@@ -1810,7 +1829,7 @@ router.get('/:id/stock-requirements', async (req, res) => {
                 ws.unit AS stock_unit,
                 COALESCE(psr.unit, ws.unit) AS unit
              FROM product_stock_requirements psr
-             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id
+             LEFT JOIN warehouse_stock ws ON ws.id = psr.stock_id AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              JOIN products p ON p.id = psr.product_id
              WHERE psr.product_id = $1
                AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
@@ -1835,7 +1854,14 @@ router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (r
             return res.status(400).json({ error: 'stockId and quantity (>0) required' });
         const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
         if (!product) return res.status(404).json({ error: 'Product not found' });
-        const stock = await pool.query('SELECT id, name, unit FROM warehouse_stock WHERE id = $1 AND is_active = true', [safeStockId]);
+        const stock = await pool.query(
+            `SELECT id, name, unit
+             FROM warehouse_stock
+             WHERE id = $1
+               AND is_active = true
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [safeStockId, businessContext]
+        );
         if (!stock.rowCount) return res.status(404).json({ error: 'Warehouse stock item not found' });
         const r = await pool.query(
             `INSERT INTO product_stock_requirements (
@@ -1866,8 +1892,13 @@ router.delete('/:id/stock-requirements/:stockId', requireRole('admin', 'manager'
         const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
         if (!product) return res.status(404).json({ error: 'Product not found' });
         await pool.query(
-            'DELETE FROM product_stock_requirements WHERE product_id = $1 AND stock_id = $2',
-            [req.params.id, parseInt(req.params.stockId)]
+            `DELETE FROM product_stock_requirements psr
+             USING warehouse_stock ws
+             WHERE psr.product_id = $1
+               AND psr.stock_id = $2
+               AND ws.id = psr.stock_id
+               AND COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+            [req.params.id, parseInt(req.params.stockId), businessContext]
         );
         res.json({ success: true });
     } catch (err) {

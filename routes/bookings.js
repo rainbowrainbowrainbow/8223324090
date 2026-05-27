@@ -777,10 +777,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
             try {
                 await client.query(
-                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
-                             $1, $2, $3, $4, $5, $6)`,
-                    [b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
+                    `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                             $2, $3, $4, $5, $6, $7)`,
+                    [businessContext, b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
                 );
             } catch (finErr) {
                 log.warn(`Finance auto-record failed (non-critical): ${finErr.message}`);
@@ -791,10 +791,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (parkSideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
             try {
                 await client.query(
-                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
-                     VALUES ('income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' LIMIT 1),
-                             $1, $2, $3, 'certificate', $4, $5, 'system')`,
-                    [b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
+                    `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
+                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                             $2, $3, $4, 'certificate', $5, $6, 'system')`,
+                    [businessContext, b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
                 );
             } catch (certFinErr) {
                 log.warn(`Certificate finance record failed (non-critical): ${certFinErr.message}`);
@@ -1165,10 +1165,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
             try {
                 await client.query(
-                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                     VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
-                             $1, $2, $3, $4, $5, $6)`,
-                    [main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
+                    `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                     VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                             $2, $3, $4, $5, $6, $7)`,
+                    [businessContext, main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
                 );
             } catch (finErr) {
                 log.warn(`Finance auto-record failed (create/full, non-critical): ${finErr.message}`);
@@ -1971,15 +1971,16 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                          payment_method = $4
                      WHERE booking_id = $5
                        AND type = 'income'
-                       AND certificate_id IS NULL`,
-                    [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id]
+                       AND certificate_id IS NULL
+                       AND COALESCE(business_context, 'event_genix') = $6`,
+                    [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, businessContext]
                 );
                 if (finUpdate.rowCount === 0) {
                     await client.query(
-                        `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                         VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
-                                 $1, $2, $3, $4, $5, $6)`,
-                        [b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
+                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                         VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                                 $2, $3, $4, $5, $6, $7)`,
+                        [businessContext, b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
                     );
                 }
             } catch (finErr) {

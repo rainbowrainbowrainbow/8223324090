@@ -6,6 +6,11 @@ const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest,
+    requireBusinessContext
+} = require('../services/businessContext');
 
 const log = createLogger('Warehouse');
 
@@ -19,6 +24,18 @@ const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 
 const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech', 'pinata'];
 const VALID_UNITS = ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'];
 const VALID_OWNERS = ['park', 'dar', 'shared'];
+const BUSINESS_SQL_DEFAULT = `'${DEFAULT_BUSINESS_CONTEXT}'`;
+
+function requestWarehouseBusinessContext(req, res) {
+    const context = businessContextFromRequest(req);
+    if (!requireBusinessContext(req, res, context)) return null;
+    return context;
+}
+
+function businessScopeSql(alias = '', paramRef = '$1') {
+    const column = alias ? `${alias}.business_context` : 'business_context';
+    return `COALESCE(${column}, ${BUSINESS_SQL_DEFAULT}) = ${paramRef}`;
+}
 
 // Map DB row to API response (snake_case -> camelCase)
 function mapStockRow(row) {
@@ -34,6 +51,7 @@ function mapStockRow(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         updatedBy: row.updated_by,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         owner: row.owner || 'park',
         locationId: row.location_id || null,
         locationName: row.location_name || null,
@@ -149,13 +167,14 @@ function validateLocationPayload(body = {}) {
     return { errors, location: { name, description, sortOrder: sortOrder ?? 100 } };
 }
 
-async function findDuplicateLocationName(name, excludeId = null) {
-    const params = [normalizeComparableText(name, 120)];
+async function findDuplicateLocationName(name, businessContext = DEFAULT_BUSINESS_CONTEXT, excludeId = null) {
+    const params = [businessContext, normalizeComparableText(name, 120)];
     let query = `
         SELECT id
         FROM warehouse_locations
         WHERE is_active = true
-          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $1
+          AND ${businessScopeSql('', '$1')}
+          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $2
     `;
     if (excludeId) {
         params.push(excludeId);
@@ -166,12 +185,12 @@ async function findDuplicateLocationName(name, excludeId = null) {
     return result.rows[0] || null;
 }
 
-async function validateWarehouseReferences(locationId, preferredContractorId) {
+async function validateWarehouseReferences(locationId, preferredContractorId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const errors = [];
     if (locationId) {
         const location = await pool.query(
-            'SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true',
-            [locationId]
+            `SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+            [locationId, businessContext]
         );
         if (!location.rowCount) errors.push('locationId does not point to an active warehouse location');
     }
@@ -207,6 +226,7 @@ function stockIdentityChanged(existing, nextIdentity) {
 
 async function findDuplicateWarehouseStock(identity, excludeId = null) {
     const params = [
+        identity.businessContext || DEFAULT_BUSINESS_CONTEXT,
         identity.normalizedName,
         identity.category || 'consumable',
         identity.unit || 'шт',
@@ -217,11 +237,12 @@ async function findDuplicateWarehouseStock(identity, excludeId = null) {
         SELECT id
         FROM warehouse_stock
         WHERE is_active = true
-          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $1
-          AND category = $2
-          AND unit = $3
-          AND COALESCE(owner, 'park') = $4
-          AND location_id IS NOT DISTINCT FROM $5
+          AND ${businessScopeSql('', '$1')}
+          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $2
+          AND category = $3
+          AND unit = $4
+          AND COALESCE(owner, 'park') = $5
+          AND location_id IS NOT DISTINCT FROM $6
     `;
     if (excludeId) {
         params.push(excludeId);
@@ -237,6 +258,7 @@ function mapLocationRow(row) {
         id: row.id,
         slug: row.slug,
         name: row.name,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         description: row.description,
         sortOrder: row.sort_order,
         isActive: row.is_active !== false,
@@ -254,6 +276,7 @@ function locationSummaryQuery(whereClause = 'l.is_active = true') {
             l.id,
             l.slug,
             l.name,
+            l.business_context,
             l.description,
             l.sort_order,
             l.is_active,
@@ -264,18 +287,19 @@ function locationSummaryQuery(whereClause = 'l.is_active = true') {
             (
                 SELECT MAX(m.created_at)
                 FROM warehouse_stock_movements m
-                WHERE m.to_location_id = l.id OR m.from_location_id = l.id
+                WHERE ${businessScopeSql('m', '$1')}
+                  AND (m.to_location_id = l.id OR m.from_location_id = l.id)
             ) AS last_movement_at
         FROM warehouse_locations l
-        LEFT JOIN warehouse_stock ws ON ws.location_id = l.id
-        WHERE ${whereClause}
+        LEFT JOIN warehouse_stock ws ON ws.location_id = l.id AND ${businessScopeSql('ws', '$1')}
+        WHERE ${whereClause} AND ${businessScopeSql('l', '$1')}
         GROUP BY l.id
         ORDER BY l.sort_order, l.name
     `;
 }
 
-async function getLocationSummaryById(locationId) {
-    const result = await pool.query(locationSummaryQuery('l.id = $1'), [locationId]);
+async function getLocationSummaryById(locationId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const result = await pool.query(locationSummaryQuery('l.id = $2'), [businessContext, locationId]);
     return result.rows[0] ? mapLocationRow(result.rows[0]) : null;
 }
 
@@ -288,8 +312,10 @@ router.get('/items', (req, res, next) => {
 // GET /api/warehouse/locations - active physical warehouse locations
 router.get('/locations', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const includeInactive = req.query.all === 'true';
-        const result = await pool.query(locationSummaryQuery(includeInactive ? 'true' : 'l.is_active = true'));
+        const result = await pool.query(locationSummaryQuery(includeInactive ? 'true' : 'l.is_active = true'), [businessContext]);
         res.json({ success: true, locations: result.rows.map(mapLocationRow) });
     } catch (err) {
         log.error('Locations list error', err);
@@ -301,17 +327,19 @@ router.get('/locations', async (req, res) => {
 router.post('/locations', requireRole(...MANAGE_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { errors, location } = validateLocationPayload(req.body || {});
         if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
-        const duplicate = await findDuplicateLocationName(location.name);
+        const duplicate = await findDuplicateLocationName(location.name, businessContext);
         if (duplicate) return res.status(409).json({ success: false, error: 'Warehouse location with this name already exists' });
 
         const slug = await uniqueLocationSlug(client, location.name);
         const result = await client.query(
-            `INSERT INTO warehouse_locations (slug, name, description, sort_order, is_active, updated_at)
-             VALUES ($1, $2, $3, $4, true, NOW())
+            `INSERT INTO warehouse_locations (slug, business_context, name, description, sort_order, is_active, updated_at)
+             VALUES ($1, $2, $3, $4, $5, true, NOW())
              RETURNING *`,
-            [slug, location.name, location.description || null, location.sortOrder]
+            [slug, businessContext, location.name, location.description || null, location.sortOrder]
         );
         log.info(`Warehouse location created: "${location.name}" by ${req.user.username}`);
         res.status(201).json({ success: true, location: mapLocationRow(result.rows[0]) });
@@ -326,27 +354,29 @@ router.post('/locations', requireRole(...MANAGE_ROLES), async (req, res) => {
 // PUT /api/warehouse/locations/:id - update location name/description/order
 router.put('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { errors, location } = validateLocationPayload(req.body || {});
         if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
         const existing = await pool.query(
-            'SELECT id, name FROM warehouse_locations WHERE id = $1 AND is_active = true',
-            [req.params.id]
+            `SELECT id, name FROM warehouse_locations WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+            [req.params.id, businessContext]
         );
         if (!existing.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
         if (normalizeComparableText(existing.rows[0].name, 120) !== normalizeComparableText(location.name, 120)) {
-            const duplicate = await findDuplicateLocationName(location.name, req.params.id);
+            const duplicate = await findDuplicateLocationName(location.name, businessContext, req.params.id);
             if (duplicate) return res.status(409).json({ success: false, error: 'Warehouse location with this name already exists' });
         }
 
         const result = await pool.query(
             `UPDATE warehouse_locations
              SET name = $1, description = $2, sort_order = $3, updated_at = NOW()
-             WHERE id = $4 AND is_active = true
+             WHERE id = $4 AND is_active = true AND ${businessScopeSql('', '$5')}
              RETURNING id`,
-            [location.name, location.description || null, location.sortOrder, req.params.id]
+            [location.name, location.description || null, location.sortOrder, req.params.id, businessContext]
         );
 
-        const updated = await getLocationSummaryById(req.params.id);
+        const updated = await getLocationSummaryById(req.params.id, businessContext);
         log.info(`Warehouse location updated: #${req.params.id} by ${req.user.username}`);
         res.json({ success: true, location: updated });
     } catch (err) {
@@ -358,11 +388,13 @@ router.put('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
 // DELETE /api/warehouse/locations/:id - archive an empty location safely
 router.delete('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const activeStock = await pool.query(
             `SELECT COUNT(*)::int AS active_stock_count
              FROM warehouse_stock
-             WHERE location_id = $1 AND is_active = true`,
-            [req.params.id]
+             WHERE location_id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+            [req.params.id, businessContext]
         );
         const activeStockCount = Number(activeStock.rows[0]?.active_stock_count || 0);
         if (activeStockCount > 0) {
@@ -376,9 +408,9 @@ router.delete('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) =
         const result = await pool.query(
             `UPDATE warehouse_locations
              SET is_active = false, updated_at = NOW()
-             WHERE id = $1 AND is_active = true
+             WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}
              RETURNING *`,
-            [req.params.id]
+            [req.params.id, businessContext]
         );
         if (!result.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
 
@@ -393,7 +425,9 @@ router.delete('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) =
 // GET /api/warehouse/locations-summary - physical warehouse cards
 router.get('/locations-summary', async (req, res) => {
     try {
-        const result = await pool.query(locationSummaryQuery('l.is_active = true'));
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await pool.query(locationSummaryQuery('l.is_active = true'), [businessContext]);
         res.json({ success: true, locations: result.rows.map(mapLocationRow) });
     } catch (err) {
         log.error('Locations summary error', err);
@@ -404,9 +438,11 @@ router.get('/locations-summary', async (req, res) => {
 // GET /api/warehouse — List all stock items
 router.get('/', async (req, res) => {
     try {
-        const conditions = ['ws.is_active = true'];
-        const params = [];
-        let paramIdx = 1;
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
+        const conditions = [businessScopeSql('ws', '$1'), 'ws.is_active = true'];
+        const params = [businessContext];
+        let paramIdx = 2;
 
         if (req.query.category) {
             conditions.push(`ws.category = $${paramIdx++}`);
@@ -439,7 +475,8 @@ router.get('/', async (req, res) => {
             params.push(req.query.locationId);
         }
         if (req.query.all === 'true') {
-            conditions.shift(); // remove is_active filter
+            const activeIndex = conditions.indexOf('ws.is_active = true');
+            if (activeIndex !== -1) conditions.splice(activeIndex, 1);
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -502,17 +539,20 @@ router.get('/', async (req, res) => {
 // GET /api/warehouse/history — Recent history across all items
 router.get('/history', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const offset = parseInt(req.query.offset) || 0;
         const result = await pool.query(
             `SELECT h.*, s.name AS stock_name
              FROM warehouse_history h
              JOIN warehouse_stock s ON s.id = h.stock_id
+             WHERE ${businessScopeSql('h', '$1')}
              ORDER BY h.created_at DESC
-             LIMIT $1 OFFSET $2`,
-            [limit, offset]
+             LIMIT $2 OFFSET $3`,
+            [businessContext, limit, offset]
         );
-        const countResult = await pool.query('SELECT COUNT(*) FROM warehouse_history');
+        const countResult = await pool.query(`SELECT COUNT(*) FROM warehouse_history h WHERE ${businessScopeSql('h', '$1')}`, [businessContext]);
         res.json({
             items: result.rows.map(mapHistoryRow),
             total: parseInt(countResult.rows[0].count)
@@ -527,6 +567,8 @@ router.get('/history', async (req, res) => {
 // GET /api/warehouse/pinata-status
 router.get('/pinata-status', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const [stock, upcoming, designs] = await Promise.all([
             pool.query(
                 `SELECT ws.id, ws.name, ws.quantity, ws.min_quantity, ws.unit,
@@ -535,22 +577,26 @@ router.get('/pinata-status', async (req, res) => {
                  LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
                  WHERE ws.linked_product_type = 'pinata_filler'
                    AND ws.is_active = true
+                   AND ${businessScopeSql('ws', '$1')}
                    AND (
                         ws.location_id = (SELECT id FROM warehouse_locations WHERE slug = 'animators_room' LIMIT 1)
                         OR ws.location_id IS NULL
                    )
-                 ORDER BY ws.name`
+                 ORDER BY ws.name`,
+                [businessContext]
             ),
             pool.query(
                 `SELECT id, date, time, pinata_filler, pinata_number, pinata_filler_number, group_name
                  FROM bookings
                  WHERE pinata_filler IS NOT NULL
                    AND pinata_filler != ''
+                   AND COALESCE(business_context, ${BUSINESS_SQL_DEFAULT}) = $1
                    AND COALESCE(pinata_mode, 'park') = 'park'
                    AND date::date >= CURRENT_DATE
                    AND date::date <= CURRENT_DATE + INTERVAL '14 days'
                    AND status != 'cancelled'
-                 ORDER BY date, time`
+                 ORDER BY date, time`,
+                [businessContext]
             ),
             pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name')
         ]);
@@ -685,8 +731,11 @@ router.post('/photo-intake/:id/cancel', requireRole(...MANAGE_ROLES), async (req
 
 router.get('/categories', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(
-            `SELECT DISTINCT category FROM warehouse_stock WHERE category IS NOT NULL ORDER BY category`
+            `SELECT DISTINCT category FROM warehouse_stock WHERE category IS NOT NULL AND ${businessScopeSql('', '$1')} ORDER BY category`,
+            [businessContext]
         );
         res.json(result.rows.map(r => r.category));
     } catch (err) {
@@ -700,6 +749,8 @@ router.get('/categories', async (req, res) => {
 router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const { toLocationId, quantity, reason } = req.body;
         const amount = Number(quantity);
@@ -711,8 +762,8 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
         await client.query('BEGIN');
 
         const source = await client.query(
-            'SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true FOR UPDATE',
-            [id]
+            `SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR UPDATE`,
+            [id, businessContext]
         );
         if (!source.rowCount) {
             await client.query('ROLLBACK');
@@ -729,7 +780,10 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
             return res.status(400).json({ success: false, error: 'Target location must differ from source' });
         }
 
-        const location = await client.query('SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true', [targetLocationId]);
+        const location = await client.query(
+            `SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')}`,
+            [targetLocationId, businessContext]
+        );
         if (!location.rowCount) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Target location not found' });
@@ -748,8 +802,9 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
                AND category = $3
                AND unit = $4
                AND COALESCE(owner, 'park') = COALESCE($5, 'park')
+               AND ${businessScopeSql('', '$6')}
              LIMIT 1 FOR UPDATE`,
-            [targetLocationId, item.name, item.category, item.unit, item.owner || 'park']
+            [targetLocationId, item.name, item.category, item.unit, item.owner || 'park', businessContext]
         );
 
         let targetStockId;
@@ -762,13 +817,13 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
         } else {
             const created = await client.query(
                 `INSERT INTO warehouse_stock (
-                    name, category, quantity, min_quantity, unit, notes, is_active, updated_by, owner,
+                    business_context, name, category, quantity, min_quantity, unit, notes, is_active, updated_by, owner,
                     location_id, preferred_contractor_id, purchase_unit_price, sku, is_procured_externally
                  )
-                 VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,$13)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$13,$14)
                  RETURNING id`,
                 [
-                    item.name, item.category, amount, item.min_quantity, item.unit, item.notes,
+                    businessContext, item.name, item.category, amount, item.min_quantity, item.unit, item.notes,
                     req.user.username, item.owner || 'park', targetLocationId, item.preferred_contractor_id || null,
                     item.purchase_unit_price || 0, item.sku || null, item.is_procured_externally === true
                 ]
@@ -779,18 +834,19 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
         await client.query(
             `INSERT INTO warehouse_stock_movements (
                 warehouse_stock_id, movement_type, from_location_id, to_location_id,
-                quantity, reason, created_by
+                quantity, reason, created_by, business_context
              )
-             VALUES ($1, 'transfer', $2, $3, $4, $5, $6)`,
-            [id, item.location_id || null, targetLocationId, amount, reason || 'Переміщення між складами', req.user.username]
+             VALUES ($1, 'transfer', $2, $3, $4, $5, $6, $7)`,
+            [id, item.location_id || null, targetLocationId, amount, reason || 'Переміщення між складами', req.user.username, businessContext]
         );
 
         await client.query(
-            `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-             VALUES ($1, $2, $3, $4), ($5, $6, $7, $4)`,
+            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+             VALUES ($1, $2, $3, $4, $8), ($5, $6, $7, $4, $8)`,
             [
                 id, -amount, reason || 'Переміщення зі складу',
-                req.user.username, targetStockId, amount, reason || 'Переміщення на склад'
+                req.user.username, targetStockId, amount, reason || 'Переміщення на склад',
+                businessContext
             ]
         );
 
@@ -808,15 +864,18 @@ router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res
 // GET /api/warehouse/stock/:id/movements - movement timeline for item
 router.get('/stock/:id/movements', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const result = await pool.query(`
             SELECT m.*, fl.name AS from_location_name, tl.name AS to_location_name
             FROM warehouse_stock_movements m
             LEFT JOIN warehouse_locations fl ON fl.id = m.from_location_id
             LEFT JOIN warehouse_locations tl ON tl.id = m.to_location_id
             WHERE m.warehouse_stock_id = $1
+              AND ${businessScopeSql('m', '$2')}
             ORDER BY m.created_at DESC
             LIMIT 80
-        `, [req.params.id]);
+        `, [req.params.id, businessContext]);
         res.json({ success: true, movements: result.rows });
     } catch (err) {
         log.error('Get movement timeline error', err);
@@ -826,6 +885,8 @@ router.get('/stock/:id/movements', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const result = await pool.query(`
             SELECT ws.*, wl.name AS location_name, wl.slug AS location_slug,
@@ -833,15 +894,15 @@ router.get('/:id', async (req, res) => {
             FROM warehouse_stock ws
             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
-            WHERE ws.id = $1
-        `, [id]);
+            WHERE ws.id = $1 AND ${businessScopeSql('ws', '$2')}
+        `, [id, businessContext]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Stock item not found' });
         }
 
         const history = await pool.query(
-            `SELECT * FROM warehouse_history WHERE stock_id = $1 ORDER BY created_at DESC LIMIT 20`,
-            [id]
+            `SELECT * FROM warehouse_history WHERE stock_id = $1 AND ${businessScopeSql('', '$2')} ORDER BY created_at DESC LIMIT 20`,
+            [id, businessContext]
         );
 
         res.json({
@@ -857,6 +918,8 @@ router.get('/:id', async (req, res) => {
 // POST /api/warehouse — Create new stock item (admin/manager)
 router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const errors = validateStock(req.body);
         if (errors.length > 0) {
             return res.status(400).json({ error: errors.join('; ') });
@@ -870,21 +933,22 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
         } = req.body;
         const normalizedLocationId = toOptionalInt(locationId);
         const normalizedContractorId = toOptionalInt(preferredContractorId);
-        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId);
+        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId, businessContext);
         if (refErrors.length) return res.status(400).json({ success: false, error: refErrors.join('; ') });
         const identity = stockIdentityFromPayload({ name, category, unit, owner, locationId: normalizedLocationId });
+        identity.businessContext = businessContext;
         const duplicate = await findDuplicateWarehouseStock(identity);
         if (duplicate) return res.status(409).json({ success: false, error: 'Active warehouse stock item already exists in this location' });
 
         const result = await pool.query(
             `INSERT INTO warehouse_stock (
-                name, category, quantity, min_quantity, unit, notes, updated_by, owner,
+                business_context, name, category, quantity, min_quantity, unit, notes, updated_by, owner,
                 location_id, preferred_contractor_id, sku, purchase_unit_price, is_procured_externally
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              RETURNING *`,
             [
-                name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner,
+                businessContext, name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner,
                 normalizedLocationId, normalizedContractorId, sku || null,
                 toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true
             ]
@@ -901,10 +965,12 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
 // PUT /api/warehouse/:id — Update stock item (admin/manager)
 router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const existing = await pool.query(
-            'SELECT id, name, category, unit, owner, location_id FROM warehouse_stock WHERE id = $1',
-            [id]
+            `SELECT id, name, category, unit, owner, location_id FROM warehouse_stock WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
+            [id, businessContext]
         );
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Stock item not found' });
@@ -923,9 +989,10 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
         } = req.body;
         const normalizedLocationId = toOptionalInt(locationId);
         const normalizedContractorId = toOptionalInt(preferredContractorId);
-        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId);
+        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId, businessContext);
         if (refErrors.length) return res.status(400).json({ success: false, error: refErrors.join('; ') });
         const identity = stockIdentityFromPayload({ name, category, unit, owner, locationId: normalizedLocationId });
+        identity.businessContext = businessContext;
         if (stockIdentityChanged(existing.rows[0], identity)) {
             const duplicate = await findDuplicateWarehouseStock(identity, id);
             if (duplicate) return res.status(409).json({ success: false, error: 'Active warehouse stock item already exists in this location' });
@@ -937,11 +1004,11 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
                 unit = $4, notes = $5, updated_at = NOW(), updated_by = $6, owner = $7,
                 location_id = $8, preferred_contractor_id = $9, sku = $10,
                 purchase_unit_price = $11, is_procured_externally = $12
-             WHERE id = $13 RETURNING *`,
+             WHERE id = $13 AND ${businessScopeSql('', '$14')} RETURNING *`,
             [
                 name.trim(), category, minQuantity, unit, notes, req.user.username, owner,
                 normalizedLocationId, normalizedContractorId, sku || null,
-                toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true, id
+                toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true, id, businessContext
             ]
         );
 
@@ -956,11 +1023,13 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
 // DELETE /api/warehouse/:id — Soft-delete stock item (admin only)
 router.delete('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const result = await pool.query(
             `UPDATE warehouse_stock SET is_active = false, updated_at = NOW(), updated_by = $1
-             WHERE id = $2 RETURNING *`,
-            [req.user.username, id]
+             WHERE id = $2 AND ${businessScopeSql('', '$3')} RETURNING *`,
+            [req.user.username, id, businessContext]
         );
 
         if (result.rows.length === 0) {
@@ -979,6 +1048,8 @@ router.delete('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
 router.post('/:id/use', async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const { amount, reason } = req.body;
 
@@ -989,8 +1060,8 @@ router.post('/:id/use', async (req, res) => {
         await client.query('BEGIN');
 
         const stock = await client.query(
-            'SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true FOR UPDATE',
-            [id]
+            `SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR UPDATE`,
+            [id, businessContext]
         );
         if (stock.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -1009,18 +1080,18 @@ router.post('/:id/use', async (req, res) => {
         );
 
         await client.query(
-            `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-             VALUES ($1, $2, $3, $4)`,
-            [id, -amount, reason || 'Списання', req.user.username]
+            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [id, -amount, reason || 'Списання', req.user.username, businessContext]
         );
 
         await client.query(
             `INSERT INTO warehouse_stock_movements (
                 warehouse_stock_id, movement_type, from_location_id, to_location_id,
-                quantity, reason, created_by
+                quantity, reason, created_by, business_context
              )
-             VALUES ($1, 'issue', $2, NULL, $3, $4, $5)`,
-            [id, stock.rows[0].location_id || null, amount, reason || 'Списання', req.user.username]
+             VALUES ($1, 'issue', $2, NULL, $3, $4, $5, $6)`,
+            [id, stock.rows[0].location_id || null, amount, reason || 'Списання', req.user.username, businessContext]
         );
 
         await client.query('COMMIT');
@@ -1040,6 +1111,8 @@ router.post('/:id/use', async (req, res) => {
 router.post('/:id/restock', async (req, res) => {
     const client = await pool.connect();
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const { amount, reason } = req.body;
 
@@ -1050,8 +1123,8 @@ router.post('/:id/restock', async (req, res) => {
         await client.query('BEGIN');
 
         const stock = await client.query(
-            'SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true FOR UPDATE',
-            [id]
+            `SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true AND ${businessScopeSql('', '$2')} FOR UPDATE`,
+            [id, businessContext]
         );
         if (stock.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -1065,18 +1138,18 @@ router.post('/:id/restock', async (req, res) => {
         );
 
         await client.query(
-            `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-             VALUES ($1, $2, $3, $4)`,
-            [id, amount, reason || 'Поповнення', req.user.username]
+            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [id, amount, reason || 'Поповнення', req.user.username, businessContext]
         );
 
         await client.query(
             `INSERT INTO warehouse_stock_movements (
                 warehouse_stock_id, movement_type, from_location_id, to_location_id,
-                quantity, reason, created_by
+                quantity, reason, created_by, business_context
              )
-             VALUES ($1, 'manual_adjustment', NULL, $2, $3, $4, $5)`,
-            [id, stock.rows[0].location_id || null, amount, reason || 'Поповнення', req.user.username]
+             VALUES ($1, 'manual_adjustment', NULL, $2, $3, $4, $5, $6)`,
+            [id, stock.rows[0].location_id || null, amount, reason || 'Поповнення', req.user.username, businessContext]
         );
 
         await client.query('COMMIT');
@@ -1095,16 +1168,18 @@ router.post('/:id/restock', async (req, res) => {
 // GET /api/warehouse/:id/history — Full history for a specific item
 router.get('/:id/history', async (req, res) => {
     try {
+        const businessContext = requestWarehouseBusinessContext(req, res);
+        if (!businessContext) return;
         const { id } = req.params;
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const offset = parseInt(req.query.offset) || 0;
 
         const result = await pool.query(
-            `SELECT * FROM warehouse_history WHERE stock_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-            [id, limit, offset]
+            `SELECT * FROM warehouse_history WHERE stock_id = $1 AND ${businessScopeSql('', '$2')} ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+            [id, businessContext, limit, offset]
         );
         const countResult = await pool.query(
-            'SELECT COUNT(*) FROM warehouse_history WHERE stock_id = $1', [id]
+            `SELECT COUNT(*) FROM warehouse_history WHERE stock_id = $1 AND ${businessScopeSql('', '$2')}`, [id, businessContext]
         );
 
         res.json({

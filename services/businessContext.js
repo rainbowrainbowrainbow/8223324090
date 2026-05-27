@@ -13,9 +13,19 @@ const BUSINESS_CONTEXTS = Object.freeze({
     pageAllowlist: '/maysternya-doli'
   }
 });
+const BUSINESS_CONTEXT_ALIASES = Object.freeze({
+  park_zakrevsky: DEFAULT_BUSINESS_CONTEXT
+});
+const BUSINESS_CONTEXT_SWITCH_ROLES = Object.freeze([
+  'creator',
+  'director',
+  'vice_director',
+  'senior_manager'
+]);
 
 function normalizeBusinessContext(value) {
   const raw = String(value || '').trim().toLowerCase();
+  if (BUSINESS_CONTEXT_ALIASES[raw]) return BUSINESS_CONTEXT_ALIASES[raw];
   return BUSINESS_CONTEXTS[raw] ? raw : DEFAULT_BUSINESS_CONTEXT;
 }
 
@@ -45,13 +55,59 @@ function pageAllowlist(user) {
   return Array.from(new Set(values.filter(Boolean).map(String)));
 }
 
+function isBusinessContextSwitchRole(user) {
+  const roles = roleList(user);
+  return BUSINESS_CONTEXT_SWITCH_ROLES.some(role => roles.includes(role));
+}
+
+function explicitForcedBusinessContext(user) {
+  return user?.forcedBusinessContext
+    || user?.forced_business_context
+    || user?.businessContext
+    || user?.business_context
+    || user?.tenantBusinessContext
+    || user?.tenant_business_context
+    || null;
+}
+
+function allowedBusinessContextsForUser(user) {
+  if (!user) return [];
+  if (isBusinessContextSwitchRole(user)) return Object.keys(BUSINESS_CONTEXTS);
+  const allowed = new Set([DEFAULT_BUSINESS_CONTEXT]);
+  const allowlist = pageAllowlist(user);
+  Object.values(BUSINESS_CONTEXTS).forEach(ctx => {
+    if (ctx.pageAllowlist && allowlist.includes(ctx.pageAllowlist)) allowed.add(ctx.key);
+  });
+  return Array.from(allowed);
+}
+
+function resolveForcedBusinessContext(user) {
+  if (!user || isBusinessContextSwitchRole(user)) return null;
+  const explicit = explicitForcedBusinessContext(user);
+  if (explicit) return normalizeBusinessContext(explicit);
+  const nonDefault = allowedBusinessContextsForUser(user).filter(ctx => ctx !== DEFAULT_BUSINESS_CONTEXT);
+  return nonDefault.length === 1 ? nonDefault[0] : DEFAULT_BUSINESS_CONTEXT;
+}
+
+function resolveBusinessContextPolicy(user) {
+  const canSwitch = Boolean(user && isBusinessContextSwitchRole(user));
+  const allowed = allowedBusinessContextsForUser(user);
+  const forced = canSwitch ? null : resolveForcedBusinessContext(user);
+  return {
+    canSwitch,
+    forced,
+    allowed: canSwitch ? Object.keys(BUSINESS_CONTEXTS) : [forced || DEFAULT_BUSINESS_CONTEXT],
+    defaultContext: forced || DEFAULT_BUSINESS_CONTEXT
+  };
+}
+
 function canAccessBusinessContext(user, context) {
-  const normalized = normalizeBusinessContext(context);
-  if (normalized === DEFAULT_BUSINESS_CONTEXT) return Boolean(user);
   if (!user) return false;
-  if (roleList(user).includes('creator')) return true;
-  const ctx = BUSINESS_CONTEXTS[normalized];
-  return Boolean(ctx?.pageAllowlist && pageAllowlist(user).includes(ctx.pageAllowlist));
+  const normalized = normalizeBusinessContext(context);
+  const policy = resolveBusinessContextPolicy(user);
+  if (policy.canSwitch) return policy.allowed.includes(normalized);
+  if (policy.forced) return normalized === policy.forced;
+  return policy.allowed.includes(normalized);
 }
 
 function requireBusinessContext(req, res, context) {
@@ -75,10 +131,13 @@ function withBusinessContext(payload, context) {
 
 module.exports = {
   BUSINESS_CONTEXTS,
+  BUSINESS_CONTEXT_SWITCH_ROLES,
   DEFAULT_BUSINESS_CONTEXT,
   normalizeBusinessContext,
   businessContextFromRequest,
+  allowedBusinessContextsForUser,
   canAccessBusinessContext,
+  resolveBusinessContextPolicy,
   requireBusinessContext,
   pushBusinessContextCondition,
   withBusinessContext

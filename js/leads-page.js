@@ -124,19 +124,17 @@ function leadPayload(payload = {}) {
 
 function initLeadBusinessContext(user) {
     const api = window.CrmBusinessContext;
-    currentBusinessContext = api?.set?.(api.current?.() || 'event_genix', { updateUrl: true }) || 'event_genix';
-    const select = document.getElementById('leadBusinessContext');
-    if (!select || !api?.options) return;
-    const options = api.options(user);
-    select.innerHTML = options.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.label)}</option>`).join('');
-    select.value = leadBusinessContext();
-    select.hidden = options.length <= 1;
-    select.addEventListener('change', async event => {
-        currentBusinessContext = api.set(event.target.value, { updateUrl: true });
-        workspaceLeadId = null;
-        closeLeadWorkspace({ pushState: false });
-        await loadLeads();
-    });
+    currentBusinessContext = api?.initPage?.({
+        pageId: 'leads',
+        user,
+        beforeChange: async () => closeLeadWorkspace({ pushState: false, guard: true }),
+        onChange: async ({ current }) => {
+            currentBusinessContext = current;
+            workspaceLeadId = null;
+            closeLeadWorkspace({ pushState: false, force: true, guard: false });
+            await loadLeads();
+        }
+    }) || 'event_genix';
 }
 
 async function apiFetch(url, opts = {}) {

@@ -4875,10 +4875,33 @@ body.dark-mode .afisha-material-item a {
         flex: 1 1 140px;
     }
 }
-/* Shared CRM business-context switcher for scoped customer/lead surfaces. */
+/* Shared CRM business-context shell control for business-scoped CRM surfaces. */
+.crm-business-context-host {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 4px;
+    border: 1px solid rgba(20, 184, 166, 0.18);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+    flex: 0 1 auto;
+}
+
+.crm-business-context-label {
+    padding-left: 8px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
 .crm-business-context-select {
     min-height: 38px;
-    padding: 0 12px;
+    padding: 0 34px 0 12px;
     border: 1px solid rgba(16, 185, 129, 0.34);
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.92);
@@ -4889,8 +4912,42 @@ body.dark-mode .afisha-material-item a {
     cursor: pointer;
 }
 
-.leads-business-context-select {
-    min-height: 44px;
+.crm-business-context-select--global {
+    min-width: 170px;
+}
+
+.crm-business-context-chip {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.06);
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.crm-business-context-chip span {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+body.dark-mode .crm-business-context-host,
+html[data-theme="dark"] .crm-business-context-host {
+    background: rgba(15, 23, 42, 0.88);
+    border-color: rgba(45, 212, 191, 0.26);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.24);
+}
+
+body.dark-mode .crm-business-context-label,
+html[data-theme="dark"] .crm-business-context-label {
+    color: #94a3b8;
 }
 
 body.dark-mode .crm-business-context-select,
@@ -4904,4 +4961,30 @@ body.dark-mode .crm-business-context-select option,
 html[data-theme="dark"] .crm-business-context-select option {
     background: #111827;
     color: #f8fafc;
+}
+
+body.dark-mode .crm-business-context-chip,
+html[data-theme="dark"] .crm-business-context-chip {
+    background: rgba(45, 212, 191, 0.10);
+    color: #f8fafc;
+}
+
+body.dark-mode .crm-business-context-chip span,
+html[data-theme="dark"] .crm-business-context-chip span {
+    color: #bae6fd;
+}
+
+@media (max-width: 720px) {
+    .crm-business-context-host {
+        max-width: min(100%, 260px);
+    }
+
+    .crm-business-context-label {
+        display: none;
+    }
+
+    .crm-business-context-select--global {
+        min-width: 0;
+        width: 100%;
+    }
 }

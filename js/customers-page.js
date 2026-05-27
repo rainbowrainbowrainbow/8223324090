@@ -198,20 +198,23 @@ function customerPayload(payload = {}) {
 
 function initCustomerBusinessContext(user) {
     const api = window.CrmBusinessContext;
-    CrmState.businessContext = api?.set?.(api.current?.() || 'event_genix', { updateUrl: true }) || 'event_genix';
-    const select = document.getElementById('customerBusinessContext');
-    if (!select || !api?.options) return;
-    const options = api.options(user);
-    select.innerHTML = options.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.label)}</option>`).join('');
-    select.value = customerBusinessContext();
-    select.hidden = options.length <= 1;
-    select.addEventListener('change', async event => {
-        CrmState.businessContext = api.set(event.target.value, { updateUrl: true });
-        CrmState.page = 1;
-        CrmState.rfmData = null;
-        await refreshData();
-        openCustomerDeepLink();
-    });
+    CrmState.businessContext = api?.initPage?.({
+        pageId: 'customers',
+        user,
+        beforeChange: async () => {
+            const closed = await closeEditModal(false);
+            if (closed === false) return false;
+            closeCustomerDetailModal();
+            return true;
+        },
+        onChange: async ({ current }) => {
+            CrmState.businessContext = current;
+            CrmState.page = 1;
+            CrmState.rfmData = null;
+            await refreshData();
+            openCustomerDeepLink();
+        }
+    }) || 'event_genix';
 }
 
 function customerHubText(value, fallback = '—') {

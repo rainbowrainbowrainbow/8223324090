@@ -4,6 +4,18 @@
 
 ---
 
+## v0.66.49 - CRM 66.49: єдиний бізнес-контекст
+
+### CRM business context / Products, Leads, Customers / 27.05.2026 [codex]
+- **Єдиний shell-селектор бізнесу** - Products, Leads і Customers більше не тримають окремі локальні dropdown-и; контекст рендериться одним контролом у CRM header.
+- **Один frontend source of truth** - `CrmBusinessContext` керує поточним бізнесом, URL/storage precedence, legacy `park_zakrevsky` alias та подією `crmBusinessContextChanged`.
+- **Рольова політика централізована** - `creator`, `director`, `vice_director` і `senior_manager` можуть перемикати бізнес, а заблоковані ролі отримують read-only контекст із примусовим бізнесом.
+- **API propagation вирівняно** - Products, Leads і Customers передають `businessContext` через спільні helpers для читання, створення, редагування та пошуку.
+- **Switch safety збережено** - перемикання бізнесу поважає відкриті lead/customer/product робочі поверхні й не обходить unsafe-close/dirty guards.
+- **Regression guard** - додано `business-context` unit test і UI smoke contract, що забороняє повернення локальних selector-ів на first-wave сторінки.
+
+---
+
 ## v0.66.48 - CRM 66.48: компактні decomposed задачі в профілі
 
 ### Profile / Мій день / 27.05.2026 [codex]

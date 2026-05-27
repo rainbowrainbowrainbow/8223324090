@@ -96,6 +96,7 @@ async function initPage() {
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
+    initProductBusinessContext(user);
     renderProductBusinessSelector();
     renderProductIaTabs();
     renderCategoryTabs();
@@ -134,12 +135,11 @@ async function initPage() {
 // PRODUCT IA TABS
 // ==========================================
 
-const PRODUCT_BUSINESS_STORAGE_KEY = 'pzp_products_business_context';
 const PRODUCT_TAB_STORAGE_KEY = 'pzp_products_active_tab_park_zakrevsky';
 
 const PRODUCT_BUSINESS_CONTEXTS = {
-    park_zakrevsky: {
-        id: 'park_zakrevsky',
+    event_genix: {
+        id: 'event_genix',
         label: 'Парк Закревського',
         title: 'Products · Продукти Парку Закревського',
         subtitle: 'Операційний продуктовий блок: послуги, кухня та каталоги парку.',
@@ -161,7 +161,9 @@ const PRODUCT_BUSINESS_CONTEXTS = {
 };
 
 function normalizeProductBusinessContext(value) {
-    return PRODUCT_BUSINESS_CONTEXTS[value] ? value : 'park_zakrevsky';
+    if (window.CrmBusinessContext?.normalize) return window.CrmBusinessContext.normalize(value);
+    if (value === 'park_zakrevsky') return 'event_genix';
+    return PRODUCT_BUSINESS_CONTEXTS[value] ? value : 'event_genix';
 }
 
 function safeReadProductPreference(key, fallback = '') {
@@ -194,10 +196,10 @@ const PRODUCT_CATEGORY_HASH_TO_ID = {
 
 function readInitialBusinessContext() {
     const hash = window.location.hash || '';
-    if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'park_zakrevsky';
+    if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'event_genix';
     if (hash === '#maysternya' || hash === '#business-maysternya') return 'maysternya_doli';
-    if (hash === '#catalogs' || hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'park_zakrevsky';
-    return normalizeProductBusinessContext(safeReadProductPreference(PRODUCT_BUSINESS_STORAGE_KEY, 'park_zakrevsky'));
+    if (hash === '#catalogs' || hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'event_genix';
+    return normalizeProductBusinessContext(window.CrmBusinessContext?.current?.() || safeReadProductPreference('pzp_products_business_context', 'event_genix'));
 }
 
 function readInitialProductTab() {
@@ -261,11 +263,11 @@ const MENU_AVAILABILITY_LABELS = {
 };
 
 function getActiveBusinessContext() {
-    return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.park_zakrevsky;
+    return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.event_genix;
 }
 
 function isParkProductsContext() {
-    return activeBusinessContext === 'park_zakrevsky';
+    return activeBusinessContext === 'event_genix';
 }
 
 function getProductApiBusinessContext(context = activeBusinessContext) {
@@ -292,21 +294,59 @@ function syncProductsRouteState() {
 }
 
 function renderProductBusinessSelector() {
-    const selector = document.getElementById('productsBusinessSelect');
-    if (selector) {
-        selector.value = activeBusinessContext;
-        selector.onchange = () => setProductBusinessContext(selector.value);
-    }
     if (document.body) {
         document.body.dataset.productsBusiness = activeBusinessContext;
     }
+    window.CrmBusinessContext?.renderShell?.(AppState.currentUser);
+}
+
+function isProductFormOpen() {
+    return document.getElementById('productForm')?.style.display !== 'none';
+}
+
+function isProductDocumentModalOpen() {
+    return !document.getElementById('productDocumentModal')?.classList.contains('hidden');
+}
+
+async function guardProductBusinessSwitch() {
+    if (productDocumentSaving) {
+        if (typeof showNotification === 'function') showNotification('Дочекайтесь збереження документа перед перемиканням бізнесу', 'warning');
+        return false;
+    }
+    if (!isProductFormOpen() && !isProductDocumentModalOpen()) return true;
+    const message = 'Є відкрита картка продукту або документа. Перемкнути бізнес і закрити поточну роботу?';
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal(message, { type: 'warning', okText: 'Перемкнути', cancelText: 'Залишитись' })
+        : false;
+    if (!ok) return false;
+    if (isProductDocumentModalOpen()) closeProductDocumentModal();
+    closeProductForm();
+    return true;
+}
+
+function initProductBusinessContext(user) {
+    const api = window.CrmBusinessContext;
+    activeBusinessContext = api?.initPage?.({
+        pageId: 'products',
+        user,
+        beforeChange: guardProductBusinessSwitch,
+        onChange: async ({ current }) => {
+            await applyProductBusinessContext(current);
+        }
+    }) || normalizeProductBusinessContext(activeBusinessContext);
 }
 
 async function setProductBusinessContext(context) {
+    if (window.CrmBusinessContext?.switchTo) {
+        return window.CrmBusinessContext.switchTo(context, { user: AppState.currentUser, updateUrl: true });
+    }
+    return applyProductBusinessContext(context);
+}
+
+async function applyProductBusinessContext(context) {
     const nextContext = normalizeProductBusinessContext(context);
     if (nextContext === activeBusinessContext) return;
     activeBusinessContext = nextContext;
-    safeWriteProductPreference(PRODUCT_BUSINESS_STORAGE_KEY, activeBusinessContext);
     closeProductForm();
     syncProductsRouteState();
     renderProductBusinessSelector();
@@ -318,6 +358,7 @@ async function setProductBusinessContext(context) {
     if (isParkProductsContext() && activeProductTab === 'catalogs' && !catalogEntriesLoaded) {
         await loadCatalogEntries();
     }
+    return activeBusinessContext;
 }
 
 function renderProductIaTabs() {
@@ -378,7 +419,7 @@ function updateProductTabPanels() {
         if (!parkContext) pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.maysternya_doli.title;
         else if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Парк Закревського · Каталоги';
         else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Парк Закревського · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
-        else pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.park_zakrevsky.title;
+        else pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.event_genix.title;
     }
     if (pageSubtitle) {
         const context = getActiveBusinessContext();

@@ -444,6 +444,9 @@ function showAuthenticatedPageShell() {
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     if (typeof window.scheduleSidebarSmartMenuAssets === 'function') window.scheduleSidebarSmartMenuAssets();
+    if (typeof window.CrmBusinessContext?.renderShell === 'function') {
+        window.CrmBusinessContext.renderShell(appUser);
+    }
     initCrmAssistantRail();
 }
 

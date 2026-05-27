@@ -14,8 +14,8 @@ test('products compatibility page keeps business-aware products IA with restored
     const sidebar = read('js/components/sidebar.js');
 
     assert.match(html, /Products · Продукти Парку Закревського/);
-    assert.match(html, /id="productsBusinessSelect"/);
-    assert.match(html, /Парк Закревського/);
+    assert.doesNotMatch(html, /id="productsBusinessSelect"/);
+    assert.doesNotMatch(html, /business-context-selector/);
     assert.match(html, /Майстерня долі/);
     assert.match(html, /id="maysternyaPanel"/);
     assert.match(html, /id="maysternyaProductsGrid"/);
@@ -57,7 +57,8 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /apiUpdateProductDocument/);
     assert.match(pageJs, /apiGetProductCatalogs/);
     assert.match(pageJs, /renderKitchenSubtabs/);
-    assert.match(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
+    assert.match(pageJs, /initProductBusinessContext/);
+    assert.match(pageJs, /applyProductBusinessContext/);
     assert.match(pageJs, /setProductBusinessContext/);
     assert.match(pageJs, /PRODUCT_CATEGORY_HASH_TO_ID/);
     assert.match(pageJs, /readInitialCategory/);
@@ -68,7 +69,7 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /getProductApiBusinessContext/);
     assert.match(pageJs, /businessContext: getProductApiBusinessContext\(\)/);
     assert.match(pageJs, /renderMaysternyaProducts/);
-    assert.match(pageJs, /pzp_products_business_context/);
+    assert.doesNotMatch(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
     assert.match(pageJs, /renderKitchenProducts/);
     assert.match(pageJs, /renderMenuSectionFilter/);
     assert.match(pageJs, /MENU_SECTION_ORDER/);
@@ -92,6 +93,9 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(apiJs, /apiGetProductCatalogs/);
     assert.match(apiJs, /apiUpdateProductDocument/);
     assert.match(apiJs, /addProductBusinessContextParam/);
+    assert.match(apiJs, /CRM_BUSINESS_SCOPED_PAGES/);
+    assert.match(apiJs, /globalBusinessContextHost/);
+    assert.match(apiJs, /crmBusinessContextChanged/);
     assert.match(apiJs, /businessContext/);
     assert.match(apiJs, /\/products\/catalogs/);
     assert.match(apiJs, /\/source-document/);

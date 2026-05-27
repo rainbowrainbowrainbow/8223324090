@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.66.48">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.48">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.48">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.48">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.48">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.48">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.48">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.48">
+    <link rel="stylesheet" href="css/base.css?v=0.66.49">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.49">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.49">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.49">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.49">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.49">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -67,34 +67,6 @@
             align-items: flex-end;
             gap: 10px;
             margin-left: auto;
-        }
-
-        .business-context-selector {
-            display: grid;
-            gap: 4px;
-            min-width: 220px;
-            color: var(--gray-500, #64748b);
-            font-size: 12px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0;
-        }
-
-        .business-context-select {
-            min-height: 42px;
-            padding: 0 36px 0 12px;
-            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
-            border-radius: 12px;
-            background: var(--card-bg, #fff);
-            color: var(--text-primary, #0f172a);
-            font: inherit;
-            font-weight: 800;
-            text-transform: none;
-        }
-
-        .business-context-select:focus-visible {
-            border-color: var(--primary-color, #14b8a6);
-            outline: 3px solid rgba(20, 184, 166, 0.18);
         }
 
         .product-ia-tabs {
@@ -948,8 +920,6 @@
         [data-theme="dark"] .product-ia-tabs,
         body.dark-mode .product-catalog-card,
         [data-theme="dark"] .product-catalog-card,
-        body.dark-mode .business-context-select,
-        [data-theme="dark"] .business-context-select,
         body.dark-mode .business-variant-head,
         [data-theme="dark"] .business-variant-head,
         body.dark-mode .maysternya-product-card,
@@ -1045,7 +1015,6 @@
         body.dark-mode .product-doc-modal h3,
         body.dark-mode .product-doc-check-card strong,
         body.dark-mode .product-catalog-title,
-        body.dark-mode .business-context-select,
         body.dark-mode .business-variant-head h3,
         body.dark-mode .maysternya-product-card h4,
         body.dark-mode .kitchen-detail-item span,
@@ -1053,7 +1022,6 @@
         [data-theme="dark"] .product-doc-modal h3,
         [data-theme="dark"] .product-doc-check-card strong,
         [data-theme="dark"] .product-catalog-title,
-        [data-theme="dark"] .business-context-select,
         [data-theme="dark"] .business-variant-head h3,
         [data-theme="dark"] .maysternya-product-card h4 {
             color: #f8fafc;
@@ -1073,11 +1041,6 @@
             .products-header-actions {
                 width: 100%;
                 margin-left: 0;
-            }
-
-            .business-context-selector {
-                min-width: 0;
-                width: 100%;
             }
 
             .product-ia-tab,
@@ -1197,13 +1160,6 @@
                     <p id="productsPageSubtitle" class="products-page-subtitle">Операційний продуктовий блок: послуги, кухня та каталоги парку.</p>
                 </div>
                 <div class="products-header-actions">
-                    <label class="business-context-selector" for="productsBusinessSelect">
-                        Бізнес
-                        <select id="productsBusinessSelect" class="business-context-select" aria-label="Вибір бізнесу для продуктів">
-                            <option value="park_zakrevsky">Парк Закревського</option>
-                            <option value="maysternya_doli">Майстерня долі</option>
-                        </select>
-                    </label>
                     <button type="button" id="addProductBtn" class="btn-page-primary">+ Додати продукт</button>
                 </div>
             </div>
@@ -1501,13 +1457,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.66.48"></script>
-    <script src="js/config.js?v=0.66.48"></script>
-    <script src="js/notification.js?v=0.66.48"></script>
-    <script src="js/api.js?v=0.66.48"></script>
-    <script src="js/auth.js?v=0.66.48"></script>
-    <script src="js/components/sidebar.js?v=0.66.48"></script>
+    <script src="js/ui.js?v=0.66.49"></script>
+    <script src="js/config.js?v=0.66.49"></script>
+    <script src="js/notification.js?v=0.66.49"></script>
+    <script src="js/api.js?v=0.66.49"></script>
+    <script src="js/auth.js?v=0.66.49"></script>
+    <script src="js/components/sidebar.js?v=0.66.49"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.66.48"></script><script src="js/alerts.js?v=0.66.48"></script>
+    <script src="js/programs-page.js?v=0.66.49"></script><script src="js/alerts.js?v=0.66.49"></script>
 </body>
 </html>

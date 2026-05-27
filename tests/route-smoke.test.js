@@ -139,8 +139,8 @@ function createFakePool() {
             if (/SELECT COUNT\(\*\)::int as c FROM users/i.test(text)) {
                 return { rows: [{ c: 2 }] };
             }
-            if (/SELECT id FROM leads/i.test(text) && /source_channel = \$2/i.test(text) && /external_id = \$3/i.test(text)) {
-                return { rows: [] };
+            if (/SELECT id FROM leads/i.test(text) && /external_id = \$2/i.test(text)) {
+                return { rows: params[1] === 'existing-external' ? [{ id: 777 }] : [] };
             }
             if (/SELECT id FROM leads/i.test(text) && /telegram_id = \$2::bigint/i.test(text)) {
                 return { rows: [] };
@@ -883,6 +883,40 @@ describe('route-level API safety smoke', () => {
         });
 
         assert.equal(res.status, 401);
+    });
+
+    it('upserts Maysternya Doli bot leads by external_id without mixing business contexts', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
+            external_id: 'existing-external',
+            name: 'Existing MD Lead',
+            phone: '+380501112244',
+            telegram_id: '123456780',
+            request_topic: 'Updated topic',
+            session_type: 'znaiomstvo',
+            booking_date: '2026-05-31',
+            booking_time: '12:00',
+            message: 'Updated comment'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`,
+            'X-Business-Context': 'event_genix'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, false);
+        assert.equal(res.data.updated, true);
+        assert.equal(notifiedLeads.length, 0);
+
+        const lookup = queries.find(q => /SELECT id FROM leads/i.test(q.text) && /external_id = \$2/i.test(q.text));
+        assert.ok(lookup);
+        assert.equal(lookup.params[0], 'maysternya_doli');
+        assert.equal(lookup.params[1], 'existing-external');
+
+        const update = queries.find(q => /UPDATE leads/i.test(q.text) && /raw_payload/i.test(q.text));
+        assert.ok(update);
+        assert.equal(update.params[11], 777);
+        assert.equal(update.params[12], 'maysternya_doli');
+        assert.match(update.params[9], /Updated topic/);
     });
 
     it('keeps public package reads open but protects package mutations', async () => {

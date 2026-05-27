@@ -4,6 +4,17 @@
 
 ---
 
+## v0.67.10 - CRM 67.10: старт з потрібного таймлайна
+
+### Timeline / акаунти / бізнес-контекст / 27.05.2026 [codex]
+- **Після входу всі стартують з таймлайна** - логін більше не веде користувача за role start page на dashboard/tasks, а відкриває timeline route за дефолтним бізнес-контекстом акаунта.
+- **Олександр стартує в Майстерні Долі** - новий data-fix `234_default_timeline_by_account` ставить Oleksandr/Oleksandra/Oleksandra1-акаунтам `default_business_context = 'maysternya_doli'` і зберігає повний creator-surface без зміни `role` чи `password_hash`.
+- **Інші акаунти стартують у Park timeline** - користувачі з доступом до `event_genix` отримують `default_business_context = 'event_genix'`, тож перша сторінка після входу лишається кореневим Park timeline `/`.
+- **CRM приймає ліди бота в Майстерню** - universal webhook з `source=maysternya_bot` примусово пише в `maysternya_doli`, перевіряє Bearer token timing-safe і оновлює існуючий лід за `external_id` без змішування бізнес-контекстів.
+- **Додано regression guard** - тести фіксують timeline-старт після логіну, route helper для бізнес-дефолта і актуальну міграцію поверх старого reset `233`.
+
+---
+
 ## v0.67.9 - CRM 67.9: простий онлайн-запис МД
 
 ### Timeline / Майстерня Долі / бронювання / 27.05.2026 [codex]

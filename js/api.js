@@ -318,8 +318,9 @@ function getCrmBusinessContext(user) {
     const stored = crmBusinessContextFromStorage(activeUser);
     const policy = resolveCrmBusinessPolicy(activeUser);
     const accountDefault = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const timelineEntryDefault = accountDefault === 'maysternya_doli' ? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT;
     const preferAccountDefaultOnTimelineRoot = normalizedCrmPath() === '/' && !fromUrl;
-    const next = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? accountDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const next = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
     return sanitizeCrmBusinessContextForUser(next, activeUser);
 }
 
@@ -393,6 +394,12 @@ function crmBusinessDestinationForCurrentPage(context, page = currentCrmBusiness
     if (key === 'maysternya_doli') return '/maysternya-doli';
     if (key === CRM_BUSINESS_DEFAULT_CONTEXT) return '/';
     return `/dashboard?businessContext=${encodeURIComponent(key)}`;
+}
+
+function crmBusinessDefaultTimelineRouteForUser(user) {
+    const policy = resolveCrmBusinessPolicy(user);
+    const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    return defaultContext === 'maysternya_doli' ? '/maysternya-doli' : '/';
 }
 
 function navigateCrmBusinessDestination(context, page = currentCrmBusinessScopedPage()) {
@@ -515,6 +522,7 @@ if (typeof window !== 'undefined') {
         hasModule: crmBusinessContextHasModule,
         options: getCrmBusinessContextOptions,
         policy: resolveCrmBusinessPolicy,
+        defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser,
         currentPage: currentCrmBusinessScopedPage,
         initPage: initCrmBusinessContextPage,
         renderShell: renderCrmBusinessShell,

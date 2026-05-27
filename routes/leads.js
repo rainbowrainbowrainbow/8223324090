@@ -85,6 +85,26 @@ function publicBusinessContext(req) {
     );
 }
 
+function universalWebhookBusinessContext(req, sourceChannel) {
+    if (sourceChannel === 'maysternya_bot') return 'maysternya_doli';
+    return publicBusinessContext(req);
+}
+
+function bearerTokenFromHeader(value) {
+    const text = cleanText(value);
+    if (!text) return null;
+    const match = text.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : null;
+}
+
+function timingSafeTextEqual(actual, expected) {
+    if (!actual || !expected) return false;
+    const actualBuffer = Buffer.from(String(actual), 'utf8');
+    const expectedBuffer = Buffer.from(String(expected), 'utf8');
+    return actualBuffer.length === expectedBuffer.length
+        && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 function parseOptionalPositiveInt(value, fieldName) {
     if (value === undefined) return { provided: false };
     if (value === null || value === '') return { provided: true, value: null };
@@ -279,15 +299,14 @@ function hasLeadContactSignal(payload) {
     return Boolean(payload.contact_signal);
 }
 
-async function findExistingWebhookLead(payload, businessContext, sourceChannel) {
+async function findExistingWebhookLead(payload, businessContext) {
     if (payload.external_id) {
         const exact = await pool.query(
             `SELECT id FROM leads
              WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
-               AND source_channel = $2
-               AND external_id = $3
+               AND external_id = $2
              LIMIT 1`,
-            [businessContext, sourceChannel, payload.external_id]
+            [businessContext, payload.external_id]
         );
         if (exact.rows.length > 0) return exact.rows[0];
     }
@@ -323,7 +342,7 @@ async function findExistingWebhookLead(payload, businessContext, sourceChannel) 
 }
 
 async function upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes) {
-    const existing = await findExistingWebhookLead(payload, businessContext, sourceChannel);
+    const existing = await findExistingWebhookLead(payload, businessContext);
     if (existing) {
         const update = await pool.query(
             `UPDATE leads
@@ -392,13 +411,13 @@ async function upsertUniversalWebhookLead(payload, businessContext, sourceChanne
 
 async function handleUniversalWebhook(req, res) {
     try {
-        const auth = req.headers['authorization'] || '';
-        if (!UNIVERSAL_WEBHOOK_TOKEN || auth !== `Bearer ${UNIVERSAL_WEBHOOK_TOKEN}`) {
+        const token = bearerTokenFromHeader(req.headers['authorization']);
+        if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
         const sourceChannel = normalizeWebhookSource(req.query.source || 'universal');
-        const businessContext = publicBusinessContext(req);
+        const businessContext = universalWebhookBusinessContext(req, sourceChannel);
         const payload = normalizeUniversalWebhookPayload(req.body || {}, sourceChannel);
         const notes = formatUniversalLeadNotes(payload, sourceChannel);
 
@@ -1735,7 +1754,7 @@ router.get('/webhook/status', (req, res) => {
             universal: {
                 configured: !!UNIVERSAL_WEBHOOK_TOKEN,
                 endpoint:   '/api/leads/webhook/universal?source=<name>',
-                sources:    ['tiktok', 'turbo', 'bnderoga', 'custom'],
+                sources:    ['maysternya_bot', 'tiktok', 'turbo', 'bnderoga', 'custom'],
             }
         }
     });

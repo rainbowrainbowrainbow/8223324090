@@ -46,6 +46,8 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessContextFromRoute/);
     assert.match(apiCode, /path === '\/maysternya-doli'\) return 'maysternya_doli'/);
     assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return '\/maysternya-doli'/);
+    assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
+    assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
     assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/' && current === 'maysternya_doli'\) return false/);
     assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
@@ -68,8 +70,9 @@ test('timeline root uses account default instead of stale stored business contex
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 
     assert.match(apiCode, /const accountDefault = policy\.defaultContext \|\| CRM_BUSINESS_DEFAULT_CONTEXT/);
+    assert.match(apiCode, /const timelineEntryDefault = accountDefault === 'maysternya_doli' \? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT/);
     assert.match(apiCode, /const preferAccountDefaultOnTimelineRoot = normalizedCrmPath\(\) === '\/' && !fromUrl/);
-    assert.match(apiCode, /preferAccountDefaultOnTimelineRoot \? accountDefault : \(stored \|\| accountDefault\)/);
+    assert.match(apiCode, /preferAccountDefaultOnTimelineRoot \? timelineEntryDefault : \(stored \|\| accountDefault\)/);
 
     const stored = new Map([
         ['pzp_crm_business_context', 'maysternya_doli'],
@@ -103,8 +106,22 @@ test('timeline root uses account default instead of stale stored business contex
     vm.runInNewContext(apiCode, sandbox);
 
     assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'event_genix');
+    assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/');
+    sandbox.AppState.currentUser.businessContexts = ['event_genix', 'dar', 'maysternya_doli'];
+    sandbox.AppState.currentUser.defaultBusinessContext = 'dar';
+    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'event_genix');
+    assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/');
     sandbox.AppState.currentUser.defaultBusinessContext = 'maysternya_doli';
     assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'maysternya_doli');
+    assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/maysternya-doli');
+});
+
+test('login starts from account timeline instead of role shell page', () => {
+    const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+
+    assert.match(authCode, /function getAuthenticatedTimelineStartPage/);
+    assert.match(authCode, /getAuthenticatedTimelineStartPage\(data\.user \|\| AppState\.currentUser\)/);
+    assert.doesNotMatch(authCode, /const startPage = getRoleStartPage\(data\.user/);
 });
 
 test('Oleksandr account default migration keeps only Oleksandr on Maysternya Doli', () => {
@@ -183,6 +200,23 @@ test('Oleksandr default reset migration starts operators from the full CRM timel
     assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
     assert.match(migration, /business_contexts = ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
     assert.match(migration, /default_business_context = 'event_genix'/);
+    assert.doesNotMatch(migration, /\brole\s*=/);
+    assert.doesNotMatch(migration, /password_hash/);
+});
+
+test('current account default migration routes Oleksandr to Maysternya and everyone else to Park', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '234_default_timeline_by_account.sql'), 'utf8');
+
+    assert.match(migration, /target_users/);
+    assert.match(migration, /classified_users/);
+    assert.match(migration, /'oleksandr'/);
+    assert.match(migration, /'oleksandra1'/);
+    assert.match(migration, /\^\(oleksandr\|oleksandra\|alexandr\|alexandra\|aleksandr\|aleksandra\|alexander\|sasha\)/);
+    assert.match(migration, /extra_roles[\s\S]*ARRAY\['creator'\]::text\[\]/);
+    assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
+    assert.match(migration, /business_contexts = CASE[\s\S]*ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
+    assert.match(migration, /default_business_context = CASE[\s\S]*WHEN classified_users\.is_oleksandr THEN 'maysternya_doli'[\s\S]*THEN 'event_genix'/);
+    assert.match(migration, /NOT classified_users\.is_oleksandr/);
     assert.doesNotMatch(migration, /\brole\s*=/);
     assert.doesNotMatch(migration, /password_hash/);
 });

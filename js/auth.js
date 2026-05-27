@@ -189,10 +189,9 @@ async function login(username, password) {
         rememberAuthSession(data);
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-        // v0.60.44: role-aware shell start page. This is UI routing only;
-        // backend/API authorization still uses the real authenticated role.
+        // Start every authenticated session from the account's timeline surface.
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        const startPage = getRoleStartPage(data.user?.role || AppState.currentUser?.role || 'manager');
+        const startPage = getAuthenticatedTimelineStartPage(data.user || AppState.currentUser);
         if (currentPath !== startPage) {
             window.location.href = startPage;
             return { success: true };
@@ -719,6 +718,14 @@ function _getRoleConfig(role) {
 
 function getRoleStartPage(role) {
     return _getRoleConfig(role).startPage || ROLE_SHELL_DEFAULT.startPage;
+}
+
+function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
+    if (typeof window !== 'undefined' && window.CrmBusinessContext?.defaultTimelineRouteForUser) {
+        return window.CrmBusinessContext.defaultTimelineRouteForUser(user);
+    }
+    const rawDefault = user?.defaultBusinessContext || user?.default_business_context || '';
+    return String(rawDefault).trim().toLowerCase() === 'maysternya_doli' ? '/maysternya-doli' : '/';
 }
 
 function getRealUserRole(user = AppState.currentUser) {

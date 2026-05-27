@@ -7,10 +7,23 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
+const timelineInteractionModel = require('../js/timeline-interaction-model');
 
 function formatDate(date) {
     const d = new Date(date);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function timeToMinutes(time) {
+    const [hours, minutes] = String(time || '00:00').split(':').map(Number);
+    return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function minutesToTime(totalMinutes) {
+    const normalized = Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(totalMinutes) || 0)));
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 function pointerEvent(window, type, init = {}) {
@@ -75,7 +88,11 @@ function createHarness() {
     window.MONTHS_SHORT_UKR = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
     window.formatDate = formatDate;
     window.formatDateUkr = formatDate;
+    window.timeToMinutes = timeToMinutes;
+    window.minutesToTime = minutesToTime;
+    window.addMinutesToTime = (time, delta) => minutesToTime(timeToMinutes(time) + (Number(delta) || 0));
     window.escapeHtml = value => String(value ?? '');
+    window.TimelineInteractionModel = timelineInteractionModel;
     window.apiGetLines = async () => [{ id: 'line-1', name: 'Line 1', color: '#14b8a6' }];
     window.apiGetBookings = async () => [];
     window.getBookingsForDate = async () => [];
@@ -96,6 +113,10 @@ function createHarness() {
     window.selectCell = () => {};
     window.editLineModal = () => {};
     window.closeBookingPanel = async () => true;
+    window.showBookingDetails = () => {};
+    window.pushUndo = () => {};
+    window.updateUndoButton = () => {};
+    window.revealHiddenBooking = () => {};
     window.handleUndo = async () => {};
     window.changeZoom = () => {};
     window.navigator.vibrate = () => {};
@@ -114,7 +135,8 @@ function createHarness() {
             setBookingDragState(value) { _bookingDragState = value; },
             getBookingDragState() { return _bookingDragState; },
             setResizeState(value) { _resizeState = value; },
-            getResizeState() { return _resizeState; }
+            getResizeState() { return _resizeState; },
+            detectTargetLine: _detectTargetLine
         };
     `;
     vm.runInContext(exposedCode, dom.getInternalVMContext());
@@ -198,6 +220,74 @@ test('interaction save lock blocks a second drag start', () => {
     api.setSaveInFlight(false);
     block.dispatchEvent(pointerEvent(window, 'pointerdown', { pointerId: 13, clientX: 10, clientY: 10 }));
     assert.ok(api.getBookingDragState(), 'drag can start again once save lock is released');
+});
+
+test('booking drag reconciles final pointerup target line before saving', async () => {
+    const { window, api } = createHarness();
+    const booking = {
+        id: 'booking-1',
+        date: '2026-05-26',
+        time: '14:00',
+        duration: 60,
+        lineId: 'line-1',
+        label: 'Test booking',
+        programCode: 'TEST',
+        category: 'custom',
+        room: 'Room A',
+        status: 'confirmed'
+    };
+    let saved = null;
+
+    window.apiGetLines = async () => [
+        { id: 'line-1', name: 'Line 1', color: '#14b8a6' },
+        { id: 'line-2', name: 'Line 2', color: '#0ea5e9' }
+    ];
+    window.apiGetBookings = async () => [booking];
+    window.apiUpdateLinkedBookingsAtomic = async (id, payload) => {
+        saved = { id, payload };
+        return {
+            success: true,
+            booking: { ...booking, ...(payload.main || {}) },
+            linkedBookings: []
+        };
+    };
+
+    await api.renderTimeline();
+
+    const grids = Array.from(window.document.querySelectorAll('.line-grid[data-line-id]'))
+        .filter(grid => grid.dataset.lineId !== 'afisha');
+    assert.deepEqual(grids.map(grid => grid.dataset.lineId), ['line-1', 'line-2']);
+    grids.forEach((grid, index) => {
+        const top = 100 + index * 80;
+        const rect = { top, bottom: top + 60, left: 100, right: 900, width: 800, height: 60 };
+        grid.getBoundingClientRect = () => rect;
+        grid.closest('.timeline-line').getBoundingClientRect = () => rect;
+        grid.querySelectorAll('.grid-cell').forEach(cell => {
+            cell.getBoundingClientRect = () => ({ width: 80 });
+        });
+    });
+
+    const block = window.document.querySelector('.booking-block[data-booking-id="booking-1"]');
+    block.setPointerCapture = () => {};
+    block.releasePointerCapture = () => {};
+
+    assert.equal(api.detectTargetLine(200), 'line-2');
+
+    block.dispatchEvent(pointerEvent(window, 'pointerdown', { pointerId: 41, clientX: 420, clientY: 120 }));
+    window.document.dispatchEvent(pointerEvent(window, 'pointermove', { pointerId: 41, clientX: 420, clientY: 130 }));
+
+    assert.equal(api.getBookingDragState().newLineId, 'line-1');
+
+    window.document.dispatchEvent(pointerEvent(window, 'pointerup', { pointerId: 41, clientX: 420, clientY: 200 }));
+
+    for (let i = 0; i < 20 && !saved; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    assert.ok(saved, 'drag should be saved');
+    assert.equal(saved.id, 'booking-1');
+    assert.equal(saved.payload.main.lineId, 'line-2');
+    assert.equal(saved.payload.main.time, '14:00');
 });
 
 test('renderTimeline cancels stale active interactions before rerendering lines', async () => {

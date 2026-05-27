@@ -1280,6 +1280,7 @@ function openAfishaModalAt(date, time) {
 const DRAG_THRESHOLD_PX = 8;
 const LONG_PRESS_MS = 300;
 const SNAP_MINUTES = 5;
+const LINE_DROP_TOLERANCE_PX = 24;
 
 let _bookingDragState = null;
 let _resizeState = null;
@@ -1613,7 +1614,7 @@ function _handleBookingDragMove(e) {
 }
 
 // --- Update block position during drag ---
-function _updateBookingDragPosition(clientX, clientY) {
+function _updateBookingDragPosition(clientX, clientY, options = {}) {
     const s = _bookingDragState;
     const cellW = getTimelineCellWidth(s.grid);
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
@@ -1674,7 +1675,9 @@ function _updateBookingDragPosition(clientX, clientY) {
     renderBanquetLinksOverlay();
 
     // --- Auto-scroll near edges ---
-    _handleDragEdgeScroll(clientX);
+    if (!options.skipAutoScroll) {
+        _handleDragEdgeScroll(clientX);
+    }
 
     // --- Show ghost on target line if cross-line ---
     if (s.newLineId !== s.startLineId) {
@@ -1690,14 +1693,21 @@ function _updateBookingDragPosition(clientX, clientY) {
 // --- Detect which line the pointer is over ---
 function _detectTargetLine(clientY) {
     const lines = document.querySelectorAll('.line-grid[data-line-id]');
+    let closest = null;
     for (const lineGrid of lines) {
         if (lineGrid.dataset.lineId === 'afisha') continue;
-        const rect = lineGrid.getBoundingClientRect();
+        const gridRect = lineGrid.getBoundingClientRect();
+        const rowRect = lineGrid.closest('.timeline-line')?.getBoundingClientRect?.();
+        const rect = rowRect && rowRect.height > 0 ? rowRect : gridRect;
         if (clientY >= rect.top && clientY <= rect.bottom) {
             return lineGrid.dataset.lineId;
         }
+        const distance = clientY < rect.top ? rect.top - clientY : clientY - rect.bottom;
+        if (!closest || distance < closest.distance) {
+            closest = { lineId: lineGrid.dataset.lineId, distance };
+        }
     }
-    return null;
+    return closest && closest.distance <= LINE_DROP_TOLERANCE_PX ? closest.lineId : null;
 }
 
 // --- Highlight the target line ---
@@ -1811,6 +1821,10 @@ async function _handleBookingDragEnd(e) {
 
     // Clear long-press timer
     if (s.longPressTimer) clearTimeout(s.longPressTimer);
+
+    if (s.moved && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+        _updateBookingDragPosition(e.clientX, e.clientY, { skipAutoScroll: true });
+    }
 
     // Clear auto-scroll
     if (s.scrollInterval) clearInterval(s.scrollInterval);

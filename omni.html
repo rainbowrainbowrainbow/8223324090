@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.61">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.61">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.61">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.61">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.61">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.61">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.61">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.61">
+    <link rel="stylesheet" href="css/base.css?v=0.66.62">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.62">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.62">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.62">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.62">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.62">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.62">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.62">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2302,12 +2302,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.61"></script>
-    <script src="js/api.js?v=0.66.61"></script>
-    <script src="js/auth.js?v=0.66.61"></script>
-    <script src="js/components/sidebar.js?v=0.66.61"></script>
+    <script src="js/config.js?v=0.66.62"></script>
+    <script src="js/api.js?v=0.66.62"></script>
+    <script src="js/auth.js?v=0.66.62"></script>
+    <script src="js/components/sidebar.js?v=0.66.62"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.66.61"></script>
+    <script src="js/ws.js?v=0.66.62"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2386,12 +2386,32 @@
         // ---- Auth ----
         function getHeaders() {
             const token = localStorage.getItem('pzp_token');
-            return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token,
+                'X-Business-Context': getOmniBusinessContext()
+            };
+        }
+
+        function getOmniBusinessContext() {
+            if (window.CrmBusinessContext && typeof window.CrmBusinessContext.current === 'function') {
+                return window.CrmBusinessContext.current() || 'event_genix';
+            }
+            return 'event_genix';
+        }
+
+        function omniApiUrl(path) {
+            const relative = '/api/omni' + path;
+            if (window.CrmBusinessContext && typeof window.CrmBusinessContext.apiUrl === 'function') {
+                return API_BASE + window.CrmBusinessContext.apiUrl(relative, getOmniBusinessContext());
+            }
+            const joiner = relative.includes('?') ? '&' : '?';
+            return API_BASE + relative + joiner + 'businessContext=' + encodeURIComponent(getOmniBusinessContext());
         }
 
         async function api(path, opts = {}) {
             try {
-                const res = await fetch(API_BASE + '/api/omni' + path, {
+                const res = await fetch(omniApiUrl(path), {
                     ...opts,
                     headers: { ...getHeaders(), ...(opts.headers || {}) }
                 });
@@ -2410,6 +2430,39 @@
                 console.error('API error:', err);
                 return { success: false, error: 'Помилка мережі' };
             }
+        }
+
+        async function reloadOmniForBusinessContext() {
+            currentConvId = null;
+            selectedConversationQueryId = null;
+            conversationQueryApplied = true;
+            leadAssistantState.settings = null;
+            leadAssistantState.salesContext = null;
+            leadAssistantState.analytics = null;
+            closeConnectionModal();
+            closeLeadAssistantPanel();
+            renderConversations();
+            if (messages) messages.innerHTML = '';
+            if (sendTruthEl) sendTruthEl.innerHTML = '';
+            if (emptyState) emptyState.style.display = '';
+            if (chatHeader) chatHeader.style.display = 'none';
+            if (messages) messages.style.display = 'none';
+            if (inputArea) inputArea.style.display = 'none';
+            if (quickRepliesEl) quickRepliesEl.style.display = 'none';
+            if (caseContextEl) caseContextEl.hidden = true;
+            updateSendControls(null);
+            await loadOmniAccounts();
+            await Promise.all([loadConversations(), loadStats()]);
+        }
+
+        function initOmniBusinessContext() {
+            if (!window.CrmBusinessContext || typeof window.CrmBusinessContext.initPage !== 'function') return;
+            window.CrmBusinessContext.initPage({
+                pageId: 'system',
+                onChange: async () => {
+                    await reloadOmniForBusinessContext();
+                }
+            });
         }
 
         // ---- Channel icons ----
@@ -4227,6 +4280,8 @@
                     try {
                         const data = JSON.parse(event.data);
                         if (data.type === 'omni:message' || data.type === 'omni:conversation') {
+                            var evtBusinessContext = data.data && data.data.conversation && data.data.conversation.businessContext;
+                            if (evtBusinessContext && evtBusinessContext !== getOmniBusinessContext()) return;
                             loadConversations();
                             loadStats();
                             var evtConvId = data.data && (data.data.conversation && data.data.conversation.id || data.data.message && data.data.message.conversationId);
@@ -4298,11 +4353,12 @@
             }
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+            initOmniBusinessContext();
             if (typeof ParkWS !== 'undefined') ParkWS.connect();
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.66.61"></script>
-    <script src="js/alerts.js?v=0.66.61"></script>
+    </script><script src="js/ui.js?v=0.66.62"></script>
+    <script src="js/alerts.js?v=0.66.62"></script>
 </body>
 </html>

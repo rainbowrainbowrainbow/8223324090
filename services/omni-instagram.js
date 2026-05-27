@@ -98,8 +98,8 @@ function igRequest(method, path, body, token = IG_PAGE_TOKEN) {
  * @param {string} text - Message text
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-async function sendInstagram(recipientId, text) {
-    const runtime = await resolveOmniRuntimeConfig('instagram');
+async function sendInstagram(recipientId, text, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('instagram', { businessContext: options.businessContext || options.business_context });
     const token = runtime.pageToken || runtime.token || IG_PAGE_TOKEN;
     if (!token) {
         log.warn('sendInstagram called but IG_PAGE_TOKEN not configured');

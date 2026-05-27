@@ -103,7 +103,7 @@ function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
 async function sendFacebook(recipientId, text, options = {}) {
-    const runtime = await resolveOmniRuntimeConfig('facebook');
+    const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext: options.businessContext || options.business_context });
     const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
     if (!token) {
         log.warn('sendFacebook called but FB_PAGE_TOKEN not configured');

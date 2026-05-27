@@ -89,7 +89,7 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
         shortLabel: 'МД',
         pageAllowlist: '/maysternya-doli',
         modules: [
-            'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads',
+            'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni',
             'reports', 'finance', 'programs', 'content', 'kleshnya', 'settings'
         ]
     },

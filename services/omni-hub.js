@@ -5,6 +5,10 @@ const { generateChatResponse } = require('./kleshnya-chat');
 const { getWSS } = require('./websocket');
 const { sendTelegramMessage } = require('./telegram');
 const { createLogger } = require('../utils/logger');
+const {
+  DEFAULT_BUSINESS_CONTEXT,
+  normalizeBusinessContext,
+} = require('./businessContext');
 
 const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
@@ -46,6 +50,16 @@ const DELIVERY_STATUS = Object.freeze({
 const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms']);
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
+
+function omniBusinessContext(options = {}) {
+  return normalizeBusinessContext(options.businessContext || options.business_context || DEFAULT_BUSINESS_CONTEXT);
+}
+
+function scopedConversationCondition(params, businessContext, alias = '') {
+  params.push(omniBusinessContext({ businessContext }));
+  const column = alias ? `${alias}.business_context` : 'business_context';
+  return `COALESCE(${column}, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}`;
+}
 
 class ChannelUnavailableError extends Error {
   constructor(channel, message) {
@@ -108,16 +122,16 @@ function isSendCapableChannel(channel) {
   return VALID_CHANNELS.includes(normalized) && !INBOUND_ONLY_CHANNELS.has(normalized);
 }
 
-async function assertRuntimeSendCapable(channel) {
+async function assertRuntimeSendCapable(channel, options = {}) {
   const normalized = normalizeChannel(channel);
   if (!isSendCapableChannel(normalized)) {
     throw new ChannelUnavailableError(normalized);
   }
-  const account = await getOmniAccountStatusAsync(normalized);
+  const account = await getOmniAccountStatusAsync(normalized, { businessContext: omniBusinessContext(options) });
   if (!account || !account.connected || account.sendCapable === false) {
     throw new ChannelUnavailableError(
       normalized,
-      await getOmniUnavailableMessageAsync(normalized)
+      await getOmniUnavailableMessageAsync(normalized, { businessContext: omniBusinessContext(options) })
     );
   }
   return account;
@@ -367,16 +381,18 @@ function mergeSendTruthMeta(row) {
 
 function mapConversationRow(row) {
   if (!row) return null;
+  const businessContext = row.business_context || DEFAULT_BUSINESS_CONTEXT;
   const replyExpected = booleanValue(row.reply_expected);
   const waitingReply = isActiveWaitingReply(row);
   const replySlaState = deriveReplySlaState(row);
-  const accountStatus = getOmniAccountStatus(row.channel);
+  const accountStatus = getOmniAccountStatus(row.channel, { businessContext });
   const channelSendCapable = isSendCapableChannel(row.channel);
   const accountSendCapable = accountStatus
     ? accountStatus.connected && accountStatus.sendCapable
     : channelSendCapable;
   return {
     id: row.id,
+    businessContext,
     channel: row.channel,
     externalId: row.external_id,
     customerName: row.customer_name,
@@ -501,49 +517,58 @@ function buildTimelineLink(booking) {
   return `/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}`;
 }
 
-async function findLeadById(leadId) {
+async function findLeadById(leadId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
   if (!leadId) return null;
   const result = await pool.query(
     `SELECT l.*, u.name AS assigned_name
      FROM leads l
      LEFT JOIN users u ON l.assigned_to = u.id
      WHERE l.id = $1
+       AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
      LIMIT 1`,
-    [leadId]
+    [leadId, omniBusinessContext({ businessContext })]
   );
   return mapContextLead(result.rows[0]);
 }
 
-async function findBookingById(bookingId) {
+async function findBookingById(bookingId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
   if (!bookingId) return null;
-  const result = await pool.query('SELECT * FROM bookings WHERE id = $1 LIMIT 1', [bookingId]);
+  const result = await pool.query(
+    `SELECT * FROM bookings
+      WHERE id = $1
+        AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+      LIMIT 1`,
+    [bookingId, omniBusinessContext({ businessContext })]
+  );
   return mapContextBooking(result.rows[0]);
 }
 
-async function findRelatedBookings(customerId) {
+async function findRelatedBookings(customerId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
   if (!customerId) return [];
   const result = await pool.query(
     `SELECT *
      FROM bookings
      WHERE customer_id = $1
+       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
        AND status != 'cancelled'
        AND NULLIF(linked_to, '') IS NULL
      ORDER BY date DESC NULLS LAST, time DESC NULLS LAST
      LIMIT 3`,
-    [customerId]
+    [customerId, omniBusinessContext({ businessContext })]
   );
   return result.rows.map(mapContextBooking);
 }
 
-async function findSuggestedCustomer(conversation) {
+async function findSuggestedCustomer(conversation, businessContext = DEFAULT_BUSINESS_CONTEXT) {
   const phoneDigits = normalizeDigits(conversation.customer_phone);
   const namePattern = conversation.customer_name ? `%${conversation.customer_name}%` : '';
   if (!phoneDigits && !namePattern) return null;
   const result = await pool.query(
     `SELECT *
      FROM customers
-     WHERE ($1 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1)
-        OR ($2 <> '' AND name ILIKE $2)
+     WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+       AND (($1 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1)
+        OR ($2 <> '' AND name ILIKE $2))
      ORDER BY
        CASE
          WHEN $1 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1 THEN 0
@@ -551,12 +576,12 @@ async function findSuggestedCustomer(conversation) {
        END,
        updated_at DESC NULLS LAST
      LIMIT 1`,
-    [phoneDigits, namePattern]
+    [phoneDigits, namePattern, omniBusinessContext({ businessContext })]
   );
   return mapContextCustomer(result.rows[0]);
 }
 
-async function findSuggestedLead(conversation) {
+async function findSuggestedLead(conversation, businessContext = DEFAULT_BUSINESS_CONTEXT) {
   const phoneDigits = normalizeDigits(conversation.customer_phone);
   const namePattern = conversation.customer_name ? `%${conversation.customer_name}%` : '';
   if (!phoneDigits && !namePattern) return null;
@@ -564,8 +589,9 @@ async function findSuggestedLead(conversation) {
     `SELECT l.*, u.name AS assigned_name
      FROM leads l
      LEFT JOIN users u ON l.assigned_to = u.id
-     WHERE ($1 <> '' AND regexp_replace(COALESCE(l.phone, ''), '\\D', '', 'g') = $1)
-        OR ($2 <> '' AND l.client_name ILIKE $2)
+     WHERE COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+       AND (($1 <> '' AND regexp_replace(COALESCE(l.phone, ''), '\\D', '', 'g') = $1)
+        OR ($2 <> '' AND l.client_name ILIKE $2))
      ORDER BY
        CASE
          WHEN $1 <> '' AND regexp_replace(COALESCE(l.phone, ''), '\\D', '', 'g') = $1 THEN 0
@@ -573,7 +599,7 @@ async function findSuggestedLead(conversation) {
        END,
        l.updated_at DESC NULLS LAST
      LIMIT 1`,
-    [phoneDigits, namePattern]
+    [phoneDigits, namePattern, omniBusinessContext({ businessContext })]
   );
   return mapContextLead(result.rows[0]);
 }
@@ -592,22 +618,36 @@ function buildCaseLinks(exact, suggestions) {
   return { links, suggestedLinks };
 }
 
-async function resolveConversationContext(conversationId) {
+async function resolveConversationContext(conversationId, options = {}) {
   const id = Number.parseInt(conversationId, 10);
   if (!Number.isInteger(id) || id <= 0) {
     throw new Error('Invalid conversation id');
   }
 
-  const conversationResult = await pool.query('SELECT * FROM conversations WHERE id = $1 LIMIT 1', [id]);
+  const params = [id];
+  const businessCondition = options.businessContext
+    ? ` AND ${scopedConversationCondition(params, options.businessContext)}`
+    : '';
+  const conversationResult = await pool.query(
+    `SELECT * FROM conversations WHERE id = $1${businessCondition} LIMIT 1`,
+    params
+  );
   const rawConversation = conversationResult.rows[0];
   if (!rawConversation) return null;
+  const businessContext = rawConversation.business_context || omniBusinessContext(options);
 
   const exact = { customer: null, lead: null, booking: null };
   const suggestions = { customer: null, lead: null, booking: null };
   const reasons = [];
 
   if (rawConversation.customer_id) {
-    const customerResult = await pool.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [rawConversation.customer_id]);
+    const customerResult = await pool.query(
+      `SELECT * FROM customers
+        WHERE id = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+        LIMIT 1`,
+      [rawConversation.customer_id, businessContext]
+    );
     exact.customer = mapContextCustomer(customerResult.rows[0]);
     if (exact.customer) reasons.push('conversation.customer_id');
   }
@@ -619,41 +659,41 @@ async function resolveConversationContext(conversationId) {
     || rawConversation.meta?.leadAssistant?.leadId
   );
   if (metaLeadId) {
-    exact.lead = await findLeadById(metaLeadId);
+    exact.lead = await findLeadById(metaLeadId, businessContext);
     if (exact.lead) reasons.push('conversation.meta.lead_id');
   }
 
   if (!exact.lead && exact.customer?.leadId) {
-    exact.lead = await findLeadById(exact.customer.leadId);
+    exact.lead = await findLeadById(exact.customer.leadId, businessContext);
     if (exact.lead) reasons.push('customers.lead_id');
   }
 
   if (exact.lead?.bookingId) {
-    exact.booking = await findBookingById(exact.lead.bookingId);
+    exact.booking = await findBookingById(exact.lead.bookingId, businessContext);
     if (exact.booking) reasons.push('leads.booking_id');
   }
 
   if (!exact.customer) {
-    suggestions.customer = await findSuggestedCustomer(rawConversation);
+    suggestions.customer = await findSuggestedCustomer(rawConversation, businessContext);
     if (suggestions.customer) reasons.push('suggested customer by phone/name');
   }
 
   if (!exact.lead) {
     if (suggestions.customer?.leadId) {
-      suggestions.lead = await findLeadById(suggestions.customer.leadId);
+      suggestions.lead = await findLeadById(suggestions.customer.leadId, businessContext);
       if (suggestions.lead) reasons.push('suggested customers.lead_id');
     }
     if (!suggestions.lead) {
-      suggestions.lead = await findSuggestedLead(rawConversation);
+      suggestions.lead = await findSuggestedLead(rawConversation, businessContext);
       if (suggestions.lead) reasons.push('suggested lead by phone/name');
     }
   }
 
   if (!exact.booking && suggestions.lead?.bookingId) {
-    suggestions.booking = await findBookingById(suggestions.lead.bookingId);
+    suggestions.booking = await findBookingById(suggestions.lead.bookingId, businessContext);
   }
 
-  const relatedBookings = await findRelatedBookings(exact.customer?.id || null);
+  const relatedBookings = await findRelatedBookings(exact.customer?.id || null, businessContext);
   const { links, suggestedLinks } = buildCaseLinks(exact, suggestions);
   const confidence = exact.lead || exact.customer || exact.booking
     ? 'exact'
@@ -675,7 +715,8 @@ async function resolveConversationContext(conversationId) {
 // 1. findOrCreateConversation
 // ---------------------------------------------------------------------------
 
-async function findOrCreateConversation(channel, externalId, senderName, phone) {
+async function findOrCreateConversation(channel, externalId, senderName, phone, options = {}) {
+  const businessContext = omniBusinessContext(options);
   const safeName = safeTruncate(senderName, MAX_NAME_LEN);
   const safePhone = safeTruncate(phone, 50);
 
@@ -685,8 +726,11 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
     await client.query('BEGIN');
 
     const existing = await client.query(
-      'SELECT * FROM conversations WHERE channel = $1 AND external_id = $2',
-      [channel, externalId]
+      `SELECT * FROM conversations
+        WHERE channel = $1
+          AND external_id = $2
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+      [channel, externalId, businessContext]
     );
 
     if (existing.rows.length > 0) {
@@ -714,10 +758,10 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
 
     const inserted = await client.query(
       `INSERT INTO conversations
-         (channel, external_id, customer_name, customer_phone, status, unread_count, meta, last_message_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'open', 0, '{}'::jsonb, NOW(), NOW(), NOW())
+         (business_context, channel, external_id, customer_name, customer_phone, status, unread_count, meta, last_message_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'open', 0, '{}'::jsonb, NOW(), NOW(), NOW())
        RETURNING *`,
-      [channel, externalId, safeName || 'Unknown', safePhone || null]
+      [businessContext, channel, externalId, safeName || 'Unknown', safePhone || null]
     );
 
     await client.query('COMMIT');
@@ -839,10 +883,14 @@ async function saveInboundMessage(conversationId, normalized) {
   }
 }
 
-async function getConversationById(conversationId) {
+async function getConversationById(conversationId, options = {}) {
+  const params = [conversationId];
+  const businessCondition = options.businessContext
+    ? ` AND ${scopedConversationCondition(params, options.businessContext)}`
+    : '';
   const result = await pool.query(
-    'SELECT * FROM conversations WHERE id = $1 LIMIT 1',
-    [conversationId]
+    `SELECT * FROM conversations WHERE id = $1${businessCondition} LIMIT 1`,
+    params
   );
   return mapConversationRow(result.rows[0]);
 }
@@ -1321,16 +1369,18 @@ async function applyProviderLifecycleReceipt(receiptPayload) {
 // 4. processInboundMessage
 // ---------------------------------------------------------------------------
 
-async function processInboundMessage(normalized) {
+async function processInboundMessage(normalized, options = {}) {
+  const businessContext = omniBusinessContext(options);
   const conversation = await findOrCreateConversation(
     normalized.channel,
     normalized.externalId,
     normalized.senderName,
-    normalized.phone
+    normalized.phone,
+    { businessContext }
   );
 
   const message = await saveInboundMessage(conversation.id, normalized);
-  const updatedConversation = await getConversationById(conversation.id) || conversation;
+  const updatedConversation = await getConversationById(conversation.id, { businessContext }) || conversation;
 
   notifyCRM('omni:message', { conversation: updatedConversation, message });
   notifyCRM('omni:conversation', { conversation: updatedConversation });
@@ -1431,17 +1481,23 @@ async function generateAndSendAIResponse(conversation, message) {
 // ---------------------------------------------------------------------------
 
 async function sendToChannel(channel, externalId, text, meta) {
+  const businessContext = omniBusinessContext(meta || {});
+  const scopedMeta = businessContext === DEFAULT_BUSINESS_CONTEXT
+    ? { ...(meta || {}) }
+    : { ...(meta || {}), businessContext };
   switch (channel) {
     case 'telegram':
-      return sendTelegramMessage(externalId, text, { skipThread: true });
+      return sendTelegramMessage(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT
+        ? { skipThread: true }
+        : { skipThread: true, businessContext });
     case 'viber':
-      return sendViber(externalId, text, meta);
+      return sendViber(externalId, text, scopedMeta);
     case 'sms':
-      return sendSMS(externalId, text);
+      return sendSMS(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT ? {} : { businessContext });
     case 'facebook':
-      return sendFacebook(externalId, text, meta);
+      return sendFacebook(externalId, text, scopedMeta);
     case 'instagram':
-      return sendInstagram(externalId, text);
+      return sendInstagram(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT ? {} : { businessContext });
     case 'binotel':
       logger.info(`Binotel is inbound-only, skipping outbound to ${externalId}`);
       return { success: false, error: 'Binotel is inbound-only', code: 'channel_unavailable' };
@@ -1457,6 +1513,7 @@ async function sendToChannel(channel, externalId, text, meta) {
 
 async function getConversations(filters = {}) {
   let { status, channel, search, limit = 50, offset = 0 } = filters;
+  const businessContext = filters.businessContext ? omniBusinessContext(filters) : null;
 
   // Validate and sanitize inputs
   if (status && !VALID_STATUSES.includes(status)) status = null;
@@ -1468,6 +1525,11 @@ async function getConversations(filters = {}) {
   const conditions = [];
   const params = [];
   let idx = 1;
+
+  if (businessContext) {
+    conditions.push(`COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${idx++}`);
+    params.push(businessContext);
+  }
 
   if (status) {
     conditions.push(`c.status = $${idx++}`);
@@ -1517,18 +1579,32 @@ async function getConversations(filters = {}) {
 // 8. getMessages
 // ---------------------------------------------------------------------------
 
-async function getMessages(conversationId, limit = 50, offset = 0) {
+async function getMessages(conversationId, limit = 50, offset = 0, options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const params = [conversationId, limit, offset];
+  const businessCondition = businessContext
+    ? ` AND ${scopedConversationCondition(params, businessContext, 'c')}`
+    : '';
   const result = await pool.query(
-    `SELECT * FROM conversation_messages
-     WHERE conversation_id = $1
-     ORDER BY created_at ASC
-     LIMIT $2 OFFSET $3`,
-    [conversationId, limit, offset]
+    `SELECT cm.*
+       FROM conversation_messages cm
+       JOIN conversations c ON c.id = cm.conversation_id
+      WHERE cm.conversation_id = $1${businessCondition}
+      ORDER BY cm.created_at ASC
+      LIMIT $2 OFFSET $3`,
+    params
   );
 
+  const countParams = [conversationId];
+  const countBusinessCondition = businessContext
+    ? ` AND ${scopedConversationCondition(countParams, businessContext, 'c')}`
+    : '';
   const countResult = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM conversation_messages WHERE conversation_id = $1`,
-    [conversationId]
+    `SELECT COUNT(*)::int AS total
+       FROM conversation_messages cm
+       JOIN conversations c ON c.id = cm.conversation_id
+      WHERE cm.conversation_id = $1${countBusinessCondition}`,
+    countParams
   );
 
   return {
@@ -1542,9 +1618,14 @@ async function getMessages(conversationId, limit = 50, offset = 0) {
 // ---------------------------------------------------------------------------
 
 async function sendManualMessage(conversationId, text, senderName, options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const convParams = [conversationId];
+  const businessCondition = businessContext
+    ? ` AND ${scopedConversationCondition(convParams, businessContext)}`
+    : '';
   const convResult = await pool.query(
-    'SELECT * FROM conversations WHERE id = $1',
-    [conversationId]
+    `SELECT * FROM conversations WHERE id = $1${businessCondition}`,
+    convParams
   );
 
   if (convResult.rows.length === 0) {
@@ -1552,7 +1633,7 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   }
 
   const conversation = mapConversationRow(convResult.rows[0]);
-  await assertRuntimeSendCapable(conversation.channel);
+  await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
   const replyExpectation = normalizeReplyExpectationOptions(options);
 
   let client;
@@ -1592,7 +1673,9 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
 
     try {
       messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
-      const delivery = await sendToChannel(conversation.channel, conversation.externalId, text, {});
+      const delivery = await sendToChannel(conversation.channel, conversation.externalId, text, {
+        businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT
+      });
       sendTruth = normalizeProviderResult(conversation.channel, delivery);
       messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
       if (sendTruth.status === 'provider_failed_immediate' || sendTruth.status === 'provider_unknown') {
@@ -1653,7 +1736,8 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
 // 10. updateConversationStatus
 // ---------------------------------------------------------------------------
 
-async function updateConversationStatus(conversationId, status, assignedTo, metaUpdate) {
+async function updateConversationStatus(conversationId, status, assignedTo, metaUpdate, options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
   const sets = [];
   const params = [];
   let idx = 1;
@@ -1689,8 +1773,11 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
     client = await pool.connect();
     await client.query('BEGIN');
 
+    const businessCondition = businessContext
+      ? ` AND ${scopedConversationCondition(params, businessContext)}`
+      : '';
     const result = await client.query(
-      `UPDATE conversations SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE conversations SET ${sets.join(', ')} WHERE id = $${idx}${businessCondition} RETURNING *`,
       params
     );
 
@@ -1717,13 +1804,20 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
 // 11. getStats
 // ---------------------------------------------------------------------------
 
-async function getStats() {
+async function getStats(options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const params = [];
+  const where = businessContext
+    ? `WHERE ${scopedConversationCondition(params, businessContext)}`
+    : '';
   const channelCounts = await pool.query(
-    `SELECT channel, COUNT(*)::int AS count FROM conversations GROUP BY channel ORDER BY count DESC`
+    `SELECT channel, COUNT(*)::int AS count FROM conversations ${where} GROUP BY channel ORDER BY count DESC`,
+    params
   );
 
   const statusCounts = await pool.query(
-    `SELECT status, COUNT(*)::int AS count FROM conversations GROUP BY status`
+    `SELECT status, COUNT(*)::int AS count FROM conversations ${where} GROUP BY status`,
+    params
   );
 
   const channelMap = {};
@@ -1747,9 +1841,15 @@ async function getStats() {
 // 12. getQuickReplies
 // ---------------------------------------------------------------------------
 
-async function getQuickReplies() {
+async function getQuickReplies(options = {}) {
+  const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const params = [];
+  const where = businessContext
+    ? `WHERE ${scopedConversationCondition(params, businessContext)}`
+    : '';
   const result = await pool.query(
-    'SELECT * FROM quick_replies ORDER BY sort_order ASC, created_at ASC LIMIT 500'
+    `SELECT * FROM quick_replies ${where} ORDER BY sort_order ASC, created_at ASC LIMIT 500`,
+    params
   );
 
   return result.rows.map((r) => ({

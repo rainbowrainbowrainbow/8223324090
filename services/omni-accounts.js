@@ -13,6 +13,10 @@ const https = require('https');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const {
+  DEFAULT_BUSINESS_CONTEXT,
+  normalizeBusinessContext,
+} = require('./businessContext');
+const {
   listSmsProviderDefinitions,
   getSmsProviderDefinition,
   normalizeSmsProvider,
@@ -30,6 +34,15 @@ const SECRET_PREFIX = 'egx:v1:';
 const SECRET_KEY_SOURCE = process.env.OMNI_CONNECTION_SECRET_KEY || process.env.JWT_SECRET || 'eventgenix-local-omni-connection-key';
 const SECRET_KEY = crypto.createHash('sha256').update(String(SECRET_KEY_SOURCE)).digest();
 const SAFE_HTTP_TIMEOUT_MS = 12000;
+
+function omniBusinessContext(options = {}) {
+  return normalizeBusinessContext(options.businessContext || options.business_context || DEFAULT_BUSINESS_CONTEXT);
+}
+
+function includeEnvironmentConfig(options = {}) {
+  if (typeof options.includeEnvironment === 'boolean') return options.includeEnvironment;
+  return omniBusinessContext(options) === DEFAULT_BUSINESS_CONTEXT;
+}
 
 const STATUS_COPY = {
   connected: 'Підключено',
@@ -254,11 +267,13 @@ function providerDefinition(channel) {
   return CHANNEL_MAP.get(normalizeChannel(channel)) || null;
 }
 
-function hasEnv(keys = []) {
+function hasEnv(keys = [], options = {}) {
+  if (!includeEnvironmentConfig(options)) return false;
   return keys.some(key => String(process.env[key] || '').trim());
 }
 
-function firstEnv(keys = []) {
+function firstEnv(keys = [], options = {}) {
+  if (!includeEnvironmentConfig(options)) return null;
   for (const key of keys) {
     const value = String(process.env[key] || '').trim();
     if (value) return value;
@@ -266,7 +281,8 @@ function firstEnv(keys = []) {
   return null;
 }
 
-function envConfig(def) {
+function envConfig(def, options = {}) {
+  if (!includeEnvironmentConfig(options)) return {};
   if (isSmsDefinition(def)) return smsEnvConfig(def.provider || defaultSmsProvider());
   const values = {};
   Object.entries(def.credentialMap || {}).forEach(([field, envKey]) => {
@@ -396,17 +412,17 @@ function runtimeValuesFromConnection(def, row) {
   return values;
 }
 
-function mergeRuntimeConfig(def, row) {
+function mergeRuntimeConfig(def, row, options = {}) {
   if (row && (row.status === 'disconnected' || row.status === 'needs_rebind')) return {};
   return {
-    ...envConfig(def),
+    ...envConfig(def, options),
     ...(row ? runtimeValuesFromConnection(def, row) : {}),
   };
 }
 
-function setupFieldsForClient(def, row) {
+function setupFieldsForClient(def, row, options = {}) {
   const config = normalizeCredentialsFromRow(row);
-  const envValues = envConfig(def);
+  const envValues = envConfig(def, options);
   return (def.fields || []).map(field => {
     const hasSavedSecret = isSecretField(def, field.name) && Boolean(config.secrets[field.name]);
     const hasEnvValue = Boolean(envValues[field.name]);
@@ -422,8 +438,8 @@ function setupFieldsForClient(def, row) {
   });
 }
 
-function publicConnectionSummary(def, row, runtime = {}) {
-  const connected = hasEnv(def.envKeys) || Boolean(row && row.status !== 'disconnected' && row.status !== 'needs_rebind');
+function publicConnectionSummary(def, row, runtime = {}, options = {}) {
+  const connected = hasEnv(def.envKeys, options) || Boolean(row && row.status !== 'disconnected' && row.status !== 'needs_rebind');
   const accountName =
     row?.account_display_name
     || runtime.botUsername
@@ -431,18 +447,18 @@ function publicConnectionSummary(def, row, runtime = {}) {
     || runtime.pageName
     || runtime.senderName
     || runtime.sender
-    || firstEnv(def.accountEnvKeys)
+    || firstEnv(def.accountEnvKeys, options)
     || (connected ? `${def.label} configured` : null);
   return {
     connected,
     accountName,
     maskedIdentifier: row?.masked_identifier || maskIdentifier(
-      runtime.defaultChatId || runtime.pageId || runtime.sender || runtime.apiKey || runtime.botUsername || firstEnv(def.accountEnvKeys)
+      runtime.defaultChatId || runtime.pageId || runtime.sender || runtime.apiKey || runtime.botUsername || firstEnv(def.accountEnvKeys, options)
     ),
   };
 }
 
-function providerOptionsForClient(def, row) {
+function providerOptionsForClient(def, row, options = {}) {
   if (!isSmsDefinition(def)) return [];
   const base = CHANNEL_MAP.get('sms') || def;
   return listSmsProviderDefinitions().map(option => {
@@ -450,19 +466,21 @@ function providerOptionsForClient(def, row) {
     return {
       value: option.provider,
       label: option.label,
-      fields: setupFieldsForClient(optionDef, row),
-      setupSteps: setupSteps(optionDef),
-      webhookUrl: publicWebhookUrl(optionDef),
+      fields: setupFieldsForClient(optionDef, row, options),
+      setupSteps: setupSteps(optionDef, options),
+      webhookUrl: publicWebhookUrl(optionDef, options),
       webhookNote: option.webhookNote || null,
       businessImpact: optionDef.businessImpact,
     };
   });
 }
 
-function statusFromRowOrEnv(def, row, now = new Date()) {
+function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
   def = activeDefinitionForRow(def, row);
-  const runtime = mergeRuntimeConfig(def, row);
-  const summary = publicConnectionSummary(def, row, runtime);
+  const businessContext = omniBusinessContext(options);
+  const scopedOptions = { ...options, businessContext };
+  const runtime = mergeRuntimeConfig(def, row, scopedOptions);
+  const summary = publicConnectionSummary(def, row, runtime, scopedOptions);
   let status = row?.status || (summary.connected ? (def.inboundOnly ? 'history_only' : 'connected') : 'disconnected');
 
   if (status === 'connected' && def.inboundOnly) status = 'history_only';
@@ -488,6 +506,7 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     providerLabel: def.providerLabel || def.label,
     purpose: row?.purpose || def.purpose || 'primary',
     purposeLabel: def.purposeLabel || row?.purpose || 'Primary',
+    businessContext,
     status,
     statusLabel: STATUS_COPY[status] || status,
     connected,
@@ -507,10 +526,10 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     lastTestStatus: row?.last_test_status || null,
     lastTestMessage: row?.last_test_message || null,
     supportedActions: supportedActionsForStatus(status, def),
-    setupFields: setupFieldsForClient(def, row),
-    providerOptions: providerOptionsForClient(def, row),
-    setupSteps: setupSteps(def),
-    webhookUrl: publicWebhookUrl(def),
+    setupFields: setupFieldsForClient(def, row, scopedOptions),
+    providerOptions: providerOptionsForClient(def, row, scopedOptions),
+    setupSteps: setupSteps(def, scopedOptions),
+    webhookUrl: publicWebhookUrl(def, scopedOptions),
     connectAvailable: true,
     source: row ? 'database' : (summary.connected ? 'environment' : 'none'),
   };
@@ -546,22 +565,27 @@ function supportedActionsForStatus(status, def) {
   return actions;
 }
 
-function publicWebhookUrl(def) {
+function publicWebhookUrl(def, options = {}) {
   if (!def.webhookPath) return null;
   const explicit = process.env.PUBLIC_APP_URL || process.env.APP_URL || null;
   const railway = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null;
   const base = explicit || railway || '';
-  return base ? `${base.replace(/\/$/, '')}${def.webhookPath}` : def.webhookPath;
+  const path = def.webhookPath;
+  const businessContext = omniBusinessContext(options);
+  const scopedPath = businessContext === DEFAULT_BUSINESS_CONTEXT
+    ? path
+    : `${path}${path.includes('?') ? '&' : '?'}businessContext=${encodeURIComponent(businessContext)}`;
+  return base ? `${base.replace(/\/$/, '')}${scopedPath}` : scopedPath;
 }
 
-function setupSteps(def) {
+function setupSteps(def, options = {}) {
   const steps = [
     `Вставте обовʼязкові дані для ${def.label}.`,
     'Збережіть підключення. CRM не покаже секрети назад у браузері.',
     'Після збереження натисніть «Тест» або «Перевірити», щоб побачити реальний стан.',
   ];
   if (def.webhookPath) {
-    steps.push(`Якщо провайдер приймає webhook, вкажіть URL: ${publicWebhookUrl(def)}.`);
+    steps.push(`Якщо провайдер приймає webhook, вкажіть URL: ${publicWebhookUrl(def, options)}.`);
   }
   if (def.webhookNote) {
     steps.push(def.webhookNote);
@@ -572,13 +596,13 @@ function setupSteps(def) {
   return steps;
 }
 
-function buildAccountStatus(def, now = new Date()) {
-  return statusFromRowOrEnv(def, null, now);
+function buildAccountStatus(def, now = new Date(), options = {}) {
+  return statusFromRowOrEnv(def, null, now, options);
 }
 
 function getOmniAccountStatuses(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
-  return CHANNELS.map(def => buildAccountStatus(def, now));
+  return CHANNELS.map(def => buildAccountStatus(def, now, options));
 }
 
 function getOmniAccountStatus(channel, options = {}) {
@@ -652,16 +676,18 @@ function isReportBotShapedConnection(row) {
   );
 }
 
-async function repairTelegramLegacyBindings(rows) {
+async function repairTelegramLegacyBindings(rows, options = {}) {
+  const businessContext = omniBusinessContext(options);
   const telegramRow = rows.get('telegram');
   if (!isReportBotShapedConnection(telegramRow)) return false;
   try {
     await pool.query(
       `INSERT INTO ${CONNECTION_TABLE}
-         (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
+         (business_context, channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
           send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
           changed_by, last_test_at, last_test_status, last_test_message, disconnected_at, created_at, updated_at)
        SELECT
+          $1,
           'report_bot',
           'telegram',
           'reports',
@@ -685,8 +711,14 @@ async function repairTelegramLegacyBindings(rows) {
           NOW()
          FROM ${CONNECTION_TABLE}
         WHERE channel = 'telegram'
-          AND NOT EXISTS (SELECT 1 FROM ${CONNECTION_TABLE} WHERE channel = 'report_bot')
-       ON CONFLICT (channel) DO NOTHING`
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM ${CONNECTION_TABLE}
+               WHERE channel = 'report_bot'
+                 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+          )
+       ON CONFLICT (business_context, channel) DO NOTHING`,
+      [businessContext]
     );
     await pool.query(
       `UPDATE ${CONNECTION_TABLE}
@@ -702,7 +734,9 @@ async function repairTelegramLegacyBindings(rows) {
               last_changed_at = NOW(),
               disconnected_at = NOW(),
               updated_at = NOW()
-        WHERE channel = 'telegram'`
+        WHERE channel = 'telegram'
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+      [businessContext]
     );
     log.warn('Reclassified legacy Telegram report-bot binding away from inbox');
     return true;
@@ -712,13 +746,20 @@ async function repairTelegramLegacyBindings(rows) {
   }
 }
 
-async function loadConnectionRows() {
+async function loadConnectionRows(options = {}) {
+  const businessContext = omniBusinessContext(options);
   try {
-    const result = await pool.query(`SELECT * FROM ${CONNECTION_TABLE}`);
+    const result = await pool.query(
+      `SELECT * FROM ${CONNECTION_TABLE} WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+      [businessContext]
+    );
     const rows = new Map();
     result.rows.forEach(row => rows.set(normalizeChannel(row.channel), row));
-    if (await repairTelegramLegacyBindings(rows)) {
-      const refreshed = await pool.query(`SELECT * FROM ${CONNECTION_TABLE}`);
+    if (await repairTelegramLegacyBindings(rows, { businessContext })) {
+      const refreshed = await pool.query(
+        `SELECT * FROM ${CONNECTION_TABLE} WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+        [businessContext]
+      );
       const refreshedRows = new Map();
       refreshed.rows.forEach(row => refreshedRows.set(normalizeChannel(row.channel), row));
       return refreshedRows;
@@ -732,9 +773,16 @@ async function loadConnectionRows() {
   }
 }
 
-async function loadConnectionRow(channel) {
+async function loadConnectionRow(channel, options = {}) {
+  const businessContext = omniBusinessContext(options);
   try {
-    const result = await pool.query(`SELECT * FROM ${CONNECTION_TABLE} WHERE channel = $1 LIMIT 1`, [normalizeChannel(channel)]);
+    const result = await pool.query(
+      `SELECT * FROM ${CONNECTION_TABLE}
+        WHERE channel = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+        LIMIT 1`,
+      [normalizeChannel(channel), businessContext]
+    );
     return result.rows[0] || null;
   } catch (err) {
     if (!/omni_provider_connections|does not exist|relation/i.test(err.message || '')) {
@@ -746,16 +794,16 @@ async function loadConnectionRow(channel) {
 
 async function getOmniAccountStatusesAsync(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
-  const rows = await loadConnectionRows();
-  return CHANNELS.map(def => statusFromRowOrEnv(def, rows.get(def.channel), now));
+  const rows = await loadConnectionRows(options);
+  return CHANNELS.map(def => statusFromRowOrEnv(def, rows.get(def.channel), now, options));
 }
 
 async function getOmniAccountStatusAsync(channel, options = {}) {
   const def = providerDefinition(channel);
   if (!def) return null;
-  const row = await loadConnectionRow(def.channel);
+  const row = await loadConnectionRow(def.channel, options);
   const now = options.now instanceof Date ? options.now : new Date();
-  return statusFromRowOrEnv(def, row, now);
+  return statusFromRowOrEnv(def, row, now, options);
 }
 
 async function getOmniAccountAlertsAsync(options = {}) {
@@ -765,21 +813,21 @@ async function getOmniAccountAlertsAsync(options = {}) {
     .map(accountToAlert);
 }
 
-async function isOmniChannelSendCapableAsync(channel) {
-  const account = await getOmniAccountStatusAsync(channel);
+async function isOmniChannelSendCapableAsync(channel, options = {}) {
+  const account = await getOmniAccountStatusAsync(channel, options);
   return Boolean(account && account.connected && account.sendCapable);
 }
 
-async function getOmniUnavailableMessageAsync(channel) {
-  const account = await getOmniAccountStatusAsync(channel);
+async function getOmniUnavailableMessageAsync(channel, options = {}) {
+  const account = await getOmniAccountStatusAsync(channel, options);
   return unavailableMessageFromAccount(account, channel);
 }
 
-async function resolveOmniRuntimeConfig(channel) {
+async function resolveOmniRuntimeConfig(channel, options = {}) {
   const def = providerDefinition(channel);
   if (!def) return {};
-  const row = await loadConnectionRow(def.channel);
-  return mergeRuntimeConfig(activeDefinitionForRow(def, row), row);
+  const row = await loadConnectionRow(def.channel, options);
+  return mergeRuntimeConfig(activeDefinitionForRow(def, row), row, options);
 }
 
 async function isTelegramInboxConnectionUsingToken(botToken) {
@@ -803,7 +851,7 @@ function userLabel(user = {}) {
   return user.name || user.username || user.role || 'system';
 }
 
-function normalizePayloadFields(def, payload = {}, existingRow = null) {
+function normalizePayloadFields(def, payload = {}, existingRow = null, options = {}) {
   const incoming = payload.fields && typeof payload.fields === 'object' ? payload.fields : payload;
   const current = normalizeCredentialsFromRow(existingRow);
   const previousProvider = isSmsDefinition(def) ? smsProviderFromRow(existingRow) : null;
@@ -811,7 +859,7 @@ function normalizePayloadFields(def, payload = {}, existingRow = null) {
   const values = providerChanged ? {} : { ...current.values };
   const secrets = providerChanged ? {} : { ...current.secrets };
   const masks = providerChanged ? {} : { ...current.masks };
-  const runtime = mergeRuntimeConfig(def, existingRow);
+  const runtime = mergeRuntimeConfig(def, existingRow, options);
   const errors = [];
   if (isSmsDefinition(def)) values.provider = def.provider;
 
@@ -844,13 +892,13 @@ function normalizePayloadFields(def, payload = {}, existingRow = null) {
 
   return {
     credentials: { values, secrets, masks },
-    runtime: mergePlainRuntime(def, values, secrets),
+    runtime: mergePlainRuntime(def, values, secrets, options),
     errors,
   };
 }
 
-function mergePlainRuntime(def, values, secrets) {
-  const runtime = { ...envConfig(def), ...values };
+function mergePlainRuntime(def, values, secrets, options = {}) {
+  const runtime = { ...envConfig(def, options), ...values };
   Object.entries(secrets || {}).forEach(([field, encrypted]) => {
     const value = decryptSecret(encrypted);
     if (value) runtime[field] = value;
@@ -873,7 +921,9 @@ function validateField(field, value) {
   return null;
 }
 
-async function upsertOmniConnection(channel, payload = {}, user = {}) {
+async function upsertOmniConnection(channel, payload = {}, user = {}, options = {}) {
+  const businessContext = omniBusinessContext(options);
+  const scopedOptions = { ...options, businessContext };
   const baseDef = providerDefinition(channel);
   if (!baseDef) {
     const err = new Error('Канал Omni не знайдено');
@@ -881,9 +931,9 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
     throw err;
   }
 
-  const existingRow = await loadConnectionRow(baseDef.channel);
+  const existingRow = await loadConnectionRow(baseDef.channel, scopedOptions);
   const def = activeDefinitionForPayload(baseDef, payload, existingRow);
-  const normalized = normalizePayloadFields(def, payload, existingRow);
+  const normalized = normalizePayloadFields(def, payload, existingRow, scopedOptions);
   const providerErrors = [
     ...normalized.errors,
     ...(def.localValidation ? def.localValidation(normalized.runtime) : []),
@@ -903,11 +953,11 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
 
   const result = await pool.query(
     `INSERT INTO ${CONNECTION_TABLE}
-       (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
+       (business_context, channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
         send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
         changed_by, last_test_at, last_test_status, last_test_message, disconnected_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,NOW(),NOW(),$12,$13,NOW(),$14,$15,NULL,NOW())
-     ON CONFLICT (channel) DO UPDATE SET
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,NOW(),NOW(),$13,$14,NOW(),$15,$16,NULL,NOW())
+     ON CONFLICT (business_context, channel) DO UPDATE SET
         provider = EXCLUDED.provider,
         purpose = EXCLUDED.purpose,
         provider_kind = EXCLUDED.provider_kind,
@@ -929,6 +979,7 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
         updated_at = NOW()
      RETURNING *`,
     [
+      businessContext,
       def.channel,
       def.provider || def.channel,
       def.purpose || 'primary',
@@ -947,7 +998,7 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
     ]
   );
 
-  const account = statusFromRowOrEnv(def, result.rows[0], new Date());
+  const account = statusFromRowOrEnv(def, result.rows[0], new Date(), scopedOptions);
   return {
     account,
     result: safeVerificationResult(check),
@@ -956,15 +1007,17 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
 }
 
 async function recheckOmniConnection(channel, user = {}, options = {}) {
+  const businessContext = omniBusinessContext(options);
+  const scopedOptions = { ...options, businessContext };
   const baseDef = providerDefinition(channel);
   if (!baseDef) {
     const err = new Error('Канал Omni не знайдено');
     err.statusCode = 404;
     throw err;
   }
-  const row = await loadConnectionRow(baseDef.channel);
+  const row = await loadConnectionRow(baseDef.channel, scopedOptions);
   const def = activeDefinitionForRow(baseDef, row);
-  const runtime = mergeRuntimeConfig(def, row);
+  const runtime = mergeRuntimeConfig(def, row, scopedOptions);
   const check = await verifyProvider(def, runtime, { mode: options.mode || 'recheck' });
   const status = statusFromVerification(def, check);
   const display = displayNameFromRuntime(def, runtime, check);
@@ -986,6 +1039,7 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
               last_test_message = CASE WHEN $8 = 'test' THEN $10 ELSE last_test_message END,
               updated_at = NOW()
         WHERE channel = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $11
         RETURNING *`,
       [
         def.channel,
@@ -998,12 +1052,13 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
         options.mode || 'recheck',
         check.status,
         check.message,
+        businessContext,
       ]
     );
     updatedRow = result.rows[0] || row;
   }
 
-  const account = statusFromRowOrEnv(def, updatedRow, new Date());
+  const account = statusFromRowOrEnv(def, updatedRow, new Date(), scopedOptions);
   return {
     account,
     result: safeVerificationResult(check),
@@ -1011,11 +1066,13 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
   };
 }
 
-async function testOmniConnection(channel, user = {}) {
-  return recheckOmniConnection(channel, user, { mode: 'test' });
+async function testOmniConnection(channel, user = {}, options = {}) {
+  return recheckOmniConnection(channel, user, { ...options, mode: 'test' });
 }
 
-async function disconnectOmniConnection(channel, user = {}) {
+async function disconnectOmniConnection(channel, user = {}, options = {}) {
+  const businessContext = omniBusinessContext(options);
+  const scopedOptions = { ...options, businessContext };
   const def = providerDefinition(channel);
   if (!def) {
     const err = new Error('Канал Omni не знайдено');
@@ -1025,11 +1082,11 @@ async function disconnectOmniConnection(channel, user = {}) {
   const changedBy = userLabel(user);
   const result = await pool.query(
     `INSERT INTO ${CONNECTION_TABLE}
-       (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
+       (business_context, channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
         send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
         changed_by, disconnected_at, updated_at)
-     VALUES ($1,$2,$3,$4,'disconnected','{}'::jsonb,NULL,NULL,false,false,$5,NOW(),NOW(),$6,$7,NOW(),NOW())
-     ON CONFLICT (channel) DO UPDATE SET
+     VALUES ($1,$2,$3,$4,$5,'disconnected','{}'::jsonb,NULL,NULL,false,false,$6,NOW(),NOW(),$7,$8,NOW(),NOW())
+     ON CONFLICT (business_context, channel) DO UPDATE SET
         provider = EXCLUDED.provider,
         purpose = EXCLUDED.purpose,
         provider_kind = EXCLUDED.provider_kind,
@@ -1039,15 +1096,16 @@ async function disconnectOmniConnection(channel, user = {}) {
         masked_identifier = NULL,
         send_enabled = false,
         receive_enabled = false,
-        warning = $5,
+        warning = EXCLUDED.warning,
         last_checked_at = NOW(),
         last_changed_at = NOW(),
-        changed_by_user_id = $6,
-        changed_by = $7,
+        changed_by_user_id = EXCLUDED.changed_by_user_id,
+        changed_by = EXCLUDED.changed_by,
         disconnected_at = NOW(),
         updated_at = NOW()
      RETURNING *`,
     [
+      businessContext,
       def.channel,
       def.provider || def.channel,
       def.purpose || 'primary',
@@ -1058,7 +1116,7 @@ async function disconnectOmniConnection(channel, user = {}) {
     ]
   );
   return {
-    account: statusFromRowOrEnv(def, result.rows[0], new Date()),
+    account: statusFromRowOrEnv(def, result.rows[0], new Date(), scopedOptions),
     message: `${def.label} відключено. Відправка з цього каналу зупинена, доки його не підключать знову.`,
   };
 }

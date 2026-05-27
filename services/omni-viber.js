@@ -93,7 +93,7 @@ function viberRequest(path, body, token = VIBER_TOKEN) {
  * @returns {Promise<{success: boolean, messageToken?: number, error?: string}>}
  */
 async function sendViber(receiverId, text, options = {}) {
-    const runtime = await resolveOmniRuntimeConfig('viber');
+    const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: options.businessContext || options.business_context });
     const token = runtime.token || VIBER_TOKEN;
     const senderName = runtime.senderName || VIBER_SENDER_NAME;
     if (!token) {

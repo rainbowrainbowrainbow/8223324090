@@ -1511,7 +1511,7 @@ async function callOpenAIForAnalysis(bundle, config, salesContext = null) {
   }, salesContext);
 }
 
-async function getConversationBundle(conversationId, limit = 100) {
+async function getConversationBundle(conversationId, limit = 100, options = {}) {
   const id = Number.parseInt(conversationId, 10);
   if (!Number.isInteger(id) || id <= 0) {
     const err = new Error('Невалідний ID розмови');
@@ -1519,7 +1519,15 @@ async function getConversationBundle(conversationId, limit = 100) {
     throw err;
   }
 
-  const conversationResult = await pool.query('SELECT * FROM conversations WHERE id = $1 LIMIT 1', [id]);
+  const businessContext = options.businessContext ? normalizeBusinessContext(options.businessContext) : null;
+  const conversationParams = [id];
+  const businessCondition = businessContext
+    ? ` AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`
+    : '';
+  const conversationResult = await pool.query(
+    `SELECT * FROM conversations WHERE id = $1${businessCondition} LIMIT 1`,
+    businessContext ? [id, businessContext] : conversationParams
+  );
   const conversation = conversationResult.rows[0];
   if (!conversation) {
     const err = new Error('Розмову не знайдено');
@@ -1542,12 +1550,14 @@ async function getConversationBundle(conversationId, limit = 100) {
   };
 }
 
-async function analyzeConversationLead(conversationId) {
+async function analyzeConversationLead(conversationId, options = {}) {
   const [config, bundle] = await Promise.all([
     getLeadAssistantSettings(),
-    getConversationBundle(conversationId, 120),
+    getConversationBundle(conversationId, 120, options),
   ]);
-  const salesContext = await getLeadAssistantSalesContext(config, bundle);
+  const salesContext = await getLeadAssistantSalesContext(config, bundle, {
+    businessContext: options.businessContext || bundle.conversation.business_context || DEFAULT_BUSINESS_CONTEXT,
+  });
   const analysis = await callOpenAIForAnalysis(bundle, config, salesContext);
   await recordConversationLeadAssistantAnalysis(bundle.conversation.id, analysis).catch(err => {
     log.warn('Conversation lead assistant analysis meta skipped', {
@@ -1602,14 +1612,20 @@ function linkedLeadIdFromMeta(meta) {
 }
 
 async function findExistingLinkedLead(conversation) {
+  const businessContext = normalizeBusinessContext(conversation?.business_context || DEFAULT_BUSINESS_CONTEXT);
   const metaLeadId = linkedLeadIdFromMeta(conversation?.meta);
   if (metaLeadId) {
-    const byMeta = await pool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1', [metaLeadId]);
+    const byMeta = await pool.query(
+      `SELECT * FROM leads
+        WHERE id = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+        LIMIT 1`,
+      [metaLeadId, businessContext]
+    );
     if (byMeta.rows[0]) return byMeta.rows[0];
   }
 
   const externalId = `omni_conv_${conversation.id}`;
-  const businessContext = DEFAULT_BUSINESS_CONTEXT;
   const byExternal = await pool.query(
     `SELECT *
        FROM leads
@@ -1743,7 +1759,7 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
 }
 
 async function createLeadFromConversation(conversationId, analysis, options = {}) {
-  const bundle = await getConversationBundle(conversationId, 120);
+  const bundle = await getConversationBundle(conversationId, 120, options);
   const existing = await findExistingLinkedLead(bundle.conversation);
   if (existing) {
     await markConversationLead(bundle.conversation.id, existing.id, analysis).catch(err => {
@@ -1834,7 +1850,8 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
   }
 }
 
-async function getLeadAssistantAnalytics() {
+async function getLeadAssistantAnalytics(options = {}) {
+  const businessContext = normalizeBusinessContext(options.businessContext || DEFAULT_BUSINESS_CONTEXT);
   const analytics = {
     totalAnalyses: 0,
     totalCreatedLeads: 0,
@@ -1867,7 +1884,9 @@ async function getLeadAssistantAnalytics() {
               END
             ))::int AS average_score
        FROM conversations
-      WHERE meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL`
+      WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        AND meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL`,
+    [businessContext]
   );
   analytics.totalAnalyses = Number(overview.rows[0]?.total || 0);
   analytics.averageScore = overview.rows[0]?.average_score === null || overview.rows[0]?.average_score === undefined
@@ -1880,10 +1899,12 @@ async function getLeadAssistantAnalytics() {
             COALESCE(NULLIF(meta #>> '{leadAssistant,scenario,label}', ''), 'Unknown') AS label,
             COUNT(*)::int AS count
        FROM conversations
-      WHERE meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL
+      WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        AND meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL
       GROUP BY id, label
       ORDER BY count DESC, label ASC
-      LIMIT 8`
+      LIMIT 8`,
+    [businessContext]
   );
   analytics.scenarios = scenarios.rows.map(row => ({
     id: row.id,
@@ -1896,9 +1917,11 @@ async function getLeadAssistantAnalytics() {
     `SELECT COALESCE(NULLIF(meta #>> '{leadAssistant,leadScore,temperature}', ''), 'unknown') AS temperature,
             COUNT(*)::int AS count
        FROM conversations
-      WHERE meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL
+      WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        AND meta #>> '{leadAssistant,lastAnalysisAt}' IS NOT NULL
       GROUP BY temperature
-      ORDER BY count DESC`
+      ORDER BY count DESC`,
+    [businessContext]
   );
   analytics.temperatures = temperatures.rows.map(row => ({
     temperature: row.temperature,
@@ -1909,7 +1932,9 @@ async function getLeadAssistantAnalytics() {
     'created_leads',
     `SELECT COUNT(*)::int AS total
        FROM leads
-      WHERE raw_payload->>'source' = 'omni_lead_assistant'`
+      WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        AND raw_payload->>'source' = 'omni_lead_assistant'`,
+    [businessContext]
   );
   analytics.totalCreatedLeads = Number(createdLeads.rows[0]?.total || 0);
 
@@ -1921,10 +1946,12 @@ async function getLeadAssistantAnalytics() {
        CROSS JOIN LATERAL jsonb_array_elements(
             COALESCE(l.raw_payload #> '{analysis,recommendedMaterials}', '[]'::jsonb)
        ) AS material
-      WHERE l.raw_payload->>'source' = 'omni_lead_assistant'
+      WHERE COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        AND l.raw_payload->>'source' = 'omni_lead_assistant'
       GROUP BY title
       ORDER BY count DESC, title ASC
-      LIMIT 8`
+      LIMIT 8`,
+    [businessContext]
   );
   analytics.topMaterials = materials.rows.map(row => ({
     title: row.title,
@@ -2046,8 +2073,8 @@ async function markConversationFollowUpTask(conversationId, task, db = pool) {
 }
 
 async function createLeadAssistantFollowUpTask(conversationId, analysis, options = {}) {
-  const bundle = await getConversationBundle(conversationId, 120);
-  const effectiveAnalysis = analysis?.lead ? analysis : await analyzeConversationLead(conversationId);
+  const bundle = await getConversationBundle(conversationId, 120, options);
+  const effectiveAnalysis = analysis?.lead ? analysis : await analyzeConversationLead(conversationId, options);
   const draft = buildFollowUpTaskDraft(bundle.conversation, effectiveAnalysis, options);
   const kleshnya = require('./kleshnya');
   const task = await kleshnya.createTask({

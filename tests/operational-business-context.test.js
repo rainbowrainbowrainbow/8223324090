@@ -45,3 +45,30 @@ test('warehouse and finance routes scope operational data by selected business c
     assert.match(migration, /budget_plans_business_year_month_category_key/);
     assert.match(migration, /idx_cash_shifts_one_open_per_business/);
 });
+
+test('OmniClaw follows the selected business context across UI, routes, and persistence', () => {
+    const api = read('js/api.js');
+    const omni = read('omni.html');
+    const route = read('routes/omnichannel.js');
+    const accounts = read('services/omni-accounts.js');
+    const hub = read('services/omni-hub.js');
+    const migration = read('db/migrations/228_omni_business_context_scope.sql');
+
+    assert.match(api, /maysternya_doli:[\s\S]*modules:[\s\S]*'omni'/);
+    assert.match(omni, /X-Business-Context[\s\S]*getOmniBusinessContext/);
+    assert.match(omni, /CrmBusinessContext\.apiUrl\(relative, getOmniBusinessContext\(\)\)/);
+    assert.match(omni, /CrmBusinessContext\.initPage\(\{[\s\S]*pageId:\s*'system'[\s\S]*onChange:\s*async/);
+    assert.match(route, /businessContextFromRequest/);
+    assert.match(route, /requireBusinessContext/);
+    assert.match(route, /getConversations\(\{[\s\S]*businessContext/);
+    assert.match(route, /processInboundMessage\(normalized, \{ businessContext \}\)/);
+
+    assert.match(accounts, /ON CONFLICT \(business_context, channel\)/);
+    assert.match(accounts, /WHERE channel = \$1[\s\S]*COALESCE\(business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$2/);
+    assert.match(hub, /INSERT INTO conversations[\s\S]*business_context/);
+    assert.match(hub, /COALESCE\(c\.business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$\$\{idx\+\+\}/);
+
+    assert.match(migration, /ALTER TABLE conversations[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_business_channel_ext/);
+    assert.match(migration, /PRIMARY KEY \(business_context, channel\)/);
+});

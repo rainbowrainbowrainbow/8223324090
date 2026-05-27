@@ -77,8 +77,8 @@ function isRetryableError(err) {
 let webhookSet = false;
 let cachedBotUsername = null;
 
-async function telegramRequest(method, body) {
-    const runtime = await resolveOmniRuntimeConfig('telegram');
+async function telegramRequest(method, body, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: options.businessContext || options.business_context });
     const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
     // Skip if no token configured
     if (!token) {
@@ -203,7 +203,7 @@ async function getConfiguredThreadId(settingKeys = ['telegram_thread_id']) {
 
 async function sendTelegramMessage(chatId, text, options = {}) {
     // v43.7.0: Short-circuit when no token to avoid log spam
-    const runtime = await resolveOmniRuntimeConfig('telegram');
+    const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: options.businessContext || options.business_context });
     if (!(runtime.botToken || TELEGRAM_BOT_TOKEN)) {
         return { ok: false, description: 'No bot token configured' };
     }
@@ -222,7 +222,7 @@ async function sendTelegramMessage(chatId, text, options = {}) {
                 disable_notification: options.silent !== false
             };
             if (threadId) payload.message_thread_id = threadId;
-            const result = await telegramRequest('sendMessage', payload);
+            const result = await telegramRequest('sendMessage', payload, options);
             if (result && result.ok) {
                 log.info(`Message sent to ${chatId}${threadId ? ' thread=' + threadId : ''} (attempt ${attempt})`);
             } else {

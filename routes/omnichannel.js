@@ -11,6 +11,10 @@ const { createLogger } = require('../utils/logger');
 const { authenticateToken: auth, requireMinRole } = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
 const {
+    businessContextFromRequest,
+    requireBusinessContext,
+} = require('../services/businessContext');
+const {
     getLeadAssistantSettings,
     saveLeadAssistantSettings,
     getLeadAssistantSalesContext,
@@ -32,6 +36,16 @@ const {
 
 const log = createLogger('OmniRoutes');
 
+function requestBusinessContext(req, res) {
+    const businessContext = businessContextFromRequest(req);
+    if (!requireBusinessContext(req, res, businessContext)) return null;
+    return businessContext;
+}
+
+function webhookBusinessContext(req) {
+    return businessContextFromRequest(req);
+}
+
 // Lazy-load hub to avoid circular deps
 let hub = null;
 function getHub() {
@@ -50,7 +64,7 @@ function getNormalizer() {
 // ═══════════════════════════════════════════════
 
 async function verifyViberSignature(req) {
-    const runtime = await resolveOmniRuntimeConfig('viber');
+    const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: webhookBusinessContext(req) });
     const token = runtime.token || process.env.VIBER_TOKEN;
     if (!token) return true; // skip if not configured
     const sig = req.headers['x-viber-content-signature'];
@@ -66,7 +80,7 @@ async function verifyViberSignature(req) {
 }
 
 async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSecret') {
-    const runtime = channel ? await resolveOmniRuntimeConfig(channel) : {};
+    const runtime = channel ? await resolveOmniRuntimeConfig(channel, { businessContext: webhookBusinessContext(req) }) : {};
     const secret = runtime[fieldName] || process.env[envKey];
     if (!secret) return true; // skip if not configured
     const provided = req.headers['x-webhook-secret'];
@@ -79,8 +93,9 @@ async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSec
 }
 
 async function verifyMetaSignature(req) {
-    const facebook = await resolveOmniRuntimeConfig('facebook');
-    const instagram = await resolveOmniRuntimeConfig('instagram');
+    const businessContext = webhookBusinessContext(req);
+    const facebook = await resolveOmniRuntimeConfig('facebook', { businessContext });
+    const instagram = await resolveOmniRuntimeConfig('instagram', { businessContext });
     const secret = facebook.appSecret || instagram.appSecret || process.env.META_APP_SECRET;
     if (!secret) return true; // skip if not configured
     const sig = req.headers['x-hub-signature-256'];
@@ -115,9 +130,10 @@ function collectSmsWebhookPayloads(body) {
 // Telegram webhook — incoming messages from Telegram
 router.post('/webhook/telegram', async (req, res) => {
     try {
+        const businessContext = webhookBusinessContext(req);
         const normalized = getNormalizer().normalizeTelegram(req.body);
         if (normalized) {
-            await getHub().processInboundMessage(normalized);
+            await getHub().processInboundMessage(normalized, { businessContext });
         }
         res.json({ ok: true });
     } catch (err) {
@@ -129,6 +145,7 @@ router.post('/webhook/telegram', async (req, res) => {
 // Viber webhook
 router.post('/webhook/viber', async (req, res) => {
     try {
+        const businessContext = webhookBusinessContext(req);
         if (!await verifyViberSignature(req)) {
             log.warn('Viber webhook signature verification failed');
             return res.status(403).json({ status: 1, status_message: 'invalid signature' });
@@ -140,7 +157,7 @@ router.post('/webhook/viber', async (req, res) => {
         }
         const classified = getNormalizer().classifyViberWebhook(body);
         if (classified.type === 'inbound_message' && classified.normalized) {
-            await getHub().processInboundMessage(classified.normalized);
+            await getHub().processInboundMessage(classified.normalized, { businessContext });
         } else if (
             (classified.type === 'delivery_receipt' || classified.type === 'read_receipt')
             && classified.receipt
@@ -157,6 +174,7 @@ router.post('/webhook/viber', async (req, res) => {
 // SMS webhook (provider delivery reports or inbound)
 router.post('/webhook/sms', async (req, res) => {
     try {
+        const businessContext = webhookBusinessContext(req);
         if (!await verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET', 'sms')) {
             log.warn('SMS webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
@@ -164,7 +182,7 @@ router.post('/webhook/sms', async (req, res) => {
         for (const payload of collectSmsWebhookPayloads(req.body)) {
             const classified = getNormalizer().classifySmsWebhook(payload);
             if (classified.type === 'inbound_message' && classified.normalized) {
-                await getHub().processInboundMessage(classified.normalized);
+                await getHub().processInboundMessage(classified.normalized, { businessContext });
             } else if (classified.type === 'delivery_receipt' && classified.receipt) {
                 await getHub().applyProviderLifecycleReceipt(classified.receipt);
             }
@@ -190,6 +208,7 @@ router.get('/webhook/meta', (req, res) => {
 
 router.post('/webhook/meta', async (req, res) => {
     try {
+        const businessContext = webhookBusinessContext(req);
         if (!await verifyMetaSignature(req)) {
             log.warn('Meta webhook signature verification failed');
             return res.status(403).json({ ok: false, error: 'invalid signature' });
@@ -206,7 +225,7 @@ router.post('/webhook/meta', async (req, res) => {
                         : getNormalizer().normalizeFacebook;
                     const normalized = normFn(event);
                     if (normalized) {
-                        await getHub().processInboundMessage(normalized);
+                        await getHub().processInboundMessage(normalized, { businessContext });
                     }
                 }
             }
@@ -221,13 +240,14 @@ router.post('/webhook/meta', async (req, res) => {
 // Binotel webhook (phone calls)
 router.post('/webhook/binotel', async (req, res) => {
     try {
+        const businessContext = webhookBusinessContext(req);
         if (!await verifyWebhookSecret(req, 'BINOTEL_WEBHOOK_SECRET', 'binotel')) {
             log.warn('Binotel webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
         const normalized = getNormalizer().normalizeBinotel(req.body);
         if (normalized) {
-            await getHub().processInboundMessage(normalized);
+            await getHub().processInboundMessage(normalized, { businessContext });
         }
         res.json({ ok: true });
     } catch (err) {
@@ -261,7 +281,9 @@ async function auditConnectionAction(req, action, channel, result) {
 // Account/channel connectivity control-plane
 router.get('/accounts', auth, manageConnections, async (req, res) => {
     try {
-        res.json({ success: true, accounts: await getOmniAccountStatusesAsync() });
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, businessContext, accounts: await getOmniAccountStatusesAsync({ businessContext }) });
     } catch (err) {
         log.error('Get omni accounts error:', err.message);
         res.status(500).json({ success: false, error: 'Не вдалося отримати статус каналів Omni' });
@@ -270,7 +292,9 @@ router.get('/accounts', auth, manageConnections, async (req, res) => {
 
 router.get('/accounts/:channel', auth, manageConnections, async (req, res) => {
     try {
-        const account = await getOmniAccountStatusAsync(req.params.channel);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const account = await getOmniAccountStatusAsync(req.params.channel, { businessContext });
         if (!account) return res.status(404).json({ success: false, error: 'Канал Omni не знайдено' });
         res.json({ success: true, account });
     } catch (err) {
@@ -281,7 +305,9 @@ router.get('/accounts/:channel', auth, manageConnections, async (req, res) => {
 
 router.post('/accounts/:channel/recheck', auth, manageConnections, async (req, res) => {
     try {
-        const result = await recheckOmniConnection(req.params.channel, req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await recheckOmniConnection(req.params.channel, req.user, { businessContext });
         await auditConnectionAction(req, 'recheck', req.params.channel, result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -292,7 +318,9 @@ router.post('/accounts/:channel/recheck', auth, manageConnections, async (req, r
 
 router.post('/accounts/:channel/test', auth, manageConnections, async (req, res) => {
     try {
-        const result = await testOmniConnection(req.params.channel, req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await testOmniConnection(req.params.channel, req.user, { businessContext });
         await auditConnectionAction(req, 'test', req.params.channel, result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -303,7 +331,9 @@ router.post('/accounts/:channel/test', auth, manageConnections, async (req, res)
 
 router.post('/accounts/:channel/connect', auth, manageConnections, async (req, res) => {
     try {
-        const result = await upsertOmniConnection(req.params.channel, req.body || {}, req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await upsertOmniConnection(req.params.channel, req.body || {}, req.user, { businessContext });
         await auditConnectionAction(req, 'connect', req.params.channel, result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -314,7 +344,9 @@ router.post('/accounts/:channel/connect', auth, manageConnections, async (req, r
 
 router.post('/accounts/:channel/disconnect', auth, manageConnections, async (req, res) => {
     try {
-        const result = await disconnectOmniConnection(req.params.channel, req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await disconnectOmniConnection(req.params.channel, req.user, { businessContext });
         await auditConnectionAction(req, 'disconnect', req.params.channel, result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -326,7 +358,9 @@ router.post('/accounts/:channel/disconnect', auth, manageConnections, async (req
 // Explicit Telegram inbox aliases keep report/alerts bot operations separate in API semantics.
 router.post('/accounts/telegram/inbox/connect', auth, manageConnections, async (req, res) => {
     try {
-        const result = await upsertOmniConnection('telegram', req.body || {}, req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await upsertOmniConnection('telegram', req.body || {}, req.user, { businessContext });
         await auditConnectionAction(req, 'connect_inbox', 'telegram_inbox', result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -337,7 +371,9 @@ router.post('/accounts/telegram/inbox/connect', auth, manageConnections, async (
 
 router.post('/accounts/telegram/inbox/test', auth, manageConnections, async (req, res) => {
     try {
-        const result = await testOmniConnection('telegram', req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await testOmniConnection('telegram', req.user, { businessContext });
         await auditConnectionAction(req, 'test_inbox', 'telegram_inbox', result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -348,7 +384,9 @@ router.post('/accounts/telegram/inbox/test', auth, manageConnections, async (req
 
 router.post('/accounts/telegram/inbox/disconnect', auth, manageConnections, async (req, res) => {
     try {
-        const result = await disconnectOmniConnection('telegram', req.user);
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const result = await disconnectOmniConnection('telegram', req.user, { businessContext });
         await auditConnectionAction(req, 'disconnect_inbox', 'telegram_inbox', result);
         res.json({ success: true, ...result });
     } catch (err) {
@@ -360,13 +398,16 @@ router.post('/accounts/telegram/inbox/disconnect', auth, manageConnections, asyn
 // List conversations
 router.get('/conversations', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const { status, channel, search, limit = 50, offset = 0 } = req.query;
         const conversations = await getHub().getConversations({
             status, channel, search,
             limit: Math.min(parseInt(limit) || 50, 100),
-            offset: parseInt(offset) || 0
+            offset: parseInt(offset) || 0,
+            businessContext
         });
-        res.json({ success: true, data: conversations });
+        res.json({ success: true, businessContext, data: conversations });
     } catch (err) {
         log.error('Get conversations error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка завантаження розмов' });
@@ -376,9 +417,11 @@ router.get('/conversations', auth, async (req, res) => {
 // Resolve CRM context for a single conversation without pretending fallback is exact.
 router.get('/conversations/:id/context', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const context = await getHub().resolveConversationContext(id);
+        const context = await getHub().resolveConversationContext(id, { businessContext });
         if (!context) {
             return res.status(404).json({ success: false, error: 'Розмову не знайдено' });
         }
@@ -392,7 +435,9 @@ router.get('/conversations/:id/context', auth, async (req, res) => {
 // Omni lead assistant settings: pinned discovery fields and reply rules.
 router.get('/lead-assistant/settings', auth, async (req, res) => {
     try {
-        res.json({ success: true, settings: await getLeadAssistantSettings() });
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, businessContext, settings: await getLeadAssistantSettings({ businessContext }) });
     } catch (err) {
         log.error('Get Omni lead assistant settings error:', err.message);
         res.status(500).json({ success: false, error: 'Не вдалося завантажити налаштування AI ліда' });
@@ -401,7 +446,10 @@ router.get('/lead-assistant/settings', auth, async (req, res) => {
 
 router.put('/lead-assistant/settings', auth, manageLeadAssistantSettings, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const settings = await saveLeadAssistantSettings(req.body || {}, {
+            businessContext,
             username: req.user?.username || req.user?.name || null
         });
         await logAdminAction('omni_lead_assistant_settings_update', 'settings', {
@@ -425,7 +473,9 @@ router.put('/lead-assistant/settings', auth, manageLeadAssistantSettings, async 
 
 router.get('/lead-assistant/analytics', auth, async (req, res) => {
     try {
-        res.json({ success: true, analytics: await getLeadAssistantAnalytics() });
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        res.json({ success: true, businessContext, analytics: await getLeadAssistantAnalytics({ businessContext }) });
     } catch (err) {
         log.error('Get Omni lead assistant analytics error:', err.message);
         res.status(500).json({ success: false, error: 'Не вдалося завантажити аналітику AI ліда' });
@@ -434,9 +484,11 @@ router.get('/lead-assistant/analytics', auth, async (req, res) => {
 
 router.get('/lead-assistant/sales-context', auth, async (req, res) => {
     try {
-        const settings = await getLeadAssistantSettings();
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const settings = await getLeadAssistantSettings({ businessContext });
         const salesContext = await getLeadAssistantSalesContext(settings, {}, {
-            businessContext: req.query.businessContext || req.query.business_context
+            businessContext
         });
         res.json({ success: true, salesContext });
     } catch (err) {
@@ -457,6 +509,8 @@ router.post('/lead-assistant/test', auth, async (req, res) => {
 
 router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const result = await createLeadAssistantFollowUpTask(id, req.body?.analysis, {
@@ -465,6 +519,7 @@ router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req
             priority: req.body?.priority,
             assignedTo: req.body?.assignedTo || req.body?.assigned_to,
             leadId: req.body?.leadId || req.body?.lead_id,
+            businessContext,
         });
         res.status(result.created ? 201 : 200).json({
             success: true,
@@ -482,9 +537,11 @@ router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req
 // Analyze an Omni dialogue and return a structured lead draft + needs checklist.
 router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const analysis = await analyzeConversationLead(id);
+        const analysis = await analyzeConversationLead(id, { businessContext });
         res.json({ success: true, analysis });
     } catch (err) {
         log.error('Omni lead assistant analysis error:', err.message);
@@ -495,11 +552,13 @@ router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) 
 // Create and link a CRM lead from the latest assistant draft.
 router.post('/conversations/:id/lead-assistant/create-lead', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const analysis = req.body?.analysis || await analyzeConversationLead(id);
+        const analysis = req.body?.analysis || await analyzeConversationLead(id, { businessContext });
         const result = await createLeadFromConversation(id, analysis, {
-            businessContext: req.body?.businessContext || req.body?.business_context,
+            businessContext,
             user: req.user,
         });
         res.status(result.created ? 201 : 200).json({
@@ -518,13 +577,16 @@ router.post('/conversations/:id/lead-assistant/create-lead', auth, async (req, r
 // Get messages for conversation
 router.get('/conversations/:id/messages', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const { limit = 50, offset = 0 } = req.query;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const messages = await getHub().getMessages(
             id,
             Math.min(parseInt(limit) || 50, 200),
-            parseInt(offset) || 0
+            parseInt(offset) || 0,
+            { businessContext }
         );
         res.json({ success: true, data: messages });
     } catch (err) {
@@ -536,6 +598,8 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
 // Send message from CRM
 router.post('/conversations/:id/send', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const { text, reply_expected, reply_sla_at } = req.body;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
@@ -553,6 +617,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
                 replyOwner,
                 replyOwnerUserId,
                 replySlaAt: reply_sla_at || null,
+                businessContext,
             }
         );
         res.json({
@@ -578,6 +643,8 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
 // Update conversation status
 router.patch('/conversations/:id', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const { status, assigned_to, meta } = req.body;
@@ -585,7 +652,8 @@ router.patch('/conversations/:id', auth, async (req, res) => {
             id,
             status,
             assigned_to,
-            meta
+            meta,
+            { businessContext }
         );
         res.json({ success: true, data: updated });
     } catch (err) {
@@ -597,8 +665,10 @@ router.patch('/conversations/:id', auth, async (req, res) => {
 // Get omni stats
 router.get('/stats', auth, async (req, res) => {
     try {
-        const stats = await getHub().getStats();
-        res.json({ success: true, data: stats });
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const stats = await getHub().getStats({ businessContext });
+        res.json({ success: true, businessContext, data: stats });
     } catch (err) {
         log.error('Get stats error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка статистики' });
@@ -608,8 +678,10 @@ router.get('/stats', auth, async (req, res) => {
 // Quick replies CRUD
 router.get('/quick-replies', auth, async (req, res) => {
     try {
-        const replies = await getHub().getQuickReplies();
-        res.json({ success: true, data: replies });
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const replies = await getHub().getQuickReplies({ businessContext });
+        res.json({ success: true, businessContext, data: replies });
     } catch (err) {
         log.error('Get quick replies error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка завантаження швидких відповідей' });

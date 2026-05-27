@@ -18,19 +18,19 @@ const {
 
 const log = createLogger('OmniSMS');
 
-async function smsRuntime() {
-    const runtime = await resolveOmniRuntimeConfig('sms');
+async function smsRuntime(options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('sms', { businessContext: options.businessContext || options.business_context });
     const provider = normalizeSmsProvider(runtime.provider) || normalizeSmsProvider(process.env.SMS_PROVIDER) || 'flysms';
     return { ...runtime, provider };
 }
 
-async function sendSMS(phone, text) {
+async function sendSMS(phone, text, options = {}) {
     if (!phone || !text) {
         return { success: false, error: 'phone and text are required' };
     }
 
     try {
-        const runtime = await smsRuntime();
+        const runtime = await smsRuntime(options);
         log.debug('Sending SMS', { provider: runtime.provider });
         return await sendSmsViaProvider(runtime, phone, text);
     } catch (err) {
@@ -39,7 +39,7 @@ async function sendSMS(phone, text) {
     }
 }
 
-async function sendBulkSMS(phones, text) {
+async function sendBulkSMS(phones, text, options = {}) {
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
         return { success: false, error: 'phones array is required and must not be empty' };
     }
@@ -48,7 +48,7 @@ async function sendBulkSMS(phones, text) {
     }
 
     try {
-        const runtime = await smsRuntime();
+        const runtime = await smsRuntime(options);
         log.debug('Sending bulk SMS', { provider: runtime.provider, count: phones.length });
         return await sendBulkSmsViaProvider(runtime, phones, text);
     } catch (err) {

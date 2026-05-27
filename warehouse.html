@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.66.53">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.53">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.53">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.53">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.53">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.53">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.53">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.53">
+    <link rel="stylesheet" href="css/base.css?v=0.66.54">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.54">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.54">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.54">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.54">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.54">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.54">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.54">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -148,6 +148,7 @@
             display: flex;
             gap: 4px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .wh-btn {
@@ -169,6 +170,37 @@
             border-color: var(--primary);
             color: var(--primary);
             background: rgba(16, 185, 129, 0.05);
+        }
+
+        .wh-item-main {
+            display: grid;
+            gap: 5px;
+        }
+
+        .wh-edit-inline-btn,
+        .warehouse-location-manage-btn {
+            min-height: 32px;
+            padding: 6px 10px;
+            border: 1px solid rgba(16,185,129,.24);
+            border-radius: 8px;
+            background: rgba(16,185,129,.08);
+            color: var(--primary-dark);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            width: fit-content;
+            transition: all var(--speed-fast);
+        }
+
+        .wh-edit-inline-btn:hover,
+        .warehouse-location-manage-btn:hover {
+            border-color: var(--primary);
+            background: rgba(16,185,129,.14);
+            transform: translateY(-1px);
         }
 
         .wh-btn.danger:hover {
@@ -389,6 +421,7 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
+            gap: 10px;
             margin-bottom: 8px;
         }
 
@@ -407,6 +440,14 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .wh-card-title-stack {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
         }
 
         /* v17.0: Top-level tabs */
@@ -545,19 +586,45 @@
             gap: 14px;
             margin-bottom: 18px;
         }
+        .warehouse-location-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .warehouse-location-toolbar-title {
+            font-size: 13px;
+            font-weight: 900;
+            color: var(--gray-700);
+        }
+        .warehouse-location-toolbar-subtitle {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 2px;
+        }
         .warehouse-location-card {
+            position: relative;
             padding: 16px;
             border: 1px solid var(--gray-200);
             border-radius: 14px;
             background: var(--white);
             text-align: left;
             cursor: pointer;
+            display: block;
+            color: inherit;
+            font: inherit;
             transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
         }
         .warehouse-location-card:hover {
             transform: translateY(-1px);
             border-color: rgba(16,185,129,.28);
             box-shadow: 0 10px 24px rgba(15,23,42,.06);
+        }
+        .warehouse-location-card:focus-visible {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,.12);
         }
         .warehouse-location-card.active {
             border-color: rgba(16,185,129,.34);
@@ -574,6 +641,7 @@
             font-size: 15px;
             font-weight: 800;
             color: var(--gray-800);
+            padding-right: 8px;
         }
         .warehouse-location-card-count {
             min-width: 28px;
@@ -599,6 +667,59 @@
             gap: 10px;
             flex-wrap: wrap;
             margin-bottom: 6px;
+        }
+        .warehouse-location-card-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        .warehouse-location-form {
+            margin: 0 0 18px;
+            padding: 16px;
+            border: 1px solid rgba(16,185,129,.20);
+            border-radius: 14px;
+            background: rgba(16,185,129,.06);
+            box-shadow: var(--shadow-xs);
+        }
+        .warehouse-location-form-head,
+        .wh-inline-form-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .warehouse-location-form-title,
+        .wh-inline-form-title {
+            font-size: 15px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .warehouse-location-form-note,
+        .wh-inline-form-note {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 3px;
+        }
+        .warehouse-location-form-grid {
+            display: grid;
+            grid-template-columns: minmax(180px, 1fr) minmax(90px, .35fr) minmax(220px, 1.4fr);
+            gap: 12px;
+            align-items: end;
+        }
+        .warehouse-location-form-grid .form-field {
+            display: grid;
+            gap: 5px;
+        }
+        .warehouse-location-form-grid input {
+            min-height: 44px;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: var(--white);
+            color: var(--gray-800);
+            font: inherit;
         }
         .wh-active-location-hint {
             margin: -8px 0 14px;
@@ -755,6 +876,7 @@
         }
         body.dark-mode .wh-stock-mode-switcher,
         body.dark-mode .warehouse-location-card,
+        body.dark-mode .warehouse-location-form,
         body.dark-mode .contractor-card,
         body.dark-mode .proc-demand-card,
         body.dark-mode .wh-mini-btn {
@@ -766,22 +888,30 @@
             color: #A7F3D0;
         }
         body.dark-mode .warehouse-location-card-title,
+        body.dark-mode .warehouse-location-form-title,
+        body.dark-mode .wh-inline-form-title,
         body.dark-mode .proc-demand-title,
         body.dark-mode .contractor-title {
             color: #F8FAFC;
         }
         body.dark-mode .warehouse-location-card-meta,
         body.dark-mode .warehouse-location-card-desc,
+        body.dark-mode .warehouse-location-toolbar-subtitle,
+        body.dark-mode .warehouse-location-form-note,
+        body.dark-mode .wh-inline-form-note,
         body.dark-mode .contractor-meta,
         body.dark-mode .contractor-note,
         body.dark-mode .proc-demand-meta,
         body.dark-mode .wh-active-location-hint {
             color: #CBD5E1;
         }
+        body.dark-mode .warehouse-location-toolbar-title {
+            color: #E2E8F0;
+        }
 
         @media print {
             .header, .skip-link, #notification, .wh-page-tabs,
-            .proc-filters, .wh-filters, .wh-actions, .wh-btn,
+            .proc-filters, .wh-filters, .wh-actions, .wh-btn, .warehouse-location-form,
             .btn-page-primary, .btn-page-secondary, .btn-logout, .user-panel { display: none !important; }
             .page-container { padding: 0; }
             .wh-table-wrap { display: block !important; }
@@ -795,6 +925,8 @@
             .wh-history-item { flex-wrap: wrap; }
             .proc-filters { flex-direction: column; }
             .warehouse-location-cards { grid-template-columns: 1fr; }
+            .warehouse-location-toolbar { align-items: stretch; flex-direction: column; }
+            .warehouse-location-form-grid { grid-template-columns: 1fr; }
             .wh-stock-mode-switcher { width: 100%; }
             .wh-stock-mode-btn { flex: 1; }
             .wh-intake-panel-head { flex-direction: column; }
@@ -901,7 +1033,42 @@
             </div>
 
             <div id="locationsMode">
+                <div class="warehouse-location-toolbar">
+                    <div>
+                        <div class="warehouse-location-toolbar-title">Картки складів</div>
+                        <div class="warehouse-location-toolbar-subtitle">Натисніть картку, щоб відкрити залишки; кнопка “Редагувати” керує самою локацією.</div>
+                    </div>
+                    <button type="button" id="addLocationBtn" class="btn-page-secondary" style="display:none;">+ Склад</button>
+                </div>
                 <div id="warehouseLocationCards" class="warehouse-location-cards"></div>
+                <div id="locationForm" class="warehouse-location-form" style="display:none;">
+                    <div class="warehouse-location-form-head">
+                        <div>
+                            <div id="locationFormTitle" class="warehouse-location-form-title">Новий склад</div>
+                            <div class="warehouse-location-form-note">Назва й опис показуються на верхніх картках складів.</div>
+                        </div>
+                        <button type="button" id="deleteLocationBtn" class="btn-page-secondary" style="display:none;">Архівувати</button>
+                    </div>
+                    <div class="warehouse-location-form-grid">
+                        <div class="form-field">
+                            <label>Назва складу</label>
+                            <input type="text" id="lf-name" maxlength="120" placeholder="Наприклад: Аніматорська">
+                        </div>
+                        <div class="form-field">
+                            <label>Порядок</label>
+                            <input type="number" id="lf-sort" min="0" max="9999" step="1" value="100">
+                        </div>
+                        <div class="form-field">
+                            <label>Опис</label>
+                            <input type="text" id="lf-description" maxlength="800" placeholder="Що зберігається у цій локації">
+                        </div>
+                    </div>
+                    <input type="hidden" id="lf-id" value="">
+                    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+                        <button type="button" id="saveLocationBtn" class="btn-page-primary">Зберегти склад</button>
+                        <button type="button" id="cancelLocationBtn" class="btn-page-secondary">Скасувати</button>
+                    </div>
+                </div>
             </div>
 
             <div id="categoriesMode" style="display:none;">
@@ -920,6 +1087,12 @@
 
             <!-- Add/edit form (hidden by default) -->
             <div id="itemForm" class="inline-form" style="display:none;">
+                <div class="wh-inline-form-head">
+                    <div>
+                        <div id="itemFormTitle" class="wh-inline-form-title">Редагування позиції</div>
+                        <div class="wh-inline-form-note">Картка товару: назва, склад, мінімум, постачальник і службові поля.</div>
+                    </div>
+                </div>
                 <div class="form-field">
                     <label>Назва</label>
                     <input type="text" id="wf-name" aria-label="Туалетний папір" placeholder="Туалетний папір" maxlength="255" style="min-width:200px">
@@ -1348,14 +1521,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.66.53"></script>
-    <script src="js/notification.js?v=0.66.53"></script>
-    <script src="js/api.js?v=0.66.53"></script>
-    <script src="js/auth.js?v=0.66.53"></script>
-    <script src="js/components/sidebar.js?v=0.66.53"></script>
+    <script src="js/config.js?v=0.66.54"></script>
+    <script src="js/notification.js?v=0.66.54"></script>
+    <script src="js/api.js?v=0.66.54"></script>
+    <script src="js/auth.js?v=0.66.54"></script>
+    <script src="js/components/sidebar.js?v=0.66.54"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/warehouse-page.js?v=0.66.53"></script>
-    <script src="js/alerts.js?v=0.66.53"></script><script>
+    <script src="js/warehouse-page.js?v=0.66.54"></script>
+    <script src="js/alerts.js?v=0.66.54"></script><script>
     // ─── Pinata Tab (v33.5) ──────────────────
     async function loadPinataTab() {
         try {
@@ -1435,6 +1608,6 @@
         loadPinataTab();
     }
     </script>
-    <script src="js/ui.js?v=0.66.53"></script>
+    <script src="js/ui.js?v=0.66.54"></script>
 </body>
 </html>

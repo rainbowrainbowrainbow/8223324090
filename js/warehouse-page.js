@@ -91,10 +91,12 @@ async function initPage() {
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'];
     canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
+    const addLocationBtn = document.getElementById('addLocationBtn');
+    if (addLocationBtn) addLocationBtn.style.display = canManage ? '' : 'none';
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -110,6 +112,10 @@ function setupEventListeners() {
     document.getElementById('addItemBtn')?.addEventListener('click', () => openItemForm());
     document.getElementById('saveItemBtn')?.addEventListener('click', saveItem);
     document.getElementById('cancelItemBtn')?.addEventListener('click', closeItemForm);
+    document.getElementById('addLocationBtn')?.addEventListener('click', () => openLocationForm());
+    document.getElementById('saveLocationBtn')?.addEventListener('click', saveLocation);
+    document.getElementById('cancelLocationBtn')?.addEventListener('click', closeLocationForm);
+    document.getElementById('deleteLocationBtn')?.addEventListener('click', archiveCurrentLocation);
 
     // Search with debounce
     let searchTimer;
@@ -117,7 +123,7 @@ function setupEventListeners() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             searchQuery = e.target.value.trim().toLowerCase();
-            renderStock();
+            loadStock();
         }, 300);
     });
 
@@ -125,7 +131,7 @@ function setupEventListeners() {
     document.getElementById('lowStockToggle')?.addEventListener('click', () => {
         lowStockFilter = !lowStockFilter;
         document.getElementById('lowStockToggle')?.classList.toggle('active', lowStockFilter);
-        renderStock();
+        loadStock();
     });
 
     document.getElementById('refreshIntakeBtn')?.addEventListener('click', () => loadWarehousePhotoIntake());
@@ -206,7 +212,7 @@ function renderLocationCards() {
         return;
     }
     container.innerHTML = warehouseLocations.map(loc => `
-        <button type="button" class="warehouse-location-card${String(currentLocationId) === String(loc.id) ? ' active' : ''}" onclick="openLocationStock(${loc.id})">
+        <article class="warehouse-location-card${String(currentLocationId) === String(loc.id) ? ' active' : ''}" role="button" tabindex="0" onclick="openLocationStock(${loc.id})" onkeydown="handleLocationCardKeydown(event, ${loc.id})">
             <div class="warehouse-location-card-title-row">
                 <span class="warehouse-location-card-title">${escapeHtml(loc.name)}</span>
                 <span class="warehouse-location-card-count">${loc.itemsCount || 0}</span>
@@ -216,8 +222,91 @@ function renderLocationCards() {
                 <span>${loc.totalUnits || 0} од.</span>
             </div>
             <div class="warehouse-location-card-desc">${escapeHtml(loc.description || '')}</div>
-        </button>
+            ${canManage ? `<div class="warehouse-location-card-actions"><button type="button" class="warehouse-location-manage-btn" onclick="event.stopPropagation(); openLocationForm(${loc.id})">Редагувати</button></div>` : ''}
+        </article>
     `).join('');
+}
+
+function handleLocationCardKeydown(event, locationId) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openLocationStock(locationId);
+}
+
+function nextLocationSortOrder() {
+    const maxOrder = warehouseLocations.reduce((max, loc) => Math.max(max, Number(loc.sortOrder || 0)), 0);
+    return maxOrder ? maxOrder + 10 : 100;
+}
+
+function openLocationForm(locationId = null) {
+    if (!canManage) return;
+    const form = document.getElementById('locationForm');
+    if (!form) return;
+    const location = locationId ? warehouseLocations.find(loc => String(loc.id) === String(locationId)) : null;
+    document.getElementById('lf-id').value = location?.id || '';
+    document.getElementById('lf-name').value = location?.name || '';
+    document.getElementById('lf-description').value = location?.description || '';
+    document.getElementById('lf-sort').value = location ? Number(location.sortOrder || 100) : nextLocationSortOrder();
+    const title = document.getElementById('locationFormTitle');
+    if (title) title.textContent = location ? `Редагування складу: ${location.name}` : 'Новий склад';
+    const deleteBtn = document.getElementById('deleteLocationBtn');
+    if (deleteBtn) deleteBtn.style.display = location ? '' : 'none';
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => document.getElementById('lf-name')?.focus(), 120);
+}
+
+function closeLocationForm() {
+    const form = document.getElementById('locationForm');
+    if (form) form.style.display = 'none';
+    const idEl = document.getElementById('lf-id');
+    if (idEl) idEl.value = '';
+}
+
+async function saveLocation() {
+    if (!canManage) return;
+    const id = document.getElementById('lf-id')?.value || '';
+    const payload = {
+        name: document.getElementById('lf-name')?.value.trim() || '',
+        description: document.getElementById('lf-description')?.value.trim() || '',
+        sortOrder: parseInt(document.getElementById('lf-sort')?.value || '100', 10)
+    };
+    if (!payload.name) {
+        showNotification('Назва складу обовʼязкова', 'error');
+        return;
+    }
+    const result = id
+        ? await apiUpdateWarehouseLocation(id, payload)
+        : await apiCreateWarehouseLocation(payload);
+    if (result?.success) {
+        showNotification(id ? 'Склад оновлено' : 'Склад створено', 'success');
+        if (!id && result.location?.id) currentLocationId = String(result.location.id);
+        closeLocationForm();
+        await Promise.all([loadLocationsSummary(), loadStock()]);
+    } else {
+        showNotification(result?.error || 'Не вдалося зберегти склад', 'error');
+    }
+}
+
+async function archiveCurrentLocation() {
+    if (!canManage) return;
+    const id = document.getElementById('lf-id')?.value || '';
+    if (!id) return;
+    const location = warehouseLocations.find(loc => String(loc.id) === String(id));
+    const message = location?.itemsCount > 0
+        ? 'У цьому складі є активні позиції. Архівування буде заблоковане, поки їх не перемістити. Спробувати?'
+        : 'Архівувати цей склад?';
+    if (!await confirmModal(message, { type: 'danger', okText: 'Архівувати' })) return;
+    const result = await apiArchiveWarehouseLocation(id);
+    if (result?.success) {
+        showNotification('Склад архівовано', 'success');
+        if (String(currentLocationId) === String(id)) currentLocationId = '';
+        closeLocationForm();
+        await Promise.all([loadLocationsSummary(), loadStock()]);
+    } else {
+        const details = result?.activeStockCount ? ` Активних позицій: ${result.activeStockCount}.` : '';
+        showNotification((result?.error || 'Не вдалося архівувати склад') + details, 'error');
+    }
 }
 
 function renderLocationSelects() {
@@ -301,8 +390,19 @@ function getFilteredItems() {
 
     if (currentCategory !== 'all') filtered = filtered.filter(i => i.category === currentCategory);
     if (lowStockFilter) filtered = filtered.filter(i => i.quantity <= i.minQuantity);
-    if (searchQuery) filtered = filtered.filter(i => (i.name || '').toLowerCase().includes(searchQuery));
+    if (searchQuery) filtered = filtered.filter(itemMatchesSearch);
     return filtered;
+}
+
+function itemMatchesSearch(item) {
+    const haystack = [
+        item.name,
+        item.notes,
+        item.sku,
+        item.locationName,
+        item.preferredContractorName
+    ].map(value => String(value || '').toLowerCase()).join(' ');
+    return haystack.includes(searchQuery);
 }
 
 function renderStock() {
@@ -342,7 +442,14 @@ function renderStock() {
         `;
 
         return `<tr class="${isLow ? 'low-stock' : ''}">
-            <td><span class="wh-item-name">${escapeHtml(item.name)}</span>${item.sku ? `<br><span class="wh-qty-info">SKU: ${escapeHtml(item.sku)}</span>` : ''}${item.notes ? `<br><span class="wh-qty-info">${escapeHtml(item.notes)}</span>` : ''}</td>
+            <td>
+                <div class="wh-item-main">
+                    <span class="wh-item-name">${escapeHtml(item.name)}</span>
+                    ${item.sku ? `<span class="wh-qty-info">SKU: ${escapeHtml(item.sku)}</span>` : ''}
+                    ${item.notes ? `<span class="wh-qty-info">${escapeHtml(item.notes)}</span>` : ''}
+                    ${canManage ? `<button type="button" class="wh-edit-inline-btn" onclick="openItemForm(${item.id})">Редагувати картку</button>` : ''}
+                </div>
+            </td>
             <td><span class="wh-cat-badge">${cat.icon} ${cat.name}</span></td>
             <td><span class="wh-owner-badge">${escapeHtml(item.locationName || 'Без складу')}</span></td>
             <td>${item.preferredContractorName ? `<span class="wh-owner-badge">${escapeHtml(item.preferredContractorName)}</span>` : '<span class="wh-qty-info">—</span>'}</td>
@@ -362,7 +469,10 @@ function renderStock() {
 
         return `<div class="wh-card ${isLow ? 'low-stock' : ''}">
             <div class="wh-card-header">
-                <span class="wh-item-name">${escapeHtml(item.name)}</span>
+                <div class="wh-card-title-stack">
+                    <span class="wh-item-name">${escapeHtml(item.name)}</span>
+                    ${canManage ? `<button type="button" class="wh-edit-inline-btn" onclick="openItemForm(${item.id})">Редагувати картку</button>` : ''}
+                </div>
                 <span class="wh-cat-badge">${cat.icon} ${cat.name}</span>
             </div>
             <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">${escapeHtml(item.locationName || 'Без складу')} · ${escapeHtml(getOwnerLabel(item.owner))}</div>
@@ -585,10 +695,12 @@ async function cancelWarehouseIntake(id) {
 function openItemForm(itemId = null) {
     const form = document.getElementById('itemForm');
     form.style.display = '';
+    const title = document.getElementById('itemFormTitle');
 
     if (itemId) {
         const item = allItems.find(x => x.id === itemId);
         if (!item) return;
+        if (title) title.textContent = `Редагування позиції: ${item.name}`;
         document.getElementById('wf-id').value = item.id;
         document.getElementById('wf-name').value = item.name || '';
         document.getElementById('wf-category').value = item.category || 'consumable';
@@ -611,6 +723,7 @@ function openItemForm(itemId = null) {
         // Disable quantity field for edit (use +/- buttons instead)
         document.getElementById('wf-quantity').disabled = true;
     } else {
+        if (title) title.textContent = 'Нова позиція складу';
         document.getElementById('wf-id').value = '';
         document.getElementById('wf-name').value = '';
         document.getElementById('wf-category').value = currentCategory !== 'all' ? currentCategory : 'consumable';
@@ -633,7 +746,8 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-quantity').disabled = false;
     }
 
-    form.scrollIntoView({ behavior: 'smooth' });
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => document.getElementById('wf-name')?.focus(), 120);
 }
 
 function closeItemForm() {

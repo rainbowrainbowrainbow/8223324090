@@ -57,6 +57,35 @@ describe('warehouse Telegram photo intake contract', () => {
         assert.match(frontend, /confirmWarehouseIntake/);
     });
 
+    it('keeps warehouse object editing discoverable and guarded', () => {
+        const route = readRepoFile('routes', 'warehouse.js');
+        const html = readRepoFile('warehouse.html');
+        const frontend = readRepoFile('js', 'warehouse-page.js');
+        const api = readRepoFile('js', 'api.js');
+
+        assert.match(route, /router\.post\('\/locations', requireRole\(\.\.\.MANAGE_ROLES\)/);
+        assert.match(route, /router\.put\('\/locations\/:id', requireRole\(\.\.\.MANAGE_ROLES\)/);
+        assert.match(route, /router\.delete\('\/locations\/:id', requireRole\(\.\.\.MANAGE_ROLES\)/);
+        assert.match(route, /active_stock_count/);
+        assert.match(route, /Location has active stock/);
+
+        assert.match(html, /id="addLocationBtn"/);
+        assert.match(html, /id="locationForm"/);
+        assert.match(html, /warehouse-location-manage-btn/);
+        assert.match(html, /wh-edit-inline-btn/);
+
+        assert.match(frontend, /openLocationStock\(locationId\)/);
+        assert.match(frontend, /openLocationForm\(locationId = null\)/);
+        assert.match(frontend, /event\.stopPropagation\(\); openLocationForm/);
+        assert.match(frontend, /Редагувати картку/);
+        assert.match(frontend, /const MANAGE_ROLES = \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'\]/);
+        assert.match(frontend, /itemMatchesSearch/);
+
+        assert.match(api, /async function apiCreateWarehouseLocation/);
+        assert.match(api, /async function apiUpdateWarehouseLocation/);
+        assert.match(api, /async function apiArchiveWarehouseLocation/);
+    });
+
     it('does not expose the OpenAI secret while reporting readiness', () => {
         const status = publicVisionStatus();
         assert.equal(status.provider, 'openai');

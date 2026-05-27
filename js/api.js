@@ -1830,6 +1830,56 @@ async function apiGetWarehouseLocationsSummary() {
     }
 }
 
+async function apiCreateWarehouseLocation(location) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/locations`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(location || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API createWarehouseLocation error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateWarehouseLocation(id, location) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/locations/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(location || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API updateWarehouseLocation error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiArchiveWarehouseLocation(id) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/locations/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', activeStockCount: body.activeStockCount || 0 };
+        return body;
+    } catch (err) {
+        console.error('API archiveWarehouseLocation error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiCreateWarehouseItem(item) {
     try {
         const response = await fetch(`${API_BASE}/warehouse`, {

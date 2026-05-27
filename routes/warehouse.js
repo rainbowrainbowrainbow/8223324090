@@ -96,6 +96,55 @@ function toOptionalMoney(value) {
     return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function cleanLocationText(value, maxLength = 120) {
+    if (value === undefined || value === null) return '';
+    return String(value).trim().replace(/\s+/g, ' ').slice(0, maxLength);
+}
+
+function cleanLocationDescription(value) {
+    if (value === undefined || value === null) return '';
+    return String(value).trim().replace(/\s+/g, ' ').slice(0, 800);
+}
+
+function toLocationSortOrder(value) {
+    if (value === undefined || value === null || value === '') return 100;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 && n <= 9999 ? n : null;
+}
+
+function makeLocationSlug(name) {
+    const base = cleanLocationText(name, 80)
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 64);
+    return base || `warehouse_${Date.now().toString(36)}`;
+}
+
+async function uniqueLocationSlug(client, name) {
+    const base = makeLocationSlug(name);
+    for (let i = 0; i < 50; i++) {
+        const candidate = i === 0 ? base : `${base}_${i}`.slice(0, 80);
+        const exists = await client.query('SELECT id FROM warehouse_locations WHERE slug = $1 LIMIT 1', [candidate]);
+        if (!exists.rowCount) return candidate;
+    }
+    return `${base.slice(0, 63)}_${Date.now().toString(36)}`.slice(0, 80);
+}
+
+function validateLocationPayload(body = {}) {
+    const errors = [];
+    const name = cleanLocationText(body.name, 120);
+    const description = cleanLocationDescription(body.description);
+    const sortOrder = toLocationSortOrder(body.sortOrder ?? body.sort_order);
+
+    if (!name) errors.push('name is required');
+    if (sortOrder === null) errors.push('sortOrder must be an integer from 0 to 9999');
+
+    return { errors, location: { name, description, sortOrder: sortOrder ?? 100 } };
+}
+
 function mapLocationRow(row) {
     return {
         id: row.id,
@@ -103,11 +152,44 @@ function mapLocationRow(row) {
         name: row.name,
         description: row.description,
         sortOrder: row.sort_order,
+        isActive: row.is_active !== false,
         itemsCount: Number(row.items_count || 0),
         lowStockCount: Number(row.low_stock_count || 0),
         totalUnits: Number(row.total_units || 0),
-        lastMovementAt: row.last_movement_at || null
+        lastMovementAt: row.last_movement_at || null,
+        updatedAt: row.updated_at || null
     };
+}
+
+function locationSummaryQuery(whereClause = 'l.is_active = true') {
+    return `
+        SELECT
+            l.id,
+            l.slug,
+            l.name,
+            l.description,
+            l.sort_order,
+            l.is_active,
+            l.updated_at,
+            COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true)::int AS items_count,
+            COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true AND ws.quantity <= ws.min_quantity)::int AS low_stock_count,
+            COALESCE(SUM(ws.quantity) FILTER (WHERE ws.is_active = true), 0)::numeric AS total_units,
+            (
+                SELECT MAX(m.created_at)
+                FROM warehouse_stock_movements m
+                WHERE m.to_location_id = l.id OR m.from_location_id = l.id
+            ) AS last_movement_at
+        FROM warehouse_locations l
+        LEFT JOIN warehouse_stock ws ON ws.location_id = l.id
+        WHERE ${whereClause}
+        GROUP BY l.id
+        ORDER BY l.sort_order, l.name
+    `;
+}
+
+async function getLocationSummaryById(locationId) {
+    const result = await pool.query(locationSummaryQuery('l.id = $1'), [locationId]);
+    return result.rows[0] ? mapLocationRow(result.rows[0]) : null;
 }
 
 // v32.1: Alias /items → / for frontend compatibility
@@ -116,30 +198,105 @@ router.get('/items', (req, res, next) => {
     next();
 });
 
+// GET /api/warehouse/locations - active physical warehouse locations
+router.get('/locations', async (req, res) => {
+    try {
+        const includeInactive = req.query.all === 'true';
+        const result = await pool.query(locationSummaryQuery(includeInactive ? 'true' : 'l.is_active = true'));
+        res.json({ success: true, locations: result.rows.map(mapLocationRow) });
+    } catch (err) {
+        log.error('Locations list error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// POST /api/warehouse/locations - create a physical warehouse location
+router.post('/locations', requireRole(...MANAGE_ROLES), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { errors, location } = validateLocationPayload(req.body || {});
+        if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
+
+        const slug = await uniqueLocationSlug(client, location.name);
+        const result = await client.query(
+            `INSERT INTO warehouse_locations (slug, name, description, sort_order, is_active, updated_at)
+             VALUES ($1, $2, $3, $4, true, NOW())
+             RETURNING *`,
+            [slug, location.name, location.description || null, location.sortOrder]
+        );
+        log.info(`Warehouse location created: "${location.name}" by ${req.user.username}`);
+        res.status(201).json({ success: true, location: mapLocationRow(result.rows[0]) });
+    } catch (err) {
+        log.error('Create warehouse location error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// PUT /api/warehouse/locations/:id - update location name/description/order
+router.put('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const { errors, location } = validateLocationPayload(req.body || {});
+        if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
+
+        const result = await pool.query(
+            `UPDATE warehouse_locations
+             SET name = $1, description = $2, sort_order = $3, updated_at = NOW()
+             WHERE id = $4 AND is_active = true
+             RETURNING id`,
+            [location.name, location.description || null, location.sortOrder, req.params.id]
+        );
+        if (!result.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
+
+        const updated = await getLocationSummaryById(req.params.id);
+        log.info(`Warehouse location updated: #${req.params.id} by ${req.user.username}`);
+        res.json({ success: true, location: updated });
+    } catch (err) {
+        log.error('Update warehouse location error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/warehouse/locations/:id - archive an empty location safely
+router.delete('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const activeStock = await pool.query(
+            `SELECT COUNT(*)::int AS active_stock_count
+             FROM warehouse_stock
+             WHERE location_id = $1 AND is_active = true`,
+            [req.params.id]
+        );
+        const activeStockCount = Number(activeStock.rows[0]?.active_stock_count || 0);
+        if (activeStockCount > 0) {
+            return res.status(409).json({
+                success: false,
+                error: 'Location has active stock. Move or archive stock items before archiving this location.',
+                activeStockCount
+            });
+        }
+
+        const result = await pool.query(
+            `UPDATE warehouse_locations
+             SET is_active = false, updated_at = NOW()
+             WHERE id = $1 AND is_active = true
+             RETURNING *`,
+            [req.params.id]
+        );
+        if (!result.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
+
+        log.info(`Warehouse location archived: #${req.params.id} by ${req.user.username}`);
+        res.json({ success: true, location: mapLocationRow(result.rows[0]) });
+    } catch (err) {
+        log.error('Archive warehouse location error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // GET /api/warehouse/locations-summary - physical warehouse cards
 router.get('/locations-summary', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT
-                l.id,
-                l.slug,
-                l.name,
-                l.description,
-                l.sort_order,
-                COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true)::int AS items_count,
-                COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true AND ws.quantity <= ws.min_quantity)::int AS low_stock_count,
-                COALESCE(SUM(ws.quantity) FILTER (WHERE ws.is_active = true), 0)::numeric AS total_units,
-                (
-                    SELECT MAX(m.created_at)
-                    FROM warehouse_stock_movements m
-                    WHERE m.to_location_id = l.id OR m.from_location_id = l.id
-                ) AS last_movement_at
-            FROM warehouse_locations l
-            LEFT JOIN warehouse_stock ws ON ws.location_id = l.id
-            WHERE l.is_active = true
-            GROUP BY l.id
-            ORDER BY l.sort_order, l.name
-        `);
+        const result = await pool.query(locationSummaryQuery('l.is_active = true'));
         res.json({ success: true, locations: result.rows.map(mapLocationRow) });
     } catch (err) {
         log.error('Locations summary error', err);

@@ -66,7 +66,7 @@ WHERE t.id <> t.canonical_id
 
 UPDATE booking_templates bt
 SET product_id = t.canonical_id,
-    product_code = COALESCE(NULLIF(bt.product_code, ''), p.code),
+    product_code = LEFT(COALESCE(NULLIF(bt.product_code, ''), p.code), 50),
     product_name = COALESCE(NULLIF(bt.product_name, ''), p.name)
 FROM tmp_products_zagadky_shi_duplicates t
 JOIN products p ON p.id = t.canonical_id

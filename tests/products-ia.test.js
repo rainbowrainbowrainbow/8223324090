@@ -191,6 +191,7 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.match(cleanupMigration, /UPDATE bookings b[\s\S]*program_id = t\.canonical_id/);
     assert.match(cleanupMigration, /UPDATE leads l[\s\S]*program_id = t\.canonical_id/);
     assert.match(cleanupMigration, /UPDATE automation_rules ar[\s\S]*trigger_condition = rr\.trigger_condition/);
+    assert.match(cleanupMigration, /product_code = LEFT\(COALESCE\(NULLIF\(bt\.product_code, ''\), p\.code\), 50\)/);
     assert.match(cleanupMigration, /CREATE INDEX IF NOT EXISTS idx_products_active_scope_name_key/);
     assert.ok(cleanupMarkers.length > 0, 'cleanup migration should keep an operator marker');
     assert.ok(cleanupMarkers.every(marker => marker.length <= 50), 'cleanup migration updated_by markers must fit VARCHAR(50)');

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.59 - CRM 66.59: стабілізація старту
+
+### Products / hotfix startup і migration hardening / 27.05.2026 [codex]
+- **Products route перевірено на startup crash** - поточний `/routes/products.js` імпортується без `ERR_ERL_KEY_GEN_IPV6` і використовує repo-local `createWriteRateLimiter` замість прямого `express-rate-limit` у меню AI endpoint.
+- **Cleanup-міграцію `224` посилено під production schema** - при перенесенні `booking_templates.product_code` canonical code обрізається до 50 символів, щоб поле `VARCHAR(50)` не валило запуск на реальних даних.
+- **Operator markers лишаються сумісними** - `migration_224_zagadky_cleanup` поміщається у `updated_by VARCHAR(50)`, тому pending migration може безпечно повторюватися після попереднього failed старту.
+- **Regression guard** - Products IA тест тепер фіксує і відсутність прямого `express-rate-limit`, і захист `product_code` від переповнення `VARCHAR(50)`.
+
+---
+
 ## v0.66.58 - CRM 66.58: стабілізація таймлайну
 
 ### Timeline / hotfix завантаження сітки / 27.05.2026 [codex]

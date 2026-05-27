@@ -875,6 +875,19 @@ function formModal(title, fields, options = {}) {
                 const opts = renderSelectOptions(f, f.options);
                 return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select>${hint}</div>`;
             }
+            if (f.type === 'checkboxGroup' && f.options) {
+                const selected = new Set(Array.isArray(f.defaultValue) ? f.defaultValue.map(String) : String(f.defaultValue || '').split(/[,;\s]+/).filter(Boolean));
+                const opts = f.options.map(o => {
+                    const value = escAttr(o.value);
+                    const text = escAttr(o.label);
+                    const checked = selected.has(String(o.value)) ? ' checked' : '';
+                    return `<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid rgba(139,92,246,0.22);border-radius:10px;margin-bottom:6px;background:rgba(139,92,246,0.05);font-size:14px;line-height:1.3;">
+                        <input type="checkbox" data-key="${f.key}" data-fm-checkbox-group="${f.key}" value="${value}"${checked} style="margin-top:2px;">
+                        <span>${text}</span>
+                    </label>`;
+                }).join('');
+                return `<div style="margin-bottom:10px;">${label}<div id="${id}" class="fm-field fm-checkbox-group" data-key="${f.key}" data-checkbox-group="true">${opts}</div>${hint}</div>`;
+            }
             if (f.type === 'textarea') {
                 return `<div style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea>${hint}</div>`;
             }
@@ -910,7 +923,13 @@ function formModal(title, fields, options = {}) {
 
         const getValues = () => {
             const vals = {};
-            overlay.querySelectorAll('.fm-field').forEach(el => { vals[el.dataset.key] = el.value; });
+            overlay.querySelectorAll('.fm-field').forEach(el => {
+                if (el.dataset.checkboxGroup === 'true') {
+                    vals[el.dataset.key] = Array.from(el.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value);
+                } else {
+                    vals[el.dataset.key] = el.value;
+                }
+            });
             return vals;
         };
 
@@ -934,7 +953,9 @@ function formModal(title, fields, options = {}) {
         overlay.querySelector('.confirm-ok').addEventListener('click', () => {
             const vals = getValues();
             for (const f of fields) {
-                if (f.required && !vals[f.key]?.trim()) {
+                const value = vals[f.key];
+                const missing = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
+                if (f.required && missing) {
                     const el = overlay.querySelector(`#fm_${f.key}`);
                     if (el) { el.style.borderColor = '#ef4444'; el.focus(); }
                     return;

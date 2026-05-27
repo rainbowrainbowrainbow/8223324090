@@ -998,6 +998,7 @@ async function openProfessionEditor(professionId = null) {
 let teamStaff = [];
 let accountUsers = [];
 let accountRoleHierarchy = [];
+let accountBusinessContexts = [];
 let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
@@ -1029,6 +1030,50 @@ function normalizeAccountListInput(value) {
         .filter(Boolean);
 }
 
+function getAccountBusinessCatalog() {
+    if (accountBusinessContexts.length) return accountBusinessContexts;
+    if (window.CrmBusinessContext?.contexts) return Object.values(window.CrmBusinessContext.contexts);
+    return [
+        { key: 'event_genix', label: 'Парк Закревського', shortLabel: 'Парк' },
+        { key: 'dar', label: 'Дар', shortLabel: 'Дар' },
+        { key: 'maysternya_doli', label: 'Майстерня Долі', shortLabel: 'МД' },
+        { key: 'crm', label: 'CRM продажі', shortLabel: 'CRM' }
+    ];
+}
+
+function normalizeAccountBusinessSelection(value, fallback = ['event_genix']) {
+    const catalog = new Set(getAccountBusinessCatalog().map(item => item.key));
+    const source = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\s]+/);
+    const seen = new Set();
+    const result = [];
+    source.forEach(item => {
+        const raw = String(item || '').trim();
+        const key = window.CrmBusinessContext?.normalize?.(raw) || raw;
+        if (!key || !catalog.has(key) || seen.has(key)) return;
+        seen.add(key);
+        result.push(key);
+    });
+    if (result.length) return result;
+    return fallback ? normalizeAccountBusinessSelection(fallback, null) : [];
+}
+
+function getAccountBusinessOptions(selected = []) {
+    const current = new Set(normalizeAccountBusinessSelection(selected));
+    return getAccountBusinessCatalog().map(ctx => ({
+        value: ctx.key,
+        label: ctx.label || ctx.key,
+        selected: current.has(ctx.key)
+    }));
+}
+
+function formatAccountBusinessBadges(user = {}) {
+    const values = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
+    const catalog = new Map(getAccountBusinessCatalog().map(ctx => [ctx.key, ctx]));
+    return values.map(key => catalog.get(key)?.shortLabel || catalog.get(key)?.label || key).join(', ');
+}
+
 function getAccountRoleOptions(defaultRole = 'animator') {
     const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
     const currentRole = AppState.currentUser?.role;
@@ -1044,10 +1089,13 @@ function getAccountRoleOptions(defaultRole = 'animator') {
 }
 
 async function loadAccountRoleDefinitions() {
-    if (accountRoleHierarchy.length) return;
+    if (accountRoleHierarchy.length && accountBusinessContexts.length) return;
     const data = await crmApiFetch('/api/users/roles');
     if (Array.isArray(data?.hierarchy)) {
         accountRoleHierarchy = data.hierarchy.filter(role => ROLE_LABELS[role] || role);
+    }
+    if (Array.isArray(data?.businessContexts)) {
+        accountBusinessContexts = data.businessContexts;
     }
 }
 
@@ -1371,7 +1419,8 @@ function formatAccountAccess(u) {
         .filter(Boolean)
         .map(role => ROLE_LABELS[role] || role);
     const pages = normalizeAccountArray(u.page_allowlist || u.pageAllowlist);
-    return `${roles.join(' + ') || 'user'}${pages.length ? ' · pages: ' + pages.join(', ') : ''}`;
+    const businesses = formatAccountBusinessBadges(u);
+    return `${roles.join(' + ') || 'user'}${businesses ? ' · бізнеси: ' + businesses : ''}${pages.length ? ' · pages: ' + pages.join(', ') : ''}`;
 }
 
 function getAccountCenterFilterState() {
@@ -1409,6 +1458,8 @@ function accountMatchesSearch(user, query) {
         user.name,
         user.role,
         ...(normalizeAccountArray(user.extra_roles || user.extraRoles)),
+        ...(normalizeAccountArray(user.business_contexts || user.businessContexts)),
+        formatAccountBusinessBadges(user),
         user.profile_name,
         user.staff_name,
         user.staff_department,
@@ -1540,6 +1591,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
     const defaultName = contextStaff?.name || '';
     const defaultUsername = context.username || (contextStaff ? suggestAccountUsernameFromStaff(contextStaff) : '');
     const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
+    const defaultBusinessContexts = normalizeAccountBusinessSelection(context.businessContexts || ['event_genix']);
     const result = await formModal('Створити CRM акаунт', [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
         { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
@@ -1547,6 +1599,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
+        { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
     ], {
@@ -1576,6 +1629,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
             name: String(result.name || '').trim(),
             role: result.role || 'animator',
             staffId: result.staffId || null,
+            businessContexts: normalizeAccountBusinessSelection(result.businessContexts),
             extraRoles: normalizeAccountListInput(result.extraRoles),
             pageAllowlist: normalizeAccountListInput(result.pageAllowlist)
         }
@@ -1790,8 +1844,10 @@ async function openAccountAccessEditor(userId, button) {
     const currentExtra = normalizeAccountArray(user.extra_roles || user.extraRoles).join(', ');
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
     await loadAccountRoleDefinitions();
+    const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
     const formResult = await formModal(`Доступ акаунта · ${user.username}`, [
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
+        { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' }
     ], {
@@ -1806,7 +1862,12 @@ async function openAccountAccessEditor(userId, button) {
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
         method: 'PATCH',
-        body: { role: formResult.role || user.role, extraRoles, pageAllowlist }
+        body: {
+            role: formResult.role || user.role,
+            businessContexts: normalizeAccountBusinessSelection(formResult.businessContexts),
+            extraRoles,
+            pageAllowlist
+        }
     });
     if (button) button.disabled = false;
     if (!response?.success) {

@@ -63,17 +63,57 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
         key: 'event_genix',
         label: 'Парк Закревського',
         shortLabel: 'Парк',
-        pageAllowlist: null
+        pageAllowlist: null,
+        modules: [
+            'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni',
+            'reports', 'finance', 'copilot', 'staff', 'hr', 'training', 'checkin',
+            'programs', 'kitchen', 'catalogs', 'content', 'art', 'graduation',
+            'sound', 'afisha', 'certificates', 'kleshnya', 'guardian', 'center',
+            'warehouse', 'game', 'demo', 'settings'
+        ]
+    },
+    dar: {
+        key: 'dar',
+        label: 'Дар',
+        shortLabel: 'Дар',
+        pageAllowlist: null,
+        modules: [
+            'dashboard', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
+            'finance', 'copilot', 'staff', 'hr', 'content', 'art',
+            'warehouse', 'kleshnya', 'center', 'settings'
+        ]
     },
     maysternya_doli: {
         key: 'maysternya_doli',
         label: 'Майстерня Долі',
         shortLabel: 'МД',
-        pageAllowlist: '/maysternya-doli'
+        pageAllowlist: '/maysternya-doli',
+        modules: [
+            'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads',
+            'reports', 'finance', 'programs', 'content', 'kleshnya', 'settings'
+        ]
+    },
+    crm: {
+        key: 'crm',
+        label: 'CRM продажі',
+        shortLabel: 'CRM',
+        pageAllowlist: null,
+        modules: [
+            'dashboard', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
+            'finance', 'copilot', 'staff', 'hr', 'content', 'kleshnya', 'center',
+            'settings'
+        ]
     }
 });
 const CRM_BUSINESS_CONTEXT_ALIASES = Object.freeze({
-    park_zakrevsky: CRM_BUSINESS_DEFAULT_CONTEXT
+    park_zakrevsky: CRM_BUSINESS_DEFAULT_CONTEXT,
+    park: CRM_BUSINESS_DEFAULT_CONTEXT,
+    pzp: CRM_BUSINESS_DEFAULT_CONTEXT,
+    maysternya: 'maysternya_doli',
+    md: 'maysternya_doli',
+    crm_sales: 'crm',
+    sales_crm: 'crm',
+    'срм': 'crm'
 });
 const CRM_BUSINESS_SWITCH_ROLES = Object.freeze([
     'creator',
@@ -82,9 +122,16 @@ const CRM_BUSINESS_SWITCH_ROLES = Object.freeze([
     'senior_manager'
 ]);
 const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
+    dashboard: { id: 'dashboard', label: 'Dashboard', paths: ['/dashboard'] },
+    timeline: { id: 'timeline', label: 'Timeline', paths: ['/'] },
     products: { id: 'products', label: 'Products', paths: ['/programs'] },
     leads: { id: 'leads', label: 'Leads', paths: ['/sales-funnel', '/leads'] },
-    customers: { id: 'customers', label: 'Customers', paths: ['/customers'] }
+    customers: { id: 'customers', label: 'Customers', paths: ['/customers'] },
+    warehouse: { id: 'warehouse', label: 'Warehouse', paths: ['/warehouse'] },
+    hr: { id: 'hr', label: 'HR', paths: ['/hr', '/staff'] },
+    reports: { id: 'reports', label: 'Reports', paths: ['/reports', '/finance', '/analytics'] },
+    content: { id: 'content', label: 'Content', paths: ['/content', '/art', '/designer', '/designs'] },
+    system: { id: 'system', label: 'System', paths: ['/tasks', '/chat', '/omni', '/copilot', '/center'] }
 });
 const crmBusinessPageBindings = new Map();
 
@@ -131,6 +178,15 @@ function crmBusinessPageAllowlist(user) {
         .map(String);
 }
 
+function crmBusinessAssignedContexts(user) {
+    return []
+        .concat(Array.isArray(user?.businessContexts) ? user.businessContexts : [])
+        .concat(Array.isArray(user?.business_contexts) ? user.business_contexts : [])
+        .concat(Array.isArray(user?.allowedBusinessContexts) ? user.allowedBusinessContexts : [])
+        .map(normalizeCrmBusinessContext)
+        .filter((value, index, arr) => CRM_BUSINESS_CONTEXTS[value] && arr.indexOf(value) === index);
+}
+
 function crmBusinessUserCanSwitch(user) {
     const roles = crmBusinessRoles(user);
     return CRM_BUSINESS_SWITCH_ROLES.some(role => roles.includes(role));
@@ -148,6 +204,8 @@ function crmBusinessExplicitForcedContext(user) {
 
 function crmBusinessAllowedContexts(user) {
     if (!user) return [CRM_BUSINESS_DEFAULT_CONTEXT];
+    const assigned = crmBusinessAssignedContexts(user);
+    if (assigned.length) return assigned;
     if (crmBusinessUserCanSwitch(user)) return Object.keys(CRM_BUSINESS_CONTEXTS);
     const allowed = new Set([CRM_BUSINESS_DEFAULT_CONTEXT]);
     const allowlist = crmBusinessPageAllowlist(user);
@@ -158,8 +216,21 @@ function crmBusinessAllowedContexts(user) {
 }
 
 function resolveCrmBusinessPolicy(user) {
-    const canSwitch = Boolean(user && crmBusinessUserCanSwitch(user));
-    const allowed = canSwitch ? Object.keys(CRM_BUSINESS_CONTEXTS) : crmBusinessAllowedContexts(user);
+    const allowed = crmBusinessAllowedContexts(user);
+    const serverPolicy = user?.businessContextPolicy || user?.business_context_policy || null;
+    if (serverPolicy && Array.isArray(serverPolicy.allowed)) {
+        const serverAllowed = serverPolicy.allowed.map(normalizeCrmBusinessContext).filter(key => CRM_BUSINESS_CONTEXTS[key]);
+        if (serverAllowed.length) {
+            return {
+                canSwitch: Boolean(serverPolicy.canSwitch || serverAllowed.length > 1),
+                forced: serverPolicy.forced ? normalizeCrmBusinessContext(serverPolicy.forced) : null,
+                allowed: serverAllowed,
+                defaultContext: normalizeCrmBusinessContext(serverPolicy.defaultContext || serverPolicy.forced || serverAllowed[0])
+            };
+        }
+    }
+    const assigned = crmBusinessAssignedContexts(user);
+    const canSwitch = Boolean(user && allowed.length > 1 && (crmBusinessUserCanSwitch(user) || assigned.length > 1));
     const explicit = crmBusinessExplicitForcedContext(user);
     const nonDefault = allowed.filter(ctx => ctx !== CRM_BUSINESS_DEFAULT_CONTEXT);
     const forced = canSwitch
@@ -171,6 +242,12 @@ function resolveCrmBusinessPolicy(user) {
         allowed: canSwitch ? allowed : [forced || CRM_BUSINESS_DEFAULT_CONTEXT],
         defaultContext: forced || CRM_BUSINESS_DEFAULT_CONTEXT
     };
+}
+
+function crmBusinessContextHasModule(context, moduleId) {
+    if (!moduleId) return true;
+    const ctx = CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(context)] || CRM_BUSINESS_CONTEXTS[CRM_BUSINESS_DEFAULT_CONTEXT];
+    return Array.isArray(ctx.modules) && ctx.modules.includes(String(moduleId));
 }
 
 function sanitizeCrmBusinessContextForUser(context, user) {
@@ -349,6 +426,7 @@ if (typeof window !== 'undefined') {
         set: setCrmBusinessContext,
         switchTo: switchCrmBusinessContext,
         canAccess: userCanAccessCrmBusinessContext,
+        hasModule: crmBusinessContextHasModule,
         options: getCrmBusinessContextOptions,
         policy: resolveCrmBusinessPolicy,
         currentPage: currentCrmBusinessScopedPage,
@@ -366,6 +444,9 @@ async function safeFetch(url, opts = {}) {
         const token = getStoredAuthToken();
         if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     }
+    if (!opts.headers['X-Business-Context'] && !opts.headers['x-business-context']) {
+        opts.headers['X-Business-Context'] = getCrmBusinessContext();
+    }
     const res = await fetch(url, opts);
     if (res.status === 401) {
         if (typeof handleAuthError === 'function') handleAuthError(res);
@@ -382,6 +463,7 @@ function getAuthHeaders(withContentType = true) {
     const headers = {};
     if (withContentType) headers['Content-Type'] = 'application/json';
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Business-Context'] = getCrmBusinessContext();
     return headers;
 }
 
@@ -414,6 +496,9 @@ function apiWithBearer(headers = {}, token = '', force = false) {
 async function apiFetchWithAuthRetry(url, opts = {}) {
     const request = { ...opts };
     const originalHeaders = apiHeaderObject(opts.headers || {});
+    if (!Object.keys(originalHeaders).some(key => String(key).toLowerCase() === 'x-business-context')) {
+        originalHeaders['X-Business-Context'] = getCrmBusinessContext();
+    }
     let token = getStoredAuthToken();
     if (!token && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) token = await apiRefreshAuthToken();
     request.headers = apiWithBearer(originalHeaders, token);

@@ -6,6 +6,10 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const {
+    allowedBusinessContextsForUser,
+    resolveBusinessContextPolicy
+} = require('../services/businessContext');
 
 const log = createLogger('Auth');
 
@@ -151,6 +155,8 @@ function buildAuthUserPayload(user) {
     const extraRoles = Array.isArray(user?.extra_roles) ? user.extra_roles : (Array.isArray(user?.extraRoles) ? user.extraRoles : []);
     const pageAllowlist = normalizePageAllowlist(user);
     const roles = normalizeRoleList({ ...user, extraRoles });
+    const businessContexts = allowedBusinessContextsForUser(user);
+    const businessContextPolicy = resolveBusinessContextPolicy(user);
     return {
         id: user.id,
         username: user.username,
@@ -158,6 +164,9 @@ function buildAuthUserPayload(user) {
         roles,
         extraRoles: roles.filter(role => role !== user.role),
         pageAllowlist,
+        businessContexts,
+        business_contexts: businessContexts,
+        businessContextPolicy,
         name: user.name
     };
 }
@@ -362,7 +371,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, name, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, name, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 

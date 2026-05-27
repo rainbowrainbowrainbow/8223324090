@@ -3,22 +3,26 @@ const assert = require('node:assert/strict');
 
 const {
   BUSINESS_CONTEXT_SWITCH_ROLES,
+  businessContextCatalog,
   businessContextFromRequest,
   canAccessBusinessContext,
   normalizeBusinessContext,
+  normalizeBusinessContextList,
   resolveBusinessContextPolicy
 } = require('../services/businessContext');
 
 test('business context normalizes legacy product aliases to the canonical CRM context', () => {
   assert.equal(normalizeBusinessContext('park_zakrevsky'), 'event_genix');
+  assert.equal(normalizeBusinessContext('dar'), 'dar');
   assert.equal(normalizeBusinessContext('maysternya_doli'), 'maysternya_doli');
+  assert.equal(normalizeBusinessContext('crm_sales'), 'crm');
   assert.equal(normalizeBusinessContext('unknown'), 'event_genix');
 });
 
 test('business context can be read from query, body, or header input', () => {
   assert.equal(businessContextFromRequest({ query: { businessContext: 'maysternya_doli' } }), 'maysternya_doli');
   assert.equal(businessContextFromRequest({ body: { business_context: 'park_zakrevsky' } }), 'event_genix');
-  assert.equal(businessContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
+  assert.equal(businessContextFromRequest({ headers: { 'x-business-context': 'dar' } }), 'dar');
 });
 
 test('switch policy is centralized for director-like roles', () => {
@@ -26,8 +30,16 @@ test('switch policy is centralized for director-like roles', () => {
   assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'));
   const policy = resolveBusinessContextPolicy({ role: 'director' });
   assert.equal(policy.canSwitch, true);
-  assert.deepEqual(policy.allowed.sort(), ['event_genix', 'maysternya_doli'].sort());
+  assert.deepEqual(policy.allowed.sort(), ['crm', 'dar', 'event_genix', 'maysternya_doli'].sort());
   assert.equal(canAccessBusinessContext({ role: 'director' }, 'maysternya_doli'), true);
+});
+
+test('account business_contexts limit switchers to assigned businesses', () => {
+  const policy = resolveBusinessContextPolicy({ role: 'manager', business_contexts: ['event_genix', 'dar'] });
+  assert.equal(policy.canSwitch, true);
+  assert.deepEqual(policy.allowed, ['event_genix', 'dar']);
+  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'crm'), false);
 });
 
 test('locked roles are forced to explicit or allowlisted business context', () => {
@@ -49,4 +61,12 @@ test('ordinary locked roles stay in the default business context', () => {
   assert.equal(policy.defaultContext, 'event_genix');
   assert.deepEqual(policy.allowed, ['event_genix']);
   assert.equal(canAccessBusinessContext({ role: 'manager' }, 'maysternya_doli'), false);
+});
+
+test('business catalog exposes all four operator contexts and module boundaries', () => {
+  const catalog = businessContextCatalog();
+  assert.deepEqual(catalog.map(item => item.key).sort(), ['crm', 'dar', 'event_genix', 'maysternya_doli'].sort());
+  assert.equal(catalog.find(item => item.key === 'crm').modules.includes('leads'), true);
+  assert.equal(catalog.find(item => item.key === 'crm').modules.includes('warehouse'), false);
+  assert.deepEqual(normalizeBusinessContextList(['park', 'dar', 'дар', 'crm']), ['event_genix', 'dar', 'crm']);
 });

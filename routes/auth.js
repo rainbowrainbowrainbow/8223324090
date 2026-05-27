@@ -192,7 +192,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.name, u.is_active,
+            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.name, u.is_active,
                     u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -262,7 +262,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
+            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1 AND u.is_active = true`,
@@ -1280,7 +1280,7 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
         if (!userId) return res.status(400).json({ error: 'userId required' });
 
         const result = await pool.query(
-            'SELECT id, username, role, extra_roles, page_allowlist, name, is_active FROM users WHERE id = $1',
+            'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, name, is_active FROM users WHERE id = $1',
             [parseInt(userId)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1324,7 +1324,7 @@ router.get('/users-list', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Only creator can list users' });
         }
         const result = await pool.query(
-            'SELECT id, username, name, role, extra_roles, page_allowlist FROM users WHERE is_active = true ORDER BY name'
+            'SELECT id, username, name, role, extra_roles, page_allowlist, business_contexts FROM users WHERE is_active = true ORDER BY name'
         );
         res.json(result.rows);
     } catch (err) {

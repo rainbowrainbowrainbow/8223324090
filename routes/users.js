@@ -10,6 +10,11 @@ const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { normalizeManualPassword } = require('../services/credentialInput');
 const {
+    BUSINESS_CONTEXTS,
+    businessContextCatalog,
+    normalizeBusinessContextList
+} = require('../services/businessContext');
+const {
     linkUserToStaffProfile,
     unlinkUserFromStaffProfiles,
     getAccountLinkConflicts,
@@ -77,6 +82,13 @@ function normalizeStoredArray(value) {
     return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
 }
 
+function normalizeAccountBusinessContexts(value, primaryRole = '') {
+    const fallback = ['creator', 'director', 'vice_director', 'senior_manager'].includes(primaryRole)
+        ? Object.keys(BUSINESS_CONTEXTS)
+        : ['event_genix'];
+    return normalizeBusinessContextList(value, fallback).slice(0, Object.keys(BUSINESS_CONTEXTS).length);
+}
+
 function sameStringArray(left = [], right = []) {
     const a = normalizeStoredArray(left);
     const b = normalizeStoredArray(right);
@@ -107,7 +119,7 @@ router.use(authenticateToken);
 router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.is_active, u.created_at, u.last_seen_at,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.is_active, u.created_at, u.last_seen_at,
                     ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
                     s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
              FROM users u
@@ -137,7 +149,8 @@ router.get('/roles', async (req, res) => {
             support: ['barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher', 'waiter']
         },
         pageAccess: PAGE_ACCESS,
-        actionPermissions: ACTION_PERMISSIONS
+        actionPermissions: ACTION_PERMISSIONS,
+        businessContexts: businessContextCatalog()
     });
 });
 
@@ -228,7 +241,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
              SET username = $1,
                  name = $2
              WHERE id = $3
-             RETURNING id, username, name, role, extra_roles, page_allowlist, is_active`,
+             RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, is_active`,
             [username, String(name).trim(), parseInt(id, 10)]
         );
 
@@ -277,7 +290,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
 router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { role, extraRoles, pageAllowlist } = req.body;
+        const { role, extraRoles, pageAllowlist, businessContexts } = req.body;
 
         if (!role || !ROLE_HIERARCHY.includes(role)) {
             return res.status(400).json({ error: `Невалідна роль. Допустимі: ${ROLE_HIERARCHY.join(', ')}` });
@@ -289,9 +302,12 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : null;
+        const normalizedBusinessContexts = Array.isArray(businessContexts)
+            ? normalizeAccountBusinessContexts(businessContexts, role)
+            : null;
 
         // Cannot change own role (safety)
-        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist, business_contexts FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
@@ -309,18 +325,21 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         const oldRole = target.rows[0].role;
         const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
         const oldPageAllowlist = normalizeStoredArray(target.rows[0].page_allowlist);
+        const oldBusinessContexts = normalizeStoredArray(target.rows[0].business_contexts);
         const updated = await pool.query(
             `UPDATE users
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
-                 page_allowlist = COALESCE($3::text[], page_allowlist)
-             WHERE id = $4
-             RETURNING id, username, role, extra_roles, page_allowlist`,
-            [role, normalizedExtraRoles, normalizedPageAllowlist, parseInt(id)]
+                 page_allowlist = COALESCE($3::text[], page_allowlist),
+                 business_contexts = COALESCE($4::text[], business_contexts)
+             WHERE id = $5
+             RETURNING id, username, role, extra_roles, page_allowlist, business_contexts`,
+            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, parseInt(id)]
         );
         const updatedUser = updated.rows[0] || target.rows[0];
         const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
         const newPageAllowlist = normalizeStoredArray(updatedUser.page_allowlist);
+        const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
 
         await recordAccountSecurityEvent({
             actor: req.user,
@@ -334,17 +353,20 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
                 newExtraRoles,
                 oldPageAllowlist,
                 newPageAllowlist,
+                oldBusinessContexts,
+                newBusinessContexts,
                 changed: {
                     role: oldRole !== updatedUser.role,
                     extraRoles: !sameStringArray(oldExtraRoles, newExtraRoles),
-                    pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist)
+                    pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist),
+                    businessContexts: !sameStringArray(oldBusinessContexts, newBusinessContexts)
                 }
             },
             req
         });
 
         log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${updatedUser.role}`);
-        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist });
+        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist, businessContexts: newBusinessContexts });
     } catch (err) {
         log.error('Change role error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -485,7 +507,7 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
 router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { password, name, role, extraRoles, pageAllowlist } = req.body;
+        const { password, name, role, extraRoles, pageAllowlist, businessContexts } = req.body;
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true || !password;
         const username = normalizeUsername(req.body.username);
         const staffId = normalizeStaffId(req.body.staffId);
@@ -514,6 +536,10 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : [];
+        const normalizedBusinessContexts = normalizeAccountBusinessContexts(
+            Array.isArray(businessContexts) ? businessContexts : [],
+            primaryRole
+        );
 
         if (!canCreateAccount(req.user, primaryRole, normalizedExtraRoles)) {
             return res.status(403).json({ error: 'Не можна створити акаунт з таким рівнем доступу' });
@@ -531,8 +557,8 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             throw new Error('password_hash_verified_after_create_failed');
         }
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, is_active',
-            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, is_active',
+            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts]
         );
         const loginCheck = await verifyIssuedCredential({
             client,
@@ -558,7 +584,7 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, businessContexts: normalizedBusinessContexts, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
             client
         });

@@ -416,7 +416,8 @@ const Sidebar = (() => {
     }
 
     function _getDefaultExtraMenuItems(role) {
-        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)));
+        const user = _getCurrentSidebarUser();
+        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user));
         const byHref = new Map(available.map(item => [item.href, item]));
         return _getRoleQuickAccessHrefs(role)
             .map(href => byHref.get(href))
@@ -442,6 +443,7 @@ const Sidebar = (() => {
                 if (!href || seen.has(href)) return false;
                 seen.add(href);
                 if (role && !hasAccess(item, role)) return false;
+                if (!_businessAllowsSidebarItem(item)) return false;
                 return true;
             })
             .map(item => ({
@@ -850,13 +852,13 @@ const Sidebar = (() => {
 
                 // Check if group has accessible children
                 const hasChildren = NAV_ITEMS.some(c =>
-                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role))
+                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role)) && _businessAllowsSidebarItem(c, savedUser)
                 );
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
                 // Mark group that contains the current page without forcing it open.
                 const hasActive = NAV_ITEMS.some(c => {
-                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly) return false;
+                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly || !_businessAllowsSidebarItem(c, savedUser)) return false;
                     const cBase = c.href.split('#')[0];
                     return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
                 });
@@ -882,6 +884,7 @@ const Sidebar = (() => {
             // Skip if group is blocked
             if (currentGroupKey === '__skip__' || currentGroupKey === '__skip_today__') continue;
             if (item.quickAccessOnly) continue;
+            if (!_businessAllowsSidebarItem(item, savedUser)) continue;
 
             // ── Skip no access ────────────────────────────────────
             if (role && !hasAccess(item, role)) continue;
@@ -977,6 +980,52 @@ const Sidebar = (() => {
         if (access === true) return true;
         if (!access) return false;
         return Array.from(roles).some(value => access.includes(value));
+    }
+
+    const BUSINESS_MODULE_ACCESS_MAP = Object.freeze({
+        timeline: 'timeline',
+        maysternya_doli: 'timeline',
+        tasks: 'tasks',
+        chat: 'chat',
+        customers: 'customers',
+        leads: 'leads',
+        omni: 'omni',
+        reports: 'reports',
+        finance: 'finance',
+        analytics: 'finance',
+        copilot: 'copilot',
+        staff: 'staff',
+        hr: 'hr',
+        hr_page: 'hr',
+        schedule_daily: 'staff',
+        training: 'training',
+        programs: 'programs',
+        content: 'content',
+        graduation: 'graduation',
+        art: 'art',
+        sound: 'sound',
+        afisha: 'afisha',
+        certificates: 'certificates',
+        guardian_ops: 'guardian',
+        center: 'center',
+        warehouse: 'warehouse',
+        demo: 'demo',
+        settings: 'settings'
+    });
+
+    function _businessModuleForItem(item = {}) {
+        if (item.businessModule) return item.businessModule;
+        if (item.href === '/dashboard') return 'dashboard';
+        if (item.href === '/game' || item.href === '/shop' || item.href === '/quiz') return 'game';
+        if (item.href === '/kleshnya') return 'kleshnya';
+        return BUSINESS_MODULE_ACCESS_MAP[item.access] || null;
+    }
+
+    function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
+        const moduleId = _businessModuleForItem(item);
+        const api = window.CrmBusinessContext;
+        if (!moduleId || !api?.current || !api?.hasModule) return true;
+        return api.hasModule(api.current(user), moduleId);
     }
 
     function _badgeTypeFor(item) {
@@ -1567,6 +1616,7 @@ const Sidebar = (() => {
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
                             </button>
                         </span>
+                        <span class="sidebar-business-context" id="sidebarBusinessContextHost" data-sidebar-stop-profile="true"></span>
                     </span>
                     <span class="sidebar-identity-chevron" aria-hidden="true">›</span>
                 </div>
@@ -1674,7 +1724,48 @@ const Sidebar = (() => {
             roleEl.title = _sidebarRoleLine(user);
         }
         if (cardEl) cardEl.dataset.role = roleKey;
+        _syncSidebarBusinessSwitcher(user);
         _bindProfileEntry(cardEl);
+    }
+
+    function _syncSidebarBusinessSwitcher(user = _getCurrentSidebarUser()) {
+        const host = document.getElementById('sidebarBusinessContextHost');
+        const api = window.CrmBusinessContext;
+        if (!host || !api?.options || !api?.current) return;
+        const options = api.options(user);
+        if (!options.length) {
+            host.innerHTML = '';
+            host.hidden = true;
+            return;
+        }
+        host.hidden = false;
+        const current = api.current(user);
+        const currentContext = options.find(ctx => ctx.key === current) || options[0];
+        if (options.length <= 1) {
+            host.innerHTML = `<span class="sidebar-business-chip" title="Бізнес акаунта">${_escAttr(currentContext.shortLabel || currentContext.label || currentContext.key)}</span>`;
+            return;
+        }
+        host.innerHTML = `
+            <span class="sidebar-business-label">Бізнес</span>
+            <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM">
+                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(ctx.shortLabel || ctx.label || ctx.key)}</option>`).join('')}
+            </select>`;
+        const select = host.querySelector('#sidebarBusinessContextSelect');
+        if (!select) return;
+        select.addEventListener('click', event => event.stopPropagation());
+        select.addEventListener('keydown', event => event.stopPropagation());
+        select.addEventListener('change', async event => {
+            const previous = api.current(user);
+            select.disabled = true;
+            const next = await api.switchTo(event.target.value, { user, updateUrl: true });
+            if (next !== previous) {
+                const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+                if (container?.id) render('#' + container.id);
+                setTimeout(() => window.location.reload(), 50);
+            } else {
+                select.disabled = false;
+            }
+        });
     }
 
     function _formatSidebarKyivTime(date = new Date()) {
@@ -2628,6 +2719,11 @@ const Sidebar = (() => {
     });
     window.addEventListener('crm:tasks-updated', () => {
         _refreshTaskMiniWidget();
+    });
+    window.addEventListener('crmBusinessContextChanged', () => {
+        const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (c?.id) render('#' + c.id);
+        initUserCard();
     });
 
     // ─── Sidebar action helpers ──────────────────────────────────

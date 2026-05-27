@@ -8702,3 +8702,60 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
     transition: none !important;
   }
 }
+.sidebar-business-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.sidebar-business-label {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: rgba(100, 116, 139, .86);
+}
+
+.sidebar-business-select {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 28px;
+  border: 1px solid rgba(99, 102, 241, .24);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, .78);
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-business-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, .12);
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+body.dark-mode .sidebar-business-label {
+  color: rgba(203, 213, 225, .78);
+}
+
+body.dark-mode .sidebar-business-select {
+  border-color: rgba(129, 140, 248, .34);
+  background: rgba(15, 23, 42, .82);
+  color: #e5e7eb;
+}
+
+body.dark-mode .sidebar-business-chip {
+  background: rgba(129, 140, 248, .18);
+  color: #c7d2fe;
+}

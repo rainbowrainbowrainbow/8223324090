@@ -147,8 +147,20 @@ async function initPage() {
     document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
     document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
     document.getElementById('pf-tech-card-detailed')?.addEventListener('change', syncTechCardModePanel);
+    document.getElementById('pf-allergens')?.addEventListener('input', renderAllergenChipsFromForm);
     document.getElementById('addTechCardIngredientBtn')?.addEventListener('click', () => addTechCardIngredientRow());
     document.getElementById('pf-tech-writeoff-btn')?.addEventListener('click', submitTechCardWriteOff);
+    document.getElementById('productAiAutofillBtn')?.addEventListener('click', openMenuAiReviewWizard);
+    document.getElementById('productAiReviewCloseBtn')?.addEventListener('click', closeMenuAiReviewWizard);
+    document.getElementById('productAiReviewCancelBtn')?.addEventListener('click', closeMenuAiReviewWizard);
+    document.getElementById('productAiApproveBlockBtn')?.addEventListener('click', approveMenuAiBlock);
+    document.getElementById('productAiRegenerateBlockBtn')?.addEventListener('click', regenerateMenuAiBlock);
+    document.getElementById('productAiApplyBtn')?.addEventListener('click', applyMenuAiReviewFinal);
+    document.getElementById('productAiReviewModal')?.addEventListener('click', (event) => {
+        if (event.target?.id === 'productAiReviewModal') {
+            setMenuAiReviewStatus('Завершіть або скасуйте AI-review перед закриттям.', 'warning');
+        }
+    });
     document.getElementById('productDocSaveBtn')?.addEventListener('click', saveProductDocument);
     document.getElementById('productDocCancelBtn')?.addEventListener('click', closeProductDocumentModal);
     document.getElementById('productDocCloseBtn')?.addEventListener('click', closeProductDocumentModal);
@@ -160,6 +172,10 @@ async function initPage() {
         }
     });
     document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !menuAiReviewSaving && !document.getElementById('productAiReviewModal')?.classList.contains('hidden')) {
+            closeMenuAiReviewWizard();
+            return;
+        }
         if (event.key === 'Escape' && !productDocumentSaving && !document.getElementById('productDocumentModal')?.classList.contains('hidden')) {
             closeProductDocumentModal();
         }
@@ -272,6 +288,8 @@ let techCardIngredientDrafts = [];
 let techCardLoadedProductId = null;
 let productFormFocusWriteOff = false;
 let productSaveInFlight = false;
+let menuAiReviewState = null;
+let menuAiReviewSaving = false;
 const productDeleteInFlight = new Set();
 
 const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
@@ -298,6 +316,101 @@ const MENU_AVAILABILITY_LABELS = {
     sold_out: 'Стоп',
     hidden: 'Прихована'
 };
+
+const MENU_ALLERGEN_OPTIONS = [
+    { key: 'gluten', label: 'Глютен' },
+    { key: 'milk', label: 'Молоко' },
+    { key: 'eggs', label: 'Яйця' },
+    { key: 'fish', label: 'Риба' },
+    { key: 'crustaceans', label: 'Ракоподібні' },
+    { key: 'molluscs', label: 'Молюски' },
+    { key: 'peanuts', label: 'Арахіс' },
+    { key: 'tree_nuts', label: 'Горіхи' },
+    { key: 'soy', label: 'Соя' },
+    { key: 'sesame', label: 'Кунжут' },
+    { key: 'mustard', label: 'Гірчиця' },
+    { key: 'celery', label: 'Селера' },
+    { key: 'sulphites', label: 'Сульфіти' },
+    { key: 'lupin', label: 'Люпин' }
+];
+
+const MENU_AI_BLOCKS = [
+    { key: 'nameDescription', label: 'Назва й опис' },
+    { key: 'allergens', label: 'Алергени' },
+    { key: 'ingredients', label: 'Інгредієнти/грами' },
+    { key: 'priceCost', label: 'Ціна/собівартість' }
+];
+
+function normalizeAllergenKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function knownMenuAllergen(value) {
+    const raw = normalizeAllergenKey(value);
+    if (!raw) return null;
+    return MENU_ALLERGEN_OPTIONS.find(item => item.key === raw || normalizeProductIdentity(item.label) === normalizeProductIdentity(raw)) || null;
+}
+
+function normalizeAllergenItems(value) {
+    const rawItems = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\n]/).map(item => item.trim()).filter(Boolean);
+    const seen = new Set();
+    return rawItems
+        .map(item => {
+            const source = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+            const rawLabel = source.label || source.name || source.value || source.key || item;
+            const label = String(rawLabel || '').trim();
+            if (!label) return null;
+            const known = knownMenuAllergen(source.key || label);
+            const key = known?.key || `custom:${normalizeProductIdentity(label)}`;
+            if (seen.has(key)) return null;
+            seen.add(key);
+            return { key, label: known?.label || label };
+        })
+        .filter(Boolean)
+        .slice(0, 20);
+}
+
+function getAllergensFromForm() {
+    return normalizeAllergenItems(document.getElementById('pf-allergens')?.value || '');
+}
+
+function setAllergensFormValue(allergens = []) {
+    const input = document.getElementById('pf-allergens');
+    if (input) {
+        input.value = normalizeAllergenItems(allergens).map(item => item.label).join(', ');
+    }
+    renderAllergenChipsFromForm();
+}
+
+function getProductAllergenLabels(product = {}) {
+    return normalizeAllergenItems(product.allergens || []).map(item => item.label);
+}
+
+function renderAllergenChipsFromForm() {
+    const container = document.getElementById('pf-allergen-chips');
+    if (!container) return;
+    const selected = normalizeAllergenItems(document.getElementById('pf-allergens')?.value || '');
+    const selectedKeys = new Set(selected.map(item => item.key));
+    container.innerHTML = MENU_ALLERGEN_OPTIONS.map(item => `
+        <button type="button" class="menu-allergen-chip${selectedKeys.has(item.key) ? ' active' : ''}" data-allergen-key="${escapeHtml(item.key)}">
+            ${escapeHtml(item.label)}
+        </button>
+    `).join('');
+    container.querySelectorAll('[data-allergen-key]').forEach(button => {
+        button.addEventListener('click', () => {
+            const key = button.dataset.allergenKey;
+            const option = MENU_ALLERGEN_OPTIONS.find(item => item.key === key);
+            if (!option) return;
+            const current = normalizeAllergenItems(document.getElementById('pf-allergens')?.value || '');
+            const next = current.some(item => item.key === key)
+                ? current.filter(item => item.key !== key)
+                : [...current, option];
+            setAllergensFormValue(next);
+        });
+    });
+}
 
 function getActiveBusinessContext() {
     return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.event_genix;
@@ -345,18 +458,23 @@ function isProductDocumentModalOpen() {
     return !document.getElementById('productDocumentModal')?.classList.contains('hidden');
 }
 
+function isProductAiReviewModalOpen() {
+    return !document.getElementById('productAiReviewModal')?.classList.contains('hidden');
+}
+
 async function guardProductBusinessSwitch() {
-    if (productDocumentSaving) {
+    if (productDocumentSaving || menuAiReviewSaving) {
         if (typeof showNotification === 'function') showNotification('Дочекайтесь збереження документа перед перемиканням бізнесу', 'warning');
         return false;
     }
-    if (!isProductFormOpen() && !isProductDocumentModalOpen()) return true;
+    if (!isProductFormOpen() && !isProductDocumentModalOpen() && !isProductAiReviewModalOpen()) return true;
     const message = 'Є відкрита картка продукту або документа. Перемкнути бізнес і закрити поточну роботу?';
     const ok = typeof confirmModal === 'function'
         ? await confirmModal(message, { type: 'warning', okText: 'Перемкнути', cancelText: 'Залишитись' })
         : false;
     if (!ok) return false;
     if (isProductDocumentModalOpen()) closeProductDocumentModal();
+    if (isProductAiReviewModalOpen()) closeMenuAiReviewWizard();
     closeProductForm();
     return true;
 }
@@ -709,6 +827,7 @@ function getMenuCompleteness(product = {}) {
     if (!product.shortDescription && !product.description) missing.push('короткий опис');
     if (!product.weightValue && !product.servingUnit) missing.push('вага/обʼєм');
     if (!product.ingredients && !isDrinkOrAddon) missing.push('склад');
+    if (!getProductAllergenLabels(product).length && !isDrinkOrAddon) missing.push('алергени');
     return {
         status: missing.length === 0 ? 'complete' : 'partial',
         missing
@@ -774,6 +893,7 @@ function renderKitchenProducts(grid, canManage) {
                 ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
                 <div class="kitchen-card-badges">
                     ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
+                    ${getProductAllergenLabels(p).length ? '<span class="kitchen-badge">Алергени</span>' : ''}
                     ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
                     ${p.techCardMode === 'detailed' ? `<span class="kitchen-badge">Детальна техкарта · ${Number(p.techCardLinkedIngredientCount || 0)}/${Number(p.techCardIngredientCount || 0)}</span>` : ''}
                     ${p.priceVariantNote ? '<span class="kitchen-badge">Варіанти ціни</span>' : ''}
@@ -801,6 +921,7 @@ function renderKitchenDetailPanel(product) {
         ['Варіанти / ціна', product.priceVariantNote],
         ['Статус', product.availabilityStatus ? (MENU_AVAILABILITY_LABELS[product.availabilityStatus] || product.availabilityStatus) : null],
         ['Promo', product.promoDescription],
+        ['Алергени', getProductAllergenLabels(product).join(', ')],
         ['Інгредієнти', product.ingredients],
         ['Техкарта', product.techCard]
     ];
@@ -1228,6 +1349,7 @@ function setKitchenFormVisibility(domain, kitchenType) {
     });
     const saveNextBtn = document.getElementById('saveProductNextBtn');
     if (saveNextBtn) saveNextBtn.style.display = isKitchen ? '' : 'none';
+    renderAllergenChipsFromForm();
     syncTechCardModePanel();
 }
 
@@ -1413,6 +1535,419 @@ function collectTechCardIngredientRows() {
         .filter(row => row.stockId || row.label || row.quantity || row.notes);
 }
 
+function getMenuAiElements() {
+    return {
+        modal: document.getElementById('productAiReviewModal'),
+        productName: document.getElementById('productAiReviewProductName'),
+        steps: document.getElementById('productAiReviewSteps'),
+        body: document.getElementById('productAiReviewBody'),
+        feedback: document.getElementById('productAiReviewFeedback'),
+        status: document.getElementById('productAiReviewStatus'),
+        approve: document.getElementById('productAiApproveBlockBtn'),
+        regenerate: document.getElementById('productAiRegenerateBlockBtn'),
+        apply: document.getElementById('productAiApplyBtn')
+    };
+}
+
+function setMenuAiReviewStatus(message = '', type = '') {
+    const status = document.getElementById('productAiReviewStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.type = type || '';
+}
+
+function setMenuAiReviewSaving(isSaving, label = '') {
+    menuAiReviewSaving = Boolean(isSaving);
+    const elements = getMenuAiElements();
+    [elements.approve, elements.regenerate, elements.apply, elements.feedback].forEach(el => {
+        if (el) el.disabled = menuAiReviewSaving;
+    });
+    if (elements.apply) elements.apply.textContent = isSaving ? (label || 'Зберігаємо...') : 'Застосувати й зберегти картку';
+}
+
+function collectCurrentMenuCardForAi() {
+    return {
+        businessContext: getProductApiBusinessContext(),
+        productId: document.getElementById('pf-id')?.value || null,
+        code: document.getElementById('pf-code')?.value.trim() || '',
+        name: document.getElementById('pf-name')?.value.trim() || '',
+        description: document.getElementById('pf-description')?.value.trim() || '',
+        shortDescription: document.getElementById('pf-short-description')?.value.trim() || '',
+        promoDescription: document.getElementById('pf-promo-description')?.value.trim() || '',
+        menuSection: document.getElementById('pf-menu-section')?.value.trim() || '',
+        weightValue: document.getElementById('pf-weight-value')?.value.trim() || '',
+        servingUnit: document.getElementById('pf-serving-unit')?.value.trim() || '',
+        price: parseInt(document.getElementById('pf-price')?.value, 10) || 0,
+        priceVariantNote: document.getElementById('pf-price-variant-note')?.value.trim() || '',
+        ingredients: document.getElementById('pf-ingredients')?.value.trim() || '',
+        techCard: document.getElementById('pf-tech-card')?.value.trim() || '',
+        allergens: getAllergensFromForm(),
+        techCardRows: collectTechCardIngredientRows()
+    };
+}
+
+function getMenuAiBlock(key) {
+    if (!menuAiReviewState?.draft?.blocks) return null;
+    return menuAiReviewState.draft.blocks[key] || null;
+}
+
+function getMenuAiProposal(key) {
+    return getMenuAiBlock(key)?.proposal || {};
+}
+
+function getWarehouseOptionHtml(selectedId = '') {
+    return ['<option value="">Без складської привʼязки</option>']
+        .concat(productWarehouseItems.map(item => {
+            const selected = String(selectedId || '') === String(item.id) ? ' selected' : '';
+            const stockInfo = ` · ${Number(item.quantity || 0)} ${escapeHtml(item.unit || '')}`;
+            const location = item.locationName ? ` · ${escapeHtml(item.locationName)}` : '';
+            return `<option value="${escapeHtml(item.id)}"${selected}>${escapeHtml(item.name)}${stockInfo}${location}</option>`;
+        }))
+        .join('');
+}
+
+async function openMenuAiReviewWizard() {
+    const domain = document.getElementById('pf-domain')?.value;
+    const kitchenType = document.getElementById('pf-kitchen-type')?.value;
+    if (domain !== 'kitchen' || kitchenType !== 'menu') {
+        showNotification('AI-заповнення доступне тільки для меню-карток', 'error');
+        return;
+    }
+    await loadProductWarehouseItems().catch(() => {});
+    const currentCard = collectCurrentMenuCardForAi();
+    const elements = getMenuAiElements();
+    if (elements.productName) elements.productName.textContent = currentCard.name || currentCard.code || 'Нова меню-картка';
+    elements.modal?.classList.remove('hidden');
+    setMenuAiReviewSaving(true, 'Готуємо чернетку...');
+    setMenuAiReviewStatus('Готуємо AI-чернетку картки меню...', 'saving');
+    try {
+        const response = await apiGenerateProductMenuAiDraft({
+            businessContext: getProductApiBusinessContext(),
+            currentCard,
+            blockKey: 'all'
+        });
+        if (!response?.success) {
+            throw new Error(response?.error || 'AI draft failed');
+        }
+        menuAiReviewState = {
+            currentStep: 'nameDescription',
+            draft: response.draft,
+            approvedBlocks: {},
+            aiAvailable: response.aiAvailable !== false
+        };
+        renderMenuAiReviewWizard();
+        setMenuAiReviewStatus(response.aiAvailable === false
+            ? `AI недоступний: ${response.reason || 'використано fallback-чернетку з форми.'}`
+            : 'Чернетку створено. Перевірте та підтвердьте блоки.', response.aiAvailable === false ? 'warning' : 'ready');
+    } catch (err) {
+        setMenuAiReviewStatus(err.message || 'Не вдалося створити AI-чернетку', 'error');
+        showNotification('Не вдалося створити AI-чернетку меню', 'error');
+    } finally {
+        setMenuAiReviewSaving(false);
+    }
+}
+
+function closeMenuAiReviewWizard() {
+    if (menuAiReviewSaving) return;
+    document.getElementById('productAiReviewModal')?.classList.add('hidden');
+    menuAiReviewState = null;
+    setMenuAiReviewStatus('');
+}
+
+function captureCurrentMenuAiBlockEdits() {
+    if (!menuAiReviewState) return;
+    const key = menuAiReviewState.currentStep;
+    const block = getMenuAiBlock(key);
+    if (!block) return;
+    block.proposal = readMenuAiBlockFromDom(key);
+}
+
+function setMenuAiStep(key) {
+    if (!MENU_AI_BLOCKS.some(block => block.key === key) || !menuAiReviewState) return;
+    captureCurrentMenuAiBlockEdits();
+    menuAiReviewState.currentStep = key;
+    renderMenuAiReviewWizard();
+}
+
+function renderMenuAiReviewWizard() {
+    if (!menuAiReviewState) return;
+    const elements = getMenuAiElements();
+    const currentKey = menuAiReviewState.currentStep;
+    if (elements.steps) {
+        elements.steps.innerHTML = MENU_AI_BLOCKS.map(block => {
+            const approved = Boolean(menuAiReviewState.approvedBlocks[block.key]);
+            return `<button type="button" class="menu-ai-step${block.key === currentKey ? ' active' : ''}${approved ? ' approved' : ''}" data-menu-ai-step="${escapeHtml(block.key)}">${escapeHtml(block.label)}${approved ? ' ✓' : ''}</button>`;
+        }).join('');
+        elements.steps.querySelectorAll('[data-menu-ai-step]').forEach(button => {
+            button.addEventListener('click', () => setMenuAiStep(button.dataset.menuAiStep));
+        });
+    }
+    if (elements.body) {
+        elements.body.innerHTML = renderMenuAiBlockBody(currentKey);
+        wireMenuAiBlockBody(currentKey);
+    }
+    if (elements.feedback) elements.feedback.value = getMenuAiBlock(currentKey)?.feedback || '';
+}
+
+function renderMenuAiBlockBody(key) {
+    const proposal = getMenuAiProposal(key);
+    if (key === 'nameDescription') {
+        return `
+            <div class="menu-ai-grid">
+                <div class="menu-ai-field"><label for="menuAiName">Назва</label><input id="menuAiName" type="text" value="${escapeHtml(proposal.name || '')}"></div>
+                <div class="menu-ai-field"><label for="menuAiShortDescription">Короткий опис</label><input id="menuAiShortDescription" type="text" value="${escapeHtml(proposal.shortDescription || '')}"></div>
+                <div class="menu-ai-field"><label for="menuAiDescription">Опис</label><textarea id="menuAiDescription">${escapeHtml(proposal.description || '')}</textarea></div>
+                <div class="menu-ai-field"><label for="menuAiPromoDescription">Promo опис</label><textarea id="menuAiPromoDescription">${escapeHtml(proposal.promoDescription || '')}</textarea></div>
+            </div>
+        `;
+    }
+    if (key === 'allergens') {
+        const allergens = normalizeAllergenItems(proposal.allergens || []);
+        const selectedKeys = new Set(allergens.map(item => item.key));
+        const custom = allergens.filter(item => item.key.startsWith('custom:')).map(item => item.label).join(', ');
+        return `
+            <div class="menu-ai-allergen-list">
+                ${MENU_ALLERGEN_OPTIONS.map(item => `
+                    <label class="menu-ai-allergen-option">
+                        <input type="checkbox" data-ai-allergen-key="${escapeHtml(item.key)}" ${selectedKeys.has(item.key) ? 'checked' : ''}>
+                        <span>${escapeHtml(item.label)}</span>
+                    </label>
+                `).join('')}
+            </div>
+            <div class="menu-ai-field">
+                <label for="menuAiCustomAllergens">Інші алергени</label>
+                <input id="menuAiCustomAllergens" type="text" value="${escapeHtml(custom)}" placeholder="через кому">
+            </div>
+        `;
+    }
+    if (key === 'ingredients') {
+        const rows = Array.isArray(proposal.ingredients) && proposal.ingredients.length
+            ? proposal.ingredients
+            : [{ stockId: '', label: '', quantity: 1, unit: 'г', notes: '' }];
+        return `
+            <p class="menu-ai-block-hint">Складська привʼязка лишається явною. Рядки без складу збережуться як підготовка, але не спишуться автоматично.</p>
+            <div id="menuAiIngredientRows" class="menu-ai-ingredient-rows">
+                ${rows.map((row, index) => renderMenuAiIngredientRow(row, index)).join('')}
+            </div>
+            <button type="button" id="menuAiAddIngredientBtn" class="menu-ai-inline-btn">+ Додати рядок</button>
+        `;
+    }
+    return `
+        <div class="menu-ai-grid">
+            <div class="menu-ai-field"><label for="menuAiSuggestedPrice">Рекомендована ціна</label><input id="menuAiSuggestedPrice" type="number" min="0" step="1" value="${Number(proposal.suggestedPrice || 0)}"></div>
+            <div class="menu-ai-field"><label for="menuAiEstimatedCost">Оцінка собівартості</label><input id="menuAiEstimatedCost" type="number" min="0" step="1" value="${proposal.estimatedCost === null || proposal.estimatedCost === undefined ? '' : Number(proposal.estimatedCost || 0)}"></div>
+            <div class="menu-ai-field"><label for="menuAiPriceVariantNote">Варіанти / ціна</label><textarea id="menuAiPriceVariantNote">${escapeHtml(proposal.priceVariantNote || '')}</textarea></div>
+            <div class="menu-ai-field"><label for="menuAiCostNote">Коментар до оцінки</label><textarea id="menuAiCostNote">${escapeHtml(proposal.note || '')}</textarea></div>
+        </div>
+    `;
+}
+
+function renderMenuAiIngredientRow(row = {}, index = 0) {
+    return `
+        <div class="menu-ai-ingredient-row" data-menu-ai-ingredient-row="${index}">
+            <label>Склад<select data-ai-ingredient-field="stockId">${getWarehouseOptionHtml(row.stockId || row.warehouseStockId || '')}</select></label>
+            <label>Назва<input type="text" data-ai-ingredient-field="label" value="${escapeHtml(row.label || row.ingredientLabel || '')}"></label>
+            <label>Грами<input type="number" min="1" step="1" data-ai-ingredient-field="quantity" value="${Number(row.quantity || row.quantityPerUnit || 1)}"></label>
+            <label>Од.<input type="text" data-ai-ingredient-field="unit" value="${escapeHtml(row.unit || 'г')}"></label>
+            <label>Нотатка<input type="text" data-ai-ingredient-field="notes" value="${escapeHtml(row.notes || '')}"></label>
+            <button type="button" class="menu-ai-inline-btn" data-ai-remove-ingredient="${index}">×</button>
+        </div>
+    `;
+}
+
+function wireMenuAiBlockBody(key) {
+    if (key !== 'ingredients') return;
+    document.getElementById('menuAiAddIngredientBtn')?.addEventListener('click', () => {
+        const proposal = getMenuAiProposal('ingredients');
+        proposal.ingredients = readMenuAiIngredientRows();
+        proposal.ingredients.push({ stockId: '', label: '', quantity: 1, unit: 'г', notes: '' });
+        renderMenuAiReviewWizard();
+    });
+    document.querySelectorAll('[data-ai-remove-ingredient]').forEach(button => {
+        button.addEventListener('click', () => {
+            const index = Number(button.dataset.aiRemoveIngredient);
+            const proposal = getMenuAiProposal('ingredients');
+            proposal.ingredients = readMenuAiIngredientRows().filter((_, rowIndex) => rowIndex !== index);
+            renderMenuAiReviewWizard();
+        });
+    });
+    document.querySelectorAll('[data-ai-ingredient-field="stockId"]').forEach(select => {
+        select.addEventListener('change', () => {
+            const row = select.closest('[data-menu-ai-ingredient-row]');
+            const warehouseItem = productWarehouseItems.find(item => String(item.id) === String(select.value));
+            if (!row || !warehouseItem) return;
+            const label = row.querySelector('[data-ai-ingredient-field="label"]');
+            const unit = row.querySelector('[data-ai-ingredient-field="unit"]');
+            if (label && !label.value.trim()) label.value = warehouseItem.name || '';
+            if (unit && !unit.value.trim()) unit.value = warehouseItem.unit || '';
+        });
+    });
+}
+
+function readMenuAiIngredientRows() {
+    return Array.from(document.querySelectorAll('[data-menu-ai-ingredient-row]')).map((row, index) => ({
+        stockId: row.querySelector('[data-ai-ingredient-field="stockId"]')?.value || '',
+        label: row.querySelector('[data-ai-ingredient-field="label"]')?.value.trim() || '',
+        quantity: parseInt(row.querySelector('[data-ai-ingredient-field="quantity"]')?.value, 10) || 1,
+        unit: row.querySelector('[data-ai-ingredient-field="unit"]')?.value.trim() || 'г',
+        notes: row.querySelector('[data-ai-ingredient-field="notes"]')?.value.trim() || '',
+        sortOrder: (index + 1) * 10
+    })).filter(row => row.stockId || row.label);
+}
+
+function readMenuAiBlockFromDom(key) {
+    if (key === 'nameDescription') {
+        return {
+            name: document.getElementById('menuAiName')?.value.trim() || '',
+            shortDescription: document.getElementById('menuAiShortDescription')?.value.trim() || '',
+            description: document.getElementById('menuAiDescription')?.value.trim() || '',
+            promoDescription: document.getElementById('menuAiPromoDescription')?.value.trim() || ''
+        };
+    }
+    if (key === 'allergens') {
+        const selected = Array.from(document.querySelectorAll('[data-ai-allergen-key]:checked'))
+            .map(input => MENU_ALLERGEN_OPTIONS.find(item => item.key === input.dataset.aiAllergenKey))
+            .filter(Boolean);
+        const custom = normalizeAllergenItems(document.getElementById('menuAiCustomAllergens')?.value || '');
+        return { allergens: normalizeAllergenItems([...selected, ...custom]) };
+    }
+    if (key === 'ingredients') {
+        return { ingredients: readMenuAiIngredientRows() };
+    }
+    return {
+        suggestedPrice: parseInt(document.getElementById('menuAiSuggestedPrice')?.value, 10) || 0,
+        estimatedCost: parseInt(document.getElementById('menuAiEstimatedCost')?.value, 10) || null,
+        priceVariantNote: document.getElementById('menuAiPriceVariantNote')?.value.trim() || '',
+        note: document.getElementById('menuAiCostNote')?.value.trim() || ''
+    };
+}
+
+function approveMenuAiBlock() {
+    if (!menuAiReviewState) return;
+    captureCurrentMenuAiBlockEdits();
+    const key = menuAiReviewState.currentStep;
+    menuAiReviewState.approvedBlocks[key] = {
+        key,
+        status: 'approved',
+        approvedAt: new Date().toISOString(),
+        data: getMenuAiProposal(key)
+    };
+    const block = getMenuAiBlock(key);
+    if (block) block.status = 'approved';
+    const next = MENU_AI_BLOCKS.find(item => !menuAiReviewState.approvedBlocks[item.key]);
+    menuAiReviewState.currentStep = next?.key || key;
+    renderMenuAiReviewWizard();
+    setMenuAiReviewStatus(next ? 'Блок підтверджено. Перевірте наступний.' : 'Усі блоки підтверджено. Можна застосувати картку.', 'ready');
+}
+
+async function regenerateMenuAiBlock() {
+    if (!menuAiReviewState || menuAiReviewSaving) return;
+    captureCurrentMenuAiBlockEdits();
+    const key = menuAiReviewState.currentStep;
+    const feedback = document.getElementById('productAiReviewFeedback')?.value.trim() || '';
+    setMenuAiReviewSaving(true, 'Перегенеровуємо...');
+    setMenuAiReviewStatus('Оновлюємо поточний блок...', 'saving');
+    try {
+        const response = await apiGenerateProductMenuAiDraft({
+            businessContext: getProductApiBusinessContext(),
+            currentCard: collectCurrentMenuCardForAi(),
+            blockKey: key,
+            feedback,
+            draft: menuAiReviewState.draft
+        });
+        if (!response?.success) throw new Error(response?.error || 'AI regeneration failed');
+        menuAiReviewState.draft = response.draft;
+        delete menuAiReviewState.approvedBlocks[key];
+        renderMenuAiReviewWizard();
+        setMenuAiReviewStatus(response.aiAvailable === false
+            ? `Блок оновлено fallback-логікою: ${response.reason || 'AI недоступний.'}`
+            : 'Блок оновлено. Перевірте його перед підтвердженням.', response.aiAvailable === false ? 'warning' : 'ready');
+    } catch (err) {
+        setMenuAiReviewStatus(err.message || 'Не вдалося перегенерувати блок', 'error');
+    } finally {
+        setMenuAiReviewSaving(false);
+    }
+}
+
+function applyMenuAiApprovedBlocksToForm() {
+    const blocks = menuAiReviewState?.approvedBlocks || {};
+    const nameData = blocks.nameDescription?.data || {};
+    if (nameData.name) document.getElementById('pf-name').value = nameData.name;
+    if (nameData.description) document.getElementById('pf-description').value = nameData.description;
+    if (nameData.shortDescription) document.getElementById('pf-short-description').value = nameData.shortDescription;
+    if (nameData.promoDescription) document.getElementById('pf-promo-description').value = nameData.promoDescription;
+
+    const allergenData = blocks.allergens?.data || {};
+    setAllergensFormValue(allergenData.allergens || []);
+
+    const ingredientData = blocks.ingredients?.data || {};
+    const rows = Array.isArray(ingredientData.ingredients) ? ingredientData.ingredients : [];
+    if (rows.length) {
+        const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
+        if (detailedCheckbox) detailedCheckbox.checked = true;
+        techCardIngredientDrafts = rows.map((row, index) => normalizeTechCardDraftRow({
+            stockId: row.stockId,
+            label: row.label,
+            quantity: row.quantity,
+            unit: row.unit || 'г',
+            notes: row.notes,
+            sortOrder: (index + 1) * 10
+        }, index));
+        document.getElementById('pf-ingredients').value = rows.map(row => row.label).filter(Boolean).join(', ');
+        syncTechCardModePanel();
+    }
+
+    const priceData = blocks.priceCost?.data || {};
+    if (Number(priceData.suggestedPrice || 0) > 0) document.getElementById('pf-price').value = Number(priceData.suggestedPrice || 0);
+    if (priceData.priceVariantNote) document.getElementById('pf-price-variant-note').value = priceData.priceVariantNote;
+
+    const codeInput = document.getElementById('pf-code');
+    const nameValue = document.getElementById('pf-name')?.value.trim() || '';
+    if (codeInput && !codeInput.value.trim() && nameValue) {
+        codeInput.value = `MENU${String(Date.now()).slice(-6)}`;
+    }
+}
+
+async function applyMenuAiReviewFinal() {
+    if (!menuAiReviewState || menuAiReviewSaving) return;
+    captureCurrentMenuAiBlockEdits();
+    const missing = MENU_AI_BLOCKS.filter(block => !menuAiReviewState.approvedBlocks[block.key]);
+    if (missing.length) {
+        setMenuAiReviewStatus(`Підтвердіть блоки перед збереженням: ${missing.map(item => item.label).join(', ')}`, 'error');
+        return;
+    }
+    applyMenuAiApprovedBlocksToForm();
+    setMenuAiReviewSaving(true, 'Зберігаємо картку...');
+    setMenuAiReviewStatus('Застосовуємо підтверджені блоки до картки меню...', 'saving');
+    try {
+        const saved = await saveProduct({ keepOpen: true, silent: true });
+        if (!saved?.success || !saved.savedProductId) {
+            throw new Error(saved?.error || 'Не вдалося зберегти меню-картку');
+        }
+        const draft = {
+            ...(menuAiReviewState.draft || {}),
+            status: 'applied',
+            appliedAt: new Date().toISOString()
+        };
+        await apiSaveProductMenuAiDraft(saved.savedProductId, {
+            businessContext: getProductApiBusinessContext(),
+            status: 'applied',
+            draft,
+            approvedBlocks: menuAiReviewState.approvedBlocks
+        });
+        showNotification('AI-картку меню підтверджено і збережено', 'success');
+        setMenuAiReviewSaving(false);
+        closeMenuAiReviewWizard();
+        closeProductForm();
+        await loadProducts();
+    } catch (err) {
+        setMenuAiReviewStatus(err.message || 'Не вдалося застосувати AI-картку', 'error');
+        showNotification(err.message || 'Не вдалося застосувати AI-картку', 'error');
+    } finally {
+        setMenuAiReviewSaving(false);
+    }
+}
+
 async function hydrateTechCardForm(productId, product, domain, kitchenType, options = {}) {
     techCardLoadedProductId = productId || null;
     productFormFocusWriteOff = !!options.focusWriteOff;
@@ -1570,6 +2105,7 @@ async function openProductForm(productId = null, options = {}) {
         document.getElementById('pf-price-variant-note').value = p.priceVariantNote || '';
         document.getElementById('pf-availability-status').value = p.availabilityStatus || (p.isActive === false ? 'hidden' : 'active');
         document.getElementById('pf-ingredients').value = p.ingredients || '';
+        setAllergensFormValue(p.allergens || []);
         document.getElementById('pf-tech-card').value = p.techCard || '';
         document.getElementById('pf-cake-decoration').value = p.cakeDecoration || '';
         const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
@@ -1610,6 +2146,7 @@ async function openProductForm(productId = null, options = {}) {
         document.getElementById('pf-price-variant-note').value = '';
         document.getElementById('pf-availability-status').value = 'active';
         document.getElementById('pf-ingredients').value = '';
+        setAllergensFormValue([]);
         document.getElementById('pf-tech-card').value = '';
         document.getElementById('pf-cake-decoration').value = '';
         const detailedCheckbox = document.getElementById('pf-tech-card-detailed');
@@ -1659,6 +2196,7 @@ async function saveProduct(options = {}) {
             ? (document.getElementById('pf-availability-status')?.value || 'active')
             : 'active',
         ingredients: document.getElementById('pf-ingredients')?.value.trim(),
+        allergens: domain === 'kitchen' && kitchenType === 'menu' ? getAllergensFromForm() : [],
         techCard: document.getElementById('pf-tech-card')?.value.trim(),
         techCardMode: domain === 'kitchen' && kitchenType === 'menu' && isDetailedTechCardEnabled() ? 'detailed' : 'simple',
         cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
@@ -1676,7 +2214,7 @@ async function saveProduct(options = {}) {
 
     if (!product.code || !product.name) {
         showNotification('Код та назва обовʼязкові', 'error');
-        return;
+        return { success: false, error: 'code_and_name_required' };
     }
 
     if (!product.label) {
@@ -1686,35 +2224,44 @@ async function saveProduct(options = {}) {
     const duplicate = findActiveProductDuplicateInState(product, id);
     if (duplicate) {
         showNotification(duplicateProductMessage(duplicate), 'error');
-        return;
+        return { success: false, error: 'duplicate_product' };
     }
 
-    if (productSaveInFlight) return;
+    if (productSaveInFlight) return { success: false, error: 'save_in_flight' };
     productSaveInFlight = true;
     setProductSavingState(true);
     try {
-    let result;
-    if (id) {
-        result = await apiUpdateProduct(id, product);
-    } else {
-        product.id = product.code.toLowerCase().replace(/[^a-zа-яіїє0-9]/gi, '') + '_' + Date.now();
-        result = await apiCreateProduct(product);
-    }
-
-    if (result && result.success) {
-        const savedProductId = id || result.product?.id || product.id;
-        const techCardResult = await saveProductTechCardIfNeeded(savedProductId, domain, kitchenType);
-        if (!techCardResult?.success) return;
-        const noun = domain === 'kitchen' ? (kitchenType === 'cake' ? 'Торт' : 'Меню-позицію') : 'Програму';
-        showNotification(id ? `${noun} оновлено` : `${noun} додано`, 'success');
-        closeProductForm();
-        await loadProducts();
-        if (options.addNext === true && domain === 'kitchen') {
-            openProductForm();
+        let result;
+        if (id) {
+            result = await apiUpdateProduct(id, product);
+        } else {
+            product.id = product.code.toLowerCase().replace(/[^a-zа-яіїє0-9]/gi, '') + '_' + Date.now();
+            result = await apiCreateProduct(product);
         }
-    } else {
-        showNotification(result?.error || 'Помилка збереження', 'error');
-    }
+
+        if (result && result.success) {
+            const savedProductId = id || result.product?.id || product.id;
+            const techCardResult = await saveProductTechCardIfNeeded(savedProductId, domain, kitchenType);
+            if (!techCardResult?.success) {
+                return { success: false, error: techCardResult?.error || 'tech_card_save_failed' };
+            }
+            const noun = domain === 'kitchen' ? (kitchenType === 'cake' ? 'Торт' : 'Меню-позицію') : 'Програму';
+            if (!options.silent) {
+                showNotification(id ? `${noun} оновлено` : `${noun} додано`, 'success');
+            }
+            await loadProducts();
+            if (options.keepOpen !== true) {
+                closeProductForm();
+            }
+            if (options.addNext === true && domain === 'kitchen') {
+                openProductForm();
+            }
+            return { success: true, savedProductId, product: result.product || product };
+        }
+
+        const error = result?.error || 'Помилка збереження';
+        if (!options.silent) showNotification(error, 'error');
+        return { success: false, error };
     } finally {
         productSaveInFlight = false;
         setProductSavingState(false);

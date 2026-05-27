@@ -3,6 +3,7 @@
  */
 const router = require('express').Router();
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
@@ -12,6 +13,7 @@ const {
     requireBusinessContext,
     pushBusinessContextCondition
 } = require('../services/businessContext');
+const { openRouterChat } = require('../services/copilot');
 
 const log = createLogger('Products');
 
@@ -63,6 +65,34 @@ const KITCHEN_TYPES = new Set(['cake', 'menu']);
 const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
 const PRODUCT_TECH_CARD_MODES = new Set(['simple', 'detailed']);
 const PRODUCT_MUTATION_ROLES = ['admin', 'manager'];
+const productMenuAiRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 12,
+    keyGenerator: (req) => String(req.user?.id || req.user?.username || req.ip || 'anon'),
+    message: { success: false, error: 'Забагато AI-запитів до меню. Зачекайте хвилину.' },
+    standardHeaders: false,
+    legacyHeaders: false,
+    validate: { ipv6SubnetOrKeyGenerator: false }
+});
+const MENU_AI_BLOCK_KEYS = ['nameDescription', 'allergens', 'ingredients', 'priceCost'];
+const MENU_AI_BLOCK_KEY_SET = new Set(MENU_AI_BLOCK_KEYS);
+const MENU_AI_STATUS_VALUES = new Set(['draft', 'needs_changes', 'approved', 'applied']);
+const MENU_ALLERGEN_CATALOG = [
+    { key: 'gluten', label: 'Глютен', aliases: ['пшениця', 'борошно', 'wheat'] },
+    { key: 'milk', label: 'Молоко', aliases: ['молочні', 'лактоза', 'вершки', 'сир'] },
+    { key: 'eggs', label: 'Яйця', aliases: ['яйце'] },
+    { key: 'fish', label: 'Риба', aliases: ['лосось', 'тунець'] },
+    { key: 'crustaceans', label: 'Ракоподібні', aliases: ['креветки', 'краб'] },
+    { key: 'molluscs', label: 'Молюски', aliases: ['мідії', 'кальмар'] },
+    { key: 'peanuts', label: 'Арахіс', aliases: ['peanut'] },
+    { key: 'tree_nuts', label: 'Горіхи', aliases: ['мигдаль', 'фундук', 'волоський горіх'] },
+    { key: 'soy', label: 'Соя', aliases: ['соєвий'] },
+    { key: 'sesame', label: 'Кунжут', aliases: ['сезам'] },
+    { key: 'mustard', label: 'Гірчиця', aliases: ['mustard'] },
+    { key: 'celery', label: 'Селера', aliases: ['celery'] },
+    { key: 'sulphites', label: 'Сульфіти', aliases: ['сульфіти', 'sulfites'] },
+    { key: 'lupin', label: 'Люпин', aliases: ['lupin'] }
+];
 
 function requireProductBusinessContext(req, res) {
     const businessContext = businessContextFromRequest(req);
@@ -142,6 +172,396 @@ function cleanNullableString(value, maxLength) {
     const text = String(value).trim();
     if (!text) return null;
     return text.slice(0, maxLength);
+}
+
+function safeJsonObject(value, fallback = {}) {
+    if (!value) return { ...fallback };
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { ...fallback };
+        } catch {
+            return { ...fallback };
+        }
+    }
+    return { ...fallback };
+}
+
+function parseAIJsonObject(text) {
+    const cleaned = String(text || '')
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```$/i, '')
+        .trim();
+    try {
+        return safeJsonObject(JSON.parse(cleaned));
+    } catch {
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (!match) return {};
+        try {
+            return safeJsonObject(JSON.parse(match[0]));
+        } catch {
+            return {};
+        }
+    }
+}
+
+function knownMenuAllergen(value) {
+    const identity = normalizeProductIdentity(value);
+    if (!identity) return null;
+    return MENU_ALLERGEN_CATALOG.find(item => (
+        item.key === identity
+        || normalizeProductIdentity(item.label) === identity
+        || (item.aliases || []).some(alias => normalizeProductIdentity(alias) === identity)
+    )) || null;
+}
+
+function normalizeAllergenList(value, options = {}) {
+    const includeReason = options.includeReason === true;
+    const source = options.source || null;
+    const rawItems = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\n]/).map(item => item.trim()).filter(Boolean);
+    const seen = new Set();
+    const normalized = [];
+
+    for (const rawItem of rawItems.slice(0, 40)) {
+        const sourceObject = rawItem && typeof rawItem === 'object' && !Array.isArray(rawItem) ? rawItem : {};
+        const rawLabel = sourceObject.label || sourceObject.name || sourceObject.value || sourceObject.key || rawItem;
+        const label = cleanNullableString(rawLabel, 80);
+        if (!label) continue;
+        const known = knownMenuAllergen(sourceObject.key || label);
+        const identity = normalizeProductIdentity(known?.label || label);
+        const key = known?.key || `custom:${crypto.createHash('sha1').update(identity).digest('hex').slice(0, 10)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const item = {
+            key,
+            label: known?.label || label
+        };
+        const reason = cleanNullableString(sourceObject.reason || sourceObject.note || sourceObject.notes, 220);
+        if (includeReason && reason) item.reason = reason;
+        if (source) item.source = source;
+        normalized.push(item);
+        if (normalized.length >= 20) break;
+    }
+
+    return normalized;
+}
+
+function inferAllergensFromText(text) {
+    const value = normalizeProductIdentity(text);
+    const inferred = [];
+    const rules = [
+        ['gluten', /борошн|пшен|хліб|булк|тіст|паста|макарон|паніров/i],
+        ['milk', /молок|вершк|сир|масл|йогурт|сметан|моцарел|пармезан/i],
+        ['eggs', /яйц|омлет|майонез/i],
+        ['fish', /риб|лосос|тунец|оселед/i],
+        ['crustaceans', /кревет|краб|рак/i],
+        ['peanuts', /арах/i],
+        ['tree_nuts', /горіх|мигд|фундук|кешью|волоськ/i],
+        ['soy', /соєв|соя|тофу/i],
+        ['sesame', /кунжут|сезам/i],
+        ['mustard', /гірчиц/i],
+        ['celery', /селер/i],
+        ['sulphites', /сульфіт|вино|оцет/i]
+    ];
+    for (const [key, regex] of rules) {
+        if (regex.test(value)) {
+            const known = MENU_ALLERGEN_CATALOG.find(item => item.key === key);
+            if (known) inferred.push({ key: known.key, label: known.label, reason: 'Знайдено за складом/назвою у чернетці' });
+        }
+    }
+    return normalizeAllergenList(inferred, { includeReason: true, source: 'fallback' });
+}
+
+function normalizeAiStatus(value, fallback = 'draft') {
+    const status = String(value || fallback).trim().toLowerCase();
+    return MENU_AI_STATUS_VALUES.has(status) ? status : fallback;
+}
+
+function normalizeMenuAiBlock(key, block = {}) {
+    const safeBlock = safeJsonObject(block);
+    const proposal = safeJsonObject(safeBlock.proposal || safeBlock.data || safeBlock);
+    return {
+        key,
+        status: normalizeAiStatus(safeBlock.status, safeBlock.approved ? 'approved' : 'draft'),
+        proposal,
+        feedback: cleanNullableString(safeBlock.feedback, 1000),
+        approvedAt: safeBlock.approvedAt || safeBlock.approved_at || null,
+        approvedBy: cleanNullableString(safeBlock.approvedBy || safeBlock.approved_by, 100),
+        regeneratedAt: safeBlock.regeneratedAt || safeBlock.regenerated_at || null
+    };
+}
+
+function normalizeMenuAiDraft(value = {}, options = {}) {
+    const raw = safeJsonObject(value);
+    const rawBlocks = safeJsonObject(raw.blocks || raw);
+    const blocks = {};
+    for (const key of MENU_AI_BLOCK_KEYS) {
+        blocks[key] = normalizeMenuAiBlock(key, rawBlocks[key] || {});
+    }
+    return {
+        version: 1,
+        status: normalizeAiStatus(options.status || raw.status, 'draft'),
+        source: cleanNullableString(options.source || raw.source, 40) || 'operator',
+        aiAvailable: options.aiAvailable === undefined ? raw.aiAvailable !== false : options.aiAvailable === true,
+        generatedAt: options.generatedAt || raw.generatedAt || raw.generated_at || new Date().toISOString(),
+        blocks
+    };
+}
+
+function normalizeMenuAiApprovedBlocks(value = {}, username = null) {
+    const raw = safeJsonObject(value);
+    const approved = {};
+    for (const key of MENU_AI_BLOCK_KEYS) {
+        const block = safeJsonObject(raw[key]);
+        if (!Object.keys(block).length) continue;
+        approved[key] = {
+            key,
+            status: 'approved',
+            approvedAt: block.approvedAt || block.approved_at || new Date().toISOString(),
+            approvedBy: cleanNullableString(block.approvedBy || block.approved_by || username, 100),
+            data: safeJsonObject(block.data || block.proposal || block)
+        };
+    }
+    return approved;
+}
+
+function scoreWarehouseCandidate(label, item) {
+    const needle = normalizeProductIdentity(label);
+    const haystack = normalizeProductIdentity(item.name);
+    if (!needle || !haystack) return 0;
+    if (needle === haystack) return 100;
+    if (haystack.includes(needle)) return 88;
+    if (needle.includes(haystack)) return 78;
+    const tokens = needle.split(/\s+/).filter(token => token.length > 2);
+    if (!tokens.length) return 0;
+    const overlap = tokens.filter(token => haystack.includes(token)).length;
+    return Math.round((overlap / tokens.length) * 70);
+}
+
+function mapWarehouseCandidate(item, score = 0) {
+    return {
+        stockId: item.id,
+        id: item.id,
+        name: item.name,
+        unit: item.unit || null,
+        quantity: Number(item.quantity || 0),
+        minQuantity: Number(item.min_quantity || 0),
+        locationName: item.location_name || null,
+        purchaseUnitPrice: Number(item.purchase_unit_price || 0),
+        lastOrderPrice: Number(item.last_order_price || 0),
+        score
+    };
+}
+
+function findWarehouseCandidates(label, warehouseItems = []) {
+    return warehouseItems
+        .map(item => ({ item, score: scoreWarehouseCandidate(label, item) }))
+        .filter(entry => entry.score >= 45)
+        .sort((a, b) => b.score - a.score || String(a.item.name || '').localeCompare(String(b.item.name || ''), 'uk'))
+        .slice(0, 5)
+        .map(entry => mapWarehouseCandidate(entry.item, entry.score));
+}
+
+function normalizeMenuAiIngredient(row = {}, index = 0, warehouseItems = []) {
+    const stockId = toOptionalInt(row.stockId || row.stock_id || row.warehouseStockId || row.warehouse_stock_id || row.suggestedStockId);
+    const knownStock = stockId ? warehouseItems.find(item => Number(item.id) === stockId) : null;
+    const rawLabel = row.label || row.name || row.ingredientLabel || row.ingredient_label || row.possibleWarehouseName || knownStock?.name || '';
+    const label = cleanNullableString(rawLabel, 255);
+    const quantity = toPositiveInt(row.quantityPerUnit || row.quantity_per_unit || row.quantity || row.grams || row.amount) || 1;
+    const unit = cleanNullableString(row.unit || (row.grams ? 'г' : knownStock?.unit), 30) || 'г';
+    const notes = cleanNullableString(row.notes || row.note || row.reason, 1000);
+    const candidates = findWarehouseCandidates(label || knownStock?.name, warehouseItems);
+    const exactCandidate = candidates.find(candidate => candidate.score >= 95);
+    return {
+        stockId: knownStock ? stockId : (exactCandidate ? exactCandidate.stockId : null),
+        label: label || exactCandidate?.name || '',
+        quantity,
+        unit,
+        notes,
+        sortOrder: toPositiveInt(row.sortOrder || row.sort_order) || ((index + 1) * 10),
+        warehouseCandidates: candidates
+    };
+}
+
+function estimateMenuCostFromIngredients(ingredients = [], warehouseItems = []) {
+    const byId = new Map(warehouseItems.map(item => [Number(item.id), item]));
+    let total = 0;
+    let covered = 0;
+    for (const row of ingredients) {
+        const item = byId.get(Number(row.stockId));
+        const unitPrice = Number(item?.purchase_unit_price || item?.last_order_price || 0);
+        if (!item || !unitPrice || normalizeProductIdentity(item.unit) !== normalizeProductIdentity(row.unit)) continue;
+        total += Number(row.quantity || 0) * unitPrice;
+        covered += 1;
+    }
+    return {
+        estimatedCost: covered ? Math.round(total) : null,
+        confidence: covered && covered === ingredients.length ? 'medium' : (covered ? 'low' : 'unknown'),
+        note: covered
+            ? 'Оцінка по складських цінах тільки для рядків з однаковими одиницями.'
+            : 'Немає достатніх складських цін або збігів одиниць для надійної оцінки.'
+    };
+}
+
+function buildMenuAiDraftFromRaw(raw = {}, context = {}) {
+    const source = context.source || 'ai';
+    const currentCard = safeJsonObject(context.currentCard);
+    const warehouseItems = context.warehouseItems || [];
+    const rawBlocks = safeJsonObject(raw.blocks || raw);
+    const nameData = safeJsonObject(rawBlocks.nameDescription || raw.nameDescription);
+    const ingredientsRaw = Array.isArray(rawBlocks.ingredients?.ingredients)
+        ? rawBlocks.ingredients.ingredients
+        : (Array.isArray(raw.ingredients) ? raw.ingredients : []);
+    const normalizedIngredients = ingredientsRaw
+        .map((row, index) => normalizeMenuAiIngredient(row, index, warehouseItems))
+        .filter(row => row.label || row.stockId);
+    const costEstimate = estimateMenuCostFromIngredients(normalizedIngredients, warehouseItems);
+    const priceCostRaw = safeJsonObject(rawBlocks.priceCost || raw.priceCost);
+    const fallbackAllergens = inferAllergensFromText([
+        currentCard.name,
+        currentCard.description,
+        currentCard.shortDescription,
+        currentCard.ingredients,
+        normalizedIngredients.map(row => row.label).join(', ')
+    ].filter(Boolean).join(' '));
+    const rawAllergens = rawBlocks.allergens?.allergens || raw.allergens || currentCard.allergens || [];
+    const allergenSource = Array.isArray(rawAllergens) && rawAllergens.length ? rawAllergens : fallbackAllergens;
+    const proposedAllergens = normalizeAllergenList(
+        allergenSource,
+        { includeReason: true, source }
+    );
+
+    return normalizeMenuAiDraft({
+        status: 'draft',
+        source,
+        aiAvailable: context.aiAvailable !== false,
+        generatedAt: new Date().toISOString(),
+        blocks: {
+            nameDescription: {
+                key: 'nameDescription',
+                status: 'draft',
+                proposal: {
+                    name: cleanNullableString(nameData.name || currentCard.name, 200) || '',
+                    description: cleanNullableString(nameData.description || currentCard.description, 1200) || '',
+                    shortDescription: cleanNullableString(nameData.shortDescription || nameData.short_description || currentCard.shortDescription, 1200) || '',
+                    promoDescription: cleanNullableString(nameData.promoDescription || nameData.promo_description || currentCard.promoDescription, 3000) || ''
+                }
+            },
+            allergens: {
+                key: 'allergens',
+                status: 'draft',
+                proposal: { allergens: proposedAllergens }
+            },
+            ingredients: {
+                key: 'ingredients',
+                status: 'draft',
+                proposal: { ingredients: normalizedIngredients }
+            },
+            priceCost: {
+                key: 'priceCost',
+                status: 'draft',
+                proposal: {
+                    suggestedPrice: toPositiveInt(priceCostRaw.suggestedPrice || priceCostRaw.price || currentCard.price) || null,
+                    estimatedCost: Number.isFinite(Number(priceCostRaw.estimatedCost)) ? Math.round(Number(priceCostRaw.estimatedCost)) : costEstimate.estimatedCost,
+                    confidence: cleanNullableString(priceCostRaw.confidence, 30) || costEstimate.confidence,
+                    priceVariantNote: cleanNullableString(priceCostRaw.priceVariantNote || priceCostRaw.price_variant_note || currentCard.priceVariantNote, 2000) || '',
+                    note: cleanNullableString(priceCostRaw.note || costEstimate.note, 600) || costEstimate.note
+                }
+            }
+        }
+    }, { source, aiAvailable: context.aiAvailable !== false, status: 'draft' });
+}
+
+function buildFallbackMenuAiDraft(currentCard = {}, warehouseItems = []) {
+    const existingRows = Array.isArray(currentCard.techCardRows) ? currentCard.techCardRows : [];
+    const textRows = String(currentCard.ingredients || '')
+        .split(/[,;\n]/)
+        .map(item => item.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+        .map(label => ({ label, quantity: 1, unit: 'г' }));
+    return buildMenuAiDraftFromRaw({
+        blocks: {
+            nameDescription: currentCard,
+            allergens: { allergens: normalizeAllergenList(currentCard.allergens, { includeReason: true }) },
+            ingredients: { ingredients: existingRows.length ? existingRows : textRows },
+            priceCost: {
+                suggestedPrice: currentCard.price,
+                priceVariantNote: currentCard.priceVariantNote,
+                note: 'Fallback-чернетка з поточної форми, без AI-генерації.'
+            }
+        }
+    }, { source: 'fallback', aiAvailable: false, currentCard, warehouseItems });
+}
+
+async function loadMenuAiWarehouseItems(client = pool) {
+    const result = await client.query(
+        `SELECT
+            ws.id,
+            ws.name,
+            ws.category,
+            ws.quantity,
+            ws.min_quantity,
+            ws.unit,
+            ws.purchase_unit_price,
+            c.last_order_price,
+            wl.name AS location_name
+         FROM warehouse_stock ws
+         LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+         LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+         WHERE ws.is_active = true
+         ORDER BY
+            CASE WHEN ws.category IN ('food', 'consumable') THEN 0 ELSE 1 END,
+            ws.name
+         LIMIT 250`
+    );
+    return result.rows;
+}
+
+function buildMenuAiPrompt(currentCard, warehouseItems, blockKey, feedback) {
+    const warehouseBrief = warehouseItems.slice(0, 120).map(item => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        category: item.category,
+        purchaseUnitPrice: Number(item.purchase_unit_price || 0),
+        lastOrderPrice: Number(item.last_order_price || 0)
+    }));
+    return {
+        system: `Ти допомагаєш оператору Event Genix CRM заповнювати картку меню. Відповідай тільки валідним JSON без markdown. AI пропонує чернетку, оператор підтверджує вручну. Не вигадуй складські ID: використовуй тільки ID зі списку warehouseItems, якщо назва справді збігається. Якщо не впевнений, залиш stockId null і дай label.`,
+        user: JSON.stringify({
+            requestedBlock: blockKey,
+            operatorFeedback: feedback || '',
+            currentCard,
+            warehouseItems: warehouseBrief,
+            requiredShape: {
+                blocks: {
+                    nameDescription: {
+                        name: 'string',
+                        description: 'string',
+                        shortDescription: 'string',
+                        promoDescription: 'string'
+                    },
+                    allergens: {
+                        allergens: [{ key: 'known_or_custom', label: 'string', reason: 'string' }]
+                    },
+                    ingredients: {
+                        ingredients: [{ label: 'string', stockId: null, quantity: 100, unit: 'г', notes: 'string' }]
+                    },
+                    priceCost: {
+                        suggestedPrice: 0,
+                        estimatedCost: null,
+                        confidence: 'low|medium|unknown',
+                        priceVariantNote: 'string',
+                        note: 'string'
+                    }
+                }
+            }
+        })
+    };
 }
 
 function toOptionalInt(value) {
@@ -238,6 +658,9 @@ function normalizeProductPayload(body = {}) {
         ingredients: cleanNullableString(pickField(body, 'ingredients', 'ingredients', null), 4000),
         techCard: cleanNullableString(pickField(body, 'techCard', 'tech_card', null), 5000),
         techCardMode: normalizeTechCardMode(pickField(body, 'techCardMode', 'tech_card_mode', 'simple')),
+        allergens: domain === 'kitchen' && kitchenType === 'menu'
+            ? normalizeAllergenList(pickField(body, 'allergens', 'allergens', []))
+            : [],
         menuSection: domain === 'kitchen' && kitchenType === 'menu'
             ? cleanNullableString(pickField(body, 'menuSection', 'menu_section', null), 120)
             : null,
@@ -427,6 +850,15 @@ function mapProductRow(row) {
         ingredients: row.ingredients || null,
         techCard: row.tech_card || null,
         techCardMode: row.tech_card_mode || 'simple',
+        allergens: normalizeAllergenList(row.allergens || []),
+        aiCardDraft: normalizeMenuAiDraft(row.ai_card_draft || {}, {
+            source: row.ai_card_draft?.source || 'stored',
+            status: row.ai_card_draft?.status || 'draft',
+            aiAvailable: row.ai_card_draft?.aiAvailable !== false
+        }),
+        aiCardApprovedBlocks: normalizeMenuAiApprovedBlocks(row.ai_card_approved_blocks || {}, row.ai_card_reviewed_by || null),
+        aiCardReviewedAt: row.ai_card_reviewed_at || null,
+        aiCardReviewedBy: row.ai_card_reviewed_by || null,
         techCardIngredientCount: Number(row.tech_card_ingredient_count || 0),
         techCardLinkedIngredientCount: Number(row.tech_card_linked_ingredient_count || 0),
         menuSection: row.menu_section || null,
@@ -619,6 +1051,140 @@ router.get('/catalogs', async (req, res) => {
 });
 
 // GET /api/products/:id — Get single product
+// POST /api/products/menu-ai-draft — AI-assisted menu card draft, never canonical truth
+router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const currentCard = safeJsonObject(req.body?.currentCard || req.body?.current_card);
+        const incomingDraft = normalizeMenuAiDraft(req.body?.draft || {});
+        const requestedBlock = req.body?.blockKey || req.body?.block_key || 'all';
+        const blockKey = requestedBlock === 'all' || MENU_AI_BLOCK_KEY_SET.has(requestedBlock)
+            ? requestedBlock
+            : 'all';
+        const feedback = cleanNullableString(req.body?.feedback, 1000);
+        const warehouseItems = await loadMenuAiWarehouseItems();
+
+        let generatedDraft;
+        let aiAvailable = true;
+        let generationSource = 'ai';
+        let generationReason = null;
+        try {
+            const prompt = buildMenuAiPrompt(currentCard, warehouseItems, blockKey, feedback);
+            const raw = await openRouterChat({
+                system: prompt.system,
+                messages: [{ role: 'user', content: prompt.user }],
+                temperature: 0.35,
+                max_tokens: 1800
+            });
+            generatedDraft = buildMenuAiDraftFromRaw(parseAIJsonObject(raw), {
+                source: 'ai',
+                aiAvailable: true,
+                currentCard,
+                warehouseItems
+            });
+        } catch (err) {
+            aiAvailable = false;
+            generationSource = 'fallback';
+            generationReason = err.message || 'AI draft generation unavailable';
+            generatedDraft = buildFallbackMenuAiDraft(currentCard, warehouseItems);
+        }
+
+        if (blockKey !== 'all') {
+            const merged = normalizeMenuAiDraft(incomingDraft, {
+                source: incomingDraft.source || generationSource,
+                aiAvailable,
+                status: 'draft'
+            });
+            merged.blocks[blockKey] = generatedDraft.blocks[blockKey];
+            merged.blocks[blockKey].status = 'draft';
+            merged.blocks[blockKey].feedback = feedback;
+            merged.blocks[blockKey].regeneratedAt = new Date().toISOString();
+            generatedDraft = merged;
+        }
+
+        generatedDraft.source = generationSource;
+        generatedDraft.aiAvailable = aiAvailable;
+        generatedDraft.generatedAt = new Date().toISOString();
+
+        res.json({
+            success: true,
+            aiAvailable,
+            source: generationSource,
+            reason: generationReason,
+            draft: generatedDraft,
+            warehouseCandidates: warehouseItems.slice(0, 120).map(item => mapWarehouseCandidate(item))
+        });
+    } catch (err) {
+        log.error('Generate product menu AI draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// GET /api/products/:id/ai-card-draft — stored AI review state, separate from approved menu truth
+router.get('/:id/ai-card-draft', async (req, res) => {
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, req.params.id, businessContext);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        res.json({
+            success: true,
+            product: mapProductRow(product),
+            draft: normalizeMenuAiDraft(product.ai_card_draft || {}),
+            approvedBlocks: normalizeMenuAiApprovedBlocks(product.ai_card_approved_blocks || {}, product.ai_card_reviewed_by || null)
+        });
+    } catch (err) {
+        log.error('Get product menu AI draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// PUT /api/products/:id/ai-card-draft — persist human review/audit state only
+router.put('/:id/ai-card-draft', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const { id } = req.params;
+        const existing = await getProductWithPriceRule(pool, id, businessContext);
+        if (!existing) return res.status(404).json({ error: 'Product not found' });
+        if (existing.domain !== 'kitchen' || existing.kitchen_type !== 'menu') {
+            return res.status(400).json({ success: false, error: 'AI card review is available only for kitchen menu items' });
+        }
+
+        const draft = normalizeMenuAiDraft(req.body?.draft || {}, {
+            status: normalizeAiStatus(req.body?.status, 'applied'),
+            source: req.body?.source || req.body?.draft?.source || 'stored',
+            aiAvailable: req.body?.draft?.aiAvailable !== false
+        });
+        const approvedBlocks = normalizeMenuAiApprovedBlocks(req.body?.approvedBlocks || req.body?.approved_blocks || {}, req.user.username);
+        draft.status = normalizeAiStatus(req.body?.status, 'applied');
+
+        const result = await pool.query(
+            `UPDATE products
+             SET ai_card_draft = $1::jsonb,
+                 ai_card_approved_blocks = $2::jsonb,
+                 ai_card_reviewed_at = NOW(),
+                 ai_card_reviewed_by = $3,
+                 updated_at = NOW(),
+                 updated_by = $3
+             WHERE id = $4 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+             RETURNING *`,
+            [JSON.stringify(draft), JSON.stringify(approvedBlocks), req.user.username, id, businessContext]
+        );
+
+        res.json({
+            success: true,
+            product: mapProductRow(result.rows[0]),
+            draft,
+            approvedBlocks
+        });
+    } catch (err) {
+        log.error('Save product menu AI draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const businessContext = requireProductBusinessContext(req, res);
@@ -717,7 +1283,7 @@ router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
             description, isPerChild = false, hasFiller = false,
             isCustom = false, sortOrder = 0, domain, kitchenType,
             shortDescription, promoDescription, ingredients, techCard,
-            techCardMode,
+            techCardMode, allergens,
             menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
             cakeDecoration
         } = payload;
@@ -740,10 +1306,10 @@ router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
         }
 
         const result = await client.query(
-            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, allergens, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
              RETURNING *`,
-            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);
@@ -795,7 +1361,7 @@ router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
             description, isPerChild = false, hasFiller = false,
             isCustom = false, isActive = true, sortOrder = 0, domain, kitchenType,
             shortDescription, promoDescription, ingredients, techCard,
-            techCardMode,
+            techCardMode, allergens,
             menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
             cakeDecoration
         } = payload;
@@ -818,12 +1384,12 @@ router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
                 code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
                 price=$7, hosts=$8, age_range=$9, kids_capacity=$10, description=$11,
                 domain=$12, kitchen_type=$13, short_description=$14, promo_description=$15,
-                ingredients=$16, tech_card=$17, tech_card_mode=$18, menu_section=$19, serving_unit=$20,
-                weight_value=$21, price_variant_note=$22, availability_status=$23,
-                cake_decoration=$24, is_per_child=$25, has_filler=$26, is_custom=$27,
-                is_active=$28, sort_order=$29, updated_at=NOW(), updated_by=$30
-             WHERE id=$31 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $32 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
+                ingredients=$16, tech_card=$17, tech_card_mode=$18, allergens=$19::jsonb, menu_section=$20, serving_unit=$21,
+                weight_value=$22, price_variant_note=$23, availability_status=$24,
+                cake_decoration=$25, is_per_child=$26, has_filler=$27, is_custom=$28,
+                is_active=$29, sort_order=$30, updated_at=NOW(), updated_by=$31
+             WHERE id=$32 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $33 RETURNING *`,
+            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);

@@ -33,6 +33,9 @@ test('products compatibility page keeps business-aware products IA with restored
     assert.match(html, /id="pf-serving-unit"/);
     assert.match(html, /id="pf-price-variant-note"/);
     assert.match(html, /id="pf-availability-status"/);
+    assert.match(html, /id="pf-allergens"/);
+    assert.match(html, /id="productAiAutofillBtn"/);
+    assert.match(html, /id="productAiReviewModal"/);
     assert.match(html, /Холодні закуски/);
     assert.match(html, /Коктейлі та холодні напої/);
     assert.match(html, /id="productDocumentModal"/);
@@ -79,6 +82,10 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /priceVariantNote/);
     assert.match(pageJs, /availabilityStatus/);
     assert.match(pageJs, /cakeDecoration/);
+    assert.match(pageJs, /allergens/);
+    assert.match(pageJs, /MENU_AI_BLOCKS/);
+    assert.match(pageJs, /openMenuAiReviewWizard/);
+    assert.match(pageJs, /applyMenuAiReviewFinal/);
     assert.match(pageJs, /techCard/);
     assert.match(pageJs, /ingredients/);
     assert.match(pageJs, /sourceDocumentVerifiedManual/);
@@ -135,6 +142,9 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(productsRoute, /weightValue/);
     assert.match(productsRoute, /priceVariantNote/);
     assert.match(productsRoute, /availabilityStatus/);
+    assert.match(productsRoute, /allergens/);
+    assert.match(productsRoute, /ai_card_draft/);
+    assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
     assert.match(kitchenMigration, /domain VARCHAR\(30\)/);
     assert.match(kitchenMigration, /kitchen_type VARCHAR\(30\)/);
     assert.match(kitchenMigration, /cake_decoration TEXT/);

@@ -11,6 +11,7 @@ function read(relPath) {
 
 test('detailed menu tech-card schema extends products and stock requirements without replacing warehouse truth', () => {
     const migration = read('db/migrations/222_products_detailed_tech_cards.sql');
+    const aiMigration = read('db/migrations/225_products_menu_ai_card_workflow.sql');
 
     assert.match(migration, /MIGRATION_KIND:/);
     assert.match(migration, /SAFETY:/);
@@ -22,6 +23,12 @@ test('detailed menu tech-card schema extends products and stock requirements wit
     assert.match(migration, /ADD COLUMN IF NOT EXISTS waste_percent/);
     assert.match(migration, /product_stock_requirements_link_or_label_check/);
     assert.match(migration, /idx_psr_product_sort/);
+    assert.match(aiMigration, /MIGRATION_KIND:/);
+    assert.match(aiMigration, /ADD COLUMN IF NOT EXISTS allergens JSONB/);
+    assert.match(aiMigration, /ADD COLUMN IF NOT EXISTS ai_card_draft JSONB/);
+    assert.match(aiMigration, /ADD COLUMN IF NOT EXISTS ai_card_approved_blocks JSONB/);
+    assert.match(aiMigration, /products_allergens_json_array_check/);
+    assert.match(aiMigration, /idx_products_allergens_gin/);
 });
 
 test('products API exposes detailed tech-card persistence and explicit warehouse write-off', () => {
@@ -40,6 +47,16 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /INSERT INTO warehouse_stock_movements/);
     assert.match(productsRoute, /VALUES \(\$1, 'issue'/);
     assert.match(productsRoute, /All ingredient rows must be linked to active warehouse stock before write-off/);
+    assert.match(productsRoute, /MENU_ALLERGEN_CATALOG/);
+    assert.match(productsRoute, /normalizeAllergenList/);
+    assert.match(productsRoute, /openRouterChat/);
+    assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
+    assert.match(productsRoute, /router\.get\('\/:id\/ai-card-draft'/);
+    assert.match(productsRoute, /router\.put\('\/:id\/ai-card-draft'/);
+    assert.match(productsRoute, /AI-assisted menu card draft, never canonical truth/);
+    assert.match(productsRoute, /buildFallbackMenuAiDraft/);
+    assert.match(productsRoute, /loadMenuAiWarehouseItems/);
+    assert.match(productsRoute, /ai_card_approved_blocks/);
 });
 
 test('procurement API and warehouse page surface kitchen tech-card demand signals', () => {
@@ -67,10 +84,25 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     const apiJs = read('js/api.js');
 
     assert.match(programsHtml, /id="pf-tech-card-detailed"/);
+    assert.match(programsHtml, /id="pf-allergens"/);
+    assert.match(programsHtml, /id="productAiAutofillBtn"/);
+    assert.match(programsHtml, /id="productAiReviewModal"/);
+    assert.match(programsHtml, /id="productAiApproveBlockBtn"/);
+    assert.match(programsHtml, /id="productAiRegenerateBlockBtn"/);
+    assert.match(programsHtml, /AI створює лише чернетку/);
     assert.match(programsHtml, /id="pf-tech-card-rows"/);
     assert.match(programsHtml, /id="addTechCardIngredientBtn"/);
     assert.match(programsHtml, /id="pf-tech-writeoff-btn"/);
     assert.match(programsJs, /loadProductWarehouseItems/);
+    assert.match(programsJs, /MENU_ALLERGEN_OPTIONS/);
+    assert.match(programsJs, /MENU_AI_BLOCKS/);
+    assert.match(programsJs, /getAllergensFromForm/);
+    assert.match(programsJs, /openMenuAiReviewWizard/);
+    assert.match(programsJs, /approveMenuAiBlock/);
+    assert.match(programsJs, /regenerateMenuAiBlock/);
+    assert.match(programsJs, /applyMenuAiReviewFinal/);
+    assert.match(programsJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(programsJs, /apiSaveProductMenuAiDraft/);
     assert.match(programsJs, /renderTechCardIngredientRows/);
     assert.match(programsJs, /saveProductTechCardIfNeeded/);
     assert.match(programsJs, /submitTechCardWriteOff/);
@@ -79,4 +111,7 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(apiJs, /apiGetProductTechCard/);
     assert.match(apiJs, /apiUpdateProductTechCard/);
     assert.match(apiJs, /apiWriteOffProductTechCard/);
+    assert.match(apiJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(apiJs, /apiGetProductMenuAiDraft/);
+    assert.match(apiJs, /apiSaveProductMenuAiDraft/);
 });

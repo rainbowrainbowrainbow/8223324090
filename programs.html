@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.66.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.51">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.51">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.51">
+    <link rel="stylesheet" href="css/base.css?v=0.66.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.52">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.52">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -667,6 +667,188 @@
             font-weight: 800;
         }
 
+        .menu-allergen-field input {
+            min-height: 42px;
+        }
+
+        .menu-allergen-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .menu-allergen-chip,
+        .menu-ai-step,
+        .menu-ai-inline-btn {
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.78);
+            color: var(--gray-700, #334155);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .menu-allergen-chip {
+            min-height: 30px;
+            padding: 5px 9px;
+        }
+
+        .menu-allergen-chip.active,
+        .menu-ai-step.active,
+        .menu-ai-step.approved {
+            border-color: rgba(20, 184, 166, 0.42);
+            background: rgba(20, 184, 166, 0.12);
+            color: var(--primary-dark, #0f766e);
+        }
+
+        .menu-ai-entry {
+            flex: 1 1 100%;
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border: 1px solid rgba(99, 102, 241, 0.24);
+            border-radius: 14px;
+            background: rgba(99, 102, 241, 0.06);
+        }
+
+        .menu-ai-entry small,
+        .menu-ai-status,
+        .menu-ai-block-hint {
+            color: var(--gray-500, #64748b);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .menu-ai-review-modal .product-doc-modal-card {
+            width: min(980px, calc(100vw - 28px));
+            max-width: 980px;
+        }
+
+        .menu-ai-steps {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+            padding: 16px 24px 0;
+        }
+
+        .menu-ai-step {
+            min-height: 42px;
+            padding: 8px 10px;
+            text-align: left;
+        }
+
+        .menu-ai-body {
+            display: grid;
+            gap: 12px;
+            padding: 16px 24px 0;
+        }
+
+        .menu-ai-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .menu-ai-field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .menu-ai-field label,
+        .menu-ai-ingredient-row label {
+            color: var(--gray-500, #64748b);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+
+        .menu-ai-field input,
+        .menu-ai-field textarea,
+        .menu-ai-field select,
+        .menu-ai-feedback textarea,
+        .menu-ai-ingredient-row input,
+        .menu-ai-ingredient-row select {
+            width: 100%;
+            min-width: 0;
+            border: 1px solid rgba(148, 163, 184, 0.26);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.82);
+            color: var(--text-primary, #0f172a);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .menu-ai-field input,
+        .menu-ai-field select,
+        .menu-ai-ingredient-row input,
+        .menu-ai-ingredient-row select {
+            min-height: 42px;
+            padding: 8px 10px;
+        }
+
+        .menu-ai-field textarea,
+        .menu-ai-feedback textarea {
+            min-height: 84px;
+            padding: 10px 12px;
+            resize: vertical;
+        }
+
+        .menu-ai-allergen-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .menu-ai-allergen-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 34px;
+            padding: 6px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.035);
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .menu-ai-ingredient-rows {
+            display: grid;
+            gap: 8px;
+        }
+
+        .menu-ai-ingredient-row {
+            display: grid;
+            grid-template-columns: minmax(160px, 1fr) minmax(150px, 1fr) minmax(82px, .4fr) minmax(72px, .34fr) minmax(130px, .7fr) auto;
+            gap: 8px;
+            align-items: end;
+            padding: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.035);
+        }
+
+        .menu-ai-feedback {
+            display: grid;
+            gap: 6px;
+            padding: 14px 24px 0;
+        }
+
+        .menu-ai-status {
+            min-height: 18px;
+            margin: 10px 24px 0;
+        }
+
         .product-doc-modal .product-doc-modal-card {
             width: min(620px, calc(100vw - 28px));
             max-width: 620px;
@@ -931,6 +1113,9 @@
         body.dark-mode .product-doc-panel,
         body.dark-mode .menu-section-chip,
         body.dark-mode .kitchen-detail-panel,
+        body.dark-mode .menu-ai-entry,
+        body.dark-mode .menu-ai-ingredient-row,
+        body.dark-mode .menu-ai-allergen-option,
         body.dark-mode .tech-card-mode-panel,
         body.dark-mode .tech-card-row,
         body.dark-mode .tech-card-writeoff,
@@ -943,6 +1128,15 @@
         body.dark-mode .tech-card-row input,
         body.dark-mode .tech-card-row select,
         body.dark-mode .tech-card-writeoff input,
+        body.dark-mode .menu-ai-field input,
+        body.dark-mode .menu-ai-field textarea,
+        body.dark-mode .menu-ai-field select,
+        body.dark-mode .menu-ai-feedback textarea,
+        body.dark-mode .menu-ai-ingredient-row input,
+        body.dark-mode .menu-ai-ingredient-row select,
+        body.dark-mode .menu-allergen-chip,
+        body.dark-mode .menu-ai-step,
+        body.dark-mode .menu-ai-inline-btn,
         body.dark-mode .tech-card-row-actions button,
         body.dark-mode .tech-card-add-row {
             background: rgba(15, 23, 42, 0.72);
@@ -951,12 +1145,17 @@
         }
 
         body.dark-mode .tech-card-mode-toggle,
+        body.dark-mode .menu-ai-field label,
+        body.dark-mode .menu-ai-ingredient-row label,
         body.dark-mode .tech-card-row label,
         body.dark-mode .tech-card-writeoff label {
             color: #e2e8f0;
         }
 
         body.dark-mode .tech-card-mode-toggle small,
+        body.dark-mode .menu-ai-entry small,
+        body.dark-mode .menu-ai-status,
+        body.dark-mode .menu-ai-block-hint,
         body.dark-mode .tech-card-hint,
         body.dark-mode .tech-card-empty,
         body.dark-mode .tech-card-writeoff-result {
@@ -1056,9 +1255,19 @@
                 grid-template-columns: 1fr;
             }
 
+            .menu-ai-steps,
+            .menu-ai-grid,
+            .menu-ai-ingredient-row {
+                grid-template-columns: 1fr;
+            }
+
             .product-doc-modal-head,
             .product-doc-form-grid,
             .product-doc-checks-panel,
+            .menu-ai-steps,
+            .menu-ai-body,
+            .menu-ai-feedback,
+            .menu-ai-status,
             .product-doc-feedback,
             .product-doc-modal-actions {
                 padding-left: 16px;
@@ -1264,9 +1473,18 @@
                         <label for="pf-ingredients">Інгредієнти</label>
                         <textarea id="pf-ingredients" placeholder="Склад, алергени, ключові інгредієнти"></textarea>
                     </div>
+                    <div class="form-field product-kitchen-fields product-menu-fields hidden menu-allergen-field">
+                        <label for="pf-allergens">Алергени</label>
+                        <input type="text" id="pf-allergens" placeholder="глютен, молоко, яйця">
+                        <div id="pf-allergen-chips" class="menu-allergen-chips" aria-label="Швидкий вибір алергенів"></div>
+                    </div>
                     <div class="form-field product-kitchen-fields hidden">
                         <label for="pf-tech-card">Техкарта</label>
                         <textarea id="pf-tech-card" placeholder="Вага, вихід, зберігання, production notes"></textarea>
+                    </div>
+                    <div class="form-field product-kitchen-fields product-menu-fields hidden menu-ai-entry">
+                        <button type="button" id="productAiAutofillBtn" class="btn-page-primary">AI заповнити картку</button>
+                        <small>AI створює лише чернетку. Назва, алергени, інгредієнти/грами та ціна стають правдою тільки після підтвердження оператором.</small>
                     </div>
                     <div class="form-field product-kitchen-fields product-menu-fields hidden tech-card-mode-panel" id="pf-tech-card-mode-panel">
                         <label class="tech-card-mode-toggle" for="pf-tech-card-detailed">
@@ -1442,6 +1660,37 @@
         </div>
     </div>
 
+    <div id="productAiReviewModal" class="modal hidden product-doc-modal menu-ai-review-modal" role="dialog" aria-modal="true" aria-labelledby="productAiReviewTitle" aria-describedby="productAiReviewStatus">
+        <div class="modal-content modal-medium product-doc-modal-card">
+            <div class="product-doc-modal-head">
+                <div>
+                    <p class="product-doc-modal-eyebrow">Products · Menu AI</p>
+                    <h3 id="productAiReviewTitle">AI-чернетка картки меню</h3>
+                    <p id="productAiReviewProductName" class="product-doc-product-name"></p>
+                </div>
+                <button type="button" id="productAiReviewCloseBtn" class="product-doc-icon-close" aria-label="Закрити AI-review">×</button>
+            </div>
+
+            <p class="product-doc-mode-note">Перевірте кожний блок окремо. AI-пропозиція не змінює картку і не списує склад, доки оператор не підтвердить блоки та не збереже фінальну картку.</p>
+            <div id="productAiReviewSteps" class="menu-ai-steps" aria-label="Блоки підтвердження AI-картки"></div>
+            <div id="productAiReviewBody" class="menu-ai-body"></div>
+            <label class="menu-ai-feedback" for="productAiReviewFeedback">
+                <span class="menu-ai-block-hint">Що виправити або перегенерувати в поточному блоці</span>
+                <textarea id="productAiReviewFeedback" placeholder="Наприклад: зроби опис коротшим, прибери горіхи, заміни вершки на молоко"></textarea>
+            </label>
+            <p id="productAiReviewStatus" class="menu-ai-status" role="status" aria-live="polite"></p>
+
+            <div class="product-doc-modal-actions">
+                <button type="button" id="productAiRegenerateBlockBtn" class="btn-page-secondary">Перегенерувати блок</button>
+                <div class="product-doc-modal-actions-main">
+                    <button type="button" id="productAiReviewCancelBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="button" id="productAiApproveBlockBtn" class="btn-page-secondary">Підтвердити блок</button>
+                    <button type="button" id="productAiApplyBtn" class="btn-page-primary">Застосувати й зберегти картку</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- v10.4: Особистий кабінет -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium" role="dialog" aria-modal="true">
@@ -1457,13 +1706,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.66.51"></script>
-    <script src="js/config.js?v=0.66.51"></script>
-    <script src="js/notification.js?v=0.66.51"></script>
-    <script src="js/api.js?v=0.66.51"></script>
-    <script src="js/auth.js?v=0.66.51"></script>
-    <script src="js/components/sidebar.js?v=0.66.51"></script>
+    <script src="js/ui.js?v=0.66.52"></script>
+    <script src="js/config.js?v=0.66.52"></script>
+    <script src="js/notification.js?v=0.66.52"></script>
+    <script src="js/api.js?v=0.66.52"></script>
+    <script src="js/auth.js?v=0.66.52"></script>
+    <script src="js/components/sidebar.js?v=0.66.52"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.66.51"></script><script src="js/alerts.js?v=0.66.51"></script>
+    <script src="js/programs-page.js?v=0.66.52"></script><script src="js/alerts.js?v=0.66.52"></script>
 </body>
 </html>

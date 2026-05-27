@@ -1116,6 +1116,62 @@ async function apiWriteOffProductTechCard(id, payload = {}) {
     }
 }
 
+async function apiGenerateProductMenuAiDraft(payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/products/menu-ai-draft`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error' };
+        }
+        return body;
+    } catch (err) {
+        console.error('API generateProductMenuAiDraft error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetProductMenuAiDraft(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error' };
+        }
+        return body;
+    } catch (err) {
+        console.error('API getProductMenuAiDraft error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiSaveProductMenuAiDraft(id, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error' };
+        }
+        return body;
+    } catch (err) {
+        console.error('API saveProductMenuAiDraft error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 // v5.0: Auth API
 async function apiLogin(username, password) {
     const response = await fetch(`${API_BASE}/auth/login`, {

@@ -119,6 +119,10 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(profilePage, /Навчання, інструкції і робочі нотатки/);
         assert.match(profileHtml, /\.profile-material-grid/);
         assert.match(profileHtml, /\.profile-secondary-work-menu/);
+        assert.match(profilePage, /<nav class="profile-secondary-work-menu"/);
+        assert.doesNotMatch(profilePage, /<details class="profile-secondary-work-menu"/);
+        assert.doesNotMatch(profilePage, /<summary>Ще в профілі<\/summary>/);
+        assert.match(profileHtml, /\.profile-secondary-tabs[\s\S]*flex-wrap:\s*wrap/);
         assert.match(profileHtml, /\.profile-material-card/);
     });
 

@@ -1159,12 +1159,11 @@ function renderProfileSecondaryTabs() {
         .join('');
     if (!body) return '';
     return `
-        <details class="profile-secondary-work-menu">
-            <summary>Ще в профілі</summary>
+        <nav class="profile-secondary-work-menu" aria-label="Додаткові розділи профілю">
             <div class="profile-secondary-tabs" role="tablist" aria-label="Додаткові розділи профілю">
                 ${body}
             </div>
-        </details>`;
+        </nav>`;
 }
 
 // ==========================================

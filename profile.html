@@ -1839,34 +1839,12 @@
             border-radius: 16px;
             border: 1px solid rgba(148, 163, 184, 0.16);
             background: rgba(255,255,255,0.58);
-            overflow: hidden;
-        }
-
-        .profile-secondary-work-menu summary {
-            cursor: pointer;
-            padding: 10px 14px;
-            color: var(--gray-600);
-            font-size: 12px;
-            font-weight: 900;
-            list-style: none;
-        }
-
-        .profile-secondary-work-menu summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .profile-secondary-work-menu summary::after {
-            content: '↓';
-            margin-left: 8px;
-            color: var(--gray-400);
-        }
-
-        .profile-secondary-work-menu[open] summary::after {
-            content: '↑';
+            overflow: visible;
+            padding: 10px;
         }
 
         .profile-secondary-work-menu .profile-secondary-tabs {
-            padding: 0 10px 10px;
+            margin-bottom: 0;
         }
 
         .profile-work-overview {
@@ -2892,7 +2870,6 @@
         body.dark-mode .profile-work-access-tab small,
         body.dark-mode .profile-work-hub-context-copy small,
         body.dark-mode .profile-profession-switch span,
-        body.dark-mode .profile-secondary-work-menu summary,
         body.dark-mode .profile-material-card small,
         body.dark-mode .profile-material-card em,
         body.dark-mode .profile-profession-card p,
@@ -4109,15 +4086,9 @@
             }
 
             .profile-secondary-tabs {
-                overflow-x: auto;
-                flex-wrap: nowrap;
-                padding-bottom: 4px;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
-            }
-
-            .profile-secondary-tabs::-webkit-scrollbar {
-                display: none;
+                overflow-x: visible;
+                flex-wrap: wrap;
+                padding-bottom: 0;
             }
 
             .profile-avatar-editor {

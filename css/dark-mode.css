@@ -1882,6 +1882,9 @@ body.dark-mode .deadline-ok { background: rgba(46,125,50,0.2); color: #81C784; }
 body.dark-mode .deadline-soon { background: rgba(230,81,0,0.2); color: #FFB74D; }
 body.dark-mode .deadline-overdue { background: rgba(198,40,40,0.2); color: #EF9A9A; }
 /* v15.1: CRM Customer section */
+body.dark-mode .booking-scenario-bar,
+body.dark-mode .booking-event-toggle-card,
+body.dark-mode .booking-disclosure-section,
 body.dark-mode .customer-data-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
@@ -1896,9 +1899,33 @@ body.dark-mode .booking-detail-package-header {
     border-color: rgba(255,255,255,0.08);
 }
 body.dark-mode .booking-workspace-heading strong,
+body.dark-mode .booking-event-toggle-label strong,
+body.dark-mode .booking-disclosure-section summary,
 body.dark-mode .booking-menu-position-title,
 body.dark-mode .booking-detail-package-header {
     color: #e2e8f0;
+}
+body.dark-mode .booking-scenario-text,
+body.dark-mode .booking-event-toggle-label small {
+    color: #94A3B8;
+}
+body.dark-mode .booking-duplicate-hint {
+    background: rgba(245,158,11,0.12);
+    border-color: rgba(245,158,11,0.32);
+    color: #FCD34D;
+}
+body.dark-mode .booking-duplicate-customer-btn {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(245,158,11,0.28);
+}
+body.dark-mode .booking-menu-position-kind {
+    background: rgba(96,165,250,0.16);
+    color: #93C5FD;
+}
+body.dark-mode .form-section textarea {
+    background: #111827;
+    color: #e2e8f0;
+    border-color: rgba(255,255,255,0.12);
 }
 body.dark-mode .booking-menu-legacy textarea {
     background: #111827;

@@ -79,6 +79,127 @@ const BookingPackageState = {
     menuPositions: []
 };
 
+const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
+
+function getBookingWorkspaceHasEvent() {
+    return !!document.getElementById('bookingHasEventToggle')?.checked;
+}
+
+function getBookingLeadDetails() {
+    return {
+        source: document.getElementById('bookingLeadSource')?.value || null,
+        status: document.getElementById('bookingLeadStatus')?.value || null,
+        interestDate: document.getElementById('bookingLeadInterestDate')?.value || null,
+        budget: document.getElementById('bookingLeadBudget')?.value?.trim() || null,
+        childrenInfo: document.getElementById('bookingLeadChildrenInfo')?.value?.trim() || null,
+        notes: document.getElementById('bookingLeadNotes')?.value?.trim() || null
+    };
+}
+
+function hasBookingLeadDetails(details = getBookingLeadDetails()) {
+    return Object.values(details || {}).some(value => String(value || '').trim());
+}
+
+function setBookingLeadDetails(details = {}) {
+    const map = {
+        bookingLeadSource: details.source || details.sourceChannel || '',
+        bookingLeadStatus: details.status || details.pipelineStage || '',
+        bookingLeadInterestDate: details.interestDate || details.eventDate || '',
+        bookingLeadBudget: details.budget || details.potentialValue || '',
+        bookingLeadChildrenInfo: details.childrenInfo || details.childAge || details.childrenCount || '',
+        bookingLeadNotes: details.notes || ''
+    };
+    Object.entries(map).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value || '';
+    });
+    const section = document.getElementById('bookingLeadDetailsSection');
+    if (section && hasBookingLeadDetails(getBookingLeadDetails())) section.open = true;
+}
+
+function resetBookingLeadDetails() {
+    ['bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate', 'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    const section = document.getElementById('bookingLeadDetailsSection');
+    if (section) section.open = false;
+}
+
+function getBookingWorkspaceScenario(options = {}) {
+    const hasEvent = options.hasEvent ?? getBookingWorkspaceHasEvent();
+    const positions = options.positions || getBookingMenuPositions();
+    const hasKitchen = positions.length > 0 || Boolean(document.getElementById('banquetMenu')?.value?.trim());
+    if (hasEvent && hasKitchen) return 'event_kitchen';
+    if (hasEvent) return 'event';
+    if (hasKitchen) return 'kitchen_only';
+    return 'lead_only';
+}
+
+function getBookingWorkspaceScenarioMeta(scenario) {
+    const meta = {
+        lead_only: {
+            label: 'Заявка',
+            text: 'Подія вимкнена: зберігаємо контакт, контекст і нотатки без кімнати та програми.'
+        },
+        event: {
+            label: 'Подія',
+            text: 'Подія увімкнена: кімната, програма і ведучі входять у валідацію та збереження.'
+        },
+        kitchen_only: {
+            label: 'Кухня',
+            text: 'Кухонний сценарій без події: меню або торт зберігаються як комерційні позиції заявки.'
+        },
+        event_kitchen: {
+            label: 'Подія + кухня',
+            text: 'Змішаний сценарій: подія і кухонні позиції формують спільний підсумок.'
+        }
+    };
+    return meta[scenario] || meta.lead_only;
+}
+
+function syncBookingWorkspaceMode(options = {}) {
+    const hasEvent = getBookingWorkspaceHasEvent();
+    const eventFields = document.getElementById('bookingEventFields');
+    const room = document.getElementById('roomSelect');
+    if (eventFields) eventFields.classList.toggle('hidden', !hasEvent);
+    if (room) {
+        room.required = hasEvent;
+        room.setAttribute('aria-required', hasEvent ? 'true' : 'false');
+        if (!hasEvent) room.setAttribute('aria-invalid', 'false');
+    }
+    const selectedProgram = document.getElementById('selectedProgram');
+    if (selectedProgram && !hasEvent) selectedProgram.setAttribute('aria-invalid', 'false');
+    if (!hasEvent) {
+        document.getElementById('freeRoomsPanel')?.classList.add('hidden');
+    }
+    const scenario = getBookingWorkspaceScenario({ hasEvent });
+    const meta = getBookingWorkspaceScenarioMeta(scenario);
+    const chip = document.getElementById('bookingScenarioChip');
+    const text = document.getElementById('bookingScenarioText');
+    if (chip) chip.textContent = meta.label;
+    if (text) text.textContent = meta.text;
+    renderBookingPackageSummary();
+    if (options.markDirty && window.BookingForm) BookingForm._dirty = true;
+}
+
+function setBookingWorkspaceHasEvent(hasEvent, options = {}) {
+    const toggle = document.getElementById('bookingHasEventToggle');
+    if (toggle) toggle.checked = !!hasEvent;
+    syncBookingWorkspaceMode(options);
+}
+
+function bookingKitchenType(product) {
+    const raw = product?.kitchenType || product?.kitchen_type || product?.category || '';
+    if (raw === 'cake') return 'cake';
+    if (raw === 'menu') return 'menu';
+    return 'menu';
+}
+
+function bookingKitchenTypeLabel(type) {
+    return type === 'cake' ? 'Торт' : 'Меню';
+}
+
 function toBookingMoney(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n < 0) return 0;
@@ -88,9 +209,19 @@ function toBookingMoney(value) {
 function getBookingMenuProducts() {
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     return products
-        .filter(p => (p.domain === 'kitchen' && p.kitchenType === 'menu') || p.category === 'menu')
+        .filter(p => {
+            const type = bookingKitchenType(p);
+            return (p.domain === 'kitchen' && (type === 'menu' || type === 'cake'))
+                || p.category === 'menu'
+                || p.category === 'cake';
+        })
         .filter(p => p.isActive !== false && p.availabilityStatus !== 'hidden' && p.availabilityStatus !== 'sold_out')
-        .sort((a, b) => String(a.menuSection || '').localeCompare(String(b.menuSection || ''), 'uk') || (a.sortOrder || 0) - (b.sortOrder || 0));
+        .sort((a, b) => {
+            const typeCompare = bookingKitchenType(a).localeCompare(bookingKitchenType(b), 'uk');
+            return typeCompare
+                || String(a.menuSection || '').localeCompare(String(b.menuSection || ''), 'uk')
+                || (a.sortOrder || 0) - (b.sortOrder || 0);
+        });
 }
 
 function normalizeBookingMenuPosition(raw, index = 0) {
@@ -110,6 +241,9 @@ function normalizeBookingMenuPosition(raw, index = 0) {
         note: String(raw.note || raw.notes || '').trim() || null,
         menuSection: raw.menuSection || raw.menu_section || null,
         servingUnit: raw.servingUnit || raw.serving_unit || raw.priceUnit || null,
+        kitchenType: raw.kitchenType || raw.kitchen_type || raw.itemType || 'menu',
+        weightValue: raw.weightValue || raw.weight_value || null,
+        cakeDecoration: raw.cakeDecoration || raw.cake_decoration || null,
         source: raw.source || (raw.productId || raw.product_id ? 'product' : 'custom')
     };
 }
@@ -139,11 +273,13 @@ function renderBookingMenuProductOptions() {
     const products = getBookingMenuProducts();
     const groups = new Map();
     products.forEach(product => {
-        const section = product.menuSection || 'Меню';
+        const type = bookingKitchenType(product);
+        const sectionPrefix = type === 'cake' ? 'Торти' : 'Меню';
+        const section = `${sectionPrefix}${product.menuSection ? ` · ${product.menuSection}` : ''}`;
         if (!groups.has(section)) groups.set(section, []);
         groups.get(section).push(product);
     });
-    select.innerHTML = '<option value="">Оберіть позицію з меню</option>';
+    select.innerHTML = '<option value="">Оберіть позицію з меню або торт</option>';
     groups.forEach((items, section) => {
         const group = document.createElement('optgroup');
         group.label = section;
@@ -153,6 +289,7 @@ function renderBookingMenuProductOptions() {
             opt.textContent = `${product.name || product.label || product.code} - ${formatPrice(product.price || 0)}`;
             opt.dataset.price = String(product.price || 0);
             opt.dataset.title = product.name || product.label || product.code || product.id;
+            opt.dataset.kitchenType = bookingKitchenType(product);
             group.appendChild(opt);
         });
         select.appendChild(group);
@@ -173,7 +310,7 @@ function renderBookingMenuPositions() {
         list.innerHTML = positions.map((item, index) => `
             <div class="booking-menu-position-row" data-menu-index="${index}">
                 <div>
-                    <div class="booking-menu-position-title">${escapeHtml(item.title)}</div>
+                    <div class="booking-menu-position-title"><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}</div>
                     <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</div>
                 </div>
                 <button type="button" class="booking-menu-remove-btn" data-menu-remove="${index}" title="Видалити">×</button>
@@ -185,6 +322,7 @@ function renderBookingMenuPositions() {
                 renderBookingMenuPositions();
                 syncLegacyBanquetMenuFromPositions(true);
                 renderBookingPackageSummary();
+                syncBookingWorkspaceMode();
                 if (window.BookingForm) BookingForm._dirty = true;
             });
         });
@@ -223,6 +361,9 @@ function addBookingMenuPositionFromForm() {
         note: document.getElementById('bookingMenuNote')?.value || '',
         menuSection: product?.menuSection || null,
         servingUnit: product?.servingUnit || product?.priceUnit || null,
+        kitchenType: product ? bookingKitchenType(product) : 'menu',
+        weightValue: product?.weightValue || null,
+        cakeDecoration: product?.cakeDecoration || null,
         source: product ? 'product' : 'custom'
     });
     BookingPackageState.menuPositions.push(position);
@@ -236,6 +377,7 @@ function addBookingMenuPositionFromForm() {
     renderBookingMenuPositions();
     syncLegacyBanquetMenuFromPositions(true);
     renderBookingPackageSummary();
+    syncBookingWorkspaceMode();
     if (window.BookingForm) BookingForm._dirty = true;
 }
 
@@ -246,6 +388,7 @@ function setBookingMenuPositions(positions) {
     renderBookingMenuPositions();
     syncLegacyBanquetMenuFromPositions(true);
     renderBookingPackageSummary();
+    syncBookingWorkspaceMode();
 }
 
 function resetBookingPackageWorkspace() {
@@ -259,6 +402,7 @@ function resetBookingPackageWorkspace() {
     renderBookingMenuProductOptions();
     renderBookingMenuPositions();
     renderBookingPackageSummary();
+    syncBookingWorkspaceMode();
 }
 
 function getProgramBasePrice(program) {
@@ -286,25 +430,43 @@ function getBookingPackageTotals(program) {
 function renderBookingPackageSummary() {
     const container = document.getElementById('bookingPackageSummary');
     if (!container) return;
-    const programId = document.getElementById('selectedProgram')?.value;
+    const hasEvent = getBookingWorkspaceHasEvent();
+    const programId = hasEvent ? document.getElementById('selectedProgram')?.value : '';
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const customerName = document.getElementById('customerName')?.value?.trim();
+    const customerId = document.getElementById('selectedCustomerId')?.value;
+    const leadDetails = getBookingLeadDetails();
+    const groupName = document.getElementById('bookingGroupName')?.value?.trim();
+    const notes = document.getElementById('bookingNotes')?.value?.trim();
     const totals = getBookingPackageTotals(program);
-    if (!program && !customerName && totals.menuPositions.length === 0) {
-        container.innerHTML = '<div class="booking-summary-empty">Оберіть програму, клієнта і позиції меню — підсумок оновиться автоматично.</div>';
+    const scenario = getBookingWorkspaceScenario({ hasEvent, positions: totals.menuPositions });
+    const scenarioMeta = getBookingWorkspaceScenarioMeta(scenario);
+    const cakeCount = totals.menuPositions.filter(item => item.kitchenType === 'cake').length;
+    if (!hasEvent && !customerName && !customerId && !groupName && !notes && !hasBookingLeadDetails(leadDetails) && totals.menuPositions.length === 0) {
+        container.innerHTML = '<div class="booking-summary-empty">Додайте клієнта, лід-деталі, подію або кухонні позиції — підсумок оновиться автоматично.</div>';
         return;
     }
     container.innerHTML = `
-        <div class="booking-summary-row"><span>Програма</span><strong>${escapeHtml(program?.name || program?.label || 'не обрано')}</strong></div>
-        <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(customerName || 'не вказано')}</strong></div>
-        <div class="booking-summary-row"><span>База програми</span><strong>${escapeHtml(formatPrice(totals.programBasePrice))}</strong></div>
-        <div class="booking-summary-row"><span>Меню / сервіси</span><strong>${escapeHtml(formatPrice(totals.positionsSubtotal))}</strong></div>
-        <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(totals.finalTotal))}</strong></div>
+        <div class="booking-summary-row"><span>Сценарій</span><strong>${escapeHtml(scenarioMeta.label)}</strong></div>
+        <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(customerName || (customerId ? 'існуюча картка' : 'не вказано'))}</strong></div>
+        <div class="booking-summary-row"><span>Подія</span><strong>${escapeHtml(hasEvent ? (program?.name || program?.label || 'програму не обрано') : 'вимкнена')}</strong></div>
+        <div class="booking-summary-row"><span>Кухня / торти</span><strong>${escapeHtml(`${totals.menuPositions.length} поз.${cakeCount ? `, тортів: ${cakeCount}` : ''}`)}</strong></div>
+        ${hasEvent ? `<div class="booking-summary-row"><span>База програми</span><strong>${escapeHtml(formatPrice(totals.programBasePrice))}</strong></div>` : ''}
+        <div class="booking-summary-row"><span>Кухонний subtotal</span><strong>${escapeHtml(formatPrice(totals.positionsSubtotal))}</strong></div>
+        <div class="booking-summary-row booking-summary-total"><span>Комерційний підсумок</span><strong>${escapeHtml(formatPrice(totals.finalTotal))}</strong></div>
     `;
 }
 
 function getBookingPackageFromBooking(booking) {
     return booking?.bookingPackage || booking?.extraData?.bookingPackage || booking?.extra_data?.bookingPackage || null;
+}
+
+function getBookingWorkspaceFromBooking(booking) {
+    return booking?.extraData?.bookingWorkspace
+        || booking?.extra_data?.bookingWorkspace
+        || booking?.extraData?.booking_workspace
+        || booking?.extra_data?.booking_workspace
+        || null;
 }
 
 function hydrateBookingPackageWorkspace(booking) {
@@ -322,6 +484,17 @@ function hydrateBookingPackageWorkspace(booking) {
     renderBookingPackageSummary();
 }
 
+function hydrateBookingWorkspace(booking) {
+    const workspace = getBookingWorkspaceFromBooking(booking);
+    const hasEvent = workspace
+        ? workspace.hasEvent !== false
+        : Boolean(booking?.programId || booking?.room || Number(booking?.duration || 0) > 0);
+    setBookingWorkspaceHasEvent(hasEvent, { markDirty: false });
+    resetBookingLeadDetails();
+    if (workspace?.leadDetails) setBookingLeadDetails(workspace.leadDetails);
+    renderBookingPackageSummary();
+}
+
 function renderBookingPackageDetail(booking) {
     const bookingPackage = getBookingPackageFromBooking(booking);
     const positions = bookingPackage?.menuPositions || [];
@@ -329,7 +502,7 @@ function renderBookingPackageDetail(booking) {
     const rows = positions.length
         ? positions.map(item => `
             <div class="booking-detail-package-row">
-                <div>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></div>
+                <div><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></div>
                 <strong>${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
             </div>
         `).join('')
@@ -346,23 +519,62 @@ function renderBookingPackageDetail(booking) {
     `;
 }
 
+function renderBookingWorkspaceDetail(booking) {
+    const workspace = getBookingWorkspaceFromBooking(booking);
+    if (!workspace && booking?.programId) return '';
+    const scenario = workspace?.scenario || (booking?.programId ? 'event' : 'lead_only');
+    const meta = getBookingWorkspaceScenarioMeta(scenario);
+    const lead = workspace?.leadDetails || {};
+    const leadRows = [
+        lead.source ? `<div class="booking-detail-row"><span class="label">Джерело ліда:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
+        lead.status ? `<div class="booking-detail-row"><span class="label">Статус ліда:</span><span class="value">${escapeHtml(lead.status)}</span></div>` : '',
+        lead.interestDate ? `<div class="booking-detail-row"><span class="label">Бажана дата:</span><span class="value">${escapeHtml(lead.interestDate)}</span></div>` : '',
+        lead.childrenInfo ? `<div class="booking-detail-row"><span class="label">Діти / гості:</span><span class="value">${escapeHtml(lead.childrenInfo)}</span></div>` : '',
+        lead.budget ? `<div class="booking-detail-row"><span class="label">Бюджет:</span><span class="value">${escapeHtml(lead.budget)}</span></div>` : '',
+        lead.notes ? `<div class="booking-detail-row"><span class="label">Нотатки ліда:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
+    ].join('');
+    return `
+        <div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>
+        ${leadRows}
+    `;
+}
+
 function initBookingPackageWorkspace() {
     renderBookingMenuProductOptions();
+    document.getElementById('bookingHasEventToggle')?.addEventListener('change', () => {
+        syncBookingWorkspaceMode({ markDirty: true });
+    });
     document.getElementById('bookingMenuProductSelect')?.addEventListener('change', (e) => {
         const product = getBookingMenuProducts().find(p => p.id === e.target.value);
         const price = document.getElementById('bookingMenuUnitPrice');
         if (price) price.value = product ? String(product.price || 0) : '';
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
-    ['customerName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu'].forEach(id => {
+    ['customerName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu',
+     'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
+     'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('input', renderBookingPackageSummary);
-        el.addEventListener('change', renderBookingPackageSummary);
+        el.addEventListener('input', () => {
+            renderBookingPackageSummary();
+            if (id === 'customerName' || id === 'customerPhone' || id === 'customerInstagram') {
+                debouncedBookingDuplicateCheck();
+            }
+        });
+        el.addEventListener('change', () => {
+            renderBookingPackageSummary();
+            if (id === 'customerName' || id === 'customerPhone' || id === 'customerInstagram') {
+                debouncedBookingDuplicateCheck();
+            }
+        });
     });
     const legacy = document.getElementById('banquetMenu');
-    if (legacy) legacy.addEventListener('input', () => { legacy.dataset.generated = 'false'; });
+    if (legacy) legacy.addEventListener('input', () => {
+        legacy.dataset.generated = 'false';
+        syncBookingWorkspaceMode();
+    });
     renderBookingMenuPositions();
+    syncBookingWorkspaceMode();
 }
 
 function inferBookingPinataMode(booking, program) {
@@ -445,6 +657,7 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('customProgramSection')?.classList.add('hidden');
     document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     resetPinataModeFields();
+    setBookingWorkspaceHasEvent(false, { markDirty: false });
 
     // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
@@ -478,6 +691,7 @@ async function openBookingPanel(time, lineId) {
     const customerToggle = document.getElementById('customerDataToggle');
     if (customerToggle) customerToggle.checked = true;
     document.getElementById('customerDataSection')?.classList.remove('hidden');
+    resetBookingLeadDetails();
     resetBookingPackageWorkspace();
     applyLeadConversionContextToBookingForm();
 
@@ -511,6 +725,11 @@ function clearCustomerFields() {
     document.getElementById('customerInfo')?.classList.add('hidden');
     const label = document.getElementById('bookingCustomerModeLabel');
     if (label) label.textContent = 'Обов\'язковий блок бронювання';
+    const duplicateHint = document.getElementById('bookingCustomerDuplicateHint');
+    if (duplicateHint) {
+        duplicateHint.classList.add('hidden');
+        duplicateHint.innerHTML = '';
+    }
 }
 
 function applyLeadConversionContextToBookingForm() {
@@ -533,6 +752,13 @@ function applyLeadConversionContextToBookingForm() {
     }
     const sourceEl = document.getElementById('customerSource');
     if (sourceEl && !sourceEl.value) sourceEl.value = 'lead';
+    setBookingLeadDetails({
+        source: 'lead',
+        status: 'warm',
+        interestDate: ctx.eventDate || '',
+        notes: ctx.customerName ? `Лід #${ctx.leadId}: ${ctx.customerName}` : `Лід #${ctx.leadId}`
+    });
+    renderBookingPackageSummary();
 }
 
 function clearLeadConversionContextAfterBooking(bookingId) {
@@ -556,6 +782,7 @@ function selectCustomerFromSearch(customer) {
     document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
     document.getElementById('customerSearch').value = customer.name || '';
     document.getElementById('customerSearchResults')?.classList.add('hidden');
+    document.getElementById('bookingCustomerDuplicateHint')?.classList.add('hidden');
     const label = document.getElementById('bookingCustomerModeLabel');
     if (label) label.textContent = 'Прикріплено існуючу картку клієнта';
 
@@ -568,6 +795,7 @@ function selectCustomerFromSearch(customer) {
             info.classList.remove('hidden');
         }
     }
+    renderBookingPackageSummary();
 }
 
 function renderCustomerSearchResults(customers) {
@@ -600,6 +828,53 @@ function renderCustomerSearchResults(customers) {
         });
     });
 }
+
+function renderBookingCustomerDuplicateHint(customers = []) {
+    const hint = document.getElementById('bookingCustomerDuplicateHint');
+    if (!hint) return;
+    const selectedId = document.getElementById('selectedCustomerId')?.value;
+    const matches = (customers || []).filter(c => !selectedId || String(c.id) !== String(selectedId)).slice(0, 3);
+    if (!matches.length) {
+        hint.classList.add('hidden');
+        hint.innerHTML = '';
+        return;
+    }
+    hint.innerHTML = `
+        <strong>Можливий дубль клієнта:</strong>
+        ${matches.map(c => `<button type="button" class="booking-duplicate-customer-btn" data-id="${escapeHtml(String(c.id))}">${escapeHtml(c.name || 'Клієнт')}${c.phone ? ` · ${escapeHtml(c.phone)}` : ''}${c.instagram ? ` · @${escapeHtml(c.instagram)}` : ''}</button>`).join('')}
+    `;
+    hint.classList.remove('hidden');
+    hint.querySelectorAll('.booking-duplicate-customer-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const customer = matches.find(c => String(c.id) === String(btn.dataset.id));
+            if (customer) selectCustomerFromSearch(customer);
+        });
+    });
+}
+
+const debouncedBookingDuplicateCheck = debounce(async () => {
+    const selectedId = document.getElementById('selectedCustomerId')?.value;
+    if (selectedId) {
+        renderBookingCustomerDuplicateHint([]);
+        return;
+    }
+    const candidates = [
+        document.getElementById('customerPhone')?.value?.trim(),
+        document.getElementById('customerInstagram')?.value?.trim(),
+        document.getElementById('customerName')?.value?.trim()
+    ].filter(Boolean);
+    const query = candidates.find(value => value.length >= 3);
+    if (!query) {
+        renderBookingCustomerDuplicateHint([]);
+        return;
+    }
+    try {
+        const results = await apiSearchCustomers(query);
+        renderBookingCustomerDuplicateHint(results);
+    } catch {
+        renderBookingCustomerDuplicateHint([]);
+    }
+}, 350);
 
 // Toggle + autocomplete listeners (called once on page load)
 function initCustomerCRM() {
@@ -651,6 +926,10 @@ function initCustomerCRM() {
 
 // v5.18: Show free rooms for selected time/duration
 async function showFreeRooms() {
+    if (!getBookingWorkspaceHasEvent()) {
+        showNotification('Увімкніть подію, щоб перевірити вільні кімнати', 'info');
+        return;
+    }
     const date = formatDate(AppState.selectedDate);
     let time = document.getElementById('bookingTime')?.value;
     // v5.19: fallback to selected cell time
@@ -854,6 +1133,7 @@ function filterPrograms() {
 function selectProgram(programId) {
     const program = getProductsSync().find(p => p.id === programId);
     if (!program) return;
+    if (!getBookingWorkspaceHasEvent()) setBookingWorkspaceHasEvent(true, { markDirty: true });
 
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
     const selectedEl = document.querySelector(`[data-program-id="${programId}"]`);
@@ -1129,8 +1409,9 @@ function updateCustomDuration() {
 // ==========================================
 
 function getBookingFormData() {
-    const programId = document.getElementById('selectedProgram')?.value;
-    const room = document.getElementById('roomSelect')?.value;
+    const hasEvent = getBookingWorkspaceHasEvent();
+    const programId = hasEvent ? document.getElementById('selectedProgram')?.value : '';
+    const room = hasEvent ? document.getElementById('roomSelect')?.value : null;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const time = document.getElementById('bookingTime')?.value;
     const lineId = document.getElementById('bookingLine')?.value;
@@ -1167,8 +1448,11 @@ function getBookingFormData() {
         ? document.getElementById('secondAnimatorSelect')?.value : null;
 
     const packageTotals = getBookingPackageTotals(program);
+    const leadDetails = getBookingLeadDetails();
+    const scenario = getBookingWorkspaceScenario({ hasEvent, positions: packageTotals.menuPositions });
 
     return {
+        hasEvent, scenario, leadDetails,
         programId, room, program, time, lineId, duration, label,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
@@ -1210,7 +1494,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
         }
     }
 
-    if (conflict.noPause && program.category !== 'pinata') {
+    if (conflict.noPause && (!program || program.category !== 'pinata')) {
         showWarning('⚠️ УВАГА! Немає 15-хвилинної паузи між програмами. Це ДУЖЕ НЕБАЖАНО!');
     }
 
@@ -1218,6 +1502,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
 }
 
 async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
+    if (!programId || !program) return true;
     // v43.10.0: skip duplicate check for animation extras AND custom "Інше" programs.
     // Two custom bookings (e.g. аквагрим + фотозона) share programId='custom' but
     // are conceptually different — must not block each other.
@@ -1243,41 +1528,90 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     return true;
 }
 
+function getBookingWorkspaceIdentityLabel(formData = {}) {
+    const customerName = document.getElementById('customerName')?.value?.trim();
+    const groupName = document.getElementById('bookingGroupName')?.value?.trim();
+    const lead = formData.leadDetails || getBookingLeadDetails();
+    const firstPosition = (formData.menuPositions || [])[0];
+    return customerName
+        || groupName
+        || lead.childrenInfo
+        || lead.notes
+        || firstPosition?.title
+        || '';
+}
+
+function getNoEventBookingLabel(formData = {}) {
+    if (formData.scenario === 'kitchen_only') return 'Кухня';
+    if (formData.scenario === 'event_kitchen') return 'Подія+кухня';
+    return 'Заявка';
+}
+
+function getNoEventProgramName(formData = {}) {
+    const identity = getBookingWorkspaceIdentityLabel(formData);
+    if (identity) return identity.slice(0, 160);
+    if (formData.scenario === 'kitchen_only') return 'Кухонне замовлення';
+    return 'Лід / заявка';
+}
+
+function buildBookingWorkspaceExtraData(formData = {}) {
+    const positions = formData.menuPositions || [];
+    return {
+        schemaVersion: BOOKING_WORKSPACE_SCHEMA_VERSION,
+        hasEvent: !!formData.hasEvent,
+        scenario: formData.scenario || getBookingWorkspaceScenario({ hasEvent: !!formData.hasEvent, positions }),
+        leadDetails: formData.leadDetails || getBookingLeadDetails(),
+        kitchen: {
+            itemsCount: positions.length,
+            menuCount: positions.filter(item => item.kitchenType !== 'cake').length,
+            cakeCount: positions.filter(item => item.kitchenType === 'cake').length,
+            positionsSubtotal: formData.positionsSubtotal || 0
+        },
+        source: 'booking_workspace_v2'
+    };
+}
+
 function buildBookingObject(formData, program) {
-    const costume = document.getElementById('costumeSelect')?.value;
+    const hasEvent = !!formData.hasEvent && !!program;
+    const costume = hasEvent ? document.getElementById('costumeSelect')?.value : null;
     const statusEl = document.querySelector('input[name="bookingStatus"]:checked');
     const status = statusEl ? statusEl.value : 'confirmed';
     const kidsCountInput = document.getElementById('kidsCountInput');
-    const kidsCount = (program.perChild && kidsCountInput) ? (parseInt(kidsCountInput.value) || 0) : 0;
+    const kidsCount = (hasEvent && program.perChild && kidsCountInput) ? (parseInt(kidsCountInput.value) || 0) : 0;
     const servicePrice = Number(formData.clientPinataServicePrice || 0);
-    const baseProgramPrice = formData.pinataMode === 'client'
-        ? servicePrice
-        : (formData.pinataMode === 'none' && isPinataProgram(program)
-            ? 0
-            : (program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price));
+    const baseProgramPrice = hasEvent
+        ? (formData.pinataMode === 'client'
+            ? servicePrice
+            : (formData.pinataMode === 'none' && isPinataProgram(program)
+                ? 0
+                : (program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price)))
+        : 0;
     const finalPrice = formData.finalTotal ?? toBookingMoney(baseProgramPrice + (formData.positionsSubtotal || 0));
+    const extraData = buildExtraData(hasEvent ? formData.programId : null) || {};
+    const noEventLabel = getNoEventBookingLabel(formData);
+    const noEventName = getNoEventProgramName(formData);
 
     const obj = {
         date: formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
-        programId: formData.programId,
-        programCode: program.code,
-        label: formData.label,
-        programName: program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name,
-        category: program.category,
-        duration: formData.duration,
+        programId: hasEvent ? formData.programId : null,
+        programCode: hasEvent ? program.code : (formData.scenario === 'kitchen_only' ? 'KITCHEN' : 'LEAD'),
+        label: hasEvent ? formData.label : noEventLabel,
+        programName: hasEvent ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : noEventName,
+        category: hasEvent ? program.category : 'custom',
+        duration: hasEvent ? formData.duration : 0,
         price: finalPrice,
-        hosts: program.hosts,
-        secondAnimator: formData.secondAnimator,
-        pinataMode: formData.pinataMode,
-        pinataNumber: formData.pinataMode !== 'none' ? formData.pinataNumber : null,
-        pinataFillerNumber: formData.pinataMode !== 'none' ? formData.pinataFillerNumber : null,
-        pinataFiller: formData.pinataFiller,
-        clientPinataServicePrice: formData.pinataMode === 'client' ? finalPrice : null,
-        clientPinataServiceNote: formData.pinataMode === 'client' ? formData.clientPinataServiceNote : null,
+        hosts: hasEvent ? program.hosts : 0,
+        secondAnimator: hasEvent ? formData.secondAnimator : null,
+        pinataMode: hasEvent ? formData.pinataMode : 'none',
+        pinataNumber: hasEvent && formData.pinataMode !== 'none' ? formData.pinataNumber : null,
+        pinataFillerNumber: hasEvent && formData.pinataMode !== 'none' ? formData.pinataFillerNumber : null,
+        pinataFiller: hasEvent ? formData.pinataFiller : null,
+        clientPinataServicePrice: hasEvent && formData.pinataMode === 'client' ? finalPrice : null,
+        clientPinataServiceNote: hasEvent && formData.pinataMode === 'client' ? formData.clientPinataServiceNote : null,
         costume: costume,
-        room: formData.room,
+        room: hasEvent ? formData.room : null,
         notes: document.getElementById('bookingNotes')?.value,
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
@@ -1286,7 +1620,7 @@ function buildBookingObject(formData, program) {
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
         programBasePrice: toBookingMoney(baseProgramPrice),
         menuPositions: formData.menuPositions || [],
-        extraData: buildExtraData(formData.programId),
+        extraData,
         skipNotification: document.getElementById('skipNotificationToggle')?.checked || false,
         paymentMethod: document.getElementById('bookingPaymentMethod')?.value || null
     };
@@ -1313,6 +1647,7 @@ function buildBookingObject(formData, program) {
         menuPositions: formData.menuPositions || [],
         source: 'booking_workspace'
     };
+    obj.extraData.bookingWorkspace = buildBookingWorkspaceExtraData(formData);
 
     // v15.1+: CRM customer is a first-class booking package field.
     const existingId = document.getElementById('selectedCustomerId')?.value;
@@ -1363,6 +1698,7 @@ function buildExtraData(programId) {
 // v5.7: Build linked bookings array (for transactional create)
 async function buildLinkedBookings(booking, program) {
     const linked = [];
+    if (!program || booking.duration <= 0) return linked;
     const lines = await getLinesForDate(AppState.selectedDate);
 
     // Другий ведучий
@@ -1472,17 +1808,13 @@ async function handleBookingSubmit(e) {
     }
 
     const formData = getBookingFormData();
-
-    if (!formData.programId) { showNotification('Оберіть програму', 'error'); unlockSubmitBtn(); return; }
-    if (!formData.room) { showNotification('Оберіть кімнату', 'error'); unlockSubmitBtn(); return; }
-    const selectedCustomerId = document.getElementById('selectedCustomerId')?.value;
-    const customerName = document.getElementById('customerName')?.value?.trim();
-    if (!selectedCustomerId && !customerName) {
-        showNotification('Вкажіть клієнта або оберіть існуючу картку', 'error');
-        document.getElementById('customerName')?.focus();
+    const validation = window.BookingForm?.validate ? BookingForm.validate() : { valid: true };
+    if (!validation.valid) {
+        showNotification(validation.error || 'Перевірте форму бронювання', 'error');
         unlockSubmitBtn();
         return;
     }
+
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
     if (invalidMenuPosition) {
         showNotification('Перевірте позиції меню: назва, кількість і ціна мають бути коректними', 'error');
@@ -1490,11 +1822,11 @@ async function handleBookingSubmit(e) {
         return;
     }
     syncLegacyBanquetMenuFromPositions();
-    if (formData.program.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
+    if (formData.hasEvent && formData.program?.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
     // v8.7: Require second animator for multi-host programs
-    if (formData.program.hosts > 1 && !formData.secondAnimator) {
+    if (formData.hasEvent && formData.program?.hosts > 1 && !formData.secondAnimator) {
         showNotification('Оберіть другого аніматора — ця програма потребує 2 ведучих', 'error'); unlockSubmitBtn(); return;
     }
 
@@ -1509,23 +1841,27 @@ async function handleBookingSubmit(e) {
     }
 
     // v7.10: Check if animator is off duty on this date
-    await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
+    if (formData.hasEvent) {
+        await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
+    }
 
     // v5.5: excludeId для режиму редагування
     const excludeId = AppState.editingBookingId || null;
 
-    // Валідація конфліктів
-    const valid = await validateBookingConflicts(
-        formData.lineId, formData.time, formData.duration,
-        formData.program, formData.secondAnimator, excludeId
-    );
-    if (!valid) { unlockSubmitBtn(); return; }
+    if (formData.hasEvent && formData.duration > 0) {
+        // Валідація конфліктів
+        const valid = await validateBookingConflicts(
+            formData.lineId, formData.time, formData.duration,
+            formData.program, formData.secondAnimator, excludeId
+        );
+        if (!valid) { unlockSubmitBtn(); return; }
 
-    // Перевірка дублікатів
-    const noDuplicate = await checkDuplicateProgram(
-        formData.programId, formData.program, formData.time, formData.duration, excludeId
-    );
-    if (!noDuplicate) { unlockSubmitBtn(); return; }
+        // Перевірка дублікатів
+        const noDuplicate = await checkDuplicateProgram(
+            formData.programId, formData.program, formData.time, formData.duration, excludeId
+        );
+        if (!noDuplicate) { unlockSubmitBtn(); return; }
+    }
 
     try {
         const booking = buildBookingObject(formData, formData.program);
@@ -1893,6 +2229,7 @@ async function showBookingDetails(bookingId) {
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
             <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
+        ${renderBookingWorkspaceDetail(booking)}
         ${renderBookingPackageDetail(booking)}
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
@@ -2036,6 +2373,7 @@ async function editBooking(bookingId) {
     const editBtn = document.querySelector('#bookingForm .btn-submit');
     if (editH3) editH3.textContent = 'Редагувати бронювання';
     if (editBtn) editBtn.textContent = 'Зберегти зміни';
+    hydrateBookingWorkspace(booking);
 
     // Заповнити форму
     document.getElementById('roomSelect').value = booking.room || '';
@@ -2158,6 +2496,7 @@ async function duplicateBooking(bookingId) {
     const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
     if (dupH3) dupH3.textContent = 'Повторити бронювання';
     document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
+    hydrateBookingWorkspace(booking);
 
     // Pre-fill форму (ідентично editBooking)
     document.getElementById('roomSelect').value = booking.room || '';

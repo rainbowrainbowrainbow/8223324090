@@ -39,6 +39,9 @@ function normalizeMenuPosition(raw, index = 0) {
         note: cleanText(raw.note || raw.notes, 500),
         menuSection: cleanText(raw.menuSection || raw.menu_section, 120),
         servingUnit: cleanText(raw.servingUnit || raw.serving_unit || raw.priceUnit, 80),
+        kitchenType: cleanText(raw.kitchenType || raw.kitchen_type || raw.itemType, 40) || 'menu',
+        weightValue: cleanText(raw.weightValue || raw.weight_value, 80),
+        cakeDecoration: cleanText(raw.cakeDecoration || raw.cake_decoration, 240),
         source: cleanText(raw.source, 40) || (raw.productId || raw.product_id ? 'product' : 'custom')
     };
 }

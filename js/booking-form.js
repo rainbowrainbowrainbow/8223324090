@@ -12,12 +12,13 @@ window.BookingForm = {
      * v20.11.0: Initialize form validation listeners
      */
     init() {
-        const fields = ['roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
+        const fields = ['bookingHasEventToggle', 'roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
             'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
             'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
             'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',
             'bookingMenuQuantity', 'bookingMenuUnitPrice', 'bookingMenuNote', 'banquetMenu',
-            'banquetGuests', 'banquetTables'];
+            'banquetGuests', 'banquetTables', 'bookingLeadSource', 'bookingLeadStatus',
+            'bookingLeadInterestDate', 'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'];
         fields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -64,37 +65,53 @@ window.BookingForm = {
      * @returns {{ valid: boolean, error?: string }}
      */
     validate() {
-        const programId = document.getElementById('selectedProgram')?.value;
-        const room = document.getElementById('roomSelect')?.value;
+        const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : null;
+        const hasEvent = !!formData?.hasEvent;
+        const programId = formData?.programId || '';
+        const room = formData?.room || '';
 
-        if (!programId) {
+        if (hasEvent && !programId) {
             document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
             return { valid: false, error: 'Оберіть програму' };
         }
-        if (!room) {
+        if (hasEvent && !room) {
             document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
             return { valid: false, error: 'Оберіть кімнату' };
         }
 
-        const program = getProductsSync().find(p => p.id === programId);
-        if (!program) return { valid: false, error: 'Програму не знайдено' };
+        const program = hasEvent ? getProductsSync().find(p => p.id === programId) : null;
+        if (hasEvent && !program) return { valid: false, error: 'Програму не знайдено' };
 
         const pinataMode = document.getElementById('pinataMode')?.value || 'none';
-        if (program.hasFiller && pinataMode === 'park') {
+        if (hasEvent && program.hasFiller && pinataMode === 'park') {
             const filler = document.getElementById('pinataFillerSelect')?.value;
             if (!filler) return { valid: false, error: 'Оберіть наповнювач для піньяти' };
         }
 
-        if (program.hosts > 1) {
+        if (hasEvent && program.hosts > 1) {
             const secondAnimator = document.getElementById('secondAnimatorSelect')?.value;
             if (!secondAnimator) return { valid: false, error: 'Оберіть другого аніматора — ця програма потребує 2 ведучих' };
         }
 
         const selectedCustomerId = document.getElementById('selectedCustomerId')?.value;
         const customerName = document.getElementById('customerName')?.value?.trim();
-        if (!selectedCustomerId && !customerName) {
+        if (hasEvent && !selectedCustomerId && !customerName) {
             document.getElementById('customerName')?.setAttribute('aria-invalid', 'true');
             return { valid: false, error: "Вкажіть клієнта або оберіть існуючу картку" };
+        }
+
+        if (!hasEvent) {
+            const hasCustomerIdentity = !!(selectedCustomerId || customerName
+                || document.getElementById('customerPhone')?.value?.trim()
+                || document.getElementById('customerInstagram')?.value?.trim());
+            const hasLeadDetails = typeof hasBookingLeadDetails === 'function' && hasBookingLeadDetails();
+            const hasKitchen = (formData?.menuPositions || []).length > 0 || !!document.getElementById('banquetMenu')?.value?.trim();
+            const hasCoreNotes = !!(document.getElementById('bookingGroupName')?.value?.trim()
+                || document.getElementById('bookingNotes')?.value?.trim());
+            if (!hasCustomerIdentity && !hasLeadDetails && !hasKitchen && !hasCoreNotes) {
+                document.getElementById('customerName')?.setAttribute('aria-invalid', 'true');
+                return { valid: false, error: 'Додайте клієнта, лід-деталі, нотатку або кухонну позицію' };
+            }
         }
 
         return { valid: true };
@@ -150,6 +167,7 @@ window.BookingForm = {
             document.getElementById('pinataFillerSection')?.classList.add('hidden');
             document.getElementById('clientPinataServiceFields')?.classList.add('hidden');
         }
+        if (typeof setBookingWorkspaceHasEvent === 'function') setBookingWorkspaceHasEvent(false, { markDirty: false });
 
         const extraHostToggle = document.getElementById('extraHostToggle');
         if (extraHostToggle) {
@@ -176,6 +194,7 @@ window.BookingForm = {
         if (customerToggle) customerToggle.checked = true;
         document.getElementById('customerDataSection')?.classList.remove('hidden');
         if (typeof clearCustomerFields === 'function') clearCustomerFields();
+        if (typeof resetBookingLeadDetails === 'function') resetBookingLeadDetails();
         if (typeof resetBookingPackageWorkspace === 'function') resetBookingPackageWorkspace();
     }
 };

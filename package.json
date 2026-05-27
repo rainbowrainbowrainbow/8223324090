@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.45",
+  "version": "0.66.46",
   "eventGenix": {
-    "releaseLabel": "CRM 66.45: рух бронювань між лініями"
+    "releaseLabel": "CRM 66.46: адаптивна панель бронювання"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

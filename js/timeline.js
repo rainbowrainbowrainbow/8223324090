@@ -754,7 +754,7 @@ function createBookingBlock(booking, startHour) {
         : booking;
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
     const left = timelineMinutesToPixels(startMin);
-    const width = timelineDurationWidth(effectiveDuration);
+    const width = Math.max(18, timelineDurationWidth(effectiveDuration));
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
@@ -787,9 +787,10 @@ function createBookingBlock(booking, startHour) {
         block.setAttribute('data-banquet-linked-targets', banquetTargetIds.join(','));
     }
 
+    const bookingTitleTail = renderBooking.room || renderBooking.programName || '';
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(renderBooking.label || renderBooking.programCode)}: ${escapeHtml(renderBooking.room)}${durationBadge}</div>
+        <div class="title">${escapeHtml(renderBooking.label || renderBooking.programCode)}: ${escapeHtml(bookingTitleTail)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(renderBooking.time)}${renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : ''}</div>
         ${graduationItemsHtml}
         ${noteText}

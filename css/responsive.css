@@ -855,6 +855,16 @@
         border-width: 1.5px;
     }
 
+    .booking-scenario-bar,
+    .booking-event-toggle-label {
+        align-items: flex-start;
+    }
+
+    .booking-scenario-bar {
+        flex-direction: column;
+    }
+
+    .booking-lead-grid,
     .booking-menu-grid,
     .booking-menu-banquet-meta,
     .booking-menu-position-row,

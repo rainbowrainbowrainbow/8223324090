@@ -24,6 +24,7 @@ test('booking package normalizes menu positions with price and subtotal', () => 
     assert.equal(positions.length, 2);
     assert.equal(positions[0].subtotal, 750);
     assert.equal(positions[1].subtotal, 160);
+    assert.equal(positions[1].kitchenType, 'menu');
     assert.equal(menuPositionsSubtotal(positions), 910);
     assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 x 250 грн/);
     assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 x 80 грн \(яблуко\)/);
@@ -80,21 +81,27 @@ test('booking package audit records client and commercial package changes', () =
     assert.equal(audit.to.customerId, 12);
 });
 
-test('booking workspace exposes first-class client, menu positions, summary, and backend persistence', () => {
+test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
     const route = read('routes', 'bookings.js');
 
+    assert.match(html, /bookingHasEventToggle/);
+    assert.match(html, /bookingScenarioBar/);
+    assert.match(html, /bookingLeadDetailsSection/);
     assert.match(html, /booking-workspace-heading/);
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
 
+    assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
+    assert.match(bookingJs, /booking_workspace_v2/);
+    assert.match(bookingJs, /kitchenType === 'cake'/);
     assert.match(bookingJs, /function addBookingMenuPositionFromForm/);
     assert.match(bookingJs, /programBasePrice/);
     assert.match(bookingJs, /positionsSubtotal/);
     assert.match(bookingJs, /finalTotal/);
-    assert.match(bookingJs, /Вкажіть клієнта або оберіть існуючу картку/);
+    assert.match(bookingJs, /bookingCustomerDuplicateHint/);
 
     assert.match(route, /applyBookingPackage/);
     assert.match(route, /banquet_guests/);

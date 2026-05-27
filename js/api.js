@@ -467,6 +467,13 @@ function getAuthHeaders(withContentType = true) {
     return headers;
 }
 
+function getTimelineAuthHeaders(withContentType = true) {
+    const headers = getAuthHeaders(withContentType);
+    delete headers['X-Business-Context'];
+    delete headers['x-business-context'];
+    return headers;
+}
+
 function apiHeaderObject(headers = {}) {
     if (!headers) return {};
     if (typeof Headers !== 'undefined' && headers instanceof Headers) {
@@ -577,7 +584,7 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
 
 async function apiGetBookings(date) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${date}`)}`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${date}`)}`, { headers: getTimelineAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -592,7 +599,7 @@ async function apiCreateBooking(booking) {
     try {
         const response = await fetch(`${API_BASE}/bookings`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
         });
         if (handleAuthError(response)) return { success: false };
@@ -612,7 +619,7 @@ async function apiCreateBookingFull(main, linked) {
     try {
         const response = await fetch(`${API_BASE}/bookings/full`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({ main: timelineApiPayload(main), linked: (linked || []).map(item => timelineApiPayload(item)) }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -631,7 +638,7 @@ async function apiDeleteBooking(id) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'DELETE',
-            headers: getAuthHeaders(false)
+            headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -649,7 +656,7 @@ async function apiUpdateBooking(id, booking) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'PUT',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
         });
         if (handleAuthError(response)) return { success: false };
@@ -679,7 +686,7 @@ async function apiConfirmBooking(id, payload = {}) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/confirm`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
         });
         if (handleAuthError(response)) return { success: false };
@@ -698,7 +705,7 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${id}/linked-atomic`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
         });
         if (handleAuthError(response)) return { success: false };
@@ -726,7 +733,7 @@ async function apiCreateBookingBanquetLink(sourceId, targetId, label = '') {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links`)}`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({ targetId, label }))
         });
         if (handleAuthError(response)) return { success: false };
@@ -745,7 +752,7 @@ async function apiDeleteBookingBanquetLink(sourceId, targetId) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links/${encodeURIComponent(targetId)}`)}`, {
             method: 'DELETE',
-            headers: getAuthHeaders(false)
+            headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -761,7 +768,7 @@ async function apiDeleteBookingBanquetLink(sourceId, targetId) {
 
 async function apiGetLines(date) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, { headers: getTimelineAuthHeaders(false) });
         // console.log('[apiGetLines] status=' + response.status + ' date=' + date);
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
         if (!response.ok) throw new Error('API error ' + response.status);
@@ -778,7 +785,7 @@ async function apiSaveLines(date, lines) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            headers: getTimelineAuthHeaders(),
             body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))
         });
         if (handleAuthError(response)) return { success: false };

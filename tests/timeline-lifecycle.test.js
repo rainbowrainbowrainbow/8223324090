@@ -187,6 +187,21 @@ test('pointercancel during booking drag rolls back visuals and clears transient 
     assert.equal(document.body.classList.contains('dragging-active'), false);
 });
 
+test('renderTimeline keeps the schedule visible when timeline APIs return non-array payloads', async () => {
+    const { window, api, consoleErrors } = createHarness();
+
+    window.apiGetLines = async () => [{ id: 'line-1', name: 'Line 1', color: '#14b8a6' }];
+    window.apiGetBookings = async () => ({ success: false, error: 'wrong business header' });
+    window.apiGetAfishaByDate = async () => ({ success: false, error: 'wrong business header' });
+
+    await api.renderTimeline();
+
+    const timelineLines = window.document.getElementById('timelineLines');
+    assert.ok(timelineLines, 'timeline container should exist');
+    assert.doesNotMatch(timelineLines.textContent, /Помилка завантаження таймлайну|CRITICAL/i);
+    assert.equal(consoleErrors.some(args => String(args[0] || '').includes('CRITICAL renderTimeline error')), false);
+});
+
 test('lostpointercapture cancels a pending booking drag instead of leaving state stuck', () => {
     const { window, api } = createHarness();
     const block = window.document.createElement('div');

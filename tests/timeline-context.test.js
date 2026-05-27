@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     DEFAULT_TIMELINE_CONTEXT,
@@ -8,6 +10,8 @@ const {
     canAccessTimelineContext,
     canUseTimelineAction
 } = require('../services/timelineContext');
+
+const ROOT = path.join(__dirname, '..');
 
 test('timeline context defaults invalid or missing values to Event Genix', () => {
     assert.equal(normalizeTimelineContext(), DEFAULT_TIMELINE_CONTEXT);
@@ -19,6 +23,25 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ body: { business_context: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
+});
+
+test('timeline API calls do not inherit the global CRM business header', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+
+    assert.match(apiCode, /function getTimelineAuthHeaders/);
+    assert.match(apiCode, /delete headers\['X-Business-Context'\]/);
+    assert.match(apiCode, /apiGetBookings[\s\S]*getTimelineAuthHeaders\(false\)/);
+    assert.match(apiCode, /apiGetLines[\s\S]*getTimelineAuthHeaders\(false\)/);
+    assert.match(apiCode, /apiCreateBooking[\s\S]*getTimelineAuthHeaders\(\)/);
+});
+
+test('timeline load routes keep legacy default-context rows visible', () => {
+    const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
+    const linesRoute = fs.readFileSync(path.join(ROOT, 'routes', 'lines.js'), 'utf8');
+
+    assert.match(bookingsRoute, /COALESCE\(b\.business_context, \$2\) = \$2/);
+    assert.match(bookingsRoute, /COALESCE\(business_context, \$3\) = \$3/);
+    assert.match(linesRoute, /COALESCE\(l\.business_context, \$2\) = \$2/);
 });
 
 test('Maysternya Doli access is creator-only', () => {

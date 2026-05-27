@@ -46,7 +46,7 @@ router.get('/:date', async (req, res) => {
                 ON ss.staff_id = s.id
                AND ss.date = l.date
                AND ss.status IN ('working', 'remote')
-             WHERE l.date = $1 AND l.business_context = $2
+             WHERE l.date = $1 AND COALESCE(l.business_context, $2) = $2
              ORDER BY
                 CASE WHEN ss.staff_id IS NULL THEN 1 ELSE 0 END,
                 ss.shift_start NULLS LAST,

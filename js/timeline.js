@@ -27,6 +27,11 @@ async function getLinesForDate(date) {
     }
     // v12.6: Don't cache empty lines — server always returns defaults via ensureDefaultLines,
     // so empty means transient error. Let next render try fresh API call.
+    if (!Array.isArray(lines)) {
+        console.warn('[Timeline] Lines API returned a non-array payload; keeping timeline render safe');
+        if (cached && Array.isArray(cached.data)) return cached.data;
+        return [];
+    }
     if (lines.length > 0) {
         AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
     }
@@ -346,9 +351,9 @@ async function renderTimeline() {
             getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; }),
             showAfisha ? apiGetAfishaByDate(formatDate(selectedDate)).catch(() => []) : Promise.resolve([])
         ]);
-        lines = normalizeTimelineLinesForContext(linesResult || []);
-        bookings = bookingsResult || [];
-        afishaEvents = afishaResult || [];
+        lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
+        bookings = Array.isArray(bookingsResult) ? bookingsResult : [];
+        afishaEvents = Array.isArray(afishaResult) ? afishaResult : [];
     } catch (err) {
         console.error('[Timeline] Critical fetch error:', err);
     }
@@ -3288,6 +3293,11 @@ async function getBookingsForDate(date) {
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (bookings === null) {
         if (cached) return cached.data;
+        return [];
+    }
+    if (!Array.isArray(bookings)) {
+        console.warn('[Timeline] Bookings API returned a non-array payload; keeping timeline render safe');
+        if (cached && Array.isArray(cached.data)) return cached.data;
         return [];
     }
     AppState.cachedBookings[dateStr] = { data: bookings, ts: Date.now() };

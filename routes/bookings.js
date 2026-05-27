@@ -76,7 +76,7 @@ function hasBookingLeadIdentity(booking, customerId) {
 async function getLineName(lineId, date, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     try {
         const result = await pool.query(
-            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2 AND business_context = $3',
+            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2 AND COALESCE(business_context, $3) = $3',
             [lineId, date, businessContext || DEFAULT_TIMELINE_CONTEXT]
         );
         return result.rows[0]?.name || null;
@@ -434,7 +434,7 @@ router.get('/:date', async (req, res) => {
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source
              FROM bookings b
-             WHERE b.date = $1 AND b.business_context = $2 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND COALESCE(b.business_context, $2) = $2 AND b.status != 'cancelled'
                ${visibility}
              ORDER BY time`,
             params

@@ -143,6 +143,287 @@ function cleanText(value) {
     return text || null;
 }
 
+function firstClean(...values) {
+    for (const value of values) {
+        const text = cleanText(value);
+        if (text) return text;
+    }
+    return null;
+}
+
+function normalizeWebhookSource(value) {
+    return String(value || 'universal')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 50) || 'universal';
+}
+
+function normalizeTelegramId(value) {
+    const text = cleanText(value);
+    if (!text || !/^\d{1,20}$/.test(text)) return null;
+    return text;
+}
+
+function normalizeDateOnly(value) {
+    const dateOnly = toDateOnly(value);
+    return dateOnly && /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null;
+}
+
+function normalizeTextList(value) {
+    if (Array.isArray(value)) {
+        return value.map(cleanText).filter(Boolean).slice(0, 12);
+    }
+    const parsed = parseJsonArray(value);
+    if (parsed.length) return parsed.map(cleanText).filter(Boolean).slice(0, 12);
+    const text = cleanText(value);
+    return text ? text.split(/[,;]+/).map(cleanText).filter(Boolean).slice(0, 12) : [];
+}
+
+function stripAt(value) {
+    const text = cleanText(value);
+    return text ? text.replace(/^@+/, '') : null;
+}
+
+function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal') {
+    const telegram = body.telegram && typeof body.telegram === 'object' ? body.telegram : {};
+    const telegramId = normalizeTelegramId(firstClean(
+        body.telegram_id,
+        body.telegramId,
+        body.tg_id,
+        body.tgId,
+        telegram.id,
+        telegram.user_id
+    ));
+    const telegramUsername = stripAt(firstClean(
+        body.telegram_username,
+        body.telegramUsername,
+        body.tg_username,
+        body.username,
+        telegram.username
+    ));
+    const phone = firstClean(body.phone, body.phone_number, body.phoneNumber, body.contact_phone);
+    const whatsapp = firstClean(body.whatsapp, body.whatsapp_phone, body.whatsappPhone);
+    const name = firstClean(body.name, body.client_name, body.clientName, body.full_name, body.fullName);
+    const requestTopic = firstClean(body.request_topic, body.requestTopic, body.topic, body.subject);
+    const sessionType = firstClean(body.session_type, body.sessionType, body.record_type, body.booking_type);
+    const bookingDate = normalizeDateOnly(firstClean(body.booking_date, body.bookingDate, body.slot_date, body.date));
+    const bookingTime = firstClean(body.booking_time, body.bookingTime, body.slot_time, body.time);
+    const message = firstClean(body.message, body.comment, body.notes, body.description);
+    const externalId = firstClean(body.external_id, body.externalId, body.lead_id, body.leadId);
+    const contactChannels = normalizeTextList(body.contact_channels ?? body.contactChannels ?? body.channels);
+    const phoneDigits = normalizeDigits(phone);
+    const fallbackExternalId = externalId
+        || (telegramId ? `telegram:${telegramId}` : null)
+        || (phoneDigits ? `${sourceChannel}:${phoneDigits}` : null);
+    const hasContactSignal = Boolean(name || phone || telegramId || telegramUsername || whatsapp || externalId);
+
+    return {
+        contact_signal: hasContactSignal,
+        client_name: name || (telegramUsername ? `@${telegramUsername}` : null) || phone || whatsapp || fallbackExternalId || 'Невідомий контакт',
+        phone: phone || null,
+        telegram_id: telegramId,
+        telegram_username: telegramUsername,
+        whatsapp: whatsapp || null,
+        instagram: stripAt(body.instagram),
+        request_topic: requestTopic,
+        session_type: sessionType,
+        event_date: bookingDate,
+        booking_time: bookingTime,
+        contact_channels: contactChannels,
+        message,
+        external_id: fallbackExternalId,
+        raw_payload: {
+            ...body,
+            normalized: {
+                source_channel: sourceChannel,
+                telegram_id: telegramId,
+                telegram_username: telegramUsername,
+                whatsapp: whatsapp || null,
+                contact_channels: contactChannels,
+                request_topic: requestTopic,
+                session_type: sessionType,
+                booking_date: bookingDate,
+                booking_time: bookingTime
+            }
+        }
+    };
+}
+
+function formatUniversalLeadNotes(payload, sourceChannel) {
+    const lines = [
+        `Джерело: ${sourceChannel}`,
+        payload.request_topic ? `Тема: ${payload.request_topic}` : null,
+        payload.session_type ? `Тип сесії: ${payload.session_type}` : null,
+        (payload.event_date || payload.booking_time)
+            ? `Запис: ${[payload.event_date, payload.booking_time].filter(Boolean).join(' ')}`
+            : null,
+        (payload.telegram_username || payload.telegram_id)
+            ? `Telegram: ${[payload.telegram_username ? `@${payload.telegram_username}` : null, payload.telegram_id ? `ID ${payload.telegram_id}` : null].filter(Boolean).join(' / ')}`
+            : null,
+        payload.whatsapp ? `WhatsApp: ${payload.whatsapp}` : null,
+        payload.contact_channels.length ? `Канали: ${payload.contact_channels.join(', ')}` : null,
+        payload.message ? `Коментар: ${payload.message}` : null
+    ];
+    return lines.filter(Boolean).join('\n');
+}
+
+function formatWebhookNoteEntry(notes, sourceChannel) {
+    const body = cleanText(notes);
+    if (!body) return null;
+    return `[${sourceChannel} ${new Date().toISOString()}]\n${body}`;
+}
+
+function hasLeadContactSignal(payload) {
+    return Boolean(payload.contact_signal);
+}
+
+async function findExistingWebhookLead(payload, businessContext, sourceChannel) {
+    if (payload.external_id) {
+        const exact = await pool.query(
+            `SELECT id FROM leads
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+               AND source_channel = $2
+               AND external_id = $3
+             LIMIT 1`,
+            [businessContext, sourceChannel, payload.external_id]
+        );
+        if (exact.rows.length > 0) return exact.rows[0];
+    }
+
+    if (payload.telegram_id) {
+        const byTelegram = await pool.query(
+            `SELECT id FROM leads
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+               AND telegram_id = $2::bigint
+               AND COALESCE(status, 'new') NOT IN ('closed','lost')
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [businessContext, payload.telegram_id]
+        );
+        if (byTelegram.rows.length > 0) return byTelegram.rows[0];
+    }
+
+    const phoneDigits = normalizeDigits(payload.phone);
+    if (phoneDigits) {
+        const byPhone = await pool.query(
+            `SELECT id FROM leads
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+               AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2
+               AND COALESCE(status, 'new') NOT IN ('closed','lost')
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [businessContext, phoneDigits]
+        );
+        if (byPhone.rows.length > 0) return byPhone.rows[0];
+    }
+
+    return null;
+}
+
+async function upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes) {
+    const existing = await findExistingWebhookLead(payload, businessContext, sourceChannel);
+    if (existing) {
+        const update = await pool.query(
+            `UPDATE leads
+                SET client_name = COALESCE($1, client_name),
+                    phone = COALESCE($2, phone),
+                    telegram_id = COALESCE($3::bigint, telegram_id),
+                    instagram = COALESCE($4, instagram),
+                    source = COALESCE($5, source),
+                    source_channel = COALESCE($6, source_channel),
+                    external_id = COALESCE($7, external_id),
+                    event_date = COALESCE($8::date, event_date),
+                    quality_category = COALESCE($9, quality_category),
+                    notes = CASE
+                        WHEN $10::text IS NULL THEN notes
+                        ELSE CONCAT_WS(E'\n', NULLIF(notes, ''), $10::text)
+                    END,
+                    raw_payload = COALESCE(raw_payload, '{}'::jsonb) || COALESCE($11::jsonb, '{}'::jsonb),
+                    last_contact_at = NOW()
+              WHERE id = $12
+                AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $13
+              RETURNING *`,
+            [
+                payload.client_name || null,
+                payload.phone || null,
+                payload.telegram_id || null,
+                payload.instagram || null,
+                sourceChannel,
+                sourceChannel,
+                payload.external_id || null,
+                payload.event_date || null,
+                payload.session_type || null,
+                formatWebhookNoteEntry(notes, sourceChannel),
+                JSON.stringify(payload.raw_payload || {}),
+                existing.id,
+                businessContext
+            ]
+        );
+        return { lead: update.rows[0] || null, created: false };
+    }
+
+    const insert = await pool.query(
+        `INSERT INTO leads
+           (business_context, client_name, phone, telegram_id, instagram,
+            source, source_channel, external_id, notes, raw_payload, status,
+            event_date, quality_category)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9::jsonb,'new',$10::date,$11)
+         ON CONFLICT (business_context, source_channel, external_id)
+           WHERE external_id IS NOT NULL DO NOTHING
+         RETURNING *`,
+        [
+            businessContext,
+            payload.client_name || null,
+            payload.phone || null,
+            payload.telegram_id || null,
+            payload.instagram || null,
+            sourceChannel,
+            payload.external_id || null,
+            notes || null,
+            JSON.stringify(payload.raw_payload || {}),
+            payload.event_date || null,
+            payload.session_type || null
+        ]
+    );
+    return { lead: insert.rows[0] || null, created: insert.rows.length > 0 };
+}
+
+async function handleUniversalWebhook(req, res) {
+    try {
+        const auth = req.headers['authorization'] || '';
+        if (!UNIVERSAL_WEBHOOK_TOKEN || auth !== `Bearer ${UNIVERSAL_WEBHOOK_TOKEN}`) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const sourceChannel = normalizeWebhookSource(req.query.source || 'universal');
+        const businessContext = publicBusinessContext(req);
+        const payload = normalizeUniversalWebhookPayload(req.body || {}, sourceChannel);
+        const notes = formatUniversalLeadNotes(payload, sourceChannel);
+
+        if (!hasLeadContactSignal(payload)) {
+            return res.status(400).json({ error: "Потрібно ім'я або контакт" });
+        }
+
+        const result = await upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes);
+        if (result.created && result.lead) {
+            notifyNewLead(result.lead).catch(() => {});
+            log.info(`New lead via universal [${sourceChannel}]: ${payload.client_name || payload.phone}`);
+        }
+
+        res.json({
+            success: true,
+            created: result.created,
+            updated: Boolean(result.lead && !result.created),
+            lead: result.lead ? { id: result.lead.id } : null
+        });
+    } catch (err) {
+        log.error('Universal webhook error', err);
+        res.status(500).json({ error: 'Internal error' });
+    }
+}
+
 function normalizeCelebrants(value, legacy = {}) {
     const items = [];
     const rawItems = parseJsonArray(value);
@@ -378,6 +659,9 @@ router.post('/landing', async (req, res) => {
         res.status(500).json({ success: false, error: 'Помилка збереження заявки' });
     }
 });
+
+// Public provider-secret guarded webhook for external CRM/bot lead capture.
+router.post('/webhook/universal', handleUniversalWebhook);
 
 // All remaining leads routes require authentication.
 router.use(authenticateToken);
@@ -1295,46 +1579,6 @@ async function createLeadFromWebhook({ client_name, phone, telegram_id, instagra
     );
     return result.rows[0] || null;
 }
-
-// POST /api/leads/webhook/universal?source=tiktok
-// Auth: Authorization: Bearer UNIVERSAL_WEBHOOK_TOKEN
-// Body: { name, phone, message?, instagram?, external_id? }
-router.post('/webhook/universal', async (req, res) => {
-    try {
-        const auth = req.headers['authorization'] || '';
-        if (!UNIVERSAL_WEBHOOK_TOKEN || auth !== `Bearer ${UNIVERSAL_WEBHOOK_TOKEN}`) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const source_channel = (req.query.source || 'universal').toLowerCase().slice(0, 50);
-        const businessContext = publicBusinessContext(req);
-        const { name, phone, message, instagram, external_id } = req.body;
-
-        if (!name && !phone) {
-            return res.status(400).json({ error: "Потрібно 'name' або 'phone'" });
-        }
-
-        const lead = await createLeadFromWebhook({
-            client_name:    name,
-            phone,
-            instagram,
-            notes:          message,
-            source_channel,
-            businessContext,
-            external_id:    external_id || (phone ? `${source_channel}_${phone}` : null),
-            raw_payload:    req.body,
-        });
-
-        if (lead) {
-            notifyNewLead(lead).catch(() => {});
-            log.info(`New lead via universal [${source_channel}]: ${name || phone}`);
-        }
-        res.json({ success: true, created: !!lead });
-    } catch (err) {
-        log.error('Universal webhook error', err);
-        res.status(500).json({ error: 'Internal error' });
-    }
-});
 
 // GET /api/leads/webhook/facebook — Meta verification
 router.get('/webhook/facebook', (req, res) => {

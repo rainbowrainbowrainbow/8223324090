@@ -4,6 +4,27 @@
 
 ---
 
+## v0.67.6 - CRM 67.6: доступ Oleksandra1 до всіх вкладок
+
+### Accounts / доступ / Майстерня Долі / 27.05.2026 [codex]
+- **Oleksandra1 розблоковано повний CRM surface** - data-fix `231_unlock_oleksandra1_full_access` додає акаунту `creator` через `extra_roles`, не змінюючи основну роль і не торкаючись пароля.
+- **Усі бізнес-вкладки доступні через перемикач** - акаунт отримує `event_genix`, `dar`, `maysternya_doli` і `crm`, а стартовим контекстом лишається `event_genix`, щоб після входу було видно повний набір вкладок.
+- **Таймлайн Майстерні відкрито явно** - `/maysternya-doli` додано в `page_allowlist`, а `extra_roles: creator` дає доступ до creator-only таймлайну МД.
+- **Додано regression guard** - тест перевіряє, що міграція не змінює `role`, не чіпає `password_hash` і містить потрібні контексти доступу.
+
+---
+
+## v0.67.5 - CRM 67.5: webhook лідів Майстерні Долі
+
+### Leads / Майстерня Долі / external webhook / 27.05.2026 [codex]
+- **Бот Майстерні Долі отримав захищений вхід у CRM** - `POST /api/leads/webhook/universal?source=maysternya_bot` тепер проходить public auth boundary без JWT, але вимагає `Authorization: Bearer UNIVERSAL_WEBHOOK_TOKEN`.
+- **Контакти пишуться в правильний бізнес-контекст** - webhook приймає `X-Business-Context: maysternya_doli`, створює ліди саме в `maysternya_doli` і зберігає весь payload у `raw_payload`.
+- **Дані запису стали читабельними в картці ліда** - ім'я, телефон, Telegram ID/username, WhatsApp, канали, тема, тип сесії, дата/час і коментар складаються в структуровані notes.
+- **Дублі не плодяться без потреби** - CRM шукає існуючий лід по `external_id`, потім `telegram_id`, потім нормалізованому телефону; знайдений лід оновлюється і отримує нову нотатку.
+- **Додано regression guard** - route smoke і auth-boundary тести фіксують, що webhook відкритий тільки як token-guarded public exception і не повертається за JWT-стіну.
+
+---
+
 ## v0.67.4 - CRM 67.4: компактне ліве меню
 
 ### Sidebar / адаптивність / 27.05.2026 [codex]

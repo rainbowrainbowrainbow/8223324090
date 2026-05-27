@@ -45,6 +45,7 @@ focused tests.
 | `GET /packages` | packages | Public landing/package materials need unauthenticated package reads. |
 | `GET /status/public` | status | Public status page uses this read-only endpoint without user JWT. |
 | `POST /leads/landing` | leads | Public landing lead capture endpoint; protected by landing lead limiter. |
+| `POST /leads/webhook/universal` | leads | External lead capture webhook is guarded by `UNIVERSAL_WEBHOOK_TOKEN` instead of user JWT. |
 | `POST /landing/demo-request` | landing | Public landing demo request endpoint; protected by landing lead limiter. |
 
 ## Query-Token JWT Exceptions

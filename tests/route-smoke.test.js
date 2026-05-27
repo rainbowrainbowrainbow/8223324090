@@ -9,6 +9,7 @@ const TEST_JWT_SECRET = 'route-smoke-jwt-secret';
 const TEST_REPORT_KEY = 'route-smoke-report-key';
 const TEST_REPORT_SECRET = 'route-smoke-report-secret';
 const TEST_TELEGRAM_SECRET = 'route-smoke-telegram-secret';
+const TEST_UNIVERSAL_WEBHOOK_TOKEN = 'route-smoke-universal-webhook-token';
 
 let server;
 let baseUrl;
@@ -21,6 +22,7 @@ const originalEnv = {
     REPORT_BOT_API_KEY: process.env.REPORT_BOT_API_KEY,
     REPORT_WEBHOOK_SECRET: process.env.REPORT_WEBHOOK_SECRET,
     WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
+    UNIVERSAL_WEBHOOK_TOKEN: process.env.UNIVERSAL_WEBHOOK_TOKEN,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
 };
 
@@ -136,6 +138,36 @@ function createFakePool() {
             }
             if (/SELECT COUNT\(\*\)::int as c FROM users/i.test(text)) {
                 return { rows: [{ c: 2 }] };
+            }
+            if (/SELECT id FROM leads/i.test(text) && /source_channel = \$2/i.test(text) && /external_id = \$3/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/SELECT id FROM leads/i.test(text) && /telegram_id = \$2::bigint/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/SELECT id FROM leads/i.test(text) && /regexp_replace\(COALESCE\(phone/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/INSERT INTO leads/i.test(text) && /source_channel/i.test(text) && /raw_payload/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 601,
+                        business_context: params[0] || 'event_genix',
+                        client_name: params[1],
+                        phone: params[2],
+                        telegram_id: params[3],
+                        instagram: params[4],
+                        source: params[5],
+                        source_channel: params[5],
+                        external_id: params[6],
+                        notes: params[7],
+                        raw_payload: JSON.parse(params[8] || '{}'),
+                        event_date: params[9],
+                        quality_category: params[10],
+                        status: 'new',
+                        created_at: new Date('2026-05-11T00:00:00Z').toISOString()
+                    }]
+                };
             }
             if (/INSERT INTO leads/i.test(text)) {
                 return {
@@ -694,6 +726,7 @@ describe('route-level API safety smoke', () => {
         process.env.REPORT_BOT_API_KEY = TEST_REPORT_KEY;
         process.env.REPORT_WEBHOOK_SECRET = TEST_REPORT_SECRET;
         process.env.WEBHOOK_SECRET = TEST_TELEGRAM_SECRET;
+        process.env.UNIVERSAL_WEBHOOK_TOKEN = TEST_UNIVERSAL_WEBHOOK_TOKEN;
         delete process.env.TELEGRAM_BOT_TOKEN;
 
         clearModules();
@@ -806,6 +839,50 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.lead.id, 501);
         assert.equal(notifiedLeads.length, 1);
         assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text)));
+    });
+
+    it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
+            external_id: '123456789',
+            name: 'Марія Тест',
+            phone: '+380501112233',
+            telegram_id: '123456789',
+            telegram_username: 'maria_test',
+            whatsapp: '+380501112233',
+            contact_channels: ['telegram', 'whatsapp'],
+            request_topic: 'Натальна карта',
+            session_type: 'повна сесія',
+            booking_date: '2026-05-30',
+            booking_time: '14:00',
+            message: 'Хоче консультацію після оплати'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`,
+            'X-Business-Context': 'maysternya_doli'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+        assert.equal(res.data.lead.id, 601);
+        assert.equal(notifiedLeads.length, 1);
+
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[3], '123456789');
+        assert.equal(insert.params[5], 'maysternya_bot');
+        assert.equal(insert.params[6], '123456789');
+        assert.match(insert.params[7], /Тип сесії: повна сесія/);
+        assert.match(insert.params[7], /Запис: 2026-05-30 14:00/);
+    });
+
+    it('rejects the universal lead webhook without the shared webhook token', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
+            external_id: 'missing-token',
+            name: 'No Token'
+        });
+
+        assert.equal(res.status, 401);
     });
 
     it('keeps public package reads open but protects package mutations', async () => {

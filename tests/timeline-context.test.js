@@ -117,6 +117,7 @@ test('timeline load routes keep legacy default-context rows visible', () => {
 
 test('Maysternya Doli access is creator-only', () => {
     assert.equal(canAccessTimelineContext({ role: 'creator' }, 'maysternya_doli'), true);
+    assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), true);
     assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), false);
     assert.equal(canAccessTimelineContext({ role: 'manager' }, 'maysternya_doli'), false);
 });
@@ -133,4 +134,16 @@ test('Maysternya Doli actions are creator-scoped inside the allowed surface', ()
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'delete'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'sales'), false);
     assert.equal(canUseTimelineAction({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli', 'settings'), false);
+});
+
+test('Oleksandra1 unlock migration grants full visible CRM surface without changing primary role', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '231_unlock_oleksandra1_full_access.sql'), 'utf8');
+
+    assert.match(migration, /lower\(trim\(COALESCE\(username, ''\)\)\) = 'oleksandra1'/);
+    assert.match(migration, /extra_roles[\s\S]*ARRAY\['creator'\]::text\[\]/);
+    assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
+    assert.match(migration, /business_contexts = ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
+    assert.match(migration, /default_business_context = 'event_genix'/);
+    assert.doesNotMatch(migration, /\brole\s*=/);
+    assert.doesNotMatch(migration, /password_hash/);
 });

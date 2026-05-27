@@ -158,6 +158,12 @@ const PUBLIC_API_ROUTES = [
     },
     {
         method: 'POST',
+        path: '/leads/webhook/universal',
+        owner: 'leads',
+        reason: 'External lead capture webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN instead of user JWT.'
+    },
+    {
+        method: 'POST',
         path: '/landing/demo-request',
         owner: 'landing',
         reason: 'Public landing demo request endpoint; protected by landing lead limiter.'

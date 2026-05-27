@@ -46,12 +46,22 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessContextFromRoute/);
     assert.match(apiCode, /path === '\/maysternya-doli'\) return 'maysternya_doli'/);
     assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return '\/maysternya-doli'/);
-    assert.match(sidebarCode, /if \(item\.href === '\/' && current === 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /if \(item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/' && current === 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
     assert.match(contextCode, /brandName: 'Майстерня Долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
+});
+
+test('creator sidebar access stays fully visible across business contexts', () => {
+    const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
+
+    assert.match(sidebarCode, /function _sidebarUserHasCreator/);
+    assert.match(sidebarCode, /const creatorSurface = _sidebarUserHasCreator\(user\) && !window\.RolePreview\?\.getPreviewRole\?\.\(\);/);
+    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/' && current === 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(!creatorSurface && item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(creatorSurface\) return true/);
 });
 
 test('timeline root uses account default instead of stale stored business context', () => {
@@ -159,6 +169,20 @@ test('Oleksandr Maysternya unlock migration grants creator surface to the actual
     assert.match(migration, /extra_roles[\s\S]*ARRAY\['creator'\]::text\[\]/);
     assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
     assert.match(migration, /business_contexts = ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
+    assert.doesNotMatch(migration, /\brole\s*=/);
+    assert.doesNotMatch(migration, /password_hash/);
+});
+
+test('Oleksandr default reset migration starts operators from the full CRM timeline surface', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '233_reset_oleksandr_default_to_full_crm.sql'), 'utf8');
+
+    assert.match(migration, /target_users/);
+    assert.match(migration, /'oleksandr'/);
+    assert.match(migration, /'oleksandra1'/);
+    assert.match(migration, /extra_roles[\s\S]*ARRAY\['creator'\]::text\[\]/);
+    assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
+    assert.match(migration, /business_contexts = ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
+    assert.match(migration, /default_business_context = 'event_genix'/);
     assert.doesNotMatch(migration, /\brole\s*=/);
     assert.doesNotMatch(migration, /password_hash/);
 });

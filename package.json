@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.67.7",
+  "version": "0.67.8",
   "eventGenix": {
-    "releaseLabel": "CRM 67.7: доступ Олександра до вкладок МД"
+    "releaseLabel": "CRM 67.8: видимий таймлайн і вкладки Олександра"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

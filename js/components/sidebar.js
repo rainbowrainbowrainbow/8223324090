@@ -1021,15 +1021,26 @@ const Sidebar = (() => {
         return BUSINESS_MODULE_ACCESS_MAP[item.access] || null;
     }
 
+    function _sidebarUserHasCreator(user = _getCurrentSidebarUser()) {
+        const roles = new Set();
+        if (user?.role) roles.add(String(user.role));
+        if (Array.isArray(user?.roles)) user.roles.forEach(value => roles.add(String(value)));
+        if (Array.isArray(user?.extraRoles)) user.extraRoles.forEach(value => roles.add(String(value)));
+        if (Array.isArray(user?.extra_roles)) user.extra_roles.forEach(value => roles.add(String(value)));
+        return roles.has('creator');
+    }
+
     function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
         const current = api.current(user);
+        const creatorSurface = _sidebarUserHasCreator(user) && !window.RolePreview?.getPreviewRole?.();
         if (moduleId === 'timeline') {
-            if (item.href === '/' && current === 'maysternya_doli') return false;
-            if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
+            if (!creatorSurface && item.href === '/' && current === 'maysternya_doli') return false;
+            if (!creatorSurface && item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
         }
+        if (creatorSurface) return true;
         return api.hasModule(current, moduleId);
     }
 

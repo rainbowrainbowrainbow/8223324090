@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.66.47",
+  "version": "0.66.48",
   "eventGenix": {
-    "releaseLabel": "CRM 66.47: історія закриття задач по днях"
+    "releaseLabel": "CRM 66.48: компактні decomposed задачі в профілі"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

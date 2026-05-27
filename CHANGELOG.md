@@ -4,6 +4,17 @@
 
 ---
 
+## v0.66.48 - CRM 66.48: компактні decomposed задачі в профілі
+
+### Profile / Мій день / 27.05.2026 [codex]
+- **Decomposed cards у `Мій день` стали collapsible** - задачі з підпунктами більше не відкривають весь чекліст одразу в денному cockpit.
+- **Collapsed state лишає progress truth** - у згорнутій картці видно назву, overdue/today badges, пріоритет, прогрес-бар, `done/total` і короткий стан чекліста.
+- **Expanded state зберігає checklist workflow** - кнопка `Розгорнути / Згорнути` відкриває той самий inline список підпунктів із checkbox-діями.
+- **Стан тримається стабільно в runtime** - кожна задача керується окремо через існуючі per-task sets, тому rerender не перемикає чужі картки.
+- **Regression guard** - оновлено profile tasker test та UI smoke contract для collapsed My Day cards, progress visibility і expanded checklist access.
+
+---
+
 ## v0.66.47 - CRM 66.47: історія закриття задач по днях
 
 ### Profile / Мій день / 27.05.2026 [codex]

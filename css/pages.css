@@ -2116,6 +2116,20 @@ body.dark-mode .cabinet-task-composer-hint {
     border-top: 0;
 }
 
+.cabinet-task-card.is-decomposed {
+    position: relative;
+}
+
+.cabinet-task-card.is-subtasks-collapsed {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.cabinet-task-card.is-subtasks-collapsed .cabinet-task-meta {
+    margin-top: 3px;
+    gap: 5px;
+}
+
 .cabinet-task-title {
     font-weight: 800;
 }
@@ -2227,6 +2241,7 @@ body.dark-mode .cabinet-task-composer-hint {
 .cabinet-subtask-toggle {
     display: inline-flex;
     align-items: center;
+    gap: 5px;
     border: 1px solid rgba(67, 56, 202, 0.22);
     border-radius: 999px;
     background: rgba(79, 70, 229, 0.09);
@@ -2238,9 +2253,30 @@ body.dark-mode .cabinet-task-composer-hint {
     cursor: pointer;
 }
 
+.cabinet-subtask-toggle::after {
+    content: '⌄';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    font-size: 12px;
+    line-height: 1;
+    transition: transform 0.16s ease;
+}
+
+.cabinet-subtask-toggle b {
+    font: inherit;
+    font-weight: 950;
+}
+
 .cabinet-subtask-toggle[aria-expanded="true"] {
     background: rgba(79, 70, 229, 0.16);
     border-color: rgba(67, 56, 202, 0.34);
+}
+
+.cabinet-subtask-toggle[aria-expanded="true"]::after {
+    transform: rotate(180deg);
 }
 
 .cabinet-subtask-progress {
@@ -2268,6 +2304,32 @@ body.dark-mode .cabinet-task-composer-hint {
     color: var(--gray-500, #6b7280);
     font-size: 11px;
     font-weight: 900;
+}
+
+.cabinet-subtask-compact-summary {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+    padding: 4px 7px;
+    border: 1px dashed rgba(67, 56, 202, 0.24);
+    border-radius: 999px;
+    background: rgba(79, 70, 229, 0.06);
+    color: #4338ca;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.cabinet-subtask-compact-summary span {
+    color: var(--gray-500, #6b7280);
+}
+
+.cabinet-subtask-compact-summary b {
+    color: #3730a3;
+    font-weight: 950;
 }
 
 .cabinet-subtask-inline-panel {
@@ -2505,6 +2567,20 @@ body.dark-mode .cabinet-subtask-inline-item {
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(148, 163, 184, 0.20);
     color: var(--profile-dark-text, #f8fafc);
+}
+
+body.dark-mode .cabinet-subtask-compact-summary {
+    border-color: rgba(129, 140, 248, 0.28);
+    background: rgba(79, 70, 229, 0.14);
+    color: #c4b5fd;
+}
+
+body.dark-mode .cabinet-subtask-compact-summary span {
+    color: var(--profile-dark-muted, #94a3b8);
+}
+
+body.dark-mode .cabinet-subtask-compact-summary b {
+    color: #ddd6fe;
 }
 
 body.dark-mode .cabinet-task-report-toggle {
@@ -2859,6 +2935,17 @@ body.dark-mode .cabinet-task-priority--critical {
     .cabinet-task-actions {
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .cabinet-subtask-toggle {
+        min-height: 32px;
+        padding: 5px 9px;
+    }
+
+    .cabinet-subtask-compact-summary {
+        width: 100%;
+        justify-content: space-between;
+        border-radius: 10px;
     }
 
     .cabinet-task-undo-toast {

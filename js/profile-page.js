@@ -3471,6 +3471,14 @@ function cabinetTaskHasSubtasks(task = {}) {
     return cabinetSubtaskSummary(task).total > 0;
 }
 
+function cabinetTaskIsDecomposed(task = {}) {
+    const rawCount = Number(task.subtask_count ?? task.subtaskCount ?? 0);
+    return cabinetTaskHasSubtasks(task)
+        || (Number.isFinite(rawCount) && rawCount > 0)
+        || (Array.isArray(task.subtasks) && task.subtasks.length > 0)
+        || Boolean(task.decompositionMode || task.decomposition_mode);
+}
+
 function cabinetTaskCompletionBlockedBySubtasks(task = {}) {
     const summary = cabinetSubtaskSummary(task);
     return summary.total > 0 && summary.done < summary.total;
@@ -3573,6 +3581,7 @@ function isCabinetSubtasksExpanded(taskId, task = {}) {
     if (!id) return false;
     if (collapsedCabinetSubtaskIds.has(id)) return false;
     if (expandedCabinetSubtaskIds.has(id)) return true;
+    if (activeTab === 'myday' && cabinetTaskIsDecomposed(task)) return false;
     return Array.isArray(cachedCabinetSubtasks(id, task));
 }
 
@@ -3607,25 +3616,38 @@ function renderCabinetSubtaskProgress(task = {}) {
     </div>`;
 }
 
-function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '') {
+function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '', expanded = null) {
     const summary = cabinetSubtaskSummary(task);
     if (!summary.total || !taskIdAttr) return '';
-    const expanded = isCabinetSubtasksExpanded(Number(taskIdAttr), task);
-    return `<button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${expanded ? 'true' : 'false'}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
-        Пункти ${summary.done}/${summary.total}
+    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(Number(taskIdAttr), task) : Boolean(expanded);
+    const label = isExpanded ? 'Згорнути' : 'Розгорнути';
+    return `<button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="cabinetSubtasksPanel${taskIdAttr}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
+        <span>${label}</span>
+        <b>Пункти ${summary.done}/${summary.total}</b>
     </button>`;
 }
 
-function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '') {
+function renderCabinetSubtaskCollapsedSummary(task = {}) {
+    const summary = cabinetSubtaskSummary(task);
+    if (!summary.total) return '';
+    const remaining = Math.max(0, summary.total - summary.done);
+    const state = remaining > 0 ? `Залишилось ${remaining}` : 'Усі підпункти закриті';
+    return `<div class="cabinet-subtask-compact-summary" aria-label="Короткий стан чекліста">
+        <span>Чекліст згорнуто</span>
+        <b>${escapeHtml(state)}</b>
+    </div>`;
+}
+
+function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null) {
     const summary = cabinetSubtaskSummary(task);
     const taskId = Number(taskIdAttr || 0);
     if (!summary.total || !taskId) return '';
-    const expanded = isCabinetSubtasksExpanded(taskId, task);
+    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
     const subtasks = cachedCabinetSubtasks(taskId, task);
     let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
-    if (expanded && loadingCabinetSubtaskIds.has(taskId)) {
+    if (isExpanded && loadingCabinetSubtaskIds.has(taskId)) {
         body = '<div class="cabinet-subtask-inline-empty">Завантажую підпункти...</div>';
-    } else if (expanded && Array.isArray(subtasks)) {
+    } else if (isExpanded && Array.isArray(subtasks)) {
         body = subtasks.length
             ? subtasks.map(item => {
                 const subtask = normalizeCabinetSubtask(item);
@@ -3636,7 +3658,7 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '') {
             }).join('')
             : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
     }
-    return `<div class="cabinet-subtask-inline-panel" data-cabinet-subtasks-panel="${taskIdAttr}" ${expanded ? '' : 'hidden'}>
+    return `<div id="cabinetSubtasksPanel${taskIdAttr}" class="cabinet-subtask-inline-panel" data-cabinet-subtasks-panel="${taskIdAttr}" ${isExpanded ? '' : 'hidden'}>
         <div class="cabinet-subtask-inline-head">
             <span>Підпункти можна виконувати у будь-якому порядку</span>
             <b>${summary.done}/${summary.total}</b>
@@ -3665,8 +3687,16 @@ function renderCabinetTaskCard(task, compact = false) {
     const openActionLabel = 'Відкрити задачу у повному списку';
     const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
+    const isDecomposed = cabinetTaskIsDecomposed(task);
+    const subtasksExpanded = isDecomposed && taskIdAttr ? isCabinetSubtasksExpanded(taskId, task) : false;
+    const cardClass = [
+        'cabinet-task-card',
+        isDecomposed ? 'is-decomposed' : '',
+        isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
+        isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
+    ].filter(Boolean).join(' ');
     return `
-        <div class="cabinet-task-card" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}"${dragAttrs}>
+        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
@@ -3679,11 +3709,12 @@ function renderCabinetTaskCard(task, compact = false) {
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
                     ${subSummary.total ? `<span>${subSummary.done}/${subSummary.total}</span>` : ''}
-                    ${renderCabinetSubtaskToggle(task, taskIdAttr)}
+                    ${renderCabinetSubtaskToggle(task, taskIdAttr, subtasksExpanded)}
                     ${cabinetTaskReportBadge(task)}
                     ${renderCabinetSubtaskProgress(task)}
                 </div>
-                ${renderCabinetSubtasksPanel(task, taskIdAttr)}
+                ${isDecomposed && !subtasksExpanded ? renderCabinetSubtaskCollapsedSummary(task) : ''}
+                ${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded)}
             </div>
             <div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>

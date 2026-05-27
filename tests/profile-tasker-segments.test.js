@@ -229,6 +229,44 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /data-cabinet-subtask-done/);
 });
 
+test('profile my day collapses decomposed cards by default while keeping progress visible', () => {
+    const ctx = loadProfileTaskerContext();
+    const task = {
+        id: 44,
+        title: 'Overdue decomposed task',
+        deadline: '2000-01-01T09:00:00.000Z',
+        priority: 'high',
+        subtask_count: 3,
+        subtask_done_count: 1,
+        subtasks: [
+            { id: 1, title: 'First', is_done: true },
+            { id: 2, title: 'Second', is_done: false },
+            { id: 3, title: 'Third', is_done: false }
+        ],
+        controlMeta: { canReschedule: true }
+    };
+
+    vm.runInContext(`activeTab = 'myday';`, ctx);
+    const collapsedHtml = ctx.renderCabinetTaskCard(task);
+
+    assert.match(collapsedHtml, /is-subtasks-collapsed/);
+    assert.match(collapsedHtml, /data-cabinet-task-decomposed="true"/);
+    assert.match(collapsedHtml, /aria-expanded="false"/);
+    assert.match(collapsedHtml, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(collapsedHtml, /cabinet-subtask-progress/);
+    assert.match(collapsedHtml, /cabinet-subtask-compact-summary/);
+    assert.match(collapsedHtml, /Залишилось 2/);
+    assert.doesNotMatch(collapsedHtml, /data-cabinet-subtask-done/);
+
+    vm.runInContext(`expandedCabinetSubtaskIds.add(44); collapsedCabinetSubtaskIds.delete(44);`, ctx);
+    const expandedHtml = ctx.renderCabinetTaskCard(task);
+
+    assert.match(expandedHtml, /is-subtasks-expanded/);
+    assert.match(expandedHtml, /aria-expanded="true"/);
+    assert.doesNotMatch(expandedHtml, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(expandedHtml, /data-cabinet-subtask-done/);
+});
+
 test('profile task cards respect disabled rescheduling control meta', () => {
     const ctx = loadProfileTaskerContext();
     const html = ctx.renderCabinetTaskCard({

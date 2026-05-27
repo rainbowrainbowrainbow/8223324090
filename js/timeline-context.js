@@ -138,6 +138,14 @@
             if (addLineBtn) addLineBtn.textContent = 'Додати спеціаліста';
             const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
             if (selectedLineLabel) selectedLineLabel.textContent = 'Спеціаліст:';
+            const bookingNotesLabel = document.querySelector('#bookingNotes')?.closest('.form-section')?.querySelector('label');
+            if (bookingNotesLabel) bookingNotesLabel.textContent = 'Коментар (опційно)';
+            const groupLabel = document.querySelector('#bookingGroupName')?.closest('.form-section')?.querySelector('label');
+            if (groupLabel) groupLabel.textContent = 'Тема запиту (опційно)';
+            const customerNameLabel = document.querySelector('#customerName')?.closest('.form-section')?.querySelector('label');
+            if (customerNameLabel) customerNameLabel.innerHTML = 'Імʼя клієнта';
+            const phoneLabel = document.querySelector('#customerPhone')?.closest('.form-section')?.querySelector('label');
+            if (phoneLabel) phoneLabel.textContent = 'Телефон / WhatsApp';
             const programLabel = document.querySelector('#programsIcons')?.closest('.form-section')?.querySelector('label');
             if (programLabel) programLabel.textContent = 'Консультація';
             const programSearch = document.getElementById('programSearch');

@@ -18,7 +18,8 @@ window.BookingForm = {
             'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',
             'bookingMenuQuantity', 'bookingMenuUnitPrice', 'bookingMenuNote', 'banquetMenu',
             'banquetGuests', 'banquetTables', 'bookingLeadSource', 'bookingLeadStatus',
-            'bookingLeadInterestDate', 'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'];
+            'bookingLeadInterestDate', 'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes',
+            'maysternyaSlotCloseDuration'];
         fields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -69,18 +70,25 @@ window.BookingForm = {
         const hasEvent = !!formData?.hasEvent;
         const programId = formData?.programId || '';
         const room = formData?.room || '';
+        const isMaysternya = typeof isMaysternyaBookingContext === 'function' && isMaysternyaBookingContext();
 
         if (!room) {
-            document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
-            return { valid: false, error: 'Оберіть кімнату' };
+            if (!isMaysternya) {
+                document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
+                return { valid: false, error: 'Оберіть кімнату' };
+            }
         }
         if (hasEvent && !programId) {
             document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
-            return { valid: false, error: 'Оберіть програму' };
+            return { valid: false, error: isMaysternya ? 'Оберіть тип консультації' : 'Оберіть програму' };
         }
 
         const program = hasEvent ? getProductsSync().find(p => p.id === programId) : null;
         if (hasEvent && !program) return { valid: false, error: 'Програму не знайдено' };
+
+        if (isMaysternya) {
+            return { valid: true };
+        }
 
         const pinataMode = document.getElementById('pinataMode')?.value || 'none';
         if (hasEvent && program.hasFiller && pinataMode === 'park') {

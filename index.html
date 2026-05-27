@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.67.8">
-    <link rel="stylesheet" href="css/auth.css?v=0.67.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.67.8">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.8">
-    <link rel="stylesheet" href="css/timeline.css?v=0.67.8">
-    <link rel="stylesheet" href="css/panel.css?v=0.67.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.67.8">
-    <link rel="stylesheet" href="css/controls.css?v=0.67.8">
-    <link rel="stylesheet" href="css/features.css?v=0.67.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.67.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.67.8">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.67.8">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.8">
+    <link rel="stylesheet" href="css/base.css?v=0.67.9">
+    <link rel="stylesheet" href="css/auth.css?v=0.67.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.67.9">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.9">
+    <link rel="stylesheet" href="css/timeline.css?v=0.67.9">
+    <link rel="stylesheet" href="css/panel.css?v=0.67.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.67.9">
+    <link rel="stylesheet" href="css/controls.css?v=0.67.9">
+    <link rel="stylesheet" href="css/features.css?v=0.67.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.67.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.67.9">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.67.9">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.67.8 CRM 67.8: видимий таймлайн і вкладки Олександра">✨ 0.67.8 CRM 67.8: видимий таймлайн і вкладки Олександра</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.67.9 CRM 67.9: простий онлайн-запис МД">✨ 0.67.9 CRM 67.9: простий онлайн-запис МД</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.67.8 — CRM 67.8: видимий таймлайн і вкладки Олександра</p>
+                <p class="tagline">AI First CRM v0.67.9 — CRM 67.9: простий онлайн-запис МД</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.67.8: CRM 67.8: видимий таймлайн і вкладки Олександра</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.67.9: CRM 67.9: простий онлайн-запис МД</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -323,6 +323,23 @@
                 </div>
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
+
+                <div id="maysternyaQuickBookingTools" class="maysternya-quick-booking-tools" aria-label="Швидкі дії Майстерні Долі">
+                    <div>
+                        <strong>Онлайн прийом</strong>
+                        <small>Мінімальний запис для лінії Олександра</small>
+                    </div>
+                    <label for="maysternyaSlotCloseDuration">
+                        <span>Закрити на</span>
+                        <select id="maysternyaSlotCloseDuration">
+                            <option value="15">15 хв</option>
+                            <option value="30">30 хв</option>
+                            <option value="60" selected>60 хв</option>
+                            <option value="90">90 хв</option>
+                        </select>
+                    </label>
+                    <button type="button" id="maysternyaCloseSlotBtn" class="maysternya-close-slot-btn">Закрити слот</button>
+                </div>
 
                 <div class="booking-workspace-heading booking-room-first-heading">
                     <span class="booking-workspace-step">1</span>
@@ -599,7 +616,7 @@
                         <button type="button" id="bookingClearCustomerBtn" class="booking-mini-action">+ Новий клієнт</button>
                         <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Обов'язковий блок бронювання</span>
                     </div>
-                    <div class="form-section">
+                    <div class="form-section booking-customer-search-section">
                         <label>Пошук клієнта</label>
                         <div class="customer-search-wrap">
                             <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
@@ -620,15 +637,15 @@
                             <label>Instagram</label>
                             <input type="text" id="customerInstagram" placeholder="username">
                         </div>
-                        <div class="form-section">
+                        <div class="form-section booking-child-field">
                             <label>Ім'я дитини</label>
                             <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
                         </div>
-                        <div class="form-section">
+                        <div class="form-section booking-child-field">
                             <label>Дата народження дитини</label>
                             <input type="date" id="customerChildBirthday">
                         </div>
-                        <div class="form-section">
+                        <div class="form-section booking-customer-source-field">
                             <label>Звідки дізналися</label>
                             <select id="customerSource">
                                 <option value="">— не вказано —</option>
@@ -773,7 +790,7 @@
                 </div>
 
                 <!-- v12.6: Silent booking (no notifications) -->
-                <div class="form-section">
+                <div id="bookingSkipNotificationSection" class="form-section">
                     <label class="toggle-label">
                         <input type="checkbox" id="skipNotificationToggle">
                         <span class="toggle-text">🔇 Без сповіщень (тихе бронювання)</span>
@@ -1411,12 +1428,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.67.8 — CRM 67.8: видимий таймлайн і вкладки Олександра</h4>
+                    <h4>v0.67.9 — CRM 67.9: простий онлайн-запис МД</h4>
                     <ul>
-                        <li><b>Звичайний таймлайн знову видимий</b> — акаунти Олександра з <code>creator</code> через <code>extra_roles</code> бачать Park timeline навіть при активному бізнесі МД.</li>
-                        <li><b>Усі вкладки лишаються в меню</b> — creator-доступ більше не звужується списком модулів поточного бізнес-контексту.</li>
-                        <li><b>Стартовий контекст повернуто на повний CRM</b> — нова міграція ставить <code>default_business_context = event_genix</code>, щоб записи не зникали за порожнім МД-контекстом.</li>
-                        <li><b>МД-таймлайн лишається окремим</b> — <code>/maysternya-doli</code> доступний поруч, але не ховає основний таймлайн із записами Парку.</li>
+                        <li><b>Онлайн-запис для Олександра став коротким</b> — у <code>/maysternya-doli</code> форма автоматично працює як онлайн-прийом без кімнат, кухні, дитячих полів і зайвих Park-блоків.</li>
+                        <li><b>Клієнт більше не блокує швидкий запис</b> — достатньо типу консультації; імʼя, телефон, Instagram, тема й коментар лишились опційними полями.</li>
+                        <li><b>Слот можна закрити вручну</b> — кнопка <code>Закрити слот</code> створює блок <code>Зайнято</code> на 15/30/60/90 хв, якщо Олександр недоступний у цей час.</li>
+                        <li><b>Закриті слоти видно окремо</b> — timeline малює їх як заблокований час, а деталі показують тільки дату, час, спеціаліста й коментар.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9805,29 +9822,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.67.8"></script>
-    <script src="js/timeline-visibility.js?v=0.67.8"></script>
-    <script src="js/config.js?v=0.67.8"></script>
-    <script src="js/api.js?v=0.67.8"></script>
-    <script src="js/ui.js?v=0.67.8"></script>
-    <script src="js/auth.js?v=0.67.8"></script>
-    <script src="js/timeline-interaction-model.js?v=0.67.8"></script>
-    <script src="js/timeline.js?v=0.67.8"></script>
-    <script src="js/booking.js?v=0.67.8"></script>
-    <script src="js/settings.js?v=0.67.8"></script>
-    <script src="js/booking-form.js?v=0.67.8"></script>
-    <script src="js/booking-linked.js?v=0.67.8"></script>
-    <script src="js/settings-dashboard.js?v=0.67.8"></script>
-    <script src="js/settings-history.js?v=0.67.8"></script>
-    <script src="js/settings-afisha.js?v=0.67.8"></script>
-    <script src="js/settings-certificates.js?v=0.67.8"></script>
-    <script src="js/offline.js?v=0.67.8"></script>
-    <script src="js/crm-feature-registry.js?v=0.67.8"></script>
-    <script src="js/search.js?v=0.67.8"></script>
-    <script src="js/ws.js?v=0.67.8"></script>
-    <script src="js/app.js?v=0.67.8"></script>
-    <script src="js/kleshnya-widget.js?v=0.67.8"></script>
-    <script src="js/components/sidebar.js?v=0.67.8"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.67.8"></script>
+    <script src="js/timeline-context.js?v=0.67.9"></script>
+    <script src="js/timeline-visibility.js?v=0.67.9"></script>
+    <script src="js/config.js?v=0.67.9"></script>
+    <script src="js/api.js?v=0.67.9"></script>
+    <script src="js/ui.js?v=0.67.9"></script>
+    <script src="js/auth.js?v=0.67.9"></script>
+    <script src="js/timeline-interaction-model.js?v=0.67.9"></script>
+    <script src="js/timeline.js?v=0.67.9"></script>
+    <script src="js/booking.js?v=0.67.9"></script>
+    <script src="js/settings.js?v=0.67.9"></script>
+    <script src="js/booking-form.js?v=0.67.9"></script>
+    <script src="js/booking-linked.js?v=0.67.9"></script>
+    <script src="js/settings-dashboard.js?v=0.67.9"></script>
+    <script src="js/settings-history.js?v=0.67.9"></script>
+    <script src="js/settings-afisha.js?v=0.67.9"></script>
+    <script src="js/settings-certificates.js?v=0.67.9"></script>
+    <script src="js/offline.js?v=0.67.9"></script>
+    <script src="js/crm-feature-registry.js?v=0.67.9"></script>
+    <script src="js/search.js?v=0.67.9"></script>
+    <script src="js/ws.js?v=0.67.9"></script>
+    <script src="js/app.js?v=0.67.9"></script>
+    <script src="js/kleshnya-widget.js?v=0.67.9"></script>
+    <script src="js/components/sidebar.js?v=0.67.9"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.67.9"></script>
 </body>
 </html>

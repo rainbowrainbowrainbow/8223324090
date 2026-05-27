@@ -1884,6 +1884,7 @@ body.dark-mode .deadline-overdue { background: rgba(198,40,40,0.2); color: #EF9A
 /* v15.1: CRM Customer section */
 body.dark-mode .booking-scenario-bar,
 body.dark-mode .booking-event-toggle-card,
+body.dark-mode .maysternya-quick-booking-tools,
 body.dark-mode .booking-disclosure-section,
 body.dark-mode .customer-data-section {
     background: rgba(255,255,255,0.03);
@@ -1900,14 +1901,22 @@ body.dark-mode .booking-detail-package-header {
 }
 body.dark-mode .booking-workspace-heading strong,
 body.dark-mode .booking-event-toggle-label strong,
+body.dark-mode .maysternya-quick-booking-tools strong,
 body.dark-mode .booking-disclosure-section summary,
 body.dark-mode .booking-menu-position-title,
 body.dark-mode .booking-detail-package-header {
     color: #e2e8f0;
 }
 body.dark-mode .booking-scenario-text,
+body.dark-mode .maysternya-quick-booking-tools small,
+body.dark-mode .maysternya-quick-booking-tools label span,
 body.dark-mode .booking-event-toggle-label small {
     color: #94A3B8;
+}
+body.dark-mode .maysternya-quick-booking-tools select {
+    background: rgba(15,23,42,0.88);
+    border-color: rgba(148,163,184,0.28);
+    color: #e2e8f0;
 }
 body.dark-mode .booking-duplicate-hint {
     background: rgba(245,158,11,0.12);
@@ -3978,6 +3987,13 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     background: var(--eg-event-custom-bg);
     border-color: var(--eg-event-custom-border);
     border-left-color: var(--eg-event-custom);
+}
+
+.timeline-dashboard-page .booking-block.slot-closed,
+.timeline-dashboard-page .mini-booking-block.slot-closed {
+    background: repeating-linear-gradient(135deg, #1e293b 0, #1e293b 10px, #334155 10px, #334155 20px);
+    border-color: rgba(148, 163, 184, 0.7);
+    border-left-color: #ef4444;
 }
 
 .timeline-dashboard-page .booking-block.banquet,

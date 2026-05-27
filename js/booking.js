@@ -80,6 +80,50 @@ const BookingPackageState = {
 };
 
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
+const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
+const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
+const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
+
+function isMaysternyaBookingContext() {
+    if (typeof IS_MAYSTERNYA_DOLI_TIMELINE !== 'undefined' && IS_MAYSTERNYA_DOLI_TIMELINE) return true;
+    return window.TimelineBusinessContext?.current?.().key === 'maysternya_doli';
+}
+
+function isMaysternyaClosedSlotBooking(booking = {}) {
+    const extra = booking.extraData || booking.extra_data || {};
+    const md = extra.maysternyaBooking || extra.maysternya || {};
+    return md.slotClosed === true || md.mode === 'closed_slot';
+}
+
+function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
+    const room = document.getElementById('roomSelect');
+    if (!room) return;
+    let option = Array.from(room.options).find(opt => opt.value === value);
+    if (!option) {
+        option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        room.appendChild(option);
+    }
+    room.value = value;
+    room.setAttribute('aria-invalid', 'false');
+}
+
+function getMaysternyaContactSnapshot() {
+    const customerName = document.getElementById('customerName')?.value?.trim() || '';
+    const phone = document.getElementById('customerPhone')?.value?.trim() || '';
+    const instagram = document.getElementById('customerInstagram')?.value?.trim() || '';
+    const topic = document.getElementById('bookingGroupName')?.value?.trim() || '';
+    return { customerName, phone, instagram, topic };
+}
+
+function getMaysternyaSlotCloseDuration() {
+    const selected = parseInt(document.getElementById('maysternyaSlotCloseDuration')?.value, 10);
+    if (Number.isFinite(selected) && selected > 0) return selected;
+    const programId = document.getElementById('selectedProgram')?.value || MAYSTERNYA_DEFAULT_PROGRAM_ID;
+    const program = getProductsSync().find(p => p.id === programId);
+    return parseInt(program?.duration, 10) || 60;
+}
 
 function getBookingWorkspaceHasEvent() {
     return !!document.getElementById('bookingHasEventToggle')?.checked;
@@ -183,6 +227,39 @@ function setBookingWorkspaceHasEvent(hasEvent, options = {}) {
     const toggle = document.getElementById('bookingHasEventToggle');
     if (toggle) toggle.checked = !!hasEvent;
     syncBookingWorkspaceMode(options);
+}
+
+function prepareMaysternyaBookingPanel(options = {}) {
+    if (!isMaysternyaBookingContext()) return;
+    const panel = document.getElementById('bookingPanel');
+    if (panel) panel.classList.add('booking-panel--maysternya');
+
+    ensureMaysternyaRoomOption(MAYSTERNYA_ONLINE_ROOM);
+    setBookingWorkspaceHasEvent(true, { markDirty: false });
+
+    const title = document.querySelector('#bookingPanel .panel-header h3');
+    if (title && !AppState.editingBookingId) title.textContent = 'Онлайн запис';
+    const submit = document.getElementById('bookingSubmitBtn');
+    if (submit && !AppState.editingBookingId) submit.textContent = 'Записати прийом';
+
+    const groupName = document.getElementById('bookingGroupName');
+    if (groupName) groupName.placeholder = 'Тема запиту або коротка примітка';
+    const notes = document.getElementById('bookingNotes');
+    if (notes) notes.placeholder = 'Коментар для Олександра';
+    const customerName = document.getElementById('customerName');
+    if (customerName) customerName.placeholder = 'Імʼя клієнта';
+    const phone = document.getElementById('customerPhone');
+    if (phone) phone.placeholder = 'Телефон або WhatsApp';
+    const customerMode = document.getElementById('bookingCustomerModeLabel');
+    if (customerMode) customerMode.textContent = 'Опційно для онлайн-прийому';
+
+    const shouldSelectDefault = options.selectDefaultProgram !== false
+        && !document.getElementById('selectedProgram')?.value
+        && getProductsSync().some(p => p.id === MAYSTERNYA_DEFAULT_PROGRAM_ID);
+    if (shouldSelectDefault) {
+        selectProgram(MAYSTERNYA_DEFAULT_PROGRAM_ID);
+    }
+    renderBookingPackageSummary();
 }
 
 function bookingKitchenType(product) {
@@ -551,6 +628,7 @@ function initBookingPackageWorkspace() {
         if (price) price.value = product ? String(product.price || 0) : '';
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
+    document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);
     ['roomSelect', 'customerName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
      'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
@@ -629,6 +707,7 @@ async function openBookingPanel(time, lineId) {
         const closed = await closeBookingPanel(false);
         if (!closed) return false;
     }
+    document.getElementById('bookingPanel')?.classList.toggle('booking-panel--maysternya', isMaysternyaBookingContext());
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => l.id === lineId);
 
@@ -695,6 +774,7 @@ async function openBookingPanel(time, lineId) {
     resetBookingLeadDetails();
     resetBookingPackageWorkspace();
     applyLeadConversionContextToBookingForm();
+    prepareMaysternyaBookingPanel();
 
     document.getElementById('bookingPanel')?.classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
@@ -1115,6 +1195,7 @@ async function closeBookingPanel(force = false) {
         });
     }
     document.getElementById('bookingPanel')?.classList.add('hidden');
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -1126,6 +1207,12 @@ async function closeBookingPanel(force = false) {
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
+        const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
+        const btnSubmit = document.querySelector('#bookingForm .btn-submit');
+        if (panelH3) panelH3.textContent = 'Нове бронювання';
+        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
+    }
+    if (!AppState.editingBookingId && !isMaysternyaBookingContext()) {
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
         if (panelH3) panelH3.textContent = 'Нове бронювання';
@@ -1497,9 +1584,11 @@ function updateCustomDuration() {
 // ==========================================
 
 function getBookingFormData() {
-    const hasEvent = getBookingWorkspaceHasEvent();
+    const maysternyaMode = isMaysternyaBookingContext();
+    const hasEvent = maysternyaMode ? true : getBookingWorkspaceHasEvent();
     const programId = hasEvent ? document.getElementById('selectedProgram')?.value : '';
     const room = document.getElementById('roomSelect')?.value || '';
+    const effectiveRoom = maysternyaMode ? (room || MAYSTERNYA_ONLINE_ROOM) : room;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const time = document.getElementById('bookingTime')?.value;
     const lineId = document.getElementById('bookingLine')?.value;
@@ -1541,7 +1630,8 @@ function getBookingFormData() {
 
     return {
         hasEvent, scenario, leadDetails,
-        programId, room, program, time, lineId, duration, label,
+        programId, room: effectiveRoom, program, time, lineId, duration, label,
+        maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
         menuPositions: packageTotals.menuPositions,
@@ -1737,6 +1827,30 @@ function buildBookingObject(formData, program) {
     };
     obj.extraData.bookingWorkspace = buildBookingWorkspaceExtraData(formData);
 
+    if (formData.maysternyaMode || isMaysternyaBookingContext()) {
+        const contact = getMaysternyaContactSnapshot();
+        obj.room = MAYSTERNYA_ONLINE_ROOM;
+        obj.hosts = hasEvent ? (program.hosts || 1) : 1;
+        obj.kidsCount = null;
+        obj.costume = null;
+        obj.secondAnimator = null;
+        obj.banquetGuests = null;
+        obj.banquetTables = null;
+        obj.banquetMenu = null;
+        obj.menuPositions = [];
+        obj.groupName = contact.topic || obj.groupName || null;
+        obj.extraData.maysternyaBooking = {
+            mode: 'online_consultation',
+            online: true,
+            specialistLineId: formData.lineId,
+            clientName: contact.customerName || null,
+            phone: contact.phone || null,
+            instagram: contact.instagram || null,
+            topic: contact.topic || null,
+            source: 'maysternya_compact_booking'
+        };
+    }
+
     // v15.1+: CRM customer is a first-class booking package field.
     const existingId = document.getElementById('selectedCustomerId')?.value;
     if (existingId) {
@@ -1769,6 +1883,110 @@ function buildBookingObject(formData, program) {
     }
 
     return obj;
+}
+
+function buildMaysternyaClosedSlotBooking() {
+    const duration = getMaysternyaSlotCloseDuration();
+    const notes = document.getElementById('bookingNotes')?.value?.trim() || '';
+    return {
+        date: formatDate(AppState.selectedDate),
+        time: document.getElementById('bookingTime')?.value,
+        lineId: document.getElementById('bookingLine')?.value,
+        programId: null,
+        programCode: 'CLOSED',
+        label: 'Закрито',
+        programName: 'Слот закрито',
+        category: 'custom',
+        duration,
+        price: 0,
+        hosts: 1,
+        secondAnimator: null,
+        pinataMode: 'none',
+        pinataNumber: null,
+        pinataFillerNumber: null,
+        pinataFiller: null,
+        clientPinataServicePrice: null,
+        clientPinataServiceNote: null,
+        costume: null,
+        room: MAYSTERNYA_CLOSED_ROOM,
+        notes: notes || 'Олександр зайнятий у цей час',
+        createdBy: AppState.currentUser ? AppState.currentUser.username : '',
+        createdAt: new Date().toISOString(),
+        status: 'confirmed',
+        kidsCount: null,
+        groupName: 'Зайнято',
+        programBasePrice: 0,
+        menuPositions: [],
+        extraData: {
+            maysternyaBooking: {
+                mode: 'closed_slot',
+                slotClosed: true,
+                online: false,
+                closedDuration: duration,
+                specialistLineId: document.getElementById('bookingLine')?.value,
+                source: 'maysternya_quick_close'
+            },
+            bookingWorkspace: {
+                schemaVersion: BOOKING_WORKSPACE_SCHEMA_VERSION,
+                hasEvent: false,
+                scenario: 'closed_slot',
+                leadDetails: {},
+                kitchen: { itemsCount: 0, menuCount: 0, cakeCount: 0, positionsSubtotal: 0 },
+                source: 'maysternya_quick_close'
+            }
+        },
+        skipNotification: true,
+        paymentMethod: null,
+        banquetGuests: null,
+        banquetTables: null,
+        banquetMenu: null
+    };
+}
+
+async function closeMaysternyaTimelineSlot() {
+    if (!isMaysternyaBookingContext()) return;
+    const btn = document.getElementById('maysternyaCloseSlotBtn');
+    if (btn && btn.disabled) return;
+    const booking = buildMaysternyaClosedSlotBooking();
+    if (!booking.time || !booking.lineId) {
+        showNotification('Оберіть час на лінії Олександра', 'error');
+        return;
+    }
+    const bookingDateTime = new Date(`${booking.date}T${booking.time}:00`);
+    if (bookingDateTime < new Date()) {
+        showNotification('Неможливо закрити слот у минулому.', 'error');
+        return;
+    }
+    const valid = await validateBookingConflicts(booking.lineId, booking.time, booking.duration, null, null, null);
+    if (!valid) return;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.textContent;
+        btn.textContent = 'Закриваю...';
+    }
+
+    try {
+        const result = await apiCreateBooking(booking);
+        if (result && result.success === false) {
+            showNotification(result.error || 'Не вдалось закрити слот', 'error');
+            return;
+        }
+        if (result?.booking?.id) booking.id = result.booking.id;
+        else if (result?.id) booking.id = result.id;
+        pushUndo('create', [booking]);
+        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        await closeBookingPanel(true);
+        await renderTimeline();
+        showNotification('Слот закрито', 'success');
+    } catch (error) {
+        handleError('Закриття слота', error);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.originalText || 'Закрити слот';
+        }
+    }
 }
 
 function buildExtraData(programId) {
@@ -2212,6 +2430,29 @@ async function showBookingDetails(bookingId) {
     const bookingDate = new Date(booking.date);
     const lines = await getLinesForDate(bookingDate);
     const line = lines.find(l => l.id === booking.lineId);
+
+    if (isMaysternyaClosedSlotBooking(booking)) {
+        const actions = isViewer() ? '' : `
+            <div class="booking-actions modal-footer-sticky">
+                <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Відкрити слот</button>
+            </div>
+        `;
+        document.getElementById('bookingDetails').innerHTML = `
+            <div class="booking-detail-header booking-detail-header--closed-slot">
+                <div>
+                    <h3>Слот закрито</h3>
+                    <p>${escapeHtml(line ? line.name : 'Олександр')} · ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</p>
+                </div>
+            </div>
+            <div class="booking-detail-row"><span class="label">Дата:</span><span class="value">${escapeHtml(booking.date)}</span></div>
+            <div class="booking-detail-row"><span class="label">Час:</span><span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span></div>
+            <div class="booking-detail-row"><span class="label">Спеціаліст:</span><span class="value">${escapeHtml(line ? line.name : '-')}</span></div>
+            ${booking.notes ? `<div class="booking-detail-row"><span class="label">Коментар:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+            ${actions}
+        `;
+        document.getElementById('bookingModal')?.classList.remove('hidden');
+        return;
+    }
 
     const program = getProductsSync().find(p => p.id === booking.programId);
     const descriptionHtml = program && program.description

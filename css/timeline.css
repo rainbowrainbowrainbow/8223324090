@@ -350,6 +350,22 @@
 .booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
 .booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
 .booking-block.graduation { background: linear-gradient(135deg, #7C3AED 0%, #0F766E 100%); }
+.booking-block.slot-closed {
+    background: repeating-linear-gradient(135deg, #334155 0, #334155 10px, #475569 10px, #475569 20px);
+    border: 1px dashed rgba(248, 250, 252, 0.72);
+    opacity: 0.94;
+}
+
+.booking-block.slot-closed .title,
+.booking-block.slot-closed .subtitle,
+.booking-block.slot-closed .note-text {
+    color: #F8FAFC;
+}
+
+.booking-block.slot-closed .user-letter {
+    background: rgba(15, 23, 42, 0.42);
+    color: #F8FAFC;
+}
 /* v20.9.14: Banquet block style */
 .booking-block.banquet-block { border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.15); }
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }

@@ -212,6 +212,146 @@
     font-weight: 900;
 }
 
+.maysternya-quick-booking-tools {
+    display: none;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    margin: 0 0 14px;
+    padding: 12px;
+    border: 1px solid rgba(14, 165, 134, 0.22);
+    border-radius: 8px;
+    background: rgba(14, 165, 134, 0.08);
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools > div {
+    min-width: 0;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools strong,
+body.timeline-context-maysternya .maysternya-quick-booking-tools small,
+body.timeline-context-maysternya .maysternya-quick-booking-tools label span {
+    display: block;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools strong {
+    color: var(--gray-800);
+    font-size: 14px;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools small,
+body.timeline-context-maysternya .maysternya-quick-booking-tools label span {
+    color: var(--gray-500);
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools label {
+    grid-column: 1 / 2;
+    display: grid;
+    gap: 5px;
+}
+
+body.timeline-context-maysternya .maysternya-quick-booking-tools select {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid rgba(14, 165, 134, 0.3);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-800);
+    font-weight: 800;
+}
+
+.maysternya-close-slot-btn {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+    align-self: stretch;
+    padding: 0 12px;
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #b91c1c;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.maysternya-close-slot-btn:hover {
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.maysternya-close-slot-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+body.timeline-context-maysternya .booking-form {
+    padding-top: 14px;
+}
+
+body.timeline-context-maysternya .booking-workspace-heading,
+body.timeline-context-maysternya .booking-room-first-section,
+body.timeline-context-maysternya #bookingScenarioBar,
+body.timeline-context-maysternya .booking-event-toggle-card,
+body.timeline-context-maysternya #programSearch,
+body.timeline-context-maysternya .program-search-wrap,
+body.timeline-context-maysternya #costumeSelect,
+body.timeline-context-maysternya #extraHostSection,
+body.timeline-context-maysternya #secondAnimatorSection,
+body.timeline-context-maysternya #hostsWarning,
+body.timeline-context-maysternya #pinataModeSection,
+body.timeline-context-maysternya #pinataSharedFields,
+body.timeline-context-maysternya #clientPinataServiceFields,
+body.timeline-context-maysternya #pinataFillerSection,
+body.timeline-context-maysternya #kidsCountSection,
+body.timeline-context-maysternya #tshirtSizesSection,
+body.timeline-context-maysternya .booking-client-actions,
+body.timeline-context-maysternya .booking-customer-search-section,
+body.timeline-context-maysternya .booking-child-field,
+body.timeline-context-maysternya .booking-customer-source-field,
+body.timeline-context-maysternya #bookingCustomerDuplicateHint,
+body.timeline-context-maysternya #bookingLeadDetailsSection,
+body.timeline-context-maysternya #banquetFields,
+body.timeline-context-maysternya #bookingPackageSummary,
+body.timeline-context-maysternya .status-section,
+body.timeline-context-maysternya #bookingSkipNotificationSection {
+    display: none !important;
+}
+
+body.timeline-context-maysternya #bookingEventFields {
+    margin-bottom: 0;
+}
+
+body.timeline-context-maysternya .form-section {
+    margin-bottom: 12px;
+}
+
+body.timeline-context-maysternya .customer-data-section {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+body.timeline-context-maysternya .customer-fields {
+    display: grid;
+    gap: 0;
+}
+
+body.timeline-context-maysternya .customer-fields .required-mark {
+    display: none;
+}
+
+body.timeline-context-maysternya .programs-icons {
+    margin-top: 0;
+}
+
+body.timeline-context-maysternya .program-details .detail-row:nth-child(n+2) {
+    display: none;
+}
+
 .form-section label {
     display: block;
     margin-bottom: 8px;

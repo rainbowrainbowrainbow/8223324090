@@ -675,6 +675,16 @@ body.dark-mode .fin-check-hint,
     z-index: auto;
 }
 
+.booking-detail-header--closed-slot {
+    background: linear-gradient(135deg, #334155 0%, #0F766E 100%);
+}
+
+.booking-detail-header--closed-slot p {
+    margin: 0;
+    color: rgba(255,255,255,0.86);
+    font-size: 13px;
+}
+
 .booking-detail-row {
     display: flex;
     justify-content: space-between;

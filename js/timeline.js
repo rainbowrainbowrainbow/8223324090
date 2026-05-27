@@ -763,13 +763,15 @@ function createBookingBlock(booking, startHour) {
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
+    const maysternyaExtra = renderBooking.extraData?.maysternyaBooking || renderBooking.extraData?.maysternya || {};
+    const isMaysternyaSlotClosed = maysternyaExtra.slotClosed === true || maysternyaExtra.mode === 'closed_slot';
     // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
-    block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}`;
+    block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}`;
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
-    block.setAttribute('aria-label', `${renderBooking.label || renderBooking.category} ${renderBooking.time} ${renderBooking.room || ''}`);
+    block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? 'Слот закрито' : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
@@ -784,7 +786,7 @@ function createBookingBlock(booking, startHour) {
     const durationBadge = effectiveDuration > 0 ? `<span class="duration-badge ${durationClass}">${effectiveDuration}хв</span>` : '';
 
     // v5.19: Linked bookings show 🔗 badge instead of user letter
-    const badge = isLinked ? '🔗' : escapeHtml(userLetter);
+    const badge = isMaysternyaSlotClosed ? '×' : (isLinked ? '🔗' : escapeHtml(userLetter));
 
     const banquetTargetIds = getBanquetLinkedTargetIds(renderBooking);
     if (banquetTargetIds.length > 0) {
@@ -792,10 +794,14 @@ function createBookingBlock(booking, startHour) {
         block.setAttribute('data-banquet-linked-targets', banquetTargetIds.join(','));
     }
 
-    const bookingTitleTail = renderBooking.room || renderBooking.programName || '';
+    const maysternyaClient = maysternyaExtra.clientName || maysternyaExtra.topic || renderBooking.groupName || '';
+    const bookingTitleTail = isMaysternyaSlotClosed
+        ? 'Зайнято'
+        : (maysternyaClient || renderBooking.room || renderBooking.programName || '');
+    const bookingTitle = isMaysternyaSlotClosed ? 'Закрито' : (renderBooking.label || renderBooking.programCode);
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(renderBooking.label || renderBooking.programCode)}: ${escapeHtml(bookingTitleTail)}${durationBadge}</div>
+        <div class="title">${escapeHtml(bookingTitle)}: ${escapeHtml(bookingTitleTail)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(renderBooking.time)}${renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : ''}</div>
         ${graduationItemsHtml}
         ${noteText}
@@ -803,7 +809,7 @@ function createBookingBlock(booking, startHour) {
 
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations
-    if (!isViewer()) {
+    if (!isViewer() && !isMaysternyaSlotClosed) {
         const linkHandle = document.createElement('button');
         linkHandle.type = 'button';
         linkHandle.className = 'booking-banquet-link-handle';

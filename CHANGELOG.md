@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.44 - CRM 66.44: рівний Помічник у таймлайні
+
+### Timeline / Assistant rail / dark theme / 27.05.2026 [codex]
+- **Помічник у таймлайні повернуто до shared topbar** - фінальний rail-контракт знову збігається з глобальною геометрією CRM header без окремого timeline-only варіанту.
+- **Панель відповіді поводиться канонічно** - focus у командному рядку більше не вимикає assistant command panel тільки на Timeline.
+- **Темне введення стало читабельним** - assistant input, expanded textarea і сумісні editable surfaces отримали світлий текст, видимий caret, placeholder і selection у dark theme.
+- **Regression guard** - UI smoke фіксує parity contract для Timeline rail і dark composer contrast для всіх assistant entry surfaces.
+
+---
+
 ## v0.66.43 - CRM 66.43: читабельний таймлайн
 
 ### Timeline / режими і dark theme / 27.05.2026 [codex]

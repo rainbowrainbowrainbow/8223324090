@@ -4,6 +4,16 @@
 
 ---
 
+## v0.66.61 - CRM 66.61: стабілізація продакшен-міграцій
+
+### DB / hotfix migration 227 / 27.05.2026 [codex]
+- **Виправлено production blocker у міграції `227`** - fallback для `receipts.business_context` і `currency_conversions.business_context` тепер явно прив'язаний до target-таблиці, без неоднозначного `business_context`.
+- **Стартап більше не має падати на ambiguous column** - SQL не посилається на неуточнену колонку в `UPDATE ... FROM bookings`, яка валить PostgreSQL у live schema.
+- **Regression guard** - тест `operational-business-context` фіксує кваліфіковані fallback-и та забороняє повернення до неясного `COALESCE(b.business_context, business_context, ...)`.
+- **Release marker оновлено** - `0.66.61` синхронізує cache tags і `/api/version` для нового Railway rollout після failed `0.66.60`.
+
+---
+
 ## v0.66.60 - CRM 66.60: аварійний запуск продакшену
 
 ### Release / production startup rollout / 27.05.2026 [codex]

@@ -39,6 +39,9 @@ test('warehouse and finance routes scope operational data by selected business c
 
     assert.match(migration, /ALTER TABLE warehouse_stock[\s\S]*business_context VARCHAR\(64\)/);
     assert.match(migration, /ALTER TABLE finance_transactions[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /COALESCE\(b\.business_context, receipts\.business_context, 'event_genix'\)/);
+    assert.match(migration, /COALESCE\(b\.business_context, currency_conversions\.business_context, 'event_genix'\)/);
+    assert.doesNotMatch(migration, /COALESCE\(b\.business_context, business_context, 'event_genix'\)/);
     assert.match(migration, /budget_plans_business_year_month_category_key/);
     assert.match(migration, /idx_cash_shifts_one_open_per_business/);
 });

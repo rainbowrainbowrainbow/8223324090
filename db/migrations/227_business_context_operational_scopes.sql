@@ -86,13 +86,13 @@ WHERE finance_transactions.booking_id = b.id
   AND COALESCE(finance_transactions.business_context, 'event_genix') <> COALESCE(b.business_context, 'event_genix');
 
 UPDATE receipts
-SET business_context = COALESCE(b.business_context, business_context, 'event_genix')
+SET business_context = COALESCE(b.business_context, receipts.business_context, 'event_genix')
 FROM bookings b
 WHERE receipts.booking_id = b.id
   AND COALESCE(receipts.business_context, 'event_genix') <> COALESCE(b.business_context, 'event_genix');
 
 UPDATE currency_conversions
-SET business_context = COALESCE(b.business_context, business_context, 'event_genix')
+SET business_context = COALESCE(b.business_context, currency_conversions.business_context, 'event_genix')
 FROM bookings b
 WHERE currency_conversions.booking_id = b.id
   AND COALESCE(currency_conversions.business_context, 'event_genix') <> COALESCE(b.business_context, 'event_genix');

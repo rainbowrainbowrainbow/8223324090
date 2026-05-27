@@ -1729,6 +1729,16 @@ async function changeBookingStatus(bookingId, newStatus) {
 // ЕКСПОРТ У КАРТИНКУ
 // ==========================================
 
+function getTimelineExportBrandName() {
+    const ctx = window.TimelineBusinessContext?.current?.();
+    return ctx?.brandName || ctx?.productName || 'Парк Закревського Періоду';
+}
+
+function restoreTimelineDocumentTitle() {
+    const ctx = window.TimelineBusinessContext?.current?.();
+    document.title = ctx?.title || getTimelineExportBrandName();
+}
+
 function drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1738,7 +1748,7 @@ function drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText(`Парк Закревського Періоду - Таймлайн`, padding, 35);
+    ctx.fillText(`${getTimelineExportBrandName()} - Таймлайн`, padding, 35);
 
     ctx.font = '20px Arial';
     const label = dateLabel || `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
@@ -2098,14 +2108,14 @@ function exportTimelinePdf() {
     } else {
         titleStr = `Таймлайн ${formatDate(AppState.selectedDate)}`;
     }
-    document.title = `${titleStr} — Парк Закревського Періоду`;
+    document.title = `${titleStr} — ${getTimelineExportBrandName()}`;
 
     window.print();
 
     // Restore
     setTimeout(() => {
         document.body.classList.remove('printing-timeline');
-        document.title = 'Парк Закревського Періоду';
+        restoreTimelineDocumentTitle();
     }, 500);
 }
 

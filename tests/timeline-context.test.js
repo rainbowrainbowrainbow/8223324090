@@ -35,6 +35,24 @@ test('timeline API calls do not inherit the global CRM business header', () => {
     assert.match(apiCode, /apiCreateBooking[\s\S]*getTimelineAuthHeaders\(\)/);
 });
 
+test('global business switch routes to the matching timeline surface', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
+    const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+
+    assert.match(apiCode, /timeline: \{ id: 'timeline', label: 'Timeline', paths: \['\/', '\/maysternya-doli'\] \}/);
+    assert.match(apiCode, /function crmBusinessContextFromRoute/);
+    assert.match(apiCode, /path === '\/maysternya-doli'\) return 'maysternya_doli'/);
+    assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return '\/maysternya-doli'/);
+    assert.match(sidebarCode, /if \(item\.href === '\/' && current === 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /if \(item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
+    assert.match(contextCode, /brandName: 'Майстерня Долі'/);
+    assert.match(uiCode, /getTimelineExportBrandName/);
+    assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
+});
+
 test('timeline load routes keep legacy default-context rows visible', () => {
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const linesRoute = fs.readFileSync(path.join(ROOT, 'routes', 'lines.js'), 'utf8');

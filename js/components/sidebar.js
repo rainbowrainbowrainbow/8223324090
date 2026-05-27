@@ -62,7 +62,7 @@ const Sidebar = (() => {
         { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
         { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'today' },
-        { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today', quickAccessOnly: true },
+        { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
 
@@ -1025,7 +1025,12 @@ const Sidebar = (() => {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
-        return api.hasModule(api.current(user), moduleId);
+        const current = api.current(user);
+        if (moduleId === 'timeline') {
+            if (item.href === '/' && current === 'maysternya_doli') return false;
+            if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
+        }
+        return api.hasModule(current, moduleId);
     }
 
     function _badgeTypeFor(item) {
@@ -1758,6 +1763,7 @@ const Sidebar = (() => {
             const previous = api.current(user);
             select.disabled = true;
             const next = await api.switchTo(event.target.value, { user, updateUrl: true });
+            if (window.__crmBusinessNavigationPending) return;
             if (next !== previous) {
                 const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
                 if (container?.id) render('#' + container.id);

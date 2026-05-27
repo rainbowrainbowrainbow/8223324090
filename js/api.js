@@ -124,7 +124,7 @@ const CRM_BUSINESS_SWITCH_ROLES = Object.freeze([
 ]);
 const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
     dashboard: { id: 'dashboard', label: 'Dashboard', paths: ['/dashboard'] },
-    timeline: { id: 'timeline', label: 'Timeline', paths: ['/'] },
+    timeline: { id: 'timeline', label: 'Timeline', paths: ['/', '/maysternya-doli'] },
     products: { id: 'products', label: 'Products', paths: ['/programs'] },
     leads: { id: 'leads', label: 'Leads', paths: ['/sales-funnel', '/leads'] },
     customers: { id: 'customers', label: 'Customers', paths: ['/customers'] },
@@ -140,6 +140,18 @@ function normalizeCrmBusinessContext(value) {
     const key = String(value || '').trim().toLowerCase();
     if (CRM_BUSINESS_CONTEXT_ALIASES[key]) return CRM_BUSINESS_CONTEXT_ALIASES[key];
     return CRM_BUSINESS_CONTEXTS[key] ? key : CRM_BUSINESS_DEFAULT_CONTEXT;
+}
+
+function normalizedCrmPath(pathname = '') {
+    return String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '/')
+        .replace(/\.html$/, '')
+        .replace(/\/+$/, '') || '/';
+}
+
+function crmBusinessContextFromRoute(pathname = '') {
+    const path = normalizedCrmPath(pathname);
+    if (path === '/maysternya-doli') return 'maysternya_doli';
+    return null;
 }
 
 function crmBusinessContextFromUrl() {
@@ -301,9 +313,10 @@ function sanitizeCrmBusinessContextForUser(context, user) {
 
 function getCrmBusinessContext(user) {
     const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    const fromRoute = crmBusinessContextFromRoute();
     const fromUrl = crmBusinessContextFromUrl();
     const stored = crmBusinessContextFromStorage(activeUser);
-    const next = fromUrl || stored || resolveCrmBusinessPolicy(activeUser).defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const next = fromRoute || fromUrl || stored || resolveCrmBusinessPolicy(activeUser).defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
     return sanitizeCrmBusinessContextForUser(next, activeUser);
 }
 
@@ -333,7 +346,8 @@ function setCrmBusinessContext(context, options = {}) {
     } catch {}
     if (options.updateUrl !== false && typeof window !== 'undefined') {
         const url = new URL(window.location.href);
-        if (key === CRM_BUSINESS_DEFAULT_CONTEXT) url.searchParams.delete('businessContext');
+        const routeContext = crmBusinessContextFromRoute(url.pathname);
+        if (key === CRM_BUSINESS_DEFAULT_CONTEXT || routeContext === key) url.searchParams.delete('businessContext');
         else url.searchParams.set('businessContext', key);
         window.history.replaceState(window.history.state || {}, '', url);
     }
@@ -366,8 +380,28 @@ function crmBusinessPayload(payload, context = getCrmBusinessContext()) {
 }
 
 function currentCrmBusinessScopedPage(pathname = '') {
-    const path = String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '/').replace(/\/+$/, '') || '/';
+    const path = normalizedCrmPath(pathname);
     return Object.values(CRM_BUSINESS_SCOPED_PAGES).find(page => page.paths.includes(path)) || null;
+}
+
+function crmBusinessDestinationForCurrentPage(context, page = currentCrmBusinessScopedPage()) {
+    const key = normalizeCrmBusinessContext(context);
+    if (page?.id !== 'timeline') return null;
+    if (key === 'maysternya_doli') return '/maysternya-doli';
+    if (key === CRM_BUSINESS_DEFAULT_CONTEXT) return '/';
+    return `/dashboard?businessContext=${encodeURIComponent(key)}`;
+}
+
+function navigateCrmBusinessDestination(context, page = currentCrmBusinessScopedPage()) {
+    if (typeof window === 'undefined') return false;
+    const destination = crmBusinessDestinationForCurrentPage(context, page);
+    if (!destination) return false;
+    const target = new URL(destination, window.location.origin);
+    const current = new URL(window.location.href);
+    if (target.pathname === current.pathname && target.search === current.search) return false;
+    window.__crmBusinessNavigationPending = true;
+    window.location.href = `${target.pathname}${target.search}${target.hash}`;
+    return true;
 }
 
 function renderCrmBusinessShell(user) {
@@ -382,6 +416,7 @@ function renderCrmBusinessShell(user) {
 
     const policy = resolveCrmBusinessPolicy(user);
     const current = setCrmBusinessContext(getCrmBusinessContext(user), { user, updateUrl: true, emit: false });
+    if (navigateCrmBusinessDestination(current, page)) return true;
     const context = CRM_BUSINESS_CONTEXTS[current] || CRM_BUSINESS_CONTEXTS[CRM_BUSINESS_DEFAULT_CONTEXT];
     const options = getCrmBusinessContextOptions(user);
     const host = existing || document.createElement('div');
@@ -443,6 +478,9 @@ async function switchCrmBusinessContext(context, options = {}) {
     const current = setCrmBusinessContext(next, { ...options, user, emit: true });
     if (typeof binding?.onChange === 'function') {
         await binding.onChange({ current, previous, context: CRM_BUSINESS_CONTEXTS[current] });
+    }
+    if (options.navigate !== false && navigateCrmBusinessDestination(current, page)) {
+        return current;
     }
     return current;
 }

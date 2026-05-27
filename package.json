@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.67.0",
+  "version": "0.67.1",
   "eventGenix": {
-    "releaseLabel": "CRM 67: мультибізнес і Майстерня Долі"
+    "releaseLabel": "CRM 67.1: таймлайн Майстерні без Park warning"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

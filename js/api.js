@@ -316,7 +316,10 @@ function getCrmBusinessContext(user) {
     const fromRoute = crmBusinessContextFromRoute();
     const fromUrl = crmBusinessContextFromUrl();
     const stored = crmBusinessContextFromStorage(activeUser);
-    const next = fromRoute || fromUrl || stored || resolveCrmBusinessPolicy(activeUser).defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const policy = resolveCrmBusinessPolicy(activeUser);
+    const accountDefault = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const preferAccountDefaultOnTimelineRoot = normalizedCrmPath() === '/' && !fromUrl;
+    const next = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? accountDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
     return sanitizeCrmBusinessContextForUser(next, activeUser);
 }
 

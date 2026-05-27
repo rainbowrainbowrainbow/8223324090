@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const {
     DEFAULT_TIMELINE_CONTEXT,
@@ -51,6 +52,58 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(contextCode, /brandName: 'Майстерня Долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
+});
+
+test('timeline root uses account default instead of stale stored business context', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+
+    assert.match(apiCode, /const accountDefault = policy\.defaultContext \|\| CRM_BUSINESS_DEFAULT_CONTEXT/);
+    assert.match(apiCode, /const preferAccountDefaultOnTimelineRoot = normalizedCrmPath\(\) === '\/' && !fromUrl/);
+    assert.match(apiCode, /preferAccountDefaultOnTimelineRoot \? accountDefault : \(stored \|\| accountDefault\)/);
+
+    const stored = new Map([
+        ['pzp_crm_business_context', 'maysternya_doli'],
+        ['pzp_crm_business_context_user', '42']
+    ]);
+    const sandbox = {
+        console,
+        URL,
+        URLSearchParams,
+        window: {
+            location: { pathname: '/', search: '', href: 'https://crm.test/' },
+            history: { replaceState() {} },
+            dispatchEvent() {},
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: key => stored.get(key) || null,
+            setItem: (key, value) => stored.set(key, value),
+            removeItem: key => stored.delete(key)
+        },
+        AppState: {
+            currentUser: {
+                id: 42,
+                role: 'creator',
+                businessContexts: ['event_genix', 'maysternya_doli'],
+                defaultBusinessContext: 'event_genix'
+            }
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    vm.runInNewContext(apiCode, sandbox);
+
+    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'event_genix');
+    sandbox.AppState.currentUser.defaultBusinessContext = 'maysternya_doli';
+    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'maysternya_doli');
+});
+
+test('Oleksandr account default migration keeps only Oleksandr on Maysternya Doli', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '230_timeline_default_business_by_account.sql'), 'utf8');
+
+    assert.match(migration, /classified_users/);
+    assert.match(migration, /default_business_context = CASE[\s\S]*WHEN classified_users\.is_oleksandr THEN 'maysternya_doli'/);
+    assert.match(migration, /THEN 'event_genix'[\s\S]*ELSE u\.default_business_context/);
+    assert.match(migration, /ARRAY\['maysternya_doli'\]::text\[\]/);
 });
 
 test('timeline load routes keep legacy default-context rows visible', () => {

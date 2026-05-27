@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.63">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.63">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.63">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.63">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.63">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.63">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.63">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.63">
-    <link rel="stylesheet" href="css/features.css?v=0.66.63">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.63">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.63">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.63">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.63">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.63">
+    <link rel="stylesheet" href="css/base.css?v=0.67.0">
+    <link rel="stylesheet" href="css/auth.css?v=0.67.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.67.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.0">
+    <link rel="stylesheet" href="css/timeline.css?v=0.67.0">
+    <link rel="stylesheet" href="css/panel.css?v=0.67.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.67.0">
+    <link rel="stylesheet" href="css/controls.css?v=0.67.0">
+    <link rel="stylesheet" href="css/features.css?v=0.67.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.67.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.67.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.67.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.63 CRM 66.63: дефолтний бізнес акаунта">✨ 0.66.63 CRM 66.63: дефолтний бізнес акаунта</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.67.0 CRM 67: мультибізнес і Майстерня Долі">✨ 0.67.0 CRM 67: мультибізнес і Майстерня Долі</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.63 — CRM 66.63: дефолтний бізнес акаунта</p>
+                <p class="tagline">AI First CRM v0.67.0 — CRM 67: мультибізнес і Майстерня Долі</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.63: CRM 66.63: дефолтний бізнес акаунта</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.67.0: CRM 67: мультибізнес і Майстерня Долі</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1411,12 +1411,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.66.63 — CRM 66.63: дефолтний бізнес акаунта</h4>
+                    <h4>v0.67.0 — CRM 67: мультибізнес і Майстерня Долі</h4>
                     <ul>
+                        <li><b>OmniClaw відкрито для Майстерні Долі</b> — бізнес-перемикач тепер дозволяє працювати з Omni в контексті <code>maysternya_doli</code>.</li>
+                        <li><b>Inbox і канали розділено за бізнесом</b> — розмови, повідомлення, статистика, швидкі відповіді та lead assistant читаються через активний <code>businessContext</code>.</li>
+                        <li><b>Підключення каналів стали окремими</b> — Telegram/Viber/SMS/FB/IG зберігаються з ключем <code>business_context + channel</code>, без перетирання між Park і Майстернею.</li>
                         <li><b>В акаунтах зʼявився бізнес за замовченням</b> — HR / акаунти тепер зберігають окремий <code>default_business_context</code>, не змішуючи його з переліком доступних бізнесів.</li>
                         <li><b>Олександр відкриває CRM у Майстерні Долі</b> — міграція додає <code>maysternya_doli</code> до доступних бізнесів для акаунтів Олександра і ставить його дефолтом.</li>
                         <li><b>Глобальний перемикач поважає дефолт акаунта</b> — старий localStorage без привʼязки до користувача більше не перебиває серверний дефолт після входу.</li>
-                        <li><b>Auth payload і тести оновлено</b> — login, verify, refresh та impersonation повертають дефолтний бізнес, а regression-тести фіксують нову поведінку.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9769,29 +9771,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.63"></script>
-    <script src="js/timeline-visibility.js?v=0.66.63"></script>
-    <script src="js/config.js?v=0.66.63"></script>
-    <script src="js/api.js?v=0.66.63"></script>
-    <script src="js/ui.js?v=0.66.63"></script>
-    <script src="js/auth.js?v=0.66.63"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.63"></script>
-    <script src="js/timeline.js?v=0.66.63"></script>
-    <script src="js/booking.js?v=0.66.63"></script>
-    <script src="js/settings.js?v=0.66.63"></script>
-    <script src="js/booking-form.js?v=0.66.63"></script>
-    <script src="js/booking-linked.js?v=0.66.63"></script>
-    <script src="js/settings-dashboard.js?v=0.66.63"></script>
-    <script src="js/settings-history.js?v=0.66.63"></script>
-    <script src="js/settings-afisha.js?v=0.66.63"></script>
-    <script src="js/settings-certificates.js?v=0.66.63"></script>
-    <script src="js/offline.js?v=0.66.63"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.63"></script>
-    <script src="js/search.js?v=0.66.63"></script>
-    <script src="js/ws.js?v=0.66.63"></script>
-    <script src="js/app.js?v=0.66.63"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.63"></script>
-    <script src="js/components/sidebar.js?v=0.66.63"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.63"></script>
+    <script src="js/timeline-context.js?v=0.67.0"></script>
+    <script src="js/timeline-visibility.js?v=0.67.0"></script>
+    <script src="js/config.js?v=0.67.0"></script>
+    <script src="js/api.js?v=0.67.0"></script>
+    <script src="js/ui.js?v=0.67.0"></script>
+    <script src="js/auth.js?v=0.67.0"></script>
+    <script src="js/timeline-interaction-model.js?v=0.67.0"></script>
+    <script src="js/timeline.js?v=0.67.0"></script>
+    <script src="js/booking.js?v=0.67.0"></script>
+    <script src="js/settings.js?v=0.67.0"></script>
+    <script src="js/booking-form.js?v=0.67.0"></script>
+    <script src="js/booking-linked.js?v=0.67.0"></script>
+    <script src="js/settings-dashboard.js?v=0.67.0"></script>
+    <script src="js/settings-history.js?v=0.67.0"></script>
+    <script src="js/settings-afisha.js?v=0.67.0"></script>
+    <script src="js/settings-certificates.js?v=0.67.0"></script>
+    <script src="js/offline.js?v=0.67.0"></script>
+    <script src="js/crm-feature-registry.js?v=0.67.0"></script>
+    <script src="js/search.js?v=0.67.0"></script>
+    <script src="js/ws.js?v=0.67.0"></script>
+    <script src="js/app.js?v=0.67.0"></script>
+    <script src="js/kleshnya-widget.js?v=0.67.0"></script>
+    <script src="js/components/sidebar.js?v=0.67.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.67.0"></script>
 </body>
 </html>

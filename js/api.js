@@ -2253,10 +2253,15 @@ async function apiSearchCustomers(query) {
     try {
         let url = `${API_BASE}/customers/search?q=${encodeURIComponent(query)}`;
         url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
+            : await fetch(url, { headers: getAuthHeaders(false) });
+        if (!response || handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
-        return await response.json();
+        const payload = await response.json();
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.customers)) return payload.customers;
+        return [];
     } catch (err) {
         console.error('API searchCustomers error:', err);
         return [];
@@ -2267,8 +2272,10 @@ async function apiGetCustomer(id) {
     try {
         let url = `${API_BASE}/customers/${id}`;
         url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return null;
+        const response = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
+            : await fetch(url, { headers: getAuthHeaders(false) });
+        if (!response || handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {

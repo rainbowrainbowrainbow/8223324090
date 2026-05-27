@@ -150,6 +150,33 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(businessMigration, /Повна консультація\(90\)/);
 });
 
+test('products lifecycle uses active working lists, duplicate guards, and soft-deactivation cleanup', () => {
+    const pageJs = read('js/programs-page.js');
+    const productsRoute = read('routes/products.js');
+    const cleanupMigration = read('db/migrations/224_products_zagadky_shi_duplicate_cleanup.sql');
+
+    assert.match(pageJs, /apiGetProducts\(true, \{ businessContext: getProductApiBusinessContext\(\) \}\)/);
+    assert.match(pageJs, /productSaveInFlight/);
+    assert.match(pageJs, /productDeleteInFlight/);
+    assert.match(pageJs, /findActiveProductDuplicateInState/);
+    assert.match(pageJs, /duplicateProductMessage/);
+    assert.doesNotMatch(pageJs, />Видалити<\/button>/);
+
+    assert.match(productsRoute, /PRODUCT_MUTATION_ROLES/);
+    assert.match(productsRoute, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/);
+    assert.match(productsRoute, /PRODUCT_DUPLICATE_ACTIVE_SCOPE/);
+    assert.match(productsRoute, /router\.delete\('\/:id', requireRole\(\.\.\.PRODUCT_MUTATION_ROLES\)/);
+    assert.match(productsRoute, /availability_status = 'hidden'/);
+
+    assert.match(cleanupMigration, /MIGRATION_KIND: mixed/);
+    assert.match(cleanupMigration, /Загадки ШІ/);
+    assert.match(cleanupMigration, /tmp_products_zagadky_shi_duplicates/);
+    assert.match(cleanupMigration, /UPDATE bookings b[\s\S]*program_id = t\.canonical_id/);
+    assert.match(cleanupMigration, /UPDATE leads l[\s\S]*program_id = t\.canonical_id/);
+    assert.match(cleanupMigration, /UPDATE automation_rules ar[\s\S]*trigger_condition = rr\.trigger_condition/);
+    assert.match(cleanupMigration, /CREATE INDEX IF NOT EXISTS idx_products_active_scope_name_key/);
+});
+
 test('design catalog deep links remain backed by the existing designs viewer', () => {
     const designsJs = read('js/designs-page.js');
 

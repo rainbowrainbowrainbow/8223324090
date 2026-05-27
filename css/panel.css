@@ -928,6 +928,23 @@
     background: var(--gray-50);
 }
 
+.customer-search-item:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    background: var(--primary-50);
+}
+
+.customer-search-state {
+    padding: 12px;
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.customer-search-state.is-error {
+    color: var(--danger);
+}
+
 .customer-search-name {
     font-weight: 600;
     font-size: 14px;

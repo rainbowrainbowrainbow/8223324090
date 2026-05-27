@@ -314,6 +314,12 @@ function isRealRoom(room) {
     return Boolean(normalizedRoom && !NON_OPERATIONAL_ROOM_LABELS.has(normalizedRoom));
 }
 
+function requireBookingRoom(payload) {
+    const room = String(payload?.room || '').trim();
+    if (payload) payload.room = room;
+    return room ? null : 'Оберіть кімнату';
+}
+
 async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
@@ -609,6 +615,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     }
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+    const roomError = requireBookingRoom(b);
+    if (roomError) { return res.status(400).json({ error: roomError }); }
     if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
     if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
     if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
@@ -1022,11 +1030,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         main.businessContext = businessContext;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+        const mainRoomError = requireBookingRoom(main);
+        if (mainRoomError) { return res.status(400).json({ error: mainRoomError }); }
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         applyBookingPackage(main);
         if (Array.isArray(linked)) {
             for (const lb of linked) {
+                if (!String(lb.room || '').trim()) lb.room = main.room;
+                const linkedRoomError = requireBookingRoom(lb);
+                if (linkedRoomError) return res.status(400).json({ error: linkedRoomError });
                 const linkedPinataFields = applyPinataNormalization(lb);
                 if (linkedPinataFields.error) return res.status(400).json({ success: false, error: linkedPinataFields.error });
             }
@@ -1670,6 +1683,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+    const roomError = requireBookingRoom(b);
+    if (roomError) { return res.status(400).json({ error: roomError }); }
 
     const client = await pool.connect();
     try {

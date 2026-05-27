@@ -62,11 +62,73 @@ const PRODUCT_DOMAINS = new Set(['program', 'kitchen']);
 const KITCHEN_TYPES = new Set(['cake', 'menu']);
 const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
 const PRODUCT_TECH_CARD_MODES = new Set(['simple', 'detailed']);
+const PRODUCT_MUTATION_ROLES = ['admin', 'manager'];
 
 function requireProductBusinessContext(req, res) {
     const businessContext = businessContextFromRequest(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
+}
+
+function normalizeProductIdentity(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function productDuplicateScope(product, businessContext) {
+    return {
+        businessContext: businessContext || DEFAULT_BUSINESS_CONTEXT,
+        domain: product.domain || 'program',
+        category: product.category || '',
+        nameKey: normalizeProductIdentity(product.name)
+    };
+}
+
+function productDuplicateLockKey(scope) {
+    return [
+        'products.active-name',
+        scope.businessContext,
+        scope.domain,
+        scope.category,
+        scope.nameKey
+    ].join('|');
+}
+
+async function lockProductDuplicateScope(client, scope) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [productDuplicateLockKey(scope)]);
+}
+
+async function findActiveProductDuplicate(client, product, businessContext, options = {}) {
+    if (product.isActive === false || product.is_active === false) return null;
+    const scope = productDuplicateScope(product, businessContext);
+    if (!scope.category || !scope.nameKey) return null;
+
+    const params = [scope.businessContext, scope.domain, scope.category, scope.nameKey];
+    const where = [
+        `COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+        "COALESCE(domain, 'program') = $2",
+        'category = $3',
+        "LOWER(REGEXP_REPLACE(TRIM(COALESCE(name, '')), '\\s+', ' ', 'g')) = $4",
+        'COALESCE(is_active, true) = true'
+    ];
+    if (options.excludeId) {
+        params.push(options.excludeId);
+        where.push(`id <> $${params.length}`);
+    }
+
+    const result = await client.query(
+        `SELECT id, code, name, category, domain
+         FROM products
+         WHERE ${where.join(' AND ')}
+         ORDER BY created_at NULLS LAST, id
+         LIMIT 1`,
+        params
+    );
+    return result.rows[0] || null;
+}
+
+function duplicateProductError(duplicate) {
+    const label = duplicate?.name || 'така назва';
+    return `У цій категорії вже є активний продукт "${label}". Відкрийте існуючу картку або деактивуйте дубль перед створенням нового.`;
 }
 
 function pickField(body, camelName, snakeName, fallback = undefined) {
@@ -637,8 +699,8 @@ router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req
     }
 });
 
-// POST /api/products — Create new product (admin/manager)
-router.post('/', requireRole('admin', 'manager'), async (req, res) => {
+// POST /api/products — Create new product
+router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const businessContext = requireProductBusinessContext(req, res);
@@ -664,6 +726,19 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
         const id = code.toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi, '') + '_' + Date.now();
 
         await client.query('BEGIN');
+        const duplicateScope = productDuplicateScope(payload, businessContext);
+        await lockProductDuplicateScope(client, duplicateScope);
+        const duplicate = await findActiveProductDuplicate(client, payload, businessContext);
+        if (duplicate) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'PRODUCT_DUPLICATE_ACTIVE_SCOPE',
+                duplicateProductId: duplicate.id,
+                error: duplicateProductError(duplicate)
+            });
+        }
+
         const result = await client.query(
             `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
@@ -685,8 +760,8 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
     }
 });
 
-// PUT /api/products/:id — Update product (admin/manager)
-router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
+// PUT /api/products/:id — Update product
+router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const client = await pool.connect();
     try {
         const businessContext = requireProductBusinessContext(req, res);
@@ -725,6 +800,19 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
             cakeDecoration
         } = payload;
 
+        const duplicateScope = productDuplicateScope(payload, businessContext);
+        await lockProductDuplicateScope(client, duplicateScope);
+        const duplicate = await findActiveProductDuplicate(client, payload, businessContext, { excludeId: id });
+        if (duplicate) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'PRODUCT_DUPLICATE_ACTIVE_SCOPE',
+                duplicateProductId: duplicate.id,
+                error: duplicateProductError(duplicate)
+            });
+        }
+
         const result = await client.query(
             `UPDATE products SET
                 code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
@@ -752,8 +840,8 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
     }
 });
 
-// DELETE /api/products/:id — Soft-delete (deactivate) product (admin only)
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+// DELETE /api/products/:id — Soft-delete (deactivate) product
+router.delete('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     try {
         const businessContext = requireProductBusinessContext(req, res);
         if (!businessContext) return;
@@ -763,7 +851,11 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         }
 
         const result = await pool.query(
-            `UPDATE products SET is_active = false, updated_at = NOW(), updated_by = $1
+            `UPDATE products
+             SET is_active = false,
+                 availability_status = 'hidden',
+                 updated_at = NOW(),
+                 updated_by = $1
              WHERE id = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3 RETURNING *`,
             [req.user.username, id, businessContext]
         );
@@ -773,7 +865,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         }
 
         log.info(`Product deactivated: ${id} by ${req.user.username}`);
-        res.json({ success: true, product: mapProductRow(result.rows[0]) });
+        res.json({ success: true, action: 'deactivated', product: mapProductRow(result.rows[0]) });
     } catch (err) {
         log.error('Delete product error', err);
         res.status(500).json({ error: 'Internal server error' });

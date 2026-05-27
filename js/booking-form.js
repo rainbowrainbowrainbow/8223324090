@@ -70,13 +70,13 @@ window.BookingForm = {
         const programId = formData?.programId || '';
         const room = formData?.room || '';
 
+        if (!room) {
+            document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
+            return { valid: false, error: 'Оберіть кімнату' };
+        }
         if (hasEvent && !programId) {
             document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
             return { valid: false, error: 'Оберіть програму' };
-        }
-        if (hasEvent && !room) {
-            document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
-            return { valid: false, error: 'Оберіть кімнату' };
         }
 
         const program = hasEvent ? getProductsSync().find(p => p.id === programId) : null;

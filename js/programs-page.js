@@ -47,6 +47,41 @@ function updateProductInState(product) {
     }
 }
 
+function normalizeProductIdentity(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function isActiveProduct(product = {}) {
+    return product.isActive !== false && product.availabilityStatus !== 'hidden';
+}
+
+function findActiveProductDuplicateInState(product, excludeId = '') {
+    const nameKey = normalizeProductIdentity(product.name);
+    if (!nameKey || product.isActive === false) return null;
+    const businessContext = product.businessContext || getProductApiBusinessContext();
+    const domain = getProductDomain(product);
+    const category = product.category || '';
+    return allProducts.find(item => (
+        item.id !== excludeId
+        && isActiveProduct(item)
+        && (item.businessContext || getProductApiBusinessContext()) === businessContext
+        && getProductDomain(item) === domain
+        && (item.category || '') === category
+        && normalizeProductIdentity(item.name) === nameKey
+    )) || null;
+}
+
+function duplicateProductMessage(duplicate) {
+    return `У цій категорії вже є активний продукт "${duplicate.name}". Відкрийте існуючу картку або деактивуйте дубль перед створенням нового.`;
+}
+
+function setProductSavingState(isSaving) {
+    const saveBtn = document.getElementById('saveProductBtn');
+    const saveNextBtn = document.getElementById('saveProductNextBtn');
+    if (saveBtn) saveBtn.disabled = Boolean(isSaving);
+    if (saveNextBtn) saveNextBtn.disabled = Boolean(isSaving);
+}
+
 // ==========================================
 // PAGE AUTH & INIT
 // ==========================================
@@ -236,6 +271,8 @@ let productWarehouseItemsLoaded = false;
 let techCardIngredientDrafts = [];
 let techCardLoadedProductId = null;
 let productFormFocusWriteOff = false;
+let productSaveInFlight = false;
+const productDeleteInFlight = new Set();
 
 const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
 
@@ -546,7 +583,7 @@ async function loadProducts() {
     if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження продуктів…</div>';
     if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
     try {
-        allProducts = await apiGetProducts(false, { businessContext: getProductApiBusinessContext() }) || [];
+        allProducts = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() }) || [];
         renderMenuSectionFilter();
         renderProducts();
     } catch (err) {
@@ -653,7 +690,7 @@ function renderProgramProducts(grid, canManage) {
                 ${canManage ? `
                     <div class="card-actions">
                         <button type="button" class="btn-page-secondary" onclick="openProductForm('${productId}')">✏️ Редагувати</button>
-                        <button type="button" class="btn-page-danger" onclick="deleteProduct('${productId}')">Видалити</button>
+                        <button type="button" class="btn-page-danger" onclick="deleteProduct('${productId}')">Деактивувати</button>
                     </div>
                 ` : ''}
             </div>
@@ -1646,6 +1683,16 @@ async function saveProduct(options = {}) {
         product.label = domain === 'kitchen' ? product.name : `${product.code}(${product.duration})`;
     }
 
+    const duplicate = findActiveProductDuplicateInState(product, id);
+    if (duplicate) {
+        showNotification(duplicateProductMessage(duplicate), 'error');
+        return;
+    }
+
+    if (productSaveInFlight) return;
+    productSaveInFlight = true;
+    setProductSavingState(true);
+    try {
     let result;
     if (id) {
         result = await apiUpdateProduct(id, product);
@@ -1668,19 +1715,33 @@ async function saveProduct(options = {}) {
     } else {
         showNotification(result?.error || 'Помилка збереження', 'error');
     }
+    } finally {
+        productSaveInFlight = false;
+        setProductSavingState(false);
+    }
 }
 
 async function deleteProduct(productId) {
     const product = allProducts.find(item => item.id === productId);
+    if (!product) {
+        showNotification('Продукт не знайдено в поточному списку', 'error');
+        return;
+    }
+    if (productDeleteInFlight.has(productId)) return;
     const isKitchen = getProductDomain(product) === 'kitchen';
     const noun = isKitchen ? 'цю кухонну позицію' : 'цю програму';
     if (!await confirmModal(`Деактивувати ${noun}?`, { type: 'warning', okText: 'Деактивувати' })) return;
-    const result = await apiDeleteProduct(productId, { businessContext: getProductApiBusinessContext() });
-    if (result && result.success) {
-        showNotification(isKitchen ? 'Кухонну позицію деактивовано' : 'Програму деактивовано', 'success');
-        await loadProducts();
-    } else {
-        showNotification('Помилка', 'error');
+    productDeleteInFlight.add(productId);
+    try {
+        const result = await apiDeleteProduct(productId, { businessContext: getProductApiBusinessContext() });
+        if (result && result.success) {
+            showNotification(isKitchen ? 'Кухонну позицію деактивовано' : 'Програму деактивовано', 'success');
+            await loadProducts();
+        } else {
+            showNotification(result?.error || 'Не вдалося деактивувати продукт', 'error');
+        }
+    } finally {
+        productDeleteInFlight.delete(productId);
     }
 }
 

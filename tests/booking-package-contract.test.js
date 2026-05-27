@@ -84,26 +84,49 @@ test('booking package audit records client and commercial package changes', () =
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
+    const bookingFormJs = read('js', 'booking-form.js');
+    const apiJs = read('js', 'api.js');
     const route = read('routes', 'bookings.js');
+    const customerRoute = read('routes', 'customers.js');
 
     assert.match(html, /bookingHasEventToggle/);
     assert.match(html, /bookingScenarioBar/);
+    assert.match(html, /booking-room-first-heading/);
+    assert.match(html, /id="roomSelect" required aria-required="true"/);
     assert.match(html, /bookingLeadDetailsSection/);
     assert.match(html, /booking-workspace-heading/);
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
+    assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="bookingHasEventToggle"'));
+    assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
 
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
     assert.match(bookingJs, /booking_workspace_v2/);
+    assert.match(bookingJs, /room\.required = true/);
+    assert.match(bookingJs, /const room = document\.getElementById\('roomSelect'\)\?\.value \|\| '';/);
+    assert.match(bookingJs, /room: formData\.room/);
     assert.match(bookingJs, /kitchenType === 'cake'/);
     assert.match(bookingJs, /function addBookingMenuPositionFromForm/);
     assert.match(bookingJs, /programBasePrice/);
     assert.match(bookingJs, /positionsSubtotal/);
     assert.match(bookingJs, /finalTotal/);
     assert.match(bookingJs, /bookingCustomerDuplicateHint/);
+    assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
+    assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);
+    assert.match(bookingJs, /customer-search-state/);
+    assert.match(bookingJs, /role="button" tabindex="0"/);
+
+    assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));
+    assert.match(apiJs, /apiFetchWithAuthRetry/);
+    assert.match(apiJs, /Array\.isArray\(payload\?\.customers\)/);
+    assert.match(customerRoute, /child_birthday/);
+    assert.match(customerRoute, /regexp_replace\(COALESCE\(c\.phone/);
 
     assert.match(route, /applyBookingPackage/);
+    assert.match(route, /function requireBookingRoom/);
+    assert.match(route, /const roomError = requireBookingRoom\(b\)/);
+    assert.match(route, /const mainRoomError = requireBookingRoom\(main\)/);
     assert.match(route, /banquet_guests/);
     assert.match(route, /banquet_tables/);
     assert.match(route, /banquet_menu/);

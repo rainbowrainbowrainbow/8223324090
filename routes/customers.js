@@ -353,21 +353,30 @@ router.get('/search', async (req, res) => {
 
         // PostgreSQL: live aggregation from bookings
         const pattern = `%${q}%`;
+        const phoneDigits = q.replace(/\D/g, '');
+        const instagramHandle = q.replace(/^@+/, '').trim();
         const params = [pattern];
+        const normalizedPhoneSql = phoneDigits.length >= 2
+            ? ` OR regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') ILIKE $${params.push(`%${phoneDigits}%`)}`
+            : '';
+        const instagramHandleSql = instagramHandle && instagramHandle !== q
+            ? ` OR c.instagram ILIKE $${params.push(`%${instagramHandle}%`)}`
+            : '';
         const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
         const socialIdentitySearch = await canSearchCustomerSocialIdentities()
             ? ' OR c.social_identities::text ILIKE $1'
             : '';
         const contextSql = customerContextCondition(params, businessContext, 'c');
         const result = await pool.query(
-            `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.total_bookings,
+            `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday,
+                    c.source, c.total_bookings,
                     COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
                     COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
                     b_agg.real_last_visit
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
              WHERE ${contextSql}
-               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${socialIdentitySearch})
+               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${normalizedPhoneSql}${instagramHandleSql}${socialIdentitySearch})
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
             params

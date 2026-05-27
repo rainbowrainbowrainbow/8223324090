@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.66.49">
-    <link rel="stylesheet" href="css/auth.css?v=0.66.49">
-    <link rel="stylesheet" href="css/layout.css?v=0.66.49">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.49">
-    <link rel="stylesheet" href="css/timeline.css?v=0.66.49">
-    <link rel="stylesheet" href="css/panel.css?v=0.66.49">
-    <link rel="stylesheet" href="css/modals.css?v=0.66.49">
-    <link rel="stylesheet" href="css/controls.css?v=0.66.49">
-    <link rel="stylesheet" href="css/features.css?v=0.66.49">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.49">
-    <link rel="stylesheet" href="css/responsive.css?v=0.66.49">
-    <link rel="stylesheet" href="css/pages.css?v=0.66.49">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.49">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.49">
+    <link rel="stylesheet" href="css/base.css?v=0.66.51">
+    <link rel="stylesheet" href="css/auth.css?v=0.66.51">
+    <link rel="stylesheet" href="css/layout.css?v=0.66.51">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.66.51">
+    <link rel="stylesheet" href="css/timeline.css?v=0.66.51">
+    <link rel="stylesheet" href="css/panel.css?v=0.66.51">
+    <link rel="stylesheet" href="css/modals.css?v=0.66.51">
+    <link rel="stylesheet" href="css/controls.css?v=0.66.51">
+    <link rel="stylesheet" href="css/features.css?v=0.66.51">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.66.51">
+    <link rel="stylesheet" href="css/responsive.css?v=0.66.51">
+    <link rel="stylesheet" href="css/pages.css?v=0.66.51">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.66.51">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.66.51">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.66.49 CRM 66.49: єдиний бізнес-контекст">✨ 0.66.49 CRM 66.49: єдиний бізнес-контекст</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.66.51 CRM 66.51: чистий каталог продуктів">✨ 0.66.51 CRM 66.51: чистий каталог продуктів</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.66.49 — CRM 66.49: єдиний бізнес-контекст</p>
+                <p class="tagline">AI First CRM v0.66.51 — CRM 66.51: чистий каталог продуктів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.49: CRM 66.49: єдиний бізнес-контекст</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.66.51: CRM 66.51: чистий каталог продуктів</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -324,55 +324,19 @@
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
 
-                <div id="bookingScenarioBar" class="booking-scenario-bar" aria-live="polite">
-                    <span id="bookingScenarioChip" class="booking-scenario-chip">Заявка</span>
-                    <span id="bookingScenarioText" class="booking-scenario-text">Почніть із базової інформації, а подію або кухню додайте за потреби.</span>
-                </div>
-
-                <div class="booking-event-toggle-card">
-                    <label class="booking-event-toggle-label" for="bookingHasEventToggle">
-                        <input type="checkbox" id="bookingHasEventToggle">
-                        <span>
-                            <strong>Є подія / програма</strong>
-                            <small>Увімкніть, щоб показати кімнату, програму, ведучих і подієві параметри.</small>
-                        </span>
-                    </label>
-                </div>
-
-                <div class="booking-workspace-heading">
+                <div class="booking-workspace-heading booking-room-first-heading">
                     <span class="booking-workspace-step">1</span>
                     <div>
-                        <strong>Основна заявка</strong>
-                        <small>Назва, контекст і нотатки оператора без обов'язкової події</small>
-                    </div>
-                </div>
-
-                <!-- Примітки -->
-                <div class="form-section">
-                    <label>Примітки (опційно)</label>
-                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
-                </div>
-
-                <!-- v5.10: Група/Банкет -->
-                <div class="form-section">
-                    <label>Назва заявки / група (опційно)</label>
-                    <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі, кухня для компанії" title="Об'єднує бронювання в одну подію або заявку">
-                </div>
-
-                <div id="bookingEventFields" class="booking-event-fields hidden">
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">2</span>
-                    <div>
-                        <strong>Подія / програма</strong>
-                        <small>Кімната, програма, ведучі та операційні параметри події</small>
+                        <strong>Кімната</strong>
+                        <small>Оберіть кімнату перед клієнтом, програмою або кухнею</small>
                     </div>
                 </div>
 
                 <!-- Кімната -->
-                <div class="form-section">
-                    <label>Кімната <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
+                <div class="form-section booking-room-first-section">
+                    <label for="roomSelect">Кімната <span class="required-mark">*</span> <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
                     <div id="freeRoomsPanel" class="free-rooms-panel hidden"></div>
-                    <select id="roomSelect" required>
+                    <select id="roomSelect" required aria-required="true" aria-describedby="bookingRoomHint">
                         <option value="">Оберіть кімнату</option>
                         <optgroup label="Кімнати">
                             <option value="Марвел">Марвел</option>
@@ -397,6 +361,51 @@
                             <option value="Інше">Інше (вказати в примітках)</option>
                         </optgroup>
                     </select>
+                    <small id="bookingRoomHint" class="form-hint">Без кімнати бронювання не зберігається.</small>
+                </div>
+
+                <div id="bookingScenarioBar" class="booking-scenario-bar" aria-live="polite">
+                    <span id="bookingScenarioChip" class="booking-scenario-chip">Заявка</span>
+                    <span id="bookingScenarioText" class="booking-scenario-text">Кімната обирається першою; подію або кухню додайте за потреби.</span>
+                </div>
+
+                <div class="booking-event-toggle-card">
+                    <label class="booking-event-toggle-label" for="bookingHasEventToggle">
+                        <input type="checkbox" id="bookingHasEventToggle">
+                        <span>
+                            <strong>Є подія / програма</strong>
+                            <small>Увімкніть, щоб показати програму, ведучих і подієві параметри.</small>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">2</span>
+                    <div>
+                        <strong>Основна заявка</strong>
+                        <small>Назва, контекст і нотатки оператора після вибору кімнати</small>
+                    </div>
+                </div>
+
+                <!-- Примітки -->
+                <div class="form-section">
+                    <label>Примітки (опційно)</label>
+                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
+                </div>
+
+                <!-- v5.10: Група/Банкет -->
+                <div class="form-section">
+                    <label>Назва заявки / група (опційно)</label>
+                    <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі, кухня для компанії" title="Об'єднує бронювання в одну подію або заявку">
+                </div>
+
+                <div id="bookingEventFields" class="booking-event-fields hidden">
+                <div class="booking-workspace-heading">
+                    <span class="booking-workspace-step">3</span>
+                    <div>
+                        <strong>Подія / програма</strong>
+                        <small>Програма, ведучі та операційні параметри події</small>
+                    </div>
                 </div>
 
                 <!-- Вибір костюма -->
@@ -578,7 +587,7 @@
                 </div>
 
                 <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">3</span>
+                    <span class="booking-workspace-step">4</span>
                     <div>
                         <strong>Клієнт</strong>
                         <small>Знайдіть існуючу картку або створіть нового клієнта прямо тут</small>
@@ -639,7 +648,7 @@
                 </div>
 
                 <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">4</span>
+                    <span class="booking-workspace-step">5</span>
                     <div>
                         <strong>Лід / деталі заявки</strong>
                         <small>Джерело, інтерес, діти та коментарі без переходу в інший модуль</small>
@@ -691,7 +700,7 @@
                 </details>
 
                 <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">5</span>
+                    <span class="booking-workspace-step">6</span>
                     <div>
                         <strong>Кухня / комерційні позиції</strong>
                         <small>Меню та торти з каталогу додаються до підсумку заявки</small>
@@ -738,7 +747,7 @@
                 </div>
 
                 <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">6</span>
+                    <span class="booking-workspace-step">7</span>
                     <div>
                         <strong>Підсумок</strong>
                         <small>Перевірте пакет перед збереженням</small>
@@ -1402,13 +1411,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.66.49 — CRM 66.49: єдиний бізнес-контекст</h4>
+                    <h4>v0.66.51 — CRM 66.51: чистий каталог продуктів</h4>
                     <ul>
-                        <li><b>Єдиний бізнес-контекст</b> — Products, Leads і Customers тепер використовують один shell-селектор у CRM header замість локальних dropdown-ів.</li>
-                        <li><b>Рольова політика</b> — керівні ролі можуть перемикати бізнес, а заблоковані ролі бачать read-only контекст, зафіксований політикою.</li>
-                        <li><b>API propagation</b> — Products, Leads і Customers передають <code>businessContext</code> через спільний <code>CrmBusinessContext</code> contract.</li>
-                        <li><b>Switch safety</b> — перемикання бізнесу поважає відкриті product/lead/customer робочі поверхні та dirty-close guard-и.</li>
-                        <li><b>Regression guard</b> — додано unit/UI smoke перевірки для shared selector, role policy і відсутності локальних business selector-ів.</li>
+                        <li><b>Дубль <code>Загадки ШІ</code> прибрано без втрати історії</b> — міграція переносить посилання на канонічний продукт і м'яко деактивує зайві рядки.</li>
+                        <li><b>Видалення стало деактивацією</b> — дія більше не маскується під hard delete, приховує картку з робочого списку та лишає бронювання і звіти цілісними.</li>
+                        <li><b>Дублікати заблоковано</b> — створення й редагування перевіряють активні продукти в межах бізнес-контексту, домену, категорії та назви.</li>
+                        <li><b>Помилки стали зрозумілими</b> — оператор бачить причину відмови API замість загального повідомлення.</li>
+                        <li><b>Regression guard</b> — додано перевірки для active-only списку, duplicate guard, soft-deactivation policy і cleanup migration.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9761,29 +9770,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.66.49"></script>
-    <script src="js/timeline-visibility.js?v=0.66.49"></script>
-    <script src="js/config.js?v=0.66.49"></script>
-    <script src="js/api.js?v=0.66.49"></script>
-    <script src="js/ui.js?v=0.66.49"></script>
-    <script src="js/auth.js?v=0.66.49"></script>
-    <script src="js/timeline-interaction-model.js?v=0.66.49"></script>
-    <script src="js/timeline.js?v=0.66.49"></script>
-    <script src="js/booking.js?v=0.66.49"></script>
-    <script src="js/settings.js?v=0.66.49"></script>
-    <script src="js/booking-form.js?v=0.66.49"></script>
-    <script src="js/booking-linked.js?v=0.66.49"></script>
-    <script src="js/settings-dashboard.js?v=0.66.49"></script>
-    <script src="js/settings-history.js?v=0.66.49"></script>
-    <script src="js/settings-afisha.js?v=0.66.49"></script>
-    <script src="js/settings-certificates.js?v=0.66.49"></script>
-    <script src="js/offline.js?v=0.66.49"></script>
-    <script src="js/crm-feature-registry.js?v=0.66.49"></script>
-    <script src="js/search.js?v=0.66.49"></script>
-    <script src="js/ws.js?v=0.66.49"></script>
-    <script src="js/app.js?v=0.66.49"></script>
-    <script src="js/kleshnya-widget.js?v=0.66.49"></script>
-    <script src="js/components/sidebar.js?v=0.66.49"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.49"></script>
+    <script src="js/timeline-context.js?v=0.66.51"></script>
+    <script src="js/timeline-visibility.js?v=0.66.51"></script>
+    <script src="js/config.js?v=0.66.51"></script>
+    <script src="js/api.js?v=0.66.51"></script>
+    <script src="js/ui.js?v=0.66.51"></script>
+    <script src="js/auth.js?v=0.66.51"></script>
+    <script src="js/timeline-interaction-model.js?v=0.66.51"></script>
+    <script src="js/timeline.js?v=0.66.51"></script>
+    <script src="js/booking.js?v=0.66.51"></script>
+    <script src="js/settings.js?v=0.66.51"></script>
+    <script src="js/booking-form.js?v=0.66.51"></script>
+    <script src="js/booking-linked.js?v=0.66.51"></script>
+    <script src="js/settings-dashboard.js?v=0.66.51"></script>
+    <script src="js/settings-history.js?v=0.66.51"></script>
+    <script src="js/settings-afisha.js?v=0.66.51"></script>
+    <script src="js/settings-certificates.js?v=0.66.51"></script>
+    <script src="js/offline.js?v=0.66.51"></script>
+    <script src="js/crm-feature-registry.js?v=0.66.51"></script>
+    <script src="js/search.js?v=0.66.51"></script>
+    <script src="js/ws.js?v=0.66.51"></script>
+    <script src="js/app.js?v=0.66.51"></script>
+    <script src="js/kleshnya-widget.js?v=0.66.51"></script>
+    <script src="js/components/sidebar.js?v=0.66.51"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.66.51"></script>
 </body>
 </html>

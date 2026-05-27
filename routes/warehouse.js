@@ -96,6 +96,10 @@ function toOptionalMoney(value) {
     return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+function normalizeComparableText(value, maxLength = 255) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, maxLength);
+}
+
 function cleanLocationText(value, maxLength = 120) {
     if (value === undefined || value === null) return '';
     return String(value).trim().replace(/\s+/g, ' ').slice(0, maxLength);
@@ -143,6 +147,89 @@ function validateLocationPayload(body = {}) {
     if (sortOrder === null) errors.push('sortOrder must be an integer from 0 to 9999');
 
     return { errors, location: { name, description, sortOrder: sortOrder ?? 100 } };
+}
+
+async function findDuplicateLocationName(name, excludeId = null) {
+    const params = [normalizeComparableText(name, 120)];
+    let query = `
+        SELECT id
+        FROM warehouse_locations
+        WHERE is_active = true
+          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $1
+    `;
+    if (excludeId) {
+        params.push(excludeId);
+        query += ` AND id <> $${params.length}`;
+    }
+    query += ' LIMIT 1';
+    const result = await pool.query(query, params);
+    return result.rows[0] || null;
+}
+
+async function validateWarehouseReferences(locationId, preferredContractorId) {
+    const errors = [];
+    if (locationId) {
+        const location = await pool.query(
+            'SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true',
+            [locationId]
+        );
+        if (!location.rowCount) errors.push('locationId does not point to an active warehouse location');
+    }
+    if (preferredContractorId) {
+        const contractor = await pool.query(
+            'SELECT id FROM contractors WHERE id = $1 AND is_active = true',
+            [preferredContractorId]
+        );
+        if (!contractor.rowCount) errors.push('preferredContractorId does not point to an active contractor');
+    }
+    return errors;
+}
+
+function stockIdentityFromPayload({ name, category = 'consumable', unit = 'шт', owner = 'park', locationId = null }) {
+    return {
+        name,
+        normalizedName: normalizeComparableText(name, 255),
+        category,
+        unit,
+        owner: owner || 'park',
+        locationId: toOptionalInt(locationId)
+    };
+}
+
+function stockIdentityChanged(existing, nextIdentity) {
+    if (!existing) return true;
+    return normalizeComparableText(existing.name, 255) !== nextIdentity.normalizedName
+        || String(existing.category || 'consumable') !== String(nextIdentity.category || 'consumable')
+        || String(existing.unit || 'шт') !== String(nextIdentity.unit || 'шт')
+        || String(existing.owner || 'park') !== String(nextIdentity.owner || 'park')
+        || String(existing.location_id || '') !== String(nextIdentity.locationId || '');
+}
+
+async function findDuplicateWarehouseStock(identity, excludeId = null) {
+    const params = [
+        identity.normalizedName,
+        identity.category || 'consumable',
+        identity.unit || 'шт',
+        identity.owner || 'park',
+        identity.locationId
+    ];
+    let query = `
+        SELECT id
+        FROM warehouse_stock
+        WHERE is_active = true
+          AND regexp_replace(lower(trim(name)), '[[:space:]]+', ' ', 'g') = $1
+          AND category = $2
+          AND unit = $3
+          AND COALESCE(owner, 'park') = $4
+          AND location_id IS NOT DISTINCT FROM $5
+    `;
+    if (excludeId) {
+        params.push(excludeId);
+        query += ` AND id <> $${params.length}`;
+    }
+    query += ' LIMIT 1';
+    const result = await pool.query(query, params);
+    return result.rows[0] || null;
 }
 
 function mapLocationRow(row) {
@@ -216,6 +303,8 @@ router.post('/locations', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const { errors, location } = validateLocationPayload(req.body || {});
         if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
+        const duplicate = await findDuplicateLocationName(location.name);
+        if (duplicate) return res.status(409).json({ success: false, error: 'Warehouse location with this name already exists' });
 
         const slug = await uniqueLocationSlug(client, location.name);
         const result = await client.query(
@@ -239,6 +328,15 @@ router.put('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const { errors, location } = validateLocationPayload(req.body || {});
         if (errors.length) return res.status(400).json({ success: false, error: errors.join('; ') });
+        const existing = await pool.query(
+            'SELECT id, name FROM warehouse_locations WHERE id = $1 AND is_active = true',
+            [req.params.id]
+        );
+        if (!existing.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
+        if (normalizeComparableText(existing.rows[0].name, 120) !== normalizeComparableText(location.name, 120)) {
+            const duplicate = await findDuplicateLocationName(location.name, req.params.id);
+            if (duplicate) return res.status(409).json({ success: false, error: 'Warehouse location with this name already exists' });
+        }
 
         const result = await pool.query(
             `UPDATE warehouse_locations
@@ -247,7 +345,6 @@ router.put('/locations/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
              RETURNING id`,
             [location.name, location.description || null, location.sortOrder, req.params.id]
         );
-        if (!result.rowCount) return res.status(404).json({ success: false, error: 'Location not found' });
 
         const updated = await getLocationSummaryById(req.params.id);
         log.info(`Warehouse location updated: #${req.params.id} by ${req.user.username}`);
@@ -317,7 +414,13 @@ router.get('/', async (req, res) => {
         }
         const search = req.query.search || req.query.q;
         if (search) {
-            conditions.push(`(ws.name ILIKE $${paramIdx} OR COALESCE(ws.notes, '') ILIKE $${paramIdx} OR COALESCE(ws.sku, '') ILIKE $${paramIdx})`);
+            conditions.push(`(
+                ws.name ILIKE $${paramIdx}
+                OR COALESCE(ws.notes, '') ILIKE $${paramIdx}
+                OR COALESCE(ws.sku, '') ILIKE $${paramIdx}
+                OR COALESCE(wl.name, '') ILIKE $${paramIdx}
+                OR COALESCE(c.name, '') ILIKE $${paramIdx}
+            )`);
             params.push(`%${search}%`);
             paramIdx++;
         }
@@ -372,7 +475,11 @@ router.get('/', async (req, res) => {
 
         // Count low stock items
         const lowStockResult = await pool.query(
-            `SELECT COUNT(*) FROM warehouse_stock ws ${where ? where + ' AND' : 'WHERE'} ws.quantity <= ws.min_quantity`,
+            `SELECT COUNT(*)
+             FROM warehouse_stock ws
+             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+             ${where ? where + ' AND' : 'WHERE'} ws.quantity <= ws.min_quantity`,
             params
         );
 
@@ -761,6 +868,13 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
             locationId = null, preferredContractorId = null, sku = null,
             purchaseUnitPrice = 0, isProcuredExternally = false
         } = req.body;
+        const normalizedLocationId = toOptionalInt(locationId);
+        const normalizedContractorId = toOptionalInt(preferredContractorId);
+        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId);
+        if (refErrors.length) return res.status(400).json({ success: false, error: refErrors.join('; ') });
+        const identity = stockIdentityFromPayload({ name, category, unit, owner, locationId: normalizedLocationId });
+        const duplicate = await findDuplicateWarehouseStock(identity);
+        if (duplicate) return res.status(409).json({ success: false, error: 'Active warehouse stock item already exists in this location' });
 
         const result = await pool.query(
             `INSERT INTO warehouse_stock (
@@ -771,7 +885,7 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
              RETURNING *`,
             [
                 name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner,
-                toOptionalInt(locationId), toOptionalInt(preferredContractorId), sku || null,
+                normalizedLocationId, normalizedContractorId, sku || null,
                 toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true
             ]
         );
@@ -788,7 +902,10 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
 router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const { id } = req.params;
-        const existing = await pool.query('SELECT id FROM warehouse_stock WHERE id = $1', [id]);
+        const existing = await pool.query(
+            'SELECT id, name, category, unit, owner, location_id FROM warehouse_stock WHERE id = $1',
+            [id]
+        );
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Stock item not found' });
         }
@@ -804,6 +921,15 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
             locationId = null, preferredContractorId = null, sku = null,
             purchaseUnitPrice = 0, isProcuredExternally = false
         } = req.body;
+        const normalizedLocationId = toOptionalInt(locationId);
+        const normalizedContractorId = toOptionalInt(preferredContractorId);
+        const refErrors = await validateWarehouseReferences(normalizedLocationId, normalizedContractorId);
+        if (refErrors.length) return res.status(400).json({ success: false, error: refErrors.join('; ') });
+        const identity = stockIdentityFromPayload({ name, category, unit, owner, locationId: normalizedLocationId });
+        if (stockIdentityChanged(existing.rows[0], identity)) {
+            const duplicate = await findDuplicateWarehouseStock(identity, id);
+            if (duplicate) return res.status(409).json({ success: false, error: 'Active warehouse stock item already exists in this location' });
+        }
 
         const result = await pool.query(
             `UPDATE warehouse_stock SET
@@ -814,7 +940,7 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
              WHERE id = $13 RETURNING *`,
             [
                 name.trim(), category, minQuantity, unit, notes, req.user.username, owner,
-                toOptionalInt(locationId), toOptionalInt(preferredContractorId), sku || null,
+                normalizedLocationId, normalizedContractorId, sku || null,
                 toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true, id
             ]
         );

@@ -59,6 +59,7 @@ describe('warehouse Telegram photo intake contract', () => {
 
     it('keeps warehouse object editing discoverable and guarded', () => {
         const route = readRepoFile('routes', 'warehouse.js');
+        const contractorsRoute = readRepoFile('routes', 'contractors.js');
         const html = readRepoFile('warehouse.html');
         const frontend = readRepoFile('js', 'warehouse-page.js');
         const api = readRepoFile('js', 'api.js');
@@ -68,11 +69,19 @@ describe('warehouse Telegram photo intake contract', () => {
         assert.match(route, /router\.delete\('\/locations\/:id', requireRole\(\.\.\.MANAGE_ROLES\)/);
         assert.match(route, /active_stock_count/);
         assert.match(route, /Location has active stock/);
+        assert.match(route, /findDuplicateLocationName/);
+        assert.match(route, /findDuplicateWarehouseStock/);
+        assert.match(route, /validateWarehouseReferences/);
+        assert.match(route, /COALESCE\(wl\.name, ''\) ILIKE/);
+        assert.match(route, /COALESCE\(c\.name, ''\) ILIKE/);
+        assert.match(route, /LEFT JOIN warehouse_locations wl ON wl\.id = ws\.location_id/);
+        assert.match(contractorsRoute, /requireRole\('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'\)/);
 
         assert.match(html, /id="addLocationBtn"/);
         assert.match(html, /id="locationForm"/);
         assert.match(html, /warehouse-location-manage-btn/);
         assert.match(html, /wh-edit-inline-btn/);
+        assert.match(html, /Пошук: назва, SKU, склад, підрядник/);
 
         assert.match(frontend, /openLocationStock\(locationId\)/);
         assert.match(frontend, /openLocationForm\(locationId = null\)/);
@@ -80,6 +89,9 @@ describe('warehouse Telegram photo intake contract', () => {
         assert.match(frontend, /Редагувати картку/);
         assert.match(frontend, /const MANAGE_ROLES = \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'\]/);
         assert.match(frontend, /itemMatchesSearch/);
+        assert.match(frontend, /locationSaveInFlight/);
+        assert.match(frontend, /itemSaveInFlight/);
+        assert.match(frontend, /btn\.addEventListener\('click', \(\) => \{[\s\S]*loadStock\(\);[\s\S]*\}\);/);
 
         assert.match(api, /async function apiCreateWarehouseLocation/);
         assert.match(api, /async function apiUpdateWarehouseLocation/);

@@ -12,7 +12,7 @@ const log = createLogger('Contractors');
 
 // RBAC: Contractors — authentication + management only
 router.use(authenticateToken);
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager'));
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
 
 // GET /api/contractors — list all contractors with stats
 router.get('/', async (req, res) => {

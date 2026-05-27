@@ -47,6 +47,8 @@ let warehouseLocations = [];
 let warehouseContractors = [];
 let warehousePhotoIntakes = [];
 let warehouseIntakeStatus = null;
+let locationSaveInFlight = false;
+let itemSaveInFlight = false;
 
 // Modal state
 let qtyModalMode = null; // 'use' or 'restock'
@@ -176,7 +178,7 @@ function renderCategoryTabs() {
             currentCategory = btn.dataset.cat;
             container.querySelectorAll('.category-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            renderStock();
+            loadStock();
         });
     });
 }
@@ -275,16 +277,25 @@ async function saveLocation() {
         showNotification('Назва складу обовʼязкова', 'error');
         return;
     }
-    const result = id
-        ? await apiUpdateWarehouseLocation(id, payload)
-        : await apiCreateWarehouseLocation(payload);
-    if (result?.success) {
-        showNotification(id ? 'Склад оновлено' : 'Склад створено', 'success');
-        if (!id && result.location?.id) currentLocationId = String(result.location.id);
-        closeLocationForm();
-        await Promise.all([loadLocationsSummary(), loadStock()]);
-    } else {
-        showNotification(result?.error || 'Не вдалося зберегти склад', 'error');
+    if (locationSaveInFlight) return;
+    locationSaveInFlight = true;
+    const saveBtn = document.getElementById('saveLocationBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        const result = id
+            ? await apiUpdateWarehouseLocation(id, payload)
+            : await apiCreateWarehouseLocation(payload);
+        if (result?.success) {
+            showNotification(id ? 'Склад оновлено' : 'Склад створено', 'success');
+            if (!id && result.location?.id) currentLocationId = String(result.location.id);
+            closeLocationForm();
+            await Promise.all([loadLocationsSummary(), loadStock()]);
+        } else {
+            showNotification(result?.error || 'Не вдалося зберегти склад', 'error');
+        }
+    } finally {
+        locationSaveInFlight = false;
+        if (saveBtn) saveBtn.disabled = false;
     }
 }
 
@@ -775,20 +786,29 @@ async function saveItem() {
         showNotification('Назва обов\'язкова', 'error');
         return;
     }
+    if (itemSaveInFlight) return;
+    itemSaveInFlight = true;
+    const saveBtn = document.getElementById('saveItemBtn');
+    if (saveBtn) saveBtn.disabled = true;
 
-    let result;
-    if (id) {
-        result = await apiUpdateWarehouseItem(id, item);
-    } else {
-        result = await apiCreateWarehouseItem(item);
-    }
+    try {
+        let result;
+        if (id) {
+            result = await apiUpdateWarehouseItem(id, item);
+        } else {
+            result = await apiCreateWarehouseItem(item);
+        }
 
-    if (result && result.success) {
-        showNotification(id ? 'Позицію оновлено' : 'Позицію додано', 'success');
-        closeItemForm();
-        await Promise.all([loadStock(), loadHistory()]);
-    } else {
-        showNotification(result?.error || 'Помилка збереження', 'error');
+        if (result && result.success) {
+            showNotification(id ? 'Позицію оновлено' : 'Позицію додано', 'success');
+            closeItemForm();
+            await Promise.all([loadStock(), loadHistory()]);
+        } else {
+            showNotification(result?.error || 'Помилка збереження', 'error');
+        }
+    } finally {
+        itemSaveInFlight = false;
+        if (saveBtn) saveBtn.disabled = false;
     }
 }
 

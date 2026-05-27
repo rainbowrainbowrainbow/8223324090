@@ -147,3 +147,18 @@ test('Oleksandra1 unlock migration grants full visible CRM surface without chang
     assert.doesNotMatch(migration, /\brole\s*=/);
     assert.doesNotMatch(migration, /password_hash/);
 });
+
+test('Oleksandr Maysternya unlock migration grants creator surface to the actual operator accounts', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '232_unlock_oleksandr_maysternya_full_access.sql'), 'utf8');
+
+    assert.match(migration, /target_users/);
+    assert.match(migration, /'oleksandr'/);
+    assert.match(migration, /'oleksandra1'/);
+    assert.match(migration, /\^\(oleksandr\|oleksandra\|alexandr\|alexandra\|aleksandr\|aleksandra\|alexander\|sasha\)/);
+    assert.match(migration, /Олександр\|Олександра/);
+    assert.match(migration, /extra_roles[\s\S]*ARRAY\['creator'\]::text\[\]/);
+    assert.match(migration, /page_allowlist[\s\S]*ARRAY\['\/maysternya-doli'\]::text\[\]/);
+    assert.match(migration, /business_contexts = ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
+    assert.doesNotMatch(migration, /\brole\s*=/);
+    assert.doesNotMatch(migration, /password_hash/);
+});

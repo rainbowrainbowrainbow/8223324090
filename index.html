@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.67.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.67.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.67.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.67.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.67.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.67.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.67.1">
-    <link rel="stylesheet" href="css/features.css?v=0.67.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.67.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.67.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.67.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.1">
+    <link rel="stylesheet" href="css/base.css?v=0.67.2">
+    <link rel="stylesheet" href="css/auth.css?v=0.67.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.67.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.2">
+    <link rel="stylesheet" href="css/timeline.css?v=0.67.2">
+    <link rel="stylesheet" href="css/panel.css?v=0.67.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.67.2">
+    <link rel="stylesheet" href="css/controls.css?v=0.67.2">
+    <link rel="stylesheet" href="css/features.css?v=0.67.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.67.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.67.2">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.67.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.67.1 CRM 67.1: таймлайн Майстерні без Park warning">✨ 0.67.1 CRM 67.1: таймлайн Майстерні без Park warning</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.67.2 CRM 67.2: релізний маркер після hotfix Майстерні">✨ 0.67.2 CRM 67.2: релізний маркер після hotfix Майстерні</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.67.1 — CRM 67.1: таймлайн Майстерні без Park warning</p>
+                <p class="tagline">AI First CRM v0.67.2 — CRM 67.2: релізний маркер після hotfix Майстерні</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.67.1: CRM 67.1: таймлайн Майстерні без Park warning</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.67.2: CRM 67.2: релізний маркер після hotfix Майстерні</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1411,13 +1411,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.67.1 — CRM 67.1: таймлайн Майстерні без Park warning</h4>
+                    <h4>v0.67.2 — CRM 67.2: релізний маркер після hotfix Майстерні</h4>
                     <ul>
-                        <li><b>Майстерня Долі більше не відкриває Park-таймлайн</b> — вибір <code>maysternya_doli</code> на таймлайні веде на <code>/maysternya-doli</code>, а Park лишається на <code>/</code>.</li>
-                        <li><b>Маршрут став джерелом правди</b> — сторінка <code>/maysternya-doli</code> сама фіксує бізнес Майстерні без зайвого параметра <code>businessContext</code> і без циклів перезавантаження.</li>
-                        <li><b>Sidebar показує правильний пункт</b> — у режимі Майстерні приховується Park-таймлайн і видно <code>Таймлайн МД</code>.</li>
-                        <li><b>Експорт і друк підписують правильний бізнес</b> — PNG/PDF таймлайну беруть назву з <code>TimelineBusinessContext</code>, тому Майстерня не підписується як Park.</li>
-                        <li><b>Додано regression guard</b> — тести фіксують route-aware перемикання, sidebar-фільтр і відсутність hardcoded Park title в експорті.</li>
+                        <li><b>Піднято реліз до <code>0.67.2</code></b> — live <code>/api/version</code>, cache-bust теги і Service Worker отримують окремий marker після hotfix таймлайну Майстерні.</li>
+                        <li><b>Фікс Майстерні лишається в поставці</b> — <code>/maysternya-doli</code>, sidebar-перемикання і export/print підписи беруть правильний бізнес-контекст.</li>
+                        <li><b>Деплой іде стандартним шляхом</b> — реліз закріплено через git branch <code>deployed</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9770,29 +9768,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.67.1"></script>
-    <script src="js/timeline-visibility.js?v=0.67.1"></script>
-    <script src="js/config.js?v=0.67.1"></script>
-    <script src="js/api.js?v=0.67.1"></script>
-    <script src="js/ui.js?v=0.67.1"></script>
-    <script src="js/auth.js?v=0.67.1"></script>
-    <script src="js/timeline-interaction-model.js?v=0.67.1"></script>
-    <script src="js/timeline.js?v=0.67.1"></script>
-    <script src="js/booking.js?v=0.67.1"></script>
-    <script src="js/settings.js?v=0.67.1"></script>
-    <script src="js/booking-form.js?v=0.67.1"></script>
-    <script src="js/booking-linked.js?v=0.67.1"></script>
-    <script src="js/settings-dashboard.js?v=0.67.1"></script>
-    <script src="js/settings-history.js?v=0.67.1"></script>
-    <script src="js/settings-afisha.js?v=0.67.1"></script>
-    <script src="js/settings-certificates.js?v=0.67.1"></script>
-    <script src="js/offline.js?v=0.67.1"></script>
-    <script src="js/crm-feature-registry.js?v=0.67.1"></script>
-    <script src="js/search.js?v=0.67.1"></script>
-    <script src="js/ws.js?v=0.67.1"></script>
-    <script src="js/app.js?v=0.67.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.67.1"></script>
-    <script src="js/components/sidebar.js?v=0.67.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.67.1"></script>
+    <script src="js/timeline-context.js?v=0.67.2"></script>
+    <script src="js/timeline-visibility.js?v=0.67.2"></script>
+    <script src="js/config.js?v=0.67.2"></script>
+    <script src="js/api.js?v=0.67.2"></script>
+    <script src="js/ui.js?v=0.67.2"></script>
+    <script src="js/auth.js?v=0.67.2"></script>
+    <script src="js/timeline-interaction-model.js?v=0.67.2"></script>
+    <script src="js/timeline.js?v=0.67.2"></script>
+    <script src="js/booking.js?v=0.67.2"></script>
+    <script src="js/settings.js?v=0.67.2"></script>
+    <script src="js/booking-form.js?v=0.67.2"></script>
+    <script src="js/booking-linked.js?v=0.67.2"></script>
+    <script src="js/settings-dashboard.js?v=0.67.2"></script>
+    <script src="js/settings-history.js?v=0.67.2"></script>
+    <script src="js/settings-afisha.js?v=0.67.2"></script>
+    <script src="js/settings-certificates.js?v=0.67.2"></script>
+    <script src="js/offline.js?v=0.67.2"></script>
+    <script src="js/crm-feature-registry.js?v=0.67.2"></script>
+    <script src="js/search.js?v=0.67.2"></script>
+    <script src="js/ws.js?v=0.67.2"></script>
+    <script src="js/app.js?v=0.67.2"></script>
+    <script src="js/kleshnya-widget.js?v=0.67.2"></script>
+    <script src="js/components/sidebar.js?v=0.67.2"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.67.2"></script>
 </body>
 </html>

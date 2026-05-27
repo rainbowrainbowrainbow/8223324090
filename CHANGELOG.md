@@ -4,6 +4,15 @@
 
 ---
 
+## v0.67.2 - CRM 67.2: релізний маркер після hotfix Майстерні
+
+### Release / deploy marker / 27.05.2026 [codex]
+- **Піднято релізний маркер до `0.67.2`** - зафіксовано окремий git-deploy після hotfix таймлайну Майстерні, щоб live `/api/version`, HTML cache-bust і Service Worker показували нову поставку.
+- **Зміст hotfix збережено** - маршрут `/maysternya-doli`, sidebar-перемикання і export/print підписи лишаються з фіксу `0.67.1`; цей реліз тільки закріплює поставку новим marker-ом.
+- **Deploy path без змін** - реліз іде через звичний `deployed` branch.
+
+---
+
 ## v0.67.1 - CRM 67.1: таймлайн Майстерні без Park warning
 
 ### Timeline / бізнес-перемикач / 27.05.2026 [codex]

@@ -199,6 +199,21 @@ test('profile my tasks no longer forces the daily quick mode when switching tabs
     assert.doesNotMatch(source, /if \(tab === 'mytasks'\)\s*\{\s*setCabinetQuickMode\('tasks'\);\s*\}/);
 });
 
+test('profile keeps My Day and My Tasks in the compact secondary tab row', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const workHubStart = source.indexOf('function profileWorkHubTabOrder()');
+    const secondaryStart = source.indexOf('function profileSecondaryTabOrder()');
+    const secondaryEnd = source.indexOf('const PROFILE_CREATOR_ONLY_TABS', secondaryStart);
+    const workHub = source.slice(workHubStart, secondaryStart);
+    const secondary = source.slice(secondaryStart, secondaryEnd);
+
+    assert.doesNotMatch(workHub, /id: 'myday'/);
+    assert.doesNotMatch(workHub, /id: 'mytasks'/);
+    assert.match(secondary, /id: 'myday'/);
+    assert.match(secondary, /id: 'mytasks'/);
+    assert.ok(secondary.indexOf("id: 'mytasks'") < secondary.indexOf("id: 'quests'"));
+});
+
 test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {
     const ctx = loadProfileTaskerContext();
     const task = {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.67.11",
+  "version": "0.67.12",
   "eventGenix": {
-    "releaseLabel": "CRM 67.11: меню Майстерні без зайвого"
+    "releaseLabel": "CRM 67.12: компактні задачі у профілі"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

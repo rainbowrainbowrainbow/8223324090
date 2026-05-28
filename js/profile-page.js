@@ -530,20 +530,6 @@ function profileWorkHubTabOrder() {
             core: true
         },
         {
-            id: 'myday',
-            label: 'Мій день',
-            kicker: 'Виконання',
-            detail: 'Сьогоднішній особистий зріз',
-            ownOnly: true
-        },
-        {
-            id: 'mytasks',
-            label: 'Мої задачі',
-            kicker: 'Задачі',
-            detail: 'Фільтри і всі активні задачі',
-            ownOnly: true
-        },
-        {
             id: 'settings',
             label: 'Налаштування',
             kicker: 'Акаунт',
@@ -559,6 +545,8 @@ function profileSecondaryTabOrder() {
         { id: 'leaderboard', label: 'Рейтинг' },
         { id: 'inventory', label: 'Інвентар', ownOnly: true },
         { id: 'shop', label: 'Магазин', ownOnly: true },
+        { id: 'myday', label: 'Мій день', ownOnly: true },
+        { id: 'mytasks', label: 'Мої задачі', ownOnly: true },
         { id: 'quests', label: 'Щоденні', ownOnly: true },
         { id: 'season', label: 'Сезон' },
         { id: 'teams', label: 'Команди' },

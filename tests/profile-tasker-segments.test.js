@@ -209,9 +209,11 @@ test('profile keeps My Day and My Tasks in the compact secondary tab row', () =>
 
     assert.doesNotMatch(workHub, /id: 'myday'/);
     assert.doesNotMatch(workHub, /id: 'mytasks'/);
+    assert.match(secondary, /profileWorkHubTabOrder\(\)\.map/);
     assert.match(secondary, /id: 'myday'/);
     assert.match(secondary, /id: 'mytasks'/);
     assert.ok(secondary.indexOf("id: 'mytasks'") < secondary.indexOf("id: 'quests'"));
+    assert.doesNotMatch(source, /renderProfileWorkHubTabs\(professionEntries\)/);
 });
 
 test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {

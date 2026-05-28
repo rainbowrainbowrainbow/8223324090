@@ -541,6 +541,7 @@ function profileWorkHubTabOrder() {
 
 function profileSecondaryTabOrder() {
     return [
+        ...profileWorkHubTabOrder().map(({ id, label, ownOnly }) => ({ id, label, ownOnly })),
         { id: 'achievements', label: 'Досягнення' },
         { id: 'leaderboard', label: 'Рейтинг' },
         { id: 'inventory', label: 'Інвентар', ownOnly: true },
@@ -1211,7 +1212,6 @@ function renderProfile() {
         </div>
 
         <section class="profile-work-hub" aria-label="Робочий доступ профілю">
-            ${renderProfileWorkHubTabs(professionEntries)}
             ${renderProfileProfessionSwitcher(professionEntries)}
             ${renderProfileSecondaryTabs()}
         </section>

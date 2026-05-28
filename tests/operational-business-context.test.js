@@ -76,6 +76,8 @@ test('OmniClaw follows the selected business context across UI, routes, and pers
 test('shared CRM shell exposes safe read-only multi-business scope for core CRM lists', () => {
     const api = read('js/api.js');
     const service = read('services/businessContext.js');
+    const server = read('server.js');
+    const guard = read('middleware/businessScopeGuard.js');
     const customers = read('routes/customers.js');
     const leads = read('routes/leads.js');
     const products = read('routes/products.js');
@@ -92,6 +94,14 @@ test('shared CRM shell exposes safe read-only multi-business scope for core CRM 
     assert.match(api, /X-Business-Scope/);
     assert.match(api, /apiLogAction\('business_scope_switch'/);
     assert.match(api, /crmBusinessPageAllowsAggregate/);
+    assert.match(api, /const multiSelected = scope\.mode === CRM_BUSINESS_SCOPE_SINGLE/);
+    assert.match(api, /function assertCrmBusinessWritableRequest/);
+    assert.match(api, /business_scope_read_only/);
+
+    assert.match(server, /businessScopeWriteGuard/);
+    assert.match(guard, /MUTATING_METHODS/);
+    assert.match(guard, /business_scope_read_only/);
+    assert.match(guard, /\/auth\/log-action/);
 
     assert.match(customers, /ensureBusinessScope/);
     assert.match(customers, /customerScopeCondition\(params, businessScope, 'c'\)/);

@@ -18,6 +18,25 @@ const {
   resolveBusinessContextPolicy,
   resolveBusinessScope
 } = require('../services/businessContext');
+const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
+
+function runBusinessScopeWriteGuard(req) {
+  return new Promise(resolve => {
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body) {
+        this.body = body;
+        resolve({ next: false, statusCode: this.statusCode, body });
+      }
+    };
+    businessScopeWriteGuard(req, res, () => resolve({ next: true, statusCode: res.statusCode, body: res.body }));
+  });
+}
 
 test('business context normalizes legacy product aliases to the canonical CRM context', () => {
   assert.equal(normalizeBusinessContext('park_zakrevsky'), 'event_genix');
@@ -105,6 +124,77 @@ test('all-business and multi-business scopes are read-only and sanitize to allow
   const condition = pushBusinessScopeCondition(params, multiScope, 'l');
   assert.equal(condition, "COALESCE(l.business_context, 'event_genix') = ANY($1::text[])");
   assert.deepEqual(params, [['crm', 'event_genix']]);
+});
+
+test('global write guard blocks aggregate business scope mutations before routes run', async () => {
+  const user = {
+    role: 'manager',
+    business_contexts: ['event_genix', 'maysternya_doli']
+  };
+  const allResult = await runBusinessScopeWriteGuard({
+    method: 'POST',
+    path: '/tasks',
+    user,
+    headers: { 'x-business-scope': BUSINESS_SCOPE_ALL },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(allResult.next, false);
+  assert.equal(allResult.statusCode, 403);
+  assert.equal(allResult.body.code, 'business_scope_read_only');
+
+  const multiResult = await runBusinessScopeWriteGuard({
+    method: 'PATCH',
+    path: '/leads/42',
+    user,
+    headers: {
+      'x-business-scope': BUSINESS_SCOPE_MULTI,
+      'x-business-contexts': 'event_genix,maysternya_doli'
+    },
+    query: {},
+    body: {}
+  });
+
+  assert.equal(multiResult.next, false);
+  assert.equal(multiResult.body.code, 'business_scope_read_only');
+});
+
+test('global write guard allows single-business writes and scope switch audit logs', async () => {
+  const user = {
+    role: 'manager',
+    business_contexts: ['event_genix', 'maysternya_doli']
+  };
+
+  const singleResult = await runBusinessScopeWriteGuard({
+    method: 'POST',
+    path: '/tasks',
+    user,
+    headers: { 'x-business-scope': BUSINESS_SCOPE_SINGLE, 'x-business-context': 'maysternya_doli' },
+    query: {},
+    body: {}
+  });
+  assert.equal(singleResult.next, true);
+
+  const auditResult = await runBusinessScopeWriteGuard({
+    method: 'POST',
+    path: '/api/auth/log-action',
+    user,
+    headers: { 'x-business-scope': BUSINESS_SCOPE_ALL },
+    query: {},
+    body: {}
+  });
+  assert.equal(auditResult.next, true);
+
+  const mountedAuditResult = await runBusinessScopeWriteGuard({
+    method: 'POST',
+    path: '/auth/log-action',
+    user,
+    headers: { 'x-business-scope': BUSINESS_SCOPE_ALL },
+    query: {},
+    body: {}
+  });
+  assert.equal(mountedAuditResult.next, true);
 });
 
 test('business scope refuses disallowed aggregate or explicit tenant requests', () => {

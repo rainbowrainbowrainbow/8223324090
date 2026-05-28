@@ -693,6 +693,10 @@ function renderCrmBusinessShell(user) {
 
     if (policy.canSwitch && options.length > 1) {
         const selected = new Set(scope.selectedContexts || [current]);
+        const firstOther = options.find(ctx => ctx.key !== current)?.key;
+        const multiSelected = scope.mode === CRM_BUSINESS_SCOPE_SINGLE
+            ? new Set([current, firstOther].filter(Boolean))
+            : selected;
         host.innerHTML = `
             <span class="crm-business-context-label">Бізнес</span>
             <select id="globalBusinessContextSelect" class="crm-business-context-select crm-business-context-select--global" aria-label="Бізнес-контекст CRM">
@@ -706,7 +710,7 @@ function renderCrmBusinessShell(user) {
                         <div class="crm-business-multi-menu">
                             ${options.map(ctx => `
                                 <label class="crm-business-multi-option">
-                                    <input type="checkbox" value="${ctx.key}"${selected.has(ctx.key) ? ' checked' : ''}>
+                                    <input type="checkbox" value="${ctx.key}"${multiSelected.has(ctx.key) ? ' checked' : ''}>
                                     <span>${ctx.shortLabel || ctx.label}</span>
                                 </label>
                             `).join('')}
@@ -755,20 +759,19 @@ function renderCrmBusinessShell(user) {
     const multiPicker = host.querySelector('.crm-business-multi-picker');
     if (multiPicker && multiPicker.dataset.bound !== '1') {
         multiPicker.dataset.bound = '1';
-        multiPicker.addEventListener('toggle', async () => {
-            if (!multiPicker.open) return;
-            const values = Array.from(multiPicker.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value);
-            await switchCrmBusinessScope({
-                mode: CRM_BUSINESS_SCOPE_MULTI,
-                activeContext: values[0] || current,
-                selectedContexts: values
-            }, { user, updateUrl: true });
-            renderCrmBusinessShell(user);
-        });
         multiPicker.querySelectorAll('input[type="checkbox"]').forEach(input => {
             input.addEventListener('change', async () => {
                 const values = Array.from(multiPicker.querySelectorAll('input[type="checkbox"]:checked')).map(item => item.value);
-                if (values.length < 2) return;
+                if (values.length < 2) {
+                    if (scope.mode === CRM_BUSINESS_SCOPE_MULTI && values.length === 1) {
+                        await switchCrmBusinessScope({
+                            mode: CRM_BUSINESS_SCOPE_SINGLE,
+                            activeContext: values[0]
+                        }, { user, updateUrl: true });
+                        renderCrmBusinessShell(user);
+                    }
+                    return;
+                }
                 await switchCrmBusinessScope({
                     mode: CRM_BUSINESS_SCOPE_MULTI,
                     activeContext: values[0],
@@ -875,7 +878,33 @@ function applyCrmBusinessScopeHeaders(headers = {}) {
     return headers;
 }
 
+const CRM_BUSINESS_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function crmBusinessRequestPath(url) {
+    try {
+        const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+        return new URL(String(url || '/'), base).pathname;
+    } catch (_) {
+        return String(url || '/').split('?')[0];
+    }
+}
+
+function assertCrmBusinessWritableRequest(url, method = 'GET') {
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    if (!CRM_BUSINESS_MUTATING_METHODS.has(normalizedMethod)) return;
+    if (!isCrmBusinessScopeReadOnly()) return;
+    const path = crmBusinessRequestPath(url);
+    if (path === '/api/auth/log-action' || path === '/auth/log-action') return;
+    throw apiErrorFromPayload({
+        success: false,
+        status: 403,
+        code: 'business_scope_read_only',
+        error: 'All-business and multi-business scopes are read-only. Select one active business before changing data.'
+    }, 'Read-only business scope');
+}
+
 async function safeFetch(url, opts = {}) {
+    assertCrmBusinessWritableRequest(url, opts.method || 'GET');
     if (!opts.headers) opts.headers = {};
     if (!opts.headers['Authorization']) {
         const token = getStoredAuthToken();
@@ -940,6 +969,7 @@ function apiWithBearer(headers = {}, token = '', force = false) {
 
 async function apiFetchWithAuthRetry(url, opts = {}) {
     const request = { ...opts };
+    assertCrmBusinessWritableRequest(url, request.method || 'GET');
     const originalHeaders = apiHeaderObject(opts.headers || {});
     applyCrmBusinessScopeHeaders(originalHeaders);
     let token = getStoredAuthToken();
@@ -996,6 +1026,7 @@ function handleAuthError(response) {
  */
 async function apiCall(method, url, body = null, { fallback = null, raw = false } = {}) {
     try {
+        assertCrmBusinessWritableRequest(`${API_BASE}${url}`, method);
         const isGet = method === 'GET';
         const opts = { method, headers: getAuthHeaders(!isGet) };
         if (body && !isGet) opts.body = JSON.stringify(body);

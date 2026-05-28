@@ -4,6 +4,17 @@
 
 ---
 
+## v0.67.15 - CRM 67.15: захист бізнес-scope записів
+
+### Multi-business / write guard / switcher hardening / 28.05.2026 [codex]
+- **Aggregate-режими закрито для будь-яких записів централізовано** - додано `businessScopeWriteGuard` перед API-роутами, який блокує `POST`, `PUT`, `PATCH` і `DELETE` у `multi` та `all` режимах до того, як запит дійде до конкретного модуля.
+- **Single-business лишився єдиним write-path** - зміна даних дозволена тільки після вибору одного активного бізнесу; `multi` і `all` лишаються read-only оглядом без прихованих записів у попередній tenant-контекст.
+- **Frontend теж не шле write-запити з read-only scope** - shared API wrappers відхиляють mutating-запити в aggregate-режимі на клієнті, а службовий `business_scope_switch` audit лишився дозволеним.
+- **Меню `Кілька` стало стабільнішим** - відкриття multi-picker більше не перемикає режим саме по собі; перемикання відбувається після реального вибору кількох бізнесів.
+- **Додано regression guards** - тести фіксують глобальний write guard, audit-exception, single-business write path і frontend contract.
+
+---
+
 ## v0.67.14 - CRM 67.14: єдина бізнес-оболонка
 
 ### Multi-business / account shell / tenant-safety / 28.05.2026 [codex]

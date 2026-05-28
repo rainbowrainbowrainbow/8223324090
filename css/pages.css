@@ -4916,6 +4916,91 @@ body.dark-mode .afisha-material-item a {
     min-width: 170px;
 }
 
+.crm-business-scope-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 34px;
+    padding: 3px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.06);
+}
+
+.crm-business-scope-btn {
+    min-width: 34px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.crm-business-scope-btn.active,
+.crm-business-scope-btn:hover,
+.crm-business-multi-picker[open] > .crm-business-scope-btn {
+    background: rgba(20, 184, 166, 0.16);
+    color: #0f766e;
+}
+
+.crm-business-multi-picker {
+    position: relative;
+}
+
+.crm-business-multi-picker > summary {
+    list-style: none;
+}
+
+.crm-business-multi-picker > summary::-webkit-details-marker {
+    display: none;
+}
+
+.crm-business-multi-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 2400;
+    min-width: 180px;
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.crm-business-multi-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.crm-business-multi-option:hover {
+    background: rgba(20, 184, 166, 0.10);
+}
+
+.crm-business-context-chip--readonly {
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.12);
+    color: #92400e;
+}
+
 .crm-business-context-chip {
     min-height: 34px;
     display: inline-flex;
@@ -4963,6 +5048,43 @@ html[data-theme="dark"] .crm-business-context-select option {
     color: #f8fafc;
 }
 
+body.dark-mode .crm-business-scope-toggle,
+html[data-theme="dark"] .crm-business-scope-toggle {
+    background: rgba(148, 163, 184, 0.10);
+}
+
+body.dark-mode .crm-business-scope-btn,
+html[data-theme="dark"] .crm-business-scope-btn {
+    color: #cbd5e1;
+}
+
+body.dark-mode .crm-business-scope-btn.active,
+body.dark-mode .crm-business-scope-btn:hover,
+body.dark-mode .crm-business-multi-picker[open] > .crm-business-scope-btn,
+html[data-theme="dark"] .crm-business-scope-btn.active,
+html[data-theme="dark"] .crm-business-scope-btn:hover,
+html[data-theme="dark"] .crm-business-multi-picker[open] > .crm-business-scope-btn {
+    background: rgba(45, 212, 191, 0.16);
+    color: #5eead4;
+}
+
+body.dark-mode .crm-business-multi-menu,
+html[data-theme="dark"] .crm-business-multi-menu {
+    background: rgba(15, 23, 42, 0.98);
+    border-color: rgba(45, 212, 191, 0.22);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+}
+
+body.dark-mode .crm-business-multi-option,
+html[data-theme="dark"] .crm-business-multi-option {
+    color: #f8fafc;
+}
+
+body.dark-mode .crm-business-multi-option:hover,
+html[data-theme="dark"] .crm-business-multi-option:hover {
+    background: rgba(45, 212, 191, 0.12);
+}
+
 body.dark-mode .crm-business-context-chip,
 html[data-theme="dark"] .crm-business-context-chip {
     background: rgba(45, 212, 191, 0.10);
@@ -4974,9 +5096,17 @@ html[data-theme="dark"] .crm-business-context-chip span {
     color: #bae6fd;
 }
 
+body.dark-mode .crm-business-context-chip--readonly,
+html[data-theme="dark"] .crm-business-context-chip--readonly {
+    border-color: rgba(251, 191, 36, 0.34);
+    background: rgba(251, 191, 36, 0.13);
+    color: #fde68a;
+}
+
 @media (max-width: 720px) {
     .crm-business-context-host {
-        max-width: min(100%, 260px);
+        max-width: min(100%, 340px);
+        flex-wrap: wrap;
     }
 
     .crm-business-context-label {
@@ -4985,6 +5115,10 @@ html[data-theme="dark"] .crm-business-context-chip span {
 
     .crm-business-context-select--global {
         min-width: 0;
-        width: 100%;
+        flex: 1 1 160px;
+    }
+
+    .crm-business-scope-toggle {
+        flex: 0 0 auto;
     }
 }

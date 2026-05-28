@@ -3,12 +3,20 @@ const assert = require('node:assert/strict');
 
 const {
   BUSINESS_CONTEXT_SWITCH_ROLES,
+  BUSINESS_SCOPE_ALL,
+  BUSINESS_SCOPE_MULTI,
+  BUSINESS_SCOPE_SINGLE,
   businessContextCatalog,
   businessContextFromRequest,
+  businessScopeContextsFromRequest,
+  businessScopeModeFromRequest,
   canAccessBusinessContext,
+  isBusinessScopeReadOnly,
   normalizeBusinessContext,
   normalizeBusinessContextList,
-  resolveBusinessContextPolicy
+  pushBusinessScopeCondition,
+  resolveBusinessContextPolicy,
+  resolveBusinessScope
 } = require('../services/businessContext');
 
 test('business context normalizes legacy product aliases to the canonical CRM context', () => {
@@ -23,6 +31,16 @@ test('business context can be read from query, body, or header input', () => {
   assert.equal(businessContextFromRequest({ query: { businessContext: 'maysternya_doli' } }), 'maysternya_doli');
   assert.equal(businessContextFromRequest({ body: { business_context: 'park_zakrevsky' } }), 'event_genix');
   assert.equal(businessContextFromRequest({ headers: { 'x-business-context': 'dar' } }), 'dar');
+});
+
+test('business scope request contract supports single, multi, and all-business modes', () => {
+  assert.equal(businessScopeModeFromRequest({ query: { businessContext: 'maysternya_doli' } }), BUSINESS_SCOPE_SINGLE);
+  assert.equal(businessScopeModeFromRequest({ query: { businessScope: 'all' } }), BUSINESS_SCOPE_ALL);
+  assert.equal(businessScopeModeFromRequest({ headers: { 'x-business-scope': 'multi' } }), BUSINESS_SCOPE_MULTI);
+  assert.deepEqual(
+    businessScopeContextsFromRequest({ headers: { 'x-business-contexts': 'park,maysternya_doli,crm' } }),
+    ['event_genix', 'maysternya_doli', 'crm']
+  );
 });
 
 test('switch policy is centralized for director-like roles', () => {
@@ -54,6 +72,58 @@ test('default_business_context chooses the initial switcher value without narrow
   assert.equal(policy.defaultContext, 'maysternya_doli');
   assert.equal(canAccessBusinessContext(user, 'event_genix'), true);
   assert.equal(canAccessBusinessContext(user, 'maysternya_doli'), true);
+});
+
+test('all-business and multi-business scopes are read-only and sanitize to allowed contexts', () => {
+  const user = {
+    role: 'manager',
+    business_contexts: ['event_genix', 'maysternya_doli', 'crm'],
+    default_business_context: 'maysternya_doli'
+  };
+
+  const allScope = resolveBusinessScope({
+    user,
+    query: { businessScope: 'all' },
+    headers: {}
+  });
+  assert.equal(allScope.mode, BUSINESS_SCOPE_ALL);
+  assert.equal(allScope.activeContext, 'maysternya_doli');
+  assert.deepEqual(allScope.selectedContexts, ['event_genix', 'maysternya_doli', 'crm']);
+  assert.equal(isBusinessScopeReadOnly(allScope), true);
+  assert.equal(allScope.canWrite, false);
+
+  const multiScope = resolveBusinessScope({
+    user,
+    query: { businessScope: 'multi', businessContexts: 'crm,dar,event_genix' },
+    headers: {}
+  });
+  assert.equal(multiScope.mode, BUSINESS_SCOPE_MULTI);
+  assert.deepEqual(multiScope.selectedContexts, ['crm', 'event_genix']);
+  assert.equal(multiScope.invalid, false);
+
+  const params = [];
+  const condition = pushBusinessScopeCondition(params, multiScope, 'l');
+  assert.equal(condition, "COALESCE(l.business_context, 'event_genix') = ANY($1::text[])");
+  assert.deepEqual(params, [['crm', 'event_genix']]);
+});
+
+test('business scope refuses disallowed aggregate or explicit tenant requests', () => {
+  const lockedUser = { role: 'manager' };
+  const allScope = resolveBusinessScope({
+    user: lockedUser,
+    query: { businessScope: 'all' },
+    headers: {}
+  });
+  assert.equal(allScope.invalid, true);
+  assert.equal(allScope.reason, 'all_business_scope_unavailable');
+
+  const disallowed = resolveBusinessScope({
+    user: lockedUser,
+    query: { businessContext: 'maysternya_doli' },
+    headers: {}
+  });
+  assert.equal(disallowed.invalid, true);
+  assert.equal(disallowed.reason, 'business_context_unavailable');
 });
 
 test('locked roles are forced to explicit or allowlisted business context', () => {

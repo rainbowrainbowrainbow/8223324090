@@ -37,7 +37,11 @@ const {
     normalizeBusinessContext,
     businessContextFromRequest,
     requireBusinessContext,
-    pushBusinessContextCondition
+    pushBusinessContextCondition,
+    pushBusinessScopeCondition,
+    resolveBusinessScope,
+    requireBusinessScope,
+    requireWritableBusinessScope
 } = require('../services/businessContext');
 const { normalizeCustomerSource, getCustomerSourceLabel } = require('../services/customerSource');
 
@@ -66,13 +70,37 @@ const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
 
 function ensureBusinessContext(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    if (scope.mode !== 'single') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            requireWritableBusinessScope(req, res, scope);
+        } else {
+            res.status(400).json({
+                success: false,
+                error: 'This endpoint requires one active business context',
+                code: 'single_business_required'
+            });
+        }
+        return null;
+    }
     const businessContext = businessContextFromRequest(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
 }
 
+function ensureBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
+}
+
 function leadContextCondition(params, businessContext, alias = 'l') {
     return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
+function leadScopeCondition(params, businessScope, alias = 'l') {
+    return pushBusinessScopeCondition(params, businessScope || DEFAULT_BUSINESS_CONTEXT, alias);
 }
 
 function publicBusinessContext(req) {
@@ -718,12 +746,12 @@ router.get('/assignees', async (req, res) => {
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
         const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type } = req.query;
         const conditions = [];
         const params = [];
-        conditions.push(leadContextCondition(params, businessContext, 'l'));
+        conditions.push(leadScopeCondition(params, businessScope, 'l'));
 
         if (pipeline_stage) {
             params.push(pipeline_stage);
@@ -783,8 +811,10 @@ router.get('/', async (req, res) => {
 // GET /api/leads/hot — leads that need attention (24h+ since creation, still 'new')
 router.get('/hot', async (req, res) => {
     try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
+        const params = [];
+        const scopeSql = leadScopeCondition(params, businessScope, 'l');
         const result = await pool.query(`
             SELECT l.*, u.name AS assigned_name, p.label AS program_name,
                    EXTRACT(EPOCH FROM (NOW() - l.created_at)) / 3600 AS hours_waiting
@@ -792,11 +822,11 @@ router.get('/hot', async (req, res) => {
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
             WHERE l.status = 'new'
-              AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+              AND ${scopeSql}
               AND l.created_at < NOW() - INTERVAL '24 hours'
             ORDER BY l.created_at ASC
             LIMIT 50
-        `, [businessContext]);
+        `, params);
         res.json({ success: true, leads: result.rows });
     } catch (err) {
         log.error('GET /leads/hot error', err);
@@ -807,18 +837,24 @@ router.get('/hot', async (req, res) => {
 // GET /api/leads/stats — funnel statistics (by status + type + pipeline)
 router.get('/stats', async (req, res) => {
     try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
         const { period } = req.query; // today, week, month, all
         let dateFilter = '';
         if (period === 'today') dateFilter = "AND created_at >= CURRENT_DATE";
         else if (period === 'week') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
         else if (period === 'month') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
+        const statusParams = [];
+        const typeParams = [];
+        const stageParams = [];
+        const statusScopeSql = leadScopeCondition(statusParams, businessScope, '');
+        const typeScopeSql = leadScopeCondition(typeParams, businessScope, '');
+        const stageScopeSql = leadScopeCondition(stageParams, businessScope, '');
 
         const [byStatus, byType, byStage] = await Promise.all([
-            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY status`, [businessContext]),
-            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY lead_type`, [businessContext]),
-            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ${dateFilter} GROUP BY pipeline_stage`, [businessContext]),
+            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE ${statusScopeSql} ${dateFilter} GROUP BY status`, statusParams),
+            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE ${typeScopeSql} ${dateFilter} GROUP BY lead_type`, typeParams),
+            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE ${stageScopeSql} ${dateFilter} GROUP BY pipeline_stage`, stageParams),
         ]);
 
         const stats = {};
@@ -1121,14 +1157,18 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
 // Stages: new → contacted → info_sent → deal → deposit_received → waiting → completed → closed / lost
 router.get('/pipeline', async (req, res) => {
     try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
+        const countParams = [];
+        const listParams = [];
+        const countScopeSql = leadScopeCondition(countParams, businessScope, '');
+        const listScopeSql = leadScopeCondition(listParams, businessScope, 'l');
         const result = await pool.query(`
             SELECT pipeline_stage, lead_type, COUNT(*) AS count
             FROM leads
-            WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+            WHERE ${countScopeSql}
             GROUP BY pipeline_stage, lead_type
-        `, [businessContext]);
+        `, countParams);
 
         const stages = {};
         const stageOrder = ['new', 'contacted', 'info_sent', 'deal', 'deposit_received', 'waiting', 'completed', 'closed', 'lost'];
@@ -1142,13 +1182,14 @@ router.get('/pipeline', async (req, res) => {
         const leadsResult = await pool.query(`
             SELECT l.id, l.client_name, l.phone, l.lead_type, l.quality_category,
                    l.pipeline_stage, l.event_date, l.created_at, l.source_channel,
+                   l.business_context,
                    EXTRACT(EPOCH FROM (NOW() - COALESCE(l.last_contact_at, l.created_at))) / 3600 AS hours_idle
             FROM leads l
-            WHERE COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+            WHERE ${listScopeSql}
               AND l.lead_type NOT IN ('spam')
             ORDER BY l.created_at DESC
             LIMIT 300
-        `, [businessContext]);
+        `, listParams);
 
         res.json({ success: true, pipeline: stages, leads: leadsResult.rows });
     } catch (err) {

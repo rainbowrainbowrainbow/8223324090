@@ -11,7 +11,11 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
     requireBusinessContext,
-    pushBusinessContextCondition
+    pushBusinessContextCondition,
+    pushBusinessScopeCondition,
+    resolveBusinessScope,
+    requireBusinessScope,
+    requireWritableBusinessScope
 } = require('../services/businessContext');
 const { openRouterChat } = require('../services/copilot');
 
@@ -91,9 +95,29 @@ const MENU_ALLERGEN_CATALOG = [
 ];
 
 function requireProductBusinessContext(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    if (scope.mode !== 'single') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            requireWritableBusinessScope(req, res, scope);
+        } else {
+            res.status(400).json({
+                success: false,
+                error: 'This endpoint requires one active business context',
+                code: 'single_business_required'
+            });
+        }
+        return null;
+    }
     const businessContext = businessContextFromRequest(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
+}
+
+function requireProductBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
 }
 
 function normalizeProductIdentity(value) {
@@ -928,8 +952,8 @@ function validateProduct(body) {
 router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
-        const businessContext = requireProductBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = requireProductBusinessScope(req, res);
+        if (!businessScope) return;
         const activeOnly = req.query.active === 'true';
         const domain = PRODUCT_DOMAINS.has(req.query.domain) ? req.query.domain : null;
         const kitchenTypeQuery = req.query.kitchenType || req.query.kitchen_type;
@@ -940,7 +964,7 @@ router.get('/', async (req, res) => {
             : null;
         const where = [];
         const params = [];
-        where.push(pushBusinessContextCondition(params, businessContext, 'p'));
+        where.push(pushBusinessScopeCondition(params, businessScope, 'p'));
         if (activeOnly) where.push('p.is_active = true');
         if (domain) {
             params.push(domain);

@@ -72,3 +72,31 @@ test('OmniClaw follows the selected business context across UI, routes, and pers
     assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_business_channel_ext/);
     assert.match(migration, /PRIMARY KEY \(business_context, channel\)/);
 });
+
+test('shared CRM shell exposes safe read-only multi-business scope for core CRM lists', () => {
+    const api = read('js/api.js');
+    const service = read('services/businessContext.js');
+    const customers = read('routes/customers.js');
+    const leads = read('routes/leads.js');
+    const products = read('routes/products.js');
+
+    assert.match(service, /BUSINESS_SCOPE_ALL/);
+    assert.match(service, /function resolveBusinessScope/);
+    assert.match(service, /function pushBusinessScopeCondition/);
+    assert.match(service, /requireWritableBusinessScope/);
+    assert.match(service, /= ANY\(\$\$\{params\.length\}::text\[\]\)/);
+
+    assert.match(api, /CRM_BUSINESS_SCOPE_ALL/);
+    assert.match(api, /CRM_BUSINESS_SCOPE_MULTI/);
+    assert.match(api, /businessScope/);
+    assert.match(api, /X-Business-Scope/);
+    assert.match(api, /apiLogAction\('business_scope_switch'/);
+    assert.match(api, /crmBusinessPageAllowsAggregate/);
+
+    assert.match(customers, /ensureBusinessScope/);
+    assert.match(customers, /customerScopeCondition\(params, businessScope, 'c'\)/);
+    assert.match(leads, /ensureBusinessScope/);
+    assert.match(leads, /leadScopeCondition\(params, businessScope, 'l'\)/);
+    assert.match(products, /requireProductBusinessScope/);
+    assert.match(products, /pushBusinessScopeCondition\(params, businessScope, 'p'\)/);
+});

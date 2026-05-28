@@ -4,6 +4,17 @@
 
 ---
 
+## v0.67.14 - CRM 67.14: єдина бізнес-оболонка
+
+### Multi-business / account shell / tenant-safety / 28.05.2026 [codex]
+- **Бізнес scope став частиною runtime contract** - додано `single`, `multi` і `all` режими поверх наявного `business_context`, щоб один shared CRM shell міг керувати активним бізнесом без дублювання сторінок.
+- **`multi` і `all` працюють read-only за замовчуванням** - якщо користувач вибирає кілька бізнесів або всі бізнеси, backend дозволяє агреговані списки, але записи/редагування відхиляє до вибору одного активного бізнесу.
+- **Клієнти, ліди й продукти отримали безпечний aggregate slice** - списки цих модулів використовують `businessScope`/`businessContexts` і SQL `ANY(...)`, а detail/write endpoints лишаються single-business.
+- **Глобальний business switcher перероблено під один shell** - header control показує один бізнес, кілька вибраних бізнесів або всі бізнеси, передає scope у URL/body/headers і аудитить перемикання через `user_action_log`.
+- **Додано regression guards** - `business-context`, `operational-business-context`, UI smoke і route smoke фіксують scope contract, read-only guardrails і відсутність tenant leakage у core CRM paths.
+
+---
+
 ## v0.67.13 - CRM 67.13: всі вкладки профілю компактні
 
 ### Profile / робочий хаб / вкладки / 28.05.2026 [codex]

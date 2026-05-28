@@ -15,7 +15,11 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
     requireBusinessContext,
-    pushBusinessContextCondition
+    pushBusinessContextCondition,
+    pushBusinessScopeCondition,
+    resolveBusinessScope,
+    requireBusinessScope,
+    requireWritableBusinessScope
 } = require('../services/businessContext');
 const {
     normalizeCustomerSource,
@@ -142,13 +146,37 @@ function requestBusinessContext(req) {
 }
 
 function ensureBusinessContext(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    if (scope.mode !== 'single') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            requireWritableBusinessScope(req, res, scope);
+        } else {
+            res.status(400).json({
+                success: false,
+                error: 'This endpoint requires one active business context',
+                code: 'single_business_required'
+            });
+        }
+        return null;
+    }
     const businessContext = requestBusinessContext(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
 }
 
+function ensureBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
+}
+
 function customerContextCondition(params, businessContext, alias = '') {
     return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
+function customerScopeCondition(params, businessScope, alias = '') {
+    return pushBusinessScopeCondition(params, businessScope || DEFAULT_BUSINESS_CONTEXT, alias);
 }
 
 function parseCustomerVisitBound(value) {
@@ -321,9 +349,8 @@ async function updateCustomerPg(id, input) {
 }
 
 function scopedBookingAggregateSql(user, params, alias = 'b') {
-    const businessContext = arguments.length >= 4 ? arguments[3] : DEFAULT_BUSINESS_CONTEXT;
-    params.push(businessContext || DEFAULT_BUSINESS_CONTEXT);
-    const businessRef = `$${params.length}`;
+    const businessScope = arguments.length >= 4 ? arguments[3] : DEFAULT_BUSINESS_CONTEXT;
+    const businessSql = customerScopeCondition(params, businessScope, alias);
     const visibility = getVisibleBookingScope(user, params, alias);
     return {
         visibility,
@@ -335,7 +362,7 @@ function scopedBookingAggregateSql(user, params, alias = 'b') {
                    MAX(${alias}.date) AS real_last_visit
             FROM bookings ${alias}
             WHERE ${alias}.status != 'cancelled'
-              AND COALESCE(${alias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${businessRef}
+              AND ${businessSql}
               ${visibility.sql}
             GROUP BY ${alias}.customer_id
         `
@@ -1223,8 +1250,8 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
 // List customers (with pagination, search, and filters)
 router.get('/', async (req, res) => {
     try {
-        const businessContext = ensureBusinessContext(req, res);
-        if (!businessContext) return;
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
@@ -1241,7 +1268,7 @@ router.get('/', async (req, res) => {
         // PostgreSQL
         const conditions = [];
         const params = [];
-        conditions.push(customerContextCondition(params, businessContext, 'c'));
+        conditions.push(customerScopeCondition(params, businessScope, 'c'));
 
         if (search) {
             params.push(`%${search}%`);
@@ -1259,7 +1286,7 @@ router.get('/', async (req, res) => {
         if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`c.last_visit <= $${params.length}::date`); }
         if (tag) { params.push(tag); conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
 
-        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessContext);
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b', businessScope);
         const visitCountExpr = 'COALESCE(b_agg.booking_count, c.total_bookings, 0)';
         if (minVisits !== null) { params.push(minVisits); conditions.push(`${visitCountExpr} >= $${params.length}`); }
         if (maxVisits !== null) { params.push(maxVisits); conditions.push(`${visitCountExpr} <= $${params.length}`); }

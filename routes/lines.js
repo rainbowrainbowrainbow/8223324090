@@ -36,9 +36,9 @@ router.get('/:date', async (req, res) => {
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         const display = await getTimelineDisplaySettings(pool, businessContext);
-        const resourceType = resourceTypeForDisplayMode(display.mode);
+        const resourceType = resourceTypeForDisplayMode(display.mode, display);
         if (resourceType) {
-            const lines = await timelineResourceLinesForMode(pool, businessContext, display.mode);
+            const lines = await timelineResourceLinesForMode(pool, businessContext, display.mode, display);
             res.set('X-Timeline-Lines-Source', 'timeline_resources');
             res.set('X-Timeline-Resource-Type', resourceType);
             return res.json(lines || []);
@@ -99,7 +99,7 @@ router.post('/:date', async (req, res) => {
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'settings')) return;
         const display = await getTimelineDisplaySettings(client, businessContext);
-        const resourceType = resourceTypeForDisplayMode(display.mode);
+        const resourceType = resourceTypeForDisplayMode(display.mode, display);
 
         if (resourceType) {
             await client.query('BEGIN');

@@ -17,6 +17,7 @@ const {
 } = require('../services/timelineContext');
 const {
     getTimelineDisplaySettings,
+    normalizeTimelineDisplaySettings,
     resourceTypeForDisplayMode,
     timelineResourceAvailability
 } = require('../services/timelineResources');
@@ -231,25 +232,12 @@ function sanitizeTimelineVisibilityPayload(body) {
     return { version: 1, overrides };
 }
 
-const TIMELINE_DISPLAY_MODES = new Set(['simple', 'specialist', 'park', 'education']);
-const TIMELINE_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
-
 function timelineDisplaySettingsKey(context) {
     return `timeline_display:${context || DEFAULT_TIMELINE_CONTEXT}`;
 }
 
-function defaultTimelineDisplayMode(context) {
-    return context === 'maysternya_doli' ? 'simple' : 'park';
-}
-
 function sanitizeTimelineDisplayPayload(body, context) {
-    const mode = TIMELINE_DISPLAY_MODES.has(String(body?.mode || ''))
-        ? String(body.mode)
-        : defaultTimelineDisplayMode(context);
-    const parkKitchenMode = TIMELINE_PARK_KITCHEN_MODES.has(String(body?.parkKitchenMode || ''))
-        ? String(body.parkKitchenMode)
-        : 'with_kitchen';
-    return { version: 1, mode, parkKitchenMode };
+    return normalizeTimelineDisplaySettings(body || {}, context);
 }
 
 router.get('/settings/timeline-visibility', async (req, res) => {
@@ -358,7 +346,16 @@ router.put('/settings/timeline-display', async (req, res) => {
         logAdminAction('timeline_display_update', 'settings', {
             username: req.user?.username,
             target: key,
-            details: { context, mode: payload.mode, parkKitchenMode: payload.parkKitchenMode },
+            details: {
+                context,
+                mode: payload.mode,
+                timelineEnabled: payload.timelineEnabled,
+                startPage: payload.startPage,
+                resourceModel: payload.resourceModel,
+                enabledModules: Object.keys(payload.enabledModules || {}).filter(key => payload.enabledModules[key]),
+                timelineFeatures: Object.keys(payload.timelineFeatures || {}).filter(key => payload.timelineFeatures[key]),
+                parkKitchenMode: payload.parkKitchenMode
+            },
             ip: req.ip,
             requestId: req.headers['x-request-id']
         });
@@ -439,7 +436,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const context = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, context)) return;
         const display = await getTimelineDisplaySettings(pool, context);
-        const resourceType = resourceTypeForDisplayMode(display.mode);
+        const resourceType = resourceTypeForDisplayMode(display.mode, display);
         if (resourceType) {
             return res.json(await timelineResourceAvailability(pool, {
                 context,

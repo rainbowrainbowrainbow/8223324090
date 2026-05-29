@@ -59,6 +59,34 @@
 
     const DISPLAY_STORAGE_NAME = 'timeline_display_settings';
     const DISPLAY_MODES = {
+        disabled: {
+            key: 'disabled',
+            label: 'Без таймлайну',
+            shortLabel: 'Вимкнено',
+            bodyClass: 'timeline-mode-disabled',
+            resourceType: null,
+            showAfisha: false,
+            showProductSales: false,
+            roomLoadLabel: 'Ресурси',
+            roomLoadTitle: 'Таймлайн вимкнено для цього бізнесу',
+            addLineLabel: 'Ресурс',
+            addLineTitle: 'Таймлайн вимкнено для цього бізнесу',
+            selectedLineLabel: 'Ресурс:',
+            lineTypeLabel: 'ресурс',
+            bookingTitle: 'Запис',
+            submitLabel: 'Зберегти',
+            programLabel: 'Послуга',
+            programSearchPlaceholder: 'Пошук послуги...',
+            roomLabel: 'Ресурс',
+            roomOptionLabel: 'Ресурс',
+            groupLabel: 'Група / тема',
+            notesLabel: 'Коментар',
+            customerNameLabel: 'Імʼя клієнта',
+            phoneLabel: 'Телефон',
+            emptyLineName: 'Ресурс',
+            legendHtml: '<span class="legend-item"><span class="dot custom"></span>Таймлайн вимкнено</span>',
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification', 'bookingPackageSummary']
+        },
         simple: {
             key: 'simple',
             label: 'Простий режим',
@@ -193,6 +221,12 @@
     };
     const VALID_DISPLAY_MODES = new Set(Object.keys(DISPLAY_MODES));
     const VALID_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
+    const VALID_START_PAGES = new Set(['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks']);
+    const VALID_RESOURCE_MODELS = new Set(['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online']);
+    const RESOURCE_TYPES = new Set(['animator', 'specialist', 'cabinet', 'room', 'online']);
+    const MODULE_KEYS = ['timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products', 'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'];
+    const FEATURE_KEYS = ['quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen', 'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'];
+    const POLICY_KEYS = ['allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup', 'enforceTeacherConflict', 'enforceResourceCapacity', 'notifyFirstOccurrenceOnly'];
 
     function normalizedPath() {
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
@@ -258,18 +292,130 @@
         }
     }
 
+    function defaultResourceModelForMode(mode) {
+        if (mode === 'disabled') return 'none';
+        if (mode === 'education') return 'cabinet';
+        if (mode === 'simple' || mode === 'specialist') return 'specialist';
+        return 'auto';
+    }
+
+    function defaultModulesForMode(mode, parkKitchenMode = 'with_kitchen') {
+        const base = Object.fromEntries(MODULE_KEYS.map(key => [key, false]));
+        if (mode === 'disabled') {
+            return { ...base, leads: true, customers: true, omni: true, tasks: true };
+        }
+        const common = {
+            ...base,
+            timeline: true,
+            bookings: true,
+            leads: true,
+            customers: true,
+            omni: true,
+            tasks: true,
+            resources: mode !== 'park'
+        };
+        if (mode === 'park') {
+            return {
+                ...common,
+                products: true,
+                afisha: true,
+                kitchen: parkKitchenMode !== 'without_kitchen',
+                resources: false
+            };
+        }
+        if (mode === 'education') {
+            return {
+                ...common,
+                teachers: true,
+                lessonSeries: true
+            };
+        }
+        return common;
+    }
+
+    function defaultFeaturesForMode(mode, parkKitchenMode = 'with_kitchen') {
+        const base = Object.fromEntries(FEATURE_KEYS.map(key => [key, false]));
+        if (mode === 'disabled') return base;
+        const common = {
+            ...base,
+            quickCloseSlot: true,
+            freeResources: mode !== 'park',
+            compactBlocks: mode !== 'park'
+        };
+        if (mode === 'park') {
+            return { ...common, afisha: true, kitchen: parkKitchenMode !== 'without_kitchen' };
+        }
+        if (mode === 'education') {
+            return {
+                ...common,
+                series: true,
+                seriesBadge: true,
+                teacherConflict: true,
+                resourceCapacity: true
+            };
+        }
+        return common;
+    }
+
+    function defaultBookingPolicyForMode(mode) {
+        return {
+            allowLessonsWithoutTeacher: mode === 'education',
+            allowLessonsWithoutGroup: true,
+            enforceTeacherConflict: mode === 'education',
+            enforceResourceCapacity: mode === 'education',
+            notifyFirstOccurrenceOnly: mode === 'education'
+        };
+    }
+
+    function normalizeToggleRecord(value, defaults, keys) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const normalized = { ...defaults };
+        keys.forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(source, key)) {
+                normalized[key] = Boolean(source[key]);
+            }
+        });
+        return normalized;
+    }
+
     function normalizeDisplaySettings(value, ctx = currentContext()) {
         const fallbackMode = defaultDisplayMode(ctx);
-        const mode = VALID_DISPLAY_MODES.has(String(value?.mode || ''))
+        const rawMode = String(value?.mode || '');
+        const mode = value?.timelineEnabled === false || rawMode === 'disabled'
+            ? 'disabled'
+            : VALID_DISPLAY_MODES.has(rawMode)
             ? String(value.mode)
             : fallbackMode;
         const parkKitchenMode = VALID_PARK_KITCHEN_MODES.has(String(value?.parkKitchenMode || ''))
             ? String(value.parkKitchenMode)
             : 'with_kitchen';
+        const startPage = VALID_START_PAGES.has(String(value?.startPage || ''))
+            ? String(value.startPage)
+            : (mode === 'disabled' ? 'dashboard' : 'timeline');
+        const resourceModel = VALID_RESOURCE_MODELS.has(String(value?.resourceModel || ''))
+            ? String(value.resourceModel)
+            : defaultResourceModelForMode(mode);
+        const enabledModules = normalizeToggleRecord(value?.enabledModules, defaultModulesForMode(mode, parkKitchenMode), MODULE_KEYS);
+        const timelineFeatures = normalizeToggleRecord(value?.timelineFeatures, defaultFeaturesForMode(mode, parkKitchenMode), FEATURE_KEYS);
+        const bookingPolicy = normalizeToggleRecord(value?.bookingPolicy, defaultBookingPolicyForMode(mode), POLICY_KEYS);
+        if (mode === 'park' && parkKitchenMode === 'without_kitchen') {
+            enabledModules.kitchen = false;
+            timelineFeatures.kitchen = false;
+        }
+        if (mode === 'disabled') {
+            enabledModules.timeline = false;
+            enabledModules.bookings = false;
+        }
         return {
-            version: 1,
+            version: 2,
+            timelineEnabled: mode !== 'disabled',
             mode,
             parkKitchenMode,
+            startPage,
+            resourceModel,
+            enabledModules,
+            timelineFeatures,
+            bookingPolicy,
             updatedAt: value?.updatedAt || null,
             updatedBy: value?.updatedBy || null
         };
@@ -297,12 +443,21 @@
     function presentation(ctx = currentContext()) {
         const settings = readDisplaySettings(ctx);
         const mode = DISPLAY_MODES[settings.mode] || DISPLAY_MODES[defaultDisplayMode(ctx)];
-        const kitchenEnabled = settings.parkKitchenMode !== 'without_kitchen';
+        const enabledModules = settings.enabledModules || defaultModulesForMode(mode.key, settings.parkKitchenMode);
+        const timelineFeatures = settings.timelineFeatures || defaultFeaturesForMode(mode.key, settings.parkKitchenMode);
+        const kitchenEnabled = mode.key === 'park'
+            && settings.parkKitchenMode !== 'without_kitchen'
+            && enabledModules.kitchen !== false
+            && timelineFeatures.kitchen !== false;
         const hidden = new Set([
             ...(Array.isArray(ctx.defaultHiddenElements) ? ctx.defaultHiddenElements : []),
             ...(Array.isArray(mode.defaultHiddenElements) ? mode.defaultHiddenElements : [])
         ]);
         if (mode.key !== 'park' || !kitchenEnabled) {
+            hidden.add('bookingPackageSummary');
+        }
+        if (mode.key === 'disabled' || enabledModules.bookings === false) {
+            hidden.add('bookingPanel');
             hidden.add('bookingPackageSummary');
         }
         return {
@@ -311,13 +466,25 @@
             context: ctx.key,
             settings,
             parkKitchenEnabled: mode.key === 'park' && kitchenEnabled,
-            showAfisha: mode.showAfisha === true && ctx.showAfisha !== false,
+            timelineEnabled: settings.timelineEnabled !== false && mode.key !== 'disabled',
+            startPage: settings.startPage || 'timeline',
+            resourceModel: settings.resourceModel || defaultResourceModelForMode(mode.key),
+            enabledModules,
+            timelineFeatures,
+            bookingPolicy: settings.bookingPolicy || defaultBookingPolicyForMode(mode.key),
+            showAfisha: mode.showAfisha === true && ctx.showAfisha !== false && enabledModules.afisha !== false && timelineFeatures.afisha !== false,
+            showProductSales: mode.showProductSales === true && enabledModules.products !== false,
             defaultHiddenElements: Array.from(hidden)
         };
     }
 
-    function resourceTypeForMode(mode) {
+    function resourceTypeForMode(mode, settings = null) {
         const displayMode = DISPLAY_MODES[String(mode || '')] || DISPLAY_MODES[defaultDisplayMode(currentContext())];
+        const resourceModel = VALID_RESOURCE_MODELS.has(String(settings?.resourceModel || ''))
+            ? String(settings.resourceModel)
+            : defaultResourceModelForMode(displayMode.key);
+        if (resourceModel === 'none') return null;
+        if (RESOURCE_TYPES.has(resourceModel)) return resourceModel;
         return displayMode?.key === 'park' ? null : (displayMode?.resourceType || null);
     }
 
@@ -360,9 +527,12 @@
             });
             document.body.classList.toggle('timeline-park-with-kitchen', view.parkKitchenEnabled);
             document.body.classList.toggle('timeline-park-without-kitchen', view.mode === 'park' && !view.parkKitchenEnabled);
+            document.body.classList.toggle('timeline-disabled', view.timelineEnabled === false);
             document.body.setAttribute('data-timeline-context', ctx.key);
             document.body.setAttribute('data-timeline-display-mode', view.mode);
             document.body.setAttribute('data-timeline-park-kitchen', view.parkKitchenEnabled ? 'with_kitchen' : 'without_kitchen');
+            document.body.setAttribute('data-timeline-start-page', view.startPage || 'timeline');
+            document.body.setAttribute('data-timeline-resource-model', view.resourceModel || 'auto');
         }
 
         const titleEl = document.querySelector('.em-logo-title');
@@ -374,13 +544,17 @@
         if (salesBtn) salesBtn.classList.toggle('hidden', !view.showProductSales);
         const roomBtn = document.getElementById('roomLoadBtn');
         setControlText(roomBtn, view.roomLoadLabel);
-        if (roomBtn) roomBtn.title = view.roomLoadTitle;
+        if (roomBtn) {
+            roomBtn.title = view.roomLoadTitle;
+            roomBtn.classList.toggle('hidden', view.timelineEnabled === false || view.enabledModules?.resources === false);
+        }
         const addLineBtn = document.getElementById('addLineBtn');
         if (addLineBtn) {
             const addLabel = addLineBtn.querySelector('span:last-child');
             if (addLabel) addLabel.textContent = view.addLineLabel;
             else addLineBtn.textContent = view.addLineLabel;
             addLineBtn.title = view.addLineTitle;
+            addLineBtn.classList.toggle('hidden', view.timelineEnabled === false || view.enabledModules?.resources === false);
         }
         const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
         if (selectedLineLabel) selectedLineLabel.textContent = view.selectedLineLabel;
@@ -412,6 +586,7 @@
         if (programSearch) programSearch.placeholder = view.programSearchPlaceholder;
         const legend = document.querySelector('.legend');
         if (legend) legend.innerHTML = view.legendHtml;
+        document.querySelector('.timeline-container')?.classList.toggle('timeline-container--disabled', view.timelineEnabled === false);
         document.querySelectorAll('[title*="Афіша"], a[href="/programs"]').forEach(el => {
             el.classList.toggle('hidden', !view.showAfisha);
         });

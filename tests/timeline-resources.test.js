@@ -26,6 +26,12 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /RESOURCE_TYPE_BY_DISPLAY_MODE[\s\S]*simple: 'specialist'/);
     assert.match(service, /RESOURCE_TYPE_BY_DISPLAY_MODE[\s\S]*specialist: 'specialist'/);
     assert.match(service, /RESOURCE_TYPE_BY_DISPLAY_MODE[\s\S]*education: 'cabinet'/);
+    assert.match(service, /TIMELINE_DISPLAY_MODES = new Set\(\['disabled', 'simple', 'specialist', 'park', 'education'\]\)/);
+    assert.match(service, /function normalizeTimelineDisplaySettings/);
+    assert.match(service, /enabledModules/);
+    assert.match(service, /timelineFeatures/);
+    assert.match(service, /bookingPolicy/);
+    assert.match(service, /resourceModel/);
     assert.match(service, /function resourceTypeForDisplayMode/);
     assert.match(service, /function timelineResourceAvailability/);
     assert.match(service, /line_id = ANY\(\$3::text\[\]\) OR room = ANY\(\$4::text\[\]\)/);
@@ -38,8 +44,8 @@ test('timeline resources service owns mode-to-resource contract and availability
 test('lines route switches resource-backed modes away from animator sync', () => {
     const route = read('routes/lines.js');
     assert.match(route, /getTimelineDisplaySettings/);
-    assert.match(route, /resourceTypeForDisplayMode\(display\.mode\)/);
-    assert.match(route, /timelineResourceLinesForMode\(pool, businessContext, display\.mode\)/);
+    assert.match(route, /resourceTypeForDisplayMode\(display\.mode, display\)/);
+    assert.match(route, /timelineResourceLinesForMode\(pool, businessContext, display\.mode, display\)/);
     assert.match(route, /X-Timeline-Lines-Source', 'timeline_resources'/);
     assert.match(route, /syncTimelineResourcesFromLines\(client, businessContext, resourceType, lines\)/);
 });
@@ -48,7 +54,7 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     const settings = read('routes/settings.js');
     const booking = read('js/booking.js');
     assert.match(settings, /timelineResourceAvailability/);
-    assert.match(settings, /resourceTypeForDisplayMode\(display\.mode\)/);
+    assert.match(settings, /resourceTypeForDisplayMode\(display\.mode, display\)/);
     assert.match(settings, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
     assert.match(booking, /appendApiContext\?\.\(`\/rooms\/free\/\$\{date\}\/\$\{time\}\/\$\{duration\}`\)/);
     assert.match(settings, /req\.query\.capacity \|\| req\.query\.attendees \|\| req\.query\.kidsCount/);
@@ -96,6 +102,8 @@ test('education timeline bookings persist lesson details and guard teacher confl
     assert.match(timeline, /lessonSeriesBadge/);
     assert.match(timeline, /education-lesson/);
     assert.match(bookingsRoute, /education-series/);
+    assert.match(bookingsRoute, /router\.get\('\/education-series\/:seriesId'/);
+    assert.match(bookingsRoute, /router\.post\('\/education-series\/:seriesId\/cancel'/);
     assert.match(bookingsRoute, /buildEducationLessonSeriesCandidates/);
     assert.match(bookingsRoute, /function validateEducationLessonTeacherConflict/);
     assert.match(bookingsRoute, /seriesRootBookingId/);
@@ -110,12 +118,20 @@ test('settings UI exposes real timeline resource management for multi-cabinet mo
     const app = read('js/app.js');
     const css = read('css/features.css');
     assert.match(html, /settingsTimelineResourcesCard/);
+    assert.match(html, /settingsTimelineControlCenter/);
+    assert.match(html, /data-timeline-preset="education"/);
+    assert.match(html, /data-timeline-module="lessonSeries"/);
     assert.match(settings, /function renderTimelineResourcesManager/);
+    assert.match(settings, /function applyTimelineSettingsToControls/);
+    assert.match(settings, /function collectTimelineDisplaySettingsFromControls/);
+    assert.match(settings, /function handleTimelineControlClick/);
     assert.match(settings, /function addTimelineResourceFromSettings/);
     assert.match(settings, /function handleTimelineResourceListClick/);
     assert.match(api, /async function apiGetTimelineResources/);
     assert.match(api, /async function apiSaveTimelineResource/);
     assert.match(api, /async function apiUpdateTimelineResource/);
     assert.match(app, /settingsAddTimelineResourceBtn/);
+    assert.match(app, /settingsTimelineControlCenter/);
     assert.match(css, /\.timeline-resource-row/);
+    assert.match(css, /\.timeline-control-center/);
 });

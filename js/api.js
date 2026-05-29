@@ -1208,6 +1208,42 @@ async function apiCreateEducationLessonSeries(booking) {
     }
 }
 
+async function apiGetEducationLessonSeries(seriesId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false, bookings: [] };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status, bookings: [] };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getEducationLessonSeries error:', err);
+        return { success: false, error: err.message, offline: true, bookings: [] };
+    }
+}
+
+async function apiCancelEducationLessonSeries(seriesId, options = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}/cancel`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload(options || {}))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API cancelEducationLessonSeries error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 // v5.7: Create booking with linked bookings in one transaction
 async function apiCreateBookingFull(main, linked) {
     try {

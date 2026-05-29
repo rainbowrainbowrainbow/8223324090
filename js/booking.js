@@ -2878,10 +2878,14 @@ function renderEducationLessonDetail(booking) {
         lesson.resourceName || booking.room ? ['Кабінет', lesson.resourceName || booking.room] : null
     ].filter(Boolean);
     if (!rows.length) return '';
+    const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && !isViewer()
+        ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
+        : '';
     return `
         <div class="booking-lesson-detail">
             <div class="booking-lesson-detail-title">Навчальний запис</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
+            ${seriesActions}
         </div>`;
 }
 
@@ -3419,6 +3423,100 @@ function shareInviteLink() {
 // ==========================================
 // ВИДАЛЕННЯ БРОНЮВАННЯ
 // ==========================================
+
+function ensureEducationSeriesModal() {
+    let modal = document.getElementById('educationSeriesModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'educationSeriesModal';
+    modal.className = 'modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Керування серією занять');
+    modal.innerHTML = `
+        <div class="modal-content modal-wide">
+            <span class="modal-close" onclick="closeEducationSeriesManager()">&times;</span>
+            <h3>Серія занять</h3>
+            <div id="educationSeriesManagerBody" class="education-series-manager"></div>
+        </div>`;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function closeEducationSeriesManager() {
+    document.getElementById('educationSeriesModal')?.classList.add('hidden');
+}
+
+function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}) {
+    const body = document.getElementById('educationSeriesManagerBody');
+    if (!body) return;
+    const bookings = Array.isArray(payload.bookings) ? payload.bookings : [];
+    const rows = bookings.map(booking => {
+        const lesson = educationLessonDetailsFromBooking(booking);
+        const title = lesson.title || booking.programName || booking.label || booking.id;
+        const seriesPosition = lesson.seriesIndex && lesson.seriesSize ? `#${lesson.seriesIndex}/${lesson.seriesSize}` : '';
+        return `<div class="education-series-row${booking.status === 'cancelled' ? ' is-cancelled' : ''}">
+            <div>
+                <strong>${escapeHtml(booking.date)} ${escapeHtml(booking.time)} ${escapeHtml(seriesPosition)}</strong>
+                <small>${escapeHtml(title)}${lesson.teacherName ? ' · ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' · ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
+            </div>
+            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${escapeHtml(booking.status || 'confirmed')}</span>
+        </div>`;
+    }).join('');
+    body.innerHTML = `
+        <div class="education-series-manager-head">
+            <div>
+                <strong>${escapeHtml(seriesId)}</strong>
+                <p class="digest-hint">Знайдено занять: ${bookings.length}. Скасування працює тільки в активному бізнес-контексті.</p>
+            </div>
+        </div>
+        <div class="education-series-manager-list">${rows || '<div class="empty-state-text">У серії немає активних занять.</div>'}</div>
+        <div class="education-series-manager-actions">
+            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Закрити</button>
+            <span>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати майбутні</button>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати всю серію</button>
+            </span>
+        </div>`;
+}
+
+async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
+    const modal = ensureEducationSeriesModal();
+    const body = document.getElementById('educationSeriesManagerBody');
+    if (body) body.innerHTML = '<div class="loading-spinner">Завантаження серії...</div>';
+    modal.classList.remove('hidden');
+    const payload = typeof apiGetEducationLessonSeries === 'function'
+        ? await apiGetEducationLessonSeries(seriesId)
+        : { success: false, error: 'API unavailable', bookings: [] };
+    if (!payload.success) {
+        if (body) body.innerHTML = `<div class="empty-state-text">${escapeHtml(payload.error || 'Не вдалося завантажити серію')}</div>`;
+        return;
+    }
+    renderEducationSeriesManager(seriesId, referenceBookingId, payload);
+}
+
+async function cancelEducationSeriesFromManager(seriesId, scope = 'future', referenceBookingId = '') {
+    const text = scope === 'all'
+        ? 'Скасувати всю серію занять?'
+        : 'Скасувати майбутні заняття цієї серії?';
+    const confirmed = await customConfirm(text, 'Керування серією');
+    if (!confirmed) return;
+    const result = await apiCancelEducationLessonSeries(seriesId, {
+        scope,
+        referenceBookingId,
+        fromDate: formatDate(AppState.selectedDate)
+    });
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося скасувати серію', 'error');
+        return;
+    }
+    (result.bookings || []).forEach(booking => {
+        if (booking.date) delete AppState.cachedBookings[booking.date];
+    });
+    closeEducationSeriesManager();
+    await renderTimeline();
+    showNotification(`Скасовано занять: ${result.cancelledCount || 0}`, 'success');
+}
 
 async function deleteBooking(bookingId) {
     try {

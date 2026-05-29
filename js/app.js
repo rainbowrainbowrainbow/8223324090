@@ -725,9 +725,11 @@ function initSettingsListeners() {
     if (settingsSaveTelegramBtn) settingsSaveTelegramBtn.addEventListener('click', saveTelegramChatIdFromSettings);
 
     const timelineDisplayMode = document.getElementById('settingsTimelineDisplayMode');
-    if (timelineDisplayMode) timelineDisplayMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    if (timelineDisplayMode) timelineDisplayMode.addEventListener('change', handleTimelineDisplayModeChange);
     const timelineKitchenMode = document.getElementById('settingsTimelineKitchenMode');
     if (timelineKitchenMode) timelineKitchenMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    const settingsTimelineControlCenter = document.getElementById('settingsTimelineControlCenter');
+    if (settingsTimelineControlCenter) settingsTimelineControlCenter.addEventListener('click', handleTimelineControlClick);
     const settingsSaveTimelineDisplayBtn = document.getElementById('settingsSaveTimelineDisplayBtn');
     if (settingsSaveTimelineDisplayBtn) settingsSaveTimelineDisplayBtn.addEventListener('click', saveTimelineDisplaySettingsFromSettings);
     const settingsAddTimelineResourceBtn = document.getElementById('settingsAddTimelineResourceBtn');

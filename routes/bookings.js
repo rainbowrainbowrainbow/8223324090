@@ -452,6 +452,20 @@ function educationSeriesId() {
     return `ELS-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeEducationSeriesId(value) {
+    const id = String(value || '').trim();
+    return /^[a-zA-Z0-9_.:-]{3,120}$/.test(id) ? id : null;
+}
+
+function educationSeriesSql(alias = 'b', placeholder = '$1') {
+    const extra = alias ? `${alias}.extra_data` : 'extra_data';
+    return `(
+        ${extra}->'educationLesson'->>'seriesId' = ${placeholder}
+        OR ${extra}->'bookingWorkspace'->'lesson'->>'seriesId' = ${placeholder}
+        OR ${extra}->>'education_series_id' = ${placeholder}
+    )`;
+}
+
 function cloneJson(value) {
     if (!value || typeof value !== 'object') return {};
     return JSON.parse(JSON.stringify(value));
@@ -658,6 +672,94 @@ router.get('/occupancy', async (req, res) => {
     } catch (err) {
         log.error('GET /bookings/occupancy error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/education-series/:seriesId', async (req, res) => {
+    try {
+        const seriesId = normalizeEducationSeriesId(req.params.seriesId);
+        if (!seriesId) return res.status(400).json({ success: false, error: 'Invalid education series id' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const params = [seriesId, businessContext];
+        const visibility = buildBookingVisibilityScope(req.user, params, 'b');
+        const result = await pool.query(
+            `SELECT b.*
+               FROM bookings b
+              WHERE ${educationSeriesSql('b', '$1')}
+                AND ${bookingContextSql('b', '$2')}
+                ${req.query.includeCancelled === 'true' ? '' : "AND b.status != 'cancelled'"}
+                ${visibility}
+              ORDER BY b.date, b.time, b.id`,
+            params
+        );
+        const bookings = result.rows.map(mapBookingRow);
+        res.json({ success: true, seriesId, businessContext, count: bookings.length, bookings });
+    } catch (err) {
+        log.error('GET /bookings/education-series/:seriesId error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const seriesId = normalizeEducationSeriesId(req.params.seriesId);
+        if (!seriesId) return res.status(400).json({ success: false, error: 'Invalid education series id' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
+        const scope = ['all', 'future'].includes(req.body?.scope) ? req.body.scope : 'future';
+        const referenceBookingId = req.body?.referenceBookingId ? String(req.body.referenceBookingId).trim() : null;
+        let fromDate = validateDate(req.body?.fromDate) ? req.body.fromDate : new Date().toISOString().slice(0, 10);
+
+        await client.query('BEGIN');
+        if (referenceBookingId) {
+            const ref = await getScopedBookingById(client, referenceBookingId, businessContext);
+            if (ref && !canEditBooking(req.user, ref)) {
+                await client.query('ROLLBACK');
+                return sendBookingDenied(req, res, ref);
+            }
+            if (ref?.date) fromDate = ref.date;
+        }
+        const params = [seriesId, businessContext];
+        const dateFilter = scope === 'future'
+            ? `AND b.date::date >= $${params.push(fromDate)}::date`
+            : '';
+        const result = await client.query(
+            `UPDATE bookings b
+                SET status = 'cancelled', updated_at = NOW()
+              WHERE ${educationSeriesSql('b', '$1')}
+                AND ${bookingContextSql('b', '$2')}
+                AND b.status != 'cancelled'
+                ${dateFilter}
+              RETURNING b.*`,
+            params
+        );
+        const cancelled = result.rows.map(mapBookingRow);
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['education_series_cancel', req.user?.username, JSON.stringify({
+                seriesId,
+                businessContext,
+                scope,
+                fromDate,
+                count: cancelled.length
+            })]
+        );
+        await client.query('COMMIT');
+
+        cancelled.forEach(booking => {
+            broadcast('booking:deleted', { id: booking.id, date: booking.date, educationSeriesId: seriesId, seriesCancel: true }, req.user?.id?.toString(), booking.date);
+        });
+        _alertPush();
+        res.json({ success: true, seriesId, scope, fromDate, cancelledCount: cancelled.length, bookings: cancelled });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (education-series cancel)', rbErr));
+        log.error('POST /bookings/education-series/:seriesId/cancel error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

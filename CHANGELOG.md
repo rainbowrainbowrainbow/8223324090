@@ -4,6 +4,18 @@
 
 ---
 
+## v0.68.18 - центр керування таймлайном бізнесу
+
+### Timeline control center / business presets / education series management / 29.05.2026 [codex]
+- **Бізнес-кабінет таймлайну зʼявився в налаштуваннях** - один per-business екран тепер дозволяє кнопками обрати, чи потрібен таймлайн, який сценарій показувати і які модулі лишити видимими.
+- **`timeline_display` став v2 contract** - backend і frontend зберігають `timelineEnabled`, `startPage`, `resourceModel`, `enabledModules`, `timelineFeatures` і `bookingPolicy` з backward-compatible нормалізацією старих налаштувань.
+- **Рядки таймлайну стали керованими** - для бізнесу можна вибрати auto, none, specialist, cabinet, animator або online; `/api/lines` і `/api/rooms/free` читають resource model з активного business scope.
+- **Park і education не змішані** - park за замовчуванням лишається rich mode з афішею і kitchen option, education лишається кабінетним режимом із викладачами, серіями, місткістю і конфліктами.
+- **Серіями можна керувати після створення** - деталі навчального запису відкривають серію, показують occurrences і дають скасувати майбутні або всі заняття в активному бізнес-контексті.
+- **Regression guard оновлено** - `timeline-resources`, UI smoke і syntax checks фіксують новий settings UI, v2 payload, resource model wiring і series management endpoints.
+
+---
+
 ## v0.68.17 - серії навчальних занять
 
 ### Education timeline / lesson series / multi-cabinet planning / 29.05.2026 [codex]

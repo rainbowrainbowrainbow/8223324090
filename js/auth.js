@@ -729,7 +729,27 @@ function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
         return window.CrmBusinessContext.defaultTimelineRouteForUser(user);
     }
     const rawDefault = user?.defaultBusinessContext || user?.default_business_context || '';
-    return String(rawDefault).trim().toLowerCase() === 'maysternya_doli' ? '/maysternya-doli' : '/';
+    const business = String(rawDefault).trim().toLowerCase() === 'maysternya_doli' ? 'maysternya_doli' : 'event_genix';
+    const timelineRoute = business === 'maysternya_doli' ? '/maysternya-doli' : '/';
+    try {
+        const prefix = business === 'maysternya_doli' ? 'md' : 'pzp';
+        const raw = localStorage.getItem(`${prefix}_timeline_display_settings`);
+        const settings = raw ? JSON.parse(raw) : null;
+        const startPage = settings?.timelineEnabled === false || settings?.mode === 'disabled'
+            ? 'dashboard'
+            : String(settings?.startPage || 'timeline');
+        const map = {
+            timeline: timelineRoute,
+            dashboard: '/dashboard',
+            leads: '/sales-funnel',
+            customers: '/customers',
+            omni: '/omni',
+            tasks: '/tasks'
+        };
+        return map[startPage] || timelineRoute;
+    } catch {
+        return timelineRoute;
+    }
 }
 
 function getRealUserRole(user = AppState.currentUser) {

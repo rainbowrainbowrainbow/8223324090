@@ -284,6 +284,228 @@
     border-radius: 8px;
 }
 
+.timeline-native-selects {
+    display: grid;
+    gap: 10px;
+}
+
+.timeline-control-center {
+    display: grid;
+    gap: 14px;
+    margin: 14px 0;
+}
+
+.timeline-control-summary,
+.timeline-control-block {
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.035);
+    padding: 14px;
+}
+
+.timeline-control-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.timeline-control-kicker {
+    display: block;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    letter-spacing: 0.04em;
+}
+
+.timeline-control-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.timeline-control-state.is-disabled {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--gray-600);
+}
+
+.timeline-control-block-head {
+    display: grid;
+    gap: 3px;
+    margin-bottom: 10px;
+}
+
+.timeline-control-block-head strong {
+    color: var(--gray-800);
+    font-size: 14px;
+}
+
+.timeline-control-block-head span {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.timeline-control-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.timeline-control-two-col {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.timeline-preset-button,
+.timeline-chip-button,
+.timeline-toggle-button {
+    border: 1px solid var(--gray-200);
+    background: var(--white);
+    color: var(--gray-700);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 900;
+    text-align: left;
+    transition: border-color var(--speed-fast), background var(--speed-fast), color var(--speed-fast), box-shadow var(--speed-fast);
+}
+
+.timeline-preset-button {
+    min-height: 78px;
+    padding: 12px;
+}
+
+.timeline-preset-button small {
+    display: block;
+    margin-top: 5px;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.timeline-chip-row,
+.timeline-toggle-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.timeline-chip-button,
+.timeline-toggle-button {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+}
+
+.timeline-preset-button.is-active,
+.timeline-chip-button.is-active,
+.timeline-toggle-button.is-active {
+    border-color: rgba(20, 184, 166, 0.75);
+    background: rgba(20, 184, 166, 0.12);
+    color: #0F766E;
+    box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.08);
+}
+
+.timeline-preset-button:focus-visible,
+.timeline-chip-button:focus-visible,
+.timeline-toggle-button:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.55);
+    outline-offset: 2px;
+}
+
+.timeline-container--disabled {
+    position: relative;
+    opacity: 0.55;
+    filter: grayscale(0.25);
+    pointer-events: none;
+}
+
+.timeline-container--disabled::before {
+    content: "Таймлайн вимкнено для цього бізнесу";
+    position: absolute;
+    inset: 18px;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    min-height: 140px;
+    border: 1px dashed rgba(100, 116, 139, 0.45);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #F8FAFC;
+    font-weight: 900;
+    text-align: center;
+}
+
+.education-series-manager {
+    display: grid;
+    gap: 12px;
+}
+
+.education-series-manager-head,
+.education-series-manager-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.education-series-manager-list {
+    display: grid;
+    gap: 8px;
+    max-height: 360px;
+    overflow: auto;
+}
+
+.education-series-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+}
+
+.education-series-row.is-cancelled {
+    opacity: 0.55;
+}
+
+.education-series-row strong,
+.education-series-row small {
+    display: block;
+}
+
+.education-series-row small {
+    margin-top: 3px;
+    color: var(--gray-500);
+}
+
+@media (max-width: 760px) {
+    .timeline-control-grid,
+    .timeline-control-two-col {
+        grid-template-columns: 1fr;
+    }
+
+    .timeline-control-summary,
+    .education-series-manager-head,
+    .education-series-manager-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
 /* ==========================================
    DASHBOARD
    ========================================== */

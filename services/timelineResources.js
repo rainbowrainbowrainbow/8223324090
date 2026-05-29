@@ -7,12 +7,29 @@ const {
 } = require('./timelineContext');
 const { timeToMinutes } = require('./booking');
 
-const TIMELINE_DISPLAY_MODES = new Set(['simple', 'specialist', 'park', 'education']);
+const TIMELINE_DISPLAY_MODES = new Set(['disabled', 'simple', 'specialist', 'park', 'education']);
 const TIMELINE_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
 const RESOURCE_TYPES = new Set(['animator', 'specialist', 'cabinet', 'room', 'online']);
+const TIMELINE_START_PAGES = new Set(['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks']);
+const TIMELINE_RESOURCE_MODELS = new Set(['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online']);
+const TIMELINE_MODULE_KEYS = Object.freeze([
+    'timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products',
+    'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'
+]);
+const TIMELINE_FEATURE_KEYS = Object.freeze([
+    'quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen',
+    'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'
+]);
+const TIMELINE_POLICY_KEYS = Object.freeze([
+    'allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup',
+    'enforceTeacherConflict', 'enforceResourceCapacity',
+    'notifyFirstOccurrenceOnly'
+]);
 const RESOURCE_TYPE_BY_DISPLAY_MODE = Object.freeze({
+    disabled: null,
     simple: 'specialist',
     specialist: 'specialist',
+    park: null,
     education: 'cabinet'
 });
 const RESOURCE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
@@ -35,11 +52,148 @@ function normalizeParkKitchenMode(value) {
     return TIMELINE_PARK_KITCHEN_MODES.has(mode) ? mode : 'with_kitchen';
 }
 
-function normalizeTimelineDisplaySettings(value, context) {
+function defaultTimelineModules(mode, parkKitchenMode = 'with_kitchen') {
+    const base = Object.fromEntries(TIMELINE_MODULE_KEYS.map(key => [key, false]));
+    if (mode === 'disabled') {
+        return { ...base, leads: true, customers: true, omni: true, tasks: true };
+    }
+    const common = {
+        ...base,
+        timeline: true,
+        bookings: true,
+        leads: true,
+        customers: true,
+        omni: true,
+        tasks: true,
+        resources: mode !== 'park'
+    };
+    if (mode === 'park') {
+        return {
+            ...common,
+            products: true,
+            afisha: true,
+            kitchen: parkKitchenMode !== 'without_kitchen',
+            resources: false
+        };
+    }
+    if (mode === 'education') {
+        return {
+            ...common,
+            teachers: true,
+            lessonSeries: true
+        };
+    }
+    return common;
+}
+
+function defaultTimelineFeatures(mode, parkKitchenMode = 'with_kitchen') {
+    const base = Object.fromEntries(TIMELINE_FEATURE_KEYS.map(key => [key, false]));
+    if (mode === 'disabled') return base;
+    const common = {
+        ...base,
+        quickCloseSlot: true,
+        freeResources: mode !== 'park',
+        compactBlocks: mode !== 'park'
+    };
+    if (mode === 'park') {
+        return {
+            ...common,
+            afisha: true,
+            kitchen: parkKitchenMode !== 'without_kitchen'
+        };
+    }
+    if (mode === 'education') {
+        return {
+            ...common,
+            series: true,
+            seriesBadge: true,
+            teacherConflict: true,
+            resourceCapacity: true
+        };
+    }
+    return common;
+}
+
+function defaultBookingPolicy(mode) {
     return {
-        version: 1,
-        mode: normalizeTimelineDisplayMode(value?.mode, context),
-        parkKitchenMode: normalizeParkKitchenMode(value?.parkKitchenMode),
+        allowLessonsWithoutTeacher: mode === 'education',
+        allowLessonsWithoutGroup: true,
+        enforceTeacherConflict: mode === 'education',
+        enforceResourceCapacity: mode === 'education',
+        notifyFirstOccurrenceOnly: mode === 'education'
+    };
+}
+
+function defaultResourceModelForMode(mode) {
+    if (mode === 'disabled') return 'none';
+    if (mode === 'education') return 'cabinet';
+    if (mode === 'simple' || mode === 'specialist') return 'specialist';
+    if (mode === 'park') return 'auto';
+    return 'auto';
+}
+
+function normalizeStartPage(value, mode) {
+    const page = String(value || '').trim();
+    if (TIMELINE_START_PAGES.has(page)) return page;
+    return mode === 'disabled' ? 'dashboard' : 'timeline';
+}
+
+function normalizeResourceModel(value, mode) {
+    const model = String(value || '').trim();
+    return TIMELINE_RESOURCE_MODELS.has(model) ? model : defaultResourceModelForMode(mode);
+}
+
+function normalizeToggleRecord(value, defaults, allowedKeys) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const normalized = { ...defaults };
+    allowedKeys.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            normalized[key] = Boolean(source[key]);
+        }
+    });
+    return normalized;
+}
+
+function normalizeTimelineDisplaySettings(value, context) {
+    const rawMode = String(value?.mode || '').trim();
+    const explicitDisabled = value?.timelineEnabled === false || rawMode === 'disabled';
+    const mode = explicitDisabled ? 'disabled' : normalizeTimelineDisplayMode(rawMode, context);
+    const parkKitchenMode = normalizeParkKitchenMode(value?.parkKitchenMode);
+    const enabledModules = normalizeToggleRecord(
+        value?.enabledModules,
+        defaultTimelineModules(mode, parkKitchenMode),
+        TIMELINE_MODULE_KEYS
+    );
+    const timelineFeatures = normalizeToggleRecord(
+        value?.timelineFeatures,
+        defaultTimelineFeatures(mode, parkKitchenMode),
+        TIMELINE_FEATURE_KEYS
+    );
+    const bookingPolicy = normalizeToggleRecord(
+        value?.bookingPolicy,
+        defaultBookingPolicy(mode),
+        TIMELINE_POLICY_KEYS
+    );
+
+    if (mode === 'park' && parkKitchenMode === 'without_kitchen') {
+        enabledModules.kitchen = false;
+        timelineFeatures.kitchen = false;
+    }
+    if (mode === 'disabled') {
+        enabledModules.timeline = false;
+        enabledModules.bookings = false;
+    }
+
+    return {
+        version: 2,
+        timelineEnabled: mode !== 'disabled',
+        mode,
+        parkKitchenMode,
+        startPage: normalizeStartPage(value?.startPage, mode),
+        resourceModel: normalizeResourceModel(value?.resourceModel, mode),
+        enabledModules,
+        timelineFeatures,
+        bookingPolicy,
         context: normalizeTimelineContext(context),
         updatedAt: value?.updatedAt || null,
         updatedBy: value?.updatedBy || null
@@ -58,8 +212,12 @@ async function getTimelineDisplaySettings(db = defaultPool, context = DEFAULT_TI
     }
 }
 
-function resourceTypeForDisplayMode(mode) {
-    return RESOURCE_TYPE_BY_DISPLAY_MODE[String(mode || '').trim()] || null;
+function resourceTypeForDisplayMode(mode, settings = null) {
+    const normalizedMode = String(mode || '').trim();
+    const model = normalizeResourceModel(settings?.resourceModel, normalizedMode);
+    if (model === 'none') return null;
+    if (RESOURCE_TYPES.has(model)) return model;
+    return RESOURCE_TYPE_BY_DISPLAY_MODE[normalizedMode] || null;
 }
 
 function normalizeResourceType(value, fallback = 'cabinet') {
@@ -300,8 +458,8 @@ async function findTimelineResource(db = defaultPool, context = DEFAULT_TIMELINE
     return result.rows[0] ? mapTimelineResourceRow(result.rows[0]) : null;
 }
 
-async function timelineResourceLinesForMode(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, mode) {
-    const type = resourceTypeForDisplayMode(mode);
+async function timelineResourceLinesForMode(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, mode, settings = null) {
+    const type = resourceTypeForDisplayMode(mode, settings);
     if (!type) return null;
     const resources = await listTimelineResources(db, {
         context,
@@ -451,7 +609,15 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
 module.exports = {
     TIMELINE_DISPLAY_MODES,
     TIMELINE_PARK_KITCHEN_MODES,
+    TIMELINE_START_PAGES,
+    TIMELINE_RESOURCE_MODELS,
+    TIMELINE_MODULE_KEYS,
+    TIMELINE_FEATURE_KEYS,
+    TIMELINE_POLICY_KEYS,
     RESOURCE_TYPES,
+    defaultTimelineModules,
+    defaultTimelineFeatures,
+    defaultBookingPolicy,
     normalizeTimelineDisplaySettings,
     getTimelineDisplaySettings,
     resourceTypeForDisplayMode,

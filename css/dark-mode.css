@@ -896,6 +896,33 @@ body.dark-mode .settings-section {
     border-bottom-color: var(--gray-200);
 }
 
+body.dark-mode .timeline-control-summary,
+body.dark-mode .timeline-control-block,
+body.dark-mode .timeline-resources-card {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(45, 212, 191, 0.24);
+}
+
+body.dark-mode .timeline-preset-button,
+body.dark-mode .timeline-chip-button,
+body.dark-mode .timeline-toggle-button,
+body.dark-mode .education-series-row {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #E5E7EB;
+}
+
+body.dark-mode .timeline-preset-button small,
+body.dark-mode .timeline-control-block-head span,
+body.dark-mode .education-series-row small {
+    color: #9CA3AF;
+}
+
+body.dark-mode .timeline-control-block-head strong,
+body.dark-mode .timeline-resource-name {
+    color: #F3F4F6;
+}
+
 /* Dashboard */
 body.dark-mode .dash-list-item {
     background: var(--gray-100);

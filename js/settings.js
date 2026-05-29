@@ -840,6 +840,9 @@ function getTimelineDisplayControls() {
         kitchen: document.getElementById('settingsTimelineKitchenMode'),
         kitchenGroup: document.getElementById('settingsTimelineKitchenGroup'),
         preview: document.getElementById('settingsTimelineDisplayPreview'),
+        center: document.getElementById('settingsTimelineControlCenter'),
+        businessName: document.getElementById('settingsTimelineBusinessName'),
+        state: document.getElementById('settingsTimelineControlState'),
         resourcesCard: document.getElementById('settingsTimelineResourcesCard'),
         resourcesTitle: document.getElementById('settingsTimelineResourcesTitle'),
         resourcesHint: document.getElementById('settingsTimelineResourcesHint'),
@@ -848,12 +851,183 @@ function getTimelineDisplayControls() {
     };
 }
 
-function timelineResourceTypeForMode(mode) {
-    if (window.TimelineBusinessContext?.resourceTypeForMode) {
-        return window.TimelineBusinessContext.resourceTypeForMode(mode);
+const TIMELINE_CONTROL_MODULES = ['timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products', 'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'];
+const TIMELINE_CONTROL_FEATURES = ['quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen', 'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'];
+const TIMELINE_CONTROL_POLICIES = ['allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup', 'enforceTeacherConflict', 'enforceResourceCapacity', 'notifyFirstOccurrenceOnly'];
+
+function defaultTimelineResourceModel(mode) {
+    if (mode === 'disabled') return 'none';
+    if (mode === 'education') return 'cabinet';
+    if (mode === 'simple' || mode === 'specialist') return 'specialist';
+    return 'auto';
+}
+
+function defaultTimelineControlModules(mode, kitchenMode = 'with_kitchen') {
+    const base = Object.fromEntries(TIMELINE_CONTROL_MODULES.map(key => [key, false]));
+    if (mode === 'disabled') return { ...base, leads: true, customers: true, omni: true, tasks: true };
+    const common = {
+        ...base,
+        timeline: true,
+        bookings: true,
+        leads: true,
+        customers: true,
+        omni: true,
+        tasks: true,
+        resources: mode !== 'park'
+    };
+    if (mode === 'park') return { ...common, products: true, afisha: true, kitchen: kitchenMode !== 'without_kitchen', resources: false };
+    if (mode === 'education') return { ...common, teachers: true, lessonSeries: true };
+    return common;
+}
+
+function defaultTimelineControlFeatures(mode, kitchenMode = 'with_kitchen') {
+    const base = Object.fromEntries(TIMELINE_CONTROL_FEATURES.map(key => [key, false]));
+    if (mode === 'disabled') return base;
+    const common = { ...base, quickCloseSlot: true, freeResources: mode !== 'park', compactBlocks: mode !== 'park' };
+    if (mode === 'park') return { ...common, afisha: true, kitchen: kitchenMode !== 'without_kitchen' };
+    if (mode === 'education') return { ...common, series: true, seriesBadge: true, teacherConflict: true, resourceCapacity: true };
+    return common;
+}
+
+function defaultTimelineControlPolicies(mode) {
+    return {
+        allowLessonsWithoutTeacher: mode === 'education',
+        allowLessonsWithoutGroup: true,
+        enforceTeacherConflict: mode === 'education',
+        enforceResourceCapacity: mode === 'education',
+        notifyFirstOccurrenceOnly: mode === 'education'
+    };
+}
+
+function mergeTimelineToggleDefaults(value, defaults, keys) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const merged = { ...defaults };
+    keys.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(source, key)) merged[key] = Boolean(source[key]);
+    });
+    return merged;
+}
+
+function normalizeTimelineControlSettings(settings = {}) {
+    const rawMode = String(settings.mode || '').trim();
+    const mode = settings.timelineEnabled === false || rawMode === 'disabled'
+        ? 'disabled'
+        : (['simple', 'specialist', 'park', 'education'].includes(rawMode) ? rawMode : 'park');
+    const parkKitchenMode = ['with_kitchen', 'without_kitchen'].includes(settings.parkKitchenMode)
+        ? settings.parkKitchenMode
+        : 'with_kitchen';
+    const startPage = ['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks'].includes(settings.startPage)
+        ? settings.startPage
+        : (mode === 'disabled' ? 'dashboard' : 'timeline');
+    const resourceModel = ['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online'].includes(settings.resourceModel)
+        ? settings.resourceModel
+        : defaultTimelineResourceModel(mode);
+    const enabledModules = mergeTimelineToggleDefaults(settings.enabledModules, defaultTimelineControlModules(mode, parkKitchenMode), TIMELINE_CONTROL_MODULES);
+    const timelineFeatures = mergeTimelineToggleDefaults(settings.timelineFeatures, defaultTimelineControlFeatures(mode, parkKitchenMode), TIMELINE_CONTROL_FEATURES);
+    const bookingPolicy = mergeTimelineToggleDefaults(settings.bookingPolicy, defaultTimelineControlPolicies(mode), TIMELINE_CONTROL_POLICIES);
+    if (mode === 'park' && parkKitchenMode === 'without_kitchen') {
+        enabledModules.kitchen = false;
+        timelineFeatures.kitchen = false;
     }
+    if (mode === 'disabled') {
+        enabledModules.timeline = false;
+        enabledModules.bookings = false;
+    }
+    return {
+        version: 2,
+        timelineEnabled: mode !== 'disabled',
+        mode,
+        parkKitchenMode,
+        startPage,
+        resourceModel,
+        enabledModules,
+        timelineFeatures,
+        bookingPolicy
+    };
+}
+
+function setTimelineButtonGroupActive(selector, activeValue, attr) {
+    document.querySelectorAll(selector).forEach(button => {
+        const active = button.dataset[attr] === activeValue;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function setTimelineToggleButtonsActive(selector, values, attr) {
+    document.querySelectorAll(selector).forEach(button => {
+        const key = button.dataset[attr];
+        const active = values?.[key] === true;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function collectTimelineToggleButtons(selector, attr) {
+    const values = {};
+    document.querySelectorAll(selector).forEach(button => {
+        const key = button.dataset[attr];
+        if (key) values[key] = button.classList.contains('is-active');
+    });
+    return values;
+}
+
+function applyTimelineSettingsToControls(settings = {}) {
+    const controls = getTimelineDisplayControls();
+    const normalized = normalizeTimelineControlSettings(settings);
+    if (controls.mode) controls.mode.value = normalized.mode;
+    if (controls.kitchen) controls.kitchen.value = normalized.parkKitchenMode;
+    if (controls.businessName) {
+        const ctx = window.TimelineBusinessContext?.current?.();
+        controls.businessName.textContent = ctx?.brandName || ctx?.switchLabel || normalized.context || 'Event Genix';
+    }
+    if (controls.state) {
+        controls.state.textContent = normalized.timelineEnabled ? 'Таймлайн увімкнено' : 'Таймлайн вимкнено';
+        controls.state.classList.toggle('is-disabled', !normalized.timelineEnabled);
+    }
+    document.querySelectorAll('[data-timeline-preset]').forEach(button => {
+        const presetResourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(button.dataset.mode);
+        const active = button.dataset.mode === normalized.mode
+            && presetResourceModel === normalized.resourceModel;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    setTimelineButtonGroupActive('[data-timeline-start-page]', normalized.startPage, 'timelineStartPage');
+    setTimelineButtonGroupActive('[data-timeline-resource-model]', normalized.resourceModel, 'timelineResourceModel');
+    setTimelineToggleButtonsActive('[data-timeline-module]', normalized.enabledModules, 'timelineModule');
+    setTimelineToggleButtonsActive('[data-timeline-feature]', normalized.timelineFeatures, 'timelineFeature');
+    setTimelineToggleButtonsActive('[data-timeline-policy]', normalized.bookingPolicy, 'timelinePolicy');
+    refreshTimelineDisplaySettingsPreview();
+    return normalized;
+}
+
+function collectTimelineDisplaySettingsFromControls() {
+    const controls = getTimelineDisplayControls();
+    const mode = controls.mode?.value || 'park';
+    const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
+    const startPage = document.querySelector('[data-timeline-start-page].is-active')?.dataset.timelineStartPage || (mode === 'disabled' ? 'dashboard' : 'timeline');
+    const resourceModel = document.querySelector('[data-timeline-resource-model].is-active')?.dataset.timelineResourceModel || defaultTimelineResourceModel(mode);
+    return normalizeTimelineControlSettings({
+        mode,
+        timelineEnabled: mode !== 'disabled',
+        parkKitchenMode,
+        startPage,
+        resourceModel,
+        enabledModules: collectTimelineToggleButtons('[data-timeline-module]', 'timelineModule'),
+        timelineFeatures: collectTimelineToggleButtons('[data-timeline-feature]', 'timelineFeature'),
+        bookingPolicy: collectTimelineToggleButtons('[data-timeline-policy]', 'timelinePolicy')
+    });
+}
+
+function timelineResourceTypeForMode(mode, settings = null) {
+    const normalized = normalizeTimelineControlSettings({ ...(settings || {}), mode });
+    if (window.TimelineBusinessContext?.resourceTypeForMode) {
+        return window.TimelineBusinessContext.resourceTypeForMode(normalized.mode, normalized);
+    }
+    if (normalized.resourceModel === 'none') return null;
+    if (['animator', 'specialist', 'cabinet', 'room', 'online'].includes(normalized.resourceModel)) return normalized.resourceModel;
     const map = { simple: 'specialist', specialist: 'specialist', education: 'cabinet' };
-    return map[mode] || null;
+    return map[normalized.mode] || null;
 }
 
 function timelineResourceCopy(type) {
@@ -879,32 +1053,54 @@ function timelineResourceCopy(type) {
     };
 }
 
-function timelineDisplayPreviewText(mode, kitchenMode) {
+function timelineDisplayPreviewText(modeOrSettings, kitchenMode) {
+    const settings = typeof modeOrSettings === 'object'
+        ? normalizeTimelineControlSettings(modeOrSettings)
+        : normalizeTimelineControlSettings({ mode: modeOrSettings, parkKitchenMode: kitchenMode });
+    const mode = settings.mode;
+    const enabledModules = Object.entries(settings.enabledModules || {})
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key)
+        .join(', ');
+    const enabledFeatures = Object.entries(settings.timelineFeatures || {})
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key)
+        .join(', ');
     const map = {
+        disabled: 'Без таймлайну: бізнес не відкриває дошку розкладу, але може лишити CRM-модулі на кшталт лідів, клієнтів, Omni та задач.',
         simple: 'Простий режим: мінімальний запис без афіші та park-полів.',
         specialist: 'Спеціаліст: нейтральний запис спеціаліста без афіші та park-декору.',
-        park: kitchenMode === 'without_kitchen'
+        park: settings.parkKitchenMode === 'without_kitchen'
             ? 'Парк без кухні: афіша і park-сценарії залишаються, кухонний блок приховано.'
             : 'Парк з кухнею: поточний rich park mode з афішею, квестами і кухонним блоком.',
         education: 'Навчальний заклад: лінії читаються як кабінети, записи — як заняття.'
     };
-    return map[mode] || map.park;
+    return `${map[mode] || map.park} Старт: ${settings.startPage}. Рядки: ${settings.resourceModel}. Модулі: ${enabledModules || 'немає'}. Фічі: ${enabledFeatures || 'немає'}.`;
 }
 
 function refreshTimelineDisplaySettingsPreview() {
     const controls = getTimelineDisplayControls();
-    const mode = controls.mode?.value || 'park';
-    const kitchenMode = controls.kitchen?.value || 'with_kitchen';
+    const settings = collectTimelineDisplaySettingsFromControls();
+    const mode = settings.mode || controls.mode?.value || 'park';
     if (controls.kitchenGroup) controls.kitchenGroup.classList.toggle('hidden', mode !== 'park');
-    if (controls.preview) controls.preview.textContent = timelineDisplayPreviewText(mode, kitchenMode);
+    document.querySelectorAll('[data-timeline-module="kitchen"], [data-timeline-feature="kitchen"]').forEach(button => {
+        const active = settings.parkKitchenMode !== 'without_kitchen' && mode === 'park';
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (controls.state) {
+        controls.state.textContent = settings.timelineEnabled ? 'Таймлайн увімкнено' : 'Таймлайн вимкнено';
+        controls.state.classList.toggle('is-disabled', !settings.timelineEnabled);
+    }
+    if (controls.preview) controls.preview.textContent = timelineDisplayPreviewText(settings);
     renderTimelineResourcesManager().catch(error => console.warn('[TimelineResources] preview refresh failed', error));
 }
 
 async function renderTimelineResourcesManager() {
     const controls = getTimelineDisplayControls();
     if (!controls.resourcesCard || !controls.resourcesList) return;
-    const mode = controls.mode?.value || 'park';
-    const type = timelineResourceTypeForMode(mode);
+    const settings = collectTimelineDisplaySettingsFromControls();
+    const type = timelineResourceTypeForMode(settings.mode, settings);
     controls.resourcesCard.classList.toggle('hidden', !type);
     if (!type) return;
     const copy = timelineResourceCopy(type);
@@ -958,17 +1154,12 @@ async function loadTimelineDisplaySettingsIntoModal() {
     } catch (error) {
         console.warn('[TimelineDisplay] Server display settings unavailable', error);
     }
-    controls.mode.value = settings.mode || 'park';
-    if (controls.kitchen) controls.kitchen.value = settings.parkKitchenMode || 'with_kitchen';
-    refreshTimelineDisplaySettingsPreview();
+    applyTimelineSettingsToControls(settings);
     await renderTimelineResourcesManager();
 }
 
 async function saveTimelineDisplaySettingsFromSettings() {
-    const controls = getTimelineDisplayControls();
-    const mode = controls.mode?.value || 'park';
-    const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
-    const payload = { mode, parkKitchenMode };
+    const payload = collectTimelineDisplaySettingsFromControls();
     try {
         const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
             method: 'PUT',
@@ -978,12 +1169,66 @@ async function saveTimelineDisplaySettingsFromSettings() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const serverSettings = await res.json();
         window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings);
-        showNotification('Режим таймлайну збережено. Перезавантажую сторінку...', 'success');
+        showNotification('Кабінет таймлайну збережено. Перезавантажую сторінку...', 'success');
         setTimeout(() => window.location.reload(), 450);
     } catch (error) {
         console.warn('[TimelineDisplay] Failed to save server display settings', error);
         showNotification('Не вдалося зберегти режим таймлайну на сервері.', 'error');
     }
+}
+
+function handleTimelineDisplayModeChange() {
+    const controls = getTimelineDisplayControls();
+    const mode = controls.mode?.value || 'park';
+    const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
+    applyTimelineSettingsToControls({
+        mode,
+        timelineEnabled: mode !== 'disabled',
+        parkKitchenMode,
+        startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
+        resourceModel: defaultTimelineResourceModel(mode)
+    });
+}
+
+function handleTimelineControlClick(event) {
+    const button = event.target.closest('[data-timeline-preset], [data-timeline-start-page], [data-timeline-resource-model], [data-timeline-module], [data-timeline-feature], [data-timeline-policy]');
+    if (!button) return;
+    event.preventDefault();
+    const controls = getTimelineDisplayControls();
+    if (button.dataset.timelinePreset) {
+        const mode = button.dataset.mode || 'park';
+        const resourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(mode);
+        const kitchenMode = mode === 'park' ? (controls.kitchen?.value || 'with_kitchen') : 'with_kitchen';
+        applyTimelineSettingsToControls({
+            mode,
+            timelineEnabled: mode !== 'disabled',
+            parkKitchenMode: kitchenMode,
+            startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
+            resourceModel
+        });
+        return;
+    }
+    if (button.dataset.timelineStartPage) {
+        setTimelineButtonGroupActive('[data-timeline-start-page]', button.dataset.timelineStartPage, 'timelineStartPage');
+        refreshTimelineDisplaySettingsPreview();
+        return;
+    }
+    if (button.dataset.timelineResourceModel) {
+        setTimelineButtonGroupActive('[data-timeline-resource-model]', button.dataset.timelineResourceModel, 'timelineResourceModel');
+        refreshTimelineDisplaySettingsPreview();
+        return;
+    }
+    button.classList.toggle('is-active');
+    button.setAttribute('aria-pressed', button.classList.contains('is-active') ? 'true' : 'false');
+    if (button.dataset.timelineModule === 'kitchen' || button.dataset.timelineFeature === 'kitchen') {
+        const enabled = button.classList.contains('is-active');
+        if (controls.kitchen) controls.kitchen.value = enabled ? 'with_kitchen' : 'without_kitchen';
+        document.querySelectorAll('[data-timeline-module="kitchen"], [data-timeline-feature="kitchen"]').forEach(kitchenButton => {
+            kitchenButton.classList.toggle('is-active', enabled);
+            kitchenButton.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        });
+    }
+    refreshTimelineDisplaySettingsPreview();
 }
 
 function resetTimelineResourceCaches() {
@@ -995,9 +1240,8 @@ function resetTimelineResourceCaches() {
 }
 
 async function addTimelineResourceFromSettings() {
-    const controls = getTimelineDisplayControls();
-    const mode = controls.mode?.value || 'park';
-    const type = timelineResourceTypeForMode(mode);
+    const settings = collectTimelineDisplaySettingsFromControls();
+    const type = timelineResourceTypeForMode(settings.mode, settings);
     if (!type) return;
     const copy = timelineResourceCopy(type);
     const name = await promptModal(copy.prompt, {
@@ -1042,7 +1286,8 @@ async function handleTimelineResourceListClick(event) {
     if (!row) return;
     const resourceId = row.dataset.resourceId;
     const action = button.dataset.resourceAction;
-    const type = row.dataset.resourceType || timelineResourceTypeForMode(getTimelineDisplayControls().mode?.value || 'park');
+    const settings = collectTimelineDisplaySettingsFromControls();
+    const type = row.dataset.resourceType || timelineResourceTypeForMode(settings.mode, settings);
     if (!resourceId || !type) return;
     const resources = await apiGetTimelineResources(type, { includeInactive: true });
     const current = resources.find(resource => resource.resourceId === resourceId);

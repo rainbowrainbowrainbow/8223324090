@@ -4,6 +4,17 @@
 
 ---
 
+## v0.67.19 - CRM 67.19: іконка діалогу клієнта
+
+### Customers / Omni / communication hub / 29.05.2026 [codex]
+- **Іконка діалогу стала чесним entrypoint** - у communication hub картки клієнта зʼявляється окремий інтерактивний індикатор, якщо є реальний шлях у Omni.
+- **Exact / suggested / search розведено явно** - точна розмова відкриває `/omni?conversation=...`, ймовірна розмова має suggested state, а search fallback позначається як пошук і не вдає точний діалог.
+- **Дубльований Omni-контроль прибрано** - action strip більше не показує поруч дві кнопки з однаковим Omni href.
+- **Фокус і доступність додані** - іконка має `aria-label`, `title`, focus-visible стиль і компактний mobile стан без декоративного fake-click.
+- **Regression guards** - focused customer communication test і UI smoke фіксують customer dialog icon contract для exact/suggested/search станів.
+
+---
+
 ## v0.67.18 - CRM 67.18: робочі ролі й додаткові доступи
 
 ### Profile / working roles / extraRoles / 29.05.2026 [codex]

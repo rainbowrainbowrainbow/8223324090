@@ -229,6 +229,26 @@ describe('customer communication hub context', () => {
         assert.match(customersHtml, /customer-hub-pill\.waiting/);
     });
 
+    it('renders a truthful interactive dialog icon from exact, suggested, or search links', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const customersJs = fs.readFileSync(path.join(repoRoot, 'js/customers-page.js'), 'utf8');
+        const customersHtml = fs.readFileSync(path.join(repoRoot, 'customers.html'), 'utf8');
+
+        assert.match(customersJs, /function customerHubDialogTarget/);
+        assert.match(customersJs, /links\.omniExact/);
+        assert.match(customersJs, /links\.omniSuggested/);
+        assert.match(customersJs, /links\.omniSearch/);
+        assert.match(customersJs, /function customerHubDialogIcon/);
+        assert.match(customersJs, /if \(!target\?\.href\) return ''/);
+        assert.match(customersJs, /aria-label="\$\{escapeHtml\(target\.label\)\}"/);
+        assert.match(customersJs, /customerHubDialogIcon\(dialogTarget\)/);
+        assert.doesNotMatch(customersJs, /Telegram у CRM/);
+        assert.match(customersHtml, /\.customer-dialog-icon/);
+        assert.match(customersHtml, /\.customer-dialog-icon\.exact/);
+        assert.match(customersHtml, /\.customer-dialog-icon\.suggested/);
+        assert.match(customersHtml, /\.customer-dialog-icon\.search/);
+    });
+
     it('builds timeline links from booking date and id', () => {
         assert.equal(
             buildTimelineLink({ id: 'BK 1', date: '2099-05-12T00:00:00.000Z' }),

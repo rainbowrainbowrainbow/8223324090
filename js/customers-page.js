@@ -226,7 +226,55 @@ function customerHubAction(href, label, cls = '', options = {}) {
         return `<span class="customer-hub-action disabled ${cls}" aria-disabled="true">${escapeHtml(label)}</span>`;
     }
     const target = options.external ? ' target="_blank" rel="noopener"' : '';
-    return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
+    const title = options.title ? ` title="${escapeHtml(options.title)}"` : '';
+    const aria = options.ariaLabel ? ` aria-label="${escapeHtml(options.ariaLabel)}"` : '';
+    return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}${title}${aria}>${escapeHtml(label)}</a>`;
+}
+
+function customerHubDialogTarget(links = {}) {
+    if (links.omniExact) {
+        return {
+            href: links.omniExact,
+            confidence: 'exact',
+            icon: '💬',
+            shortLabel: 'Діалог',
+            label: 'Відкрити точний діалог в Omni',
+            title: 'Точна Omni-розмова привʼязана до цього клієнта'
+        };
+    }
+    if (links.omniSuggested) {
+        return {
+            href: links.omniSuggested,
+            confidence: 'suggested',
+            icon: '💬',
+            shortLabel: 'Ймовірний',
+            label: 'Відкрити ймовірний діалог в Omni',
+            title: 'Ймовірна Omni-розмова знайдена за телефоном або іменем'
+        };
+    }
+    if (links.omniSearch) {
+        return {
+            href: links.omniSearch,
+            confidence: 'search',
+            icon: '⌕',
+            shortLabel: 'Пошук',
+            label: 'Шукати клієнта в Omni',
+            title: 'Точної розмови немає: відкрити пошук Omni за даними клієнта'
+        };
+    }
+    return null;
+}
+
+function customerHubDialogIcon(target) {
+    if (!target?.href) return '';
+    return `<a class="customer-dialog-icon ${escapeHtml(target.confidence)}"
+        href="${escapeHtml(target.href)}"
+        title="${escapeHtml(target.title)}"
+        aria-label="${escapeHtml(target.label)}"
+        data-dialog-confidence="${escapeHtml(target.confidence)}">
+        <span class="customer-dialog-icon-glyph" aria-hidden="true">${escapeHtml(target.icon)}</span>
+        <span class="customer-dialog-icon-text">${escapeHtml(target.shortLabel)}</span>
+    </a>`;
 }
 
 function parseJsonArray(value) {
@@ -382,6 +430,7 @@ function renderCustomerCommunicationHub(context) {
     const statusText = live.explanation || 'Перевірте Omni або додайте CRM-нотатку нижче.';
     const omniHref = links.omniExact || links.omniSuggested || links.omniSearch;
     const omniClass = links.omniExact ? 'primary' : (links.omniSuggested ? 'suggested' : '');
+    const dialogTarget = customerHubDialogTarget(links);
     const omniLabel = links.omniExact
         ? 'Відкрити точну Omni-розмову'
         : links.omniSuggested
@@ -400,9 +449,9 @@ function renderCustomerCommunicationHub(context) {
             <span class="customer-hub-meta">${escapeHtml(statusText)}</span>
         </div>
         <div class="customer-hub-actions" aria-label="Комунікаційні дії клієнта">
+            ${customerHubDialogIcon(dialogTarget)}
             ${customerHubAction(links.call, 'Подзвонити', 'success')}
-            ${customerHubAction(omniHref, 'Telegram у CRM', omniClass)}
-            ${customerHubAction(omniHref, omniLabel, omniClass)}
+            ${customerHubAction(omniHref, omniLabel, omniClass, { title: dialogTarget?.title, ariaLabel: dialogTarget?.label })}
             ${customerHubAction(links.leadWorkspace, 'Відкрити кейс ліда')}
             ${customerHubAction(links.booking, 'Відкрити бронювання')}
         </div>

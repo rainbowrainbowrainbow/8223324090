@@ -30,15 +30,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.67.18">
-    <link rel="stylesheet" href="css/layout.css?v=0.67.18">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.18">
-    <link rel="stylesheet" href="css/pages.css?v=0.67.18">
-    <link rel="stylesheet" href="css/modals.css?v=0.67.18">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.67.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.18">
-    <link rel="stylesheet" href="css/responsive.css?v=0.67.18">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.18">
+    <link rel="stylesheet" href="css/base.css?v=0.67.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.67.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.67.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.67.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.67.19">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.67.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.67.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.67.19">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.67.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -510,9 +510,26 @@
             color: var(--gray-400);
         }
         [data-theme="dark"] .customer-hub-card,
+        [data-theme="dark"] .customer-dialog-icon,
         [data-theme="dark"] .customer-hub-action {
             background: var(--gray-800);
             border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .customer-dialog-icon { color: var(--gray-200); }
+        [data-theme="dark"] .customer-dialog-icon.exact {
+            background: rgba(5, 150, 105, 0.16);
+            border-color: rgba(52, 211, 153, 0.32);
+            color: #6EE7B7;
+        }
+        [data-theme="dark"] .customer-dialog-icon.suggested {
+            background: rgba(217, 119, 6, 0.16);
+            border-color: rgba(251, 191, 36, 0.32);
+            color: #FCD34D;
+        }
+        [data-theme="dark"] .customer-dialog-icon.search {
+            background: rgba(59, 130, 246, 0.16);
+            border-color: rgba(96, 165, 250, 0.32);
+            color: #93C5FD;
         }
         [data-theme="dark"] .customer-hub-action { color: var(--gray-200); }
         [data-theme="dark"] .customer-hub-channel,
@@ -687,6 +704,59 @@
             flex-wrap: wrap;
             gap: 8px;
         }
+        .customer-dialog-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 36px;
+            min-height: 34px;
+            padding: 7px 9px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 900;
+            text-decoration: none;
+            line-height: 1;
+            transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+        }
+        .customer-dialog-icon:hover,
+        .customer-dialog-icon:focus-visible {
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+            outline: none;
+        }
+        .customer-dialog-icon.exact {
+            border-color: rgba(5, 150, 105, 0.35);
+            background: rgba(5, 150, 105, 0.1);
+            color: #047857;
+        }
+        .customer-dialog-icon.suggested {
+            border-color: rgba(217, 119, 6, 0.38);
+            background: rgba(217, 119, 6, 0.1);
+            color: #92400E;
+        }
+        .customer-dialog-icon.search {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.08);
+            color: #1D4ED8;
+        }
+        .customer-dialog-icon-glyph {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            flex: 0 0 16px;
+            font-size: 14px;
+        }
+        .customer-dialog-icon-text {
+            font-size: 11px;
+            white-space: nowrap;
+        }
         .customer-hub-action {
             display: inline-flex;
             align-items: center;
@@ -817,6 +887,8 @@
 
         @media (max-width: 720px) {
             .customer-hub-grid { grid-template-columns: 1fr; }
+            .customer-dialog-icon { flex: 0 0 42px; }
+            .customer-dialog-icon-text { display: none; }
             .customer-hub-action { flex: 1 1 140px; }
         }
 
@@ -1599,13 +1671,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.67.18"></script>
-    <script src="js/notification.js?v=0.67.18"></script>
-    <script src="js/api.js?v=0.67.18"></script>
-    <script src="js/auth.js?v=0.67.18"></script>
-    <script src="js/ui.js?v=0.67.18"></script>
-    <script src="js/components/sidebar.js?v=0.67.18"></script>
+    <script src="js/config.js?v=0.67.19"></script>
+    <script src="js/notification.js?v=0.67.19"></script>
+    <script src="js/api.js?v=0.67.19"></script>
+    <script src="js/auth.js?v=0.67.19"></script>
+    <script src="js/ui.js?v=0.67.19"></script>
+    <script src="js/components/sidebar.js?v=0.67.19"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.67.18"></script><script src="js/alerts.js?v=0.67.18"></script>
+    <script src="js/customers-page.js?v=0.67.19"></script><script src="js/alerts.js?v=0.67.19"></script>
 </body>
 </html>

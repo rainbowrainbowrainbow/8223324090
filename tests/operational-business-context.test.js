@@ -225,6 +225,57 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     assert.match(sidebar, /CrmBusinessContext\?\.apiUrl/);
 });
 
+test('system automations create and mutate operational rows inside one business context', () => {
+    const migration = read('db/migrations/238_system_automation_business_context_scope.sql');
+    const templates = read('routes/task-templates.js');
+    const scheduler = read('services/scheduler.js');
+    const replyEscalation = read('services/replyEscalation.js');
+    const taskScheduling = read('services/taskScheduling.js');
+    const lifecycle = read('services/taskLifecycle.js');
+    const hr = read('services/hr.js');
+    const telegram = read('routes/telegram.js');
+
+    assert.match(migration, /ALTER TABLE task_templates[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /ALTER TABLE auto_order_rules[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /ALTER TABLE auto_order_requests[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /UPDATE auto_order_rules aor[\s\S]*COALESCE\(ws\.business_context/);
+    assert.match(migration, /idx_task_templates_business_active_created/);
+    assert.match(migration, /idx_auto_order_rules_business_active_stock/);
+    assert.match(migration, /idx_auto_order_requests_business_status_created/);
+
+    assert.match(templates, /ensureTaskBusinessScope/);
+    assert.match(templates, /ensureWritableTaskBusinessScope/);
+    assert.match(templates, /pushTaskBusinessScopeCondition\(params, businessScope, ''\)/);
+    assert.match(templates, /INSERT INTO task_templates \(business_context/);
+    assert.match(templates, /businessContext: row\.business_context \|\| 'event_genix'/);
+
+    assert.match(scheduler, /COALESCE\(business_context, \$1\) AS business_context[\s\S]*FROM task_templates/);
+    assert.match(scheduler, /businessContext: activeTaskBusinessContext\(tpl\.business_context/);
+    assert.match(scheduler, /FROM tasks WHERE date = \$1 AND \$\{reportTaskBusinessScope\}/);
+    assert.match(scheduler, /COALESCE\(l\.business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) AS business_context/);
+    assert.match(scheduler, /businessContext: activeTaskBusinessContext\(lead\.business_context/);
+    assert.match(scheduler, /INSERT INTO auto_order_requests \(business_context, stock_id/);
+    assert.match(scheduler, /COALESCE\(req\.business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = COALESCE\(ws\.business_context/);
+
+    assert.match(replyEscalation, /DEFAULT_TASK_BUSINESS_CONTEXT/);
+    assert.match(replyEscalation, /COALESCE\(c\.business_context, '\$\{DEFAULT_TASK_BUSINESS_CONTEXT\}'\) AS business_context/);
+    assert.match(replyEscalation, /INSERT INTO tasks \([\s\S]*business_context, title/);
+    assert.match(replyEscalation, /COALESCE\(business_context, '\$\{DEFAULT_TASK_BUSINESS_CONTEXT\}'\) = \$1/);
+
+    assert.match(taskScheduling, /businessContext: taskBusinessContext/);
+    assert.match(taskScheduling, /business_context: taskBusinessContext/);
+    assert.match(lifecycle, /business_context/);
+    assert.match(lifecycle, /COALESCE\(business_context, 'event_genix'\) = \$3/);
+
+    assert.match(hr, /DEFAULT_BUSINESS_CONTEXT/);
+    assert.match(hr, /COALESCE\(tr\.business_context, 'event_genix'\) = \$2/);
+    assert.match(hr, /INSERT INTO hr_time_records \(business_context/);
+
+    assert.match(telegram, /INSERT INTO event_reviews \(business_context/);
+    assert.match(telegram, /INSERT INTO team_pulse \(business_context, date, score\)/);
+    assert.match(telegram, /UPDATE auto_order_requests[\s\S]*COALESCE\(business_context, 'event_genix'\) = \$5/);
+});
+
 test('timeline booking and line mutations stay inside the active timeline business context', () => {
     const bookings = read('routes/bookings.js');
     const lines = read('routes/lines.js');

@@ -751,6 +751,7 @@ async function processMissedSlots(options = {}) {
             );
             if (!locked.rows.length) return null;
             const task = locked.rows[0];
+            const taskBusinessContext = activeTaskBusinessContext(task.business_context || task.businessContext);
             const eventKey = `task_slot_missed:${task.id}:${new Date(task.scheduled_end_at).toISOString()}`;
             const discipline = await client.query(
                 `INSERT INTO task_discipline_events (
@@ -767,6 +768,7 @@ async function processMissedSlots(options = {}) {
                         scheduledStartAt: isoValue(task.scheduled_start_at),
                         scheduledEndAt: isoValue(task.scheduled_end_at),
                         scheduleSlot: task.schedule_slot || null,
+                        businessContext: taskBusinessContext,
                         penaltyModel: 'discipline_score_only'
                     })
                 ]
@@ -780,8 +782,9 @@ async function processMissedSlots(options = {}) {
                      updated_at = NOW(),
                      version = COALESCE(version, 1) + 1
                  WHERE id = $1
+                   AND COALESCE(business_context, 'event_genix') = $4
                  RETURNING *`,
-                [task.id, now.toISOString(), discipline.rowCount > 0]
+                [task.id, now.toISOString(), discipline.rowCount > 0, taskBusinessContext]
             );
             const actor = { username: 'scheduler', name: 'Scheduler' };
             const history = await logTaskActionEvent({
@@ -792,7 +795,7 @@ async function processMissedSlots(options = {}) {
                 oldValue: taskScheduleValue(task),
                 newValue: taskScheduleValue(updated.rows[0]),
                 summary: 'Task schedule slot missed',
-                meta: { eventKey, penaltyApplied: discipline.rowCount > 0 }
+                meta: { eventKey, penaltyApplied: discipline.rowCount > 0, businessContext: taskBusinessContext }
             }, { pool: client });
             if (discipline.rowCount > 0) {
                 await logTaskActionEvent({
@@ -803,7 +806,7 @@ async function processMissedSlots(options = {}) {
                     oldValue: { disciplineDelta: task.schedule_discipline_delta || 0 },
                     newValue: { disciplineDelta: (task.schedule_discipline_delta || 0) - 1 },
                     summary: 'Task discipline penalty applied',
-                    meta: { eventKey, model: 'discipline_score_only' }
+                    meta: { eventKey, model: 'discipline_score_only', businessContext: taskBusinessContext }
                 }, { pool: client });
             }
             try {
@@ -812,13 +815,14 @@ async function processMissedSlots(options = {}) {
                     task_id: task.id,
                     owner_user_id: task.owner_user_id || null,
                     creator_user_id: task.created_by_user_id || null,
+                    business_context: taskBusinessContext,
                     scheduled_end_at: isoValue(task.scheduled_end_at),
                     discipline_score_delta: discipline.rowCount > 0 ? -1 : 0
                 }, eventKey);
             } catch {
                 // Event bus is optional; history + task_discipline_events stay durable.
             }
-            await notifyScheduleChange(updated.rows[0], actor, 'task:slot_missed', { eventKey, penaltyApplied: discipline.rowCount > 0 });
+            await notifyScheduleChange(updated.rows[0], actor, 'task:slot_missed', { eventKey, penaltyApplied: discipline.rowCount > 0, businessContext: taskBusinessContext });
             return { task: attachTaskSchedule(updated.rows[0]), historyEvent: history, eventKey, penaltyApplied: discipline.rowCount > 0 };
         });
         if (result) processed.push(result);

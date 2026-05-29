@@ -4,6 +4,19 @@
 
 ---
 
+## v0.68.13 - системні автоматизації за бізнесом
+
+### Background jobs / tasks / warehouse / HR / 29.05.2026 [codex]
+- **Шаблони recurring-задач стали business-scoped** - `task_templates` отримали durable `business_context`, а CRUD і nightly recurring creation читають та створюють задачі тільки в активному бізнесі.
+- **Omni reply escalation створює задачі в контексті розмови** - overdue reply SLA тепер переносить `conversations.business_context` у task row, duplicate/reuse path і stale-close logic.
+- **Scheduler side-effects звужені до default business там, де немає per-business Telegram target** - birthday/dormant/retention/hot-leads/auto-report/auto-ordering більше не підтягують записи з інших бізнесів у park/default групу.
+- **Warehouse auto-ordering отримав durable scope** - `auto_order_rules` і `auto_order_requests` мають `business_context`, backfill зі складу та scoped approval/update callbacks.
+- **HR/pulse/review callbacks пишуть scoped операційні метрики** - team pulse, event reviews, HR auto-close/no-show і task lifecycle/missed-slot events тепер несуть або перевіряють business context.
+- **Regression guard додано** - `operational-business-context` перевіряє системні автоматизації, нову міграцію, task templates, reply escalation, HR, Telegram callbacks і auto-ordering.
+- **Явний залишковий global scope** - staff certification expiry reminders і certificate expiry лишаються глобальними, бо їхні таблиці ще не мають business context; це окремий наступний міграційний шматок.
+
+---
+
 ## v0.68.12 - фонові процеси за бізнесом
 
 ### Background services / Telegram / tenant safety / 29.05.2026 [codex]

@@ -21,6 +21,7 @@ const {
     DEFAULT_TIMELINE_CONTEXT,
     pushDefaultTimelineBusinessContext
 } = require('../services/timelineBusinessScope');
+const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 
 const log = createLogger('TelegramRoute');
 
@@ -810,7 +811,7 @@ router.post('/webhook', async (req, res) => {
             // v22.18: Review rating callback
             } else if (data.startsWith('review:')) {
                 const parts = data.split(':');
-                const bookingId = safeParseInt(parts[1]);
+                const bookingId = String(parts[1] || '').trim();
                 const rating = safeParseInt(parts[2]);
                 if (!bookingId || !rating || rating < 1 || rating > 5) {
                     await answerCallback(id, 'Невалідний запит');
@@ -819,14 +820,19 @@ router.post('/webhook', async (req, res) => {
                 try {
                     const fromName = update.callback_query.from?.first_name || '';
                     const review = await pool.query(
-                        `INSERT INTO event_reviews (booking_id, customer_name, telegram_chat_id, rating)
-                         SELECT $1, $2, $3, $4
-                         WHERE NOT EXISTS (
+                        `INSERT INTO event_reviews (business_context, booking_id, customer_name, telegram_chat_id, rating)
+                         SELECT COALESCE(b.business_context, $5), $1::text, $2, $3, $4
+                         FROM bookings b
+                         WHERE b.id = $1::text
+                           AND COALESCE(b.business_context, 'event_genix') = $5
+                           AND NOT EXISTS (
                              SELECT 1 FROM event_reviews
-                              WHERE booking_id = $1 AND telegram_chat_id = $3
+                              WHERE booking_id = $1::text
+                                AND telegram_chat_id = $3
+                                AND COALESCE(business_context, 'event_genix') = $5
                          )
                          RETURNING id`,
-                        [bookingId, fromName, update.callback_query.from?.id, rating]
+                        [bookingId, fromName, update.callback_query.from?.id, rating, DEFAULT_TIMELINE_CONTEXT]
                     );
                     if (review.rows.length === 0) {
                         await answerStaleCallback(id, message, 'Оцінку вже збережено');
@@ -849,8 +855,8 @@ router.post('/webhook', async (req, res) => {
                 }
                 try {
                     await pool.query(
-                        'INSERT INTO team_pulse (date, score) VALUES (CURRENT_DATE, $1)',
-                        [score]
+                        'INSERT INTO team_pulse (business_context, date, score) VALUES ($1, CURRENT_DATE, $2)',
+                        [DEFAULT_BUSINESS_CONTEXT, score]
                     );
                     const moods = ['', '😫', '😕', '😐', '🙂', '🤩'];
                     await answerCallback(id, `Записано! ${moods[score]} Дякуємо!`);
@@ -874,8 +880,13 @@ router.post('/webhook', async (req, res) => {
                     const actorName = update.callback_query.from?.first_name || 'manager';
 
                     const updated = await pool.query(
-                        'UPDATE auto_order_requests SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3 AND status = $4 RETURNING *',
-                        [newStatus, actorName, requestId, 'pending']
+                        `UPDATE auto_order_requests
+                            SET status = $1, approved_by = $2, updated_at = NOW()
+                          WHERE id = $3
+                            AND status = $4
+                            AND COALESCE(business_context, 'event_genix') = $5
+                          RETURNING *`,
+                        [newStatus, actorName, requestId, 'pending', DEFAULT_BUSINESS_CONTEXT]
                     );
                     if (updated.rows.length === 0) {
                         await answerStaleCallback(id, message, 'Замовлення вже оброблено');
@@ -888,9 +899,11 @@ router.post('/webhook', async (req, res) => {
                             SELECT aor.*, ws.name AS stock_name, ws.unit, c.telegram_chat_id, c.name AS contractor_name
                             FROM auto_order_requests aor
                             JOIN warehouse_stock ws ON ws.id = aor.stock_id
+                             AND COALESCE(ws.business_context, 'event_genix') = COALESCE(aor.business_context, 'event_genix')
                             LEFT JOIN contractors c ON c.id = aor.contractor_id
                             WHERE aor.id = $1
-                        `, [requestId]);
+                              AND COALESCE(aor.business_context, 'event_genix') = $2
+                        `, [requestId, DEFAULT_BUSINESS_CONTEXT]);
 
                         if (orderInfo.rows.length > 0) {
                             const order = orderInfo.rows[0];
@@ -902,8 +915,11 @@ router.post('/webhook', async (req, res) => {
                                 await sendTelegramMessage(order.telegram_chat_id, orderText).catch(e => log.warn('Order notify failed', e.message));
                             }
                             await pool.query(
-                                "UPDATE auto_order_requests SET status = 'ordered' WHERE id = $1",
-                                [requestId]
+                                `UPDATE auto_order_requests
+                                    SET status = 'ordered'
+                                  WHERE id = $1
+                                    AND COALESCE(business_context, 'event_genix') = $2`,
+                                [requestId, DEFAULT_BUSINESS_CONTEXT]
                             );
                         }
 

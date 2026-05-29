@@ -298,10 +298,11 @@ function createFakePool() {
                     id: 710,
                     title: 'Overdue reply escalation',
                     status: 'todo',
+                    business_context: params[0],
                     source_type: 'conversation_reply',
-                    source_id: String(params[9]),
-                    owner_user_id: params[5],
-                    deadline: params[7],
+                    source_id: String(params[10]),
+                    owner_user_id: params[6],
+                    deadline: params[8],
                     created: true
                 }] };
             }
@@ -1041,8 +1042,8 @@ describe('work queue endpoint', () => {
 
         const insertQuery = queries.find(q => /WITH inserted AS/i.test(q.text) && /INSERT INTO tasks/i.test(q.text));
         assert.ok(insertQuery, 'manual escalation should reuse the idempotent conversation_reply task creation path');
-        assert.equal(insertQuery.params[8], 'conversation_reply');
-        assert.equal(insertQuery.params[9], '1204');
+        assert.equal(insertQuery.params[9], 'conversation_reply');
+        assert.equal(insertQuery.params[10], '1204');
 
         const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_escalated');
         assert.ok(historyInsert, 'manual reply escalation must leave durable action history');

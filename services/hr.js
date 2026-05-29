@@ -9,6 +9,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId } = require('./telegram');
 const { getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 
 const log = createLogger('HR');
 
@@ -57,8 +58,11 @@ async function checkHrAutoClose() {
                     s.name AS staff_name
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
-             WHERE tr.record_date = $1 AND tr.clock_in IS NOT NULL AND tr.clock_out IS NULL`,
-            [todayStr]
+             WHERE tr.record_date = $1
+               AND COALESCE(tr.business_context, 'event_genix') = $2
+               AND tr.clock_in IS NOT NULL
+               AND tr.clock_out IS NULL`,
+            [todayStr, DEFAULT_BUSINESS_CONTEXT]
         );
 
         if (open.rows.length === 0) return;
@@ -86,8 +90,9 @@ async function checkHrAutoClose() {
                 `UPDATE hr_time_records SET
                     clock_out = $1, total_worked_minutes = $2,
                     auto_closed = TRUE, status = 'auto_closed', updated_at = NOW()
-                 WHERE id = $3`,
-                [closeTime, totalWorked, rec.id]
+                 WHERE id = $3
+                   AND COALESCE(business_context, 'event_genix') = $4`,
+                [closeTime, totalWorked, rec.id, DEFAULT_BUSINESS_CONTEXT]
             );
 
             await pool.query(
@@ -141,9 +146,10 @@ async function checkHrNoShow() {
              FROM hr_shifts hs
              JOIN staff s ON s.id = hs.staff_id AND s.is_active = true
              LEFT JOIN hr_time_records tr ON tr.staff_id = hs.staff_id AND tr.record_date = $1
+              AND COALESCE(tr.business_context, 'event_genix') = $2
              WHERE hs.shift_date = $1
                AND (tr.id IS NULL OR (tr.clock_in IS NULL AND tr.status = 'absent'))`,
-            [todayStr]
+            [todayStr, DEFAULT_BUSINESS_CONTEXT]
         );
 
         const alerts = [];
@@ -156,11 +162,12 @@ async function checkHrNoShow() {
 
             // Upsert no_show status
             await pool.query(
-                `INSERT INTO hr_time_records (staff_id, record_date, status)
-                 VALUES ($1, $2, 'no_show')
+                `INSERT INTO hr_time_records (business_context, staff_id, record_date, status)
+                 VALUES ($1, $2, $3, 'no_show')
                  ON CONFLICT (staff_id, record_date) DO UPDATE SET status = 'no_show', updated_at = NOW()
-                 WHERE hr_time_records.clock_in IS NULL`,
-                [row.staff_id, todayStr]
+                 WHERE hr_time_records.clock_in IS NULL
+                   AND COALESCE(hr_time_records.business_context, 'event_genix') = $1`,
+                [DEFAULT_BUSINESS_CONTEXT, row.staff_id, todayStr]
             );
 
             await pool.query(

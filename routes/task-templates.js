@@ -13,6 +13,12 @@ const {
     normalizeOwnerRole,
     normalizeSlaMinutes
 } = require('../services/taskTaxonomy');
+const {
+    activeTaskBusinessContext,
+    ensureTaskBusinessScope,
+    ensureWritableTaskBusinessScope,
+    pushTaskBusinessScopeCondition
+} = require('../services/taskBusinessScope');
 
 const log = createLogger('TaskTemplates');
 
@@ -40,6 +46,7 @@ function mapTemplateRow(row) {
         recurrencePattern: row.recurrence_pattern,
         recurrenceDays: row.recurrence_days,
         isActive: row.is_active,
+        businessContext: row.business_context || 'event_genix',
         createdBy: row.created_by,
         createdAt: row.created_at
     };
@@ -49,12 +56,14 @@ function mapTemplateRow(row) {
 router.get('/', async (req, res) => {
     try {
         const { active } = req.query;
-        let query = 'SELECT * FROM task_templates';
+        const businessScope = ensureTaskBusinessScope(req, res);
+        if (!businessScope) return;
         const params = [];
+        const conditions = [pushTaskBusinessScopeCondition(params, businessScope, '')];
         if (active === 'true') {
-            query += ' WHERE is_active = true';
+            conditions.push('is_active = true');
         }
-        query += ' ORDER BY created_at DESC';
+        const query = `SELECT * FROM task_templates WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`;
         const result = await pool.query(query, params);
         res.json(result.rows.map(mapTemplateRow));
     } catch (err) {
@@ -66,6 +75,8 @@ router.get('/', async (req, res) => {
 // POST /api/task-templates
 router.post('/', async (req, res) => {
     try {
+        const businessScope = ensureWritableTaskBusinessScope(req, res);
+        if (!businessScope) return;
         const { title, description, priority, category, subcategory, assignedTo, recurrencePattern, recurrenceDays } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (!VALID_PATTERNS.includes(recurrencePattern)) {
@@ -87,12 +98,13 @@ router.post('/', async (req, res) => {
         const ownerRole = normalizeOwnerRole(req.body.ownerRole || req.body.owner_role);
         const slaMinutes = normalizeSlaMinutes(req.body.slaMinutes || req.body.sla_minutes);
         const username = req.user?.username || 'system';
+        const businessContext = activeTaskBusinessContext(businessScope);
 
         const result = await pool.query(
-            `INSERT INTO task_templates (title, description, priority, category, subcategory, assigned_to,
+            `INSERT INTO task_templates (business_context, title, description, priority, category, subcategory, assigned_to,
              recurrence_pattern, recurrence_days, created_by, default_task_kind, checklist_template_key, owner_role, sla_minutes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-            [title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+            [businessContext, title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
              recurrencePattern, recurrenceDays || null, username, defaultTaskKind,
              checklistTemplateKey, ownerRole, slaMinutes]
         );
@@ -106,6 +118,8 @@ router.post('/', async (req, res) => {
 // PUT /api/task-templates/:id
 router.put('/:id', async (req, res) => {
     try {
+        const businessScope = ensureWritableTaskBusinessScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
         const { title, description, priority, category, subcategory, assignedTo, recurrencePattern, recurrenceDays, isActive } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
@@ -124,16 +138,20 @@ router.put('/:id', async (req, res) => {
             : null;
         const ownerRole = normalizeOwnerRole(req.body.ownerRole || req.body.owner_role);
         const slaMinutes = normalizeSlaMinutes(req.body.slaMinutes || req.body.sla_minutes);
+        const params = [title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
+             recurrencePattern, recurrenceDays || null, isActive !== false,
+             defaultTaskKind, checklistTemplateKey, ownerRole, slaMinutes, id];
+        const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, '');
 
         await pool.query(
             `UPDATE task_templates SET title=$1, description=$2, priority=$3, category=$4, subcategory=$5, assigned_to=$6,
              recurrence_pattern=$7, recurrence_days=$8, is_active=$9, default_task_kind=$10,
-             checklist_template_key=$11, owner_role=$12, sla_minutes=$13 WHERE id=$14`,
-            [title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
-             recurrencePattern, recurrenceDays || null, isActive !== false,
-             defaultTaskKind, checklistTemplateKey, ownerRole, slaMinutes, id]
+             checklist_template_key=$11, owner_role=$12, sla_minutes=$13 WHERE id=$14 AND ${businessCondition}`,
+            params
         );
-        const updated = await pool.query('SELECT * FROM task_templates WHERE id = $1', [id]);
+        const readParams = [id];
+        const readBusinessCondition = pushTaskBusinessScopeCondition(readParams, businessScope, '');
+        const updated = await pool.query(`SELECT * FROM task_templates WHERE id = $1 AND ${readBusinessCondition}`, readParams);
         if (updated.rows.length === 0) return res.status(404).json({ error: 'Template not found' });
         res.json({ success: true, template: mapTemplateRow(updated.rows[0]) });
     } catch (err) {
@@ -145,8 +163,12 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/task-templates/:id
 router.delete('/:id', async (req, res) => {
     try {
+        const businessScope = ensureWritableTaskBusinessScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
-        const result = await pool.query('DELETE FROM task_templates WHERE id = $1 RETURNING id', [id]);
+        const params = [id];
+        const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, '');
+        const result = await pool.query(`DELETE FROM task_templates WHERE id = $1 AND ${businessCondition} RETURNING id`, params);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Template not found' });
         res.json({ success: true });
     } catch (err) {

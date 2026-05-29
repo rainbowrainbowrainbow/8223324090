@@ -4,6 +4,10 @@ const { pool: defaultPool } = require('../db');
 const { getKyivDateStr } = require('./booking');
 const { createLogger } = require('../utils/logger');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
+const {
+    DEFAULT_TASK_BUSINESS_CONTEXT,
+    activeTaskBusinessContext
+} = require('./taskBusinessScope');
 
 const log = createLogger('ReplyEscalation');
 
@@ -48,6 +52,17 @@ function normalizeLimit(limit) {
     return Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
 }
 
+function rowBusinessContext(row = {}) {
+    return activeTaskBusinessContext(row.business_context || row.businessContext || DEFAULT_TASK_BUSINESS_CONTEXT);
+}
+
+function optionalBusinessCondition(params, businessContext, alias = '') {
+    if (!businessContext) return '';
+    params.push(activeTaskBusinessContext(businessContext));
+    const column = alias ? `${alias}.business_context` : 'business_context';
+    return ` AND COALESCE(${column}, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $${params.length}`;
+}
+
 async function logTaskAction(db, taskId, action, newValue) {
     if (!taskId) return;
     try {
@@ -66,6 +81,8 @@ async function closeReplyEscalationForMessage(messageId, options = {}) {
 
     const db = options.pool || defaultPool;
     const reason = options.reason || 'reply_expectation_cleared';
+    const params = [REPLY_ESCALATION_SOURCE_TYPE, sourceId];
+    const businessCondition = optionalBusinessCondition(params, options.businessContext, '');
     const result = await db.query(
         `UPDATE tasks
             SET status = 'cancelled',
@@ -74,8 +91,9 @@ async function closeReplyEscalationForMessage(messageId, options = {}) {
           WHERE source_type = $1
             AND source_id = $2
             AND ${ACTIVE_TASK_STATUS_SQL}
+            ${businessCondition}
           RETURNING *`,
-        [REPLY_ESCALATION_SOURCE_TYPE, sourceId]
+        params
     );
 
     for (const task of result.rows || []) {
@@ -109,6 +127,7 @@ async function updateActiveReplyEscalationTaskForMessage(messageId, updates = {}
 
     const db = options.pool || defaultPool;
     const reason = options.reason || 'reply_escalation_synced';
+    const businessCondition = optionalBusinessCondition(params, options.businessContext, '');
     const result = await db.query(
         `UPDATE tasks
             SET ${setSql.join(', ')},
@@ -116,6 +135,7 @@ async function updateActiveReplyEscalationTaskForMessage(messageId, updates = {}
           WHERE source_type = $1
             AND source_id = $2
             AND ${ACTIVE_TASK_STATUS_SQL}
+            ${businessCondition}
           RETURNING *`,
         params
     );
@@ -139,6 +159,7 @@ async function closeStaleReplyEscalationTasks(options = {}) {
             LEFT JOIN conversations c
               ON c.reply_expected_message_id = cm.id
              AND c.reply_expected IS TRUE
+             AND COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = COALESCE(t.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}')
             WHERE t.source_type = $1
               AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
               AND (
@@ -180,12 +201,14 @@ async function findOverdueReplyExpectations(options = {}) {
                 c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
                 c.reply_expected_message_id, c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                 c.last_inbound_at, c.last_outbound_at,
+                COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') AS business_context,
                 cm.delivery_status AS reply_expected_delivery_status,
                 cm.delivery_error AS reply_expected_delivery_error,
                 cust.lead_id
            FROM conversations c
            JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
            LEFT JOIN customers cust ON cust.id = c.customer_id
+            AND COALESCE(cust.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}')
           WHERE c.reply_expected IS TRUE
             AND c.awaiting_reply_since IS NOT NULL
             AND c.reply_expected_message_id IS NOT NULL
@@ -218,21 +241,23 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
 
     const assignee = taskAssignee(row);
     const date = options.today || getKyivDateStr();
+    const businessContext = rowBusinessContext(row);
     const title = `Прострочена відповідь: ${conversationName(row)}`;
     const description = taskDescription(row);
     const result = await db.query(
         `WITH inserted AS (
             INSERT INTO tasks (
-                title, description, date, status, priority, assigned_to, owner, owner_user_id, created_by,
+                business_context, title, description, date, status, priority, assigned_to, owner, owner_user_id, created_by,
                 task_type, deadline, source_type, source_id, category, type
             )
-            SELECT $1, $2, $3, 'todo', 'high', $4, $5, $6, $7,
-                   'human', $8::timestamp, $9, $10, 'admin', 'auto'
+            SELECT $1, $2, $3, $4, 'todo', 'high', $5, $6, $7, $8,
+                   'human', $9::timestamp, $10, $11, 'admin', 'auto'
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM tasks
-                WHERE source_type = $9
-                  AND source_id = $10
+                WHERE source_type = $10
+                  AND source_id = $11
+                  AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $1
             )
             ON CONFLICT (source_id)
                 WHERE source_type = 'conversation_reply'
@@ -245,12 +270,14 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
         UNION ALL
         SELECT t.*, false AS created
         FROM tasks t
-        WHERE t.source_type = $9
-          AND t.source_id = $10
+        WHERE t.source_type = $10
+          AND t.source_id = $11
+          AND COALESCE(t.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $1
           AND NOT EXISTS (SELECT 1 FROM inserted)
         ORDER BY created DESC, id DESC
         LIMIT 1`,
         [
+            businessContext,
             title,
             description,
             date,
@@ -288,12 +315,14 @@ async function findActiveReplyExpectationByConversation(conversationId, options 
                 c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
                 c.reply_expected_message_id, c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                 c.last_inbound_at, c.last_outbound_at,
+                COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') AS business_context,
                 cm.delivery_status AS reply_expected_delivery_status,
                 cm.delivery_error AS reply_expected_delivery_error,
                 cust.lead_id
            FROM conversations c
            JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
            LEFT JOIN customers cust ON cust.id = c.customer_id
+            AND COALESCE(cust.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}')
           WHERE c.id = $1
             AND c.reply_expected IS TRUE
             AND c.awaiting_reply_since IS NOT NULL

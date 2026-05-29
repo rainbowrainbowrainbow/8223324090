@@ -54,7 +54,7 @@ check:migrations`.
 `customer_cards.business_context`, `customers.business_context`,
 `leads.business_context`, `mailing_list.business_context`,
 `products.business_context`, `staff.telegram_username`,
-`task_templates.category`, `tasks.afisha_id`, `tasks.archive_reason`,
+`task_templates.business_context`, `task_templates.category`, `tasks.afisha_id`, `tasks.archive_reason`,
 `tasks.archived_at`, `tasks.business_context`, `tasks.category`, `tasks.control_policy`,
 `tasks.deadline`, `tasks.dependency_ids`, `tasks.duplicate_of_task_id`,
 `tasks.escalation_level`, `tasks.last_reminded_at`, `tasks.owner`,
@@ -65,7 +65,7 @@ check:migrations`.
 
 ## Startup Indexes And Triggers
 
-The guard tracks 81 startup indexes in `config/dbStartupSurface.js`. The current
+The guard tracks 82 startup indexes in `config/dbStartupSurface.js`. The current
 startup trigger/function pair is `update_updated_at_column` and
 `trg_bookings_updated_at`.
 

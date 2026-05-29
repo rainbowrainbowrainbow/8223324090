@@ -4,6 +4,7 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { DEFAULT_TASK_BUSINESS_CONTEXT, activeTaskBusinessContext } = require('./taskBusinessScope');
 const log = createLogger('TaskLifecycle');
 
 function calculateHealthScore(task) {
@@ -39,7 +40,7 @@ function calculateHealthScore(task) {
 async function runTaskLifecycle() {
     try {
         const tasks = await pool.query(`
-            SELECT id, title, date, status, priority, updated_at, created_at, last_activity_at
+            SELECT id, title, date, status, priority, updated_at, created_at, last_activity_at, business_context
             FROM tasks
             WHERE status NOT IN ('done', 'cancelled', 'archived')
               AND archived_at IS NULL
@@ -50,6 +51,7 @@ async function runTaskLifecycle() {
 
         for (const task of tasks.rows) {
             const score = calculateHealthScore(task);
+            const businessContext = activeTaskBusinessContext(task.business_context || DEFAULT_TASK_BUSINESS_CONTEXT);
 
             if (score === 0) {
                 await pool.query(`
@@ -59,12 +61,13 @@ async function runTaskLifecycle() {
                         archive_reason = 'auto_expired',
                         health_score = 0
                     WHERE id = $1
-                `, [task.id]);
+                      AND COALESCE(business_context, 'event_genix') = $2
+                `, [task.id, businessContext]);
                 archived++;
             } else {
                 await pool.query(
-                    'UPDATE tasks SET health_score = $1 WHERE id = $2',
-                    [score, task.id]
+                    "UPDATE tasks SET health_score = $1 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3",
+                    [score, task.id, businessContext]
                 );
                 updated++;
             }

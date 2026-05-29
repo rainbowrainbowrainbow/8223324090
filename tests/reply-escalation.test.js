@@ -22,6 +22,7 @@ const OVERDUE_REPLY = {
     reply_owner: 'manager user',
     reply_owner_user_id: 501,
     reply_sla_at: '2026-05-13T09:30:00.000Z',
+    business_context: 'maysternya_doli',
     last_inbound_at: '2026-05-13T08:00:00.000Z',
     last_outbound_at: '2026-05-13T09:00:00.000Z',
     reply_expected_delivery_status: 'delivered',
@@ -47,19 +48,21 @@ function createEscalationPool(rows, { existingTask = false } = {}) {
                 return { rows };
             }
             if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text)) {
-                assert.equal(params[8], REPLY_ESCALATION_SOURCE_TYPE);
-                assert.equal(params[9], '1201');
+                assert.equal(params[0], 'maysternya_doli');
+                assert.equal(params[9], REPLY_ESCALATION_SOURCE_TYPE);
+                assert.equal(params[10], '1201');
                 return {
                     rows: [{
                         id: existingTask ? 91 : 90,
-                        title: params[0],
-                        description: params[1],
+                        business_context: params[0],
+                        title: params[1],
+                        description: params[2],
                         status: existingTask ? 'done' : 'todo',
                         priority: 'high',
-                        owner_user_id: params[5],
-                        deadline: params[7],
-                        source_type: params[8],
-                        source_id: params[9],
+                        owner_user_id: params[6],
+                        deadline: params[8],
+                        source_type: params[9],
+                        source_id: params[10],
                         created: !existingTask
                     }]
                 };
@@ -86,6 +89,7 @@ describe('reply auto-escalation', () => {
         assert.equal(result.reused, 0);
         assert.equal(result.escalations[0].task.source_type, 'conversation_reply');
         assert.equal(result.escalations[0].task.source_id, '1201');
+        assert.equal(result.escalations[0].task.business_context, 'maysternya_doli');
         assert.match(result.escalations[0].task.description, /Reply owner user id: 501/);
         assert.match(result.escalations[0].task.title, /Прострочена відповідь/);
 
@@ -98,6 +102,7 @@ describe('reply auto-escalation', () => {
 
         const insertQuery = pool.queries.find(q => /INSERT INTO tasks/i.test(q.text));
         assert.ok(insertQuery);
+        assert.match(insertQuery.text, /business_context, title/i);
         assert.match(insertQuery.text, /source_type, source_id/i);
         assert.match(insertQuery.text, /ON CONFLICT \(source_id\)/i);
         assert.match(insertQuery.text, /source_type = 'conversation_reply'/i);

@@ -413,6 +413,8 @@ async function initDatabase() {
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category)');
         // Also add category to templates
         await safeQuery(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
+        await safeQuery(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_task_templates_business_active_created ON task_templates(business_context, is_active, created_at DESC)');
 
         // v10.0: Tasker — extended task fields
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(10) DEFAULT 'human'`); // 'human' or 'bot'

@@ -19,6 +19,15 @@ const {
     DEFAULT_TIMELINE_CONTEXT,
     pushDefaultTimelineBusinessContext
 } = require('./timelineBusinessScope');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    pushBusinessContextCondition
+} = require('./businessContext');
+const {
+    DEFAULT_TASK_BUSINESS_CONTEXT,
+    activeTaskBusinessContext,
+    pushTaskBusinessScopeCondition
+} = require('./taskBusinessScope');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -481,7 +490,13 @@ async function checkRecurringTasks() {
         await setLastSent('recurring', todayStr);
         const dayOfWeek = kyiv.getDay() || 7; // 1=Mon...7=Sun
 
-        const templates = await pool.query('SELECT * FROM task_templates WHERE is_active = true');
+        const templates = await pool.query(
+            `SELECT *, COALESCE(business_context, $1) AS business_context
+             FROM task_templates
+             WHERE is_active = true
+             ORDER BY business_context ASC, created_at ASC`,
+            [DEFAULT_TASK_BUSINESS_CONTEXT]
+        );
         let created = 0;
 
         for (const tpl of templates.rows) {
@@ -522,6 +537,7 @@ async function checkRecurringTasks() {
                 checklist_template_key: tpl.checklist_template_key || null,
                 owner_role: tpl.owner_role || null,
                 sla_minutes: tpl.sla_minutes || null,
+                businessContext: activeTaskBusinessContext(tpl.business_context || DEFAULT_TASK_BUSINESS_CONTEXT),
                 duplicateMode: 'skip'
             });
             if (!task || task.duplicateSkipped) continue;
@@ -1013,13 +1029,17 @@ async function checkBirthdayGreetings() {
         const month = kyiv.getMonth() + 1;
         const day = kyiv.getDate();
 
+        const birthdayParams = [month, day];
+        const birthdayBusiness = pushBusinessContextCondition(birthdayParams, DEFAULT_BUSINESS_CONTEXT, '');
+        // certificates has no business_context yet; keep expiry global until the certificate model is scoped.
         const result = await pool.query(
             `SELECT id, name, phone, child_name, child_birthday, total_bookings, total_spent
              FROM customers
              WHERE child_birthday IS NOT NULL
                AND EXTRACT(MONTH FROM child_birthday) = $1
-               AND EXTRACT(DAY FROM child_birthday) = $2`,
-            [month, day]
+               AND EXTRACT(DAY FROM child_birthday) = $2
+               AND ${birthdayBusiness}`,
+            birthdayParams
         );
 
         if (result.rows.length === 0) return;
@@ -1081,13 +1101,16 @@ async function checkBirthdayReminders() {
         const month = futureDate.getMonth() + 1;
         const day = futureDate.getDate();
 
+        const reminderParams = [month, day];
+        const reminderBusiness = pushBusinessContextCondition(reminderParams, DEFAULT_BUSINESS_CONTEXT, '');
         const result = await pool.query(
             `SELECT id, name, phone, child_name, child_birthday, total_bookings
              FROM customers
              WHERE child_birthday IS NOT NULL
                AND EXTRACT(MONTH FROM child_birthday) = $1
-               AND EXTRACT(DAY FROM child_birthday) = $2`,
-            [month, day]
+               AND EXTRACT(DAY FROM child_birthday) = $2
+               AND ${reminderBusiness}`,
+            reminderParams
         );
 
         if (result.rows.length === 0) return;
@@ -1131,13 +1154,16 @@ async function checkDormantCustomers() {
         dormantSentToday = todayStr;
         await setLastSent('dormant_customers', todayStr);
 
+        const dormantParams = [];
+        const dormantBusiness = pushBusinessContextCondition(dormantParams, DEFAULT_BUSINESS_CONTEXT, '');
         const result = await pool.query(`
             SELECT id, name, phone, total_bookings, total_spent, last_visit
             FROM customers
             WHERE last_visit < NOW() - INTERVAL '60 days'
               AND total_bookings >= 2
+              AND ${dormantBusiness}
             ORDER BY last_visit ASC LIMIT 15
-        `);
+        `, dormantParams);
 
         if (result.rows.length === 0) return;
 
@@ -1411,7 +1437,7 @@ async function checkTaskOverdue() {
         const result = await pool.query(
             `UPDATE tasks SET status = 'overdue'
              WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
-             RETURNING id, title, date, priority, assigned_to`,
+             RETURNING id, title, date, priority, assigned_to, business_context`,
             [todayStr]
         );
 
@@ -1423,7 +1449,8 @@ async function checkTaskOverdue() {
                     await publish('task.overdue', {
                         task_id: task.id, title: task.title,
                         date: task.date, priority: task.priority,
-                        assigned_to: task.assigned_to
+                        assigned_to: task.assigned_to,
+                        business_context: task.business_context || DEFAULT_TASK_BUSINESS_CONTEXT
                     }, `task_overdue_${task.id}_${todayStr}`);
                 }
             } catch (e) { /* eventBus may not exist */ }
@@ -1483,18 +1510,23 @@ async function checkCustomerRetention() {
 
         retentionLastRun = todayStr;
 
+        const retentionParams = [];
+        const retentionBusiness = pushBusinessContextCondition(retentionParams, DEFAULT_BUSINESS_CONTEXT, 'c');
         const result = await pool.query(
             `SELECT c.id, c.name, c.phone, c.last_visit_at,
-                    EXTRACT(DAY FROM NOW() - c.last_visit_at) as days_since
+                    EXTRACT(DAY FROM NOW() - c.last_visit_at) as days_since,
+                    COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') AS business_context
              FROM customers c
              WHERE c.last_visit_at IS NOT NULL
                AND c.last_visit_at < NOW() - INTERVAL '60 days'
+               AND ${retentionBusiness}
                AND c.id NOT IN (
                    SELECT DISTINCT customer_id FROM customer_retention_log
                    WHERE created_at > NOW() - INTERVAL '30 days'
                )
              ORDER BY c.last_visit_at ASC
-             LIMIT 20`
+             LIMIT 20`,
+            retentionParams
         );
 
         if (result.rows.length > 0) {
@@ -1514,7 +1546,8 @@ async function checkCustomerRetention() {
                         customer_id: customer.id,
                         name: customer.name,
                         phone: customer.phone,
-                        days_since: Math.floor(customer.days_since)
+                        days_since: Math.floor(customer.days_since),
+                        business_context: customer.business_context || DEFAULT_BUSINESS_CONTEXT
                     }, `retention_${customer.id}_${todayStr}`);
                 } catch (e) { /* eventBus may not exist */ }
             }
@@ -1570,10 +1603,12 @@ async function checkAutoReport() {
         );
         const stats = bookingsResult.rows[0];
 
+        const reportTaskParams = [todayStr];
+        const reportTaskBusinessScope = pushTaskBusinessScopeCondition(reportTaskParams, DEFAULT_TASK_BUSINESS_CONTEXT, '');
         const tasksResult = await pool.query(
             "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='done' THEN 1 ELSE 0 END)::int AS done " +
-            "FROM tasks WHERE date = $1",
-            [todayStr]
+            `FROM tasks WHERE date = $1 AND ${reportTaskBusinessScope}`,
+            reportTaskParams
         );
         const taskStats = tasksResult.rows[0];
 
@@ -1624,22 +1659,31 @@ async function checkHotLeads() {
         if (hour !== 9 && hour !== 15) return;
         if (timeStr.split(':')[1] !== '00') return;
 
+        const hotLeadParams = [];
+        const hotLeadBusiness = pushBusinessContextCondition(hotLeadParams, DEFAULT_BUSINESS_CONTEXT, 'l');
         const hotLeads = await pool.query(`
             SELECT l.id, l.client_name, l.phone, p.label AS program_name,
-                   l.children_count, l.event_date
+                   l.children_count, l.event_date,
+                   COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') AS business_context
             FROM leads l
             LEFT JOIN products p ON l.program_id = p.id
+             AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
             WHERE l.status = 'new'
               AND l.created_at < NOW() - INTERVAL '24 hours'
-        `);
+              AND ${hotLeadBusiness}
+        `, hotLeadParams);
 
         if (hotLeads.rows.length === 0) return;
 
         for (const lead of hotLeads.rows) {
             // Check if task already exists for this lead
             const existing = await pool.query(
-                `SELECT id FROM tasks WHERE source_type = 'lead' AND source_id = $1`,
-                [String(lead.id)]
+                `SELECT id
+                 FROM tasks
+                 WHERE source_type = 'lead'
+                   AND source_id = $1
+                   AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $2`,
+                [String(lead.id), activeTaskBusinessContext(lead.business_context || DEFAULT_TASK_BUSINESS_CONTEXT)]
             );
             if (existing.rows.length > 0) continue;
 
@@ -1661,6 +1705,7 @@ async function checkHotLeads() {
                 source_id: String(lead.id),
                 date: getKyivDateStr(),
                 created_by: 'scheduler',
+                businessContext: activeTaskBusinessContext(lead.business_context || DEFAULT_TASK_BUSINESS_CONTEXT),
                 duplicateMode: 'skip'
             });
 
@@ -2299,23 +2344,29 @@ async function checkRecurringAnnouncements() {
 // v22.18: Auto-ordering — check stock levels and create order requests
 async function checkAutoOrdering() {
     try {
+        const autoOrderParams = [];
+        const stockBusiness = pushBusinessContextCondition(autoOrderParams, DEFAULT_BUSINESS_CONTEXT, 'ws');
         const result = await pool.query(`
             SELECT aor.id AS rule_id, aor.stock_id, aor.contractor_id, aor.reorder_quantity,
                    ws.name AS stock_name, ws.quantity, ws.min_quantity, ws.unit,
-                   c.name AS contractor_name, c.telegram_chat_id AS contractor_tg
+                   c.name AS contractor_name, c.telegram_chat_id AS contractor_tg,
+                   COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') AS business_context
             FROM auto_order_rules aor
             JOIN warehouse_stock ws ON ws.id = aor.stock_id
+             AND COALESCE(aor.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
             LEFT JOIN contractors c ON c.id = aor.contractor_id
             WHERE aor.is_active = true
               AND ws.is_active = true
+              AND ${stockBusiness}
               AND ws.quantity <= ws.min_quantity
               AND NOT EXISTS (
                   SELECT 1 FROM auto_order_requests req
                   WHERE req.stock_id = aor.stock_id
+                    AND COALESCE(req.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
                     AND req.status IN ('pending', 'approved')
                     AND req.created_at > NOW() - INTERVAL '24 hours'
               )
-        `);
+        `, autoOrderParams);
 
         if (result.rows.length === 0) return;
 
@@ -2324,9 +2375,9 @@ async function checkAutoOrdering() {
 
         for (const item of result.rows) {
             const reqResult = await pool.query(
-                `INSERT INTO auto_order_requests (stock_id, contractor_id, quantity, current_stock, min_stock)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                [item.stock_id, item.contractor_id, item.reorder_quantity, item.quantity, item.min_quantity]
+                `INSERT INTO auto_order_requests (business_context, stock_id, contractor_id, quantity, current_stock, min_stock)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [item.business_context || DEFAULT_BUSINESS_CONTEXT, item.stock_id, item.contractor_id, item.reorder_quantity, item.quantity, item.min_quantity]
             );
             const requestId = reqResult.rows[0].id;
 
@@ -2350,8 +2401,11 @@ async function checkAutoOrdering() {
 
             if (msgResult && msgResult.ok) {
                 await pool.query(
-                    'UPDATE auto_order_requests SET telegram_message_id = $1 WHERE id = $2',
-                    [msgResult.result.message_id, requestId]
+                    `UPDATE auto_order_requests
+                     SET telegram_message_id = $1
+                     WHERE id = $2
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+                    [msgResult.result.message_id, requestId, item.business_context || DEFAULT_BUSINESS_CONTEXT]
                 );
             }
 
@@ -2445,6 +2499,7 @@ async function checkCertExpiryReminders() {
         certExpirySentToday = todayStr;
         await setLastSent('cert_expiry_reminder', todayStr);
 
+        // staff_certifications has no business_context yet; keep this reminder global until HR certs are scoped.
         // Find certs expiring in next 14 days
         const result = await pool.query(`
             SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status,

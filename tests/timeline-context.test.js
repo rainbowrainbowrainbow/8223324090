@@ -121,6 +121,83 @@ test('timeline root uses account default instead of stale stored business contex
     assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/maysternya-doli');
 });
 
+test('canonical business state repairs invalid or unauthorized persisted business context', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    assert.match(apiCode, /function resolveCrmBusinessContextState/);
+    assert.match(apiCode, /function clearCrmBusinessContextStorage/);
+    assert.match(apiCode, /storageBusinessId/);
+
+    const makeSandbox = (stored, user) => {
+        const sandbox = {
+            console,
+            URL,
+            URLSearchParams,
+            window: {
+                location: { pathname: '/', search: '', href: 'https://crm.test/' },
+                history: { replaceState() {} },
+                dispatchEvent() {},
+                addEventListener() {}
+            },
+            localStorage: {
+                getItem: key => stored.get(key) || null,
+                setItem: (key, value) => stored.set(key, value),
+                removeItem: key => stored.delete(key)
+            },
+            AppState: { currentUser: user }
+        };
+        sandbox.window.localStorage = sandbox.localStorage;
+        vm.runInNewContext(apiCode, sandbox);
+        return sandbox;
+    };
+
+    const invalidStored = new Map([
+        ['pzp_crm_business_context', 'ghost_business'],
+        ['pzp_crm_business_context_user', '42'],
+        ['pzp_crm_business_scope_mode', 'multi'],
+        ['pzp_crm_business_scope_contexts', '["event_genix","maysternya_doli"]'],
+        ['pzp_products_business_context', 'maysternya_doli']
+    ]);
+    const creator = {
+        id: 42,
+        role: 'creator',
+        businessContexts: ['event_genix', 'maysternya_doli'],
+        defaultBusinessContext: 'event_genix'
+    };
+    const invalidSandbox = makeSandbox(invalidStored, creator);
+    const invalidState = invalidSandbox.window.CrmBusinessContext.state(creator);
+    assert.equal(invalidState.activeBusinessId, 'event_genix');
+    assert.equal(invalidState.storageBusinessId, null);
+    assert.equal(invalidStored.has('pzp_crm_business_context'), false);
+    assert.equal(invalidStored.has('pzp_products_business_context'), false);
+    assert.equal(invalidStored.has('pzp_crm_business_scope_mode'), false);
+
+    const unauthorizedStored = new Map([
+        ['pzp_crm_business_context', 'maysternya_doli'],
+        ['pzp_crm_business_context_user', '7']
+    ]);
+    const singleBusinessUser = {
+        id: 7,
+        role: 'manager',
+        businessContexts: ['event_genix'],
+        defaultBusinessContext: 'event_genix'
+    };
+    const unauthorizedSandbox = makeSandbox(unauthorizedStored, singleBusinessUser);
+    const unauthorizedState = unauthorizedSandbox.window.CrmBusinessContext.state(singleBusinessUser);
+    assert.equal(unauthorizedState.activeBusinessId, 'event_genix');
+    assert.equal(unauthorizedState.storageBusinessId, null);
+    assert.equal(unauthorizedStored.has('pzp_crm_business_context'), false);
+    assert.equal(unauthorizedStored.has('pzp_crm_business_context_user'), false);
+
+    const preAuthStored = new Map([
+        ['pzp_crm_business_context', 'maysternya_doli'],
+        ['pzp_crm_business_context_user', '42']
+    ]);
+    const preAuthSandbox = makeSandbox(preAuthStored, null);
+    const preAuthState = preAuthSandbox.window.CrmBusinessContext.state(null);
+    assert.equal(preAuthState.storageBusinessId, 'maysternya_doli');
+    assert.equal(preAuthStored.get('pzp_crm_business_context'), 'maysternya_doli');
+});
+
 test('login starts from account timeline instead of role shell page', () => {
     const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 

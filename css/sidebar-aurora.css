@@ -8712,6 +8712,10 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
   min-width: 0;
 }
 
+.sidebar-business-context[data-switching="true"] {
+  cursor: progress;
+}
+
 .sidebar-business-label {
   flex: 0 0 auto;
   font-size: 10px;
@@ -8734,6 +8738,19 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
   font-weight: 850;
   cursor: pointer;
   text-overflow: ellipsis;
+}
+
+.sidebar-business-select:focus-visible,
+.sidebar-business-chip:focus-visible {
+  outline: none;
+  border-color: rgba(20, 184, 166, .58);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, .18);
+}
+
+.sidebar-business-select:disabled,
+.sidebar-business-context[data-switching="true"] .sidebar-business-select {
+  cursor: progress;
+  opacity: .72;
 }
 
 .sidebar-business-chip {
@@ -8763,10 +8780,45 @@ body.dark-mode .sidebar-business-select {
   color: #e5e7eb;
 }
 
+body.dark-mode .sidebar-business-select:focus-visible,
+body.dark-mode .sidebar-business-chip:focus-visible {
+  border-color: rgba(45, 212, 191, .62);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, .16);
+}
+
 body.dark-mode .sidebar-business-chip {
   border-color: rgba(45, 212, 191, .30);
   background: rgba(45, 212, 191, .14);
   color: #99f6e4;
+}
+
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed .sidebar-business-context,
+  .sidebar-nav.collapsed:hover .sidebar-business-context {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 0;
+    margin-top: 4px;
+  }
+
+  .sidebar-nav.collapsed .sidebar-business-label,
+  .sidebar-nav.collapsed:hover .sidebar-business-label {
+    display: none;
+  }
+
+  .sidebar-nav.collapsed .sidebar-business-select,
+  .sidebar-nav.collapsed:hover .sidebar-business-select,
+  .sidebar-nav.collapsed .sidebar-business-chip,
+  .sidebar-nav.collapsed:hover .sidebar-business-chip {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    height: 30px;
+    padding: 0 6px;
+    text-align: center;
+    font-size: 10px;
+    border-radius: 10px;
+  }
 }
 
 /* v0.67.4: компактніший sidebar без зміщення основного CRM полотна. */

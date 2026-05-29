@@ -4,6 +4,18 @@
 
 ---
 
+## v0.67.17 - CRM 67.17: стабільний бізнес-перемикач
+
+### Timeline shell / sidebar switcher / state hardening / 29.05.2026 [codex]
+- **Активний бізнес тепер має явний client-side contract** - `CrmBusinessContext.state(...)` повертає активний бізнес, джерело стану, route/url/storage/default складові та доступні бізнеси з одного місця.
+- **Невалідний або чужий storage більше не перемагає shell** - биті business ids, legacy product key, stale user key і старі aggregate scope ключі очищаються та відновлюються до безпечного default бізнесу.
+- **Sidebar-перемикач отримав guarded transition** - повторні кліки під час перемикання блокуються, control показує busy state, помилка повертає попередній бізнес і показує notification.
+- **Auth/shell hydration більше не малює старий бізнес поверх нового** - після `renderShell` відправляється `crmBusinessContextHydrated`, sidebar повторно синхронізує меню й user/business card з канонічного стану.
+- **Desktop/collapsed UX підчищено** - у розгорнутому sidebar лишається повна назва бізнесу, у collapsed-стані використовується компактний label, фокус і disabled state отримали явні стилі.
+- **Додано regression guards** - timeline-context і UI smoke перевіряють storage recovery, hydrate contract, busy/focus стани та відсутність другого header business selector.
+
+---
+
 ## v0.67.16 - CRM 67.16: один бізнес-перемикач
 
 ### Timeline shell / sidebar switcher / business state / 29.05.2026 [codex]

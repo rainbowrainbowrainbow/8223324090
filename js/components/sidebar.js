@@ -18,7 +18,8 @@ const Sidebar = (() => {
         extraEditingId: '',
         railCloseTimer: null,
         railActiveAnchor: null,
-        railPinned: false
+        railPinned: false,
+        businessSwitching: false
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/dashboard', '/afisha', '/', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
@@ -1796,36 +1797,69 @@ const Sidebar = (() => {
             return;
         }
         host.hidden = false;
+        host.setAttribute('role', 'group');
+        host.setAttribute('aria-label', 'Бізнес CRM');
+        host.dataset.switching = _state.businessSwitching ? 'true' : 'false';
+        host.setAttribute('aria-busy', _state.businessSwitching ? 'true' : 'false');
         const current = businessState?.activeBusinessId || api.current(user);
         const currentContext = options.find(ctx => ctx.key === current) || options[0];
+        const sidebar = document.getElementById('sidebarNav');
+        const compactBusinessLabel = sidebar?.classList.contains('collapsed');
+        const businessLabelFor = (ctx) => compactBusinessLabel
+            ? (ctx.shortLabel || ctx.label || ctx.key)
+            : (ctx.label || ctx.shortLabel || ctx.key);
+        host.dataset.activeBusiness = currentContext.key || current;
         if (options.length <= 1) {
             host.innerHTML = `
                 <span class="sidebar-business-label">Бізнес</span>
-                <span class="sidebar-business-chip" title="Бізнес акаунта">${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}</span>`;
+                <span class="sidebar-business-chip" title="${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
         }
         host.innerHTML = `
             <span class="sidebar-business-label">Бізнес</span>
-            <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM">
-                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(ctx.label || ctx.shortLabel || ctx.key)}</option>`).join('')}
+            <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
+                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
             </select>`;
-        host.dataset.activeBusiness = currentContext.key || current;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
         select.title = currentContext.label || currentContext.shortLabel || currentContext.key;
         select.addEventListener('click', event => event.stopPropagation());
         select.addEventListener('keydown', event => event.stopPropagation());
         select.addEventListener('change', async event => {
+            event.stopPropagation();
+            if (_state.businessSwitching) {
+                event.target.value = host.dataset.activeBusiness || current;
+                return;
+            }
             const previous = api.current(user);
+            if (event.target.value === previous) return;
+            _state.businessSwitching = true;
+            host.dataset.switching = 'true';
+            host.setAttribute('aria-busy', 'true');
             select.disabled = true;
-            const next = await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: false });
-            if (window.__crmBusinessNavigationPending) return;
-            if (next !== previous) {
-                const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-                if (container?.id) render('#' + container.id);
-                setTimeout(() => window.location.reload(), 50);
-            } else {
-                select.disabled = false;
+            let reloadPending = false;
+            try {
+                const next = await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: false });
+                if (window.__crmBusinessNavigationPending) return;
+                if (next !== previous) {
+                    const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+                    if (container?.id) render('#' + container.id);
+                    reloadPending = true;
+                    setTimeout(() => window.location.reload(), 50);
+                }
+            } catch (error) {
+                console.error('[sidebar] business switch failed', error);
+                event.target.value = previous;
+                if (typeof showNotification === 'function') {
+                    showNotification('Не вдалося перемкнути бізнес. Оновіть сторінку і повторіть.', 'error');
+                }
+            } finally {
+                if (!window.__crmBusinessNavigationPending && !reloadPending) {
+                    _state.businessSwitching = false;
+                    host.dataset.switching = 'false';
+                    host.setAttribute('aria-busy', 'false');
+                    select.disabled = false;
+                }
             }
         });
     }
@@ -2498,6 +2532,7 @@ const Sidebar = (() => {
         sidebar.classList.toggle('collapsed', !!nextCollapsed);
         if (persist) localStorage.setItem('pzp_sidebar_collapsed', String(!!nextCollapsed));
         _syncSidebarCollapseButton(sidebar);
+        _syncSidebarBusinessSwitcher();
         _queueActiveIndicatorUpdate();
     }
 
@@ -2784,6 +2819,12 @@ const Sidebar = (() => {
         _refreshTaskMiniWidget();
     });
     window.addEventListener('crmBusinessContextChanged', () => {
+        const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (c?.id) render('#' + c.id);
+        initUserCard();
+    });
+    window.addEventListener('crmBusinessContextHydrated', () => {
+        _state.businessSwitching = false;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c?.id) render('#' + c.id);
         initUserCard();

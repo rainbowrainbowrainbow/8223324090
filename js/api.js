@@ -225,25 +225,89 @@ function crmBusinessStorageUserKey(user) {
     return String(user.id || user.username || user.name || '').trim();
 }
 
-function crmBusinessContextFromStorage(user = null) {
+function removeCrmBusinessStorageKeys(keys = []) {
     try {
-        const value = localStorage.getItem(CRM_BUSINESS_STORAGE_KEY)
-            || localStorage.getItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
+        keys.forEach(key => localStorage.removeItem(key));
+    } catch {}
+}
+
+function clearCrmBusinessScopeStorage() {
+    removeCrmBusinessStorageKeys([
+        CRM_BUSINESS_SCOPE_STORAGE_KEY,
+        CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY
+    ]);
+}
+
+function clearCrmBusinessContextStorage() {
+    removeCrmBusinessStorageKeys([
+        CRM_BUSINESS_STORAGE_KEY,
+        CRM_BUSINESS_STORAGE_USER_KEY,
+        CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY,
+        CRM_BUSINESS_SCOPE_STORAGE_KEY,
+        CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY
+    ]);
+}
+
+function rawCrmBusinessContextFromStorage() {
+    try {
+        const primary = localStorage.getItem(CRM_BUSINESS_STORAGE_KEY);
+        if (primary) return { value: primary, sourceKey: CRM_BUSINESS_STORAGE_KEY };
+        const legacy = localStorage.getItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
+        if (legacy) return { value: legacy, sourceKey: CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY };
+    } catch {}
+    return { value: null, sourceKey: null };
+}
+
+function resolveStoredCrmBusinessContext(user = null, options = {}) {
+    try {
+        const { value, sourceKey } = rawCrmBusinessContextFromStorage();
         if (!value) return null;
         const currentUserKey = crmBusinessStorageUserKey(user);
         const storedUserKey = String(localStorage.getItem(CRM_BUSINESS_STORAGE_USER_KEY) || '').trim();
-        if (currentUserKey && storedUserKey !== currentUserKey) return null;
-        return normalizeCrmBusinessContext(value);
+        if (currentUserKey && storedUserKey !== currentUserKey) {
+            clearCrmBusinessContextStorage();
+            return null;
+        }
+        const rawKey = String(value || '').trim().toLowerCase();
+        const aliasKey = CRM_BUSINESS_CONTEXT_ALIASES[rawKey] || rawKey;
+        if (!CRM_BUSINESS_CONTEXTS[aliasKey]) {
+            clearCrmBusinessContextStorage();
+            return null;
+        }
+        const key = normalizeCrmBusinessContext(value);
+        const policy = user ? resolveCrmBusinessPolicy(user) : null;
+        if (policy && !policy.allowed.includes(key)) {
+            clearCrmBusinessContextStorage();
+            return null;
+        }
+        if (options.repair !== false && (sourceKey !== CRM_BUSINESS_STORAGE_KEY || value !== key)) {
+            localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, key);
+            if (currentUserKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, currentUserKey);
+            localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
+            clearCrmBusinessScopeStorage();
+        }
+        return {
+            key,
+            sourceKey,
+            raw: value
+        };
     } catch {
         return null;
     }
+}
+
+function crmBusinessContextFromStorage(user = null) {
+    return resolveStoredCrmBusinessContext(user)?.key || null;
 }
 
 function crmBusinessScopeFromStorage(user = null) {
     try {
         const currentUserKey = crmBusinessStorageUserKey(user);
         const storedUserKey = String(localStorage.getItem(CRM_BUSINESS_STORAGE_USER_KEY) || '').trim();
-        if (currentUserKey && storedUserKey !== currentUserKey) return null;
+        if (currentUserKey && storedUserKey !== currentUserKey) {
+            clearCrmBusinessContextStorage();
+            return null;
+        }
         const mode = normalizeCrmBusinessScopeMode(localStorage.getItem(CRM_BUSINESS_SCOPE_STORAGE_KEY));
         if (mode === CRM_BUSINESS_SCOPE_SINGLE) return null;
         return {
@@ -387,17 +451,44 @@ function sanitizeCrmBusinessContextForUser(context, user) {
     return policy.defaultContext;
 }
 
-function getCrmBusinessContext(user) {
+function resolveCrmBusinessContextState(user) {
     const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
     const fromRoute = crmBusinessContextFromRoute();
     const fromUrl = crmBusinessContextFromUrl();
-    const stored = crmBusinessContextFromStorage(activeUser);
+    const storedInfo = resolveStoredCrmBusinessContext(activeUser);
+    const stored = storedInfo?.key || null;
     const policy = resolveCrmBusinessPolicy(activeUser);
     const accountDefault = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
     const timelineEntryDefault = accountDefault === 'maysternya_doli' ? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT;
     const preferAccountDefaultOnTimelineRoot = normalizedCrmPath() === '/' && !fromUrl;
-    const next = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
-    return sanitizeCrmBusinessContextForUser(next, activeUser);
+    const source = fromRoute
+        ? 'route'
+        : (fromUrl
+            ? 'url'
+            : (preferAccountDefaultOnTimelineRoot
+                ? 'account_default'
+                : (stored ? 'storage' : 'account_default')));
+    const requested = fromRoute || fromUrl || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault)) || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const activeBusinessId = sanitizeCrmBusinessContextForUser(requested, activeUser);
+    return {
+        activeBusinessId,
+        source: activeBusinessId === requested ? source : 'policy_fallback',
+        routeBusinessId: fromRoute,
+        urlBusinessId: fromUrl,
+        storageBusinessId: stored,
+        storageSourceKey: storedInfo?.sourceKey || null,
+        lastExplicitBusinessId: stored,
+        accountDefaultBusinessId: accountDefault,
+        timelineEntryDefaultBusinessId: timelineEntryDefault,
+        requestedBusinessId: requested,
+        availableBusinessIds: policy.allowed,
+        canSwitchBusiness: policy.canSwitch,
+        policy
+    };
+}
+
+function getCrmBusinessContext(user) {
+    return resolveCrmBusinessContextState(user).activeBusinessId;
 }
 
 function crmBusinessPageAllowsAggregate(page = currentCrmBusinessScopedPage()) {
@@ -485,11 +576,17 @@ function getCrmBusinessContextOptions(user) {
 }
 
 function getCrmBusinessState(user) {
-    const activeBusinessId = getCrmBusinessContext(user);
-    const lastExplicitBusinessId = crmBusinessContextFromStorage(user);
+    const resolution = resolveCrmBusinessContextState(user);
+    const activeBusinessId = resolution.activeBusinessId;
     return {
         activeBusinessId,
-        lastExplicitBusinessId,
+        lastExplicitBusinessId: resolution.lastExplicitBusinessId,
+        source: resolution.source,
+        routeBusinessId: resolution.routeBusinessId,
+        urlBusinessId: resolution.urlBusinessId,
+        storageBusinessId: resolution.storageBusinessId,
+        accountDefaultBusinessId: resolution.accountDefaultBusinessId,
+        canSwitchBusiness: resolution.canSwitchBusiness,
         availableBusinesses: getCrmBusinessContextOptions(user).map(ctx => ({
             id: ctx.key,
             key: ctx.key,
@@ -518,6 +615,9 @@ function setCrmBusinessContext(context, options = {}) {
         if (key === CRM_BUSINESS_DEFAULT_CONTEXT || routeContext === key) url.searchParams.delete('businessContext');
         else url.searchParams.set('businessContext', key);
         window.history.replaceState(window.history.state || {}, '', url);
+    }
+    if (typeof document !== 'undefined' && document.body) {
+        document.body.dataset.crmBusinessContext = key;
     }
     if (options.emit !== false && typeof window !== 'undefined' && previous !== key) {
         window.dispatchEvent(new CustomEvent('crmBusinessContextChanged', {
@@ -572,6 +672,7 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
         window.history.replaceState(window.history.state || {}, '', url);
     }
     if (typeof document !== 'undefined' && document.body) {
+        document.body.dataset.crmBusinessContext = scope.activeContext;
         document.body.dataset.crmBusinessScope = scope.mode;
         document.body.dataset.crmBusinessReadOnly = scope.readOnly ? 'true' : 'false';
     }
@@ -694,6 +795,17 @@ function renderCrmBusinessShell(user) {
         selectedContexts: [activeContext]
     }, { user, updateUrl: true, emit: false, allowAggregate: false });
     const current = scope.activeContext;
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('crmBusinessContextHydrated', {
+            detail: {
+                current,
+                context: CRM_BUSINESS_CONTEXTS[current],
+                scope,
+                state: getCrmBusinessState(user),
+                page
+            }
+        }));
+    }
     if (scope.mode === CRM_BUSINESS_SCOPE_SINGLE && navigateCrmBusinessDestination(current, page)) return true;
     return false;
 }
@@ -758,6 +870,7 @@ if (typeof window !== 'undefined') {
         normalize: normalizeCrmBusinessContext,
         normalizeScopeMode: normalizeCrmBusinessScopeMode,
         current: getCrmBusinessContext,
+        resolution: resolveCrmBusinessContextState,
         scope: getCrmBusinessScope,
         set: setCrmBusinessContext,
         setScope: setCrmBusinessScope,

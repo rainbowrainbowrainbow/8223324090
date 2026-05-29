@@ -320,6 +320,8 @@ const AppState = {
     animatorsFromSheet: [],
     cachedBookings: {},
     cachedLines: {},
+    lines: [],
+    linesByDate: {},
     multiDayMode: false,
     daysToShow: TIMELINE_PERIOD_DAY,
     zoomLevel: TIMELINE_DEFAULT_ZOOM_MINUTES,

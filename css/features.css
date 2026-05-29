@@ -203,6 +203,87 @@
     margin-bottom: 12px;
 }
 
+.timeline-resources-card {
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.04);
+}
+
+.timeline-resources-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.timeline-resources-head h5 {
+    margin: 0 0 4px;
+    font-size: var(--font-sm);
+    font-weight: 900;
+    color: var(--gray-800);
+}
+
+.timeline-resources-list {
+    display: grid;
+    gap: 8px;
+}
+
+.timeline-resource-row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+}
+
+.timeline-resource-row.is-disabled {
+    opacity: 0.58;
+}
+
+.timeline-resource-color {
+    width: 12px;
+    height: 28px;
+    border-radius: 999px;
+}
+
+.timeline-resource-main {
+    min-width: 0;
+}
+
+.timeline-resource-name {
+    display: block;
+    font-weight: 800;
+    color: var(--gray-800);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-resource-meta {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: var(--font-xs);
+}
+
+.timeline-resource-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.timeline-resource-actions button {
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
 /* ==========================================
    DASHBOARD
    ========================================== */

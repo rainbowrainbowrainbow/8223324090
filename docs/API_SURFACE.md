@@ -97,6 +97,7 @@ focused route tests in the same pack.
 | `/api/tasks` | `routes/tasks.js` | tasks |
 | `/api/task-templates` | `routes/task-templates.js` | task-templates |
 | `/api/telegram` | `routes/telegram.js` | telegram |
+| `/api/timeline` | `routes/timeline-resources.js` | timeline resources |
 | `/api/training` | `routes/training.js` | training |
 | `/api/users` | `routes/users.js` | users |
 | `/api/wallet` | `routes/wallet.js` | wallet |

@@ -1192,7 +1192,9 @@ async function showFreeRooms() {
     panel.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/rooms/free/${date}/${time}/${duration}`, {
+        const freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
+            || `/rooms/free/${date}/${time}/${duration}`;
+        const response = await fetch(`${API_BASE}${freeRoomsPath}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;

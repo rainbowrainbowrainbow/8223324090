@@ -730,6 +730,10 @@ function initSettingsListeners() {
     if (timelineKitchenMode) timelineKitchenMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
     const settingsSaveTimelineDisplayBtn = document.getElementById('settingsSaveTimelineDisplayBtn');
     if (settingsSaveTimelineDisplayBtn) settingsSaveTimelineDisplayBtn.addEventListener('click', saveTimelineDisplaySettingsFromSettings);
+    const settingsAddTimelineResourceBtn = document.getElementById('settingsAddTimelineResourceBtn');
+    if (settingsAddTimelineResourceBtn) settingsAddTimelineResourceBtn.addEventListener('click', addTimelineResourceFromSettings);
+    const settingsTimelineResourcesList = document.getElementById('settingsTimelineResourcesList');
+    if (settingsTimelineResourcesList) settingsTimelineResourcesList.addEventListener('click', handleTimelineResourceListClick);
 
     // v5.17: Thread ID save button
     const saveThreadIdBtn = document.getElementById('saveThreadIdBtn');

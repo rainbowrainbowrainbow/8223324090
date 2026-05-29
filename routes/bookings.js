@@ -22,6 +22,7 @@ const {
     normalizeBusinessContext
 } = require('../services/businessContext');
 const { normalizeCustomerSource } = require('../services/customerSource');
+const { findTimelineResource } = require('../services/timelineResources');
 const {
     bookingAccessDeniedPayload,
     buildBookingVisibilityScope,
@@ -339,6 +340,17 @@ function requireBookingRoom(payload) {
     return room ? null : 'Оберіть кімнату';
 }
 
+async function hydrateBookingRoomFromTimelineResource(queryable, payload, businessContext) {
+    if (!payload || String(payload.room || '').trim() || !payload.lineId) return payload;
+    const resource = await findTimelineResource(queryable, businessContext, payload.lineId, { includeInactive: true });
+    if (resource && ['cabinet', 'specialist', 'online'].includes(resource.type)) {
+        payload.room = resource.name;
+        payload.resourceId = resource.resourceId;
+        payload.resourceType = resource.type;
+    }
+    return payload;
+}
+
 async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
@@ -632,6 +644,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     }
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+    await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
     if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
@@ -1060,6 +1073,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         main.businessContext = businessContext;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+        await hydrateBookingRoomFromTimelineResource(pool, main, businessContext);
         const mainRoomError = requireBookingRoom(main);
         if (mainRoomError) { return res.status(400).json({ error: mainRoomError }); }
         const mainPinataFields = applyPinataNormalization(main);
@@ -1068,6 +1082,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 if (!String(lb.room || '').trim()) lb.room = main.room;
+                if (!String(lb.room || '').trim()) await hydrateBookingRoomFromTimelineResource(pool, lb, businessContext);
                 const linkedRoomError = requireBookingRoom(lb);
                 if (linkedRoomError) return res.status(400).json({ error: linkedRoomError });
                 const linkedPinataFields = applyPinataNormalization(lb);
@@ -1711,6 +1726,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
     if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
     if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+    await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
 

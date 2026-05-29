@@ -16,6 +16,11 @@ const {
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
+    getTimelineDisplaySettings,
+    resourceTypeForDisplayMode,
+    timelineResourceAvailability
+} = require('../services/timelineResources');
+const {
     getChatSettingsBundle,
     getUnifiedAIConfig,
     publicAIConfig,
@@ -431,13 +436,26 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
         const dur = parseInt(duration) || 60;
+        const context = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, context)) return;
+        const display = await getTimelineDisplaySettings(pool, context);
+        const resourceType = resourceTypeForDisplayMode(display.mode);
+        if (resourceType) {
+            return res.json(await timelineResourceAvailability(pool, {
+                context,
+                type: resourceType,
+                date,
+                time,
+                duration: dur
+            }));
+        }
 
-        const params = [date, DEFAULT_TIMELINE_CONTEXT];
+        const params = [date, context || DEFAULT_TIMELINE_CONTEXT];
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
             `SELECT b.room, b.time, b.duration
              FROM bookings b
-             WHERE b.date = $1 AND b.business_context = $2 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND b.status != 'cancelled'
              ${visibility.sql}`,
             params
         );

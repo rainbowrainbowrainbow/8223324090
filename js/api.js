@@ -1365,6 +1365,81 @@ async function apiSaveLines(date, lines) {
     }
 }
 
+async function apiGetTimelineResources(type = null, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (type) params.set('type', type);
+        if (options.includeInactive) params.set('includeInactive', 'true');
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources${query}`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) throw new Error('API error ' + response.status);
+        const payload = await response.json();
+        return Array.isArray(payload?.resources) ? payload.resources : [];
+    } catch (err) {
+        console.error('API getTimelineResources error:', err);
+        return [];
+    }
+}
+
+async function apiSaveTimelineResource(resource) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/timeline/resources')}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload(resource || {}))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API saveTimelineResource error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiUpdateTimelineResource(resourceId, resource) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}`)}`, {
+            method: 'PUT',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload(resource || {}))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateTimelineResource error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiDeleteTimelineResource(resourceId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}`)}`, {
+            method: 'DELETE',
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteTimelineResource error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 // v5.16: support filter params
 async function apiGetHistory(filters = {}) {
     try {

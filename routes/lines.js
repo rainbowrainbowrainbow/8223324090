@@ -13,6 +13,12 @@ const {
     requireTimelineContext,
     requireTimelineAction
 } = require('../services/timelineContext');
+const {
+    getTimelineDisplaySettings,
+    resourceTypeForDisplayMode,
+    timelineResourceLinesForMode,
+    syncTimelineResourcesFromLines
+} = require('../services/timelineResources');
 
 const log = createLogger('Lines');
 
@@ -29,6 +35,14 @@ router.get('/:date', async (req, res) => {
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
+        const display = await getTimelineDisplaySettings(pool, businessContext);
+        const resourceType = resourceTypeForDisplayMode(display.mode);
+        if (resourceType) {
+            const lines = await timelineResourceLinesForMode(pool, businessContext, display.mode);
+            res.set('X-Timeline-Lines-Source', 'timeline_resources');
+            res.set('X-Timeline-Resource-Type', resourceType);
+            return res.json(lines || []);
+        }
 
         const sync = businessContext === DEFAULT_TIMELINE_CONTEXT
             ? await syncScheduledAnimatorLines(date)
@@ -84,6 +98,30 @@ router.post('/:date', async (req, res) => {
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'settings')) return;
+        const display = await getTimelineDisplaySettings(client, businessContext);
+        const resourceType = resourceTypeForDisplayMode(display.mode);
+
+        if (resourceType) {
+            await client.query('BEGIN');
+            const resources = await syncTimelineResourcesFromLines(client, businessContext, resourceType, lines);
+            await client.query('COMMIT');
+            const savedLines = resources.map(resource => ({
+                id: resource.resourceId,
+                resourceId: resource.resourceId,
+                resourceType: resource.type,
+                name: resource.name,
+                shortName: resource.shortName,
+                color: resource.color,
+                capacity: resource.capacity,
+                equipment: resource.equipment,
+                metadata: resource.metadata,
+                fromSheet: false,
+                source: 'timeline_resource',
+                sortOrder: resource.sortOrder
+            }));
+            broadcast('line:updated', { date, lines: savedLines, businessContext, resourceType }, req.user?.id?.toString(), date);
+            return res.json({ success: true, resources, lines: savedLines });
+        }
 
         await client.query('BEGIN');
         await client.query(

@@ -839,7 +839,43 @@ function getTimelineDisplayControls() {
         mode: document.getElementById('settingsTimelineDisplayMode'),
         kitchen: document.getElementById('settingsTimelineKitchenMode'),
         kitchenGroup: document.getElementById('settingsTimelineKitchenGroup'),
-        preview: document.getElementById('settingsTimelineDisplayPreview')
+        preview: document.getElementById('settingsTimelineDisplayPreview'),
+        resourcesCard: document.getElementById('settingsTimelineResourcesCard'),
+        resourcesTitle: document.getElementById('settingsTimelineResourcesTitle'),
+        resourcesHint: document.getElementById('settingsTimelineResourcesHint'),
+        resourcesList: document.getElementById('settingsTimelineResourcesList'),
+        resourcesAdd: document.getElementById('settingsAddTimelineResourceBtn')
+    };
+}
+
+function timelineResourceTypeForMode(mode) {
+    if (window.TimelineBusinessContext?.resourceTypeForMode) {
+        return window.TimelineBusinessContext.resourceTypeForMode(mode);
+    }
+    const map = { simple: 'specialist', specialist: 'specialist', education: 'cabinet' };
+    return map[mode] || null;
+}
+
+function timelineResourceCopy(type) {
+    if (type === 'cabinet') {
+        return {
+            title: 'Кабінети',
+            add: '+ Додати кабінет',
+            hint: 'Кабінети є справжніми ресурсами таймлайну: кожен рядок показує зайнятість аудиторії для занять.',
+            empty: 'Кабінетів ще немає. Додайте перший кабінет для навчального розкладу.',
+            prompt: 'Назва кабінету',
+            capacityPrompt: 'Місткість кабінету',
+            unit: 'місць'
+        };
+    }
+    return {
+        title: 'Ресурси спеціалістів',
+        add: '+ Додати ресурс',
+        hint: 'Ресурси спеціалістів стають рядками таймлайну в простому або спеціалістському режимі.',
+        empty: 'Ресурсів ще немає. Додайте спеціаліста або робочий слот.',
+        prompt: 'Назва ресурсу',
+        capacityPrompt: 'Місткість ресурсу',
+        unit: 'місць'
     };
 }
 
@@ -861,6 +897,50 @@ function refreshTimelineDisplaySettingsPreview() {
     const kitchenMode = controls.kitchen?.value || 'with_kitchen';
     if (controls.kitchenGroup) controls.kitchenGroup.classList.toggle('hidden', mode !== 'park');
     if (controls.preview) controls.preview.textContent = timelineDisplayPreviewText(mode, kitchenMode);
+    renderTimelineResourcesManager().catch(error => console.warn('[TimelineResources] preview refresh failed', error));
+}
+
+async function renderTimelineResourcesManager() {
+    const controls = getTimelineDisplayControls();
+    if (!controls.resourcesCard || !controls.resourcesList) return;
+    const mode = controls.mode?.value || 'park';
+    const type = timelineResourceTypeForMode(mode);
+    controls.resourcesCard.classList.toggle('hidden', !type);
+    if (!type) return;
+    const copy = timelineResourceCopy(type);
+    if (controls.resourcesTitle) controls.resourcesTitle.textContent = copy.title;
+    if (controls.resourcesHint) controls.resourcesHint.textContent = copy.hint;
+    if (controls.resourcesAdd) {
+        controls.resourcesAdd.textContent = copy.add;
+        controls.resourcesAdd.dataset.resourceType = type;
+    }
+    controls.resourcesList.innerHTML = '<div class="loading-spinner">Завантаження ресурсів...</div>';
+    const resources = typeof apiGetTimelineResources === 'function'
+        ? await apiGetTimelineResources(type, { includeInactive: true })
+        : [];
+    if (!resources.length) {
+        controls.resourcesList.innerHTML = `<div class="empty-state-text">${escapeHtml(copy.empty)}</div>`;
+        return;
+    }
+    controls.resourcesList.innerHTML = resources.map(resource => {
+        const equipment = Array.isArray(resource.equipment) && resource.equipment.length
+            ? ` · ${resource.equipment.map(item => escapeHtml(item)).join(', ')}`
+            : '';
+        const capacity = resource.capacity ? `${escapeHtml(String(resource.capacity))} ${copy.unit}` : 'без місткості';
+        const state = resource.isActive === false ? 'вимкнено' : 'активно';
+        const actionLabel = resource.isActive === false ? 'Увімкнути' : 'Вимкнути';
+        return `<div class="timeline-resource-row${resource.isActive === false ? ' is-disabled' : ''}" data-resource-id="${escapeHtml(resource.resourceId)}" data-resource-type="${escapeHtml(resource.type)}">
+            <span class="timeline-resource-color" style="background:${escapeHtml(resource.color || '#10B981')}"></span>
+            <span class="timeline-resource-main">
+                <span class="timeline-resource-name">${escapeHtml(resource.name || resource.resourceId)}</span>
+                <span class="timeline-resource-meta">${escapeHtml(capacity)} · ${escapeHtml(state)}${equipment}</span>
+            </span>
+            <span class="timeline-resource-actions">
+                <button type="button" class="btn-secondary" data-resource-action="edit">Редагувати</button>
+                <button type="button" class="btn-secondary" data-resource-action="${resource.isActive === false ? 'enable' : 'disable'}">${actionLabel}</button>
+            </span>
+        </div>`;
+    }).join('');
 }
 
 async function loadTimelineDisplaySettingsIntoModal() {
@@ -881,6 +961,7 @@ async function loadTimelineDisplaySettingsIntoModal() {
     controls.mode.value = settings.mode || 'park';
     if (controls.kitchen) controls.kitchen.value = settings.parkKitchenMode || 'with_kitchen';
     refreshTimelineDisplaySettingsPreview();
+    await renderTimelineResourcesManager();
 }
 
 async function saveTimelineDisplaySettingsFromSettings() {
@@ -903,6 +984,94 @@ async function saveTimelineDisplaySettingsFromSettings() {
         console.warn('[TimelineDisplay] Failed to save server display settings', error);
         showNotification('Не вдалося зберегти режим таймлайну на сервері.', 'error');
     }
+}
+
+function resetTimelineResourceCaches() {
+    if (typeof AppState !== 'undefined') {
+        AppState.cachedLines = {};
+        AppState.lines = [];
+        AppState.linesByDate = {};
+    }
+}
+
+async function addTimelineResourceFromSettings() {
+    const controls = getTimelineDisplayControls();
+    const mode = controls.mode?.value || 'park';
+    const type = timelineResourceTypeForMode(mode);
+    if (!type) return;
+    const copy = timelineResourceCopy(type);
+    const name = await promptModal(copy.prompt, {
+        title: copy.add.replace(/^\+\s*/, ''),
+        placeholder: type === 'cabinet' ? 'Кабінет 4' : 'Спеціаліст',
+        okText: 'Додати'
+    });
+    if (!name) return;
+    let capacity = null;
+    if (type === 'cabinet') {
+        const rawCapacity = await promptModal(copy.capacityPrompt, {
+            title: 'Місткість',
+            placeholder: '8',
+            okText: 'Зберегти'
+        });
+        if (rawCapacity) capacity = parseInt(rawCapacity, 10) || null;
+    }
+    const existing = typeof apiGetTimelineResources === 'function'
+        ? await apiGetTimelineResources(type, { includeInactive: true })
+        : [];
+    const result = await apiSaveTimelineResource({
+        type,
+        name,
+        capacity,
+        sortOrder: existing.length * 10 + 10,
+        metadata: { source: 'settings_resource_manager' }
+    });
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося зберегти ресурс таймлайну', 'error');
+        return;
+    }
+    resetTimelineResourceCaches();
+    await renderTimelineResourcesManager();
+    if (typeof renderTimeline === 'function') await renderTimeline();
+    showNotification('Ресурс таймлайну збережено', 'success');
+}
+
+async function handleTimelineResourceListClick(event) {
+    const button = event.target.closest('[data-resource-action]');
+    if (!button) return;
+    const row = button.closest('[data-resource-id]');
+    if (!row) return;
+    const resourceId = row.dataset.resourceId;
+    const action = button.dataset.resourceAction;
+    const type = row.dataset.resourceType || timelineResourceTypeForMode(getTimelineDisplayControls().mode?.value || 'park');
+    if (!resourceId || !type) return;
+    const resources = await apiGetTimelineResources(type, { includeInactive: true });
+    const current = resources.find(resource => resource.resourceId === resourceId);
+    if (!current) return;
+
+    let result = null;
+    if (action === 'edit') {
+        const name = await promptModal(timelineResourceCopy(type).prompt, {
+            title: 'Редагувати ресурс',
+            defaultValue: current.name || '',
+            placeholder: current.name || '',
+            okText: 'Зберегти'
+        });
+        if (!name) return;
+        result = await apiUpdateTimelineResource(resourceId, { ...current, type, name });
+    } else if (action === 'disable') {
+        result = await apiDeleteTimelineResource(resourceId);
+    } else if (action === 'enable') {
+        result = await apiUpdateTimelineResource(resourceId, { ...current, type, isActive: true });
+    }
+
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося оновити ресурс таймлайну', 'error');
+        return;
+    }
+    resetTimelineResourceCaches();
+    await renderTimelineResourcesManager();
+    if (typeof renderTimeline === 'function') await renderTimeline();
+    showNotification('Ресурс таймлайну оновлено', 'success');
 }
 
 async function showSettings() {

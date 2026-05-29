@@ -48,6 +48,9 @@ async function saveLinesForDate(date, lines) {
         return false;
     }
     AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    AppState.lines = lines;
+    AppState.linesByDate = AppState.linesByDate || {};
+    AppState.linesByDate[dateStr] = lines;
     return true;
 }
 
@@ -374,6 +377,9 @@ async function renderTimeline() {
         lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
         bookings = Array.isArray(bookingsResult) ? bookingsResult : [];
         afishaEvents = Array.isArray(afishaResult) ? afishaResult : [];
+        AppState.lines = lines;
+        AppState.linesByDate = AppState.linesByDate || {};
+        AppState.linesByDate[formatDate(selectedDate)] = lines;
     } catch (err) {
         console.error('[Timeline] Critical fetch error:', err);
     }
@@ -3264,6 +3270,55 @@ function updateRoomLoadPanel(bookings, date) {
 
     const { start, end } = getTimeRange(date);
     const totalMinutes = (end - start) * 60;
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    const resourceBacked = presentation && presentation.mode !== 'park' && presentation.resourceType;
+
+    if (resourceBacked) {
+        const dateStr = formatDate(date);
+        const resources = (AppState.linesByDate?.[dateStr] || AppState.lines || [])
+            .filter(line => line && line.id)
+            .map((line, index) => ({
+                id: String(line.id),
+                name: line.name || `${presentation.emptyLineName || presentation.roomOptionLabel || 'Ресурс'} ${index + 1}`,
+                color: line.color || '#10B981'
+            }));
+        if (!resources.length) {
+            list.innerHTML = '<div class="empty-state-text">Немає активних ресурсів для цього режиму.</div>';
+            if (summary) summary.textContent = '0/0 вільних';
+            return;
+        }
+        const resourceMinutes = {};
+        resources.forEach(resource => { resourceMinutes[resource.id] = 0; });
+        const dayStart = start * 60;
+        const dayEnd = end * 60;
+        bookings
+            .filter(b => b.status !== 'cancelled' && b.lineId && resourceMinutes[String(b.lineId)] !== undefined)
+            .forEach(b => {
+                const bookingStart = Math.max(dayStart, timeToMinutes(b.time || '00:00'));
+                const bookingEnd = Math.min(dayEnd, bookingStart + (parseInt(b.duration, 10) || 0));
+                resourceMinutes[String(b.lineId)] += Math.max(0, bookingEnd - bookingStart);
+            });
+
+        let occupiedCount = 0;
+        list.innerHTML = resources.map(resource => {
+            const mins = resourceMinutes[resource.id] || 0;
+            const pct = Math.min(100, Math.round((mins / Math.max(1, totalMinutes)) * 100));
+            const loadClass = getRoomLoadClass(pct);
+            if (pct > 0) occupiedCount++;
+            return `<div class="room-load-item${pct >= 100 ? ' is-full' : ''}">
+                <span class="room-load-name" title="${escapeHtml(resource.name)}">${escapeHtml(resource.name)}</span>
+                <div class="room-load-bar-wrap">
+                    <div class="room-load-bar ${loadClass}" style="width: ${pct}%"></div>
+                </div>
+                <span class="room-load-pct ${loadClass}">${pct}%</span>
+            </div>`;
+        }).join('');
+        if (summary) {
+            const freeCount = resources.length - occupiedCount;
+            summary.textContent = `${freeCount}/${resources.length} вільних`;
+        }
+        return;
+    }
 
     // Calculate occupied minutes per room
     const roomMinutes = {};

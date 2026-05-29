@@ -64,6 +64,7 @@
             label: 'Простий режим',
             shortLabel: 'Простий',
             bodyClass: 'timeline-mode-simple',
+            resourceType: 'specialist',
             showAfisha: false,
             showProductSales: false,
             roomLoadLabel: 'Кабінети',
@@ -94,6 +95,7 @@
             label: 'Спеціаліст',
             shortLabel: 'Спеціаліст',
             bodyClass: 'timeline-mode-specialist',
+            resourceType: 'specialist',
             showAfisha: false,
             showProductSales: false,
             roomLoadLabel: 'Кабінети',
@@ -124,6 +126,7 @@
             label: 'Дитячий розважальний парк',
             shortLabel: 'Парк',
             bodyClass: 'timeline-mode-park',
+            resourceType: 'animator',
             showAfisha: true,
             showProductSales: true,
             roomLoadLabel: 'Кімнати',
@@ -160,6 +163,7 @@
             label: 'Навчальний заклад',
             shortLabel: 'Навчання',
             bodyClass: 'timeline-mode-education',
+            resourceType: 'cabinet',
             showAfisha: false,
             showProductSales: false,
             roomLoadLabel: 'Кабінети',
@@ -312,6 +316,11 @@
         };
     }
 
+    function resourceTypeForMode(mode) {
+        const displayMode = DISPLAY_MODES[String(mode || '')] || DISPLAY_MODES[defaultDisplayMode(currentContext())];
+        return displayMode?.key === 'park' ? null : (displayMode?.resourceType || null);
+    }
+
     function appendApiContext(url) {
         const ctx = currentContext();
         if (ctx.key === 'event_genix') return url;
@@ -421,6 +430,7 @@
         displaySettings: readDisplaySettings,
         saveDisplaySettings,
         presentation,
+        resourceTypeForMode,
         userRoles,
         userPageAllowlist,
         hasAnyRole,

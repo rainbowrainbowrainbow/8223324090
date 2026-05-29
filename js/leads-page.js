@@ -122,6 +122,72 @@ function leadPayload(payload = {}) {
         : { ...(payload || {}), businessContext: leadBusinessContext() };
 }
 
+function leadBusinessScope() {
+    return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: leadBusinessContext() };
+}
+
+function isLeadBusinessReadOnly() {
+    return Boolean(window.CrmBusinessContext?.isReadOnly?.(leadBusinessScope()));
+}
+
+function leadReadOnlyMessage(actionLabel = 'змінювати ліди') {
+    return window.CrmBusinessContext?.readOnlyMessage?.(leadBusinessScope(), actionLabel)
+        || 'Огляд кількох бізнесів працює тільки для перегляду. Оберіть один бізнес, щоб змінювати ліди.';
+}
+
+function guardLeadWrite(actionLabel = 'змінювати ліди') {
+    return window.CrmBusinessContext?.guardWrite
+        ? window.CrmBusinessContext.guardWrite(actionLabel, leadBusinessScope())
+        : !isLeadBusinessReadOnly();
+}
+
+function syncLeadReadOnlyUi() {
+    const readOnly = isLeadBusinessReadOnly();
+    if (document.body) document.body.dataset.crmBusinessReadOnly = readOnly ? 'true' : 'false';
+    let notice = document.getElementById('leadBusinessReadOnlyNotice');
+    if (readOnly && !notice) {
+        notice = document.createElement('div');
+        notice.id = 'leadBusinessReadOnlyNotice';
+        notice.className = 'crm-business-readonly-banner';
+        notice.setAttribute('role', 'status');
+        document.querySelector('.leads-toolbar')?.insertAdjacentElement('afterend', notice);
+    }
+    if (notice) {
+        notice.textContent = leadReadOnlyMessage('редагувати ліди');
+        notice.hidden = !readOnly;
+    }
+    ['addLeadBtn', 'leadModalSave', 'mailingModalSave'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = readOnly;
+        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        if (readOnly) el.title = leadReadOnlyMessage('редагувати ліди');
+        else el.removeAttribute('title');
+    });
+    document.querySelectorAll([
+        '[data-lead-write-action="true"]',
+        '.lead-actions .btn-edit',
+        '.lead-actions .btn-type',
+        '.lead-actions .btn-delete',
+        '.lead-actions .btn-convert',
+        '.kanban-card-actions button',
+        '.btn-add-mailing',
+        '#addMailingModal .btn-save'
+    ].join(',')).forEach(el => {
+        el.disabled = readOnly;
+        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        el.classList.toggle('crm-business-readonly-control', readOnly);
+        if (readOnly) el.title = leadReadOnlyMessage('редагувати ліди');
+        else el.removeAttribute('title');
+    });
+    document.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+        card.draggable = !readOnly;
+        card.classList.toggle('crm-business-readonly-control', readOnly);
+        if (readOnly) card.title = leadReadOnlyMessage('перетягувати ліди між етапами');
+        else card.removeAttribute('title');
+    });
+}
+
 function initLeadBusinessContext(user) {
     const api = window.CrmBusinessContext;
     currentBusinessContext = api?.initPage?.({
@@ -132,14 +198,28 @@ function initLeadBusinessContext(user) {
             currentBusinessContext = current;
             workspaceLeadId = null;
             closeLeadWorkspace({ pushState: false, force: true, guard: false });
+            syncLeadReadOnlyUi();
             await loadLeads();
         }
     }) || 'event_genix';
+    syncLeadReadOnlyUi();
 }
 
 async function apiFetch(url, opts = {}) {
+    const method = String(opts.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !guardLeadWrite('змінювати ліди')) {
+        throw new Error(leadReadOnlyMessage('змінювати ліди'));
+    }
     opts.headers = { ...getHeaders(!!opts.body), ...opts.headers };
     const res = await fetch(leadApiUrl(url), opts);
+    if (res.status === 403) {
+        const payload = await res.clone().json().catch(() => ({}));
+        if (payload.code === 'business_scope_read_only') {
+            const message = payload.error || leadReadOnlyMessage('змінювати ліди');
+            if (typeof showNotification === 'function') showNotification(message, 'warning');
+            throw new Error(message);
+        }
+    }
     if (res.status === 401 || res.status === 403) {
         window.location.href = '/';
         throw new Error('Unauthorized');
@@ -460,6 +540,7 @@ function renderTable() {
             </td>
         </tr>`;
     }).join('');
+    syncLeadReadOnlyUi();
 }
 
 // ==========================================
@@ -1148,6 +1229,7 @@ function renderKanban() {
     }).join('');
 
     setupKanbanDragDrop();
+    syncLeadReadOnlyUi();
 }
 
 function setupKanbanDragDrop() {
@@ -1194,6 +1276,7 @@ function setupKanbanDragDrop() {
 }
 
 async function updateLeadStage(leadId, stage, extraFields = {}) {
+    if (!guardLeadWrite('переміщати ліди між етапами')) return;
     try {
         const body = { pipeline_stage: stage, ...extraFields };
         const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -1218,6 +1301,7 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
 // LEAD TYPE MENU (context)
 // ==========================================
 function showTypeMenu(leadId, event) {
+    if (!guardLeadWrite('змінювати тип ліда')) return;
     event.stopPropagation();
     // Remove existing menu
     document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
@@ -1251,6 +1335,7 @@ function showTypeMenu(leadId, event) {
 
 async function setLeadType(leadId, type, event) {
     if (event) event.stopPropagation();
+    if (!guardLeadWrite('змінювати тип ліда')) return;
     document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
 
     // If quality type, show category picker
@@ -1279,6 +1364,7 @@ async function setLeadType(leadId, type, event) {
 }
 
 function showQualityCategoryModal(leadId) {
+    if (!guardLeadWrite('змінювати тип ліда')) return;
     const overlay = document.getElementById('qualityCategoryModal');
     if (!overlay) return;
     overlay.dataset.leadId = leadId;
@@ -1494,6 +1580,7 @@ async function showCustomerCardModal(leadId) {
 }
 
 async function saveCustomerCard() {
+    if (!guardLeadWrite('редагувати картку клієнта ліда')) return;
     const overlay = document.getElementById('customerCardModal');
     const leadId = parseInt(overlay.dataset.leadId);
 
@@ -1547,6 +1634,7 @@ async function saveCustomerCard() {
 // LOST REASON MODAL
 // ==========================================
 function showLostReasonModal(leadId, stage) {
+    if (!guardLeadWrite('закривати ліди')) return;
     const overlay = document.getElementById('lostReasonModal');
     if (!overlay) return;
     overlay.dataset.leadId = leadId;
@@ -1558,6 +1646,7 @@ function showLostReasonModal(leadId, stage) {
 }
 
 async function saveLostReason() {
+    if (!guardLeadWrite('закривати ліди')) return;
     const overlay = document.getElementById('lostReasonModal');
     const leadId = parseInt(overlay.dataset.leadId);
     const reason = document.getElementById('lostReasonSelect')?.value;
@@ -1614,12 +1703,14 @@ async function loadMailing() {
             </tr>`).join('')}
             </tbody></table>`}
         `;
+        syncLeadReadOnlyUi();
     } catch(e) {
         if (mailingWrap) mailingWrap.innerHTML = '<div class="empty-state">Помилка завантаження</div>';
     }
 }
 
 function showAddMailingModal() {
+    if (!guardLeadWrite('редагувати розсилку')) return;
     const overlay = document.getElementById('addMailingModal');
     if (!overlay) return;
     document.getElementById('mailingName').value = '';
@@ -1632,6 +1723,7 @@ function showAddMailingModal() {
 }
 
 async function saveMailingEntry() {
+    if (!guardLeadWrite('редагувати розсилку')) return;
     const overlay = document.getElementById('addMailingModal');
     const name = document.getElementById('mailingName')?.value.trim();
     const phone = document.getElementById('mailingPhone')?.value.trim();
@@ -1658,6 +1750,7 @@ async function saveMailingEntry() {
 }
 
 async function deleteMailingEntry(id) {
+    if (!guardLeadWrite('редагувати розсилку')) return;
     if (typeof confirmModal === 'function') {
         if (!await confirmModal('Видалити з розсилки?', { type: 'danger', okText: 'Видалити' })) return;
     }
@@ -1810,6 +1903,7 @@ function setupEvents() {
 }
 
 function openAddModal() {
+    if (!guardLeadWrite('створювати ліди')) return;
     document.getElementById('leadModalTitle').textContent = 'Новий лід';
     document.getElementById('leadEditId').value = '';
     document.getElementById('leadName').value = '';
@@ -1833,6 +1927,7 @@ function openAddModal() {
 }
 
 function editLead(id) {
+    if (!guardLeadWrite('редагувати ліди')) return;
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
 
@@ -1897,6 +1992,7 @@ async function closeLeadModal(force = false) {
 }
 
 async function saveLead() {
+    if (!guardLeadWrite('редагувати ліди')) return;
     const editId = document.getElementById('leadEditId')?.value;
     const name = document.getElementById('leadName')?.value.trim();
     if (!name) { if (typeof showNotification === 'function') showNotification("Ім'я обов'язкове", 'error'); return; }
@@ -1956,6 +2052,7 @@ async function saveLead() {
 }
 
 async function deleteLead(id) {
+    if (!guardLeadWrite('видаляти ліди')) return;
     if (typeof confirmModal === 'function') {
         if (!await confirmModal('Видалити лід?', { type: 'danger', okText: 'Видалити' })) return;
     }
@@ -1970,6 +2067,7 @@ async function deleteLead(id) {
 }
 
 async function convertLead(id) {
+    if (!guardLeadWrite('конвертувати ліди')) return;
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
     const params = new URLSearchParams();
@@ -1990,6 +2088,7 @@ function localDateInput(date = new Date()) {
 }
 
 async function createLeadWorkspaceCallbackTask(leadId) {
+    if (!guardLeadWrite('створювати задачі з ліда')) return;
     const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
     const lead = workspace?.lead || leadsData.find(l => l.id === leadId) || {};
     const defaultDeadline = new Date();
@@ -2085,6 +2184,7 @@ async function createLeadWorkspaceCallbackTask(leadId) {
 }
 
 async function completeLeadWorkspaceTask(leadId, taskId) {
+    if (!guardLeadWrite('змінювати задачі ліда')) return;
     if (!taskId) return;
     const ok = typeof confirmModal === 'function'
         ? await confirmModal('Позначити цю exact задачу як виконану?', { okText: 'Виконати', type: 'success' })
@@ -2111,6 +2211,7 @@ async function completeLeadWorkspaceTask(leadId, taskId) {
 }
 
 async function confirmLeadWorkspaceBooking(leadId, bookingId) {
+    if (!guardLeadWrite('підтверджувати бронювання ліда')) return;
     if (!bookingId) return;
     const ok = typeof confirmModal === 'function'
         ? await confirmModal('Підтвердити exact preliminary бронювання?', { okText: 'Підтвердити', type: 'success' })
@@ -2286,6 +2387,7 @@ async function loadLeadCustomerLinkOptions(query) {
 }
 
 async function linkWorkspaceLeadCustomer(leadId) {
+    if (!guardLeadWrite('привʼязувати клієнта до ліда')) return;
     const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
     const modal = ensureLeadCustomerLinkModal();
     leadCustomerLinkState.leadId = leadId;
@@ -2315,6 +2417,7 @@ function closeLeadCustomerLinkModal() {
 }
 
 async function submitLeadCustomerLink(body, successText) {
+    if (!guardLeadWrite('привʼязувати клієнта до ліда')) return;
     const leadId = leadCustomerLinkState.leadId;
     if (!leadId) return;
     try {

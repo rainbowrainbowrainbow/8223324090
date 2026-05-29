@@ -32,6 +32,7 @@ const ReportsPage = (() => {
     let _reportWorkflowSettings = null;
     let _reportApprovalUsers = [];
     let _pendingOpenReportId = null;
+    let _businessContext = 'event_genix';
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -161,16 +162,131 @@ const ReportsPage = (() => {
     // HELPERS
     // ==========================================
 
+    function reportsBusinessContext() {
+        return window.CrmBusinessContext?.normalize?.(_businessContext) || _businessContext || 'event_genix';
+    }
+
+    function reportsBusinessScope() {
+        return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: reportsBusinessContext() };
+    }
+
+    function isReportsBusinessReadOnly() {
+        return Boolean(window.CrmBusinessContext?.isReadOnly?.(reportsBusinessScope()));
+    }
+
+    function reportsReadOnlyMessage(actionLabel = 'змінювати звіти') {
+        return window.CrmBusinessContext?.readOnlyMessage?.(reportsBusinessScope(), actionLabel)
+            || 'Огляд кількох бізнесів працює тільки для перегляду. Оберіть один бізнес, щоб змінювати звіти.';
+    }
+
+    function guardReportsWrite(actionLabel = 'змінювати звіти') {
+        return window.CrmBusinessContext?.guardWrite
+            ? window.CrmBusinessContext.guardWrite(actionLabel, reportsBusinessScope())
+            : !isReportsBusinessReadOnly();
+    }
+
+    function reportsApiUrl(url) {
+        return window.CrmBusinessContext?.apiUrl
+            ? window.CrmBusinessContext.apiUrl(url, reportsBusinessContext())
+            : url;
+    }
+
+    function reportsPayload(payload = {}) {
+        return window.CrmBusinessContext?.payload
+            ? window.CrmBusinessContext.payload(payload, reportsBusinessContext())
+            : { ...(payload || {}), businessContext: reportsBusinessContext() };
+    }
+
+    function syncReportsReadOnlyUi() {
+        const readOnly = isReportsBusinessReadOnly();
+        if (document.body) document.body.dataset.crmBusinessReadOnly = readOnly ? 'true' : 'false';
+        let notice = document.getElementById('reportsBusinessReadOnlyNotice');
+        if (readOnly && !notice) {
+            notice = document.createElement('div');
+            notice.id = 'reportsBusinessReadOnlyNotice';
+            notice.className = 'crm-business-readonly-banner';
+            notice.setAttribute('role', 'status');
+            document.querySelector('.rpt-header')?.insertAdjacentElement('afterend', notice);
+        }
+        if (notice) {
+            notice.textContent = reportsReadOnlyMessage('редагувати звіти');
+            notice.hidden = !readOnly;
+        }
+        [
+            'addReportBtn',
+            'reportApprovalSaveBtn',
+            'reportTemplateUploadBtn',
+            'reportTemplateImportCsvBtn',
+            'reportTemplateResetBtn',
+            'reportTemplateDraftBtn',
+            'reportTemplateAddRowBtn',
+            'reportTemplateAddColumnBtn',
+            'reportTemplateSaveBtn',
+            'reportTemplateCloseBtn',
+            'reportSheetTitleInput'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (readOnly || id === 'addReportBtn' || id === 'reportApprovalSaveBtn') {
+                el.disabled = readOnly;
+            }
+            el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+            if (readOnly) el.title = reportsReadOnlyMessage('редагувати звіти');
+            else el.removeAttribute('title');
+        });
+        document.querySelectorAll('.rpt-action-btn, [onclick^="ReportsPage.toggleHashtagActive"]').forEach(el => {
+            el.disabled = readOnly;
+            el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+            el.classList.toggle('crm-business-readonly-control', readOnly);
+            if (readOnly) el.title = reportsReadOnlyMessage('редагувати звіти');
+            else el.removeAttribute('title');
+        });
+    }
+
+    function initReportsBusinessContext(user) {
+        const api = window.CrmBusinessContext;
+        _businessContext = api?.initPage?.({
+            pageId: 'reports',
+            user,
+            beforeChange: async () => {
+                closeModal();
+                return true;
+            },
+            onChange: async ({ current }) => {
+                _businessContext = current;
+                _page = 1;
+                _expandedRow = null;
+                syncReportsReadOnlyUi();
+                await Promise.all([loadSummary(), loadReports(), loadOnDuty(), loadSubmitters(), loadHashtags(), loadWorkflowSettings()]);
+                refreshReportWorkspaceControls();
+            }
+        }) || 'event_genix';
+        syncReportsReadOnlyUi();
+    }
+
     async function apiRequest(method, url, body) {
+        const normalizedMethod = String(method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod) && !guardReportsWrite('змінювати звіти')) {
+            throw new Error(reportsReadOnlyMessage('змінювати звіти'));
+        }
         const token = localStorage.getItem('pzp_token');
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
         if (body) headers['Content-Type'] = 'application/json';
-        const res = await fetch(url, {
+        const requestBody = body ? reportsPayload(body) : undefined;
+        const res = await fetch(reportsApiUrl(url), {
             method,
             headers,
-            body: body ? JSON.stringify(body) : undefined
+            body: requestBody ? JSON.stringify(requestBody) : undefined
         });
+        if (res.status === 403) {
+            const payload = await res.clone().json().catch(() => ({}));
+            if (payload.code === 'business_scope_read_only') {
+                const message = payload.error || reportsReadOnlyMessage('змінювати звіти');
+                showNotification(message, 'warning');
+                throw new Error(message);
+            }
+        }
         if (res.status === 401 || res.status === 403) {
             localStorage.removeItem('pzp_token');
         window.location.href = '/';
@@ -443,6 +559,7 @@ const ReportsPage = (() => {
             }
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
+        initReportsBusinessContext(AppState.currentUser);
 
         await setupReportTemplateWorkspace();
 
@@ -473,6 +590,7 @@ const ReportsPage = (() => {
             loadHashtags(),
             loadWorkflowSettings()
         ]);
+        syncReportsReadOnlyUi();
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     }
@@ -599,6 +717,7 @@ const ReportsPage = (() => {
     }
 
     async function saveWorkflowSettings() {
+        if (!guardReportsWrite('зберігати маршрут перевірки звітів')) return;
         const select = document.getElementById('reportApprovalAssignee');
         try {
             _reportWorkflowSettings = await apiRequest('PUT', '/api/reports/workflow-settings', {
@@ -618,6 +737,7 @@ const ReportsPage = (() => {
             const names = [...new Set((data.reports || []).map(r => r.submittedBy).filter(Boolean))];
             const select = document.getElementById('submittedByFilter');
             if (!select) return;
+            while (select.options.length > 1) select.remove(1);
             names.sort().forEach(name => {
                 const opt = document.createElement('option');
                 opt.value = name;
@@ -856,6 +976,7 @@ const ReportsPage = (() => {
     function refreshReportWorkspaceControls() {
         const state = _reportTableState;
         const locked = isReportTableLocked(state);
+        const readOnly = isReportsBusinessReadOnly();
         const dirty = document.getElementById('reportTemplateDirty');
         if (dirty) dirty.classList.toggle('hidden', !_reportTableDirty);
 
@@ -902,7 +1023,7 @@ const ReportsPage = (() => {
             'reportSheetTitleInput'
         ].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.disabled = _reportTableBusy || !state || locked;
+            if (el) el.disabled = readOnly || _reportTableBusy || !state || locked;
         });
 
         [
@@ -913,7 +1034,8 @@ const ReportsPage = (() => {
             if (el) el.disabled = _reportTableBusy || !state;
         });
 
-        if (closeBtn) closeBtn.disabled = _reportTableBusy || !state || locked || !hasMeaningfulTableData();
+        if (closeBtn) closeBtn.disabled = readOnly || _reportTableBusy || !state || locked || !hasMeaningfulTableData();
+        syncReportsReadOnlyUi();
     }
 
     async function confirmDiscardReportTableChanges() {
@@ -1467,6 +1589,7 @@ const ReportsPage = (() => {
     }
 
     async function saveReportTemplateDraft() {
+        if (!guardReportsWrite('зберігати чернетки звітів')) return;
         if (!_reportTableState || isReportTableLocked()) return;
         if (!String(_reportTableState.title || '').trim()) {
             showNotification('Вкажіть назву чернетки', 'error');
@@ -1556,6 +1679,7 @@ const ReportsPage = (() => {
     }
 
     async function createReportFromTemplate() {
+        if (!guardReportsWrite('створювати звіти')) return;
         if (!_reportTableState) return;
         if (_reportTableBusy || isReportTableLocked() || !validateReportTableForCreate()) return;
         const reportDefaults = _reportTableState.defaultReport || {};
@@ -1626,6 +1750,7 @@ const ReportsPage = (() => {
     }
 
     async function closeReportTemplate() {
+        if (!guardReportsWrite('закривати звіти')) return;
         if (!_reportTableState || _reportTableBusy || isReportTableLocked()) return;
         if (!validateReportTableForCreate()) return;
         if (typeof confirmModal === 'function') {
@@ -1754,6 +1879,7 @@ const ReportsPage = (() => {
                 </div>
             `;
         }).join('');
+        syncReportsReadOnlyUi();
     }
 
     function populateHashtagFilter() {
@@ -1784,6 +1910,7 @@ const ReportsPage = (() => {
     }
 
     async function toggleHashtagActive(hashtag, active) {
+        if (!guardReportsWrite('змінювати хештеги звітів')) return;
         try {
             const result = await apiRequest('PATCH', '/api/reports/hashtags/toggle', { hashtag, active });
             showNotification(active
@@ -1983,6 +2110,7 @@ const ReportsPage = (() => {
     }
 
     async function requestApproval(id) {
+        if (!guardReportsWrite('передавати звіти на перевірку')) return;
         try {
             const result = await apiRequest('POST', `/api/reports/${id}/request-approval`, {});
             showNotification(result.duplicateSkipped ? 'Задача на перевірку вже існує' : 'Задачу бухгалтеру поставлено');
@@ -1993,6 +2121,7 @@ const ReportsPage = (() => {
     }
 
     async function startApprovalReview(id) {
+        if (!guardReportsWrite('брати звіти в перевірку')) return;
         try {
             await apiRequest('POST', `/api/reports/${id}/in-review`, {});
             showNotification('Звіт взято в перевірку');
@@ -2003,6 +2132,7 @@ const ReportsPage = (() => {
     }
 
     async function approveReport(id) {
+        if (!guardReportsWrite('затверджувати звіти')) return;
         try {
             const comment = typeof promptModal === 'function' ? ((await promptModal('Коментар бухгалтера до затвердження (необовʼязково)', { defaultValue: '', type: 'info' })) || '') : '';
             await apiRequest('POST', `/api/reports/${id}/approve`, { comment });
@@ -2014,6 +2144,7 @@ const ReportsPage = (() => {
     }
 
     async function rejectReport(id) {
+        if (!guardReportsWrite('повертати звіти')) return;
         const comment = typeof promptModal === 'function' ? await promptModal('Причина повернення звіту бухгалтером', { defaultValue: '', type: 'warning' }) : null;
         if (comment === null) return;
         try {
@@ -2026,6 +2157,7 @@ const ReportsPage = (() => {
     }
 
     async function deleteReport(id) {
+        if (!guardReportsWrite('видаляти звіти')) return;
         const report = _reports.find(r => r.id === id);
         if (isClosedReport(report)) {
             showNotification('Закритий звіт не можна видалити', 'error');
@@ -2046,6 +2178,7 @@ const ReportsPage = (() => {
     // ==========================================
 
     function openModal(report) {
+        if (!guardReportsWrite(report?.id ? 'редагувати звіти' : 'створювати звіти')) return;
         const modal = document.getElementById('reportModal');
         if (!modal) return;
 
@@ -2110,6 +2243,7 @@ const ReportsPage = (() => {
 
     async function submitReport(event) {
         event.preventDefault();
+        if (!guardReportsWrite(_editingId ? 'редагувати звіти' : 'створювати звіти')) return;
 
         const type = document.getElementById('reportType')?.value;
         const amount = document.getElementById('reportAmount')?.value;

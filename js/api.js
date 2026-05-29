@@ -589,6 +589,28 @@ function isCrmBusinessScopeReadOnly(scope = getCrmBusinessScope()) {
     return CRM_BUSINESS_SCOPE_READ_ONLY.has(scope?.mode) || scope?.readOnly === true;
 }
 
+function crmBusinessReadOnlyMessage(scope = getCrmBusinessScope(), actionLabel = 'змінювати дані') {
+    const modeLabel = scope?.mode === CRM_BUSINESS_SCOPE_ALL ? 'усіх бізнесів' : 'кількох бізнесів';
+    return `Огляд ${modeLabel} працює тільки для перегляду. Оберіть один бізнес, щоб ${actionLabel}.`;
+}
+
+function canWriteCrmBusinessScope(scope = getCrmBusinessScope()) {
+    return !isCrmBusinessScopeReadOnly(scope);
+}
+
+function guardCrmBusinessWrite(actionLabel = 'змінювати дані', scope = getCrmBusinessScope()) {
+    if (canWriteCrmBusinessScope(scope)) return true;
+    const message = crmBusinessReadOnlyMessage(scope, actionLabel);
+    if (typeof showNotification === 'function') {
+        showNotification(message, 'warning');
+    } else if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+        window.showNotification(message, 'warning');
+    } else {
+        console.warn(message);
+    }
+    return false;
+}
+
 function userCanAccessCrmBusinessContext(user, context) {
     if (!user) return false;
     const key = normalizeCrmBusinessContext(context);
@@ -927,6 +949,9 @@ if (typeof window !== 'undefined') {
         canAccess: userCanAccessCrmBusinessContext,
         hasModule: crmBusinessContextHasModule,
         isReadOnly: isCrmBusinessScopeReadOnly,
+        readOnlyMessage: crmBusinessReadOnlyMessage,
+        canWrite: canWriteCrmBusinessScope,
+        guardWrite: guardCrmBusinessWrite,
         options: getCrmBusinessContextOptions,
         policy: resolveCrmBusinessPolicy,
         state: getCrmBusinessState,
@@ -977,7 +1002,7 @@ function assertCrmBusinessWritableRequest(url, method = 'GET') {
         success: false,
         status: 403,
         code: 'business_scope_read_only',
-        error: 'All-business and multi-business scopes are read-only. Select one active business before changing data.'
+        error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'змінювати дані')
     }, 'Read-only business scope');
 }
 
@@ -1624,6 +1649,9 @@ async function apiGetProductCatalogs() {
 // v7.1: Products CRUD API
 async function apiCreateProduct(product) {
     try {
+        if (!guardCrmBusinessWrite('створювати продукти')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'створювати продукти') };
+        }
         const response = await fetch(`${API_BASE}/products`, {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -1644,6 +1672,9 @@ async function apiCreateProduct(product) {
 
 async function apiUpdateProduct(id, product) {
     try {
+        if (!guardCrmBusinessWrite('редагувати продукти')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати продукти') };
+        }
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
@@ -1664,6 +1695,9 @@ async function apiUpdateProduct(id, product) {
 
 async function apiUpdateProductDocument(id, payload) {
     try {
+        if (!guardCrmBusinessWrite('редагувати документи продуктів')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати документи продуктів') };
+        }
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/source-document`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
@@ -1684,6 +1718,9 @@ async function apiUpdateProductDocument(id, payload) {
 
 async function apiDeleteProduct(id, options = {}) {
     try {
+        if (!guardCrmBusinessWrite('деактивувати продукти')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'деактивувати продукти') };
+        }
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
@@ -1723,6 +1760,9 @@ async function apiGetProductTechCard(id, options = {}) {
 
 async function apiUpdateProductTechCard(id, payload = {}) {
     try {
+        if (!guardCrmBusinessWrite('редагувати техкарти')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати техкарти') };
+        }
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card`, {
             method: 'PUT',
             headers: getAuthHeaders(),
@@ -1742,6 +1782,9 @@ async function apiUpdateProductTechCard(id, payload = {}) {
 
 async function apiWriteOffProductTechCard(id, payload = {}) {
     try {
+        if (!guardCrmBusinessWrite('списувати склад')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'списувати склад') };
+        }
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card/write-off`, {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -1761,6 +1804,9 @@ async function apiWriteOffProductTechCard(id, payload = {}) {
 
 async function apiGenerateProductMenuAiDraft(payload = {}) {
     try {
+        if (!guardCrmBusinessWrite('створювати AI-чернетки меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'створювати AI-чернетки меню') };
+        }
         const response = await fetch(`${API_BASE}/products/menu-ai-draft`, {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -1798,6 +1844,9 @@ async function apiGetProductMenuAiDraft(id, options = {}) {
 
 async function apiSaveProductMenuAiDraft(id, payload = {}) {
     try {
+        if (!guardCrmBusinessWrite('зберігати AI-чернетки меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'зберігати AI-чернетки меню') };
+        }
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft`, {
             method: 'PUT',
             headers: getAuthHeaders(),

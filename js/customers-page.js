@@ -196,6 +196,79 @@ function customerPayload(payload = {}) {
         : { ...(payload || {}), businessContext: customerBusinessContext() };
 }
 
+function customerBusinessScope() {
+    return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: customerBusinessContext() };
+}
+
+function isCustomerBusinessReadOnly() {
+    return Boolean(window.CrmBusinessContext?.isReadOnly?.(customerBusinessScope()));
+}
+
+function customerReadOnlyMessage(actionLabel = 'змінювати клієнтів') {
+    return window.CrmBusinessContext?.readOnlyMessage?.(customerBusinessScope(), actionLabel)
+        || 'Огляд кількох бізнесів працює тільки для перегляду. Оберіть один бізнес, щоб змінювати клієнтів.';
+}
+
+function guardCustomerWrite(actionLabel = 'змінювати клієнтів') {
+    return window.CrmBusinessContext?.guardWrite
+        ? window.CrmBusinessContext.guardWrite(actionLabel, customerBusinessScope())
+        : !isCustomerBusinessReadOnly();
+}
+
+function applyCustomerReadOnlyControls(root = document) {
+    if (!isCustomerBusinessReadOnly() || !root?.querySelectorAll) return;
+    const message = customerReadOnlyMessage('редагувати клієнтів');
+    const actionBox = root.querySelector('.entity-card-actions');
+    if (actionBox && actionBox.children.length) {
+        actionBox.innerHTML = '<span class="crm-business-readonly-chip">Тільки перегляд</span>';
+    }
+    root.querySelectorAll([
+        '[onclick^="editCustomer"]',
+        '[onclick^="confirmDeleteCustomer"]',
+        '[onclick^="mergeCustomers"]',
+        '[onclick^="addCommunication"]',
+        '[onclick^="showAddTagDropdown"]',
+        '.crm-tag-remove'
+    ].join(',')).forEach(el => {
+        el.disabled = true;
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('crm-business-readonly-control');
+        el.title = message;
+    });
+}
+
+function syncCustomerReadOnlyUi() {
+    const readOnly = isCustomerBusinessReadOnly();
+    if (document.body) {
+        document.body.dataset.crmBusinessReadOnly = readOnly ? 'true' : 'false';
+    }
+
+    let notice = document.getElementById('customerBusinessReadOnlyNotice');
+    if (readOnly && !notice) {
+        notice = document.createElement('div');
+        notice.id = 'customerBusinessReadOnlyNotice';
+        notice.className = 'crm-business-readonly-banner';
+        notice.setAttribute('role', 'status');
+        const header = document.querySelector('.page-header');
+        header?.insertAdjacentElement('afterend', notice);
+    }
+    if (notice) {
+        notice.textContent = customerReadOnlyMessage('редагувати клієнтів');
+        notice.hidden = !readOnly;
+    }
+
+    const blockedIds = ['addCustomerBtn', 'importVcfBtn', 'saveCustomerBtn'];
+    blockedIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = readOnly;
+        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        if (readOnly) el.title = customerReadOnlyMessage('редагувати клієнтів');
+        else el.removeAttribute('title');
+    });
+    applyCustomerReadOnlyControls(document);
+}
+
 function initCustomerBusinessContext(user) {
     const api = window.CrmBusinessContext;
     CrmState.businessContext = api?.initPage?.({
@@ -211,10 +284,12 @@ function initCustomerBusinessContext(user) {
             CrmState.businessContext = current;
             CrmState.page = 1;
             CrmState.rfmData = null;
+            syncCustomerReadOnlyUi();
             await refreshData();
             openCustomerDeepLink();
         }
     }) || 'event_genix';
+    syncCustomerReadOnlyUi();
 }
 
 function customerHubText(value, fallback = '—') {
@@ -730,6 +805,9 @@ async function fetchCustomerCommunicationContext(id) {
 }
 
 async function saveCustomer(data) {
+    if (!guardCustomerWrite(CrmState.editingId ? 'редагувати клієнтів' : 'створювати клієнтів')) {
+        throw new Error(customerReadOnlyMessage('редагувати клієнтів'));
+    }
     const token = localStorage.getItem('pzp_token');
     const url = CrmState.editingId
         ? `/api/customers/${CrmState.editingId}`
@@ -752,6 +830,9 @@ async function saveCustomer(data) {
 }
 
 async function deleteCustomer(id) {
+    if (!guardCustomerWrite('видаляти клієнтів')) {
+        throw new Error(customerReadOnlyMessage('видаляти клієнтів'));
+    }
     const token = localStorage.getItem('pzp_token');
     const res = await fetch(customerApiUrl(`/api/customers/${id}`), {
         method: 'DELETE',
@@ -1056,6 +1137,7 @@ async function showCustomerDetail(id) {
 
         html += `</div>`;
         content.innerHTML = html;
+        applyCustomerReadOnlyControls(content);
 
         loadCommunicationHub(customer.id);
 
@@ -1194,6 +1276,7 @@ async function closeEditModal(force = false) {
 }
 
 async function handleSave() {
+    if (!guardCustomerWrite(CrmState.editingId ? 'редагувати клієнтів' : 'створювати клієнтів')) return;
     const name = document.getElementById('editName')?.value.trim();
     if (!name) {
         showNotification("Ім'я клієнта обов'язкове", 'error');
@@ -1243,12 +1326,14 @@ async function handleSave() {
 
 // Global function called from detail modal
 window.editCustomer = async function(id) {
+    if (!guardCustomerWrite('редагувати клієнтів')) return;
     const customer = await fetchCustomerDetail(id);
     closeCustomerDetailModal();
     openEditModal(customer);
 };
 
 window.confirmDeleteCustomer = async function(id) {
+    if (!guardCustomerWrite('видаляти клієнтів')) return;
     if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await deleteCustomer(id);
@@ -1265,6 +1350,7 @@ window.confirmDeleteCustomer = async function(id) {
 // ==========================================
 
 window.removeTag = async function(customerId, tagId) {
+    if (!guardCustomerWrite('редагувати теги клієнта')) return;
     const token = localStorage.getItem('pzp_token');
     try {
         await fetch(customerApiUrl(`/api/customers/${customerId}/tags/${tagId}`), {
@@ -1279,6 +1365,7 @@ window.removeTag = async function(customerId, tagId) {
 };
 
 window.showAddTagDropdown = function(customerId) {
+    if (!guardCustomerWrite('редагувати теги клієнта')) return;
     const predefined = ['VIP', 'Проблемний', 'Корпорат', 'Рекомендація', 'Постійний'];
     const colors = { 'VIP': '#F59E0B', 'Проблемний': '#EF4444', 'Корпорат': '#3B82F6', 'Рекомендація': '#10B981', 'Постійний': '#8B5CF6' };
     const html = predefined.map(t =>
@@ -1295,6 +1382,7 @@ window.showAddTagDropdown = function(customerId) {
 };
 
 window.addTag = async function(customerId, tag, color) {
+    if (!guardCustomerWrite('редагувати теги клієнта')) return;
     const token = localStorage.getItem('pzp_token');
     try {
         await fetch(customerApiUrl(`/api/customers/${customerId}/tags`), {
@@ -1341,10 +1429,12 @@ async function loadDuplicates() {
                     <button class="btn-page-primary" onclick="mergeCustomers(${d.id1},${d.id2})" style="padding:6px 12px;font-size:12px;min-height:36px">Об'єднати →</button>
                 </div>
             `).join('')}</div>`;
+        applyCustomerReadOnlyControls(el);
     } catch { /* duplicates load failed */ }
 }
 
 window.mergeCustomers = async function(primaryId, duplicateId) {
+    if (!guardCustomerWrite('обʼєднувати клієнтів')) return;
     if (!await confirmModal(`Об'єднати клієнтів? Всі бронювання будуть перенесені до основного профілю.`, { type: 'warning', okText: "Об'єднати" })) return;
     const token = localStorage.getItem('pzp_token');
     try {
@@ -1390,6 +1480,7 @@ async function loadCommunications(customerId) {
 }
 
 window.addCommunication = async function(customerId) {
+    if (!guardCustomerWrite('додавати CRM-нотатки')) return;
     const summary = await promptModal('Нотатка:', { placeholder: 'Введіть нотатку...' });
     if (!summary) return;
     const token = localStorage.getItem('pzp_token');
@@ -1571,6 +1662,7 @@ function exportVcf() {
 }
 
 async function importVcf(file) {
+    if (!guardCustomerWrite('імпортувати клієнтів')) return;
     const token = localStorage.getItem('pzp_token');
     const formData = new FormData();
     formData.append('vcf', file);
@@ -1621,6 +1713,7 @@ async function refreshData() {
     renderStats();
     renderCustomerTable();
     renderPagination();
+    syncCustomerReadOnlyUi();
     if (CrmState.activeTab === 'rfm') {
         await fetchRFM();
         renderRFM();
@@ -1681,6 +1774,7 @@ async function initPage() {
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
+    syncCustomerReadOnlyUi();
 
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -1737,14 +1831,20 @@ async function initPage() {
     });
 
     // Add customer
-    document.getElementById('addCustomerBtn')?.addEventListener('click', () => openEditModal(null));
+    document.getElementById('addCustomerBtn')?.addEventListener('click', () => {
+        if (!guardCustomerWrite('створювати клієнтів')) return;
+        openEditModal(null);
+    });
 
     // Export
     document.getElementById('exportCsvBtn')?.addEventListener('click', downloadCSV);
 
     // vCard
     document.getElementById('exportVcfBtn')?.addEventListener('click', exportVcf);
-    document.getElementById('importVcfBtn')?.addEventListener('click', () => document.getElementById('vcfFileInput')?.click());
+    document.getElementById('importVcfBtn')?.addEventListener('click', () => {
+        if (!guardCustomerWrite('імпортувати клієнтів')) return;
+        document.getElementById('vcfFileInput')?.click();
+    });
     document.getElementById('vcfFileInput')?.addEventListener('change', (e) => {
         if (e.target.files[0]) { importVcf(e.target.files[0]); e.target.value = ''; }
     });

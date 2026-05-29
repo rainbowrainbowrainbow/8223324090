@@ -72,6 +72,71 @@ body.dark-mode.page-exiting::before {
     background: var(--gray-900, #0F172A);
 }
 
+.crm-business-readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border: 1px solid rgba(245, 158, 11, 0.32);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #92400e;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.crm-business-readonly-banner::before {
+    content: "Огляд";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.18);
+    color: #78350f;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.crm-business-readonly-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid rgba(245, 158, 11, 0.32);
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.crm-business-readonly-control {
+    cursor: not-allowed !important;
+    opacity: 0.58 !important;
+    transform: none !important;
+}
+
+body.dark-mode .crm-business-readonly-banner,
+[data-theme="dark"] .crm-business-readonly-banner,
+body.dark-mode .crm-business-readonly-chip,
+[data-theme="dark"] .crm-business-readonly-chip {
+    border-color: rgba(251, 191, 36, 0.28);
+    background: rgba(251, 191, 36, 0.10);
+    color: #fde68a;
+}
+
+body.dark-mode .crm-business-readonly-banner::before,
+[data-theme="dark"] .crm-business-readonly-banner::before {
+    background: rgba(251, 191, 36, 0.16);
+    color: #fef3c7;
+}
+
 /* v0.63.26: embedded CRM surfaces must not reserve the parent sidebar width.
    Art iframe tabs such as Designs and Graduation own only their inner canvas. */
 html.embed-mode,

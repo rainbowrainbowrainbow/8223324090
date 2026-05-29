@@ -15,9 +15,28 @@ function escapeJsString(str) {
     return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
 }
 
+function productBusinessScope() {
+    return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: activeBusinessContext || 'event_genix' };
+}
+
+function isProductBusinessReadOnly() {
+    return Boolean(window.CrmBusinessContext?.isReadOnly?.(productBusinessScope()));
+}
+
+function productReadOnlyMessage(actionLabel = 'редагувати продукти') {
+    return window.CrmBusinessContext?.readOnlyMessage?.(productBusinessScope(), actionLabel)
+        || 'Огляд кількох бізнесів працює тільки для перегляду. Оберіть один бізнес, щоб редагувати продукти.';
+}
+
+function guardProductWrite(actionLabel = 'редагувати продукти') {
+    return window.CrmBusinessContext?.guardWrite
+        ? window.CrmBusinessContext.guardWrite(actionLabel, productBusinessScope())
+        : !isProductBusinessReadOnly();
+}
+
 function canManageProducts() {
     const roles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    return !AppState.embedded && AppState.currentUser && roles.includes(AppState.currentUser.role);
+    return !isProductBusinessReadOnly() && !AppState.embedded && AppState.currentUser && roles.includes(AppState.currentUser.role);
 }
 
 function getDocumentKindLabel(kind) {
@@ -448,6 +467,50 @@ function renderProductBusinessSelector() {
         document.body.dataset.productsBusiness = activeBusinessContext;
     }
     window.CrmBusinessContext?.renderShell?.(AppState.currentUser);
+    syncProductReadOnlyUi();
+}
+
+function syncProductReadOnlyUi() {
+    const readOnly = isProductBusinessReadOnly();
+    if (document.body) document.body.dataset.crmBusinessReadOnly = readOnly ? 'true' : 'false';
+    let notice = document.getElementById('productBusinessReadOnlyNotice');
+    if (readOnly && !notice) {
+        notice = document.createElement('div');
+        notice.id = 'productBusinessReadOnlyNotice';
+        notice.className = 'crm-business-readonly-banner';
+        notice.setAttribute('role', 'status');
+        document.querySelector('.products-page-header')?.insertAdjacentElement('afterend', notice);
+    }
+    if (notice) {
+        notice.textContent = productReadOnlyMessage('редагувати продукти');
+        notice.hidden = !readOnly;
+    }
+    [
+        'addProductBtn',
+        'saveProductBtn',
+        'saveProductNextBtn',
+        'pf-tech-writeoff-btn',
+        'productAiAutofillBtn',
+        'productAiApproveBlockBtn',
+        'productAiRegenerateBlockBtn',
+        'productAiApplyBtn',
+        'productDocSaveBtn',
+        'productDocUnlinkBtn'
+    ].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = readOnly;
+        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        if (readOnly) el.title = productReadOnlyMessage('редагувати продукти');
+        else el.removeAttribute('title');
+    });
+    document.querySelectorAll('[onclick^="openProductForm"], [onclick^="deleteProduct"], [onclick^="toggleProductDocumentFlag"]').forEach(el => {
+        el.disabled = readOnly;
+        el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        el.classList.toggle('crm-business-readonly-control', readOnly);
+        if (readOnly) el.title = productReadOnlyMessage('редагувати продукти');
+        else el.removeAttribute('title');
+    });
 }
 
 function isProductFormOpen() {
@@ -715,6 +778,7 @@ async function loadProducts() {
 function renderProducts() {
     if (!isParkProductsContext()) {
         renderMaysternyaProducts();
+        syncProductReadOnlyUi();
         return;
     }
     const grid = document.getElementById('productsGrid');
@@ -723,6 +787,7 @@ function renderProducts() {
 
     if (grid) renderProgramProducts(grid, canManage);
     if (kitchenGrid) renderKitchenProducts(kitchenGrid, canManage);
+    syncProductReadOnlyUi();
 }
 
 function renderMaysternyaProducts() {
@@ -1164,6 +1229,7 @@ function closeProductDocumentModal() {
 }
 
 async function saveProductDocument() {
+    if (!guardProductWrite('редагувати документи продуктів')) return;
     if (!editingDocumentProductId || productDocumentSaving) return;
     const payload = readProductDocumentPayload();
     const errors = validateProductDocumentPayload(payload);
@@ -1195,6 +1261,7 @@ async function saveProductDocument() {
 }
 
 async function unlinkProductDocument() {
+    if (!guardProductWrite('редагувати документи продуктів')) return;
     if (!editingDocumentProductId || productDocumentSaving) return;
     if (typeof confirmModal === 'function') {
         const confirmed = await confirmModal('Відвʼязати документ від цієї картки продукту?', {
@@ -1234,6 +1301,10 @@ async function unlinkProductDocument() {
 }
 
 async function toggleProductDocumentFlag(productId, field, checked) {
+    if (!guardProductWrite('редагувати документи продуктів')) {
+        renderProducts();
+        return;
+    }
     const product = allProducts.find(item => item.id === productId);
     if (!product || !product.sourceDocumentUrl) return;
     const payload = {
@@ -1607,6 +1678,7 @@ function getWarehouseOptionHtml(selectedId = '') {
 }
 
 async function openMenuAiReviewWizard() {
+    if (!guardProductWrite('створювати AI-чернетки меню')) return;
     const domain = document.getElementById('pf-domain')?.value;
     const kitchenType = document.getElementById('pf-kitchen-type')?.value;
     if (domain !== 'kitchen' || kitchenType !== 'menu') {
@@ -1823,6 +1895,7 @@ function readMenuAiBlockFromDom(key) {
 }
 
 function approveMenuAiBlock() {
+    if (!guardProductWrite('редагувати AI-чернетки меню')) return;
     if (!menuAiReviewState) return;
     captureCurrentMenuAiBlockEdits();
     const key = menuAiReviewState.currentStep;
@@ -1841,6 +1914,7 @@ function approveMenuAiBlock() {
 }
 
 async function regenerateMenuAiBlock() {
+    if (!guardProductWrite('редагувати AI-чернетки меню')) return;
     if (!menuAiReviewState || menuAiReviewSaving) return;
     captureCurrentMenuAiBlockEdits();
     const key = menuAiReviewState.currentStep;
@@ -1909,6 +1983,7 @@ function applyMenuAiApprovedBlocksToForm() {
 }
 
 async function applyMenuAiReviewFinal() {
+    if (!guardProductWrite('застосовувати AI-чернетки меню')) return;
     if (!menuAiReviewState || menuAiReviewSaving) return;
     captureCurrentMenuAiBlockEdits();
     const missing = MENU_AI_BLOCKS.filter(block => !menuAiReviewState.approvedBlocks[block.key]);
@@ -2014,6 +2089,7 @@ async function saveProductTechCardIfNeeded(productId, domain, kitchenType) {
 }
 
 async function submitTechCardWriteOff() {
+    if (!guardProductWrite('списувати склад')) return;
     const id = document.getElementById('pf-id')?.value;
     if (!id) {
         showNotification('Спочатку збережіть меню-позицію', 'error');
@@ -2071,6 +2147,7 @@ async function submitTechCardWriteOff() {
 }
 
 async function openProductForm(productId = null, options = {}) {
+    if (!guardProductWrite(productId ? 'редагувати продукти' : 'створювати продукти')) return;
     const form = placeProductForm();
     if (!form) return;
     form.style.display = '';
@@ -2165,6 +2242,7 @@ function closeProductForm() {
 }
 
 async function saveProduct(options = {}) {
+    if (!guardProductWrite('редагувати продукти')) return { success: false, error: 'business_scope_read_only' };
     const id = document.getElementById('pf-id')?.value;
     const domain = document.getElementById('pf-domain')?.value === 'kitchen' ? 'kitchen' : 'program';
     const kitchenType = document.getElementById('pf-kitchen-type')?.value === 'menu' ? 'menu' : (domain === 'kitchen' ? 'cake' : null);
@@ -2269,6 +2347,7 @@ async function saveProduct(options = {}) {
 }
 
 async function deleteProduct(productId) {
+    if (!guardProductWrite('деактивувати продукти')) return;
     const product = allProducts.find(item => item.id === productId);
     if (!product) {
         showNotification('Продукт не знайдено в поточному списку', 'error');

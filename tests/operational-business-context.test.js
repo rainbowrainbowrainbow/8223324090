@@ -81,6 +81,8 @@ test('shared CRM shell exposes safe read-only multi-business scope for core CRM 
     const customers = read('routes/customers.js');
     const leads = read('routes/leads.js');
     const products = read('routes/products.js');
+    const reports = read('routes/reports.js');
+    const reportsMigration = read('db/migrations/235_reports_business_context_scope.sql');
 
     assert.match(service, /BUSINESS_SCOPE_ALL/);
     assert.match(service, /function resolveBusinessScope/);
@@ -109,4 +111,14 @@ test('shared CRM shell exposes safe read-only multi-business scope for core CRM 
     assert.match(leads, /leadScopeCondition\(params, businessScope, 'l'\)/);
     assert.match(products, /requireProductBusinessScope/);
     assert.match(products, /pushBusinessScopeCondition\(params, businessScope, 'p'\)/);
+
+    assert.match(reports, /ensureReportBusinessScope/);
+    assert.match(reports, /reportScopeCondition\(params, businessScope, 'r'\)/);
+    assert.match(reports, /INSERT INTO reports \(business_context/);
+    assert.match(reports, /INSERT INTO report_table_drafts \([\s\S]*business_context/);
+    assert.match(reports, /INSERT INTO finance_transactions \(business_context, type/);
+    assert.match(reports, /COALESCE\(business_context, \$\d+\) = \$\d+/);
+    assert.match(reportsMigration, /ALTER TABLE reports[\s\S]*business_context TEXT NOT NULL DEFAULT 'event_genix'/);
+    assert.match(reportsMigration, /ALTER TABLE report_table_drafts[\s\S]*business_context TEXT NOT NULL DEFAULT 'event_genix'/);
+    assert.match(reportsMigration, /idx_reports_business_context_created/);
 });

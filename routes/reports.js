@@ -9,6 +9,15 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest,
+    normalizeBusinessContext,
+    pushBusinessContextCondition,
+    pushBusinessScopeCondition,
+    requireBusinessScope,
+    resolveBusinessScope
+} = require('../services/businessContext');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const ExcelJS = require('exceljs');
 
@@ -50,6 +59,24 @@ function parseRawData(val) {
 
 function currentUsername(req) {
     return req.user?.username || req.user?.displayName || 'system';
+}
+
+function currentReportBusinessContext(req) {
+    return normalizeBusinessContext(businessContextFromRequest(req) || DEFAULT_BUSINESS_CONTEXT);
+}
+
+function ensureReportBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
+}
+
+function reportScopeCondition(params, scope, alias = 'r') {
+    return pushBusinessScopeCondition(params, scope || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
+function reportContextCondition(params, req, alias = 'r') {
+    return pushBusinessContextCondition(params, currentReportBusinessContext(req), alias);
 }
 
 function optionalInteger(value) {
@@ -172,13 +199,17 @@ function sanitizeTemplateBody(body, req, existing = {}) {
     const requestedScope = body.scope || existing.scope || 'personal';
     const scope = requestedScope === 'global' && canManageReportTemplates(req) ? 'global' : 'personal';
     const source = existing.source === 'system' ? 'system' : (body.source === 'uploaded' ? 'uploaded' : 'custom');
+    const businessContext = normalizeBusinessContext(existing.business_context || body.businessContext || body.business_context || currentReportBusinessContext(req));
     const codeBase = String(body.code || existing.code || title).trim().toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 90) || `template-${Date.now()}`;
+    const codeSuffix = scope === 'personal'
+        ? `-${currentUsername(req)}-${businessContext}`
+        : (source === 'system' ? '' : `-${businessContext}`);
 
     return {
-        code: existing.code || `${codeBase}${scope === 'personal' ? `-${currentUsername(req)}` : ''}`.slice(0, 100),
+        code: existing.code || `${codeBase}${codeSuffix}`.slice(0, 100),
         title,
         category: String(body.category || existing.category || 'Custom').slice(0, 120),
         layout: String(body.layout || existing.layout || 'custom').slice(0, 80),
@@ -187,7 +218,8 @@ function sanitizeTemplateBody(body, req, existing = {}) {
         schemaJson: { columns, rows },
         defaultReportJson: parseRawData(body.defaultReport || body.defaultReportJson || body.default_report_json || existing.default_report_json || {}),
         source,
-        scope
+        scope,
+        businessContext
     };
 }
 
@@ -203,6 +235,7 @@ function mapTemplateRow(r) {
         purpose: r.purpose,
         source: r.source,
         scope: r.scope,
+        businessContext: normalizeBusinessContext(r.business_context || DEFAULT_BUSINESS_CONTEXT),
         isActive: r.is_active,
         createdByUsername: r.created_by_username,
         createdAt: r.created_at,
@@ -344,18 +377,20 @@ function mapDraftRow(r) {
         submittedAt: r.submitted_at,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-        templateTitle: r.template_title || null
+        templateTitle: r.template_title || null,
+        businessContext: normalizeBusinessContext(r.business_context || DEFAULT_BUSINESS_CONTEXT)
     };
 }
 
 async function assignOnDutyAccountant(report) {
+    const businessContext = normalizeBusinessContext(report.businessContext || report.business_context || DEFAULT_BUSINESS_CONTEXT);
     const dutyAccountant = await pool.query(
         'SELECT id, name, chat_id, staff_id FROM accountants WHERE is_on_duty = true LIMIT 1'
     );
     if (dutyAccountant.rows.length > 0) {
         await pool.query(
-            'UPDATE reports SET assigned_to = $1, assigned_at = NOW() WHERE id = $2',
-            [dutyAccountant.rows[0].id, report.id]
+            'UPDATE reports SET assigned_to = $1, assigned_at = NOW() WHERE id = $2 AND COALESCE(business_context, $3) = $3',
+            [dutyAccountant.rows[0].id, report.id, businessContext]
         );
         report.assignedTo = dutyAccountant.rows[0].id;
         report.accountantName = dutyAccountant.rows[0].name;
@@ -368,9 +403,10 @@ async function createReportHandoffTask(report, req) {
     if (!report?.id) return null;
     try {
         const reportId = String(report.id);
+        const reportBusinessContext = normalizeBusinessContext(report.businessContext || report.business_context || currentReportBusinessContext(req));
         const reviewer = await getReportApprovalAssignee();
         const assigneeLabel = reviewer?.label || report.accountantName || 'Бухгалтер';
-        const reportUrl = `/reports?reportId=${encodeURIComponent(reportId)}`;
+        const reportUrl = `/reports?businessContext=${encodeURIComponent(reportBusinessContext)}&reportId=${encodeURIComponent(reportId)}`;
         const title = `Перевірити звіт #${reportId}`;
         const description = [
             `Звіт: ${report.description || report.rawData?.reportTableTemplate?.title || report.category || 'табличний звіт'}`,
@@ -408,6 +444,7 @@ async function createReportHandoffTask(report, req) {
             control_meta: {
                 reportApproval: true,
                 reportId: Number(report.id),
+                businessContext: reportBusinessContext,
                 reportUrl,
                 approvalStatus: 'task_created'
             },
@@ -451,6 +488,7 @@ async function createReportHandoffTask(report, req) {
 }
 
 async function createReportFromTablePayload(req, tablePayload, overrides = {}) {
+    const businessContext = currentReportBusinessContext(req);
     const normalized = normalizeTablePayload(tablePayload);
     const defaultReport = normalized.table.defaultReport || parseRawData(overrides.defaultReport || {});
     const type = defaultReport.type === 'income' ? 'income' : 'expense';
@@ -464,11 +502,12 @@ async function createReportFromTablePayload(req, tablePayload, overrides = {}) {
         : { reportTableTemplate: normalized.table };
 
     const result = await pool.query(`
-        INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
+        INSERT INTO reports (business_context, type, amount, description, category, submitted_by, submitted_by_id,
             submitted_via, raw_data, hashtags)
-        VALUES ($1, $2, $3, $4, $5, $6, 'web-template', $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'web-template', $8, $9)
         RETURNING *
     `, [
+        businessContext,
         type,
         amount,
         overrides.description || `Табличний звіт: ${normalized.table.title}`,
@@ -490,6 +529,7 @@ function mapReportRow(r) {
     const rawData = parseRawData(r.raw_data);
     return {
         id: r.id,
+        businessContext: normalizeBusinessContext(r.business_context || DEFAULT_BUSINESS_CONTEXT),
         type: r.type,
         amount: parseFloat(r.amount) || 0,
         description: r.description,
@@ -542,19 +582,24 @@ function mapAccountantRow(r) {
     };
 }
 
-async function loadReportRow(id) {
+async function loadReportRow(id, scopeOrContext = DEFAULT_BUSINESS_CONTEXT) {
+    const params = [id];
+    const businessSql = scopeOrContext && typeof scopeOrContext === 'object'
+        ? reportScopeCondition(params, scopeOrContext, 'r')
+        : pushBusinessContextCondition(params, scopeOrContext || DEFAULT_BUSINESS_CONTEXT, 'r');
     const result = await pool.query(`
         SELECT r.*, a.name AS accountant_name, t.status AS approval_task_status
         FROM reports r
         LEFT JOIN accountants a ON a.id = r.assigned_to
         LEFT JOIN tasks t ON t.id = r.approval_task_id
         WHERE r.id = $1
-    `, [id]);
+          AND ${businessSql}
+    `, params);
     return result.rows[0] || null;
 }
 
-async function loadReportPayload(id) {
-    const row = await loadReportRow(id);
+async function loadReportPayload(id, scopeOrContext = DEFAULT_BUSINESS_CONTEXT) {
+    const row = await loadReportRow(id, scopeOrContext);
     return row ? mapReportRow(row) : null;
 }
 
@@ -587,26 +632,35 @@ function updateReportApprovalFromStatus(status, updates, params, req) {
 function scheduleFinanceTransactionForReport(report, req) {
     if (!report || Number(report.amount || 0) <= 0) return;
     const reportId = report.id;
+    const businessContext = normalizeBusinessContext(report.businessContext || report.business_context || currentReportBusinessContext(req));
     setImmediate(async () => {
         try {
             const exists = await pool.query(
-                `SELECT id FROM finance_transactions WHERE description LIKE $1 LIMIT 1`,
-                [`%#${reportId}%`]
+                `SELECT id FROM finance_transactions
+                 WHERE description LIKE $1
+                   AND COALESCE(business_context, $2) = $2
+                 LIMIT 1`,
+                [`%#${reportId}%`, businessContext]
             );
             if (exists.rowCount) return;
 
             const finType = report.type === 'expense' ? 'expense' : 'income';
             const categoryName = report.category || 'Інше';
             const catQuery = await pool.query(
-                `SELECT id FROM finance_categories WHERE name ILIKE $1 AND type = $2 LIMIT 1`,
-                [`%${categoryName}%`, finType]
+                `SELECT id FROM finance_categories
+                 WHERE name ILIKE $1
+                   AND type = $2
+                   AND COALESCE(business_context, $3) = $3
+                 LIMIT 1`,
+                [`%${categoryName}%`, finType, businessContext]
             );
             const catId = catQuery.rows[0]?.id || null;
 
             await pool.query(
-                `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                 [
+                    businessContext,
                     finType,
                     catId,
                     Math.round(Number(report.amount || 0)),
@@ -627,10 +681,12 @@ function scheduleFinanceTransactionForReport(report, req) {
 // ==========================================
 router.get('/', async (req, res) => {
     try {
+        const businessScope = ensureReportBusinessScope(req, res);
+        if (!businessScope) return;
         const { type, status, submittedBy, category, hashtag, dateFrom, dateTo, limit = 100, offset = 0 } = req.query;
 
         function buildWhere(params) {
-            let where = '';
+            let where = ` AND ${reportScopeCondition(params, businessScope, 'r')}`;
             if (type && ['income', 'expense'].includes(type)) {
                 params.push(type);
                 where += ` AND r.type = $${params.length}`;
@@ -701,6 +757,8 @@ router.get('/', async (req, res) => {
 // ==========================================
 router.get('/summary', async (req, res) => {
     try {
+        const businessScope = ensureReportBusinessScope(req, res);
+        if (!businessScope) return;
         const { period = 'month', dateFrom, dateTo } = req.query;
         let fromDate, toDate;
 
@@ -721,7 +779,14 @@ router.get('/summary', async (req, res) => {
             toDate = now.toISOString().slice(0, 10);
         }
 
+        function reportSummaryParams(...values) {
+            const params = [...values];
+            const scopeSql = reportScopeCondition(params, businessScope, '');
+            return { params, scopeSql };
+        }
+
         // Totals (only hashtag_active reports)
+        const totalQuery = reportSummaryParams(fromDate, toDate);
         const totalsResult = await pool.query(`
             SELECT
                 type,
@@ -730,13 +795,15 @@ router.get('/summary', async (req, res) => {
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
               AND hashtag_active IS NOT FALSE
+              AND ${totalQuery.scopeSql}
             GROUP BY type
-        `, [fromDate, toDate]);
+        `, totalQuery.params);
 
         const income = totalsResult.rows.find(r => r.type === 'income');
         const expense = totalsResult.rows.find(r => r.type === 'expense');
 
         // By day (for line chart)
+        const dailyQuery = reportSummaryParams(fromDate, toDate);
         const dailyResult = await pool.query(`
             SELECT
                 created_at::date AS day,
@@ -745,11 +812,13 @@ router.get('/summary', async (req, res) => {
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
               AND hashtag_active IS NOT FALSE
+              AND ${dailyQuery.scopeSql}
             GROUP BY day, type
             ORDER BY day
-        `, [fromDate, toDate]);
+        `, dailyQuery.params);
 
         // By category (for pie chart)
+        const categoryQuery = reportSummaryParams(fromDate, toDate);
         const categoryResult = await pool.query(`
             SELECT
                 COALESCE(category, 'Інше') AS category,
@@ -758,21 +827,25 @@ router.get('/summary', async (req, res) => {
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
               AND hashtag_active IS NOT FALSE
+              AND ${categoryQuery.scopeSql}
             GROUP BY category, type
             ORDER BY total DESC
-        `, [fromDate, toDate]);
+        `, categoryQuery.params);
 
         // Status counts
+        const statusQuery = reportSummaryParams(fromDate, toDate);
         const statusResult = await pool.query(`
             SELECT status, COUNT(*) as count
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
               AND hashtag_active IS NOT FALSE
+              AND ${statusQuery.scopeSql}
             GROUP BY status
-        `, [fromDate, toDate]);
+        `, statusQuery.params);
 
         // Today's stats
         const today = new Date().toISOString().slice(0, 10);
+        const todayQuery = reportSummaryParams(today);
         const todayResult = await pool.query(`
             SELECT
                 type,
@@ -781,8 +854,9 @@ router.get('/summary', async (req, res) => {
             FROM reports
             WHERE created_at::date = $1::date
               AND hashtag_active IS NOT FALSE
+              AND ${todayQuery.scopeSql}
             GROUP BY type
-        `, [today]);
+        `, todayQuery.params);
 
         const todayIncome = todayResult.rows.find(r => r.type === 'income');
         const todayExpense = todayResult.rows.find(r => r.type === 'expense');
@@ -840,8 +914,16 @@ router.get('/accountants', async (req, res) => {
 // ==========================================
 router.get('/hashtags', async (req, res) => {
     try {
+        const businessScope = ensureReportBusinessScope(req, res);
+        if (!businessScope) return;
+        const params = [];
+        const scopeSql = reportScopeCondition(params, businessScope, '');
         const result = await pool.query(
-            "SELECT hashtags, amount, hashtag_active, type FROM reports WHERE status IN ('done', 'new', 'processing')"
+            `SELECT hashtags, amount, hashtag_active, type
+             FROM reports
+             WHERE status IN ('done', 'new', 'processing')
+               AND ${scopeSql}`,
+            params
         );
 
         const stats = {};
@@ -877,11 +959,14 @@ router.patch('/hashtags/toggle', async (req, res) => {
             return res.status(400).json({ error: 'hashtag (string) required' });
         }
         const isActive = active !== false && active !== 0;
+        const params = [isActive, JSON.stringify([hashtag])];
+        const scopeSql = reportContextCondition(params, req, '');
         const result = await pool.query(
             `UPDATE reports SET hashtag_active = $1, updated_at = NOW()
              WHERE hashtags @> $2::jsonb
+               AND ${scopeSql}
              RETURNING id`,
-            [isActive, JSON.stringify([hashtag])]
+            params
         );
         log.info(`Hashtag toggle: #${hashtag} → ${isActive ? 'ON' : 'OFF'} (${result.rowCount} reports)`);
         res.json({ updated: result.rowCount, active: isActive });
@@ -897,13 +982,20 @@ router.patch('/hashtags/toggle', async (req, res) => {
 router.get('/templates', async (req, res) => {
     try {
         const username = currentUsername(req);
+        const businessContext = currentReportBusinessContext(req);
         const result = await pool.query(`
             SELECT *
             FROM report_templates
             WHERE is_active = true
-              AND (scope = 'global' OR created_by_username = $1)
+              AND (
+                  (source = 'system' AND scope = 'global')
+                  OR (
+                      COALESCE(business_context, $2) = $2
+                      AND (scope = 'global' OR created_by_username = $1)
+                  )
+              )
             ORDER BY CASE WHEN source = 'system' THEN 0 ELSE 1 END, category, title
-        `, [username]);
+        `, [username, businessContext]);
         res.json({ success: true, templates: result.rows.map(mapTemplateRow), canManage: canManageReportTemplates(req) });
     } catch (err) {
         log.error('GET /reports/templates error', err);
@@ -917,9 +1009,9 @@ router.post('/templates', async (req, res) => {
         const result = await pool.query(`
             INSERT INTO report_templates (
                 code, title, category, layout, description, purpose, schema_json,
-                default_report_json, source, scope, created_by_user_id, created_by_username
+                default_report_json, source, scope, business_context, created_by_user_id, created_by_username
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
             ON CONFLICT (code) DO UPDATE SET
                 title = EXCLUDED.title,
                 category = EXCLUDED.category,
@@ -930,6 +1022,7 @@ router.post('/templates', async (req, res) => {
                 default_report_json = EXCLUDED.default_report_json,
                 source = EXCLUDED.source,
                 scope = EXCLUDED.scope,
+                business_context = EXCLUDED.business_context,
                 is_active = true,
                 updated_at = NOW()
             RETURNING *
@@ -944,6 +1037,7 @@ router.post('/templates', async (req, res) => {
             JSON.stringify(body.defaultReportJson),
             body.source,
             body.scope,
+            body.businessContext,
             currentUserId(req),
             currentUsername(req)
         ]);
@@ -956,7 +1050,13 @@ router.post('/templates', async (req, res) => {
 
 router.put('/templates/:id', async (req, res) => {
     try {
-        const existing = await pool.query('SELECT * FROM report_templates WHERE id = $1', [req.params.id]);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await pool.query(
+            `SELECT * FROM report_templates
+             WHERE id = $1
+               AND (source = 'system' OR COALESCE(business_context, $2) = $2)`,
+            [req.params.id, businessContext]
+        );
         if (!existing.rows.length) return res.status(404).json({ error: 'Template not found' });
         const row = existing.rows[0];
         const ownsTemplate = row.created_by_username === currentUsername(req);
@@ -974,8 +1074,9 @@ router.put('/templates/:id', async (req, res) => {
                 schema_json = $6,
                 default_report_json = $7,
                 scope = $8,
+                business_context = $9,
                 updated_at = NOW()
-            WHERE id = $9
+            WHERE id = $10
             RETURNING *
         `, [
             body.title,
@@ -986,6 +1087,7 @@ router.put('/templates/:id', async (req, res) => {
             JSON.stringify(body.schemaJson),
             JSON.stringify(body.defaultReportJson),
             body.scope,
+            body.businessContext,
             req.params.id
         ]);
         res.json({ success: true, template: mapTemplateRow(result.rows[0]) });
@@ -997,7 +1099,13 @@ router.put('/templates/:id', async (req, res) => {
 
 router.delete('/templates/:id', async (req, res) => {
     try {
-        const existing = await pool.query('SELECT * FROM report_templates WHERE id = $1', [req.params.id]);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await pool.query(
+            `SELECT * FROM report_templates
+             WHERE id = $1
+               AND (source = 'system' OR COALESCE(business_context, $2) = $2)`,
+            [req.params.id, businessContext]
+        );
         if (!existing.rows.length) return res.status(404).json({ error: 'Template not found' });
         const row = existing.rows[0];
         const ownsTemplate = row.created_by_username === currentUsername(req);
@@ -1017,15 +1125,17 @@ router.delete('/templates/:id', async (req, res) => {
 // ==========================================
 router.get('/drafts', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const result = await pool.query(`
             SELECT d.*, t.title AS template_title
             FROM report_table_drafts d
             LEFT JOIN report_templates t ON t.id = d.template_id
             WHERE d.created_by_username = $1
+              AND COALESCE(d.business_context, $2) = $2
               AND d.status = 'draft'
             ORDER BY d.updated_at DESC
             LIMIT 100
-        `, [currentUsername(req)]);
+        `, [currentUsername(req), businessContext]);
         res.json({ success: true, drafts: result.rows.map(mapDraftRow) });
     } catch (err) {
         log.error('GET /reports/drafts error', err);
@@ -1035,15 +1145,17 @@ router.get('/drafts', async (req, res) => {
 
 router.post('/drafts', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
         const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
         const result = await pool.query(`
             INSERT INTO report_table_drafts (
-                template_id, title, table_json, created_by_user_id, created_by_username
+                business_context, template_id, title, table_json, created_by_user_id, created_by_username
             )
-            VALUES ($1,$2,$3,$4,$5)
+            VALUES ($1,$2,$3,$4,$5,$6)
             RETURNING *
         `, [
+            businessContext,
             optionalInteger(req.body.templateId || normalized.table.templateId),
             title,
             JSON.stringify(normalized.payload.reportTableTemplate ? normalized.payload : { reportTableTemplate: normalized.table }),
@@ -1059,6 +1171,7 @@ router.post('/drafts', async (req, res) => {
 
 router.put('/drafts/:id', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
         const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
         const result = await pool.query(`
@@ -1068,13 +1181,15 @@ router.put('/drafts/:id', async (req, res) => {
                 table_json = $3,
                 updated_at = NOW()
             WHERE id = $4 AND created_by_username = $5 AND status = 'draft'
+              AND COALESCE(business_context, $6) = $6
             RETURNING *
         `, [
             optionalInteger(req.body.templateId || normalized.table.templateId),
             title,
             JSON.stringify(normalized.payload.reportTableTemplate ? normalized.payload : { reportTableTemplate: normalized.table }),
             req.params.id,
-            currentUsername(req)
+            currentUsername(req),
+            businessContext
         ]);
         if (!result.rows.length) return res.status(404).json({ error: 'Draft not found' });
         res.json({ success: true, draft: mapDraftRow(result.rows[0]) });
@@ -1086,9 +1201,10 @@ router.put('/drafts/:id', async (req, res) => {
 
 router.delete('/drafts/:id', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const result = await pool.query(
-            "DELETE FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft' RETURNING id",
-            [req.params.id, currentUsername(req)]
+            "DELETE FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft' AND COALESCE(business_context, $3) = $3 RETURNING id",
+            [req.params.id, currentUsername(req), businessContext]
         );
         if (!result.rows.length) return res.status(404).json({ error: 'Draft not found' });
         res.json({ success: true, id: parseInt(req.params.id, 10) });
@@ -1100,18 +1216,19 @@ router.delete('/drafts/:id', async (req, res) => {
 
 router.post('/drafts/:id/submit', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const draftResult = await pool.query(
-            "SELECT * FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft'",
-            [req.params.id, currentUsername(req)]
+            "SELECT * FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft' AND COALESCE(business_context, $3) = $3",
+            [req.params.id, currentUsername(req), businessContext]
         );
         if (!draftResult.rows.length) return res.status(404).json({ error: 'Draft not found' });
         const report = await createReportFromTablePayload(req, draftResult.rows[0].table_json, req.body || {});
         const updated = await pool.query(`
             UPDATE report_table_drafts
             SET status = 'submitted', report_id = $1, submitted_at = NOW(), updated_at = NOW()
-            WHERE id = $2
+            WHERE id = $2 AND COALESCE(business_context, $3) = $3
             RETURNING *
-        `, [report.id, req.params.id]);
+        `, [report.id, req.params.id, businessContext]);
         res.status(201).json({ success: true, draft: mapDraftRow(updated.rows[0]), report });
     } catch (err) {
         log.error('POST /reports/drafts/:id/submit error', err);
@@ -1127,6 +1244,7 @@ router.post('/drafts/:id/submit', async (req, res) => {
 // ==========================================
 router.post('/table/close', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const closedAt = new Date().toISOString();
         const { table, lockedPayload } = buildClosedTablePayload(req.body.tableJson || req.body.rawData || req.body, req, closedAt);
         const defaultReport = table.defaultReport || parseRawData(req.body.defaultReport || {});
@@ -1142,7 +1260,9 @@ router.post('/table/close', async (req, res) => {
 
         let row;
         if (reportId) {
-            const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [reportId]);
+            const existingParams = [reportId];
+            const existingScopeSql = reportContextCondition(existingParams, req, '');
+            const existing = await pool.query(`SELECT * FROM reports WHERE id = $1 AND ${existingScopeSql}`, existingParams);
             if (!existing.rows.length) return res.status(404).json({ error: 'Report not found' });
             if (isReportLifecycleClosed(existing.rows[0])) {
                 return res.status(409).json({ error: 'Report already closed' });
@@ -1164,6 +1284,7 @@ router.post('/table/close', async (req, res) => {
                     locked_snapshot = $5,
                     updated_at = NOW()
                 WHERE id = $10
+                  AND COALESCE(business_context, $11) = $11
                 RETURNING *
             `, [
                 type,
@@ -1175,19 +1296,21 @@ router.post('/table/close', async (req, res) => {
                 closedAt,
                 currentUserId(req),
                 currentUsername(req),
-                reportId
+                reportId,
+                businessContext
             ]);
             row = result.rows[0];
         } else {
             const result = await pool.query(`
                 INSERT INTO reports (
-                    type, amount, description, category, submitted_by, submitted_by_id,
+                    business_context, type, amount, description, category, submitted_by, submitted_by_id,
                     submitted_via, raw_data, hashtags, status, report_lifecycle_status,
                     closed_at, closed_by_user_id, closed_by_username, locked_snapshot
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,'web-template',$7,$8,'new','closed',$9,$10,$11,$7)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'web-template',$8,$9,'new','closed',$10,$11,$12,$8)
                 RETURNING *
             `, [
+                businessContext,
                 type,
                 amount,
                 description,
@@ -1217,6 +1340,7 @@ router.post('/table/close', async (req, res) => {
                     locked_snapshot = $5,
                     updated_at = NOW()
                 WHERE id = $6 AND created_by_username = $7 AND status = 'draft'
+                  AND COALESCE(business_context, $8) = $8
             `, [
                 report.id,
                 closedAt,
@@ -1224,7 +1348,8 @@ router.post('/table/close', async (req, res) => {
                 currentUsername(req),
                 JSON.stringify(lockedPayload),
                 draftId,
-                currentUsername(req)
+                currentUsername(req),
+                businessContext
             ]);
         }
 
@@ -1339,10 +1464,11 @@ router.put('/workflow-settings', async (req, res) => {
 
 router.post('/:id/request-approval', async (req, res) => {
     try {
-        const report = await loadReportPayload(req.params.id);
+        const businessContext = currentReportBusinessContext(req);
+        const report = await loadReportPayload(req.params.id, businessContext);
         if (!report) return res.status(404).json({ error: 'Report not found' });
         const task = await createReportHandoffTask(report, req);
-        const updated = await loadReportPayload(req.params.id);
+        const updated = await loadReportPayload(req.params.id, businessContext);
         res.json({ report: updated, taskId: task?.id || updated?.approvalTaskId || null, duplicateSkipped: Boolean(task?.duplicateSkipped) });
     } catch (err) {
         log.error('POST /reports/:id/request-approval error', err);
@@ -1352,7 +1478,8 @@ router.post('/:id/request-approval', async (req, res) => {
 
 router.post('/:id/in-review', async (req, res) => {
     try {
-        const existing = await loadReportRow(req.params.id);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
         const result = await pool.query(
             `UPDATE reports
@@ -1360,8 +1487,9 @@ router.post('/:id/in-review', async (req, res) => {
                  approval_status = CASE WHEN approval_status IN ('none', 'pending', 'task_created') THEN 'in_review' ELSE approval_status END,
                  updated_at = NOW()
              WHERE id = $1
+               AND COALESCE(business_context, $2) = $2
              RETURNING *`,
-            [req.params.id]
+            [req.params.id, businessContext]
         );
         if (existing.approval_task_id) {
             getKleshnya().updateTaskStatus(existing.approval_task_id, 'in_progress', currentUsername(req)).catch(err => {
@@ -1377,7 +1505,8 @@ router.post('/:id/in-review', async (req, res) => {
 
 router.post('/:id/approve', async (req, res) => {
     try {
-        const existing = await loadReportRow(req.params.id);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
         const comment = String(req.body?.comment || '').trim().slice(0, 2000);
         const result = await pool.query(
@@ -1391,8 +1520,9 @@ router.post('/:id/approve', async (req, res) => {
                  approval_comment = NULLIF($4, ''),
                  updated_at = NOW()
              WHERE id = $1
+               AND COALESCE(business_context, $5) = $5
              RETURNING *`,
-            [req.params.id, currentUserId(req), currentUsername(req), comment]
+            [req.params.id, currentUserId(req), currentUsername(req), comment, businessContext]
         );
         await completeApprovalTask(existing.approval_task_id, currentUsername(req));
         scheduleFinanceTransactionForReport(result.rows[0], req);
@@ -1405,7 +1535,8 @@ router.post('/:id/approve', async (req, res) => {
 
 router.post('/:id/reject', async (req, res) => {
     try {
-        const existing = await loadReportRow(req.params.id);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await loadReportRow(req.params.id, businessContext);
         if (!existing) return res.status(404).json({ error: 'Report not found' });
         const comment = String(req.body?.comment || '').trim().slice(0, 2000);
         const result = await pool.query(
@@ -1418,8 +1549,9 @@ router.post('/:id/reject', async (req, res) => {
                  approval_comment = NULLIF($4, ''),
                  updated_at = NOW()
              WHERE id = $1
+               AND COALESCE(business_context, $5) = $5
              RETURNING *`,
-            [req.params.id, currentUserId(req), currentUsername(req), comment]
+            [req.params.id, currentUserId(req), currentUsername(req), comment, businessContext]
         );
         await completeApprovalTask(existing.approval_task_id, currentUsername(req));
         res.json(mapReportRow({ ...result.rows[0], accountant_name: existing.accountant_name, approval_task_status: 'done' }));
@@ -1432,7 +1564,9 @@ router.post('/:id/reject', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const report = await loadReportPayload(id);
+        const businessScope = ensureReportBusinessScope(req, res);
+        if (!businessScope) return;
+        const report = await loadReportPayload(id, businessScope);
         if (!report) {
             return res.status(404).json({ error: 'Report not found' });
         }
@@ -1448,6 +1582,7 @@ router.get('/:id', async (req, res) => {
 // ==========================================
 router.post('/', async (req, res) => {
     try {
+        const businessContext = currentReportBusinessContext(req);
         const {
             type, amount, description, category, hashtags,
             submittedBy, submittedById, submittedVia = 'web',
@@ -1460,11 +1595,12 @@ router.post('/', async (req, res) => {
         }
 
         const result = await pool.query(`
-            INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
+            INSERT INTO reports (business_context, type, amount, description, category, submitted_by, submitted_by_id,
                 submitted_via, photo_url, ocr_text, voice_transcript, raw_data, hashtags)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *
         `, [
+            businessContext,
             type,
             parseFloat(amount) || 0,
             description || null,
@@ -1497,13 +1633,17 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const businessContext = currentReportBusinessContext(req);
         const {
             type, amount, description, category,
             status, photoUrl, ocrText,
             hashtags, hashtagActive, rawData
         } = req.body;
 
-        const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [id]);
+        const existing = await pool.query(
+            'SELECT * FROM reports WHERE id = $1 AND COALESCE(business_context, $2) = $2',
+            [id, businessContext]
+        );
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });
         }
@@ -1546,9 +1686,14 @@ router.put('/:id', async (req, res) => {
 
         updates.push('updated_at = NOW()');
         params.push(id);
+        const idParam = params.length;
+        params.push(businessContext);
 
         const result = await pool.query(`
-            UPDATE reports SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *
+            UPDATE reports SET ${updates.join(', ')}
+            WHERE id = $${idParam}
+              AND COALESCE(business_context, $${params.length}) = $${params.length}
+            RETURNING *
         `, params);
 
         const updatedReport = result.rows[0];
@@ -1562,22 +1707,29 @@ router.put('/:id', async (req, res) => {
                 try {
                     // Check if already recorded
                     const exists = await pool.query(
-                        `SELECT id FROM finance_transactions WHERE description LIKE $1 LIMIT 1`,
-                        [`%звіт #${id}%`]
+                        `SELECT id FROM finance_transactions
+                         WHERE description LIKE $1
+                           AND COALESCE(business_context, $2) = $2
+                         LIMIT 1`,
+                        [`%звіт #${id}%`, businessContext]
                     );
                     if (exists.rowCount) return;
 
                     const finType = updatedReport.type === 'expense' ? 'expense' : 'income';
                     const catQuery = await pool.query(
-                        `SELECT id FROM finance_categories WHERE name ILIKE $1 AND type = $2 LIMIT 1`,
-                        [`%${updatedReport.category || 'Інше'}%`, finType]
+                        `SELECT id FROM finance_categories
+                         WHERE name ILIKE $1
+                           AND type = $2
+                           AND COALESCE(business_context, $3) = $3
+                         LIMIT 1`,
+                        [`%${updatedReport.category || 'Інше'}%`, finType, businessContext]
                     );
                     const catId = catQuery.rows[0]?.id || null;
 
                     await pool.query(
-                        `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, created_by)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                        [finType, catId, Math.round(updatedReport.amount),
+                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, created_by)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                        [businessContext, finType, catId, Math.round(updatedReport.amount),
                          `${updatedReport.description || 'Звіт'} (звіт #${id})`,
                          updatedReport.created_at ? new Date(updatedReport.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
                          'report', updatedReport.submitted_by || req.user?.username || 'system']
@@ -1602,14 +1754,21 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [id]);
+        const businessContext = currentReportBusinessContext(req);
+        const existing = await pool.query(
+            'SELECT * FROM reports WHERE id = $1 AND COALESCE(business_context, $2) = $2',
+            [id, businessContext]
+        );
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });
         }
         if (isReportLifecycleClosed(existing.rows[0])) {
             return res.status(423).json({ error: 'Closed report is locked for deletion' });
         }
-        const result = await pool.query('DELETE FROM reports WHERE id = $1 RETURNING id', [id]);
+        const result = await pool.query(
+            'DELETE FROM reports WHERE id = $1 AND COALESCE(business_context, $2) = $2 RETURNING id',
+            [id, businessContext]
+        );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });
         }
@@ -1627,6 +1786,7 @@ router.post('/:id/assign', async (req, res) => {
     try {
         const { id } = req.params;
         const { accountantId } = req.body;
+        const businessContext = currentReportBusinessContext(req);
 
         if (!accountantId) {
             return res.status(400).json({ error: 'accountantId required' });
@@ -1634,8 +1794,10 @@ router.post('/:id/assign', async (req, res) => {
 
         const result = await pool.query(`
             UPDATE reports SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW()
-            WHERE id = $2 RETURNING *
-        `, [accountantId, id]);
+            WHERE id = $2
+              AND COALESCE(business_context, $3) = $3
+            RETURNING *
+        `, [accountantId, id, businessContext]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Report not found' });

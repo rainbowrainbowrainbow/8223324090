@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.8 - CRM 68: звіти за бізнесом
+
+### Reports / business scope / tenant safety / 29.05.2026 [codex]
+- **Звіти отримали durable `business_context`** - додано міграцію для `reports`, `report_templates` і `report_table_drafts`, щоб звіти, шаблони та чернетки не жили у глобальному просторі.
+- **Read-only business overview тепер показує правильні звіти** - список, summary, хештеги й деталі звітів читають `single`, `multi` та `all` scope через спільний business-scope contract.
+- **Записи звітів лишаються в одному бізнесі** - створення, редагування, закриття, погодження, видалення, чернетки та bulk hashtag toggle перевіряють активний бізнес перед змінами.
+- **Finance side-effects не змішуються між бізнесами** - транзакції, які створюються зі звіту, отримують той самий `business_context` і шукають категорію у правильному бізнесі.
+- **Regression guard додано** - `operational-business-context` фіксує міграцію, scoped reports route і scoped finance insert, щоб наступні зміни не повернули глобальні звіти.
+
+---
+
 ## v0.68.7 - CRM 68: read-only бізнес-огляд
 
 ### Business scope / read-only UX / 29.05.2026 [codex]

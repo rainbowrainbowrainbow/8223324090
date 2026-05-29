@@ -64,14 +64,17 @@ const CHANNELS = [
     purpose: 'inbox',
     purposeLabel: 'Inbox Telegram',
     providerKind: 'bot',
-    envKeys: ['TELEGRAM_BOT_TOKEN'],
-    accountEnvKeys: ['TELEGRAM_BOT_USERNAME', 'TELEGRAM_DEFAULT_CHAT_ID'],
+    envKeys: ['TELEGRAM_BOT_TOKEN', 'OMNI_TELEGRAM_BRIDGE_URL', 'OMNI_TELEGRAM_BRIDGE_TOKEN'],
+    accountEnvKeys: ['TELEGRAM_BOT_USERNAME', 'TELEGRAM_DEFAULT_CHAT_ID', 'OMNI_TELEGRAM_BRIDGE_URL'],
     sendSupported: true,
     receiveSupported: true,
     credentialMap: {
       botToken: 'TELEGRAM_BOT_TOKEN',
       botUsername: 'TELEGRAM_BOT_USERNAME',
       defaultChatId: 'TELEGRAM_DEFAULT_CHAT_ID',
+      bridgeSendUrl: 'OMNI_TELEGRAM_BRIDGE_URL',
+      bridgeSendToken: 'OMNI_TELEGRAM_BRIDGE_TOKEN',
+      webhookSecret: 'OMNI_TELEGRAM_WEBHOOK_SECRET',
     },
     fields: [
       { name: 'botToken', label: 'Inbox bot token', type: 'secret', required: true, placeholder: '123456:ABC-DEF...', hint: 'Токен саме Telegram inbox-бота з BotFather. Не вставляйте сюди report/alerts bot token.' },
@@ -267,25 +270,57 @@ function providerDefinition(channel) {
   return CHANNEL_MAP.get(normalizeChannel(channel)) || null;
 }
 
-function hasEnv(keys = [], options = {}) {
-  if (!includeEnvironmentConfig(options)) return false;
-  return keys.some(key => String(process.env[key] || '').trim());
+function isTelegramBridgeEnvKey(key) {
+  return String(key || '').startsWith('OMNI_TELEGRAM_BRIDGE_')
+    || String(key || '') === 'OMNI_TELEGRAM_WEBHOOK_SECRET';
 }
 
-function firstEnv(keys = [], options = {}) {
+function envKeysForContext(def, keys = [], options = {}) {
+  if (!def || def.channel !== 'telegram' || telegramBridgeEnvAllowed(options)) return keys;
+  return keys.filter(key => !isTelegramBridgeEnvKey(key));
+}
+
+function shouldUseCredentialEnv(def, envKey, options = {}) {
+  return !def || def.channel !== 'telegram' || !isTelegramBridgeEnvKey(envKey) || telegramBridgeEnvAllowed(options);
+}
+
+function hasEnv(keys = [], options = {}, def = null) {
+  if (!includeEnvironmentConfig(options)) return false;
+  return envKeysForContext(def, keys, options).some(key => String(process.env[key] || '').trim());
+}
+
+function firstEnv(keys = [], options = {}, def = null) {
   if (!includeEnvironmentConfig(options)) return null;
-  for (const key of keys) {
+  for (const key of envKeysForContext(def, keys, options)) {
     const value = String(process.env[key] || '').trim();
     if (value) return value;
   }
   return null;
 }
 
+function telegramBridgeEnvAllowed(options = {}) {
+  const configuredContext = String(process.env.OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT || '').trim();
+  if (!configuredContext) return includeEnvironmentConfig(options);
+  return normalizeBusinessContext(configuredContext) === omniBusinessContext(options);
+}
+
 function envConfig(def, options = {}) {
-  if (!includeEnvironmentConfig(options)) return {};
+  if (!includeEnvironmentConfig(options)) {
+    if (def.channel === 'telegram' && telegramBridgeEnvAllowed(options)) {
+      const bridgeValues = {};
+      for (const [field, envKey] of Object.entries(def.credentialMap || {})) {
+        if (!String(field).startsWith('bridge') && field !== 'webhookSecret') continue;
+        const value = String(process.env[envKey] || '').trim();
+        if (value) bridgeValues[field] = value;
+      }
+      return bridgeValues;
+    }
+    return {};
+  }
   if (isSmsDefinition(def)) return smsEnvConfig(def.provider || defaultSmsProvider());
   const values = {};
   Object.entries(def.credentialMap || {}).forEach(([field, envKey]) => {
+    if (!shouldUseCredentialEnv(def, envKey, options)) return;
     const value = String(process.env[envKey] || '').trim();
     if (value) values[field] = value;
   });
@@ -438,8 +473,15 @@ function setupFieldsForClient(def, row, options = {}) {
   });
 }
 
+function telegramBridgeRuntimeConfigured(runtime = {}) {
+  return Boolean(runtime.bridgeSendUrl && runtime.bridgeSendToken && runtime.webhookSecret);
+}
+
 function publicConnectionSummary(def, row, runtime = {}, options = {}) {
-  const connected = hasEnv(def.envKeys, options) || Boolean(row && row.status !== 'disconnected' && row.status !== 'needs_rebind');
+  const envConnected = def.channel === 'telegram'
+    ? Boolean(runtime.botToken || telegramBridgeRuntimeConfigured(runtime))
+    : hasEnv(def.envKeys, options, def);
+  const connected = envConnected || Boolean(row && row.status !== 'disconnected' && row.status !== 'needs_rebind');
   const accountName =
     row?.account_display_name
     || runtime.botUsername
@@ -447,13 +489,14 @@ function publicConnectionSummary(def, row, runtime = {}, options = {}) {
     || runtime.pageName
     || runtime.senderName
     || runtime.sender
-    || firstEnv(def.accountEnvKeys, options)
+    || (telegramBridgeRuntimeConfigured(runtime) ? 'Telegram bot bridge' : null)
+    || firstEnv(def.accountEnvKeys, options, def)
     || (connected ? `${def.label} configured` : null);
   return {
     connected,
     accountName,
     maskedIdentifier: row?.masked_identifier || maskIdentifier(
-      runtime.defaultChatId || runtime.pageId || runtime.sender || runtime.apiKey || runtime.botUsername || firstEnv(def.accountEnvKeys, options)
+      runtime.defaultChatId || runtime.pageId || runtime.sender || runtime.apiKey || runtime.botUsername || runtime.bridgeSendUrl || firstEnv(def.accountEnvKeys, options, def)
     ),
   };
 }
@@ -525,7 +568,7 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     lastTestAt: row?.last_test_at ? new Date(row.last_test_at).toISOString() : null,
     lastTestStatus: row?.last_test_status || null,
     lastTestMessage: row?.last_test_message || null,
-    supportedActions: supportedActionsForStatus(status, def),
+    supportedActions: supportedActionsForStatus(status, def, scopedOptions),
     setupFields: setupFieldsForClient(def, row, scopedOptions),
     providerOptions: providerOptionsForClient(def, row, scopedOptions),
     setupSteps: setupSteps(def, scopedOptions),
@@ -559,9 +602,9 @@ function nextActionForStatus(def, status, connected, sendCapable, receiveCapable
   return 'Можна працювати. Для контролю натисніть «Тест» або «Перевірити».';
 }
 
-function supportedActionsForStatus(status, def) {
+function supportedActionsForStatus(status, def, options = {}) {
   const actions = ['connect', 'recheck', 'test'];
-  if (status !== 'disconnected' || hasEnv(def.envKeys)) actions.push('disconnect');
+  if (status !== 'disconnected' || hasEnv(def.envKeys, options, def)) actions.push('disconnect');
   return actions;
 }
 
@@ -1174,6 +1217,7 @@ async function verifyProvider(def, runtime, context = {}) {
 function displayNameFromRuntime(def, runtime, check) {
   return check?.displayName
     || runtime.botUsername
+    || (telegramBridgeRuntimeConfigured(runtime) ? 'Telegram bot bridge' : null)
     || runtime.accountName
     || runtime.pageName
     || runtime.senderName
@@ -1189,6 +1233,7 @@ function maskedIdentifierFromRuntime(def, runtime) {
     || runtime.sender
     || runtime.apiKey
     || runtime.botUsername
+    || runtime.bridgeSendUrl
     || runtime.accountName
     || runtime.pageName
     || def.channel
@@ -1197,8 +1242,15 @@ function maskedIdentifierFromRuntime(def, runtime) {
 
 function validateTelegram(runtime) {
   const errors = [];
+  const hasBridgeConfig = telegramBridgeRuntimeConfigured(runtime);
+  if (!runtime.botToken && !hasBridgeConfig) {
+    errors.push('Telegram inbox requires a bot token or a complete bot bridge: send URL, send token, and webhook secret.');
+  }
   if (runtime.botToken && !/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(runtime.botToken)) {
     errors.push('Telegram token має формат bot token з BotFather.');
+  }
+  if (runtime.bridgeSendUrl && !/^https:\/\//i.test(String(runtime.bridgeSendUrl))) {
+    errors.push('Bot bridge send URL must be an HTTPS URL.');
   }
   return errors;
 }
@@ -1261,6 +1313,14 @@ async function httpsJson(options, body = null) {
 }
 
 async function verifyTelegram(runtime, context = {}) {
+  if (!runtime.botToken && telegramBridgeRuntimeConfigured(runtime)) {
+    return {
+      status: 'success',
+      message: 'Telegram bot bridge configured. CRM will receive inbox events from the bot and send replies back through the bot bridge.',
+      displayName: runtime.botUsername || 'Telegram bot bridge',
+      details: { bridgeSendUrl: runtime.bridgeSendUrl },
+    };
+  }
   try {
     const result = await httpsJson({
       hostname: 'api.telegram.org',

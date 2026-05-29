@@ -17,6 +17,7 @@ function clearModules() {
         '../services/kleshnya-chat',
         '../services/websocket',
         '../services/telegram',
+        '../services/omni-telegram-bridge',
         '../services/omni-viber',
         '../services/omni-sms',
         '../services/omni-facebook',
@@ -32,6 +33,7 @@ function loadHub(pool, providerMocks = {}) {
     installMock('../services/kleshnya-chat', { generateChatResponse: async () => '' });
     installMock('../services/websocket', { getWSS: () => ({ clients: [] }) });
     installMock('../services/telegram', { sendTelegramMessage: providerMocks.sendTelegramMessage || (async () => ({ ok: true, result: { message_id: 42 } })) });
+    installMock('../services/omni-telegram-bridge', { sendTelegramBridgeMessage: providerMocks.sendTelegramBridgeMessage || (async () => null) });
     installMock('../services/omni-viber', { sendViber: providerMocks.sendViber || (async () => ({ success: true, messageToken: 43 })) });
     installMock('../services/omni-sms', { sendSMS: providerMocks.sendSMS || (async () => ({ success: true, messageId: 'sms-44' })) });
     installMock('../services/omni-facebook', { sendFacebook: providerMocks.sendFacebook || (async () => ({ success: true, messageId: 'fb-45' })) });
@@ -261,6 +263,9 @@ describe('Communication Send Truth v1', () => {
     it('surfaces Omni account connectivity truth and disconnected alerts', () => {
         const previous = {
             TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            OMNI_TELEGRAM_BRIDGE_URL: process.env.OMNI_TELEGRAM_BRIDGE_URL,
+            OMNI_TELEGRAM_BRIDGE_TOKEN: process.env.OMNI_TELEGRAM_BRIDGE_TOKEN,
+            OMNI_TELEGRAM_WEBHOOK_SECRET: process.env.OMNI_TELEGRAM_WEBHOOK_SECRET,
             VIBER_TOKEN: process.env.VIBER_TOKEN,
             TURBOSMS_TOKEN: process.env.TURBOSMS_TOKEN,
             FLYSMS_API_KEY: process.env.FLYSMS_API_KEY,
@@ -271,6 +276,9 @@ describe('Communication Send Truth v1', () => {
             BINOTEL_WEBHOOK_SECRET: process.env.BINOTEL_WEBHOOK_SECRET,
         };
         delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.OMNI_TELEGRAM_BRIDGE_URL;
+        delete process.env.OMNI_TELEGRAM_BRIDGE_TOKEN;
+        delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
         delete process.env.VIBER_TOKEN;
         delete process.env.FLYSMS_API_KEY;
         delete process.env.SMS_FLY_API_KEY;
@@ -352,11 +360,17 @@ describe('Communication Send Truth v1', () => {
         const previous = {
             TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
             TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+            OMNI_TELEGRAM_BRIDGE_URL: process.env.OMNI_TELEGRAM_BRIDGE_URL,
+            OMNI_TELEGRAM_BRIDGE_TOKEN: process.env.OMNI_TELEGRAM_BRIDGE_TOKEN,
+            OMNI_TELEGRAM_WEBHOOK_SECRET: process.env.OMNI_TELEGRAM_WEBHOOK_SECRET,
             REPORT_BOT_TOKEN: process.env.REPORT_BOT_TOKEN,
             REPORT_BOT_USERNAME: process.env.REPORT_BOT_USERNAME,
         };
         delete process.env.TELEGRAM_BOT_TOKEN;
         delete process.env.TELEGRAM_BOT_USERNAME;
+        delete process.env.OMNI_TELEGRAM_BRIDGE_URL;
+        delete process.env.OMNI_TELEGRAM_BRIDGE_TOKEN;
+        delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
         process.env.REPORT_BOT_TOKEN = '123456:abcdefghijklmnopqrstuvwxyz';
         process.env.REPORT_BOT_USERNAME = '@eventgenix_report_bot';
         clearModules();
@@ -379,6 +393,138 @@ describe('Communication Send Truth v1', () => {
                 if (value === undefined) delete process.env[key];
                 else process.env[key] = value;
             });
+            clearModules();
+        }
+    });
+
+    it('treats the Майстерня bot bridge env as a send-capable Telegram inbox', () => {
+        const previous = {
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+            OMNI_TELEGRAM_BRIDGE_URL: process.env.OMNI_TELEGRAM_BRIDGE_URL,
+            OMNI_TELEGRAM_BRIDGE_TOKEN: process.env.OMNI_TELEGRAM_BRIDGE_TOKEN,
+            OMNI_TELEGRAM_WEBHOOK_SECRET: process.env.OMNI_TELEGRAM_WEBHOOK_SECRET,
+            OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT: process.env.OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT,
+        };
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_BOT_USERNAME;
+        process.env.OMNI_TELEGRAM_BRIDGE_URL = 'https://maister-bot.example.test/integrations/eventgenix/telegram/send';
+        process.env.OMNI_TELEGRAM_BRIDGE_TOKEN = 'bridge-send-token';
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'bridge-webhook-secret';
+        process.env.OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT = 'maysternya_doli';
+        clearModules();
+        const accounts = require('../services/omni-accounts');
+
+        try {
+            const telegram = accounts.getOmniAccountStatuses({
+                now: new Date('2099-05-15T10:00:00Z'),
+                businessContext: 'maysternya_doli'
+            })
+                .find(acc => acc.channel === 'telegram');
+            assert.equal(telegram.connected, true);
+            assert.equal(telegram.sendCapable, true);
+            assert.equal(telegram.receiveCapable, true);
+            assert.equal(telegram.source, 'environment');
+            assert.match(telegram.accountName, /Telegram bot bridge/);
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
+    });
+
+    it('does not leak scoped Telegram bridge env into the default business context', () => {
+        const previous = {
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+            TELEGRAM_DEFAULT_CHAT_ID: process.env.TELEGRAM_DEFAULT_CHAT_ID,
+            OMNI_TELEGRAM_BRIDGE_URL: process.env.OMNI_TELEGRAM_BRIDGE_URL,
+            OMNI_TELEGRAM_BRIDGE_TOKEN: process.env.OMNI_TELEGRAM_BRIDGE_TOKEN,
+            OMNI_TELEGRAM_WEBHOOK_SECRET: process.env.OMNI_TELEGRAM_WEBHOOK_SECRET,
+            OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT: process.env.OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT,
+        };
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_BOT_USERNAME;
+        delete process.env.TELEGRAM_DEFAULT_CHAT_ID;
+        process.env.OMNI_TELEGRAM_BRIDGE_URL = 'https://maister-bot.example.test/integrations/eventgenix/telegram/send';
+        process.env.OMNI_TELEGRAM_BRIDGE_TOKEN = 'bridge-send-token';
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'bridge-webhook-secret';
+        process.env.OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT = 'maysternya_doli';
+        clearModules();
+        const accounts = require('../services/omni-accounts');
+
+        try {
+            const defaultTelegram = accounts.getOmniAccountStatuses({
+                now: new Date('2099-05-15T10:00:00Z')
+            })
+                .find(acc => acc.channel === 'telegram');
+            const scopedTelegram = accounts.getOmniAccountStatuses({
+                now: new Date('2099-05-15T10:00:00Z'),
+                businessContext: 'maysternya_doli'
+            })
+                .find(acc => acc.channel === 'telegram');
+
+            assert.equal(defaultTelegram.connected, false);
+            assert.equal(defaultTelegram.sendCapable, false);
+            assert.equal(defaultTelegram.accountName, null);
+            assert.equal(defaultTelegram.maskedIdentifier, null);
+            assert.equal(scopedTelegram.connected, true);
+            assert.equal(scopedTelegram.sendCapable, true);
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
+    });
+
+    it('builds Telegram bridge send requests with auth and business context headers', async () => {
+        clearModules();
+        installMock('../services/omni-accounts', {
+            resolveOmniRuntimeConfig: async (channel, options = {}) => {
+                assert.equal(channel, 'telegram');
+                assert.equal(options.businessContext, 'maysternya_doli');
+                return {
+                    bridgeSendUrl: 'https://maister-bot.example.test/integrations/eventgenix/telegram/send',
+                    bridgeSendToken: 'bridge-send-token',
+                };
+            }
+        });
+        const originalFetch = global.fetch;
+        const calls = [];
+        global.fetch = async (url, options = {}) => {
+            calls.push({ url, options });
+            return {
+                ok: true,
+                text: async () => JSON.stringify({ ok: true, result: { message_id: 88 } }),
+            };
+        };
+
+        try {
+            const { sendTelegramBridgeMessage } = require('../services/omni-telegram-bridge');
+            const result = await sendTelegramBridgeMessage('12345', 'Привіт з CRM', {
+                businessContext: 'maysternya_doli',
+                silent: false,
+            });
+
+            assert.equal(result.ok, true);
+            assert.equal(result.result.message_id, 88);
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0].url, 'https://maister-bot.example.test/integrations/eventgenix/telegram/send');
+            assert.equal(calls[0].options.method, 'POST');
+            assert.equal(calls[0].options.headers.Authorization, 'Bearer bridge-send-token');
+            assert.equal(calls[0].options.headers['X-Business-Context'], 'maysternya_doli');
+            assert.deepEqual(JSON.parse(calls[0].options.body), {
+                chat_id: '12345',
+                text: 'Привіт з CRM',
+                disable_notification: false,
+                business_context: 'maysternya_doli',
+            });
+        } finally {
+            global.fetch = originalFetch;
             clearModules();
         }
     });
@@ -526,6 +672,39 @@ describe('Communication Send Truth v1', () => {
         assert.equal(calls[0][0], '12345');
         assert.equal(calls[0][1], 'Привіт');
         assert.deepEqual(calls[0][2], { skipThread: true });
+    });
+
+    it('sends Telegram inbox replies through the Майстерня bot bridge when configured', async () => {
+        const pool = createManualSendPool({
+            id: 918,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            business_context: 'maysternya_doli',
+            meta: {}
+        });
+        const calls = [];
+        const hub = loadHub(pool, {
+            sendTelegramBridgeMessage: async (...args) => {
+                calls.push(args);
+                return { ok: true, result: { message_id: 77 } };
+            },
+            sendTelegramMessage: async () => {
+                throw new Error('direct Telegram sender should not be called');
+            }
+        });
+
+        const result = await hub.sendManualMessage(918, 'Привіт з CRM', 'Manager', {
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0][0], '12345');
+        assert.equal(calls[0][1], 'Привіт з CRM');
+        assert.deepEqual(calls[0][2], { businessContext: 'maysternya_doli' });
+        assert.equal(result.sendTruth.status, 'provider_attempted');
+        assert.equal(result.message.providerMessageId, '77');
     });
 
     it('does not set reply expectation on ordinary outbound sends', async () => {

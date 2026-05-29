@@ -4,6 +4,18 @@
 
 ---
 
+## v0.68.3 - CRM 68: Omni Telegram bridge
+
+### Omni / Telegram bridge / tenant-safety / 29.05.2026 [codex]
+- **Telegram inbox для Майстерні завершено як bridge flow** - CRM може приймати Telegram inbox webhooks і відправляти відповіді назад через зовнішній bot bridge без підміни report bot або global Telegram sender.
+- **Webhook secret додано до Telegram inbox** - `/api/omni/webhook/telegram` тепер перевіряє `OMNI_TELEGRAM_WEBHOOK_SECRET`, якщо секрет налаштований у runtime/env.
+- **Business context ізольовано** - `OMNI_TELEGRAM_BRIDGE_BUSINESS_CONTEXT=maysternya_doli` більше не підмішує bridge URL/token/secret у default бізнес-контекст.
+- **Send truth збережено** - manual Omni reply через bridge повертає provider attempted/accepted truth і не викликає direct Telegram sender, якщо bridge налаштований.
+- **Regression guard додано** - focused Omni test покриває bridge readiness, send path і tenant-leak захист між default context та `maysternya_doli`.
+- **Cache/version references синхронізовано** - asset tags, service worker cache names, login badge, changelog CTA і `/api/version` contract переведені на `0.68.3`.
+
+---
+
 ## v0.68.2 - CRM 68: cleanup мертвого коду
 
 ### Shell cleanup / dead code / 29.05.2026 [codex]

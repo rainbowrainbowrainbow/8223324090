@@ -14,6 +14,7 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
+const { sendTelegramBridgeMessage } = require('./omni-telegram-bridge');
 const {
   getOmniAccountStatus,
   getOmniUnavailableMessage,
@@ -1487,6 +1488,10 @@ async function sendToChannel(channel, externalId, text, meta) {
     : { ...(meta || {}), businessContext };
   switch (channel) {
     case 'telegram':
+      {
+        const bridgeResult = await sendTelegramBridgeMessage(externalId, text, scopedMeta);
+        if (bridgeResult) return bridgeResult;
+      }
       return sendTelegramMessage(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT
         ? { skipThread: true }
         : { skipThread: true, businessContext });

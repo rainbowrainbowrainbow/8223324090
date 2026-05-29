@@ -131,6 +131,10 @@ function collectSmsWebhookPayloads(body) {
 router.post('/webhook/telegram', async (req, res) => {
     try {
         const businessContext = webhookBusinessContext(req);
+        if (!await verifyWebhookSecret(req, 'OMNI_TELEGRAM_WEBHOOK_SECRET', 'telegram')) {
+            log.warn('Telegram webhook secret verification failed');
+            return res.status(403).json({ ok: false, error: 'invalid secret' });
+        }
         const normalized = getNormalizer().normalizeTelegram(req.body);
         if (normalized) {
             await getHub().processInboundMessage(normalized, { businessContext });

@@ -785,14 +785,17 @@ function createBookingBlock(booking, startHour) {
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
     const maysternyaExtra = renderBooking.extraData?.maysternyaBooking || renderBooking.extraData?.maysternya || {};
-    const isMaysternyaSlotClosed = maysternyaExtra.slotClosed === true || maysternyaExtra.mode === 'closed_slot';
+    const resourceBlockExtra = renderBooking.extraData?.timelineResourceBlock || renderBooking.extraData?.timeline_resource_block || {};
+    const isMaysternyaSlotClosed = maysternyaExtra.slotClosed === true || maysternyaExtra.mode === 'closed_slot'
+        || resourceBlockExtra.resourceBlocked === true || resourceBlockExtra.mode === 'resource_blackout';
     // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}`;
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
-    block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? 'Слот закрито' : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}`);
+    const closedSlotLabel = renderBooking.label || (resourceBlockExtra.resourceName ? 'Ресурс закрито' : 'Слот закрито');
+    block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
@@ -817,9 +820,9 @@ function createBookingBlock(booking, startHour) {
 
     const maysternyaClient = maysternyaExtra.clientName || maysternyaExtra.topic || renderBooking.groupName || '';
     const bookingTitleTail = isMaysternyaSlotClosed
-        ? 'Зайнято'
+        ? (resourceBlockExtra.resourceName || 'Зайнято')
         : (maysternyaClient || renderBooking.room || renderBooking.programName || '');
-    const bookingTitle = isMaysternyaSlotClosed ? 'Закрито' : (renderBooking.label || renderBooking.programCode);
+    const bookingTitle = isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.programCode);
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(bookingTitle)}: ${escapeHtml(bookingTitleTail)}${durationBadge}</div>

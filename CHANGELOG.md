@@ -4,6 +4,18 @@
 
 ---
 
+## v0.68.15 - закриття кабінетів таймлайну
+
+### Timeline resources / cabinet closure / capacity / 29.05.2026 [codex]
+- **Кабінети можна швидко закривати зі слота** - resource-backed режими отримали дію `Закрити кабінет/ресурс`, яка створює службовий blackout-запис і блокує цей час на лінії без клієнтського бронювання.
+- **Вільні кабінети стали capacity-aware** - `/api/rooms/free` і `/api/timeline/resources/availability` приймають кількість учнів/місць, повертають `overCapacity` та не пропонують кабінети з недостатньою місткістю.
+- **Backend захищає від переповнення кабінету** - створення, повне бронювання і редагування відхиляють запис, якщо `kidsCount` перевищує місткість scoped ресурсу.
+- **Навчальне бронювання показує кількість учнів** - education mode більше не ховає поле кількості, а підказки та quick-close тексти говорять мовою кабінетів.
+- **Timeline бачить службові resource blackout записи** - закриті кабінети рендеряться як `slot-closed`, без драг/resize/зв'язування, щоб оператор не сприймав їх як звичайний запис.
+- **Regression guard додано** - `timeline-resources` і UI smoke перевіряють capacity, `timelineResourceBlock`, quick-close і free-room interaction без inline-click.
+
+---
+
 ## v0.68.14 - мультикабінети таймлайну
 
 ### Timeline resources / cabinets / education mode / 29.05.2026 [codex]

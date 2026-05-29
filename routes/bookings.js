@@ -351,6 +351,20 @@ async function hydrateBookingRoomFromTimelineResource(queryable, payload, busine
     return payload;
 }
 
+async function validateBookingTimelineResourceCapacity(queryable, payload, businessContext) {
+    if (!payload || !payload.lineId) return null;
+    const kidsCount = parseInt(payload.kidsCount ?? payload.kids_count, 10);
+    if (!Number.isFinite(kidsCount) || kidsCount <= 0) return null;
+    const resource = await findTimelineResource(queryable, businessContext, payload.lineId, { includeInactive: true });
+    if (!resource || !['cabinet', 'specialist', 'online'].includes(resource.type)) return null;
+    const capacity = parseInt(resource.capacity, 10);
+    if (!Number.isFinite(capacity) || capacity <= 0 || kidsCount <= capacity) return null;
+    return {
+        resource,
+        error: `${resource.name} має місткість ${capacity}, а в записі ${kidsCount}`
+    };
+}
+
 async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
@@ -647,6 +661,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
+    const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
+    if (capacityError) { return res.status(409).json({ success: false, error: capacityError.error, resource: capacityError.resource }); }
     if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
     if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
     if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
@@ -1076,6 +1092,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await hydrateBookingRoomFromTimelineResource(pool, main, businessContext);
         const mainRoomError = requireBookingRoom(main);
         if (mainRoomError) { return res.status(400).json({ error: mainRoomError }); }
+        const mainCapacityError = await validateBookingTimelineResourceCapacity(pool, main, businessContext);
+        if (mainCapacityError) { return res.status(409).json({ success: false, error: mainCapacityError.error, resource: mainCapacityError.resource }); }
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         applyBookingPackage(main);
@@ -1085,6 +1103,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 if (!String(lb.room || '').trim()) await hydrateBookingRoomFromTimelineResource(pool, lb, businessContext);
                 const linkedRoomError = requireBookingRoom(lb);
                 if (linkedRoomError) return res.status(400).json({ error: linkedRoomError });
+                const linkedCapacityError = await validateBookingTimelineResourceCapacity(pool, lb, businessContext);
+                if (linkedCapacityError) return res.status(409).json({ success: false, error: linkedCapacityError.error, resource: linkedCapacityError.resource });
                 const linkedPinataFields = applyPinataNormalization(lb);
                 if (linkedPinataFields.error) return res.status(400).json({ success: false, error: linkedPinataFields.error });
             }
@@ -1729,6 +1749,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     await hydrateBookingRoomFromTimelineResource(pool, b, businessContext);
     const roomError = requireBookingRoom(b);
     if (roomError) { return res.status(400).json({ error: roomError }); }
+    const capacityError = await validateBookingTimelineResourceCapacity(pool, b, businessContext);
+    if (capacityError) { return res.status(409).json({ success: false, error: capacityError.error, resource: capacityError.resource }); }
 
     const client = await pool.connect();
     try {

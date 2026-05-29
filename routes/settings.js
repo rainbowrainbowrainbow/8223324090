@@ -446,7 +446,8 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
                 type: resourceType,
                 date,
                 time,
-                duration: dur
+                duration: dur,
+                capacity: req.query.capacity || req.query.attendees || req.query.kidsCount
             }));
         }
 

@@ -373,6 +373,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const date = String(options.date || '').trim();
     const time = String(options.time || '').trim();
     const duration = Math.max(1, Math.min(parseInt(options.duration, 10) || 60, 1440));
+    const requestedCapacity = normalizeCapacity(options.capacity ?? options.attendees ?? options.kidsCount);
     const resources = await listTimelineResources(db, {
         context,
         type,
@@ -382,10 +383,10 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const resourceIds = resources.map(resource => resource.resourceId);
     const resourceNames = resources.map(resource => resource.name);
     if (!resourceIds.length) {
-        return { context, type, date, time, duration, total: 0, free: [], occupied: [], resources: [] };
+        return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
     const bookings = await db.query(
-        `SELECT id, line_id, room, time, duration, label, program_code, program_name, status
+        `SELECT id, line_id, room, time, duration, label, program_code, program_name, status, kids_count, extra_data
            FROM bookings
           WHERE date = $1
             AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
@@ -407,26 +408,42 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
             id: booking.id,
             time: booking.time,
             duration: booking.duration,
-            label: booking.label || booking.program_name || booking.program_code || null
+            label: booking.label || booking.program_name || booking.program_code || null,
+            kidsCount: booking.kids_count || null,
+            resourceBlock: booking.extra_data?.timelineResourceBlock?.resourceBlocked === true
+                || booking.extra_data?.maysternyaBooking?.slotClosed === true
         });
     }
     const detailed = resources.map(resource => {
         const conflicts = byResource.get(resource.resourceId) || [];
+        const capacity = normalizeCapacity(resource.capacity);
+        const capacityAvailable = !requestedCapacity || !capacity || capacity >= requestedCapacity;
+        const unavailableReason = conflicts.length > 0
+            ? 'occupied'
+            : (!capacityAvailable ? 'capacity' : null);
         return {
             ...resource,
             occupied: conflicts.length > 0,
+            capacityAvailable,
+            requestedCapacity,
+            unavailableReason,
             bookings: conflicts
         };
     });
+    const freeResources = detailed.filter(resource => !resource.occupied && resource.capacityAvailable);
+    const occupiedResources = detailed.filter(resource => resource.occupied);
+    const overCapacityResources = detailed.filter(resource => !resource.occupied && !resource.capacityAvailable);
     return {
         context,
         type,
         date,
         time,
         duration,
+        requestedCapacity,
         total: resources.length,
-        free: detailed.filter(resource => !resource.occupied).map(resource => resource.name),
-        occupied: detailed.filter(resource => resource.occupied).map(resource => resource.name),
+        free: freeResources.map(resource => resource.name),
+        occupied: occupiedResources.map(resource => resource.name),
+        overCapacity: overCapacityResources.map(resource => resource.name),
         resources: detailed
     };
 }

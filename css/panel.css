@@ -216,7 +216,10 @@
     display: none;
 }
 
-body.timeline-context-maysternya .maysternya-quick-booking-tools {
+body.timeline-context-maysternya .maysternya-quick-booking-tools,
+body.timeline-mode-simple .maysternya-quick-booking-tools,
+body.timeline-mode-specialist .maysternya-quick-booking-tools,
+body.timeline-mode-education .maysternya-quick-booking-tools {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 10px;
@@ -228,35 +231,62 @@ body.timeline-context-maysternya .maysternya-quick-booking-tools {
     background: rgba(14, 165, 134, 0.08);
 }
 
-body.timeline-context-maysternya .maysternya-quick-booking-tools > div {
+body.timeline-context-maysternya .maysternya-quick-booking-tools > div,
+body.timeline-mode-simple .maysternya-quick-booking-tools > div,
+body.timeline-mode-specialist .maysternya-quick-booking-tools > div,
+body.timeline-mode-education .maysternya-quick-booking-tools > div {
     min-width: 0;
 }
 
 body.timeline-context-maysternya .maysternya-quick-booking-tools strong,
 body.timeline-context-maysternya .maysternya-quick-booking-tools small,
-body.timeline-context-maysternya .maysternya-quick-booking-tools label span {
+body.timeline-context-maysternya .maysternya-quick-booking-tools label span,
+body.timeline-mode-simple .maysternya-quick-booking-tools strong,
+body.timeline-mode-simple .maysternya-quick-booking-tools small,
+body.timeline-mode-simple .maysternya-quick-booking-tools label span,
+body.timeline-mode-specialist .maysternya-quick-booking-tools strong,
+body.timeline-mode-specialist .maysternya-quick-booking-tools small,
+body.timeline-mode-specialist .maysternya-quick-booking-tools label span,
+body.timeline-mode-education .maysternya-quick-booking-tools strong,
+body.timeline-mode-education .maysternya-quick-booking-tools small,
+body.timeline-mode-education .maysternya-quick-booking-tools label span {
     display: block;
 }
 
-body.timeline-context-maysternya .maysternya-quick-booking-tools strong {
+body.timeline-context-maysternya .maysternya-quick-booking-tools strong,
+body.timeline-mode-simple .maysternya-quick-booking-tools strong,
+body.timeline-mode-specialist .maysternya-quick-booking-tools strong,
+body.timeline-mode-education .maysternya-quick-booking-tools strong {
     color: var(--gray-800);
     font-size: 14px;
 }
 
 body.timeline-context-maysternya .maysternya-quick-booking-tools small,
-body.timeline-context-maysternya .maysternya-quick-booking-tools label span {
+body.timeline-context-maysternya .maysternya-quick-booking-tools label span,
+body.timeline-mode-simple .maysternya-quick-booking-tools small,
+body.timeline-mode-simple .maysternya-quick-booking-tools label span,
+body.timeline-mode-specialist .maysternya-quick-booking-tools small,
+body.timeline-mode-specialist .maysternya-quick-booking-tools label span,
+body.timeline-mode-education .maysternya-quick-booking-tools small,
+body.timeline-mode-education .maysternya-quick-booking-tools label span {
     color: var(--gray-500);
     font-size: 11px;
     line-height: 1.3;
 }
 
-body.timeline-context-maysternya .maysternya-quick-booking-tools label {
+body.timeline-context-maysternya .maysternya-quick-booking-tools label,
+body.timeline-mode-simple .maysternya-quick-booking-tools label,
+body.timeline-mode-specialist .maysternya-quick-booking-tools label,
+body.timeline-mode-education .maysternya-quick-booking-tools label {
     grid-column: 1 / 2;
     display: grid;
     gap: 5px;
 }
 
-body.timeline-context-maysternya .maysternya-quick-booking-tools select {
+body.timeline-context-maysternya .maysternya-quick-booking-tools select,
+body.timeline-mode-simple .maysternya-quick-booking-tools select,
+body.timeline-mode-specialist .maysternya-quick-booking-tools select,
+body.timeline-mode-education .maysternya-quick-booking-tools select {
     width: 100%;
     padding: 9px 10px;
     border: 1px solid rgba(14, 165, 134, 0.3);
@@ -405,7 +435,6 @@ body.timeline-mode-education #pinataModeSection,
 body.timeline-mode-education #pinataSharedFields,
 body.timeline-mode-education #clientPinataServiceFields,
 body.timeline-mode-education #pinataFillerSection,
-body.timeline-mode-education #kidsCountSection,
 body.timeline-mode-education #tshirtSizesSection,
 body.timeline-mode-education #banquetFields,
 body.timeline-mode-education #bookingPackageSummary,

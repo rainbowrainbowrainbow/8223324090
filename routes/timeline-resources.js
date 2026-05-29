@@ -115,7 +115,8 @@ router.get('/resources/availability', async (req, res) => {
             type: req.query.type || 'cabinet',
             date,
             time,
-            duration: req.query.duration || 60
+            duration: req.query.duration || 60,
+            capacity: req.query.capacity || req.query.attendees || req.query.kidsCount
         });
         res.json(payload);
     } catch (err) {

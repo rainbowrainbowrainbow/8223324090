@@ -116,6 +116,11 @@ function isEducationTimelineBookingMode() {
     return getTimelineBookingPresentation().mode === 'education';
 }
 
+function isTimelineResourceBackedBookingMode() {
+    const presentation = getTimelineBookingPresentation();
+    return presentation.mode !== 'park' && Boolean(presentation.resourceType);
+}
+
 function timelineKitchenEnabled() {
     const presentation = getTimelineBookingPresentation();
     return presentation.mode === 'park' && presentation.parkKitchenEnabled !== false;
@@ -124,7 +129,9 @@ function timelineKitchenEnabled() {
 function isMaysternyaClosedSlotBooking(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
     const md = extra.maysternyaBooking || extra.maysternya || {};
-    return md.slotClosed === true || md.mode === 'closed_slot';
+    const resourceBlock = extra.timelineResourceBlock || extra.timeline_resource_block || {};
+    return md.slotClosed === true || md.mode === 'closed_slot'
+        || resourceBlock.resourceBlocked === true || resourceBlock.mode === 'resource_blackout';
 }
 
 function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
@@ -143,6 +150,22 @@ function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
 
 function ensureTimelineRoomOption(value) {
     ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет');
+}
+
+function getSelectedTimelineResourceLine() {
+    const dateStr = formatDate(AppState.selectedDate);
+    const lineId = document.getElementById('bookingLine')?.value || AppState.selectedLineId;
+    const lines = AppState.linesByDate?.[dateStr] || AppState.lines || [];
+    return lines.find(line => String(line.id) === String(lineId)) || null;
+}
+
+function timelineResourceCapacityError(formData = getBookingFormData()) {
+    if (!isTimelineResourceBackedBookingMode()) return null;
+    const line = getSelectedTimelineResourceLine();
+    const capacity = parseInt(line?.capacity, 10);
+    const kidsCount = parseInt(document.getElementById('kidsCountInput')?.value || formData?.kidsCount || 0, 10);
+    if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(kidsCount) || kidsCount <= capacity) return null;
+    return `${line.name || getTimelineBookingPresentation().roomOptionLabel} має місткість ${capacity}, а в записі ${kidsCount}`;
 }
 
 function getMaysternyaContactSnapshot() {
@@ -295,7 +318,38 @@ function prepareMaysternyaBookingPanel(options = {}) {
     if (shouldSelectDefault) {
         selectProgram(MAYSTERNYA_DEFAULT_PROGRAM_ID);
     }
+    prepareTimelineQuickCloseTools(options);
     renderBookingPackageSummary();
+}
+
+function prepareTimelineQuickCloseTools(options = {}) {
+    const tools = document.getElementById('maysternyaQuickBookingTools');
+    if (!tools) return;
+    const title = tools.querySelector('strong');
+    const hint = tools.querySelector('small');
+    const durationLabel = tools.querySelector('label span');
+    const button = document.getElementById('maysternyaCloseSlotBtn');
+    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Ресурс';
+    if (isMaysternyaBookingContext()) {
+        if (title) title.textContent = 'Онлайн прийом';
+        if (hint) hint.textContent = 'Мінімальний запис для лінії Олександра';
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити слот';
+        return;
+    }
+    if (isEducationTimelineBookingMode()) {
+        if (title) title.textContent = 'Кабінет недоступний';
+        if (hint) hint.textContent = `${lineName}: швидко закрийте час, якщо аудиторія зайнята або недоступна.`;
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити кабінет';
+        return;
+    }
+    if (isTimelineResourceBackedBookingMode()) {
+        if (title) title.textContent = 'Ресурс недоступний';
+        if (hint) hint.textContent = `${lineName}: швидко закрийте час без створення клієнтського запису.`;
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити ресурс';
+    }
 }
 
 function prepareDisplayModeBookingPanel(options = {}) {
@@ -330,6 +384,7 @@ function prepareDisplayModeBookingPanel(options = {}) {
     if (phone) phone.placeholder = presentation.phoneLabel;
     const customerMode = document.getElementById('bookingCustomerModeLabel');
     if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'Опційно для заняття' : 'Опційно для запису';
+    prepareTimelineQuickCloseTools(options);
     renderBookingPackageSummary();
 }
 
@@ -701,6 +756,20 @@ function initBookingPackageWorkspace() {
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
     document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);
+    document.getElementById('freeRoomsPanel')?.addEventListener('click', (event) => {
+        const chip = event.target.closest('[data-free-room]');
+        if (!chip) return;
+        const roomValue = chip.dataset.freeRoom || '';
+        if (!roomValue) return;
+        const room = document.getElementById('roomSelect');
+        if (room) {
+            ensureTimelineRoomOption(roomValue);
+            room.value = roomValue;
+            room.setAttribute('aria-invalid', 'false');
+            room.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        document.getElementById('freeRoomsPanel')?.classList.add('hidden');
+    });
     ['roomSelect', 'customerName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
      'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
@@ -1192,17 +1261,44 @@ async function showFreeRooms() {
     panel.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
-        const freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
+        let freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
             || `/rooms/free/${date}/${time}/${duration}`;
+        const requestedCapacity = parseInt(document.getElementById('kidsCountInput')?.value || '', 10);
+        if (Number.isFinite(requestedCapacity) && requestedCapacity > 0) {
+            const separator = freeRoomsPath.includes('?') ? '&' : '?';
+            freeRoomsPath = `${freeRoomsPath}${separator}capacity=${encodeURIComponent(String(requestedCapacity))}`;
+        }
         const response = await fetch(`${API_BASE}${freeRoomsPath}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const data = await response.json();
 
-        if (data.free && data.free.length > 0) {
+        if (Array.isArray(data.resources)) {
+            const freeResources = data.resources.filter(resource => !resource.occupied && resource.capacityAvailable !== false);
+            const occupiedResources = data.resources.filter(resource => resource.occupied);
+            const overCapacityResources = data.resources.filter(resource => !resource.occupied && resource.capacityAvailable === false);
+            const freeHtml = freeResources.map(resource => {
+                const capacity = parseInt(resource.capacity, 10);
+                const capacityLabel = Number.isFinite(capacity) && capacity > 0
+                    ? `<small>до ${capacity} місць</small>`
+                    : '';
+                return `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(resource.name)}"><span>${escapeHtml(resource.name)}</span>${capacityLabel}</button>`;
+            }).join('');
+            const occupiedHtml = occupiedResources.length > 0
+                ? `<div class="occupied-rooms">Зайняті: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
+                : '';
+            const overCapacityHtml = overCapacityResources.length > 0
+                ? `<div class="occupied-rooms">Мала місткість: ${overCapacityResources.map(r => {
+                    const capacity = parseInt(r.capacity, 10);
+                    return `${escapeHtml(r.name)}${Number.isFinite(capacity) && capacity > 0 ? ` (${capacity})` : ''}`;
+                }).join(', ')}</div>`
+                : '';
+            panel.innerHTML = freeHtml || '<span class="no-free-rooms">Немає доступних ресурсів на цей час</span>';
+            panel.innerHTML += occupiedHtml + overCapacityHtml;
+        } else if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
-                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value = '${escapeHtml(room)}';document.getElementById('roomSelect')?.setAttribute('aria-invalid','false');document.getElementById('roomSelect')?.dispatchEvent(new Event('change', { bubbles: true }));document.getElementById('freeRoomsPanel')?.classList.add('hidden')">${escapeHtml(room)}</span>`
+                `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(room)}"><span>${escapeHtml(room)}</span></button>`
             ).join('') +
             (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
@@ -1465,17 +1561,20 @@ function selectProgram(programId) {
     // К-кість дітей для МК (perChild)
     const kidsCountSection = document.getElementById('kidsCountSection');
     if (kidsCountSection) {
-        if (program.perChild) {
+        if (program.perChild || isEducationTimelineBookingMode()) {
             kidsCountSection.classList.remove('hidden');
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
                 kidsInput.value = '';
+                kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
                 kidsInput.oninput = () => {
                     const count = parseInt(kidsInput.value) || 0;
-                    const total = count * program.price;
-                    document.getElementById('detailPrice').textContent = count > 0
-                        ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
-                        : `${formatPrice(program.price)}/дит`;
+                    if (program.perChild) {
+                        const total = count * program.price;
+                        document.getElementById('detailPrice').textContent = count > 0
+                            ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
+                            : `${formatPrice(program.price)}/дит`;
+                    }
                     renderBookingPackageSummary();
                 };
             }
@@ -1968,14 +2067,32 @@ function buildBookingObject(formData, program) {
 function buildMaysternyaClosedSlotBooking() {
     const duration = getMaysternyaSlotCloseDuration();
     const notes = document.getElementById('bookingNotes')?.value?.trim() || '';
+    const line = getSelectedTimelineResourceLine();
+    const presentation = getTimelineBookingPresentation();
+    const resourceName = line?.name || presentation.roomOptionLabel || MAYSTERNYA_CLOSED_ROOM;
+    const isMaysternya = isMaysternyaBookingContext();
+    const room = isMaysternya ? MAYSTERNYA_CLOSED_ROOM : resourceName;
+    const label = isEducationTimelineBookingMode() ? 'Кабінет закрито' : 'Закрито';
+    const noteText = notes || (isMaysternya
+        ? 'Олександр зайнятий у цей час'
+        : `${resourceName} недоступний у цей час`);
+    const resourceBlock = {
+        mode: 'resource_blackout',
+        resourceBlocked: true,
+        resourceId: document.getElementById('bookingLine')?.value || null,
+        resourceType: line?.resourceType || presentation.resourceType || null,
+        resourceName,
+        closedDuration: duration,
+        source: isMaysternya ? 'maysternya_quick_close' : 'timeline_resource_quick_close'
+    };
     return {
         date: formatDate(AppState.selectedDate),
         time: document.getElementById('bookingTime')?.value,
         lineId: document.getElementById('bookingLine')?.value,
         programId: null,
         programCode: 'CLOSED',
-        label: 'Закрито',
-        programName: 'Слот закрито',
+        label,
+        programName: isEducationTimelineBookingMode() ? 'Кабінет недоступний' : 'Слот закрито',
         category: 'custom',
         duration,
         price: 0,
@@ -1988,23 +2105,24 @@ function buildMaysternyaClosedSlotBooking() {
         clientPinataServicePrice: null,
         clientPinataServiceNote: null,
         costume: null,
-        room: MAYSTERNYA_CLOSED_ROOM,
-        notes: notes || 'Олександр зайнятий у цей час',
+        room,
+        notes: noteText,
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: 'confirmed',
         kidsCount: null,
-        groupName: 'Зайнято',
+        groupName: isEducationTimelineBookingMode() ? resourceName : 'Зайнято',
         programBasePrice: 0,
         menuPositions: [],
         extraData: {
+            timelineResourceBlock: resourceBlock,
             maysternyaBooking: {
                 mode: 'closed_slot',
                 slotClosed: true,
                 online: false,
                 closedDuration: duration,
                 specialistLineId: document.getElementById('bookingLine')?.value,
-                source: 'maysternya_quick_close'
+                source: isMaysternya ? 'maysternya_quick_close' : 'timeline_resource_quick_close'
             },
             bookingWorkspace: {
                 schemaVersion: BOOKING_WORKSPACE_SCHEMA_VERSION,
@@ -2012,7 +2130,7 @@ function buildMaysternyaClosedSlotBooking() {
                 scenario: 'closed_slot',
                 leadDetails: {},
                 kitchen: { itemsCount: 0, menuCount: 0, cakeCount: 0, positionsSubtotal: 0 },
-                source: 'maysternya_quick_close'
+                source: isMaysternya ? 'maysternya_quick_close' : 'timeline_resource_quick_close'
             }
         },
         skipNotification: true,
@@ -2024,12 +2142,12 @@ function buildMaysternyaClosedSlotBooking() {
 }
 
 async function closeMaysternyaTimelineSlot() {
-    if (!isMaysternyaBookingContext()) return;
+    if (!isMaysternyaBookingContext() && !isTimelineResourceBackedBookingMode()) return;
     const btn = document.getElementById('maysternyaCloseSlotBtn');
     if (btn && btn.disabled) return;
     const booking = buildMaysternyaClosedSlotBooking();
     if (!booking.time || !booking.lineId) {
-        showNotification('Оберіть час на лінії Олександра', 'error');
+        showNotification(isEducationTimelineBookingMode() ? 'Оберіть час у кабінеті' : 'Оберіть час на ресурсі', 'error');
         return;
     }
     const bookingDateTime = new Date(`${booking.date}T${booking.time}:00`);
@@ -2064,7 +2182,7 @@ async function closeMaysternyaTimelineSlot() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = btn.dataset.originalText || 'Закрити слот';
+            btn.textContent = btn.dataset.originalText || (isEducationTimelineBookingMode() ? 'Закрити кабінет' : 'Закрити слот');
         }
     }
 }
@@ -2204,6 +2322,12 @@ async function handleBookingSubmit(e) {
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
     if (invalidMenuPosition) {
         showNotification('Перевірте позиції меню: назва, кількість і ціна мають бути коректними', 'error');
+        unlockSubmitBtn();
+        return;
+    }
+    const capacityError = timelineResourceCapacityError(formData);
+    if (capacityError) {
+        showNotification(capacityError, 'error');
         unlockSubmitBtn();
         return;
     }

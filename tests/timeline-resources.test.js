@@ -29,6 +29,10 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /function resourceTypeForDisplayMode/);
     assert.match(service, /function timelineResourceAvailability/);
     assert.match(service, /line_id = ANY\(\$3::text\[\]\) OR room = ANY\(\$4::text\[\]\)/);
+    assert.match(service, /requestedCapacity/);
+    assert.match(service, /capacityAvailable/);
+    assert.match(service, /overCapacity/);
+    assert.match(service, /resourceBlock/);
 });
 
 test('lines route switches resource-backed modes away from animator sync', () => {
@@ -47,6 +51,29 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     assert.match(settings, /resourceTypeForDisplayMode\(display\.mode\)/);
     assert.match(settings, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
     assert.match(booking, /appendApiContext\?\.\(`\/rooms\/free\/\$\{date\}\/\$\{time\}\/\$\{duration\}`\)/);
+    assert.match(settings, /req\.query\.capacity \|\| req\.query\.attendees \|\| req\.query\.kidsCount/);
+    assert.match(booking, /capacity=\$\{encodeURIComponent\(String\(requestedCapacity\)\)\}/);
+    assert.match(booking, /data-free-room/);
+});
+
+test('education resources support capacity guard and quick slot closure', () => {
+    const booking = read('js/booking.js');
+    const timeline = read('js/timeline.js');
+    const bookingsRoute = read('routes/bookings.js');
+    const panelCss = read('css/panel.css');
+    const featureCss = read('css/features.css');
+
+    assert.match(booking, /function isTimelineResourceBackedBookingMode/);
+    assert.match(booking, /function timelineResourceCapacityError/);
+    assert.match(booking, /timelineResourceBlock/);
+    assert.match(booking, /resource_blackout/);
+    assert.match(booking, /Закрити кабінет/);
+    assert.match(timeline, /resourceBlockExtra/);
+    assert.match(timeline, /resourceBlocked === true/);
+    assert.match(bookingsRoute, /function validateBookingTimelineResourceCapacity/);
+    assert.match(bookingsRoute, /має місткість/);
+    assert.doesNotMatch(panelCss, /body\.timeline-mode-education #kidsCountSection/);
+    assert.match(featureCss, /\.free-room-chip small/);
 });
 
 test('settings UI exposes real timeline resource management for multi-cabinet mode', () => {

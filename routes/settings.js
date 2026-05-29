@@ -16,11 +16,16 @@ const {
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
+    resolveBusinessScope,
+    requireBusinessScope
+} = require('../services/businessContext');
+const {
     getTimelineDisplaySettings,
     normalizeTimelineDisplaySettings,
     resourceTypeForDisplayMode,
     timelineResourceAvailability
 } = require('../services/timelineResources');
+const { buildBusinessOperatingProfile } = require('../services/businessProfile');
 const {
     getChatSettingsBundle,
     getUnifiedAIConfig,
@@ -363,6 +368,26 @@ router.put('/settings/timeline-display', async (req, res) => {
     } catch (err) {
         log.error('PUT /settings/timeline-display error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/business/profile', async (req, res) => {
+    try {
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
+        const businessProfile = await buildBusinessOperatingProfile(pool, req.user, {
+            scope,
+            includeIntegrations: true
+        });
+        res.json({
+            success: true,
+            businessContext: businessProfile.activeBusinessContext,
+            businessScope: businessProfile.scope,
+            businessProfile
+        });
+    } catch (err) {
+        log.error('GET /business/profile error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

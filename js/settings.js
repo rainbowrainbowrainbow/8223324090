@@ -843,6 +843,7 @@ function getTimelineDisplayControls() {
         center: document.getElementById('settingsTimelineControlCenter'),
         businessName: document.getElementById('settingsTimelineBusinessName'),
         state: document.getElementById('settingsTimelineControlState'),
+        profileContract: document.getElementById('settingsBusinessProfileContract'),
         resourcesCard: document.getElementById('settingsTimelineResourcesCard'),
         resourcesTitle: document.getElementById('settingsTimelineResourcesTitle'),
         resourcesHint: document.getElementById('settingsTimelineResourcesHint'),
@@ -978,12 +979,23 @@ function applyTimelineSettingsToControls(settings = {}) {
     if (controls.mode) controls.mode.value = normalized.mode;
     if (controls.kitchen) controls.kitchen.value = normalized.parkKitchenMode;
     if (controls.businessName) {
+        const activeProfile = window.CrmBusinessContext?.activeProfile?.();
         const ctx = window.TimelineBusinessContext?.current?.();
-        controls.businessName.textContent = ctx?.brandName || ctx?.switchLabel || normalized.context || 'Event Genix';
+        controls.businessName.textContent = activeProfile?.label || ctx?.brandName || ctx?.switchLabel || normalized.context || 'Event Genix';
     }
     if (controls.state) {
         controls.state.textContent = normalized.timelineEnabled ? 'Таймлайн увімкнено' : 'Таймлайн вимкнено';
         controls.state.classList.toggle('is-disabled', !normalized.timelineEnabled);
+    }
+    if (controls.profileContract) {
+        const activeProfile = window.CrmBusinessContext?.activeProfile?.();
+        const modules = activeProfile?.modules?.enabledIds || Object.entries(normalized.enabledModules || {})
+            .filter(([, enabled]) => enabled)
+            .map(([key]) => key);
+        controls.profileContract.innerHTML = `
+            <strong>Business profile</strong>
+            <span>Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}</span>
+        `;
     }
     document.querySelectorAll('[data-timeline-preset]').forEach(button => {
         const presetResourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(button.dataset.mode);
@@ -1150,6 +1162,7 @@ async function loadTimelineDisplaySettingsIntoModal() {
         if (res.ok) {
             const serverSettings = await res.json();
             settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+            await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
         }
     } catch (error) {
         console.warn('[TimelineDisplay] Server display settings unavailable', error);
@@ -1169,6 +1182,7 @@ async function saveTimelineDisplaySettingsFromSettings() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const serverSettings = await res.json();
         window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings);
+        await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
         showNotification('Кабінет таймлайну збережено. Перезавантажую сторінку...', 'success');
         setTimeout(() => window.location.reload(), 450);
     } catch (error) {

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.68.19 - єдиний бізнес-профіль shell
+
+### Business operating profile / shell sync / business module truth / 29.05.2026 [codex]
+- **Додано server-side Business Operating Profile** - `/api/business/profile` збирає активний business scope, дозволені бізнеси, `timeline_display`, стартову сторінку, модулі та Omni-інтеграції в один boot contract.
+- **Shell більше не спирається тільки на localStorage** - після login/verify frontend гідрує бізнес-профіль із backend і вже з нього визначає стартову сторінку, активний бізнес, timeline mode і видимі модулі.
+- **Sidebar читає бізнес-модулі з профілю** - вимкнені в бізнес-кабінеті ліди, клієнти, Omni, продукти, афіша, кухня або timeline не лишаються видимими як stale navigation.
+- **Перемикання бізнесу синхронізує profile заново** - `CrmBusinessContext.switchScope/switchTo` після зміни бізнесу перезавантажує profile contract і оновлює shell без змішування старого контексту.
+- **Бізнес-кабінет показує server contract** - налаштування таймлайна тепер виводять короткий Business profile summary: стартовий шлях, тип бізнесу і активні модулі.
+- **Regression guard розширено** - `timeline-resources` перевіряє route `/api/business/profile`, frontend hydrate path, стартову сторінку і module visibility contract.
+
+---
+
 ## v0.68.18 - центр керування таймлайном бізнесу
 
 ### Timeline control center / business presets / education series management / 29.05.2026 [codex]

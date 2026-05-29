@@ -142,6 +142,12 @@ const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
 });
 const CRM_BUSINESS_AGGREGATE_PAGE_IDS = new Set(['dashboard', 'products', 'leads', 'customers', 'reports']);
 const crmBusinessPageBindings = new Map();
+const crmBusinessProfileState = {
+    profile: null,
+    activeProfile: null,
+    businessesById: new Map(),
+    loadedAt: 0
+};
 
 function normalizeCrmBusinessContext(value) {
     const key = String(value || '').trim().toLowerCase();
@@ -437,8 +443,94 @@ function resolveCrmBusinessPolicy(user) {
     };
 }
 
+function normalizeCrmBusinessProfilePayload(payload = {}) {
+    const profile = payload.businessProfile || payload.profile || payload;
+    const businesses = Array.isArray(profile?.businesses) ? profile.businesses : [];
+    const businessesById = new Map();
+    businesses.forEach(item => {
+        const key = normalizeCrmBusinessContext(item?.key || item?.id || item?.businessContext);
+        if (!CRM_BUSINESS_CONTEXTS[key]) return;
+        businessesById.set(key, {
+            ...item,
+            key,
+            id: key,
+            businessContext: key
+        });
+    });
+    const activeKey = normalizeCrmBusinessContext(
+        profile?.activeBusinessId
+        || profile?.activeBusinessContext
+        || profile?.scope?.activeContext
+        || businesses[0]?.key
+    );
+    return {
+        ...profile,
+        activeBusinessId: activeKey,
+        activeBusinessContext: activeKey,
+        businesses: Array.from(businessesById.values()),
+        activeProfile: businessesById.get(activeKey) || Array.from(businessesById.values())[0] || null
+    };
+}
+
+function applyCrmBusinessProfile(profileInput = {}, options = {}) {
+    const profile = normalizeCrmBusinessProfilePayload(profileInput);
+    crmBusinessProfileState.profile = profile;
+    crmBusinessProfileState.activeProfile = profile.activeProfile || null;
+    crmBusinessProfileState.businessesById = new Map(
+        (profile.businesses || []).map(item => [item.key, item])
+    );
+    crmBusinessProfileState.loadedAt = Date.now();
+
+    if (profile.scope && options.syncScope !== false) {
+        setCrmBusinessScope(profile.scope, {
+            user: options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null),
+            updateUrl: options.updateUrl !== false,
+            emit: false,
+            allowAggregate: true
+        });
+    }
+
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext?.saveDisplaySettings) {
+        (profile.businesses || []).forEach(business => {
+            if (!business?.timeline) return;
+            const timelineContext = window.TimelineBusinessContext.CONTEXTS?.[business.key];
+            if (!timelineContext) return;
+            window.TimelineBusinessContext.saveDisplaySettings(business.timeline, { context: timelineContext });
+        });
+    }
+
+    if (typeof document !== 'undefined' && document.body && profile.activeProfile) {
+        document.body.dataset.crmBusinessContext = profile.activeProfile.key;
+        document.body.dataset.crmBusinessType = profile.activeProfile.type || '';
+        document.body.dataset.crmBusinessStartPage = profile.activeProfile.startPage || '';
+        document.body.dataset.crmBusinessStartPath = profile.activeProfile.startPagePath || '';
+        document.body.dataset.crmBusinessTimelineEnabled = profile.activeProfile.shell?.timelineEnabled === false ? 'false' : 'true';
+    }
+
+    if (typeof window !== 'undefined' && options.emit !== false) {
+        window.dispatchEvent(new CustomEvent('crmBusinessProfileChanged', {
+            detail: { profile, activeProfile: profile.activeProfile }
+        }));
+    }
+
+    return profile;
+}
+
+function getCrmBusinessOperatingProfile() {
+    return crmBusinessProfileState.profile || null;
+}
+
+function getCrmBusinessProfileForContext(context = getCrmBusinessContext()) {
+    const key = normalizeCrmBusinessContext(context);
+    return crmBusinessProfileState.businessesById.get(key) || null;
+}
+
 function crmBusinessContextHasModule(context, moduleId) {
     if (!moduleId) return true;
+    const profile = getCrmBusinessProfileForContext(context);
+    if (profile?.modules?.enabled && Object.prototype.hasOwnProperty.call(profile.modules.enabled, moduleId)) {
+        return profile.modules.enabled[moduleId] !== false;
+    }
     const ctx = CRM_BUSINESS_CONTEXTS[normalizeCrmBusinessContext(context)] || CRM_BUSINESS_CONTEXTS[CRM_BUSINESS_DEFAULT_CONTEXT];
     return Array.isArray(ctx.modules) && ctx.modules.includes(String(moduleId));
 }
@@ -824,7 +916,17 @@ function crmBusinessDestinationForCurrentPage(context, page = currentCrmBusiness
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
+    const profile = getCrmBusinessProfileForContext(defaultContext);
+    if (profile?.startPagePath) return profile.startPagePath;
     return defaultContext === 'maysternya_doli' ? '/maysternya-doli' : '/';
+}
+
+function crmBusinessStartPageForUser(user) {
+    const policy = resolveCrmBusinessPolicy(user);
+    const defaultContext = policy.defaultContext || getCrmBusinessContext(user);
+    const profile = getCrmBusinessProfileForContext(defaultContext) || crmBusinessProfileState.activeProfile;
+    if (profile?.startPagePath) return profile.startPagePath;
+    return crmBusinessDefaultTimelineRouteForUser(user);
 }
 
 function navigateCrmBusinessDestination(context, page = currentCrmBusinessScopedPage()) {
@@ -900,6 +1002,7 @@ async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
     }
     const currentScope = setCrmBusinessScope(nextScope, { ...options, user, emit: true });
     const current = currentScope.activeContext;
+    await hydrateCrmBusinessProfile({ ...options, user, emit: true, updateUrl: false }).catch(() => null);
     if (typeof binding?.onChange === 'function') {
         await binding.onChange({ current, previous, context: CRM_BUSINESS_CONTEXTS[current], scope: currentScope, previousScope });
     }
@@ -931,6 +1034,24 @@ function initCrmBusinessContextPage(options = {}) {
     return scope.activeContext;
 }
 
+async function apiGetBusinessOperatingProfile(options = {}) {
+    const url = crmBusinessApiUrl(`${API_BASE}/business/profile`, options.context || getCrmBusinessContext(options.user));
+    const response = await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) });
+    if (!response || handleAuthError(response)) return null;
+    return await response.json();
+}
+
+async function hydrateCrmBusinessProfile(options = {}) {
+    try {
+        const payload = await apiGetBusinessOperatingProfile(options);
+        if (!payload) return getCrmBusinessOperatingProfile();
+        return applyCrmBusinessProfile(payload.businessProfile || payload, options);
+    } catch (error) {
+        console.warn('[CrmBusinessContext] business profile hydrate failed', error);
+        return getCrmBusinessOperatingProfile();
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.CrmBusinessContext = {
         contexts: CRM_BUSINESS_CONTEXTS,
@@ -955,7 +1076,13 @@ if (typeof window !== 'undefined') {
         options: getCrmBusinessContextOptions,
         policy: resolveCrmBusinessPolicy,
         state: getCrmBusinessState,
+        profile: getCrmBusinessOperatingProfile,
+        activeProfile: () => crmBusinessProfileState.activeProfile,
+        profileFor: getCrmBusinessProfileForContext,
+        applyProfile: applyCrmBusinessProfile,
+        hydrateProfile: hydrateCrmBusinessProfile,
         defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser,
+        startPageForUser: crmBusinessStartPageForUser,
         currentPage: currentCrmBusinessScopedPage,
         allowsAggregate: crmBusinessPageAllowsAggregate,
         hasPageBinding: crmBusinessPageHasBinding,

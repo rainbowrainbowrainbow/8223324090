@@ -897,6 +897,7 @@ body.dark-mode .settings-section {
 }
 
 body.dark-mode .timeline-control-summary,
+body.dark-mode .timeline-profile-contract,
 body.dark-mode .timeline-control-block,
 body.dark-mode .timeline-resources-card {
     background: rgba(15, 23, 42, 0.72);
@@ -919,8 +920,13 @@ body.dark-mode .education-series-row small {
 }
 
 body.dark-mode .timeline-control-block-head strong,
+body.dark-mode .timeline-profile-contract strong,
 body.dark-mode .timeline-resource-name {
     color: #F3F4F6;
+}
+
+body.dark-mode .timeline-profile-contract {
+    color: #9CA3AF;
 }
 
 /* Dashboard */

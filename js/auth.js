@@ -171,6 +171,7 @@ async function checkSession() {
         const user = await apiVerifyToken();
         if (user) {
             AppState.currentUser = user;
+            await hydrateBusinessOperatingProfile(user);
             window.WorkingRole?.hydrate?.();
             showMainApp();
             if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
@@ -188,6 +189,7 @@ async function login(username, password) {
         const data = await apiLogin(username, password);
         AppState.currentUser = data.user;
         rememberAuthSession(data);
+        await hydrateBusinessOperatingProfile(data.user || AppState.currentUser);
         window.WorkingRole?.hydrate?.();
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
@@ -258,6 +260,22 @@ function rememberAuthSession(data = {}) {
     if (data.refreshToken) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
     if (data.refreshExpiresAt) localStorage.setItem(AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
     if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+}
+
+async function hydrateBusinessOperatingProfile(user = AppState.currentUser) {
+    if (typeof window === 'undefined' || !window.CrmBusinessContext?.hydrateProfile) return null;
+    const profile = await window.CrmBusinessContext.hydrateProfile({
+        user,
+        updateUrl: false,
+        emit: true
+    });
+    if (profile && user) {
+        user.businessProfile = profile;
+        try {
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+        } catch {}
+    }
+    return profile;
 }
 
 function hasStoredRefreshSession() {
@@ -725,6 +743,9 @@ function getRoleStartPage(role) {
 }
 
 function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
+    if (typeof window !== 'undefined' && window.CrmBusinessContext?.startPageForUser) {
+        return window.CrmBusinessContext.startPageForUser(user);
+    }
     if (typeof window !== 'undefined' && window.CrmBusinessContext?.defaultTimelineRouteForUser) {
         return window.CrmBusinessContext.defaultTimelineRouteForUser(user);
     }

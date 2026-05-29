@@ -310,6 +310,29 @@
     gap: 12px;
 }
 
+.timeline-profile-contract {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(45, 212, 191, 0.22);
+    border-radius: 8px;
+    background: rgba(8, 145, 178, 0.08);
+    color: var(--gray-500);
+    font-size: 0.86rem;
+}
+
+.timeline-profile-contract strong {
+    color: var(--gray-900);
+    white-space: nowrap;
+}
+
+.timeline-profile-contract span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .timeline-control-kicker {
     display: block;
     font-size: 10px;

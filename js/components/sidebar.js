@@ -2914,6 +2914,11 @@ const Sidebar = (() => {
         if (c?.id) render('#' + c.id);
         initUserCard();
     });
+    window.addEventListener('crmBusinessProfileChanged', () => {
+        const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (c?.id) render('#' + c.id);
+        initUserCard();
+    });
 
     // ─── Sidebar action helpers ──────────────────────────────────
     // On timeline (index.html) — open modal directly

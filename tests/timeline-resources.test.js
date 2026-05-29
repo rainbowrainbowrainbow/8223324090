@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+    buildModuleMap,
+    startPagePathForBusiness
+} = require('../services/businessProfile');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -134,4 +138,36 @@ test('settings UI exposes real timeline resource management for multi-cabinet mo
     assert.match(app, /settingsTimelineControlCenter/);
     assert.match(css, /\.timeline-resource-row/);
     assert.match(css, /\.timeline-control-center/);
+});
+
+test('business operating profile owns shell start page and module visibility', () => {
+    const service = read('services/businessProfile.js');
+    const settingsRoute = read('routes/settings.js');
+    const api = read('js/api.js');
+    const auth = read('js/auth.js');
+    const sidebar = read('js/components/sidebar.js');
+    const html = read('index.html');
+
+    assert.match(service, /async function buildBusinessOperatingProfile/);
+    assert.match(service, /startPagePathForBusiness/);
+    assert.match(service, /buildModuleMap/);
+    assert.match(settingsRoute, /router\.get\('\/business\/profile'/);
+    assert.match(api, /const crmBusinessProfileState/);
+    assert.match(api, /async function hydrateCrmBusinessProfile/);
+    assert.match(api, /profileFor: getCrmBusinessProfileForContext/);
+    assert.match(api, /startPageForUser: crmBusinessStartPageForUser/);
+    assert.match(auth, /await hydrateBusinessOperatingProfile\(data\.user \|\| AppState\.currentUser\)/);
+    assert.match(auth, /await hydrateBusinessOperatingProfile\(user\)/);
+    assert.match(sidebar, /crmBusinessProfileChanged/);
+    assert.match(html, /settingsBusinessProfileContract/);
+
+    const disabledModules = buildModuleMap('event_genix', {
+        mode: 'disabled',
+        timelineEnabled: false,
+        enabledModules: { timeline: false, leads: true, customers: true, omni: true, tasks: true }
+    });
+    assert.equal(disabledModules.enabled.timeline, false);
+    assert.equal(disabledModules.enabled.leads, true);
+    assert.equal(startPagePathForBusiness('event_genix', { mode: 'disabled', timelineEnabled: false, startPage: 'timeline' }), '/dashboard');
+    assert.equal(startPagePathForBusiness('maysternya_doli', { mode: 'simple', timelineEnabled: true, startPage: 'timeline' }), '/maysternya-doli');
 });

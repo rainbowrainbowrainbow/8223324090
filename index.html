@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.68.15">
-    <link rel="stylesheet" href="css/auth.css?v=0.68.15">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.15">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.15">
-    <link rel="stylesheet" href="css/timeline.css?v=0.68.15">
-    <link rel="stylesheet" href="css/panel.css?v=0.68.15">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.15">
-    <link rel="stylesheet" href="css/controls.css?v=0.68.15">
-    <link rel="stylesheet" href="css/features.css?v=0.68.15">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.15">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.15">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.15">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.15">
+    <link rel="stylesheet" href="css/base.css?v=0.68.16">
+    <link rel="stylesheet" href="css/auth.css?v=0.68.16">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.16">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.16">
+    <link rel="stylesheet" href="css/timeline.css?v=0.68.16">
+    <link rel="stylesheet" href="css/panel.css?v=0.68.16">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.16">
+    <link rel="stylesheet" href="css/controls.css?v=0.68.16">
+    <link rel="stylesheet" href="css/features.css?v=0.68.16">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.16">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.16">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.16">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.68.15">✨ 0.68.15</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.68.16">✨ 0.68.16</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.68.15 — закриття кабінетів таймлайну</p>
+                <p class="tagline">AI First CRM v0.68.16 — розклад занять 2.0</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.15</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.16</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -413,6 +413,48 @@
                 <div class="form-section">
                     <label>Назва заявки / група (опційно)</label>
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі, кухня для компанії" title="Об'єднує бронювання в одну подію або заявку">
+                </div>
+
+                <div id="educationLessonSection" class="education-lesson-section hidden" aria-live="polite">
+                    <div class="education-lesson-heading">
+                        <span>Навчальне заняття</span>
+                        <small>Кабінет, група і викладач зберігаються разом із записом</small>
+                    </div>
+                    <div class="education-lesson-grid">
+                        <label>
+                            Тема заняття
+                            <input type="text" id="educationLessonTitle" maxlength="160" placeholder="Напр: Англійська A2">
+                        </label>
+                        <label>
+                            Викладач
+                            <select id="educationLessonTeacher">
+                                <option value="">Без викладача</option>
+                            </select>
+                        </label>
+                        <label>
+                            Група / клас
+                            <input type="text" id="educationLessonGroup" maxlength="120" placeholder="Напр: 5-Б, група A2">
+                        </label>
+                        <label>
+                            Курс / серія
+                            <input type="text" id="educationLessonCourse" maxlength="120" placeholder="Напр: Весняний курс">
+                        </label>
+                    </div>
+                    <div class="education-lesson-grid education-lesson-grid--compact">
+                        <label>
+                            Занять у серії
+                            <input type="number" id="educationLessonSeriesSize" min="1" max="120" placeholder="1">
+                        </label>
+                        <label>
+                            Тип заняття
+                            <select id="educationLessonType">
+                                <option value="lesson">Заняття</option>
+                                <option value="consultation">Консультація</option>
+                                <option value="exam">Контроль / іспит</option>
+                                <option value="workshop">Практикум</option>
+                            </select>
+                        </label>
+                    </div>
                 </div>
 
                 <div id="bookingEventFields" class="booking-event-fields hidden">
@@ -1459,6 +1501,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.68.16 — розклад занять 2.0</h4>
+                    <ul>
+                        <li><b>Навчальний запис став окремим contract</b> — тема, викладач, група, курс, кількість учнів і кабінет зберігаються в <code>educationLesson</code>.</li>
+                        <li><b>Урок можна створити без park-програми</b> — education mode підтримує повноцінний запис за темою заняття.</li>
+                        <li><b>Викладач захищений від накладок</b> — backend блокує другий урок із тим самим викладачем у той самий час.</li>
+                        <li><b>Таймлайн показує уроки читабельно</b> — блок містить тему, викладача, групу/курс, кабінет і кількість учнів.</li>
+                        <li><b>Деталі бронювання стали навчальними</b> — модалка показує викладача, групу, серію, кабінет і label <code>Учнів</code>.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.68.15 — закриття кабінетів таймлайну</h4>
                     <ul>
@@ -10077,29 +10129,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.68.15"></script>
-    <script src="js/timeline-visibility.js?v=0.68.15"></script>
-    <script src="js/config.js?v=0.68.15"></script>
-    <script src="js/api.js?v=0.68.15"></script>
-    <script src="js/ui.js?v=0.68.15"></script>
-    <script src="js/auth.js?v=0.68.15"></script>
-    <script src="js/timeline-interaction-model.js?v=0.68.15"></script>
-    <script src="js/timeline.js?v=0.68.15"></script>
-    <script src="js/booking.js?v=0.68.15"></script>
-    <script src="js/settings.js?v=0.68.15"></script>
-    <script src="js/booking-form.js?v=0.68.15"></script>
-    <script src="js/booking-linked.js?v=0.68.15"></script>
-    <script src="js/settings-dashboard.js?v=0.68.15"></script>
-    <script src="js/settings-history.js?v=0.68.15"></script>
-    <script src="js/settings-afisha.js?v=0.68.15"></script>
-    <script src="js/settings-certificates.js?v=0.68.15"></script>
-    <script src="js/offline.js?v=0.68.15"></script>
-    <script src="js/crm-feature-registry.js?v=0.68.15"></script>
-    <script src="js/search.js?v=0.68.15"></script>
-    <script src="js/ws.js?v=0.68.15"></script>
-    <script src="js/app.js?v=0.68.15"></script>
-    <script src="js/kleshnya-widget.js?v=0.68.15"></script>
-    <script src="js/components/sidebar.js?v=0.68.15"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.15"></script>
+    <script src="js/timeline-context.js?v=0.68.16"></script>
+    <script src="js/timeline-visibility.js?v=0.68.16"></script>
+    <script src="js/config.js?v=0.68.16"></script>
+    <script src="js/api.js?v=0.68.16"></script>
+    <script src="js/ui.js?v=0.68.16"></script>
+    <script src="js/auth.js?v=0.68.16"></script>
+    <script src="js/timeline-interaction-model.js?v=0.68.16"></script>
+    <script src="js/timeline.js?v=0.68.16"></script>
+    <script src="js/booking.js?v=0.68.16"></script>
+    <script src="js/settings.js?v=0.68.16"></script>
+    <script src="js/booking-form.js?v=0.68.16"></script>
+    <script src="js/booking-linked.js?v=0.68.16"></script>
+    <script src="js/settings-dashboard.js?v=0.68.16"></script>
+    <script src="js/settings-history.js?v=0.68.16"></script>
+    <script src="js/settings-afisha.js?v=0.68.16"></script>
+    <script src="js/settings-certificates.js?v=0.68.16"></script>
+    <script src="js/offline.js?v=0.68.16"></script>
+    <script src="js/crm-feature-registry.js?v=0.68.16"></script>
+    <script src="js/search.js?v=0.68.16"></script>
+    <script src="js/ws.js?v=0.68.16"></script>
+    <script src="js/app.js?v=0.68.16"></script>
+    <script src="js/kleshnya-widget.js?v=0.68.16"></script>
+    <script src="js/components/sidebar.js?v=0.68.16"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.16"></script>
 </body>
 </html>

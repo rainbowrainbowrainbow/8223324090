@@ -372,6 +372,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
 .booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
 .booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+.booking-block.education,
+.booking-block.education-lesson { background: linear-gradient(135deg, #0F766E 0%, #2563EB 100%); }
 .booking-block.graduation { background: linear-gradient(135deg, #7C3AED 0%, #0F766E 100%); }
 .booking-block.slot-closed {
     background: repeating-linear-gradient(135deg, #334155 0, #334155 10px, #475569 10px, #475569 20px);

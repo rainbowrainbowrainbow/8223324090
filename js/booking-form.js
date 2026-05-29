@@ -14,6 +14,8 @@ window.BookingForm = {
     init() {
         const fields = ['bookingHasEventToggle', 'roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
             'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
+            'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup',
+            'educationLessonCourse', 'educationLessonSeriesSize', 'educationLessonType',
             'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
             'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',
             'bookingMenuQuantity', 'bookingMenuUnitPrice', 'bookingMenuNote', 'banquetMenu',
@@ -74,6 +76,8 @@ window.BookingForm = {
         const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
         const isNonParkTimelineMode = presentation.mode && presentation.mode !== 'park';
         const isMaysternyaSimple = isMaysternya && presentation.mode === 'simple';
+        const isEducation = presentation.mode === 'education';
+        const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
         const roomOptional = isMaysternyaSimple || presentation.mode === 'simple' || presentation.mode === 'specialist';
 
         if (!room) {
@@ -83,15 +87,17 @@ window.BookingForm = {
             }
         }
         if (hasEvent && !programId) {
-            document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
-            const error = isMaysternyaSimple
-                ? 'Оберіть тип консультації'
-                : (presentation.mode === 'education' ? 'Оберіть заняття' : presentation.mode === 'park' ? 'Оберіть програму' : 'Оберіть послугу');
-            return { valid: false, error };
+            if (!(isEducation && lessonTitle)) {
+                document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
+                const error = isMaysternyaSimple
+                    ? 'Оберіть тип консультації'
+                    : (presentation.mode === 'education' ? 'Оберіть заняття' : presentation.mode === 'park' ? 'Оберіть програму' : 'Оберіть послугу');
+                return { valid: false, error };
+            }
         }
 
         const program = hasEvent ? getProductsSync().find(p => p.id === programId) : null;
-        if (hasEvent && !program) return { valid: false, error: 'Програму не знайдено' };
+        if (hasEvent && !program && !(isEducation && lessonTitle)) return { valid: false, error: 'Програму не знайдено' };
 
         if (isMaysternyaSimple || isNonParkTimelineMode) {
             return { valid: true };
@@ -203,6 +209,7 @@ window.BookingForm = {
         if (kidsCountSection) kidsCountSection.classList.add('hidden');
         const kidsCountInput = document.getElementById('kidsCountInput');
         if (kidsCountInput) kidsCountInput.value = '';
+        if (typeof resetEducationLessonFields === 'function') resetEducationLessonFields();
 
         // v15.1: Reset CRM customer fields
         const customerToggle = document.getElementById('customerDataToggle');

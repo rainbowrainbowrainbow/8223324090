@@ -365,6 +365,68 @@ async function validateBookingTimelineResourceCapacity(queryable, payload, busin
     };
 }
 
+function educationLessonFromPayload(payload = {}) {
+    const extra = payload.extraData || payload.extra_data || {};
+    const lesson = extra.educationLesson
+        || extra.education_lesson
+        || extra.bookingWorkspace?.lesson
+        || null;
+    if (!lesson || typeof lesson !== 'object') return null;
+    const teacherId = String(lesson.teacherId || '').trim();
+    const teacherName = String(lesson.teacherName || '').trim();
+    if (!teacherId && !teacherName) return null;
+    return {
+        ...lesson,
+        teacherId,
+        teacherName,
+        title: String(lesson.title || payload.programName || payload.label || 'Заняття').trim()
+    };
+}
+
+function overlapsBookingTime(candidate, other) {
+    const start = timeToMinutes(candidate.time);
+    const end = start + (parseInt(candidate.duration, 10) || 0);
+    const otherStart = timeToMinutes(other.time);
+    const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
+    return start < otherEnd && end > otherStart;
+}
+
+async function validateEducationLessonTeacherConflict(queryable, payload, businessContext, excludeIds = []) {
+    const lesson = educationLessonFromPayload(payload);
+    if (!lesson || !payload?.date || !payload?.time || !(parseInt(payload.duration, 10) > 0)) return null;
+    const filters = [];
+    const params = [
+        payload.date,
+        businessContext || DEFAULT_TIMELINE_CONTEXT,
+        excludeIds.map(String)
+    ];
+    if (lesson.teacherId) {
+        params.push(lesson.teacherId);
+        filters.push(`COALESCE(extra_data->'educationLesson'->>'teacherId', extra_data->'education_lesson'->>'teacherId', extra_data->'bookingWorkspace'->'lesson'->>'teacherId') = $${params.length}`);
+    }
+    if (lesson.teacherName) {
+        params.push(lesson.teacherName.toLowerCase());
+        filters.push(`LOWER(COALESCE(extra_data->'educationLesson'->>'teacherName', extra_data->'education_lesson'->>'teacherName', extra_data->'bookingWorkspace'->'lesson'->>'teacherName', '')) = $${params.length}`);
+    }
+    if (!filters.length) return null;
+    const result = await queryable.query(
+        `SELECT id, time, duration, label, program_code, program_name, room, extra_data
+         FROM bookings
+         WHERE date = $1
+           AND ${bookingContextSql('', '$2')}
+           AND status != 'cancelled'
+           AND id != ALL($3::text[])
+           AND (${filters.join(' OR ')})`,
+        params
+    );
+    const conflict = result.rows.find(row => overlapsBookingTime(payload, row));
+    if (!conflict) return null;
+    return {
+        conflict,
+        error: `Викладач "${lesson.teacherName || lesson.teacherId}" зайнятий: ${conflict.label || conflict.program_name || conflict.program_code} о ${conflict.time}`
+    };
+}
+
 async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
@@ -716,6 +778,12 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     success: false,
                     error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
                 });
+            }
+
+            const teacherConflict = await validateEducationLessonTeacherConflict(client, b, businessContext);
+            if (teacherConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: teacherConflict.error, conflictBookingId: teacherConflict.conflict.id });
             }
         }
 
@@ -1134,6 +1202,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 success: false,
                 error: `Кімната "${main.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
             });
+        }
+
+        const teacherConflict = await validateEducationLessonTeacherConflict(client, main, businessContext);
+        if (teacherConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: teacherConflict.error, conflictBookingId: teacherConflict.conflict.id });
         }
 
         // CRM: resolve or create customer
@@ -1829,6 +1903,23 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         success: false,
                         error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
                     });
+                }
+            }
+
+            if (String(b.status || oldBooking.status || '').toLowerCase() !== 'cancelled') {
+                const teacherExcludeRows = await client.query(
+                    `SELECT id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')}`,
+                    [id, businessContext]
+                );
+                const teacherConflict = await validateEducationLessonTeacherConflict(
+                    client,
+                    b,
+                    businessContext,
+                    [id, ...teacherExcludeRows.rows.map(r => r.id)]
+                );
+                if (teacherConflict) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({ success: false, error: teacherConflict.error, conflictBookingId: teacherConflict.conflict.id });
                 }
             }
         }

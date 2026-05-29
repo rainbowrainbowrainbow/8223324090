@@ -786,12 +786,15 @@ function createBookingBlock(booking, startHour) {
     const isLinked = !!renderBooking.linkedTo;
     const maysternyaExtra = renderBooking.extraData?.maysternyaBooking || renderBooking.extraData?.maysternya || {};
     const resourceBlockExtra = renderBooking.extraData?.timelineResourceBlock || renderBooking.extraData?.timeline_resource_block || {};
+    const educationLessonExtra = renderBooking.extraData?.educationLesson || renderBooking.extraData?.education_lesson || {};
+    const isEducationLessonBlock = educationLessonExtra.mode === 'education_lesson'
+        || Boolean(educationLessonExtra.teacherId || educationLessonExtra.teacherName || educationLessonExtra.groupName || educationLessonExtra.courseCode);
     const isMaysternyaSlotClosed = maysternyaExtra.slotClosed === true || maysternyaExtra.mode === 'closed_slot'
         || resourceBlockExtra.resourceBlocked === true || resourceBlockExtra.mode === 'resource_blackout';
     // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
-    block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}`;
+    block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}${isEducationLessonBlock ? ' education-lesson' : ''}`;
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
     const closedSlotLabel = renderBooking.label || (resourceBlockExtra.resourceName ? 'Ресурс закрито' : 'Слот закрито');
@@ -810,7 +813,7 @@ function createBookingBlock(booking, startHour) {
     const durationBadge = effectiveDuration > 0 ? `<span class="duration-badge ${durationClass}">${effectiveDuration}хв</span>` : '';
 
     // v5.19: Linked bookings show 🔗 badge instead of user letter
-    const badge = isMaysternyaSlotClosed ? '×' : (isLinked ? '🔗' : escapeHtml(userLetter));
+    const badge = isMaysternyaSlotClosed ? '×' : (isEducationLessonBlock ? 'У' : (isLinked ? '🔗' : escapeHtml(userLetter)));
 
     const banquetTargetIds = getBanquetLinkedTargetIds(renderBooking);
     if (banquetTargetIds.length > 0) {
@@ -819,14 +822,26 @@ function createBookingBlock(booking, startHour) {
     }
 
     const maysternyaClient = maysternyaExtra.clientName || maysternyaExtra.topic || renderBooking.groupName || '';
+    const lessonTail = [
+        educationLessonExtra.teacherName,
+        educationLessonExtra.groupName || renderBooking.groupName,
+        educationLessonExtra.courseCode,
+        renderBooking.room
+    ].filter(Boolean).join(' · ');
     const bookingTitleTail = isMaysternyaSlotClosed
         ? (resourceBlockExtra.resourceName || 'Зайнято')
-        : (maysternyaClient || renderBooking.room || renderBooking.programName || '');
-    const bookingTitle = isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.programCode);
+        : (isEducationLessonBlock ? lessonTail : (maysternyaClient || renderBooking.room || renderBooking.programName || ''));
+    const bookingTitle = isMaysternyaSlotClosed
+        ? closedSlotLabel
+        : (isEducationLessonBlock
+            ? (educationLessonExtra.title || renderBooking.programName || renderBooking.label || 'Заняття')
+            : (renderBooking.label || renderBooking.programCode));
+    const bookingTitleText = bookingTitleTail ? `${bookingTitle}: ${bookingTitleTail}` : bookingTitle;
+    const studentSuffix = renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} учн.)` : '';
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(bookingTitle)}: ${escapeHtml(bookingTitleTail)}${durationBadge}</div>
-        <div class="subtitle">${escapeHtml(renderBooking.time)}${renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : ''}</div>
+        <div class="title">${escapeHtml(bookingTitleText)}${durationBadge}</div>
+        <div class="subtitle">${escapeHtml(renderBooking.time)}${isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : '')}</div>
         ${graduationItemsHtml}
         ${noteText}
     `;

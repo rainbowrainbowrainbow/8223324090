@@ -457,6 +457,106 @@ body.timeline-mode-education .booking-room-first-section select {
     border-color: rgba(14, 165, 134, 0.45);
 }
 
+.education-lesson-section {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    margin: 0 0 14px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 8px;
+    background: rgba(15, 118, 110, 0.10);
+}
+
+.education-lesson-section.hidden {
+    display: none !important;
+}
+
+.education-lesson-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.education-lesson-heading span {
+    color: var(--text-primary);
+    font-weight: 800;
+    font-size: 14px;
+}
+
+.education-lesson-heading small {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+}
+
+.education-lesson-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.education-lesson-grid--compact {
+    grid-template-columns: minmax(120px, 0.6fr) minmax(160px, 1fr);
+}
+
+.education-lesson-grid label {
+    display: grid;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.education-lesson-grid input,
+.education-lesson-grid select {
+    width: 100%;
+    min-height: 38px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: rgba(15, 23, 42, 0.62);
+    color: var(--text-primary);
+    padding: 8px 10px;
+}
+
+@media (max-width: 640px) {
+    .education-lesson-heading {
+        display: grid;
+        align-items: start;
+    }
+
+    .education-lesson-heading small {
+        text-align: left;
+    }
+
+    .education-lesson-grid,
+    .education-lesson-grid--compact {
+        grid-template-columns: 1fr;
+    }
+}
+
+body.timeline-mode-education .booking-block.education-lesson {
+    border-color: rgba(45, 212, 191, 0.48);
+}
+
+.booking-lesson-detail {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    border: 1px solid rgba(45, 212, 191, 0.24);
+    border-radius: 8px;
+    background: rgba(15, 118, 110, 0.08);
+}
+
+.booking-lesson-detail-title {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 2px;
+}
+
 .form-section label {
     display: block;
     margin-bottom: 8px;

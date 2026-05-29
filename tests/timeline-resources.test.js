@@ -76,6 +76,27 @@ test('education resources support capacity guard and quick slot closure', () => 
     assert.match(featureCss, /\.free-room-chip small/);
 });
 
+test('education timeline bookings persist lesson details and guard teacher conflicts', () => {
+    const html = read('index.html');
+    const booking = read('js/booking.js');
+    const bookingForm = read('js/booking-form.js');
+    const timeline = read('js/timeline.js');
+    const bookingsRoute = read('routes/bookings.js');
+    const panelCss = read('css/panel.css');
+
+    assert.match(html, /educationLessonSection/);
+    assert.match(html, /educationLessonTeacher/);
+    assert.match(booking, /function getEducationLessonDetails/);
+    assert.match(booking, /extraData\.educationLesson/);
+    assert.match(booking, /loadEducationLessonTeachers/);
+    assert.match(bookingForm, /educationLessonTitle/);
+    assert.match(timeline, /educationLessonExtra/);
+    assert.match(timeline, /education-lesson/);
+    assert.match(bookingsRoute, /function validateEducationLessonTeacherConflict/);
+    assert.match(bookingsRoute, /extra_data->'educationLesson'->>'teacherId'/);
+    assert.match(panelCss, /\.education-lesson-section/);
+});
+
 test('settings UI exposes real timeline resource management for multi-cabinet mode', () => {
     const html = read('index.html');
     const settings = read('js/settings.js');

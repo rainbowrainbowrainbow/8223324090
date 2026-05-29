@@ -183,7 +183,12 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
     const notifyCatch = err => log.error(`Telegram notify failed (confirm): ${err.message}`);
 
     getLineName(booking.lineId, booking.date, booking.businessContext || DEFAULT_TIMELINE_CONTEXT)
-        .then(lineName => notifyTelegram('create', notifyPayload, { username, bookingId: booking.id, lineName }).catch(notifyCatch))
+        .then(lineName => notifyTelegram('create', notifyPayload, {
+            username,
+            bookingId: booking.id,
+            lineName,
+            businessContext: booking.businessContext || DEFAULT_TIMELINE_CONTEXT
+        }).catch(notifyCatch))
         .catch(notifyCatch);
 
     processBookingAutomation({ ...booking, _event: 'confirm' })
@@ -831,7 +836,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
                 created_by: b.createdBy
-            }, { username: b.createdBy || req.user?.username, lineName }))
+            }, { username: b.createdBy || req.user?.username, lineName, businessContext }))
                 .catch(err => log.error(`Telegram notify failed (create): ${err.message}`));
         }
 
@@ -1217,7 +1222,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             getLineName(main.lineId, main.date, businessContext).then(lineName => notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy
-            }, { username: main.createdBy || req.user?.username, lineName }))
+            }, { username: main.createdBy || req.user?.username, lineName, businessContext }))
                 .catch(err => log.error(`Telegram notify failed (create/full): ${err.message}`));
         }
 
@@ -1343,7 +1348,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
         if (sideEffectsAllowedForContext(businessContext)) {
             getLineName(booking.line_id, booking.date, businessContext).then(lineName =>
-                notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
+                notifyTelegram('delete', booking, { username: req.user?.username, lineName, businessContext }))
                 .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
         }
 
@@ -1558,7 +1563,7 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
                 program_name: mainBooking.programName,
                 kids_count: mainBooking.kidsCount,
                 created_by: mainBooking.createdBy
-            }, { username: req.user?.username, bookingId: id, lineName }))
+            }, { username: req.user?.username, bookingId: id, lineName, businessContext }))
                 .catch(err => log.error(`Telegram notify failed (linked-atomic): ${err.message}`));
         }
 
@@ -2031,7 +2036,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         const bookingForNotify = {
             ...b, id, label: b.label, program_code: b.programCode,
             program_name: b.programName, kids_count: b.kidsCount,
-            status: newStatus
+            status: newStatus,
+            businessContext
         };
 
         const statusChanged = oldBooking.status !== newStatus;
@@ -2039,11 +2045,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (sideEffectsAllowedForContext(businessContext)) {
             getLineName(b.lineId, b.date, businessContext).then(lineName => {
                 if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
-                    notifyTelegram('create', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                    notifyTelegram('create', bookingForNotify, { username, bookingId: id, lineName, businessContext }).catch(notifyCatch);
                 } else if (statusChanged) {
-                    notifyTelegram('status_change', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                    notifyTelegram('status_change', bookingForNotify, { username, bookingId: id, lineName, businessContext }).catch(notifyCatch);
                 } else if (!b.linkedTo && newStatus !== 'preliminary') {
-                    notifyTelegram('edit', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                    notifyTelegram('edit', bookingForNotify, { username, bookingId: id, lineName, businessContext }).catch(notifyCatch);
                 }
             }).catch(notifyCatch);
         }

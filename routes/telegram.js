@@ -17,6 +17,10 @@ const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
+const {
+    DEFAULT_TIMELINE_CONTEXT,
+    pushDefaultTimelineBusinessContext
+} = require('../services/timelineBusinessScope');
 
 const log = createLogger('TelegramRoute');
 
@@ -354,8 +358,11 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         );
         const requestId = pendingResult.rows[0].id;
 
+        const lineParams = [date];
+        const lineScope = pushDefaultTimelineBusinessContext(lineParams);
         const linesResult = await pool.query(
-            'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+            `SELECT name FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY line_id`,
+            lineParams
         );
         const animatorNames = linesResult.rows.map(r => r.name);
 
@@ -609,8 +616,11 @@ router.post('/webhook', async (req, res) => {
                 const date = pending.rows[0].date;
                 await ensureDefaultLines(date);
 
+                const lineParams = [date];
+                const lineScope = pushDefaultTimelineBusinessContext(lineParams);
                 const linesResult = await pool.query(
-                    'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]
+                    `SELECT * FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY id`,
+                    lineParams
                 );
                 const existingNumbers = linesResult.rows
                     .map(row => { const m = row.name.match(/^Аніматор (\d+)$/); return m ? parseInt(m[1]) : 0; })
@@ -623,8 +633,10 @@ router.post('/webhook', async (req, res) => {
                 const newName = `Аніматор ${nextNum}`;
 
                 await pool.query(
-                    'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4)',
-                    [date, newLineId, newName, colors[linesResult.rows.length % colors.length]]
+                    `INSERT INTO lines_by_date (business_context, date, line_id, name, color)
+                     VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (business_context, date, line_id) DO NOTHING`,
+                    [DEFAULT_TIMELINE_CONTEXT, date, newLineId, newName, colors[linesResult.rows.length % colors.length]]
                 );
 
                 await answerCallback(id, 'Аніматора додано!');

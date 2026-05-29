@@ -16,6 +16,11 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
+const {
+    DEFAULT_TIMELINE_CONTEXT,
+    normalizeTimelineContext,
+    pushTimelineBusinessContext
+} = require('./timelineBusinessScope');
 
 const log = createLogger('KleshnyaGreeting');
 
@@ -77,8 +82,24 @@ function scopedGreetingTarget(username, actor) {
     return [
         username || 'unknown',
         actor?.id || actor?.userId || 'anon',
-        actor?.role || 'roleless'
+        actor?.role || 'roleless',
+        normalizeTimelineContext(actor?.businessContext || actor?.business_context || actor?.defaultBusinessContext || DEFAULT_TIMELINE_CONTEXT)
     ].join(':');
+}
+
+function scopedGreetingBookingVisibility(username, actor, params, alias = 'b') {
+    const targetActor = actor || { username };
+    const visibility = getVisibleBookingScope(targetActor, params, alias);
+    const businessScope = pushTimelineBusinessContext(
+        params,
+        alias,
+        targetActor.businessContext || targetActor.business_context || targetActor.defaultBusinessContext || DEFAULT_TIMELINE_CONTEXT
+    );
+    return {
+        ...visibility,
+        businessScope,
+        sql: `AND ${businessScope} ${visibility.sql}`
+    };
 }
 
 function generateTemplateMessage(ctx, displayName) {
@@ -148,7 +169,7 @@ async function gatherContext(username, dateStr, actor = null) {
     try {
         // Bookings for today
         const bookingsParams = [dateStr];
-        const bookingsScope = getVisibleBookingScope(actor || { username }, bookingsParams, 'b');
+        const bookingsScope = scopedGreetingBookingVisibility(username, actor, bookingsParams, 'b');
         const bookingsRes = await pool.query(
             `SELECT COUNT(*) as cnt, COALESCE(SUM(b.price), 0) as revenue
              FROM bookings b
@@ -161,7 +182,7 @@ async function gatherContext(username, dateStr, actor = null) {
 
         // Preliminary bookings
         const prelimParams = [dateStr];
-        const prelimScope = getVisibleBookingScope(actor || { username }, prelimParams, 'b');
+        const prelimScope = scopedGreetingBookingVisibility(username, actor, prelimParams, 'b');
         const prelimRes = await pool.query(
             `SELECT COUNT(*) as cnt
              FROM bookings b
@@ -196,9 +217,15 @@ async function gatherContext(username, dateStr, actor = null) {
         }
 
         // Animators working today
+        const animParams = [dateStr];
+        const animScope = pushTimelineBusinessContext(
+            animParams,
+            'l',
+            actor?.businessContext || actor?.business_context || actor?.defaultBusinessContext || DEFAULT_TIMELINE_CONTEXT
+        );
         const animRes = await pool.query(
-            "SELECT COUNT(DISTINCT l.line_id) as cnt FROM lines_by_date l WHERE l.date = $1",
-            [dateStr]
+            `SELECT COUNT(DISTINCT l.line_id) as cnt FROM lines_by_date l WHERE l.date = $1 AND ${animScope}`,
+            animParams
         );
         ctx.animatorsToday = parseInt(animRes.rows[0].cnt);
 

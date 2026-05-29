@@ -251,3 +251,48 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/confirm`\)/);
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/linked-atomic`\)/);
 });
+
+test('background booking notifications and legacy bot reads stay inside a timeline business context', () => {
+    const scopeHelper = read('services/timelineBusinessScope.js');
+    const telegram = read('services/telegram.js');
+    const bookings = read('routes/bookings.js');
+    const scheduler = read('services/scheduler.js');
+    const bot = read('services/bot.js');
+    const telegramRoute = read('routes/telegram.js');
+    const afisha = read('routes/afisha.js');
+    const kleshnyaChat = read('services/kleshnya-chat.js');
+    const kleshnyaGreeting = read('services/kleshnya-greeting.js');
+
+    assert.match(scopeHelper, /function timelineBusinessContextSql/);
+    assert.match(scopeHelper, /function pushTimelineBusinessContext/);
+    assert.match(scopeHelper, /function pushDefaultTimelineBusinessContext/);
+    assert.match(scopeHelper, /function timelineBusinessContextJoinSql/);
+
+    assert.match(telegram, /function bookingTelegramBusinessContext/);
+    assert.match(telegram, /SELECT telegram_message_id FROM bookings WHERE id = \$1 AND \$\{timelineBusinessContextSql\('', '\$2'\)\}/);
+    assert.match(telegram, /UPDATE bookings SET telegram_message_id = \$1 WHERE id = \$2 AND \$\{timelineBusinessContextSql\('', '\$3'\)\}/);
+    assert.match(telegram, /businessContext: normalizeTimelineContext\(businessContext\)/);
+
+    assert.match(bookings, /notifyTelegram\('create', notifyPayload,[\s\S]*businessContext: booking\.businessContext \|\| DEFAULT_TIMELINE_CONTEXT/);
+    assert.match(bookings, /notifyTelegram\('delete', booking, \{ username: req\.user\?\.username, lineName, businessContext \}\)/);
+    assert.match(bookings, /notifyTelegram\('edit', bookingForNotify, \{ username, bookingId: id, lineName, businessContext \}\)/);
+
+    assert.match(scheduler, /pushDefaultTimelineBusinessContext\(bookingParams, 'b'\)/);
+    assert.match(scheduler, /FROM bookings b[\s\S]*AND \$\{bookingBusinessScope\}/);
+    assert.match(scheduler, /FROM lines_by_date[\s\S]*AND \$\{lineBusinessScope\}/);
+    assert.match(scheduler, /COALESCE\(business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
+    assert.match(scheduler, /businessContext: DEFAULT_TIMELINE_CONTEXT/);
+
+    assert.match(bot, /timelineBusinessContextJoinSql\('b', 'l'\)/);
+    assert.match(bot, /FROM bookings b[\s\S]*AND \$\{businessScope\}/);
+    assert.match(bot, /FROM bookings WHERE date >= \$1 AND date <= \$2 AND \$\{businessScope\}/);
+
+    assert.match(telegramRoute, /SELECT name FROM lines_by_date WHERE date = \$1 AND \$\{lineScope\}/);
+    assert.match(telegramRoute, /INSERT INTO lines_by_date \(business_context, date, line_id, name, color\)/);
+    assert.match(afisha, /SELECT \* FROM bookings WHERE date = \$1 AND status != 'cancelled' AND \$\{bookingScope\}/);
+
+    assert.match(kleshnyaChat, /function scopedBookingVisibility/);
+    assert.match(kleshnyaChat, /pushTimelineBusinessContext\(params, alias, actorTimelineBusinessContext\(targetActor\)\)/);
+    assert.match(kleshnyaGreeting, /function scopedGreetingBookingVisibility/);
+    assert.match(kleshnyaGreeting, /SELECT COUNT\(DISTINCT l\.line_id\) as cnt FROM lines_by_date l WHERE l\.date = \$1 AND \$\{animScope\}/);
+});

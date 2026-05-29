@@ -7,6 +7,11 @@ const { pool } = require('../db');
 const { formatBookingNotification } = require('./templates');
 const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
+const {
+    DEFAULT_TIMELINE_CONTEXT,
+    normalizeTimelineContext,
+    timelineBusinessContextSql
+} = require('./timelineBusinessScope');
 
 const log = createLogger('Telegram');
 
@@ -287,6 +292,16 @@ const _retryQueue = [];
 const RETRY_MAX_QUEUE = 50;
 const RETRY_DELAYS = [30000, 60000, 120000]; // 30s, 1min, 2min
 
+function bookingTelegramBusinessContext(booking = {}, extra = {}) {
+    return normalizeTimelineContext(
+        extra.businessContext
+        || extra.business_context
+        || booking.businessContext
+        || booking.business_context
+        || DEFAULT_TIMELINE_CONTEXT
+    );
+}
+
 async function notifyTelegram(type, booking, extra = {}) {
     try {
         const text = formatBookingNotification(type, booking, extra);
@@ -308,9 +323,13 @@ async function notifyTelegram(type, booking, extra = {}) {
             return;
         }
         const bookingId = booking.id || extra.bookingId;
+        const businessContext = bookingTelegramBusinessContext(booking, extra);
 
         if ((type === 'edit' || type === 'status_change') && bookingId) {
-            const existing = await pool.query('SELECT telegram_message_id FROM bookings WHERE id = $1', [bookingId]);
+            const existing = await pool.query(
+                `SELECT telegram_message_id FROM bookings WHERE id = $1 AND ${timelineBusinessContextSql('', '$2')}`,
+                [bookingId, businessContext]
+            );
             const existingMsgId = existing.rows[0]?.telegram_message_id;
 
             if (existingMsgId) {
@@ -321,7 +340,10 @@ async function notifyTelegram(type, booking, extra = {}) {
         }
 
         if (type === 'delete' && bookingId) {
-            const existing = await pool.query('SELECT telegram_message_id FROM bookings WHERE id = $1', [bookingId]);
+            const existing = await pool.query(
+                `SELECT telegram_message_id FROM bookings WHERE id = $1 AND ${timelineBusinessContextSql('', '$2')}`,
+                [bookingId, businessContext]
+            );
             const existingMsgId = existing.rows[0]?.telegram_message_id;
             if (existingMsgId) {
                 await deleteTelegramMessage(chatId, existingMsgId);
@@ -332,10 +354,13 @@ async function notifyTelegram(type, booking, extra = {}) {
 
         const result = await sendTelegramMessage(chatId, text);
         if (result && result.ok && result.result && bookingId) {
-            await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, bookingId]);
+            await pool.query(
+                `UPDATE bookings SET telegram_message_id = $1 WHERE id = $2 AND ${timelineBusinessContextSql('', '$3')}`,
+                [result.result.message_id, bookingId, businessContext]
+            );
         } else if (!result || !result.ok) {
             // v19.15: Queue for retry if send failed
-            enqueueRetry(chatId, text, bookingId);
+            enqueueRetry(chatId, text, bookingId, businessContext);
         }
     } catch (err) {
         log.error(`Notify error: ${err.message}`);
@@ -343,12 +368,19 @@ async function notifyTelegram(type, booking, extra = {}) {
 }
 
 // v19.15: Enqueue failed notification for retry
-function enqueueRetry(chatId, text, bookingId) {
+function enqueueRetry(chatId, text, bookingId, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     if (_retryQueue.length >= RETRY_MAX_QUEUE) {
         log.warn('Retry queue full, dropping oldest notification');
         _retryQueue.shift();
     }
-    _retryQueue.push({ chatId, text, bookingId, attempt: 0, nextRetry: Date.now() + RETRY_DELAYS[0] });
+    _retryQueue.push({
+        chatId,
+        text,
+        bookingId,
+        businessContext: normalizeTimelineContext(businessContext),
+        attempt: 0,
+        nextRetry: Date.now() + RETRY_DELAYS[0]
+    });
     log.info(`Notification queued for retry (queue size: ${_retryQueue.length})`);
 }
 
@@ -365,7 +397,10 @@ async function processRetryQueue() {
                 if (idx >= 0) _retryQueue.splice(idx, 1);
                 log.info(`Retry succeeded for bookingId=${item.bookingId} (attempt ${item.attempt + 1})`);
                 if (result.result && item.bookingId) {
-                    await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, item.bookingId]).catch(() => {});
+                    await pool.query(
+                        `UPDATE bookings SET telegram_message_id = $1 WHERE id = $2 AND ${timelineBusinessContextSql('', '$3')}`,
+                        [result.result.message_id, item.bookingId, normalizeTimelineContext(item.businessContext)]
+                    ).catch(() => {});
                 }
             } else {
                 item.attempt++;

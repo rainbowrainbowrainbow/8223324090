@@ -10,6 +10,7 @@ const { generateTasksForEvent } = require('../services/taskTemplates');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
+const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
@@ -235,14 +236,18 @@ router.get('/distribute/:date', async (req, res) => {
             [date]
         );
         // Get lines (animators) for the date
+        const lineParams = [date];
+        const lineScope = pushDefaultTimelineBusinessContext(lineParams);
         const lines = await pool.query(
-            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id',
-            [date]
+            `SELECT * FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY id`,
+            lineParams
         );
         // Get existing bookings to check conflicts
+        const bookingParams = [date];
+        const bookingScope = pushDefaultTimelineBusinessContext(bookingParams);
         const bookings = await pool.query(
-            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled'",
-            [date]
+            `SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' AND ${bookingScope}`,
+            bookingParams
         );
 
         const animators = lines.rows.map(l => ({ id: l.line_id, name: l.name }));
@@ -304,11 +309,17 @@ async function distributeAfishaForDate(date) {
         const events = (await client.query(
             "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' ORDER BY time", [date]
         )).rows;
+        const lineParams = [date];
+        const lineScope = pushDefaultTimelineBusinessContext(lineParams);
         const animators = (await client.query(
-            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]
+            `SELECT * FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY id`,
+            lineParams
         )).rows.map(l => ({ id: l.line_id, name: l.name }));
+        const bookingParams = [date];
+        const bookingScope = pushDefaultTimelineBusinessContext(bookingParams);
         const bookings = (await client.query(
-            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled'", [date]
+            `SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' AND ${bookingScope}`,
+            bookingParams
         )).rows;
 
         if (animators.length === 0) {

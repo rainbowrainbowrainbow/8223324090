@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.12 - фонові процеси за бізнесом
+
+### Background services / Telegram / tenant safety / 29.05.2026 [codex]
+- **Telegram-сповіщення бронювань стали business-scoped** - `notifyTelegram` тепер визначає timeline business context з payload/extra і читає або оновлює `telegram_message_id` тільки для бронювання в цьому контексті.
+- **Scheduler park-процесів більше не читає чужі timeline-записи** - daily digest, tomorrow reminder, workday triggers, upcoming/debt/review notifications, event pipeline, cleaning tasks, push reminders і auto-report отримали default `event_genix` scope.
+- **Legacy Telegram bot і afisha-distribution ізольовані** - `/today`, `/tomorrow`, `/stats`, ask-animator callbacks, додавання ліній і afisha conflict checks працюють через спільний helper для timeline business scope.
+- **Kleshnya context став tenant-safe для booking data** - AI context, greeting summary, room/category/program analytics і line-count читають бронювання та лінії з одного business context, а cache greeting враховує цей context.
+- **Regression guard додано** - `operational-business-context` фіксує scoped Telegram message updates, background scheduler reads, legacy bot reads, afisha routes і Kleshnya helpers.
+
+---
+
 ## v0.68.11 - таймлайн і бронювання за бізнесом
 
 ### Timeline / bookings / business scope / 29.05.2026 [codex]

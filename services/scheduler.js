@@ -15,6 +15,10 @@ const { createLogger } = require('../utils/logger');
 const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
 const { createChecklistSubtasks } = require('./taskTaxonomy');
 const { processMissedSlots } = require('./taskScheduling');
+const {
+    DEFAULT_TIMELINE_CONTEXT,
+    pushDefaultTimelineBusinessContext
+} = require('./timelineBusinessScope');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -81,6 +85,7 @@ async function buildAndSendDigest(date, actor = null) {
 
     const bookingParams = [date];
     const bookingVisibility = getVisibleBookingScope(bookingActor, bookingParams, 'b');
+    const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
     const bookingsResult = await pool.query(
         `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
                 hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
@@ -88,6 +93,7 @@ async function buildAndSendDigest(date, actor = null) {
          FROM bookings b
          WHERE b.date = $1
            AND b.status != 'cancelled'
+           AND ${bookingBusinessScope}
            ${bookingVisibility.sql}
          ORDER BY b.time LIMIT 500`, bookingParams);
     const bookings = bookingsResult.rows;
@@ -110,7 +116,15 @@ async function buildAndSendDigest(date, actor = null) {
     }
 
     await ensureDefaultLines(date);
-    const linesResult = await pool.query('SELECT id, date, line_id, name, color FROM lines_by_date WHERE date = $1 ORDER BY id LIMIT 100', [date]);
+    const lineParams = [date];
+    const lineBusinessScope = pushDefaultTimelineBusinessContext(lineParams);
+    const linesResult = await pool.query(
+        `SELECT id, date, line_id, name, color
+         FROM lines_by_date
+         WHERE date = $1 AND ${lineBusinessScope}
+         ORDER BY id LIMIT 100`,
+        lineParams
+    );
     const lines = linesResult.rows;
 
     // v8.1: Redesigned digest format with tree structure
@@ -210,6 +224,7 @@ async function sendTomorrowReminder(todayStr, actor = null) {
         // v7.9.3: Fetch ALL bookings including linked (for second animator display)
         const bookingParams = [tomorrowStr];
         const bookingVisibility = getVisibleBookingScope(bookingActor, bookingParams, 'b');
+        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const bookingsResult = await pool.query(
             `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
                     hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
@@ -217,6 +232,7 @@ async function sendTomorrowReminder(todayStr, actor = null) {
              FROM bookings b
              WHERE b.date = $1
                AND b.status != 'cancelled'
+               AND ${bookingBusinessScope}
                ${bookingVisibility.sql}
              ORDER BY b.time LIMIT 500`,
             bookingParams
@@ -248,7 +264,12 @@ async function sendTomorrowReminder(todayStr, actor = null) {
         const afishaFinal = afishaResult2.rows;
 
         await ensureDefaultLines(tomorrowStr);
-        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [tomorrowStr]);
+        const lineParams = [tomorrowStr];
+        const lineBusinessScope = pushDefaultTimelineBusinessContext(lineParams);
+        const linesResult = await pool.query(
+            `SELECT * FROM lines_by_date WHERE date = $1 AND ${lineBusinessScope} ORDER BY id`,
+            lineParams
+        );
         const lines = linesResult.rows;
         const bookings = bookingsResult.rows;
 
@@ -736,14 +757,17 @@ async function checkWorkDayTriggers() {
         log.info(`Work day triggers fired for ${todayStr} at ${triggerTime} (${isWeekend ? 'weekend' : 'weekday'})`);
 
         // Check pinata bookings for today that need print confirmation
+        const pinataParams = [todayStr];
+        const pinataBusinessScope = pushDefaultTimelineBusinessContext(pinataParams, 'b');
         const pinataBookings = await pool.query(
             `SELECT b.*, p.has_filler FROM bookings b
              JOIN products p ON b.program_id = p.id
              WHERE b.date = $1
+               AND ${pinataBusinessScope}
                AND p.has_filler = true
                AND COALESCE(b.pinata_mode, 'park') = 'park'
                AND b.status != 'cancelled'`,
-            [todayStr]
+            pinataParams
         );
 
         const { createTask } = require('./kleshnya');
@@ -772,16 +796,20 @@ async function checkWorkDayTriggers() {
                 source_type: 'booking',
                 source_id: booking.id,
                 category: 'purchase',
-                created_by: 'kleshnya'
+                created_by: 'kleshnya',
+                businessContext: DEFAULT_TIMELINE_CONTEXT
             });
         }
 
         // Check for bookings with unclarified data (t-shirt sizes etc)
+        const tshirtParams = [todayStr];
+        const tshirtBusinessScope = pushDefaultTimelineBusinessContext(tshirtParams, 'b');
         const tshirtBookings = await pool.query(
             `SELECT b.* FROM bookings b
              WHERE b.date = $1 AND b.program_id = 'mk_tshirt' AND b.status != 'cancelled'
+             AND ${tshirtBusinessScope}
              AND (b.extra_data IS NULL OR b.extra_data->>'tshirtSizes' IS NULL)`,
-            [todayStr]
+            tshirtParams
         );
 
         for (const booking of tshirtBookings.rows) {
@@ -799,14 +827,19 @@ async function checkWorkDayTriggers() {
                 source_type: 'booking',
                 source_id: booking.id,
                 category: 'admin',
-                created_by: 'kleshnya'
+                created_by: 'kleshnya',
+                businessContext: DEFAULT_TIMELINE_CONTEXT
             });
         }
 
         // Send task digest for today
         const todayTasks = await pool.query(
-            "SELECT * FROM tasks WHERE date = $1 AND status != 'done' ORDER BY priority DESC, created_at",
-            [todayStr]
+            `SELECT * FROM tasks
+             WHERE date = $1
+               AND status != 'done'
+               AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+             ORDER BY priority DESC, created_at`,
+            [todayStr, DEFAULT_TIMELINE_CONTEXT]
         );
 
         if (todayTasks.rows.length > 0) {
@@ -893,11 +926,15 @@ async function checkStreakUpdates() {
             SELECT DISTINCT username FROM (
                 SELECT actor AS username FROM task_logs WHERE DATE(created_at) = $1 AND actor NOT IN ('system', 'kleshnya', 'telegram')
                 UNION
-                SELECT created_by AS username FROM bookings WHERE DATE(created_at) = $1 AND created_by IS NOT NULL
+                SELECT created_by AS username
+                  FROM bookings
+                 WHERE DATE(created_at) = $1
+                   AND created_by IS NOT NULL
+                   AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
                 UNION
                 SELECT username FROM kleshnya_chat WHERE DATE(created_at) = $1
             ) AS active WHERE username IS NOT NULL
-        `, [todayStr]);
+        `, [todayStr, DEFAULT_TIMELINE_CONTEXT]);
 
         let updated = 0;
         for (const row of activeUsers.rows) {
@@ -1144,6 +1181,7 @@ async function checkUpcomingBookings() {
 
         const bookingParams = [];
         const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
+        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.label, b.program_name, b.room,
                    c.name AS customer_name, c.phone AS customer_phone
@@ -1152,6 +1190,7 @@ async function checkUpcomingBookings() {
             WHERE b.date = to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
               AND b.status IN ('confirmed', 'pending')
               AND b.linked_to IS NULL
+              AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
         `, bookingParams);
 
@@ -1207,6 +1246,7 @@ async function checkDebtNotifications() {
 
         const bookingParams = [];
         const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
+        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.date, b.label, b.program_name, b.price, b.paid_amount,
                    c.name AS customer_name, c.phone AS customer_phone,
@@ -1217,6 +1257,7 @@ async function checkDebtNotifications() {
               AND (b.payment_status IS NULL OR b.payment_status != 'paid')
               AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
               AND b.date::date <= CURRENT_DATE
+              AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
             ORDER BY debt DESC LIMIT 20
         `, bookingParams);
@@ -1520,10 +1561,11 @@ async function checkAutoReport() {
 
         const reportBookingParams = [todayStr];
         const reportBookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, reportBookingParams, 'b');
+        const reportBookingBusinessScope = pushDefaultTimelineBusinessContext(reportBookingParams, 'b');
         const bookingsResult = await pool.query(
             "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END)::int AS confirmed, " +
             "COALESCE(SUM(price),0)::numeric AS revenue, COALESCE(AVG(price),0)::numeric AS avg_check " +
-            `FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${reportBookingVisibility.sql}`,
+            `FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' AND ${reportBookingBusinessScope} ${reportBookingVisibility.sql}`,
             reportBookingParams
         );
         const stats = bookingsResult.rows[0];
@@ -1537,10 +1579,12 @@ async function checkAutoReport() {
 
         const topProgramParams = [todayStr];
         const topProgramVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, topProgramParams, 'b');
+        const topProgramBusinessScope = pushDefaultTimelineBusinessContext(topProgramParams, 'b');
         const topProgramResult = await pool.query(
             `SELECT b.program_name AS program, COUNT(*)::int AS cnt
              FROM bookings b
              WHERE b.date = $1 AND b.status != 'cancelled'
+               AND ${topProgramBusinessScope}
                ${topProgramVisibility.sql}
              GROUP BY b.program_name
              ORDER BY cnt DESC LIMIT 3`,
@@ -1744,6 +1788,7 @@ async function checkAutoReviewRequests() {
         const hoursDelay = 2;
         const bookingParams = [hoursDelay];
         const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
+        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.label, b.phone, b.date, b.time, b.duration,
                    b.program_name, b.customer_telegram_id
@@ -1753,6 +1798,7 @@ async function checkAutoReviewRequests() {
               AND b.date::date <= CURRENT_DATE
               AND rrs.booking_id IS NULL
               AND b.phone IS NOT NULL
+              AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
             ORDER BY b.date DESC, b.time DESC
@@ -1969,12 +2015,14 @@ async function checkEventPipeline() {
         // T-24: bookings happening tomorrow that haven't had t24 event
         const t24Params = [tomorrowStr];
         const t24Visibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, t24Params, 'b');
+        const t24BusinessScope = pushDefaultTimelineBusinessContext(t24Params, 'b');
         const t24 = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room, b.phone, b.customer_telegram_id
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              AND ${t24BusinessScope}
               ${t24Visibility.sql}
             LIMIT 20
         `, t24Params).catch(() => ({ rows: [] }));
@@ -1994,12 +2042,14 @@ async function checkEventPipeline() {
         // Day-of: bookings today that haven't had day_of event
         const dayOfParams = [today];
         const dayOfVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, dayOfParams, 'b');
+        const dayOfBusinessScope = pushDefaultTimelineBusinessContext(dayOfParams, 'b');
         const dayOf = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'day_of_prep'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              AND ${dayOfBusinessScope}
               ${dayOfVisibility.sql}
             LIMIT 20
         `, dayOfParams).catch(() => ({ rows: [] }));
@@ -2018,12 +2068,14 @@ async function checkEventPipeline() {
         // Completed: bookings that ended (time + duration < now) but no completion event
         const completedParams = [today];
         const completedVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, completedParams, 'b');
+        const completedBusinessScope = pushDefaultTimelineBusinessContext(completedParams, 'b');
         const completed = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room, b.duration
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'completed'
             WHERE b.date = $1 AND b.status = 'confirmed'
               AND bp.id IS NULL
+              AND ${completedBusinessScope}
               ${completedVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
                    + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
@@ -2124,6 +2176,8 @@ async function checkCleaningTasks() {
         const today = getKyivDateStr();
 
         // Find completed bookings that don't have cleaning tasks yet
+        const cleaningParams = [today];
+        const cleaningBusinessScope = pushDefaultTimelineBusinessContext(cleaningParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.room, b.time, b.duration, b.program_name, b.label
             FROM bookings b
@@ -2131,10 +2185,11 @@ async function checkCleaningTasks() {
             WHERE b.date = $1 AND b.status = 'confirmed'
               AND b.room IS NOT NULL AND b.room != ''
               AND ct.id IS NULL
+              AND ${cleaningBusinessScope}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
                    + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
             LIMIT 20
-        `, [today]).catch(() => ({ rows: [] }));
+        `, cleaningParams).catch(() => ({ rows: [] }));
 
         for (const b of result.rows) {
             const endMinutes = (parseInt(b.time.slice(0,2)) * 60 + parseInt(b.time.slice(3,5))) + (b.duration || 120);
@@ -2325,6 +2380,7 @@ async function checkBookingPushReminders() {
 
         const bookingParams = [todayStr, targetTime];
         const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
+        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.id AS booking_number, b.time AS time_start, b.program_name,
                    b.hosts, b.second_animator
@@ -2333,6 +2389,7 @@ async function checkBookingPushReminders() {
               AND b.status IN ('confirmed', 'pending')
               AND b.time = $2
               AND b.hosts IS NOT NULL AND b.hosts != ''
+              AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
         `, bookingParams);
 

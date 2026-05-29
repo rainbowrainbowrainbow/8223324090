@@ -20,6 +20,10 @@ const { pool } = require('../db');
 const { sendTelegramMessage, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
+const {
+    pushDefaultTimelineBusinessContext,
+    timelineBusinessContextJoinSql
+} = require('./timelineBusinessScope');
 
 const log = createLogger('ClawdBot');
 
@@ -202,10 +206,12 @@ async function handleDaySummary(chatId, threadId, date, label, actor = null) {
     try {
         const params = [date];
         const visibility = getVisibleBookingScope(actor, params, 'b');
+        const businessScope = pushDefaultTimelineBusinessContext(params, 'b');
         const bookings = await pool.query(
             `SELECT b.*, l.name as line_name FROM bookings b
-             LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date
+             LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date AND ${timelineBusinessContextJoinSql('b', 'l')}
              WHERE b.date = $1
+               AND ${businessScope}
                ${visibility.sql}
              ORDER BY b.time`,
             params
@@ -215,8 +221,11 @@ async function handleDaySummary(chatId, threadId, date, label, actor = null) {
             return sendBotMessage(chatId, threadId, `📅 <b>${label} (${date})</b>\n\nБронювань немає`);
         }
 
+        const lineParams = [date];
+        const lineScope = pushDefaultTimelineBusinessContext(lineParams);
         const lines = await pool.query(
-            'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+            `SELECT name FROM lines_by_date WHERE date = $1 AND ${lineScope} ORDER BY line_id`,
+            lineParams
         );
 
         let text = `📅 <b>${label} (${date})</b>\n`;
@@ -391,13 +400,15 @@ async function handleStats(chatId, threadId) {
         const dateFrom = `${year}-${month}-01`;
         const dateTo = `${year}-${month}-31`;
 
+        const params = [dateFrom, dateTo];
+        const businessScope = pushDefaultTimelineBusinessContext(params);
         const result = await pool.query(
             `SELECT COUNT(*) as total,
                     COUNT(*) FILTER (WHERE status = 'confirmed') as confirmed,
                     COUNT(*) FILTER (WHERE status = 'preliminary') as preliminary,
                     SUM(price) as revenue
-             FROM bookings WHERE date >= $1 AND date <= $2`,
-            [dateFrom, dateTo]
+             FROM bookings WHERE date >= $1 AND date <= $2 AND ${businessScope}`,
+            params
         );
 
         const row = result.rows[0];

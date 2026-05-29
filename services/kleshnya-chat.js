@@ -11,6 +11,11 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
 const {
+    DEFAULT_TIMELINE_CONTEXT,
+    normalizeTimelineContext,
+    pushTimelineBusinessContext
+} = require('./timelineBusinessScope');
+const {
     normalizePageContext,
     buildPageKnowledgePrompt,
     buildPageKnowledgeDebug,
@@ -37,8 +42,25 @@ function actorForBookingScope(username, actor) {
     return actor || { username, name: username };
 }
 
+function actorTimelineBusinessContext(actor) {
+    return normalizeTimelineContext(
+        actor?.businessContext
+        || actor?.business_context
+        || actor?.activeBusinessContext
+        || actor?.defaultBusinessContext
+        || DEFAULT_TIMELINE_CONTEXT
+    );
+}
+
 function scopedBookingVisibility(username, actor, params, alias = 'b') {
-    return getVisibleBookingScope(actorForBookingScope(username, actor), params, alias);
+    const targetActor = actorForBookingScope(username, actor);
+    const visibility = getVisibleBookingScope(targetActor, params, alias);
+    const businessScope = pushTimelineBusinessContext(params, alias, actorTimelineBusinessContext(targetActor));
+    return {
+        ...visibility,
+        businessScope,
+        sql: `AND ${businessScope} ${visibility.sql}`
+    };
 }
 
 /**

@@ -124,10 +124,11 @@ checkPage('index.html', (doc, html) => {
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
     check('Park pinata filler excludes client-owned option', !html.includes('value="Клієнта"'));
-    check('login release badge matches package version', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.version));
-    check('login release badge matches package release label', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
-    check('login tagline matches package release contract', doc.querySelector('.tagline')?.textContent === `AI First CRM v${pkg.version} — ${pkg.eventGenix.releaseLabel}`);
-    check('login changelog button matches package release contract', doc.getElementById('changelogBtn')?.textContent.includes(`v${pkg.version}: ${pkg.eventGenix.releaseLabel}`));
+    const loginDisplayLabel = String(pkg.eventGenix.releaseLabel || '').replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
+    check('login release badge shows package version once', doc.querySelector('.login-release-badge')?.textContent.trim() === `✨ ${pkg.version}`);
+    check('login release badge does not duplicate release label', !doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
+    check('login tagline uses clean release title without CRM marker duplication', doc.querySelector('.tagline')?.textContent === `AI First CRM v${pkg.version} — ${loginDisplayLabel}`);
+    check('login changelog button keeps one version marker', doc.getElementById('changelogBtn')?.textContent.trim() === `Що нового у v${pkg.version}`);
     check('login form supports smart paste for copied credential blocks', appCode.includes('parseLoginCredentialBlock') && appCode.includes('bindSmartCredentialPaste') && appCode.includes("clipboardData?.getData('text')"));
     const recentChangelogOrder = ['v0.55.45','v0.55.44','v0.55.43','v0.55.42','v0.55.41','v0.55.40','v0.55.39','v0.55.38','v0.55.37','v0.55.36','v0.55.35','v0.55.34','v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
     const recentChangelogPositions = recentChangelogOrder.map(version => html.indexOf(`<h4>${version}`));

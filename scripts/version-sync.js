@@ -189,16 +189,21 @@ function syncPackageLock(version) {
     if (FIX && changed) writeJson(file, lock);
 }
 
+function publicFirstScreenLabel(releaseLabel) {
+    return normalizeLabel(releaseLabel).replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
+}
+
 function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal = false, releaseLabelInText = false } = {}) {
     if (!exists(file)) return;
 
     let html = read(file);
-    const suffix = releaseLabelInText && releaseLabel ? ` — ${releaseLabel}` : '';
+    const displayLabel = releaseLabelInText ? publicFirstScreenLabel(releaseLabel) : '';
+    const suffix = displayLabel ? ` — ${displayLabel}` : '';
 
     const releaseBadgeRegex = /<div class="login-release-badge"[^>]*>[^<]*<\/div>/;
     const releaseBadgeMatch = html.match(releaseBadgeRegex);
     if (releaseBadgeMatch) {
-        const expectedText = `${version}${releaseLabel ? ` ${releaseLabel}` : ''}`;
+        const expectedText = releaseLabelInText ? version : `${version}${releaseLabel ? ` ${releaseLabel}` : ''}`;
         const expectedBadge = `<div class="login-release-badge" aria-label="Поточний реліз ${htmlEscape(expectedText)}">✨ ${htmlEscape(expectedText)}</div>`;
         if (releaseBadgeMatch[0] !== expectedBadge) {
             report(file, 'login release badge', releaseBadgeMatch[0], expectedBadge);
@@ -223,7 +228,7 @@ function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal =
     const changelogButtonRegex = /<button[^>]*id="changelogBtn"[^>]*>[^<]*<\/button>/;
     const buttonMatch = html.match(changelogButtonRegex);
     if (buttonMatch) {
-        const expectedButtonText = `Що нового у v${version}${releaseLabelInText && releaseLabel ? `: ${releaseLabel}` : ''}`;
+        const expectedButtonText = `Що нового у v${version}`;
         const expectedButton = buttonMatch[0].replace(/>[^<]*<\/button>/, `>${htmlEscape(expectedButtonText)}</button>`);
         if (buttonMatch[0] !== expectedButton) {
             report(file, 'changelog button', buttonMatch[0], expectedButton);

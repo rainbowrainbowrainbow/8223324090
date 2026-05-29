@@ -495,6 +495,13 @@ function crmBusinessPageAllowsAggregate(page = currentCrmBusinessScopedPage()) {
     return !!page && CRM_BUSINESS_AGGREGATE_PAGE_IDS.has(page.id);
 }
 
+function crmBusinessPageHasBinding(page = currentCrmBusinessScopedPage()) {
+    const resolvedPage = typeof page === 'string'
+        ? CRM_BUSINESS_SCOPED_PAGES[page]
+        : page;
+    return !!resolvedPage?.id && crmBusinessPageBindings.has(resolvedPage.id);
+}
+
 function sanitizeCrmBusinessContextListForUser(contexts, user) {
     const policy = resolveCrmBusinessPolicy(user);
     const allowed = policy.canSwitch ? policy.allowed : [policy.defaultContext];
@@ -546,15 +553,36 @@ function sanitizeCrmBusinessScopeForUser(scope = {}, user, options = {}) {
     };
 }
 
+function resolveCrmBusinessScopeState(user, options = {}) {
+    const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    const page = options.page || currentCrmBusinessScopedPage();
+    const current = getCrmBusinessContext(activeUser);
+    const requested = crmBusinessPageAllowsAggregate(page)
+        ? (crmBusinessScopeFromUrl() || crmBusinessScopeFromStorage(activeUser) || {
+            mode: CRM_BUSINESS_SCOPE_SINGLE,
+            activeContext: current,
+            selectedContexts: [current]
+        })
+        : {
+            mode: CRM_BUSINESS_SCOPE_SINGLE,
+            activeContext: current,
+            selectedContexts: [current]
+        };
+    return sanitizeCrmBusinessScopeForUser({
+        ...requested,
+        activeContext: requested.activeContext || current,
+        selectedContexts: Array.isArray(requested.selectedContexts) && requested.selectedContexts.length
+            ? requested.selectedContexts
+            : [requested.activeContext || current]
+    }, activeUser, {
+        page,
+        allowAggregate: options.allowAggregate !== false
+    });
+}
+
 function getCrmBusinessScope(user) {
     const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
-    const page = currentCrmBusinessScopedPage();
-    const current = getCrmBusinessContext(activeUser);
-    return sanitizeCrmBusinessScopeForUser({
-        mode: CRM_BUSINESS_SCOPE_SINGLE,
-        activeContext: current,
-        selectedContexts: [current]
-    }, activeUser, { page, allowAggregate: false });
+    return resolveCrmBusinessScopeState(activeUser);
 }
 
 function isCrmBusinessScopeReadOnly(scope = getCrmBusinessScope()) {
@@ -577,9 +605,17 @@ function getCrmBusinessContextOptions(user) {
 
 function getCrmBusinessState(user) {
     const resolution = resolveCrmBusinessContextState(user);
+    const scope = resolveCrmBusinessScopeState(user);
+    const page = currentCrmBusinessScopedPage();
     const activeBusinessId = resolution.activeBusinessId;
     return {
         activeBusinessId,
+        scope,
+        activeBusinessScope: scope.mode,
+        selectedBusinessIds: scope.selectedContexts,
+        businessScopeReadOnly: scope.readOnly,
+        canWriteBusinessScope: scope.canWrite,
+        canUseAggregateBusinessScope: crmBusinessPageAllowsAggregate(page),
         lastExplicitBusinessId: resolution.lastExplicitBusinessId,
         source: resolution.source,
         routeBusinessId: resolution.routeBusinessId,
@@ -632,7 +668,7 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
     const previousScope = getCrmBusinessScope(user);
     const scope = sanitizeCrmBusinessScopeForUser(scopeInput, user, {
         page: currentCrmBusinessScopedPage(),
-        allowAggregate: options.allowAggregate === true
+        allowAggregate: options.allowAggregate !== false
     });
     const previousContext = previousScope.activeContext;
     try {
@@ -788,12 +824,12 @@ function renderCrmBusinessShell(user) {
     if (existing) existing.remove();
     if (!page) return false;
 
-    const activeContext = getCrmBusinessContext(user);
-    const scope = setCrmBusinessScope({
-        mode: CRM_BUSINESS_SCOPE_SINGLE,
-        activeContext,
-        selectedContexts: [activeContext]
-    }, { user, updateUrl: true, emit: false, allowAggregate: false });
+    const scope = setCrmBusinessScope(resolveCrmBusinessScopeState(user, { page }), {
+        user,
+        updateUrl: true,
+        emit: false,
+        allowAggregate: true
+    });
     const current = scope.activeContext;
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('crmBusinessContextHydrated', {
@@ -820,7 +856,10 @@ async function switchCrmBusinessContext(context, options = {}) {
 
 async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
     const user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
-    const nextScope = sanitizeCrmBusinessScopeForUser(scopeInput, user, { page: currentCrmBusinessScopedPage(), allowAggregate: false });
+    const nextScope = sanitizeCrmBusinessScopeForUser(scopeInput, user, {
+        page: currentCrmBusinessScopedPage(),
+        allowAggregate: options.allowAggregate !== false
+    });
     const previousScope = getCrmBusinessScope(user);
     const next = nextScope.activeContext;
     const previous = previousScope.activeContext;
@@ -857,7 +896,15 @@ function initCrmBusinessContextPage(options = {}) {
             onChange: options.onChange
         });
     }
-    const scope = setCrmBusinessScope(getCrmBusinessScope(user), { user, updateUrl: options.updateUrl !== false, emit: false });
+    const scope = setCrmBusinessScope(resolveCrmBusinessScopeState(user, {
+        page: currentCrmBusinessScopedPage(),
+        allowAggregate: options.allowAggregate !== false
+    }), {
+        user,
+        updateUrl: options.updateUrl !== false,
+        emit: false,
+        allowAggregate: options.allowAggregate !== false
+    });
     renderCrmBusinessShell(user);
     return scope.activeContext;
 }
@@ -872,6 +919,7 @@ if (typeof window !== 'undefined') {
         current: getCrmBusinessContext,
         resolution: resolveCrmBusinessContextState,
         scope: getCrmBusinessScope,
+        scopeResolution: resolveCrmBusinessScopeState,
         set: setCrmBusinessContext,
         setScope: setCrmBusinessScope,
         switchTo: switchCrmBusinessContext,
@@ -884,6 +932,8 @@ if (typeof window !== 'undefined') {
         state: getCrmBusinessState,
         defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser,
         currentPage: currentCrmBusinessScopedPage,
+        allowsAggregate: crmBusinessPageAllowsAggregate,
+        hasPageBinding: crmBusinessPageHasBinding,
         initPage: initCrmBusinessContextPage,
         renderShell: renderCrmBusinessShell,
         apiUrl: crmBusinessApiUrl,

@@ -1801,7 +1801,13 @@ const Sidebar = (() => {
         host.setAttribute('aria-label', 'Бізнес CRM');
         host.dataset.switching = _state.businessSwitching ? 'true' : 'false';
         host.setAttribute('aria-busy', _state.businessSwitching ? 'true' : 'false');
-        const current = businessState?.activeBusinessId || api.current(user);
+        const scope = businessState?.scope || api.scope?.(user) || {
+            mode: 'single',
+            activeContext: businessState?.activeBusinessId || api.current(user),
+            selectedContexts: [businessState?.activeBusinessId || api.current(user)],
+            readOnly: false
+        };
+        const current = scope.activeContext || businessState?.activeBusinessId || api.current(user);
         const currentContext = options.find(ctx => ctx.key === current) || options[0];
         const sidebar = document.getElementById('sidebarNav');
         const compactBusinessLabel = sidebar?.classList.contains('collapsed');
@@ -1809,20 +1815,83 @@ const Sidebar = (() => {
             ? (ctx.shortLabel || ctx.label || ctx.key)
             : (ctx.label || ctx.shortLabel || ctx.key);
         host.dataset.activeBusiness = currentContext.key || current;
+        host.dataset.businessScope = scope.mode || 'single';
         if (options.length <= 1) {
             host.innerHTML = `
                 <span class="sidebar-business-label">Бізнес</span>
                 <span class="sidebar-business-chip" title="${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
         }
+        const aggregateAllowed = Boolean(
+            businessState?.canUseAggregateBusinessScope
+            && typeof api.switchScope === 'function'
+            && (typeof api.allowsAggregate !== 'function' || api.allowsAggregate(api.currentPage?.()))
+        );
+        const selectedContexts = Array.isArray(scope.selectedContexts) && scope.selectedContexts.length
+            ? scope.selectedContexts
+            : [currentContext.key || current];
+        const selectedSet = new Set(selectedContexts);
+        const activeMode = scope.mode || 'single';
+        const scopeLabels = {
+            single: 'Один',
+            multi: 'Кілька',
+            all: 'Усі'
+        };
+        const readOnlyNote = scope.readOnly
+            ? '<span class="sidebar-business-readonly-note">Огляд без змін</span>'
+            : '';
+        const modeControls = aggregateAllowed ? `
+            <span class="sidebar-business-scope" role="group" aria-label="Режим бізнес-огляду" data-sidebar-business-scope="true">
+                ${['single', 'multi', 'all'].map(mode => `<button type="button" class="sidebar-business-scope-btn${mode === activeMode ? ' active' : ''}" data-business-scope-mode="${mode}" aria-pressed="${mode === activeMode ? 'true' : 'false'}"${_state.businessSwitching ? ' disabled' : ''}>${scopeLabels[mode]}</button>`).join('')}
+            </span>
+            ${readOnlyNote}
+            ${activeMode === 'multi' ? `<span class="sidebar-business-multi" role="group" aria-label="Вибрані бізнеси">
+                ${options.map(ctx => `<label class="sidebar-business-multi-option">
+                    <input class="sidebar-business-multi-check" type="checkbox" value="${_escAttr(ctx.key)}"${selectedSet.has(ctx.key) ? ' checked' : ''}${_state.businessSwitching ? ' disabled' : ''}>
+                    <span>${_escAttr(ctx.shortLabel || ctx.label || ctx.key)}</span>
+                </label>`).join('')}
+            </span>` : ''}
+        ` : '';
         host.innerHTML = `
             <span class="sidebar-business-label">Бізнес</span>
             <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
                 ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
-            </select>`;
+            </select>
+            ${modeControls}`;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
         select.title = currentContext.label || currentContext.shortLabel || currentContext.key;
+        const finishSwitch = () => {
+            if (window.__crmBusinessNavigationPending) return true;
+            const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+            if (container?.id) render('#' + container.id);
+            if (api.hasPageBinding?.()) return false;
+            setTimeout(() => window.location.reload(), 50);
+            return true;
+        };
+        const runBusinessSwitch = async (handler, resetValue = null) => {
+            if (_state.businessSwitching) return;
+            _state.businessSwitching = true;
+            host.dataset.switching = 'true';
+            host.setAttribute('aria-busy', 'true');
+            host.querySelectorAll('select, button, input').forEach(control => { control.disabled = true; });
+            let reloadPending = false;
+            try {
+                await handler();
+                reloadPending = finishSwitch();
+            } catch (error) {
+                console.error('[sidebar] business switch failed', error);
+                if (resetValue !== null) select.value = resetValue;
+                if (typeof showNotification === 'function') {
+                    showNotification('Не вдалося перемкнути бізнес. Оновіть сторінку і повторіть.', 'error');
+                }
+            } finally {
+                if (!window.__crmBusinessNavigationPending && !reloadPending) {
+                    _state.businessSwitching = false;
+                    _syncSidebarBusinessSwitcher(user);
+                }
+            }
+        };
         select.addEventListener('click', event => event.stopPropagation());
         select.addEventListener('keydown', event => event.stopPropagation());
         select.addEventListener('change', async event => {
@@ -1833,34 +1902,60 @@ const Sidebar = (() => {
             }
             const previous = api.current(user);
             if (event.target.value === previous) return;
-            _state.businessSwitching = true;
-            host.dataset.switching = 'true';
-            host.setAttribute('aria-busy', 'true');
-            select.disabled = true;
-            let reloadPending = false;
-            try {
-                const next = await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: false });
-                if (window.__crmBusinessNavigationPending) return;
-                if (next !== previous) {
-                    const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-                    if (container?.id) render('#' + container.id);
-                    reloadPending = true;
-                    setTimeout(() => window.location.reload(), 50);
+            await runBusinessSwitch(async () => {
+                await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: true });
+            }, previous);
+        });
+        host.querySelectorAll('[data-business-scope-mode]').forEach(button => {
+            button.addEventListener('click', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const mode = event.currentTarget.dataset.businessScopeMode;
+                if (!mode || mode === activeMode || _state.businessSwitching) return;
+                const currentKey = select.value || currentContext.key || current;
+                const fallbackSecond = options.find(ctx => ctx.key !== currentKey)?.key;
+                const currentSelected = selectedContexts.filter(key => options.some(ctx => ctx.key === key));
+                const multiContexts = currentSelected.length >= 2
+                    ? currentSelected
+                    : [currentKey, fallbackSecond].filter(Boolean);
+                const nextScope = mode === 'all'
+                    ? { mode: 'all', activeContext: currentKey }
+                    : (mode === 'multi'
+                        ? { mode: 'multi', activeContext: multiContexts[0] || currentKey, selectedContexts: multiContexts }
+                        : { mode: 'single', activeContext: currentKey, selectedContexts: [currentKey] });
+                await runBusinessSwitch(() => api.switchScope(nextScope, {
+                    user,
+                    updateUrl: true,
+                    allowAggregate: true,
+                    navigate: mode === 'single'
+                }));
+            });
+        });
+        host.querySelectorAll('.sidebar-business-multi-check').forEach(input => {
+            input.addEventListener('click', event => event.stopPropagation());
+            input.addEventListener('change', async event => {
+                event.stopPropagation();
+                if (_state.businessSwitching) return;
+                const selected = Array.from(host.querySelectorAll('.sidebar-business-multi-check:checked')).map(item => item.value);
+                if (selected.length < 2) {
+                    event.target.checked = true;
+                    if (typeof showNotification === 'function') {
+                        showNotification('Для режиму “Кілька” залиште щонайменше два бізнеси.', 'warning');
+                    }
+                    return;
                 }
-            } catch (error) {
-                console.error('[sidebar] business switch failed', error);
-                event.target.value = previous;
-                if (typeof showNotification === 'function') {
-                    showNotification('Не вдалося перемкнути бізнес. Оновіть сторінку і повторіть.', 'error');
-                }
-            } finally {
-                if (!window.__crmBusinessNavigationPending && !reloadPending) {
-                    _state.businessSwitching = false;
-                    host.dataset.switching = 'false';
-                    host.setAttribute('aria-busy', 'false');
-                    select.disabled = false;
-                }
-            }
+                const activeContext = selected.includes(scope.activeContext) ? scope.activeContext : selected[0];
+                await runBusinessSwitch(() => api.switchScope({
+                    mode: 'multi',
+                    activeContext,
+                    selectedContexts: selected
+                }, {
+                    user,
+                    updateUrl: true,
+                    allowAggregate: true,
+                    navigate: false
+                }));
+            });
         });
     }
 

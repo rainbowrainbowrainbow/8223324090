@@ -4,6 +4,26 @@
 
 ---
 
+## v0.68.6 - CRM 68: бізнес-огляд
+
+### Business scope / deploy closure / 29.05.2026 [codex]
+- **Реліз піднято ще на +0.1** - production-доставка бізнес-огляду оформлена як `v0.68.6`, щоб live smoke не плутався з локальним `v0.68.5`.
+- **Зміст бізнес-перемикача збережено** - sidebar має режими `Один`, `Кілька`, `Усі`, aggregate-режими лишаються read-only, а timeline лишається single-business.
+- **Version/cache references синхронізовано** - asset tags, service worker cache names, login badge, changelog CTA і `/api/version` contract переведені на `0.68.6`.
+
+---
+
+## v0.68.5 - CRM 68: бізнес-огляд
+
+### Business scope / sidebar / tenant safety / 29.05.2026 [codex]
+- **Перемикач бізнесу став реальним shell-контролем** - у лівому sidebar додано режими `Один`, `Кілька` та `Усі` для сторінок, де backend вже підтримує безпечний бізнес-огляд.
+- **Multi/all режими більше не стискаються до single** - frontend тепер читає `businessScope` з URL/storage, відновлює вибрані бізнеси та передає scope в API URL/payload/header contract.
+- **Aggregate-режими залишаються read-only** - `Кілька` та `Усі` показують огляд без змін, а mutating API-запити лишаються заблокованими глобальним business-scope guard.
+- **Timeline не отримує aggregate випадково** - таймлайн і МД-таймлайн залишаються single-active-business, щоб не змішувати лінії/бронювання між бізнесами.
+- **Regression guard додано** - focused tests фіксують URL/storage hydration, API contract і те, що sidebar не повертає другий header-перемикач.
+
+---
+
 ## v0.68.4 - CRM 68: режими таймлайну
 
 ### Timeline display modes / booking presentation / 29.05.2026 [codex]

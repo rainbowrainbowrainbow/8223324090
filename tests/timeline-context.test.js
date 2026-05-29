@@ -198,6 +198,80 @@ test('canonical business state repairs invalid or unauthorized persisted busines
     assert.equal(preAuthStored.get('pzp_crm_business_context'), 'maysternya_doli');
 });
 
+test('CRM business aggregate scope hydrates only on aggregate-safe pages', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+
+    assert.match(apiCode, /const CRM_BUSINESS_AGGREGATE_PAGE_IDS = new Set/);
+    assert.match(apiCode, /function resolveCrmBusinessScopeState/);
+    assert.match(apiCode, /allowsAggregate: crmBusinessPageAllowsAggregate/);
+    assert.match(apiCode, /hasPageBinding: crmBusinessPageHasBinding/);
+
+    const creator = {
+        id: 42,
+        role: 'creator',
+        businessContexts: ['event_genix', 'dar', 'maysternya_doli'],
+        defaultBusinessContext: 'event_genix'
+    };
+    const makeSandbox = (pathname, search, stored = new Map()) => {
+        const href = `https://crm.test${pathname}${search || ''}`;
+        const sandbox = {
+            console,
+            URL,
+            URLSearchParams,
+            window: {
+                location: { pathname, search, href, origin: 'https://crm.test' },
+                history: { replaceState() {} },
+                dispatchEvent() {},
+                addEventListener() {}
+            },
+            document: { body: { dataset: {} }, getElementById: () => null },
+            localStorage: {
+                getItem: key => stored.get(key) || null,
+                setItem: (key, value) => stored.set(key, value),
+                removeItem: key => stored.delete(key)
+            },
+            AppState: { currentUser: creator }
+        };
+        sandbox.window.localStorage = sandbox.localStorage;
+        vm.runInNewContext(apiCode, sandbox);
+        return sandbox;
+    };
+
+    const allSandbox = makeSandbox('/customers', '?businessScope=all');
+    const allScope = allSandbox.window.CrmBusinessContext.scope(creator);
+    assert.equal(allScope.mode, 'all');
+    assert.equal(allScope.readOnly, true);
+    assert.equal(allScope.canWrite, false);
+    assert.equal(allSandbox.window.CrmBusinessContext.apiUrl('/api/customers'), '/api/customers?businessScope=all&businessContext=event_genix');
+    assert.deepEqual(JSON.parse(JSON.stringify(allSandbox.window.CrmBusinessContext.payload({ page: 1 }))), {
+        page: 1,
+        businessContext: 'event_genix',
+        businessScope: 'all',
+        businessContexts: ['event_genix', 'dar', 'maysternya_doli']
+    });
+
+    const stored = new Map([
+        ['pzp_crm_business_context', 'dar'],
+        ['pzp_crm_business_context_user', '42'],
+        ['pzp_crm_business_scope_mode', 'multi'],
+        ['pzp_crm_business_scope_contexts', '["dar","maysternya_doli"]']
+    ]);
+    const multiSandbox = makeSandbox('/leads', '', stored);
+    const multiScope = multiSandbox.window.CrmBusinessContext.scope(creator);
+    assert.equal(multiScope.mode, 'multi');
+    assert.deepEqual(JSON.parse(JSON.stringify(multiScope.selectedContexts)), ['dar', 'maysternya_doli']);
+    assert.equal(
+        multiSandbox.window.CrmBusinessContext.apiUrl('/api/leads'),
+        '/api/leads?businessScope=multi&businessContext=dar&businessContexts=dar%2Cmaysternya_doli'
+    );
+
+    const timelineSandbox = makeSandbox('/', '?businessScope=all&businessContexts=dar,maysternya_doli');
+    const timelineScope = timelineSandbox.window.CrmBusinessContext.scope(creator);
+    assert.equal(timelineScope.mode, 'single');
+    assert.equal(timelineScope.readOnly, false);
+    assert.deepEqual(JSON.parse(JSON.stringify(timelineScope.selectedContexts)), ['event_genix']);
+});
+
 test('login starts from account timeline instead of role shell page', () => {
     const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 

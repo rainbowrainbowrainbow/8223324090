@@ -21,8 +21,16 @@ function versionParts(version) {
     return version.split('.').map(Number);
 }
 
-function isActiveTrain(version) {
-    return version.startsWith('0.61.') || version.startsWith('0.60.');
+function currentReleasePrefix() {
+    const pkg = JSON.parse(read('package.json'));
+    const [major, minor] = String(pkg.version || '').split('.');
+    return `${major}.${minor}.`;
+}
+
+function isVisibleContinuityTrain(version) {
+    return version.startsWith(currentReleasePrefix())
+        || version.startsWith('0.61.')
+        || version.startsWith('0.60.');
 }
 
 function previousPatch(version) {
@@ -32,16 +40,16 @@ function previousPatch(version) {
 }
 
 describe('visible changelog version continuity', () => {
-    it('keeps active 0.61/0.60 release notes present in the login changelog modal', () => {
-        const source = changelogVersions().filter(isActiveTrain);
+    it('keeps current and legacy active release notes present in the login changelog modal', () => {
+        const source = changelogVersions().filter(isVisibleContinuityTrain);
         const visible = new Set(indexModalVersions());
 
         const missing = source.filter(version => !visible.has(version));
         assert.deepEqual(missing, []);
     });
 
-    it('does not skip active patch versions in the visible top chain', () => {
-        const visibleActive = indexModalVersions().filter(isActiveTrain);
+    it('does not skip current or legacy active patch versions in the visible top chain', () => {
+        const visibleActive = indexModalVersions().filter(isVisibleContinuityTrain);
         assert.ok(visibleActive.length > 10);
 
         const visible = new Set(visibleActive);

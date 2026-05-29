@@ -1459,6 +1459,80 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.68.8 — CRM 68: звіти за бізнесом</h4>
+                    <ul>
+                        <li><b>Звіти отримали durable scope</b> — <code>reports</code>, <code>report_templates</code> і <code>report_table_drafts</code> мають <code>business_context</code>.</li>
+                        <li><b>Read-only business overview показує правильні звіти</b> — список, summary, хештеги й деталі читають <code>single</code>, <code>multi</code> та <code>all</code> scope.</li>
+                        <li><b>Записи звітів лишаються в одному бізнесі</b> — створення, редагування, погодження, чернетки та hashtag toggle перевіряють активний бізнес.</li>
+                        <li><b>Finance side-effects scoped</b> — транзакції зі звіту отримують той самий <code>business_context</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.7 — CRM 68: read-only бізнес-огляд</h4>
+                    <ul>
+                        <li><b>Aggregate-режими стали чесними</b> — <code>Кілька</code> та <code>Усі</code> показують read-only банер у робочих модулях.</li>
+                        <li><b>Клієнти й ліди не виглядають редагованими в огляді</b> — створення, імпорт, теги, merge, Kanban і бронювання проходять через guard.</li>
+                        <li><b>Продукти та звіти отримали той самий контракт</b> — записи не виконуються без одного активного бізнесу.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.6 — CRM 68: бізнес-огляд</h4>
+                    <ul>
+                        <li><b>Production marker піднято до <code>v0.68.6</code></b> — live smoke більше не плутає локальний і production-реліз бізнес-огляду.</li>
+                        <li><b>Зміст бізнес-перемикача збережено</b> — sidebar має режими <code>Один</code>, <code>Кілька</code>, <code>Усі</code>.</li>
+                        <li><b>Timeline лишається single-business</b> — агрегований режим не змішує лінії та бронювання між бізнесами.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.5 — CRM 68: бізнес-огляд</h4>
+                    <ul>
+                        <li><b>Бізнес-перемикач став shell-контролем</b> — у sidebar додано режими одного, кількох і всіх бізнесів.</li>
+                        <li><b>Multi/all більше не стискаються до single</b> — frontend передає <code>businessScope</code> у URL, payload і headers.</li>
+                        <li><b>Aggregate-режими read-only</b> — mutating API-запити лишаються заблокованими business-scope guard.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.4 — CRM 68: режими таймлайну</h4>
+                    <ul>
+                        <li><b>Додано керований режим таймлайну</b> — простий режим, спеціаліст, дитячий парк і навчальний заклад.</li>
+                        <li><b>Presentation реально перемикається</b> — режим впливає на афішу, каталог, легенду, підписи ліній і форму бронювання.</li>
+                        <li><b>Кухня стала park-опцією</b> — для парку можна працювати <code>з кухнею</code> або <code>без кухні</code>.</li>
+                        <li><b>Навчальний режим показує кабінети</b> — лінії читаються як кабінети з зайнятістю для планування занять.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.3 — CRM 68: Omni Telegram bridge</h4>
+                    <ul>
+                        <li><b>Telegram inbox для Майстерні підключено через bridge</b> — CRM приймає дзеркало повідомлень і відповідає через endpoint бота.</li>
+                        <li><b>Webhook secret додано</b> — <code>/api/omni/webhook/telegram</code> перевіряє <code>OMNI_TELEGRAM_WEBHOOK_SECRET</code>.</li>
+                        <li><b>Business context ізольовано</b> — bridge для Майстерні працює в <code>maysternya_doli</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.2 — CRM 68: cleanup мертвого коду</h4>
+                    <ul>
+                        <li><b>Tombstone assets видалено</b> — прибрано порожні <code>css/role-switcher.css</code> і <code>js/role-panel.js</code>.</li>
+                        <li><b>Старі shell fallback-и прибрано</b> — видалено код під неіснуючі dark-mode/sidebar DOM-елементи.</li>
+                        <li><b>CSS surface очищено</b> — guardrails більше не тримають неіснуючий role-switcher asset.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.1 — CRM 68: системний cleanup</h4>
+                    <ul>
+                        <li><b>Прибрано debug-залишки у frontend</b> — очищено production console від непотрібних логів.</li>
+                        <li><b>Профіль очищено від Room-tab хвоста</b> — видалено мертвий <code>roomData</code> state-slot і placeholder.</li>
+                        <li><b>Cleanup register оновлено</b> — зафіксовано актуальний inventory системи й живі root routes.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.68.0 — CRM 68: іконка діалогу клієнта</h4>
+                    <ul>
+                        <li><b>CRM 68 відкрито з customer dialog fix</b> — релізний маркер піднято з <code>v0.67.19</code> до <code>v0.68.0</code>.</li>
+                        <li><b>Іконка діалогу клієнта стала інтерактивною</b> — exact розмова відкриває <code>/omni?conversation=...</code>, fallback веде в Omni search.</li>
+                        <li><b>Немає fake-click</b> — іконка показується тільки коли є реальний dialog path.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.67.19 — CRM 67.19: іконка діалогу клієнта</h4>
                     <ul>
                         <li><b>Іконка діалогу стала чесним entrypoint</b> — у communication hub картки клієнта зʼявляється окремий інтерактивний індикатор, якщо є реальний шлях у Omni.</li>

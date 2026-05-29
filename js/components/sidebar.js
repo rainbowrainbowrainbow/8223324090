@@ -1537,9 +1537,13 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
+            const authHeaders = typeof getAuthHeaders === 'function'
+                ? getAuthHeaders(false)
+                : { 'Authorization': 'Bearer ' + token };
+            const scopedApiUrl = window.CrmBusinessContext?.apiUrl || (url => url);
             const [alertsR, leadsR] = await Promise.allSettled([
-                fetch('/api/dashboard/alerts', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()),
-                fetch('/api/leads/new-count', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()).catch(() => null),
+                fetch(scopedApiUrl('/api/dashboard/alerts'), { headers: authHeaders }).then(r => r.json()),
+                fetch(scopedApiUrl('/api/leads/new-count'), { headers: authHeaders }).then(r => r.json()).catch(() => null),
             ]);
             const alertCount = alertsR.status === 'fulfilled' ? (alertsR.value?.count || 0) : 0;
             const leadsNew = leadsR.status === 'fulfilled' ? (leadsR.value?.count || 0) : 0;
@@ -2358,8 +2362,12 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
-            const cabinet = await fetch('/api/tasks/my-cabinet', {
-                headers: { 'Authorization': 'Bearer ' + token }
+            const authHeaders = typeof getAuthHeaders === 'function'
+                ? getAuthHeaders(false)
+                : { 'Authorization': 'Bearer ' + token };
+            const scopedApiUrl = window.CrmBusinessContext?.apiUrl || (url => url);
+            const cabinet = await fetch(scopedApiUrl('/api/tasks/my-cabinet'), {
+                headers: authHeaders
             }).then(r => r.ok ? r.json() : null).catch(() => null);
             let completedCount = 0;
             let activeCount = 0;
@@ -2370,8 +2378,8 @@ const Sidebar = (() => {
                 activeCount = quick.remaining;
                 overdueCount = quick.overdue;
             } else {
-                const rows = await fetch('/api/tasks?limit=80', {
-                    headers: { 'Authorization': 'Bearer ' + token }
+                const rows = await fetch(scopedApiUrl('/api/tasks?limit=80'), {
+                    headers: authHeaders
                 }).then(r => r.ok ? r.json() : []).catch(() => []);
                 const user = _getCurrentSidebarUser();
                 const userId = Number(user?.id || user?.userId || 0);

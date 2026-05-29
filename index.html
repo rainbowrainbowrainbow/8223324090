@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.68.9">
-    <link rel="stylesheet" href="css/auth.css?v=0.68.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.9">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.9">
-    <link rel="stylesheet" href="css/timeline.css?v=0.68.9">
-    <link rel="stylesheet" href="css/panel.css?v=0.68.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.9">
-    <link rel="stylesheet" href="css/controls.css?v=0.68.9">
-    <link rel="stylesheet" href="css/features.css?v=0.68.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.9">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.9">
+    <link rel="stylesheet" href="css/base.css?v=0.68.10">
+    <link rel="stylesheet" href="css/auth.css?v=0.68.10">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.10">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.10">
+    <link rel="stylesheet" href="css/timeline.css?v=0.68.10">
+    <link rel="stylesheet" href="css/panel.css?v=0.68.10">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.10">
+    <link rel="stylesheet" href="css/controls.css?v=0.68.10">
+    <link rel="stylesheet" href="css/features.css?v=0.68.10">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.10">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.10">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.10">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.68.9">✨ 0.68.9</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.68.10">✨ 0.68.10</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.68.9 — бізнес-аналітика за контекстом</p>
+                <p class="tagline">AI First CRM v0.68.10 — задачі за бізнес-контекстом</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.9</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.10</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1450,12 +1450,21 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.68.10 — задачі за бізнес-контекстом</h4>
+                    <ul>
+                        <li><b>Task engine отримав durable scope</b> — задачі тепер мають <code>business_context</code> і не змішуються між бізнесами.</li>
+                        <li><b>Створення, дублікати й редагування задач scoped</b> — create/update/status/bulk/delete/schedule працюють у межах активного бізнесу.</li>
+                        <li><b>Мій кабінет і dashboard-лічильники очищені</b> — task-віджети, alerts, board KPI і profile quick-status читають той самий бізнес-контекст.</li>
+                        <li><b>Aggregate-режими лишаються read-only</b> — multi/all business може показувати задачі, але write-дії блокуються до вибору одного активного бізнесу.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.68.9 — CRM 68: бізнес-аналітика за контекстом</h4>
                     <ul>
-                        <li><b>Аналітика читає вибраний бізнес</b> — <code>/api/analytics</code> додає business scope до bookings, finance, customers і leads aggregates.</li>
-                        <li><b>Stats API більше не кешує чужий контекст</b> — revenue, programs, load, trends, forecast, reviews і pulse мають business-aware cache key.</li>
-                        <li><b>Board KPI став безпечнішим</b> — бронювання, виручка і staff-on-shift рахуються в межах активного бізнесу.</li>
-                        <li><b>HR/reviews/pulse отримали durable scope</b> — додано <code>business_context</code> для дашбордних HR, відгуків і pulse-метрик.</li>
+                        <li><b>Аналітика читає активний бізнес</b> — overview, charts, comparison, bookings, revenue і deals lifecycle отримали business scope.</li>
+                        <li><b>Stats cache більше не змішує контексти</b> — revenue, programs, load, trends, forecast, reviews і pulse мають business-aware cache key.</li>
+                        <li><b>Board KPI став business-aware</b> — бронювання, виручка і staff-on-shift рахуються в межах вибраного бізнесу.</li>
+                        <li><b>HR/reviews/pulse отримали durable scope</b> — додано бізнес-контекст для дашбордних HR, відгуків і pulse-метрик.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -10010,29 +10019,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.68.9"></script>
-    <script src="js/timeline-visibility.js?v=0.68.9"></script>
-    <script src="js/config.js?v=0.68.9"></script>
-    <script src="js/api.js?v=0.68.9"></script>
-    <script src="js/ui.js?v=0.68.9"></script>
-    <script src="js/auth.js?v=0.68.9"></script>
-    <script src="js/timeline-interaction-model.js?v=0.68.9"></script>
-    <script src="js/timeline.js?v=0.68.9"></script>
-    <script src="js/booking.js?v=0.68.9"></script>
-    <script src="js/settings.js?v=0.68.9"></script>
-    <script src="js/booking-form.js?v=0.68.9"></script>
-    <script src="js/booking-linked.js?v=0.68.9"></script>
-    <script src="js/settings-dashboard.js?v=0.68.9"></script>
-    <script src="js/settings-history.js?v=0.68.9"></script>
-    <script src="js/settings-afisha.js?v=0.68.9"></script>
-    <script src="js/settings-certificates.js?v=0.68.9"></script>
-    <script src="js/offline.js?v=0.68.9"></script>
-    <script src="js/crm-feature-registry.js?v=0.68.9"></script>
-    <script src="js/search.js?v=0.68.9"></script>
-    <script src="js/ws.js?v=0.68.9"></script>
-    <script src="js/app.js?v=0.68.9"></script>
-    <script src="js/kleshnya-widget.js?v=0.68.9"></script>
-    <script src="js/components/sidebar.js?v=0.68.9"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.9"></script>
+    <script src="js/timeline-context.js?v=0.68.10"></script>
+    <script src="js/timeline-visibility.js?v=0.68.10"></script>
+    <script src="js/config.js?v=0.68.10"></script>
+    <script src="js/api.js?v=0.68.10"></script>
+    <script src="js/ui.js?v=0.68.10"></script>
+    <script src="js/auth.js?v=0.68.10"></script>
+    <script src="js/timeline-interaction-model.js?v=0.68.10"></script>
+    <script src="js/timeline.js?v=0.68.10"></script>
+    <script src="js/booking.js?v=0.68.10"></script>
+    <script src="js/settings.js?v=0.68.10"></script>
+    <script src="js/booking-form.js?v=0.68.10"></script>
+    <script src="js/booking-linked.js?v=0.68.10"></script>
+    <script src="js/settings-dashboard.js?v=0.68.10"></script>
+    <script src="js/settings-history.js?v=0.68.10"></script>
+    <script src="js/settings-afisha.js?v=0.68.10"></script>
+    <script src="js/settings-certificates.js?v=0.68.10"></script>
+    <script src="js/offline.js?v=0.68.10"></script>
+    <script src="js/crm-feature-registry.js?v=0.68.10"></script>
+    <script src="js/search.js?v=0.68.10"></script>
+    <script src="js/ws.js?v=0.68.10"></script>
+    <script src="js/app.js?v=0.68.10"></script>
+    <script src="js/kleshnya-widget.js?v=0.68.10"></script>
+    <script src="js/components/sidebar.js?v=0.68.10"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.10"></script>
 </body>
 </html>

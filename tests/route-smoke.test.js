@@ -396,23 +396,25 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/INSERT INTO tasks \(title, description, date, priority, assigned_to, owner, owner_user_id, created_by,/i.test(text)) {
+            if (/INSERT INTO tasks \((?:business_context, )?title, description, date, priority, assigned_to, owner, owner_user_id, created_by,/i.test(text)) {
+                const offset = /^INSERT INTO tasks \(business_context,/i.test(text.trim()) ? 1 : 0;
                 return {
                     rows: [{
                         id: 880,
-                        title: params[0],
-                        description: params[1],
-                        date: params[2],
-                        priority: params[3],
-                        assigned_to: params[4],
-                        owner: params[5],
-                        owner_user_id: params[6],
-                        created_by: params[7],
-                        task_type: params[8],
-                        deadline: params[9],
-                        source_type: params[14],
-                        source_id: params[15],
-                        category: params[16],
+                        business_context: offset ? params[0] : 'event_genix',
+                        title: params[offset + 0],
+                        description: params[offset + 1],
+                        date: params[offset + 2],
+                        priority: params[offset + 3],
+                        assigned_to: params[offset + 4],
+                        owner: params[offset + 5],
+                        owner_user_id: params[offset + 6],
+                        created_by: params[offset + 7],
+                        task_type: params[offset + 8],
+                        deadline: params[offset + 9],
+                        source_type: params[offset + 14],
+                        source_id: params[offset + 15],
+                        category: params[offset + 16],
                         status: 'todo'
                     }]
                 };
@@ -1022,9 +1024,9 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, true);
         assert.equal(res.data.task.source_type, 'lead');
         assert.equal(res.data.task.source_id, '501');
-        assert.ok(queries.some(q => /INSERT INTO tasks \(title, description, date, priority/i.test(q.text)
-            && q.params[14] === 'lead'
-            && q.params[15] === '501'));
+        assert.ok(queries.some(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)
+            && q.params[/^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 15 : 14] === 'lead'
+            && q.params[/^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 16 : 15] === '501'));
     });
 
     it('validates and applies lead assignee updates', async () => {

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.10 - задачі за бізнес-контекстом
+
+### Task engine / business scope / tenant safety / 29.05.2026 [codex]
+- **Задачі отримали durable `business_context`** - додано міграцію для `tasks.business_context`, backfill із пов'язаних бронювань, лідів, клієнтів, звітів і Omni-розмов та індекси для scoped task-читання.
+- **Task write-path більше не глобальний** - створення, оновлення, status-change, bulk, delete, completion report, reassign, reschedule і schedule проходять через active business scope; multi/all business лишаються read-only.
+- **Дублі задач ізольовані по бізнесах** - duplicate policy і canonical cleanup signature враховують `business_context`, тому однакові операційні задачі різних бізнесів не блокують одна одну.
+- **My Cabinet, Board і Dashboard task-метрики scoped** - профіль, quick-status, sidebar task chip, dashboard widgets, alerts і board KPI читають задачі в тому самому бізнес-контексті, що й shell.
+- **Regression guard додано** - `operational-business-context` перевіряє task migration, scoped routes/services, dashboard task widgets і sidebar API headers.
+
+---
+
 ## v0.68.9 - CRM 68: бізнес-аналітика за контекстом
 
 ### Dashboard / analytics / business scope / 29.05.2026 [codex]

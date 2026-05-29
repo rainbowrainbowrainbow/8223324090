@@ -39,6 +39,12 @@ const {
     normalizeProfessionCatalogRow,
     normalizeSecondaryProfessions
 } = require('../services/professions');
+const {
+    resolveBusinessScope,
+    requireBusinessScope,
+    requireWritableBusinessScope,
+    pushBusinessScopeCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Auth');
 const PROFILE_COCKPIT_WIDGET_IDS = Object.freeze([
@@ -345,12 +351,21 @@ router.get('/profile', authenticateToken, async (req, res) => {
         );
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
+        const businessScope = resolveBusinessScope({ ...req, user });
+        if (!requireBusinessScope(req, res, businessScope)) return;
         const ownerScope = profileTaskOwnerWhere(user);
-        const ownerWhere = ownerScope.match;
         const ownerParams = ownerScope.params;
+        const ownerBusinessCondition = pushBusinessScopeCondition(ownerParams, businessScope, 'tasks');
+        const ownerWhere = `${ownerScope.match} AND ${ownerBusinessCondition}`;
         const ownerT = profileTaskOwnerWhere(user, 't');
+        const ownerTBusinessCondition = pushBusinessScopeCondition(ownerT.params, businessScope, 't');
+        ownerT.match = `${ownerT.match} AND ${ownerTBusinessCondition}`;
         const MANAGEMENT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
         const isAdminRole = MANAGEMENT_ROLES.includes(user.role);
+        const teamTaskParams = [];
+        const teamTaskBusinessCondition = pushBusinessScopeCondition(teamTaskParams, businessScope, 't');
+        const pointTaskParams = [username];
+        const pointTaskBusinessCondition = pushBusinessScopeCondition(pointTaskParams, businessScope, 't');
 
         const now = new Date();
         const today = kyivDateStr(now);
@@ -448,9 +463,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 12: Recent point transactions (last 5) WITH task link
             pool.query(
                 `SELECT pt.points, pt.type, pt.reason, pt.task_id, pt.created_at, t.title as task_title
-                 FROM point_transactions pt LEFT JOIN tasks t ON pt.task_id = t.id
+                 FROM point_transactions pt
+                 LEFT JOIN tasks t ON pt.task_id = t.id AND ${pointTaskBusinessCondition}
                  WHERE pt.username = $1 ORDER BY pt.created_at DESC LIMIT 5`,
-                [username]
+                pointTaskParams
             ),
             // 13: Leaderboard rank — v19.12: use RANK() instead of fetching all users
             pool.query(
@@ -524,10 +540,12 @@ router.get('/profile', authenticateToken, async (req, res) => {
                       ON owner_map.id = t.owner_user_id
                       OR (t.owner_user_id IS NULL AND (t.assigned_to = owner_map.username OR t.owner = owner_map.username))
                     WHERE COALESCE(t.visibility, 'team') = 'team'
+                      AND ${teamTaskBusinessCondition}
                     GROUP BY owner_map.id
                  ) t_agg ON t_agg.user_id = u.id
                  WHERE u.role != 'viewer'
-                 ORDER BY u.name`
+                 ORDER BY u.name`,
+                teamTaskParams
             ) : Promise.resolve({ rows: [] }),
             // 21: Today's bookings count (for day progress)
             pool.query(
@@ -1068,12 +1086,21 @@ router.post('/log-action', authenticateToken, async (req, res) => {
 // v10.6: Quick task status change from profile
 router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
     try {
+        const businessScope = resolveBusinessScope(req);
+        if (!requireWritableBusinessScope(req, res, businessScope)) return;
         const { id } = req.params;
         const { status } = req.body;
         if (!['todo', 'in_progress', 'done'].includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
-        const task = await pool.query('SELECT id, status, assigned_to, owner, owner_user_id FROM tasks WHERE id = $1', [parseInt(id)]);
+        const taskParams = [parseInt(id)];
+        const taskBusinessCondition = pushBusinessScopeCondition(taskParams, businessScope, 'tasks');
+        const task = await pool.query(
+            `SELECT id, status, assigned_to, owner, owner_user_id
+             FROM tasks
+             WHERE id = $1 AND ${taskBusinessCondition}`,
+            taskParams
+        );
         if (task.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
         const t = task.rows[0];
         // Only assigned user, owner, or admin can change status
@@ -1085,14 +1112,16 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
         if (!canChange) return res.status(403).json({ error: 'Недостатньо прав' });
 
         const oldStatus = t.status;
+        const updateParams = [status, parseInt(id)];
+        const updateBusinessCondition = pushBusinessScopeCondition(updateParams, businessScope, 'tasks');
         await pool.query(
             `UPDATE tasks
              SET status = $1,
                  workflow_state = CASE WHEN $1 = 'done' THEN 'done' WHEN $1 = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
                  completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END,
                  updated_at = NOW()
-             WHERE id = $2`,
-            [status, parseInt(id)]
+             WHERE id = $2 AND ${updateBusinessCondition}`,
+            updateParams
         );
         // Log the change
         await pool.query(

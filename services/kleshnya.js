@@ -17,6 +17,10 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, getConfiguredThreadId, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const { TaskDuplicateError, findActiveDuplicateTask } = require('./taskDuplicatePolicy');
+const {
+    DEFAULT_TASK_BUSINESS_CONTEXT,
+    taskBusinessContextFromPayload
+} = require('./taskBusinessScope');
 
 const log = createLogger('Kleshnya');
 
@@ -119,6 +123,8 @@ async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, cre
  */
 async function createTask(data) {
     const {
+        business_context,
+        businessContext,
         title, description, date, priority = 'normal', assigned_to, owner, owner_user_id,
         task_type = 'human', deadline, time_window_start, time_window_end,
         dependency_ids = [], control_policy, source_type = 'manual', source_id,
@@ -136,6 +142,10 @@ async function createTask(data) {
     } = data;
 
     if (!title || !title.trim()) throw new Error('title required');
+    const taskBusinessContext = taskBusinessContextFromPayload(
+        { business_context, businessContext },
+        DEFAULT_TASK_BUSINESS_CONTEXT
+    );
 
     const ownerSnapshot = await resolveTaskOwnerSnapshot({
         assigned_to,
@@ -160,7 +170,8 @@ async function createTask(data) {
         source_entity_id,
         pack_id,
         checklist_template_key,
-        afisha_id
+        afisha_id,
+        businessContext: taskBusinessContext
     });
     if (duplicate && !forceDuplicate) {
         if (duplicateMode === 'reject') {
@@ -175,7 +186,7 @@ async function createTask(data) {
     }
 
     const result = await pool.query(
-        `INSERT INTO tasks (title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
+        `INSERT INTO tasks (business_context, title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
          task_type, deadline, time_window_start, time_window_end, dependency_ids,
          control_policy, source_type, source_id, category, subcategory, checklist_template_key,
          source_entity_type, source_entity_id, pack_id, pack_status, owner_role, sla_minutes, escalate_after,
@@ -185,8 +196,8 @@ async function createTask(data) {
           related_entity_type, related_entity_id, source_module, effort_minutes, control_meta, created_by_user_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
                  $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,
-                 $39,$40,$41,$42,$43,$44,$45) RETURNING *`,
-        [title.trim(), description || null, date || null, priority, ownerSnapshot.assigned_to, ownerSnapshot.owner,
+                 $39,$40,$41,$42,$43,$44,$45,$46) RETURNING *`,
+        [taskBusinessContext, title.trim(), description || null, date || null, priority, ownerSnapshot.assigned_to, ownerSnapshot.owner,
          ownerSnapshot.owner_user_id, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
          category, subcategory || null, checklist_template_key || null,

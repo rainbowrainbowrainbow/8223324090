@@ -85,6 +85,14 @@ const {
     getChecklistTemplate,
     createChecklistSubtasks
 } = require('../services/taskTaxonomy');
+const {
+    activeTaskBusinessContext,
+    appendTaskBusinessScopeSql,
+    ensureTaskBusinessScope,
+    ensureWritableTaskBusinessScope,
+    pushTaskBusinessScopeCondition,
+    taskBusinessScopeMeta
+} = require('../services/taskBusinessScope');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -225,10 +233,16 @@ function makeTaskReportRequiredError(task = {}) {
     return err;
 }
 
-async function ensureTaskReportReference(reportId) {
+async function ensureTaskReportReference(reportId, businessContext = null) {
     const id = optionalInteger(reportId);
     if (!id) return null;
-    const result = await pool.query('SELECT id FROM reports WHERE id = $1 LIMIT 1', [id]);
+    const params = [id];
+    let businessCondition = '';
+    if (businessContext) {
+        params.push(activeTaskBusinessContext(businessContext));
+        businessCondition = ` AND COALESCE(business_context, 'event_genix') = $${params.length}`;
+    }
+    const result = await pool.query(`SELECT id FROM reports WHERE id = $1${businessCondition} LIMIT 1`, params);
     if (!result.rows.length) {
         const err = new Error('Звіт не знайдено або його ще не збережено.');
         err.statusCode = 400;
@@ -442,8 +456,19 @@ async function replaceTaskObservers(task, observerIds = [], actor) {
 async function createTaskDependencyRows(taskId, dependencyIds = []) {
     const ids = normalizeDependencyIds(dependencyIds).filter(id => Number(id) !== Number(taskId));
     if (!ids.length) return [];
+    const owner = await pool.query(
+        "SELECT COALESCE(business_context, 'event_genix') AS business_context FROM tasks WHERE id = $1 LIMIT 1",
+        [taskId]
+    );
+    const businessContext = owner.rows[0]?.business_context || 'event_genix';
+    const allowed = await pool.query(
+        "SELECT id FROM tasks WHERE id = ANY($1::int[]) AND COALESCE(business_context, 'event_genix') = $2",
+        [ids, businessContext]
+    );
+    const scopedIds = allowed.rows.map(row => Number(row.id)).filter(Boolean);
+    if (!scopedIds.length) return [];
     const values = [];
-    const placeholders = ids.map((id, index) => {
+    const placeholders = scopedIds.map((id, index) => {
         const offset = index * 2;
         values.push(taskId, id);
         return `($${offset + 1}, $${offset + 2})`;
@@ -686,9 +711,19 @@ function sendTaskActionError(res, err) {
     });
 }
 
+function requireTaskReadScope(req, res) {
+    return ensureTaskBusinessScope(req, res);
+}
+
+function requireTaskWriteScope(req, res) {
+    return ensureWritableTaskBusinessScope(req, res);
+}
+
 // GET /api/tasks — list with optional filters + pagination (v19.10)
 router.get('/', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const {
             status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category, subcategory,
             task_mode, taskMode, task_kind, taskKind, visibility: visibilityFilter, workflow_state, workflowState,
@@ -846,6 +881,9 @@ router.get('/', async (req, res) => {
             conditions.push(activeDuplicateCanonicalFilterSql('t'));
         }
 
+        conditions.push(pushTaskBusinessScopeCondition(params, businessScope, 't'));
+        idx = params.length + 1;
+
         // Role/object visibility: typed owner_user_id first, legacy string fallback for unmapped tasks.
         if (req.user) {
             const visibility = buildTaskVisibilityScope(req.user, params, 't');
@@ -918,7 +956,9 @@ router.get('/', async (req, res) => {
                        STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
                            FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
                 FROM task_dependencies d
+                JOIN tasks owner_task ON owner_task.id = d.task_id
                 JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
                 GROUP BY d.task_id
              ) dep ON dep.task_id = t.id
              ${where}
@@ -970,6 +1010,10 @@ router.get('/owners', async (req, res) => {
 // GET /api/tasks/dedup-report — active duplicate groups without mutating data
 router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        const params = [];
+        const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, 't');
         const signature = duplicateSignatureSql('t');
         const result = await pool.query(
             `WITH active AS (
@@ -977,6 +1021,7 @@ router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
                 FROM tasks t
                 WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
                   AND COALESCE(trim(t.title), '') <> ''
+                  AND ${businessCondition}
              ),
              ranked AS (
                 SELECT *,
@@ -1004,14 +1049,16 @@ router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
              WHERE group_count > 1
              GROUP BY duplicate_signature
              ORDER BY duplicate_count DESC, canonical_id ASC
-             LIMIT 100`
+             LIMIT 100`,
+            params
         );
         res.json({
             success: true,
             groups: result.rows,
             meta: {
                 policy: 'active signature: title + day + category + subcategory + owner + checklist + stable source anchor',
-                cleanup: 'archives duplicates, no DELETE'
+                cleanup: 'archives duplicates, no DELETE',
+                businessScope: taskBusinessScopeMeta(businessScope)
             }
         });
     } catch (err) {
@@ -1023,15 +1070,20 @@ router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
 // POST /api/tasks/dedup-cleanup — archive duplicate active records without deleting history
 router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const dryRun = isTruthy(req.body?.dryRun);
         const signature = duplicateSignatureSql('t');
         if (dryRun) {
+            const params = [];
+            const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, 't');
             const report = await pool.query(
                 `WITH active AS (
                     SELECT t.*, ${signature} AS duplicate_signature
                     FROM tasks t
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
                       AND COALESCE(trim(t.title), '') <> ''
+                      AND ${businessCondition}
                  ),
                  ranked AS (
                     SELECT *,
@@ -1041,17 +1093,21 @@ router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
                  )
                  SELECT COUNT(*)::int AS victims
                  FROM ranked
-                 WHERE group_count > 1 AND id <> canonical_id`
+                 WHERE group_count > 1 AND id <> canonical_id`,
+                params
             );
             return res.json({ success: true, dryRun: true, victims: report.rows[0]?.victims || 0 });
         }
 
+        const params = [];
+        const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, 't');
         const cleanup = await pool.query(
             `WITH active AS (
                 SELECT t.*, ${signature} AS duplicate_signature
                 FROM tasks t
                 WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
                   AND COALESCE(trim(t.title), '') <> ''
+                  AND ${businessCondition}
              ),
              ranked AS (
                 SELECT id,
@@ -1074,7 +1130,8 @@ router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
                  updated_at = NOW()
              FROM victims
              WHERE t.id = victims.id
-             RETURNING t.id, t.title, t.duplicate_of_task_id`
+             RETURNING t.id, t.title, t.duplicate_of_task_id`,
+            params
         );
         log.info(`Dedup cleanup archived ${cleanup.rowCount} duplicate active tasks`);
         res.json({
@@ -1283,11 +1340,14 @@ router.post('/decomposition-suggestions', requireRole('admin', 'user'), async (r
 // GET /api/tasks/my-cabinet — personal task projection for Profile/My Cabinet
 router.get('/my-cabinet', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const userId = normalizeUserId(req.user);
         if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
 
         const ownParams = [];
         const ownMatch = buildTaskOwnerMatch(req.user, ownParams, 't');
+        const ownBusinessCondition = appendTaskBusinessScopeSql(ownParams, businessScope, 't');
         const today = todayKyivDate();
         const tomorrow = addDays(today, 1);
         const nextWeek = addDays(today, 7);
@@ -1324,6 +1384,7 @@ router.get('/my-cabinet', async (req, res) => {
                 GROUP BY task_id
              ) subtask_rows ON subtask_rows.task_id = t.id
              WHERE ${ownMatch}
+               ${ownBusinessCondition}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
               ORDER BY
                  CASE WHEN COALESCE(st.total, 0) > 0 THEN 0 ELSE 1 END,
@@ -1370,6 +1431,7 @@ router.get('/my-cabinet', async (req, res) => {
                 GROUP BY task_id
              ) subtask_rows ON subtask_rows.task_id = t.id
              WHERE ${ownMatch}
+               ${ownBusinessCondition}
                AND COALESCE(t.status, 'todo') = 'done'
              ORDER BY COALESCE(t.completed_at, t.updated_at, t.created_at) DESC, t.id DESC
              LIMIT $${completedHistoryParams.length}`,
@@ -1402,6 +1464,7 @@ router.get('/my-cabinet', async (req, res) => {
 
         const quickParams = [];
         const quickOwnerMatch = buildTaskOwnerMatch(req.user, quickParams, 't');
+        const quickBusinessCondition = appendTaskBusinessScopeSql(quickParams, businessScope, 't');
         quickParams.push(today);
         const quickDateSql = taskWorkloadDateSql('t');
         const quickResult = await pool.query(
@@ -1417,7 +1480,8 @@ router.get('/my-cabinet', async (req, res) => {
                           AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
                     )::int AS remaining_today
              FROM tasks t
-             WHERE ${quickOwnerMatch}`,
+             WHERE ${quickOwnerMatch}
+               ${quickBusinessCondition}`,
             quickParams
         );
         const quickStats = quickResult.rows[0] || {};
@@ -1455,7 +1519,8 @@ router.get('/my-cabinet', async (req, res) => {
             meta: {
                 canonicalOwnerField: 'tasks.owner_user_id',
                 projection: 'my_cabinet',
-                privacyRule: 'private/me_only tasks are owner-only'
+                privacyRule: 'private/me_only tasks are owner-only',
+                businessScope: taskBusinessScopeMeta(businessScope)
             }
         });
     } catch (err) {
@@ -1467,7 +1532,9 @@ router.get('/my-cabinet', async (req, res) => {
 // GET /api/tasks/productivity — personal task productivity cockpit data
 router.get('/productivity', async (req, res) => {
     try {
-        const productivity = await getTaskProductivity(pool, req.user);
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        const productivity = await getTaskProductivity(pool, req.user, { businessScope });
         res.json({
             success: true,
             ...productivity
@@ -1485,13 +1552,15 @@ router.get('/schedule-policy', async (req, res) => {
 
 router.get('/schedule/availability', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const availability = await getAvailability({
             ownerUserId: req.query.ownerUserId || req.query.owner_user_id,
             date: req.query.date || req.query.scheduledDate || req.query.scheduled_date,
             slot: req.query.slot || req.query.scheduleSlot || req.query.schedule_slot,
             durationMinutes: req.query.durationMinutes || req.query.duration_minutes,
             excludeTaskId: req.query.excludeTaskId || req.query.exclude_task_id
-        });
+        }, { businessScope });
         res.json({ success: true, availability });
     } catch (err) {
         sendTaskActionError(res, err);
@@ -1500,10 +1569,13 @@ router.get('/schedule/availability', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
         if (id === 'logs') return res.status(400).json({ error: 'Use /api/tasks/:id/logs' });
         const params = [id];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
         const viewerUserIdParam = params.length + 1;
         params.push(normalizeUserId(req.user) || 0);
         const result = await pool.query(
@@ -1545,7 +1617,9 @@ router.get('/:id', async (req, res) => {
                        STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
                            FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
                 FROM task_dependencies d
+                JOIN tasks owner_task ON owner_task.id = d.task_id
                 JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
                 GROUP BY d.task_id
              ) dep ON dep.task_id = t.id
              LEFT JOIN (
@@ -1578,7 +1652,7 @@ router.get('/:id', async (req, res) => {
                 FROM task_subtasks
                 GROUP BY task_id
              ) subtask_rows ON subtask_rows.task_id = t.id
-             WHERE t.id = $1 ${visibility}
+             WHERE t.id = $1 ${visibility} ${businessCondition}
              LIMIT 1`,
             params
         );
@@ -1593,9 +1667,12 @@ router.get('/:id', async (req, res) => {
 // GET /api/tasks/:id/history — durable task execution action history
 router.get('/:id/history', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const visibleParams = [req.params.id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 10, 50));
         const history = await listTaskActionHistory(req.params.id, { limit });
@@ -1617,9 +1694,12 @@ router.get('/:id/history', async (req, res) => {
 // GET /api/tasks/:id/observers — people with read/materials access to this task.
 router.get('/:id/observers', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const visibleParams = [req.params.id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         const observers = await listTaskObservers(req.params.id);
         res.json({
@@ -1640,7 +1720,9 @@ router.get('/:id/observers', async (req, res) => {
 // PUT /api/tasks/:id/observers — replace observer list for a visible mutable task.
 router.put('/:id/observers', requireRole('admin', 'user'), async (req, res) => {
     try {
-        const task = await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
         const observers = await replaceTaskObservers(task, observerIdsFromBody(req.body || {}), req.user);
         res.json({
             success: true,
@@ -1658,7 +1740,9 @@ router.put('/:id/observers', requireRole('admin', 'user'), async (req, res) => {
 
 router.post('/:id/completion-report', async (req, res) => {
     try {
-        const task = await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
         const reportText = String(req.body?.reportText || req.body?.report_text || req.body?.description || '').trim();
         if (!reportText) {
             return res.status(400).json({ success: false, error: 'Заповніть звіт перед виконанням задачі', code: 'TASK_REPORT_TEXT_REQUIRED' });
@@ -1678,11 +1762,12 @@ router.post('/:id/completion-report', async (req, res) => {
             text: reportText
         };
         const result = await pool.query(
-            `INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
+            `INSERT INTO reports (business_context, type, amount, description, category, submitted_by, submitted_by_id,
                 submitted_via, raw_data, hashtags)
-             VALUES ($1,$2,$3,$4,$5,NULL,'web',$6,$7)
+             VALUES ($1,$2,$3,$4,$5,$6,NULL,'web',$7,$8)
              RETURNING *`,
             [
+                activeTaskBusinessContext(task.business_context),
                 reportType,
                 Number.isFinite(amount) ? amount : 0,
                 `Звіт по задачі #${task.id}: ${task.title || 'Без назви'}\n\n${reportText}`,
@@ -1727,10 +1812,11 @@ router.post('/:id/completion-report', async (req, res) => {
     }
 });
 
-async function loadMutableTask(id, user) {
+async function loadMutableTask(id, user, businessScope = null) {
     const params = [id];
     const visibility = buildTaskVisibilityScope(user, params, 't');
-    const result = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, params);
+    const businessCondition = businessScope ? appendTaskBusinessScopeSql(params, businessScope, 't') : '';
+    const result = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, params);
     if (!result.rows.length) {
         const err = new Error('Task not found');
         err.statusCode = 404;
@@ -1748,9 +1834,12 @@ async function loadMutableTask(id, user) {
 // GET /api/tasks/:id/subtasks — checklist projection
 router.get('/:id/subtasks', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const params = [req.params.id];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, params);
+        const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, params);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         const result = await pool.query(
             `SELECT *
@@ -1769,7 +1858,9 @@ router.get('/:id/subtasks', async (req, res) => {
 // POST /api/tasks/:id/subtasks — add checklist item
 router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
     try {
-        await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
         const title = String(req.body.title || '').trim();
         if (!title) return res.status(400).json({ error: 'title required' });
         const sourceType = normalizeSubtaskSourceType(req.body.source_type || req.body.sourceType || 'manual');
@@ -1795,7 +1886,9 @@ router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
 // PATCH /api/tasks/:id/subtasks/:subtaskId — toggle/update checklist item
 router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
     try {
-        await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
         const sets = [];
         const values = [];
         if (req.body.title !== undefined) {
@@ -1839,7 +1932,9 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
 // DELETE /api/tasks/:id/subtasks/:subtaskId - remove checklist item
 router.delete('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
     try {
-        await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
         const result = await pool.query(
             `DELETE FROM task_subtasks
              WHERE task_id = $1 AND id = $2
@@ -1857,7 +1952,9 @@ router.delete('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (r
 // POST /api/tasks/:id/focus — pin/unpin in personal focus lane
 router.post('/:id/focus', requireRole('admin', 'user'), async (req, res) => {
     try {
-        await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
         const enabled = req.body.enabled === undefined ? true : isTruthy(req.body.enabled);
         const rank = enabled ? Math.max(1, Math.min(99, parseInt(req.body.rank ?? req.body.focusRank ?? 1, 10) || 1)) : 0;
         const result = await pool.query(
@@ -1879,7 +1976,9 @@ router.post('/:id/focus', requireRole('admin', 'user'), async (req, res) => {
 // POST /api/tasks/:id/snooze — postpone reminder/attention state
 router.post('/:id/snooze', requireRole('admin', 'user'), async (req, res) => {
     try {
-        await loadMutableTask(req.params.id, req.user);
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
         let until = normalizeOptionalDateTime(req.body.until || req.body.snoozed_until || req.body.snoozedUntil);
         if (!until) {
             const minutes = parseInt(req.body.minutes ?? req.body.snoozeMinutes ?? 0, 10);
@@ -1905,10 +2004,13 @@ router.post('/:id/snooze', requireRole('admin', 'user'), async (req, res) => {
 
 router.post('/:id/complete', async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const result = await completeTask(req.params.id, req.user, {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_complete',
-            reportId: req.body?.reportId || req.body?.report_id
+            reportId: req.body?.reportId || req.body?.report_id,
+            businessScope
         });
         res.json({
             success: true,
@@ -1927,10 +2029,13 @@ router.post('/:id/complete', async (req, res) => {
 
 router.post('/:id/reassign', async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const ownerUserId = req.body?.ownerUserId ?? req.body?.owner_user_id;
         const result = await reassignTaskOwner(req.params.id, ownerUserId, req.user, {
             sourceSurface: sourceSurface(req.body),
-            route: 'tasks_task_reassign'
+            route: 'tasks_task_reassign',
+            businessScope
         });
         notifyTaskAssignment(result.task, req.user?.username || 'system').catch(() => {});
         emitTaskAssignedToOwner(result.task, req.user);
@@ -1952,10 +2057,13 @@ router.post('/:id/reassign', async (req, res) => {
 
 router.post('/:id/reschedule', async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         if (hasSchedulePayload(req.body || {})) {
             const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
                 sourceSurface: sourceSurface(req.body),
-                route: 'tasks_task_schedule'
+                route: 'tasks_task_schedule',
+                businessScope
             });
             _alertPush();
             return res.json({
@@ -1972,7 +2080,8 @@ router.post('/:id/reschedule', async (req, res) => {
         const deadline = resolveDeadline(req.body || {});
         const result = await rescheduleTask(req.params.id, deadline, req.user, {
             sourceSurface: sourceSurface(req.body),
-            route: 'tasks_task_reschedule'
+            route: 'tasks_task_reschedule',
+            businessScope
         });
         res.json({
             success: true,
@@ -1992,9 +2101,12 @@ router.post('/:id/reschedule', async (req, res) => {
 // v10.0: GET /api/tasks/:id/logs — task change history
 router.post('/:id/schedule', async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
             sourceSurface: sourceSurface(req.body),
-            route: 'tasks_task_schedule'
+            route: 'tasks_task_schedule',
+            businessScope
         });
         _alertPush();
         res.json({
@@ -2014,10 +2126,13 @@ router.post('/:id/schedule', async (req, res) => {
 
 router.get('/:id/logs', async (req, res) => {
     try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
         const visibleParams = [id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         const result = await pool.query(
             'SELECT * FROM task_logs WHERE task_id = $1 ORDER BY created_at DESC LIMIT 100',
@@ -2033,6 +2148,9 @@ router.get('/:id/logs', async (req, res) => {
 // POST /api/tasks/operation-pack — create preset-driven checklist bundle
 router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const businessContext = activeTaskBusinessContext(businessScope);
         const presetKey = String(req.body.preset || req.body.presetKey || '').trim();
         const preset = ORDER_OPERATION_PRESETS[presetKey];
         if (!preset) return res.status(400).json({ error: 'Invalid operation preset' });
@@ -2056,6 +2174,7 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
                 ? `${baseTitle}: ${template.label}`
                 : `${baseTitle}`;
             const task = await kleshnya.createTask({
+                businessContext,
                 title: taskTitle,
                 description: item.description || null,
                 date,
@@ -2107,7 +2226,8 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
                 packStatus,
                 sourceEntityType,
                 sourceEntityId,
-                checklistTemplates: created.map(task => task.checklist_template_key)
+                checklistTemplates: created.map(task => task.checklist_template_key),
+                businessScope: taskBusinessScopeMeta(businessScope)
             }
         });
         _alertPush();
@@ -2120,6 +2240,9 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
 // POST /api/tasks — create (via Kleshnya) — admin/user only
 router.post('/', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const businessContext = activeTaskBusinessContext(businessScope);
         const b = req.body;
         // Support both snake_case and camelCase (for external integrations like OpenClaw)
         const title = b.title;
@@ -2179,7 +2302,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             source_entity_id: opsFields.source_entity_id,
             pack_id: opsFields.pack_id,
             checklist_template_key: opsFields.checklist_template_key,
-            afisha_id
+            afisha_id,
+            businessContext
         });
         if (duplicate && !force) {
             return res.status(409).json({
@@ -2197,6 +2321,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const kleshnya = getKleshnya();
 
         const task = await kleshnya.createTask({
+            businessContext,
             title, description, date,
             priority: VALID_PRIORITIES.includes(priority) ? priority : 'normal',
             assigned_to: assigned_to || null,
@@ -2234,7 +2359,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         if (!task.duplicateSkipped && hasSchedulePayload(b)) {
             scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
                 sourceSurface: sourceSurface(b, 'task_page'),
-                route: 'tasks_create_schedule'
+                route: 'tasks_create_schedule',
+                businessScope
             });
             Object.assign(task, scheduleResult.task);
             responseTask = scheduleResult.task;
@@ -2296,12 +2422,15 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
 // v19.10: Optimistic locking via version column
 router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
         const b = req.body;
         // v40: Support partial updates — merge with existing task
         const existingParams = [id];
         const visibility = buildTaskVisibilityScope(req.user, existingParams, 't');
-        const existing = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, existingParams);
+        const businessCondition = appendTaskBusinessScopeSql(existingParams, businessScope, 't');
+        const existing = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, existingParams);
         if (!existing.rows.length) return res.status(404).json({ error: 'Task not found' });
         const old = existing.rows[0];
         if (!canMutateTask(req.user, old)) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
@@ -2337,7 +2466,10 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
         if (taskStatus === 'done') osFields.workflow_state = 'done';
         if (taskStatus === 'done') {
-            const reportId = await ensureTaskReportReference(b.reportId || b.report_id || taskCompletionReportId({ ...old, control_meta: controlMeta }));
+            const reportId = await ensureTaskReportReference(
+                b.reportId || b.report_id || taskCompletionReportId({ ...old, control_meta: controlMeta }),
+                old.business_context
+            );
             if (taskRequiresCompletionReport({ ...old, control_meta: controlMeta }) && !reportId) {
                 return sendTaskActionError(res, makeTaskReportRequiredError(old));
             }
@@ -2400,6 +2532,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
 
         values.push(id);
         let whereClause = `WHERE id=$${paramIdx}`;
+        values.push(activeTaskBusinessContext(old.business_context));
+        whereClause += ` AND COALESCE(business_context, 'event_genix')=$${++paramIdx}`;
 
         // Optimistic locking: check version if client provides it
         if (clientVersion !== null) {
@@ -2413,7 +2547,9 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-            const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+            const staleParams = [id];
+            const staleBusinessCondition = appendTaskBusinessScopeSql(staleParams, businessScope, 'tasks');
+            const existing = await pool.query(`SELECT * FROM tasks WHERE id = $1 ${staleBusinessCondition}`, staleParams);
             if (existing.rows.length === 0) {
                 return res.status(404).json({ error: 'Task not found' });
             }
@@ -2442,7 +2578,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (hasSchedulePayload(b)) {
             scheduleResult = await scheduleTask(id, { ...b, date }, req.user, {
                 sourceSurface: sourceSurface(b, 'task_detail'),
-                route: 'tasks_update_schedule'
+                route: 'tasks_update_schedule',
+                businessScope
             });
             updatedTask = scheduleResult.task;
         }
@@ -2486,13 +2623,16 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
 // PATCH /api/tasks/:id/status — quick status change (via Kleshnya) — admin/user only
 router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
         const { status } = req.body;
         if (!VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
         const visibleParams = [id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
-        const visible = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
+        const visible = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         if (!canMutateTask(req.user, visible.rows[0])) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
 
@@ -2501,7 +2641,8 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             const result = await completeTask(id, req.user, {
                 sourceSurface: sourceSurface(req.body, 'task_detail'),
                 route: 'tasks_status_complete',
-                reportId: req.body?.reportId || req.body?.report_id
+                reportId: req.body?.reportId || req.body?.report_id,
+                businessScope
             });
             if (actor !== 'system') {
                 try {
@@ -2542,6 +2683,8 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
 // POST /api/tasks/:id/review — review/score a completed task (manager+)
 router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const { score, comment } = req.body;
         const reviewScore = parseInt(score);
         if (!Number.isInteger(reviewScore) || reviewScore < 1 || reviewScore > 10) {
@@ -2549,14 +2692,18 @@ router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'
         }
         const visibleParams = [req.params.id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
 
         const result = await pool.query(
-            `UPDATE tasks SET review_score = $1, review_comment = $2,
+             `UPDATE tasks SET review_score = $1, review_comment = $2,
              reviewed_by = $3, reviewed_at = NOW()
-             WHERE id = $4 AND status = 'done' RETURNING *`,
-            [reviewScore, comment || null, req.user.id || req.user.userId, req.params.id]
+             WHERE id = $4
+               AND status = 'done'
+               AND COALESCE(business_context, 'event_genix') = $5
+             RETURNING *`,
+            [reviewScore, comment || null, req.user.id || req.user.userId, req.params.id, activeTaskBusinessContext(businessScope)]
         );
 
         if (result.rows.length === 0) {
@@ -2598,8 +2745,12 @@ router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'
 // DELETE /api/tasks/:id — admin only
 router.delete('/:id', requireRole('admin'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const { id } = req.params;
-        const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING id', [id]);
+        const params = [id];
+        const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 'tasks');
+        const result = await pool.query(`DELETE FROM tasks WHERE id = $1 ${businessCondition} RETURNING id`, params);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
 
         // Log deletion
@@ -2617,6 +2768,8 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 // v33.3: POST /api/tasks/bulk — bulk actions on multiple tasks
 router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
     try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
         const { ids, action, assignTo, priority } = req.body;
         if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
         if (!action) return res.status(400).json({ error: 'action required' });
@@ -2626,6 +2779,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
 
         const params = [intIds];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
         let result;
         if (action === 'archive') {
             result = await pool.query(
@@ -2635,7 +2789,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
                      archived_at = COALESCE(t.archived_at, NOW()),
                      archive_reason = COALESCE(t.archive_reason, 'manual_bulk'),
                      updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
                 params
             );
         } else if (action === 'restore') {
@@ -2648,13 +2802,13 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
                      duplicate_of_task_id = NULL,
                      completed_at = NULL,
                      updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') = 'archived'`,
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition} AND COALESCE(t.status, 'todo') = 'archived'`,
                 params
             );
         } else if (action === 'done') {
             result = await pool.query(
                 `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW(), updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility}
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}
                    AND COALESCE(t.status, 'todo') NOT IN ('done','archived')
                    AND NOT EXISTS (
                        SELECT 1
@@ -2677,7 +2831,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             }
             result = await pool.query(
                 `UPDATE tasks t SET owner_user_id = $${params.length + 1}, assigned_to = $${params.length + 2}, updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility}
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}
                    AND (
                        t.owner_user_id IS DISTINCT FROM $${params.length + 1}
                        OR COALESCE(t.assigned_to, '') IS DISTINCT FROM COALESCE($${params.length + 2}, '')
@@ -2693,7 +2847,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
             result = await pool.query(
                 `UPDATE tasks t SET priority = $${params.length + 1}, updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility}`,
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}`,
                 [...params, priority]
             );
         } else {

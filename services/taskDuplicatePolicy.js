@@ -16,6 +16,7 @@ class TaskDuplicateError extends Error {
 }
 
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')";
+const DEFAULT_TASK_BUSINESS_CONTEXT = 'event_genix';
 
 function normalizeTaskTitle(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -32,6 +33,7 @@ function normalizeTaskDate(value) {
 function normalizeTaskDuplicatePayload(data = {}) {
     const sourceType = data.source_type ?? data.sourceType ?? 'manual';
     const signature = {
+        businessContext: String(data.business_context ?? data.businessContext ?? DEFAULT_TASK_BUSINESS_CONTEXT).trim().toLowerCase() || DEFAULT_TASK_BUSINESS_CONTEXT,
         title: normalizeTaskTitle(data.title),
         day: normalizeTaskDate(data.date || data.deadline || data.remind_at || data.remindAt),
         category: String(data.category || 'admin').trim().toLowerCase(),
@@ -91,6 +93,7 @@ async function findActiveDuplicateTask(db, data = {}) {
            AND COALESCE(t.owner_user_id::text, '') = $5
            AND lower(COALESCE(t.checklist_template_key, '')) = $6
            AND ${duplicateSourceAnchorSql('t')} = $7
+           AND COALESCE(t.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $8
          ORDER BY t.id ASC
          LIMIT 1`,
         [
@@ -100,7 +103,8 @@ async function findActiveDuplicateTask(db, data = {}) {
             signature.subcategory,
             signature.ownerUserId,
             signature.checklistTemplateKey,
-            signature.sourceAnchor
+            signature.sourceAnchor,
+            signature.businessContext
         ]
     );
     return result.rows[0] || null;
@@ -112,6 +116,7 @@ function canForceTaskDuplicate(user = {}) {
 
 function duplicateSignatureSql(alias = 't') {
     return `concat_ws('|',
+        COALESCE(${alias}.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}'),
         lower(regexp_replace(trim(COALESCE(${alias}.title, '')), '\\s+', ' ', 'g')),
         COALESCE(${alias}.date::text, ''),
         lower(COALESCE(${alias}.category, 'admin')),

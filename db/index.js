@@ -378,6 +378,11 @@ async function initDatabase() {
         `);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(date)');
+        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_status_date ON tasks(business_context, status, date)');
+        await safeQuery("CREATE INDEX IF NOT EXISTS idx_tasks_business_owner_active ON tasks(business_context, owner_user_id, status, deadline) WHERE COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')");
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_completed_at ON tasks(business_context, completed_at) WHERE completed_at IS NOT NULL');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_source ON tasks(business_context, source_type, source_id) WHERE source_type IS NOT NULL OR source_id IS NOT NULL');
 
         // v7.6: Link tasks to afisha events
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS afisha_id INTEGER`);

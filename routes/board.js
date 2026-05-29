@@ -32,6 +32,8 @@ router.get('/stats', async (req, res) => {
         const revenueScope = getVisibleBookingScope(req.user, revenueParams, 'b');
         const staffParams = [today];
         const staffBusinessCondition = pushBusinessScopeCondition(staffParams, businessScope, '');
+        const taskParams = [today];
+        const taskBusinessCondition = pushBusinessScopeCondition(taskParams, businessScope, 't');
 
         const results = await Promise.allSettled([
             // 0: Bookings today
@@ -52,10 +54,12 @@ router.get('/stats', async (req, res) => {
             // 2: Tasks progress
             pool.query(
                 `SELECT
-                    COUNT(*) FILTER (WHERE status = 'done' AND completed_at::date = CURRENT_DATE)::int as done_today,
-                    COUNT(*) FILTER (WHERE status != 'done')::int as remaining,
+                    COUNT(*) FILTER (WHERE t.status = 'done' AND t.completed_at::date = CURRENT_DATE)::int as done_today,
+                    COUNT(*) FILTER (WHERE t.status != 'done')::int as remaining,
                     COUNT(*)::int as total
-                 FROM tasks WHERE date = $1 OR (deadline IS NOT NULL AND deadline::date = CURRENT_DATE) OR date IS NULL`, [today]
+                 FROM tasks t
+                 WHERE (t.date = $1 OR (t.deadline IS NOT NULL AND t.deadline::date = CURRENT_DATE) OR t.date IS NULL)
+                   AND ${taskBusinessCondition}`, taskParams
             ),
             // 3: Revenue today (only for senior_manager+)
             REVENUE_ROLES.includes(role) ?

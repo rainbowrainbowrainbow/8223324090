@@ -15,6 +15,7 @@ const {
     logTaskActionEvent
 } = require('./taskActionHistory');
 const { subtaskCompletionState } = require('./taskSubtasks');
+const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -106,10 +107,16 @@ function subtaskCompletionRequiredError(task, state) {
     return err;
 }
 
-async function ensureReportExists(query, reportId) {
+async function ensureReportExists(query, reportId, businessContext = null) {
     const id = parsePositiveInt(reportId);
     if (!id) return null;
-    const result = await query.query('SELECT id FROM reports WHERE id = $1 LIMIT 1', [id]);
+    const params = [id];
+    let businessCondition = '';
+    if (businessContext) {
+        params.push(String(businessContext));
+        businessCondition = ` AND COALESCE(business_context, 'event_genix') = $${params.length}`;
+    }
+    const result = await query.query(`SELECT id FROM reports WHERE id = $1${businessCondition} LIMIT 1`, params);
     if (!result.rows.length) {
         const err = new Error('Звіт не знайдено або його ще не збережено.');
         err.statusCode = 400;
@@ -293,6 +300,8 @@ async function getVisibleTask(taskId, user, options = {}) {
     }
     const params = [id];
     const visibility = buildTaskVisibilityScope(user, params, 't');
+    const businessScope = options.businessScope || options.businessContext || null;
+    const businessCondition = businessScope ? appendTaskBusinessScopeSql(params, businessScope, 't') : '';
     const query = options.pool || pool;
     const result = await query.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username, u.role AS owner_role
@@ -300,6 +309,7 @@ async function getVisibleTask(taskId, user, options = {}) {
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE t.id = $1
            ${visibility}
+           ${businessCondition}
          LIMIT 1`,
         params
     );
@@ -314,7 +324,7 @@ async function getVisibleTask(taskId, user, options = {}) {
 
 async function completeTask(taskId, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
-        const task = await getVisibleTask(taskId, actor, { pool: query });
+        const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
         if (!canMutateTask(actor, task)) {
             throw forbidden('You cannot complete this task');
         }
@@ -328,7 +338,7 @@ async function completeTask(taskId, actor, options = {}) {
         if (requiresReport && !existingReportId && !incomingReportId) {
             throw reportRequiredError(task);
         }
-        const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId) : existingReportId;
+        const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId, task.business_context) : existingReportId;
         const result = await query.query(
             `UPDATE tasks
              SET status = 'done',
@@ -349,9 +359,10 @@ async function completeTask(taskId, actor, options = {}) {
              version = COALESCE(version, 1) + 1
          WHERE id = $1
            AND COALESCE(version, 1) = $2
+           AND COALESCE(business_context, 'event_genix') = $5
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
          RETURNING *`,
-            [task.id, task.version || 1, reportId || null, userDisplayName(actor)]
+            [task.id, task.version || 1, reportId || null, userDisplayName(actor), task.business_context || 'event_genix']
         );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or cannot be completed');
@@ -381,7 +392,7 @@ async function completeTask(taskId, actor, options = {}) {
 
 async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
-        const task = await getVisibleTask(taskId, actor, { pool: query });
+        const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
         if (!canReassignTask(actor, task)) {
             throw forbidden('You cannot reassign this task');
         }
@@ -400,8 +411,9 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
                  version = COALESCE(version, 1) + 1
              WHERE id = $1
                AND COALESCE(version, 1) = $4
+               AND COALESCE(business_context, 'event_genix') = $5
              RETURNING *`,
-            [task.id, owner.id, owner.label, task.version || 1]
+            [task.id, owner.id, owner.label, task.version || 1, task.business_context || 'event_genix']
         );
         if (!result.rows.length) {
             const err = new Error('Task was changed by another user');
@@ -437,7 +449,7 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
 
 async function rescheduleTask(taskId, deadline, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
-        const task = await getVisibleTask(taskId, actor, { pool: query });
+        const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
         if (!canRescheduleTask(actor, task)) {
             throw forbidden('You cannot reschedule this task');
         }
@@ -469,9 +481,10 @@ async function rescheduleTask(taskId, deadline, actor, options = {}) {
              version = COALESCE(version, 1) + 1
          WHERE id = $1
            AND COALESCE(version, 1) = $3
+           AND COALESCE(business_context, 'event_genix') = $5
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
          RETURNING *`,
-            [task.id, deadline || null, task.version || 1, deadline || null]
+            [task.id, deadline || null, task.version || 1, deadline || null, task.business_context || 'event_genix']
         );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or cannot be rescheduled');

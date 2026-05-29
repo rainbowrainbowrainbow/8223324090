@@ -1,4 +1,5 @@
 const { buildTaskOwnerMatch, normalizeUserId } = require('./taskPolicy');
+const { appendTaskBusinessScopeSql, taskBusinessScopeMeta } = require('./taskBusinessScope');
 
 const DEFAULT_TIME_ZONE = 'Europe/Kyiv';
 const FINAL_STATUSES = new Set(['cancelled', 'archived']);
@@ -335,6 +336,8 @@ async function getTaskProductivity(pool, user, options = {}) {
     }
     const params = [];
     const ownerMatch = buildTaskOwnerMatch(user, params, 't');
+    const businessScope = options.businessScope || options.businessContext || null;
+    const businessCondition = businessScope ? appendTaskBusinessScopeSql(params, businessScope, 't') : '';
     const result = await pool.query(
         `SELECT t.id, t.title, t.status, t.workflow_state, t.category, t.task_mode, t.task_kind,
                 t.created_at, t.updated_at, t.completed_at, t.deadline, t.date,
@@ -357,10 +360,16 @@ async function getTaskProductivity(pool, user, options = {}) {
             FROM task_subtasks
             GROUP BY task_id
          ) st ON st.task_id = t.id
-         WHERE ${ownerMatch}`,
+         WHERE ${ownerMatch}
+           ${businessCondition}`,
         params
     );
-    return buildTaskProductivity(result.rows, options);
+    const productivity = buildTaskProductivity(result.rows, options);
+    if (businessScope) {
+        productivity.businessScope = taskBusinessScopeMeta(businessScope);
+        productivity.meta.businessScope = taskBusinessScopeMeta(businessScope);
+    }
+    return productivity;
 }
 
 module.exports = {

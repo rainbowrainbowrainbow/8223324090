@@ -11,6 +11,11 @@ const {
     TASK_ACTION_TYPES,
     logTaskActionEvent
 } = require('./taskActionHistory');
+const {
+    activeTaskBusinessContext,
+    appendTaskBusinessScopeSql,
+    pushTaskBusinessScopeCondition
+} = require('./taskBusinessScope');
 
 const DEFAULT_DURATION_MINUTES = 30;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
@@ -254,13 +259,18 @@ function roundUpToStep(date, stepMinutes = 15) {
     return new Date(Math.ceil(date.getTime() / stepMs) * stepMs);
 }
 
-async function loadScheduledIntervals(query, { ownerUserId, start, end, excludeTaskId = null }) {
+async function loadScheduledIntervals(query, { ownerUserId, start, end, excludeTaskId = null, businessContext = null }) {
     if (!ownerUserId) return [];
+    const params = [ownerUserId, start.toISOString(), end.toISOString(), excludeTaskId];
+    const businessCondition = businessContext
+        ? `AND ${pushTaskBusinessScopeCondition(params, businessContext, '')}`
+        : '';
     const result = await query.query(
         `SELECT id, scheduled_start_at, scheduled_end_at
          FROM tasks
          WHERE owner_user_id = $1
            AND id <> COALESCE($4, -1)
+           ${businessCondition}
            AND scheduled_start_at IS NOT NULL
            AND scheduled_end_at IS NOT NULL
            AND COALESCE(schedule_status, 'unscheduled') = 'scheduled'
@@ -268,7 +278,7 @@ async function loadScheduledIntervals(query, { ownerUserId, start, end, excludeT
            AND scheduled_start_at < $3
            AND scheduled_end_at > $2
          ORDER BY scheduled_start_at ASC`,
-        [ownerUserId, start.toISOString(), end.toISOString(), excludeTaskId]
+        params
     );
     return result.rows.map(row => ({
         id: row.id,
@@ -277,7 +287,7 @@ async function loadScheduledIntervals(query, { ownerUserId, start, end, excludeT
     }));
 }
 
-async function findNearestWindow(query, { ownerUserId, date, slot, durationMinutes, excludeTaskId = null }) {
+async function findNearestWindow(query, { ownerUserId, date, slot, durationMinutes, excludeTaskId = null, businessContext = null }) {
     const bounds = scheduleWindowForSlot(date, slot);
     if (!bounds) return null;
     const durationMs = durationMinutes * 60 * 1000;
@@ -287,7 +297,8 @@ async function findNearestWindow(query, { ownerUserId, date, slot, durationMinut
         ownerUserId,
         start: bounds.start,
         end: bounds.end,
-        excludeTaskId
+        excludeTaskId,
+        businessContext
     });
     let cursor = new Date(bounds.start);
     for (const interval of intervals) {
@@ -315,7 +326,8 @@ async function buildScheduleProposals(query, request, task, limit = 4) {
                 date,
                 slot: slot.key,
                 durationMinutes: request.durationMinutes,
-                excludeTaskId: task.id
+                excludeTaskId: task.id,
+                businessContext: activeTaskBusinessContext(task.business_context || task.businessContext)
             });
             if (window) {
                 proposals.push({
@@ -386,7 +398,7 @@ async function notifyScheduleChange(task, actor, eventType, meta = {}) {
     }
 }
 
-async function getVisibleTaskForSchedule(query, taskId, actor) {
+async function getVisibleTaskForSchedule(query, taskId, actor, options = {}) {
     const id = parsePositiveInt(taskId);
     if (!id) {
         const err = new Error('Valid taskId is required');
@@ -396,12 +408,15 @@ async function getVisibleTaskForSchedule(query, taskId, actor) {
     }
     const params = [id];
     const visibility = buildTaskVisibilityScope(actor, params, 't');
+    const businessScope = options.businessScope || options.businessContext || null;
+    const businessCondition = businessScope ? appendTaskBusinessScopeSql(params, businessScope, 't') : '';
     const result = await query.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE t.id = $1
            ${visibility}
+           ${businessCondition}
          LIMIT 1`,
         params
     );
@@ -440,7 +455,9 @@ function historyActionForSchedule(oldTask, updatedTask, request) {
 
 async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
     return withTransaction(options, async query => {
-        const task = await getVisibleTaskForSchedule(query, taskId, actor);
+        const task = await getVisibleTaskForSchedule(query, taskId, actor, {
+            businessScope: options.businessScope || options.businessContext
+        });
         if (!canRescheduleTask(actor, task)) {
             const err = new Error('You cannot schedule this task');
             err.statusCode = 403;
@@ -474,7 +491,8 @@ async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
                 date: request.date,
                 slot: request.slot,
                 durationMinutes: request.durationMinutes,
-                excludeTaskId: task.id
+                excludeTaskId: task.id,
+                businessContext: activeTaskBusinessContext(task.business_context || task.businessContext)
             });
             if (window) {
                 update = {
@@ -535,10 +553,11 @@ async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
                  END,
                  updated_at = NOW(),
                  version = COALESCE(version, 1) + 1
-             WHERE id = $1
-               AND COALESCE(version, 1) = $14
-               AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
-             RETURNING *`,
+                 WHERE id = $1
+                   AND COALESCE(version, 1) = $14
+                   AND COALESCE(business_context, 'event_genix') = $15
+                   AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+                 RETURNING *`,
             [
                 task.id,
                 update.date,
@@ -557,9 +576,10 @@ async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
                     requestedAt: new Date().toISOString()
                 }),
                 update.proposal ? JSON.stringify(update.proposal) : null,
-                task.version || 1
-            ]
-        );
+                    task.version || 1,
+                    task.business_context || 'event_genix'
+                ]
+            );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or was changed by another user');
             err.statusCode = 409;
@@ -598,7 +618,8 @@ async function getAvailability(input = {}, options = {}) {
             date: request.date,
             slot: request.slot,
             durationMinutes: request.durationMinutes,
-            excludeTaskId: input.excludeTaskId ?? input.exclude_task_id
+            excludeTaskId: input.excludeTaskId ?? input.exclude_task_id,
+            businessContext: options.businessContext || options.businessScope || null
         })
         : null;
     return {

@@ -162,3 +162,65 @@ test('dashboard and analytics aggregates include selected business scope', () =>
     assert.match(migration, /idx_event_reviews_business_created/);
     assert.match(migration, /idx_team_pulse_business_date/);
 });
+
+test('task engine reads, writes, duplicates, and dashboard task widgets are business-scoped', () => {
+    const migration = read('db/migrations/237_tasks_business_context_scope.sql');
+    const taskScope = read('services/taskBusinessScope.js');
+    const tasksRoute = read('routes/tasks.js');
+    const kleshnya = read('services/kleshnya.js');
+    const duplicates = read('services/taskDuplicatePolicy.js');
+    const execution = read('services/taskExecution.js');
+    const scheduling = read('services/taskScheduling.js');
+    const productivity = read('services/taskProductivity.js');
+    const board = read('routes/board.js');
+    const dashboard = read('routes/dashboard.js');
+    const auth = read('routes/auth.js');
+    const sidebar = read('js/components/sidebar.js');
+
+    assert.match(migration, /ALTER TABLE tasks[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /SET business_context = COALESCE\(b\.business_context, t\.business_context, 'event_genix'\)/);
+    assert.match(migration, /SET business_context = COALESCE\(l\.business_context, t\.business_context, 'event_genix'\)/);
+    assert.match(migration, /SET business_context = COALESCE\(c\.business_context, t\.business_context, 'event_genix'\)/);
+    assert.match(migration, /SET business_context = COALESCE\(r\.business_context, t\.business_context, 'event_genix'\)/);
+    assert.match(migration, /SET business_context = COALESCE\(cnv\.business_context, t\.business_context, 'event_genix'\)/);
+    assert.match(migration, /idx_tasks_business_status_date/);
+    assert.match(migration, /idx_tasks_business_owner_active/);
+    assert.match(migration, /idx_tasks_business_source/);
+
+    assert.match(taskScope, /ensureTaskBusinessScope/);
+    assert.match(taskScope, /ensureWritableTaskBusinessScope/);
+    assert.match(taskScope, /pushBusinessScopeCondition\(params, scopeOrContext/);
+    assert.match(taskScope, /taskBusinessScopeMeta/);
+
+    assert.match(kleshnya, /INSERT INTO tasks \(business_context/);
+    assert.match(kleshnya, /businessContext: taskBusinessContext/);
+    assert.match(duplicates, /COALESCE\(t\.business_context, '\$\{DEFAULT_TASK_BUSINESS_CONTEXT\}'\) = \$8/);
+    assert.match(duplicates, /COALESCE\(\$\{alias\}\.business_context, '\$\{DEFAULT_TASK_BUSINESS_CONTEXT\}'\)/);
+
+    assert.match(tasksRoute, /requireTaskReadScope/);
+    assert.match(tasksRoute, /requireTaskWriteScope/);
+    assert.match(tasksRoute, /conditions\.push\(pushTaskBusinessScopeCondition\(params, businessScope, 't'\)\)/);
+    assert.match(tasksRoute, /businessScope: taskBusinessScopeMeta\(businessScope\)/);
+    assert.match(tasksRoute, /completeTask\(req\.params\.id, req\.user,[\s\S]*businessScope/);
+    assert.match(tasksRoute, /scheduleTask\(id, \{ \.\.\.b, date \}, req\.user,[\s\S]*businessScope/);
+    assert.match(tasksRoute, /DELETE FROM tasks WHERE id = \$1 \$\{businessCondition\}/);
+    assert.match(tasksRoute, /UPDATE tasks t[\s\S]*\$\{businessCondition\}/);
+
+    assert.match(execution, /appendTaskBusinessScopeSql/);
+    assert.match(execution, /getVisibleTask\(taskId, actor, \{ pool: query, businessScope/);
+    assert.match(execution, /AND COALESCE\(business_context, 'event_genix'\) = \$5/);
+    assert.match(scheduling, /appendTaskBusinessScopeSql/);
+    assert.match(scheduling, /loadScheduledIntervals\(query, \{ ownerUserId, start, end, excludeTaskId = null, businessContext = null \}/);
+    assert.match(scheduling, /AND COALESCE\(business_context, 'event_genix'\) = \$15/);
+    assert.match(productivity, /taskBusinessScopeMeta/);
+
+    assert.match(board, /pushBusinessScopeCondition\(taskParams, businessScope, 't'\)/);
+    assert.match(dashboard, /dashboardBusinessScope/);
+    assert.match(dashboard, /appendDashboardBusinessScope\(params, businessScope, 't'\)/);
+    assert.match(dashboard, /buildEventRiskSummary\(req\.user, businessScope\)/);
+    assert.match(auth, /requireWritableBusinessScope/);
+    assert.match(auth, /pushBusinessScopeCondition\(ownerParams, businessScope, 'tasks'\)/);
+    assert.match(auth, /WHERE id = \$2 AND \$\{updateBusinessCondition\}/);
+    assert.match(sidebar, /getAuthHeaders\(false\)/);
+    assert.match(sidebar, /CrmBusinessContext\?\.apiUrl/);
+});

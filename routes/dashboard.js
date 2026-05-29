@@ -16,11 +16,26 @@ const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildWorkQueue } = require('../services/workQueue');
 const { getOmniAccountAlertsAsync } = require('../services/omni-accounts');
+const {
+    resolveBusinessScope,
+    requireBusinessScope,
+    pushBusinessScopeCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Dashboard');
 
 // All routes require authentication
 router.use(authenticateToken);
+
+function dashboardBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
+}
+
+function appendDashboardBusinessScope(params, scope, alias = 't') {
+    return `AND ${pushBusinessScopeCondition(params, scope, alias)}`;
+}
 
 function buildOwnTaskFilter(user, params, alias = 't') {
     const userId = normalizeUserId(user);
@@ -555,11 +570,12 @@ function buildPersistedDashboardConfig(existingRaw, body, role) {
     };
 }
 
-async function buildEventRiskSummary(user) {
+async function buildEventRiskSummary(user, businessScope = null) {
     const today = getKyivDateStr();
     const tomorrow = addDays(today, 1);
     const prepParams = [];
     const prepVisibility = buildTaskVisibilityScope(user, prepParams, 't');
+    const prepBusinessCondition = businessScope ? appendDashboardBusinessScope(prepParams, businessScope, 't') : '';
     const prepBookingVisibility = getVisibleBookingScope(user, prepParams, 'b');
     const todayParams = [today];
     const todayBookingVisibility = getVisibleBookingScope(user, todayParams, 'b');
@@ -608,6 +624,7 @@ async function buildEventRiskSummary(user) {
               AND t.deadline < NOW()
               AND COALESCE(b.status, 'confirmed') <> 'cancelled'
               ${prepVisibility}
+              ${prepBusinessCondition}
               ${prepBookingVisibility.sql}
         `, prepParams),
         pool.query(`
@@ -713,6 +730,8 @@ router.get('/widgets/:type', async (req, res) => {
         if (widgetAccess === false) {
             return res.status(403).json({ error: 'Insufficient widget permissions' });
         }
+        const businessScope = dashboardBusinessScope(req, res);
+        if (!businessScope) return;
 
         let data = {};
 
@@ -721,6 +740,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const params = [];
                 const visibility = buildTaskVisibilityScope(req.user, params, 't');
                 const ownFilter = buildOwnTaskFilter(req.user, params, 't');
+                const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
@@ -733,6 +753,7 @@ router.get('/widgets/:type', async (req, res) => {
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${visibility}
                     ${ownFilter}
+                    ${taskBusinessCondition}
                     ORDER BY
                         CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                         t.deadline ASC NULLS LAST
@@ -749,6 +770,7 @@ router.get('/widgets/:type', async (req, res) => {
                 }
                 const params = [];
                 const visibility = buildTaskVisibilityScope(req.user, params, 't');
+                const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
@@ -763,6 +785,7 @@ router.get('/widgets/:type', async (req, res) => {
                     ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') != 'archived'
                     ${visibility}
+                    ${taskBusinessCondition}
                     ORDER BY
                         CASE WHEN t.deadline IS NOT NULL AND t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') THEN 0 ELSE 1 END,
                         CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -774,6 +797,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const statsParams = [];
                 const statsVisibility = buildTaskVisibilityScope(req.user, statsParams, 't');
                 statsParams.push(getKyivDateStr());
+                const statsBusinessCondition = appendDashboardBusinessScope(statsParams, businessScope, 't');
                 const statsResult = await pool.query(`
                     SELECT
                         COUNT(*)::int AS total,
@@ -794,6 +818,7 @@ router.get('/widgets/:type', async (req, res) => {
                     FROM tasks t
                     WHERE COALESCE(t.status, 'todo') != 'archived'
                     ${statsVisibility}
+                    ${statsBusinessCondition}
                 `, statsParams);
                 data = buildPersonalTaskerPayload(result.rows, req.user, normalizeTaskerStatsRow(statsResult.rows[0] || {}));
                 break;
@@ -802,6 +827,7 @@ router.get('/widgets/:type', async (req, res) => {
             case 'my_focus': {
                 const params = [];
                 const ownFilter = buildOwnTaskFilter(req.user, params, 't');
+                const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
@@ -813,6 +839,7 @@ router.get('/widgets/:type', async (req, res) => {
                     ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${ownFilter}
+                    ${taskBusinessCondition}
                     ORDER BY
                         CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
                         COALESCE(t.focus_rank, 99),
@@ -822,12 +849,13 @@ router.get('/widgets/:type', async (req, res) => {
                 `, params);
                 const countParams = [];
                 const countOwn = buildOwnTaskFilter(req.user, countParams, 't');
+                const countBusinessCondition = appendDashboardBusinessScope(countParams, businessScope, 't');
                 const counts = await pool.query(`
                     SELECT
                         COUNT(*) FILTER (WHERE t.deadline IS NOT NULL AND t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS overdue_count,
                         COUNT(*) FILTER (WHERE (COALESCE(t.workflow_state, 'todo') = 'waiting' OR COALESCE(t.task_kind, 'action') = 'waiting') AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS waiting_count
                     FROM tasks t
-                    WHERE 1=1 ${countOwn}
+                    WHERE 1=1 ${countOwn} ${countBusinessCondition}
                 `, countParams);
                 const tasks = taskWidgetPayload(result.rows);
                 data = {
@@ -957,8 +985,10 @@ router.get('/widgets/:type', async (req, res) => {
                 const today = getKyivDateStr();
                 const activeTaskParams = [];
                 const activeTaskVisibility = buildTaskVisibilityScope(req.user, activeTaskParams, 't');
+                const activeTaskBusinessCondition = appendDashboardBusinessScope(activeTaskParams, businessScope, 't');
                 const overdueTaskParams = [];
                 const overdueTaskVisibility = buildTaskVisibilityScope(req.user, overdueTaskParams, 't');
+                const overdueTaskBusinessCondition = appendDashboardBusinessScope(overdueTaskParams, businessScope, 't');
                 const bookingCountParams = [today];
                 const bookingCountVisibility = getVisibleBookingScope(req.user, bookingCountParams, 'b');
                 const revenueParams = [today];
@@ -967,9 +997,9 @@ router.get('/widgets/:type', async (req, res) => {
                 const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
                 const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
                     pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql}`, bookingCountParams),
-                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.status = 'in_progress' ${activeTaskVisibility}`, activeTaskParams),
+                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.status = 'in_progress' ${activeTaskVisibility} ${activeTaskBusinessCondition}`, activeTaskParams),
                     pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql}`, revenueParams),
-                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') ${overdueTaskVisibility}`, overdueTaskParams),
+                    pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
                     pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql}`, unconfirmedParams),
                     pool.query("SELECT COUNT(*) as count FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true"),
                     pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'")
@@ -995,6 +1025,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const alertToday = getKyivDateStr();
                 const overdueParams = [];
                 const overdueVisibility = buildTaskVisibilityScope(req.user, overdueParams, 't');
+                const overdueBusinessCondition = appendDashboardBusinessScope(overdueParams, businessScope, 't');
                 const unconfirmedParams = [alertToday];
                 const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
                 const shiftParams = [alertToday];
@@ -1004,6 +1035,7 @@ router.get('/widgets/:type', async (req, res) => {
                                 WHERE t.deadline < NOW()
                                   AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                                   ${overdueVisibility}
+                                  ${overdueBusinessCondition}
                                 ORDER BY t.deadline ASC LIMIT 5`, overdueParams),
                     pool.query(`SELECT b.id, b.label, b.time FROM bookings b
                                 WHERE b.date = $1 AND b.status = 'preliminary'
@@ -1057,7 +1089,7 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'event_risk_summary': {
-                data = await buildEventRiskSummary(req.user);
+                data = await buildEventRiskSummary(req.user, businessScope);
                 break;
             }
 
@@ -1148,6 +1180,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const excToday = getKyivDateStr();
                 const exceptionPrepParams = [];
                 const exceptionPrepVisibility = buildTaskVisibilityScope(req.user, exceptionPrepParams, 't');
+                const exceptionPrepBusinessCondition = appendDashboardBusinessScope(exceptionPrepParams, businessScope, 't');
                 const exceptionPrepBookingVisibility = getVisibleBookingScope(req.user, exceptionPrepParams, 'b');
                 const conflictParams = [excToday];
                 const conflictVisibility1 = getVisibleBookingScope(req.user, conflictParams, 'b1');
@@ -1193,6 +1226,7 @@ router.get('/widgets/:type', async (req, res) => {
                           AND t.deadline < NOW()
                           AND COALESCE(b.status, 'confirmed') <> 'cancelled'
                           ${exceptionPrepVisibility}
+                          ${exceptionPrepBusinessCondition}
                           ${exceptionPrepBookingVisibility.sql}
                         ORDER BY t.deadline ASC LIMIT 5
                     `, exceptionPrepParams).catch(() => ({ rows: [] })),
@@ -1359,6 +1393,7 @@ router.get('/widgets/:type', async (req, res) => {
             case 'team_tasks': {
                 const params = [];
                 const visibility = buildTaskVisibilityScope(req.user, params, 't');
+                const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
                     SELECT t.id, t.title, t.assigned_to, t.owner, t.owner_user_id,
                            u.name AS owner_name, u.username AS owner_username,
@@ -1370,6 +1405,7 @@ router.get('/widgets/:type', async (req, res) => {
                     ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                     ${visibility}
+                    ${taskBusinessCondition}
                     ORDER BY
                         CASE WHEN t.deadline < NOW() THEN 0 ELSE 1 END,
                         CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
@@ -1378,13 +1414,14 @@ router.get('/widgets/:type', async (req, res) => {
                 `, params);
                 const statsParams = [];
                 const statsVisibility = buildTaskVisibilityScope(req.user, statsParams, 't');
+                const statsBusinessCondition = appendDashboardBusinessScope(statsParams, businessScope, 't');
                 const stats = await pool.query(`
                     SELECT
                         COUNT(*) FILTER (WHERE t.status = 'todo')::int AS todo,
                         COUNT(*) FILTER (WHERE t.status = 'in_progress')::int AS in_progress,
                         COUNT(*) FILTER (WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS overdue
                     FROM tasks t
-                    WHERE 1=1 ${statsVisibility}
+                    WHERE 1=1 ${statsVisibility} ${statsBusinessCondition}
                 `, statsParams);
                 const tasks = taskWidgetPayload(result.rows);
                 data = { tasks, stats: stats.rows[0], intelligence: buildTaskOperationsSummary(tasks) };
@@ -1442,10 +1479,12 @@ router.get('/widgets/:type', async (req, res) => {
 
             // v39.10: Art director content pipeline
             case 'content_pipeline': {
+                const designTaskParams = [];
+                const designTaskBusinessCondition = appendDashboardBusinessScope(designTaskParams, businessScope, 'tasks');
                 const [inReview, approved, tasks, catalogs] = await Promise.all([
                     pool.query(`SELECT id, title, status FROM art_director_content WHERE status = 'in_review' ORDER BY created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
                     pool.query(`SELECT COUNT(*)::int AS c FROM art_director_content WHERE status = 'approved' AND created_at > NOW() - INTERVAL '7 days'`).catch(() => ({ rows: [{ c: 0 }] })),
-                    pool.query(`SELECT id, title, priority FROM tasks WHERE category = 'improvement' AND status NOT IN ('done','cancelled') ORDER BY priority DESC, deadline ASC LIMIT 5`).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT id, title, priority FROM tasks WHERE category = 'improvement' AND status NOT IN ('done','cancelled') ${designTaskBusinessCondition} ORDER BY priority DESC, deadline ASC LIMIT 5`, designTaskParams).catch(() => ({ rows: [] })),
                     pool.query(`SELECT id, name, emoji, status FROM catalog_definitions WHERE is_active = true ORDER BY name`).catch(() => ({ rows: [] }))
                 ]);
                 data = {
@@ -1461,6 +1500,7 @@ router.get('/widgets/:type', async (req, res) => {
             case 'task_health': {
                 const params = [];
                 const visibility = buildTaskVisibilityScope(req.user, params, 't');
+                const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const stats = await pool.query(`
                     SELECT
                         COUNT(*) FILTER (WHERE t.health_score > 70 AND t.status NOT IN ('done','cancelled','archived'))::int AS healthy,
@@ -1469,7 +1509,7 @@ router.get('/widgets/:type', async (req, res) => {
                         COUNT(*) FILTER (WHERE t.status = 'archived')::int AS archived,
                         COALESCE(AVG(t.health_score) FILTER (WHERE t.status NOT IN ('done','cancelled','archived')), 0)::int AS avg_score
                     FROM tasks t
-                    WHERE 1=1 ${visibility}
+                    WHERE 1=1 ${visibility} ${taskBusinessCondition}
                 `, params).catch(() => ({ rows: [{ healthy: 0, warning: 0, critical: 0, archived: 0, avg_score: 0 }] }));
                 data = stats.rows[0];
                 break;
@@ -1525,10 +1565,13 @@ router.get('/roles', async (req, res) => {
 // GET /api/dashboard/today — aggregate "today" data for quick overview
 router.get('/today', async (req, res) => {
     try {
+        const businessScope = dashboardBusinessScope(req, res);
+        if (!businessScope) return;
         const today = getKyivDateStr();
         const taskParams = [];
         const taskVisibility = buildTaskVisibilityScope(req.user, taskParams, 't');
         const ownTaskFilter = buildOwnTaskFilter(req.user, taskParams, 't');
+        const taskBusinessCondition = appendDashboardBusinessScope(taskParams, businessScope, 't');
         const bookingCountParams = [today];
         const bookingCountVisibility = getVisibleBookingScope(req.user, bookingCountParams, 'b');
         const revenueParams = [today];
@@ -1540,7 +1583,8 @@ router.get('/today', async (req, res) => {
                         FROM tasks t
                         WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                         ${taskVisibility}
-                        ${ownTaskFilter}`, taskParams),
+                        ${ownTaskFilter}
+                        ${taskBusinessCondition}`, taskParams),
             pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql}`, revenueParams),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
             pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'").catch(() => ({ rows: [{ count: 0 }] })),
@@ -1636,9 +1680,12 @@ async function fetchCurrency() {
 // GET /api/dashboard/alerts — standalone endpoint for alert bell
 router.get('/alerts', async (req, res) => {
     try {
+        const businessScope = dashboardBusinessScope(req, res);
+        if (!businessScope) return;
         const today = getKyivDateStr();
         const overdueParams = [];
         const overdueVisibility = buildTaskVisibilityScope(req.user, overdueParams, 't');
+        const overdueBusinessCondition = appendDashboardBusinessScope(overdueParams, businessScope, 't');
         const unconfirmedParams = [today];
         const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
         const shiftParams = [today];
@@ -1652,6 +1699,7 @@ router.get('/alerts', async (req, res) => {
                         WHERE t.deadline < NOW()
                           AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                           ${overdueVisibility}
+                          ${overdueBusinessCondition}
                         ORDER BY t.deadline ASC
                         LIMIT 5`, overdueParams),
             pool.query(`SELECT b.id, b.label, b.time FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ORDER BY b.time LIMIT 5`, unconfirmedParams),

@@ -1184,6 +1184,30 @@ async function apiCreateBooking(booking) {
     }
 }
 
+async function apiCreateEducationLessonSeries(booking) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings/education-series')}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({ booking: timelineApiPayload(booking) }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                error: body.error || 'API error',
+                conflictBookingId: body.conflictBookingId || null,
+                conflicts: body.conflicts || []
+            };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createEducationLessonSeries error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 // v5.7: Create booking with linked bookings in one transaction
 async function apiCreateBookingFull(main, linked) {
     try {

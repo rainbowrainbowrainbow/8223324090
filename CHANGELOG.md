@@ -4,6 +4,18 @@
 
 ---
 
+## v0.68.17 - серії навчальних занять
+
+### Education timeline / lesson series / multi-cabinet planning / 29.05.2026 [codex]
+- **Серія занять стала реальною дією** - якщо в навчальному режимі вказано більше одного заняття, CRM створює весь ряд записів через `/api/bookings/education-series`, а не просто зберігає число в metadata.
+- **Повторення керується з форми** - додано вибір `Щотижня`, `Щодня`, `Раз на два тижні`; кожен occurrence отримує власну дату, `seriesId`, `seriesIndex`, `seriesSize`, `repeatEvery` і `seriesRootBookingId`.
+- **Backend створює серію атомарно** - перевірки кабінету, кімнати, місткості, дублю програми і викладача проходять для кожного заняття; при конфлікті не створюється жоден частковий запис.
+- **Timeline показує номер заняття в серії** - навчальні блоки отримали `#1/N`, а деталі бронювання показують позицію в серії та тип повторення.
+- **Side-effects не спамлять майбутні заняття** - перше заняття лишається основним для lead/customer/history/notification flow, а наступні occurrence створюються тихо.
+- **Regression guard оновлено** - `timeline-resources`, UI smoke і syntax checks фіксують series endpoint, frontend виклик, repeat control і timeline badge.
+
+---
+
 ## v0.68.16 - розклад занять 2.0
 
 ### Education timeline / lessons / teacher conflicts / 29.05.2026 [codex]

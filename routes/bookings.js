@@ -374,12 +374,15 @@ function educationLessonFromPayload(payload = {}) {
     if (!lesson || typeof lesson !== 'object') return null;
     const teacherId = String(lesson.teacherId || '').trim();
     const teacherName = String(lesson.teacherName || '').trim();
-    if (!teacherId && !teacherName) return null;
+    const title = String(lesson.title || payload.programName || payload.label || '').trim();
+    const groupName = String(lesson.groupName || payload.groupName || '').trim();
+    const courseCode = String(lesson.courseCode || '').trim();
+    if (!teacherId && !teacherName && !title && !groupName && !courseCode && lesson.mode !== 'education_lesson') return null;
     return {
         ...lesson,
         teacherId,
         teacherName,
-        title: String(lesson.title || payload.programName || payload.label || 'Заняття').trim()
+        title: String(title || 'Заняття').trim()
     };
 }
 
@@ -425,6 +428,138 @@ async function validateEducationLessonTeacherConflict(queryable, payload, busine
         conflict,
         error: `Викладач "${lesson.teacherName || lesson.teacherId}" зайнятий: ${conflict.label || conflict.program_name || conflict.program_code} о ${conflict.time}`
     };
+}
+
+function normalizeEducationLessonRepeatEvery(value) {
+    return ['daily', 'weekly', 'biweekly'].includes(value) ? value : 'weekly';
+}
+
+function educationLessonRepeatDays(value) {
+    const normalized = normalizeEducationLessonRepeatEvery(value);
+    if (normalized === 'daily') return 1;
+    if (normalized === 'biweekly') return 14;
+    return 7;
+}
+
+function addDaysToIsoDate(date, days) {
+    const source = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(source.getTime())) return date;
+    source.setUTCDate(source.getUTCDate() + days);
+    return source.toISOString().slice(0, 10);
+}
+
+function educationSeriesId() {
+    return `ELS-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function cloneJson(value) {
+    if (!value || typeof value !== 'object') return {};
+    return JSON.parse(JSON.stringify(value));
+}
+
+function setEducationLessonExtra(payload, lesson) {
+    const extraData = cloneJson(payload.extraData || payload.extra_data || {});
+    extraData.educationLesson = lesson;
+    if (!extraData.bookingWorkspace || typeof extraData.bookingWorkspace !== 'object') {
+        extraData.bookingWorkspace = { source: 'booking_workspace_v2' };
+    }
+    extraData.bookingWorkspace.lesson = lesson;
+    payload.extraData = extraData;
+}
+
+function buildEducationLessonSeriesCandidates(main, lesson) {
+    const seriesSize = Math.max(2, Math.min(parseInt(lesson.seriesSize, 10) || 1, 120));
+    const repeatEvery = normalizeEducationLessonRepeatEvery(lesson.repeatEvery);
+    const stepDays = educationLessonRepeatDays(repeatEvery);
+    const seriesId = educationSeriesId();
+    const rootDate = main.date;
+    const candidates = [];
+
+    for (let index = 0; index < seriesSize; index += 1) {
+        const candidate = {
+            ...cloneJson(main),
+            id: null,
+            date: addDaysToIsoDate(rootDate, stepDays * index),
+            linkedTo: null
+        };
+        const occurrenceLesson = {
+            ...cloneJson(lesson),
+            seriesId,
+            seriesSize,
+            seriesIndex: index + 1,
+            repeatEvery,
+            seriesRootDate: rootDate,
+            seriesRootTime: main.time,
+            source: 'education_lesson_series'
+        };
+        setEducationLessonExtra(candidate, occurrenceLesson);
+        candidate.programName = occurrenceLesson.title || candidate.programName || candidate.label || 'Заняття';
+        candidate.label = occurrenceLesson.lessonType === 'exam' ? 'Контроль' : 'Заняття';
+        candidate.groupName = occurrenceLesson.groupName || candidate.groupName || null;
+        candidate.category = candidate.category || 'education';
+        candidate.hosts = 1;
+        candidate.secondAnimator = null;
+        candidate.costume = null;
+        candidate.pinataMode = 'none';
+        candidate.skipNotification = index > 0 ? true : Boolean(candidate.skipNotification);
+        candidates.push(candidate);
+    }
+
+    return { seriesId, seriesSize, repeatEvery, candidates };
+}
+
+function findEducationSeriesLocalConflict(candidates, currentIndex) {
+    const current = candidates[currentIndex];
+    const currentLesson = educationLessonFromPayload(current) || {};
+    for (let index = 0; index < currentIndex; index += 1) {
+        const other = candidates[index];
+        if (other.date !== current.date || !overlapsBookingTime(current, other)) continue;
+        const otherLesson = educationLessonFromPayload(other) || {};
+        if (other.lineId && current.lineId && String(other.lineId) === String(current.lineId)) {
+            return { type: 'line', conflict: other };
+        }
+        if (isRealRoom(other.room) && isRealRoom(current.room) && String(other.room) === String(current.room)) {
+            return { type: 'room', conflict: other };
+        }
+        const sameTeacher = (currentLesson.teacherId && otherLesson.teacherId && currentLesson.teacherId === otherLesson.teacherId)
+            || (currentLesson.teacherName && otherLesson.teacherName && currentLesson.teacherName.toLowerCase() === otherLesson.teacherName.toLowerCase());
+        if (sameTeacher) return { type: 'teacher', conflict: other };
+    }
+    return null;
+}
+
+async function resolveBookingCustomerId(client, booking, businessContext) {
+    let customerId = booking.customerId ? parseInt(booking.customerId, 10) : null;
+    if (sideEffectsAllowedForContext(businessContext) && booking.customer && booking.customer.name && !customerId) {
+        const c = booking.customer;
+        if (c.phone && c.phone.trim()) {
+            const existing = await client.query(
+                "SELECT id FROM customers WHERE phone = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                [c.phone.trim(), businessContext]
+            );
+            if (existing.rows.length > 0) customerId = existing.rows[0].id;
+        }
+        if (!customerId) {
+            const custResult = await client.query(
+                `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+                [businessContext, c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, normalizeCustomerSource(c.source)]
+            );
+            customerId = custResult.rows[0].id;
+        }
+    }
+    if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        const scopedCustomer = await client.query(
+            "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+            [customerId, businessContext]
+        );
+        if (!scopedCustomer.rows.length) {
+            const err = new Error('Customer does not belong to this business context');
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+    return customerId;
 }
 
 async function findAtomicLineConflict(client, candidate, excludeIds) {
@@ -1138,6 +1273,237 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
         log.error('Error creating booking', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Create an education lesson series atomically. The first occurrence behaves like
+// a normal lesson booking; future occurrences stay quiet to avoid notification spam.
+router.post('/education-series', requireAction('create_booking'), async (req, res) => {
+    const main = req.body?.booking || req.body?.main || req.body || {};
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'create')) return;
+    main.businessContext = businessContext;
+
+    if (!main.date || !main.time || !main.lineId) {
+        return res.status(400).json({ success: false, error: 'Missing required fields: date, time, lineId' });
+    }
+    if (!validateDate(main.date)) return res.status(400).json({ success: false, error: 'Invalid date format' });
+    if (!validateTime(main.time)) return res.status(400).json({ success: false, error: 'Invalid time format' });
+
+    const lesson = educationLessonFromPayload(main);
+    const requestedSize = parseInt(lesson?.seriesSize, 10) || 1;
+    if (!lesson || requestedSize < 2) {
+        return res.status(400).json({ success: false, error: 'Серія навчальних занять потребує щонайменше 2 заняття' });
+    }
+    if (main.notes && main.notes.length > 2000) return res.status(400).json({ success: false, error: 'Нотатки: макс. 2000 символів' });
+    if (main.label && main.label.length > 200) return res.status(400).json({ success: false, error: 'Назва: макс. 200 символів' });
+    if (main.groupName && main.groupName.length > 200) return res.status(400).json({ success: false, error: 'Група: макс. 200 символів' });
+
+    const { seriesId, candidates } = buildEducationLessonSeriesCandidates(main, lesson);
+    for (const candidate of candidates) {
+        candidate.businessContext = businessContext;
+        if (!validateDate(candidate.date)) return res.status(400).json({ success: false, error: 'Invalid date format' });
+        if (!validateTime(candidate.time)) return res.status(400).json({ success: false, error: 'Invalid time format' });
+        const duration = parseInt(candidate.duration, 10) || 0;
+        if (duration <= 0 || duration > 1440) {
+            return res.status(400).json({ success: false, error: 'Тривалість заняття має бути від 1 до 1440 хвилин' });
+        }
+        const [hh, mm] = candidate.time.split(':').map(Number);
+        if (hh * 60 + mm + duration > 1440) {
+            return res.status(400).json({ success: false, error: 'Заняття не може переходити через опівніч' });
+        }
+        const bookingDateTime = new Date(`${candidate.date}T${candidate.time}:00`);
+        if (bookingDateTime < new Date()) {
+            return res.status(400).json({ success: false, error: 'Неможливо створити заняття в минулому.' });
+        }
+        await hydrateBookingRoomFromTimelineResource(pool, candidate, businessContext);
+        const roomError = requireBookingRoom(candidate);
+        if (roomError) return res.status(400).json({ success: false, error: roomError });
+        const capacityError = await validateBookingTimelineResourceCapacity(pool, candidate, businessContext);
+        if (capacityError) return res.status(409).json({ success: false, error: capacityError.error, resource: capacityError.resource });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const customerId = await resolveBookingCustomerId(client, main, businessContext);
+        const insertedRows = [];
+        const generatedIds = [];
+        for (const candidate of candidates) {
+            candidate.id = await generateBookingNumber(client);
+            generatedIds.push(candidate.id);
+        }
+        const rootBookingId = generatedIds[0];
+
+        for (let index = 0; index < candidates.length; index += 1) {
+            const candidate = candidates[index];
+            const occurrenceLesson = educationLessonFromPayload(candidate);
+            occurrenceLesson.seriesRootBookingId = rootBookingId;
+            setEducationLessonExtra(candidate, occurrenceLesson);
+
+            const pinataFields = applyPinataNormalization(candidate);
+            if (pinataFields.error) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: pinataFields.error });
+            }
+            applyBookingPackage(candidate);
+            if (candidate.price != null) {
+                candidate.price = parseFloat(candidate.price);
+                if (!Number.isFinite(candidate.price) || candidate.price < 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, error: 'Ціна не може бути відʼємною або некоректною' });
+                }
+            }
+
+            const localConflict = findEducationSeriesLocalConflict(candidates, index);
+            if (localConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    error: `Конфлікт у серії ${candidate.date} ${candidate.time}: ${localConflict.type}`
+                });
+            }
+
+            const lineConflict = await checkServerConflicts(client, candidate.date, candidate.lineId, candidate.time, candidate.duration || 0, null, businessContext);
+            if (lineConflict.overlap) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    conflictBookingId: lineConflict.conflictWith.id,
+                    error: `Кабінет зайнятий ${candidate.date} о ${candidate.time}: ${lineConflict.conflictWith.label || lineConflict.conflictWith.program_code}`
+                });
+            }
+
+            const duplicate = await checkServerDuplicate(client, candidate.date, candidate.programId, candidate.time, candidate.duration || 0, null, businessContext);
+            if (duplicate) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, conflictBookingId: duplicate.id, error: `Ця програма вже є ${candidate.date} о ${candidate.time}` });
+            }
+
+            const roomConflict = await checkRoomConflict(client, candidate.date, candidate.room, candidate.time, candidate.duration || 0, null, businessContext);
+            if (roomConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    conflictBookingId: roomConflict.id,
+                    error: `Кабінет "${candidate.room}" зайнятий ${candidate.date} о ${candidate.time}: ${roomConflict.label || roomConflict.program_code}`
+                });
+            }
+
+            const teacherConflict = await validateEducationLessonTeacherConflict(client, candidate, businessContext, generatedIds);
+            if (teacherConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: teacherConflict.error, conflictBookingId: teacherConflict.conflict.id });
+            }
+
+            const insertResult = await client.query(
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+                 RETURNING *`,
+                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status || 'confirmed', candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetTables || null, candidate.banquetMenu || null]
+            );
+            if (insertResult.rows[0]) insertedRows.push(insertResult.rows[0]);
+        }
+
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+            await client.query(
+                `UPDATE customers SET
+                    first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
+                    updated_at = NOW()
+                 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3`,
+                [main.date, customerId, businessContext]
+            );
+        }
+
+        if (sideEffectsAllowedForContext(businessContext) && main.leadId) {
+            await attachLeadBookingLink(client, {
+                leadId: main.leadId,
+                bookingId: rootBookingId,
+                customerId,
+                businessContext
+            });
+        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && hasBookingLeadIdentity(main, customerId)) {
+            const leadLink = await ensureLeadForBooking(client, {
+                booking: { ...main, id: rootBookingId },
+                customerId,
+                businessContext
+            });
+            if (leadLink.attached) main.leadId = leadLink.leadId;
+        }
+
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['education_series_create', main.createdBy || req.user?.username, JSON.stringify({
+                seriesId,
+                rootBookingId,
+                count: insertedRows.length,
+                businessContext,
+                date: main.date,
+                time: main.time,
+                title: lesson.title,
+                teacherId: lesson.teacherId || null,
+                teacherName: lesson.teacherName || null
+            })]
+        );
+
+        await client.query('COMMIT');
+
+        const bookings = insertedRows.map(mapBookingRow);
+        bookings.forEach(booking => {
+            broadcast('booking:created', booking, req.user?.id?.toString(), booking.date);
+        });
+        _alertPush();
+
+        if (sideEffectsAllowedForContext(businessContext) && bookings[0] && main.status !== 'preliminary' && !main.skipNotification) {
+            getLineName(main.lineId, main.date, businessContext).then(lineName => notifyTelegram('create', {
+                ...main,
+                id: rootBookingId,
+                program_code: main.programCode,
+                program_name: main.programName,
+                kids_count: main.kidsCount,
+                created_by: main.createdBy || req.user?.username
+            }, { username: main.createdBy || req.user?.username, lineName, businessContext }))
+                .catch(err => log.error(`Telegram notify failed (education-series): ${err.message}`));
+        }
+
+        if (sideEffectsAllowedForContext(businessContext) && bookings[0]) {
+            processBookingAutomation(bookings[0])
+                .catch(err => log.error(`Automation failed (education-series): ${err.message}`));
+        }
+
+        if (sideEffectsAllowedForContext(businessContext) && bookings[0]) {
+            publishEvent('booking.created', {
+                booking_id: rootBookingId,
+                business_context: businessContext,
+                date: main.date,
+                time: main.time,
+                room: main.room,
+                program_code: main.programCode,
+                program_name: main.programName,
+                status: main.status || 'confirmed',
+                price: main.price || 0,
+                kids_count: main.kidsCount,
+                created_by: main.createdBy || req.user?.username,
+                education_series_id: seriesId,
+                education_series_count: bookings.length
+            }, `education_series_created_${seriesId}`);
+        }
+
+        res.json({
+            success: true,
+            seriesId,
+            createdCount: bookings.length,
+            mainBooking: bookings[0] || null,
+            bookings
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (education-series)', rbErr));
+        log.error('Error creating education lesson series', err);
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Internal server error' });
     } finally {
         client.release();
     }

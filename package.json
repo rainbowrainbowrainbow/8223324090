@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.16",
+  "version": "0.68.17",
   "eventGenix": {
-    "releaseLabel": "розклад занять 2.0"
+    "releaseLabel": "серії навчальних занять"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

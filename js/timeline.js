@@ -828,6 +828,9 @@ function createBookingBlock(booking, startHour) {
         educationLessonExtra.courseCode,
         renderBooking.room
     ].filter(Boolean).join(' · ');
+    const lessonSeriesBadge = Number(educationLessonExtra.seriesSize || 0) > 1
+        ? ` #${educationLessonExtra.seriesIndex || 1}/${educationLessonExtra.seriesSize}`
+        : '';
     const bookingTitleTail = isMaysternyaSlotClosed
         ? (resourceBlockExtra.resourceName || 'Зайнято')
         : (isEducationLessonBlock ? lessonTail : (maysternyaClient || renderBooking.room || renderBooking.programName || ''));
@@ -836,7 +839,7 @@ function createBookingBlock(booking, startHour) {
         : (isEducationLessonBlock
             ? (educationLessonExtra.title || renderBooking.programName || renderBooking.label || 'Заняття')
             : (renderBooking.label || renderBooking.programCode));
-    const bookingTitleText = bookingTitleTail ? `${bookingTitle}: ${bookingTitleTail}` : bookingTitle;
+    const bookingTitleText = bookingTitleTail ? `${bookingTitle}${lessonSeriesBadge}: ${bookingTitleTail}` : `${bookingTitle}${lessonSeriesBadge}`;
     const studentSuffix = renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} учн.)` : '';
     block.innerHTML = `
         <div class="user-letter">${badge}</div>

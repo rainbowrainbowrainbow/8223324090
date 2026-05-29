@@ -498,7 +498,7 @@ body.timeline-mode-education .booking-room-first-section select {
 }
 
 .education-lesson-grid--compact {
-    grid-template-columns: minmax(120px, 0.6fr) minmax(160px, 1fr);
+    grid-template-columns: minmax(110px, 0.55fr) minmax(150px, 0.85fr) minmax(150px, 1fr);
 }
 
 .education-lesson-grid label {

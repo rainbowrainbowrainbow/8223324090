@@ -86,13 +86,19 @@ test('education timeline bookings persist lesson details and guard teacher confl
 
     assert.match(html, /educationLessonSection/);
     assert.match(html, /educationLessonTeacher/);
+    assert.match(html, /educationLessonRepeatEvery/);
     assert.match(booking, /function getEducationLessonDetails/);
+    assert.match(booking, /apiCreateEducationLessonSeries/);
     assert.match(booking, /extraData\.educationLesson/);
     assert.match(booking, /loadEducationLessonTeachers/);
-    assert.match(bookingForm, /educationLessonTitle/);
+    assert.match(bookingForm, /educationLessonRepeatEvery/);
     assert.match(timeline, /educationLessonExtra/);
+    assert.match(timeline, /lessonSeriesBadge/);
     assert.match(timeline, /education-lesson/);
+    assert.match(bookingsRoute, /education-series/);
+    assert.match(bookingsRoute, /buildEducationLessonSeriesCandidates/);
     assert.match(bookingsRoute, /function validateEducationLessonTeacherConflict/);
+    assert.match(bookingsRoute, /seriesRootBookingId/);
     assert.match(bookingsRoute, /extra_data->'educationLesson'->>'teacherId'/);
     assert.match(panelCss, /\.education-lesson-section/);
 });

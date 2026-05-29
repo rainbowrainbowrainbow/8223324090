@@ -412,6 +412,17 @@ function educationLessonDetailsFromBooking(booking = {}) {
         || {};
 }
 
+function normalizeEducationLessonRepeatEvery(value) {
+    return ['daily', 'weekly', 'biweekly'].includes(value) ? value : 'weekly';
+}
+
+function educationLessonRepeatEveryLabel(value) {
+    const normalized = normalizeEducationLessonRepeatEvery(value);
+    if (normalized === 'daily') return 'Щодня';
+    if (normalized === 'biweekly') return 'Раз на два тижні';
+    return 'Щотижня';
+}
+
 function resetEducationLessonFields() {
     ['educationLessonTitle', 'educationLessonGroup', 'educationLessonCourse', 'educationLessonSeriesSize'].forEach(id => {
         const el = document.getElementById(id);
@@ -419,6 +430,8 @@ function resetEducationLessonFields() {
     });
     const teacher = document.getElementById('educationLessonTeacher');
     if (teacher) teacher.value = '';
+    const repeatEvery = document.getElementById('educationLessonRepeatEvery');
+    if (repeatEvery) repeatEvery.value = 'weekly';
     const type = document.getElementById('educationLessonType');
     if (type) type.value = 'lesson';
 }
@@ -519,6 +532,7 @@ function getEducationLessonDetails(formData = {}) {
         groupName: groupName || null,
         courseCode: document.getElementById('educationLessonCourse')?.value?.trim() || null,
         seriesSize: Number.isFinite(seriesSize) && seriesSize > 0 ? Math.min(seriesSize, 120) : 1,
+        repeatEvery: normalizeEducationLessonRepeatEvery(document.getElementById('educationLessonRepeatEvery')?.value || 'weekly'),
         studentCount: parseInt(document.getElementById('kidsCountInput')?.value || '0', 10) || null,
         resourceId: formData.lineId || document.getElementById('bookingLine')?.value || null,
         resourceName: resource?.name || formData.room || document.getElementById('roomSelect')?.value || null,
@@ -537,6 +551,8 @@ function hydrateEducationLessonFields(booking = {}) {
     if (course) course.value = lesson.courseCode || '';
     const seriesSize = document.getElementById('educationLessonSeriesSize');
     if (seriesSize) seriesSize.value = lesson.seriesSize || '';
+    const repeatEvery = document.getElementById('educationLessonRepeatEvery');
+    if (repeatEvery) repeatEvery.value = normalizeEducationLessonRepeatEvery(lesson.repeatEvery || 'weekly');
     const type = document.getElementById('educationLessonType');
     if (type) type.value = lesson.lessonType || 'lesson';
     const teacher = document.getElementById('educationLessonTeacher');
@@ -940,7 +956,7 @@ function initBookingPackageWorkspace() {
     });
     ['roomSelect', 'customerName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
-     'educationLessonSeriesSize', 'educationLessonType',
+     'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
      'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes'].forEach(id => {
         const el = document.getElementById(id);
@@ -2269,6 +2285,14 @@ function buildBookingObject(formData, program) {
     return obj;
 }
 
+function shouldCreateEducationLessonSeries(booking) {
+    const lesson = educationLessonDetailsFromBooking(booking);
+    return isEducationTimelineBookingMode()
+        && !AppState.editingBookingId
+        && lesson
+        && Number(lesson.seriesSize || 1) > 1;
+}
+
 function buildMaysternyaClosedSlotBooking() {
     const duration = getMaysternyaSlotCloseDuration();
     const notes = document.getElementById('bookingNotes')?.value?.trim() || '';
@@ -2624,16 +2648,21 @@ async function handleBookingSubmit(e) {
             showNotification('Бронювання оновлено!', 'success');
         } else {
             // ===== РЕЖИМ СТВОРЕННЯ (v5.7: transactional with linked) =====
-            const linked = await buildLinkedBookings(booking, formData.program);
             let createResult;
 
-            if (linked.length > 0) {
-                createResult = await apiCreateBookingFull(booking, linked);
+            if (shouldCreateEducationLessonSeries(booking)) {
+                createResult = await apiCreateEducationLessonSeries(booking);
             } else {
-                createResult = await apiCreateBooking(booking);
+                const linked = await buildLinkedBookings(booking, formData.program);
+                if (linked.length > 0) {
+                    createResult = await apiCreateBookingFull(booking, linked);
+                } else {
+                    createResult = await apiCreateBooking(booking);
+                }
             }
 
             if (createResult && createResult.success === false) {
+                if (createResult.conflictBookingId) revealHiddenBooking(createResult.conflictBookingId);
                 showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 unlockSubmitBtn(); return;
             }
@@ -2647,14 +2676,20 @@ async function handleBookingSubmit(e) {
             }
             // History + Telegram handled by server
 
-            pushUndo('create', [booking]);
+            const createdBookings = Array.isArray(createResult?.bookings) && createResult.bookings.length
+                ? createResult.bookings
+                : [booking];
+            pushUndo('create', createdBookings);
 
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            const changedDates = new Set(createdBookings.map(item => item.date || formatDate(AppState.selectedDate)));
+            changedDates.add(formatDate(AppState.selectedDate));
+            changedDates.forEach(date => { delete AppState.cachedBookings[date]; });
             closeBookingPanel(true);
             unlockSubmitBtn();
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
-            showNotification('Бронювання створено!', 'success');
+            const seriesCount = createResult?.createdCount || createdBookings.length;
+            showNotification(seriesCount > 1 ? `Створено серію занять: ${seriesCount}` : 'Бронювання створено!', 'success');
         }
     } catch (error) {
         handleError('Збереження бронювання', error);
@@ -2838,7 +2873,8 @@ function renderEducationLessonDetail(booking) {
         lesson.teacherName ? ['Викладач', lesson.teacherName] : null,
         lesson.groupName || booking.groupName ? ['Група / клас', lesson.groupName || booking.groupName] : null,
         lesson.courseCode ? ['Курс / серія', lesson.courseCode] : null,
-        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Занять у серії', String(lesson.seriesSize)] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Серія', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Повторення', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
         lesson.resourceName || booking.room ? ['Кабінет', lesson.resourceName || booking.room] : null
     ].filter(Boolean);
     if (!rows.length) return '';

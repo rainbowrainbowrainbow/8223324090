@@ -39,7 +39,7 @@
             navLabel: 'Таймлайн МД',
             switchLabel: 'Таймлайн МД',
             productName: 'Таймлайн МД',
-            brandName: 'Майстерня Долі',
+            brandName: 'Майстерня долі',
             subtitle: 'Записи психолога',
             storagePrefix: 'md',
             apiValue: 'maysternya_doli',

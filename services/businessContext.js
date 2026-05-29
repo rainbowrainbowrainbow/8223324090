@@ -28,7 +28,7 @@ const BUSINESS_CONTEXTS = Object.freeze({
   },
   maysternya_doli: {
     key: 'maysternya_doli',
-    label: 'Майстерня Долі',
+    label: 'Майстерня долі',
     shortLabel: 'МД',
     pageAllowlist: '/maysternya-doli',
     modules: [

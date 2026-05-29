@@ -1036,7 +1036,7 @@ function getAccountBusinessCatalog() {
     return [
         { key: 'event_genix', label: 'Парк Закревського', shortLabel: 'Парк' },
         { key: 'dar', label: 'Дар', shortLabel: 'Дар' },
-        { key: 'maysternya_doli', label: 'Майстерня Долі', shortLabel: 'МД' },
+        { key: 'maysternya_doli', label: 'Майстерня долі', shortLabel: 'МД' },
         { key: 'crm', label: 'CRM продажі', shortLabel: 'CRM' }
     ];
 }

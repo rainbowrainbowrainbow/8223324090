@@ -101,7 +101,8 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(apiJs, /apiUpdateProductDocument/);
     assert.match(apiJs, /addProductBusinessContextParam/);
     assert.match(apiJs, /CRM_BUSINESS_SCOPED_PAGES/);
-    assert.match(apiJs, /globalBusinessContextHost/);
+    assert.match(apiJs, /function getCrmBusinessState/);
+    assert.match(apiJs, /state: getCrmBusinessState/);
     assert.match(apiJs, /crmBusinessContextChanged/);
     assert.match(apiJs, /businessContext/);
     assert.match(apiJs, /\/products\/catalogs/);

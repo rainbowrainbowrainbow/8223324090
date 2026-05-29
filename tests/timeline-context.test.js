@@ -51,7 +51,7 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
     assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
-    assert.match(contextCode, /brandName: 'Майстерня Долі'/);
+    assert.match(contextCode, /brandName: 'Майстерня долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
 });

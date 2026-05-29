@@ -1518,7 +1518,7 @@ body:not(.dark-mode) .mini-booking-block:hover {
 }
 
 /* ==========================================
-   v0.61.50: Timeline business switch + visibility constructor
+   v0.61.50: Timeline visibility constructor
    ========================================== */
 
 .timeline-hidden-by-config {
@@ -1527,37 +1527,6 @@ body:not(.dark-mode) .mini-booking-block:hover {
 
 .timeline-permission-hidden {
     display: none !important;
-}
-
-.timeline-business-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 46px;
-    padding: 0 12px;
-    border: 1px solid rgba(32, 201, 151, 0.32);
-    border-radius: 14px;
-    background: rgba(15, 23, 42, 0.58);
-    color: var(--text-secondary, #cbd5e1);
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0;
-}
-
-.timeline-business-switch select {
-    min-width: 142px;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--text-primary, #f8fafc);
-    font-size: 15px;
-    font-weight: 900;
-}
-
-.timeline-business-switch option {
-    background: #111827;
-    color: #f8fafc;
 }
 
 .timeline-constructor-btn {
@@ -1797,16 +1766,6 @@ body.timeline-constructor-active .timeline-constructor-disabled {
 }
 
 @media (max-width: 760px) {
-    .timeline-business-switch {
-        width: 100%;
-        justify-content: space-between;
-    }
-
-    .timeline-business-switch select {
-        min-width: 0;
-        width: 100%;
-    }
-
     .timeline-constructor-panel {
         right: 10px;
         bottom: 10px;
@@ -1829,7 +1788,7 @@ body.timeline-constructor-active .timeline-constructor-disabled {
     .modal, .toast-container, .v32-controls,
     .action-buttons, .date-controls,
     .bulk-action-bar, #kleshnyaWidget,
-    .timeline-business-switch, .timeline-constructor-btn, .timeline-constructor-panel,
+    .timeline-constructor-btn, .timeline-constructor-panel,
     .agents-panel, .command-panel,
     .btn-fab, .status-filter-section {
         display: none !important;

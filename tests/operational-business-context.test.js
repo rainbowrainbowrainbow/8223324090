@@ -88,13 +88,13 @@ test('shared CRM shell exposes safe read-only multi-business scope for core CRM 
     assert.match(service, /requireWritableBusinessScope/);
     assert.match(service, /= ANY\(\$\$\{params\.length\}::text\[\]\)/);
 
-    assert.match(api, /CRM_BUSINESS_SCOPE_ALL/);
-    assert.match(api, /CRM_BUSINESS_SCOPE_MULTI/);
-    assert.match(api, /businessScope/);
-    assert.match(api, /X-Business-Scope/);
+    assert.match(api, /function getCrmBusinessState/);
+    assert.match(api, /state: getCrmBusinessState/);
+    assert.match(api, /function renderCrmBusinessShell/);
+    assert.match(api, /document\.getElementById\('globalBusinessContextHost'\)\?\.remove|const existing = document\.getElementById\('globalBusinessContextHost'\)/);
     assert.match(api, /apiLogAction\('business_scope_switch'/);
-    assert.match(api, /crmBusinessPageAllowsAggregate/);
-    assert.match(api, /const multiSelected = scope\.mode === CRM_BUSINESS_SCOPE_SINGLE/);
+    assert.doesNotMatch(api, /id="globalBusinessContextSelect"/);
+    assert.doesNotMatch(api, /crm-business-multi-picker/);
     assert.match(api, /function assertCrmBusinessWritableRequest/);
     assert.match(api, /business_scope_read_only/);
 

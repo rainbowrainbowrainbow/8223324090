@@ -4,6 +4,17 @@
 
 ---
 
+## v0.67.16 - CRM 67.16: один бізнес-перемикач
+
+### Timeline shell / sidebar switcher / business state / 29.05.2026 [codex]
+- **Єдиний перемикач бізнесу лишився зліва** - header/topbar більше не рендерить окремий business selector, multi-picker або другий стан бізнесу.
+- **Sidebar став канонічним entrypoint** - user/business card читає `CrmBusinessContext.state(...)`, показує повну назву бізнесу в desktop-режимі й перемикає тільки один активний бізнес.
+- **Single-select contract зафіксовано для цього етапу** - вибір бізнесу очищає старі `businessScope`/`businessContexts` сліди з URL/storage, а `renderShell` лишився headless sync/cleanup helper без header UI.
+- **Timeline toolbar більше не створює свій selector** - `timeline-visibility` видаляє старий `timelineBusinessSwitch`, не додає listener-и і не дублює бізнес-стан біля основних controls.
+- **Додано regression guards** - UI smoke і focused tests перевіряють, що business scoping живе в sidebar/shared context, без `globalBusinessContextSelect` і без `timelineBusinessSelect`.
+
+---
+
 ## v0.67.15 - CRM 67.15: захист бізнес-scope записів
 
 ### Multi-business / write guard / switcher hardening / 28.05.2026 [codex]

@@ -1781,32 +1781,44 @@ const Sidebar = (() => {
         const host = document.getElementById('sidebarBusinessContextHost');
         const api = window.CrmBusinessContext;
         if (!host || !api?.options || !api?.current) return;
-        const options = api.options(user);
+        const businessState = api.state?.(user) || null;
+        const options = businessState?.availableBusinesses?.length
+            ? businessState.availableBusinesses.map(ctx => ({
+                key: ctx.key || ctx.id,
+                label: ctx.label,
+                shortLabel: ctx.shortLabel,
+                route: ctx.route
+            }))
+            : api.options(user);
         if (!options.length) {
             host.innerHTML = '';
             host.hidden = true;
             return;
         }
         host.hidden = false;
-        const current = api.current(user);
+        const current = businessState?.activeBusinessId || api.current(user);
         const currentContext = options.find(ctx => ctx.key === current) || options[0];
         if (options.length <= 1) {
-            host.innerHTML = `<span class="sidebar-business-chip" title="Бізнес акаунта">${_escAttr(currentContext.shortLabel || currentContext.label || currentContext.key)}</span>`;
+            host.innerHTML = `
+                <span class="sidebar-business-label">Бізнес</span>
+                <span class="sidebar-business-chip" title="Бізнес акаунта">${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}</span>`;
             return;
         }
         host.innerHTML = `
             <span class="sidebar-business-label">Бізнес</span>
             <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM">
-                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(ctx.shortLabel || ctx.label || ctx.key)}</option>`).join('')}
+                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(ctx.label || ctx.shortLabel || ctx.key)}</option>`).join('')}
             </select>`;
+        host.dataset.activeBusiness = currentContext.key || current;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
+        select.title = currentContext.label || currentContext.shortLabel || currentContext.key;
         select.addEventListener('click', event => event.stopPropagation());
         select.addEventListener('keydown', event => event.stopPropagation());
         select.addEventListener('change', async event => {
             const previous = api.current(user);
             select.disabled = true;
-            const next = await api.switchTo(event.target.value, { user, updateUrl: true });
+            const next = await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: false });
             if (window.__crmBusinessNavigationPending) return;
             if (next !== previous) {
                 const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

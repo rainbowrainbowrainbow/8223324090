@@ -3578,8 +3578,7 @@ body.dark-mode .guardian-stats-summary {
 }
 
 .timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn),
-.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo),
-.timeline-dashboard-page .timeline-business-switch select {
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
     min-height: 36px !important;
     border-radius: 11px !important;
     border: 1px solid transparent !important;
@@ -3602,53 +3601,6 @@ body.dark-mode .guardian-stats-summary {
     padding: 0 11px !important;
 }
 
-/* v0.63.50: Business selector joins the same CRM toolbar control family. */
-.timeline-dashboard-page .timeline-business-switch {
-    min-height: 42px;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 3px 5px 3px 11px;
-    border-radius: 14px;
-    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.18));
-    background: var(--eg-panel-bg-soft, rgba(15, 23, 42, 0.08));
-    color: var(--eg-text-secondary, #475569);
-    box-shadow: none;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 850;
-    line-height: 1;
-    letter-spacing: 0;
-    text-transform: none;
-}
-
-.timeline-dashboard-page .timeline-business-switch span {
-    color: inherit;
-    font: inherit;
-    line-height: 1;
-}
-
-.timeline-dashboard-page .timeline-business-switch select {
-    width: auto;
-    min-width: 126px;
-    padding: 0 22px 0 9px;
-    cursor: pointer;
-    transition: background-color var(--speed-fast, 0.15s) var(--ease-smooth, ease),
-                border-color var(--speed-fast, 0.15s) var(--ease-smooth, ease),
-                color var(--speed-fast, 0.15s) var(--ease-smooth, ease);
-}
-
-.timeline-dashboard-page .timeline-business-switch option {
-    background: var(--eg-panel-bg, #ffffff);
-    color: var(--eg-text-primary, #0f172a);
-}
-
-.timeline-dashboard-page.dark-mode .timeline-business-switch option,
-body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
-    background: #111827;
-    color: #f8fafc;
-}
-
 .timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
     border-radius: 11px !important;
     background: transparent !important;
@@ -3662,8 +3614,6 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
 
 .timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo):hover,
 .timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn):hover:not(.active),
-.timeline-dashboard-page .timeline-business-switch:hover select,
-.timeline-dashboard-page .timeline-business-switch:focus-within select,
 .timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle:hover,
 .timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle[aria-expanded="true"] {
     background: var(--eg-surface-elevated, rgba(255, 255, 255, 0.72)) !important;
@@ -3763,12 +3713,7 @@ body.dark-mode .timeline-dashboard-page .timeline-business-switch option {
     font-size: 11px;
 }
 
-.timeline-dashboard-page :where(button, input, select, .toggle-mini, .timeline-business-switch, .booking-block, .legend-item):focus-visible {
-    outline: none !important;
-    box-shadow: 0 0 0 3px var(--eg-focus-ring) !important;
-}
-
-.timeline-dashboard-page .timeline-business-switch:focus-within {
+.timeline-dashboard-page :where(button, input, select, .toggle-mini, .booking-block, .legend-item):focus-visible {
     outline: none !important;
     box-shadow: 0 0 0 3px var(--eg-focus-ring) !important;
 }
@@ -4047,8 +3992,7 @@ body.timeline-dashboard-page.timeline-compact-mode .control-panel {
 body.timeline-dashboard-page.timeline-compact-mode .date-controls,
 body.timeline-dashboard-page.timeline-compact-mode .v32-controls,
 body.timeline-dashboard-page.timeline-compact-mode .action-buttons,
-body.timeline-dashboard-page.timeline-compact-mode .view-mode-controls,
-body.timeline-dashboard-page.timeline-compact-mode .timeline-business-switch {
+body.timeline-dashboard-page.timeline-compact-mode .view-mode-controls {
     min-height: 34px !important;
     padding: 2px !important;
     gap: 5px !important;
@@ -4065,8 +4009,7 @@ body.timeline-dashboard-page.timeline-compact-mode .zoom-controls {
 }
 
 body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn),
-body.timeline-dashboard-page.timeline-compact-mode :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo),
-body.timeline-dashboard-page.timeline-compact-mode .timeline-business-switch select {
+body.timeline-dashboard-page.timeline-compact-mode :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
     min-height: 30px !important;
     height: 30px !important;
     padding: 0 9px !important;

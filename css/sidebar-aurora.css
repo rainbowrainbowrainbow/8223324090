@@ -8703,7 +8703,8 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
   }
 }
 .sidebar-business-context {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   margin-top: 8px;
@@ -8722,27 +8723,34 @@ body:not(.dark-mode) .sidebar-rail-flyout-link.active {
 
 .sidebar-business-select {
   min-width: 0;
-  flex: 1 1 auto;
-  height: 28px;
-  border: 1px solid rgba(99, 102, 241, .24);
-  border-radius: 8px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, .78);
+  width: 100%;
+  height: 32px;
+  border: 1px solid rgba(20, 184, 166, .28);
+  border-radius: 10px;
+  padding: 0 28px 0 9px;
+  background: rgba(255, 255, 255, .84);
   color: #0f172a;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 850;
+  cursor: pointer;
+  text-overflow: ellipsis;
 }
 
 .sidebar-business-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(99, 102, 241, .12);
-  color: #3730a3;
-  font-size: 11px;
-  font-weight: 800;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid rgba(20, 184, 166, .24);
+  border-radius: 10px;
+  background: rgba(20, 184, 166, .10);
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 body.dark-mode .sidebar-business-label {
@@ -8750,14 +8758,15 @@ body.dark-mode .sidebar-business-label {
 }
 
 body.dark-mode .sidebar-business-select {
-  border-color: rgba(129, 140, 248, .34);
+  border-color: rgba(45, 212, 191, .34);
   background: rgba(15, 23, 42, .82);
   color: #e5e7eb;
 }
 
 body.dark-mode .sidebar-business-chip {
-  background: rgba(129, 140, 248, .18);
-  color: #c7d2fe;
+  border-color: rgba(45, 212, 191, .30);
+  background: rgba(45, 212, 191, .14);
+  color: #99f6e4;
 }
 
 /* v0.67.4: компактніший sidebar без зміщення основного CRM полотна. */
@@ -8851,7 +8860,7 @@ body.dark-mode .sidebar-business-chip {
   }
 
   .sidebar-business-select {
-    height: 28px !important;
+    height: 30px !important;
     padding-inline: 7px !important;
     font-size: 12px !important;
     max-width: 100% !important;

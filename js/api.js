@@ -92,7 +92,7 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
     },
     maysternya_doli: {
         key: 'maysternya_doli',
-        label: 'Майстерня Долі',
+        label: 'Майстерня долі',
         shortLabel: 'МД',
         pageAllowlist: '/maysternya-doli',
         modules: [
@@ -458,15 +458,12 @@ function sanitizeCrmBusinessScopeForUser(scope = {}, user, options = {}) {
 function getCrmBusinessScope(user) {
     const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
     const page = currentCrmBusinessScopedPage();
-    const allowAggregate = crmBusinessPageAllowsAggregate(page);
-    const fromUrl = allowAggregate ? crmBusinessScopeFromUrl() : null;
-    const stored = allowAggregate ? crmBusinessScopeFromStorage(activeUser) : null;
     const current = getCrmBusinessContext(activeUser);
-    return sanitizeCrmBusinessScopeForUser(fromUrl || stored || {
+    return sanitizeCrmBusinessScopeForUser({
         mode: CRM_BUSINESS_SCOPE_SINGLE,
         activeContext: current,
         selectedContexts: [current]
-    }, activeUser, { page, allowAggregate });
+    }, activeUser, { page, allowAggregate: false });
 }
 
 function isCrmBusinessScopeReadOnly(scope = getCrmBusinessScope()) {
@@ -487,6 +484,22 @@ function getCrmBusinessContextOptions(user) {
         .filter(Boolean);
 }
 
+function getCrmBusinessState(user) {
+    const activeBusinessId = getCrmBusinessContext(user);
+    const lastExplicitBusinessId = crmBusinessContextFromStorage(user);
+    return {
+        activeBusinessId,
+        lastExplicitBusinessId,
+        availableBusinesses: getCrmBusinessContextOptions(user).map(ctx => ({
+            id: ctx.key,
+            key: ctx.key,
+            label: ctx.label,
+            shortLabel: ctx.shortLabel || ctx.label,
+            route: crmBusinessDestinationForCurrentPage(ctx.key) || ctx.pageAllowlist || null
+        }))
+    };
+}
+
 function setCrmBusinessContext(context, options = {}) {
     const user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
     const previous = getCrmBusinessContext(user);
@@ -496,6 +509,8 @@ function setCrmBusinessContext(context, options = {}) {
         const userKey = crmBusinessStorageUserKey(user);
         if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
         localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
+        localStorage.removeItem(CRM_BUSINESS_SCOPE_STORAGE_KEY);
+        localStorage.removeItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY);
     } catch {}
     if (options.updateUrl !== false && typeof window !== 'undefined') {
         const url = new URL(window.location.href);
@@ -517,7 +532,7 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
     const previousScope = getCrmBusinessScope(user);
     const scope = sanitizeCrmBusinessScopeForUser(scopeInput, user, {
         page: currentCrmBusinessScopedPage(),
-        allowAggregate: options.allowAggregate !== false
+        allowAggregate: options.allowAggregate === true
     });
     const previousContext = previousScope.activeContext;
     try {
@@ -668,120 +683,19 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
 function renderCrmBusinessShell(user) {
     if (typeof document === 'undefined') return false;
     const page = currentCrmBusinessScopedPage();
-    const headerContent = document.querySelector('.header .header-content');
     const existing = document.getElementById('globalBusinessContextHost');
-    if (!page || !headerContent) {
-        if (existing) existing.remove();
-        return false;
-    }
+    if (existing) existing.remove();
+    if (!page) return false;
 
-    const policy = resolveCrmBusinessPolicy(user);
-    const scope = setCrmBusinessScope(getCrmBusinessScope(user), { user, updateUrl: true, emit: false });
+    const activeContext = getCrmBusinessContext(user);
+    const scope = setCrmBusinessScope({
+        mode: CRM_BUSINESS_SCOPE_SINGLE,
+        activeContext,
+        selectedContexts: [activeContext]
+    }, { user, updateUrl: true, emit: false, allowAggregate: false });
     const current = scope.activeContext;
     if (scope.mode === CRM_BUSINESS_SCOPE_SINGLE && navigateCrmBusinessDestination(current, page)) return true;
-    const context = CRM_BUSINESS_CONTEXTS[current] || CRM_BUSINESS_CONTEXTS[CRM_BUSINESS_DEFAULT_CONTEXT];
-    const options = getCrmBusinessContextOptions(user);
-    const canAggregate = crmBusinessPageAllowsAggregate(page) && policy.canSwitch && options.length > 1;
-    const host = existing || document.createElement('div');
-    host.id = 'globalBusinessContextHost';
-    host.className = 'crm-business-context-host';
-    host.dataset.businessContextShell = page.id;
-    host.dataset.locked = policy.canSwitch ? '0' : '1';
-    host.dataset.scopeMode = scope.mode;
-    host.dataset.readOnly = scope.readOnly ? '1' : '0';
-    host.setAttribute('aria-label', 'Бізнес-контекст CRM');
-
-    if (policy.canSwitch && options.length > 1) {
-        const selected = new Set(scope.selectedContexts || [current]);
-        const firstOther = options.find(ctx => ctx.key !== current)?.key;
-        const multiSelected = scope.mode === CRM_BUSINESS_SCOPE_SINGLE
-            ? new Set([current, firstOther].filter(Boolean))
-            : selected;
-        host.innerHTML = `
-            <span class="crm-business-context-label">Бізнес</span>
-            <select id="globalBusinessContextSelect" class="crm-business-context-select crm-business-context-select--global" aria-label="Бізнес-контекст CRM">
-                ${options.map(ctx => `<option value="${ctx.key}"${ctx.key === current ? ' selected' : ''}>${ctx.label}</option>`).join('')}
-            </select>
-            ${canAggregate ? `
-                <div class="crm-business-scope-toggle" role="group" aria-label="Business scope mode">
-                    <button type="button" class="crm-business-scope-btn${scope.mode === CRM_BUSINESS_SCOPE_SINGLE ? ' active' : ''}" data-business-scope-mode="single" aria-pressed="${scope.mode === CRM_BUSINESS_SCOPE_SINGLE ? 'true' : 'false'}">1</button>
-                    <details class="crm-business-multi-picker"${scope.mode === CRM_BUSINESS_SCOPE_MULTI ? ' open' : ''}>
-                        <summary class="crm-business-scope-btn${scope.mode === CRM_BUSINESS_SCOPE_MULTI ? ' active' : ''}" role="button" aria-pressed="${scope.mode === CRM_BUSINESS_SCOPE_MULTI ? 'true' : 'false'}">Кілька</summary>
-                        <div class="crm-business-multi-menu">
-                            ${options.map(ctx => `
-                                <label class="crm-business-multi-option">
-                                    <input type="checkbox" value="${ctx.key}"${multiSelected.has(ctx.key) ? ' checked' : ''}>
-                                    <span>${ctx.shortLabel || ctx.label}</span>
-                                </label>
-                            `).join('')}
-                        </div>
-                    </details>
-                    <button type="button" class="crm-business-scope-btn${scope.mode === CRM_BUSINESS_SCOPE_ALL ? ' active' : ''}" data-business-scope-mode="all" aria-pressed="${scope.mode === CRM_BUSINESS_SCOPE_ALL ? 'true' : 'false'}">Усі</button>
-                </div>
-            ` : ''}
-            ${scope.readOnly ? '<span class="crm-business-context-chip crm-business-context-chip--readonly" role="status"><strong>Тільки перегляд</strong><span>огляд</span></span>' : ''}
-        `;
-    } else {
-        host.innerHTML = `
-            <span class="crm-business-context-label">Бізнес</span>
-            <span class="crm-business-context-chip" role="status" title="Контекст зафіксовано політикою ролі">
-                <strong>${context.label}</strong>
-                <span>зафіксовано</span>
-            </span>
-        `;
-    }
-
-    if (!existing) {
-        const userPanel = headerContent.querySelector('.user-panel');
-        if (userPanel) headerContent.insertBefore(host, userPanel);
-        else headerContent.appendChild(host);
-    }
-
-    const select = host.querySelector('#globalBusinessContextSelect');
-    if (select && select.dataset.bound !== '1') {
-        select.dataset.bound = '1';
-        select.addEventListener('change', async event => {
-            select.disabled = true;
-            await switchCrmBusinessScope({ mode: CRM_BUSINESS_SCOPE_SINGLE, activeContext: event.target.value }, { user, updateUrl: true });
-            renderCrmBusinessShell(user);
-        });
-    }
-    host.querySelectorAll('[data-business-scope-mode]').forEach(button => {
-        if (button.dataset.bound === '1') return;
-        button.dataset.bound = '1';
-        button.addEventListener('click', async () => {
-            const mode = normalizeCrmBusinessScopeMode(button.dataset.businessScopeMode);
-            const selectContext = host.querySelector('#globalBusinessContextSelect')?.value || current;
-            await switchCrmBusinessScope({ mode, activeContext: selectContext }, { user, updateUrl: true });
-            renderCrmBusinessShell(user);
-        });
-    });
-    const multiPicker = host.querySelector('.crm-business-multi-picker');
-    if (multiPicker && multiPicker.dataset.bound !== '1') {
-        multiPicker.dataset.bound = '1';
-        multiPicker.querySelectorAll('input[type="checkbox"]').forEach(input => {
-            input.addEventListener('change', async () => {
-                const values = Array.from(multiPicker.querySelectorAll('input[type="checkbox"]:checked')).map(item => item.value);
-                if (values.length < 2) {
-                    if (scope.mode === CRM_BUSINESS_SCOPE_MULTI && values.length === 1) {
-                        await switchCrmBusinessScope({
-                            mode: CRM_BUSINESS_SCOPE_SINGLE,
-                            activeContext: values[0]
-                        }, { user, updateUrl: true });
-                        renderCrmBusinessShell(user);
-                    }
-                    return;
-                }
-                await switchCrmBusinessScope({
-                    mode: CRM_BUSINESS_SCOPE_MULTI,
-                    activeContext: values[0],
-                    selectedContexts: values
-                }, { user, updateUrl: true });
-                renderCrmBusinessShell(user);
-            });
-        });
-    }
-    return true;
+    return false;
 }
 
 async function switchCrmBusinessContext(context, options = {}) {
@@ -794,7 +708,7 @@ async function switchCrmBusinessContext(context, options = {}) {
 
 async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
     const user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
-    const nextScope = sanitizeCrmBusinessScopeForUser(scopeInput, user, { page: currentCrmBusinessScopedPage() });
+    const nextScope = sanitizeCrmBusinessScopeForUser(scopeInput, user, { page: currentCrmBusinessScopedPage(), allowAggregate: false });
     const previousScope = getCrmBusinessScope(user);
     const next = nextScope.activeContext;
     const previous = previousScope.activeContext;
@@ -854,6 +768,7 @@ if (typeof window !== 'undefined') {
         isReadOnly: isCrmBusinessScopeReadOnly,
         options: getCrmBusinessContextOptions,
         policy: resolveCrmBusinessPolicy,
+        state: getCrmBusinessState,
         defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser,
         currentPage: currentCrmBusinessScopedPage,
         initPage: initCrmBusinessContextPage,

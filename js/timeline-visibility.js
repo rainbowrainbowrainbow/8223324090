@@ -66,7 +66,6 @@
         constructorActive: false,
         panel: null,
         toggleBtn: null,
-        businessSelect: null,
         accessTimer: null,
         serverSettings: new Map(),
         serverLoadPromise: null,
@@ -105,12 +104,6 @@
         const api = contextApi();
         if (!api?.canUseAction) return false;
         return api.canUseAction('settings', window.AppState?.currentUser || null);
-    }
-
-    function canAccessContext(ctx) {
-        const api = contextApi();
-        if (!api?.canAccessContext) return false;
-        return api.canAccessContext(window.AppState?.currentUser || null, ctx);
     }
 
     function safeParseJson(raw) {
@@ -254,7 +247,6 @@
         controls.forEach(control => {
             if (control.classList.contains('timeline-visibility-chip')) return;
             if (control.id === 'timelineConstructorBtn') return;
-            if (control.id === 'timelineBusinessSelect') return;
             if (disabled) {
                 if (!control.hasAttribute(DISABLED_ATTR)) {
                     control.setAttribute(DISABLED_ATTR, control.disabled ? '1' : '0');
@@ -324,44 +316,8 @@
         }
     }
 
-    function createBusinessSwitcher() {
-        if (document.getElementById('timelineBusinessSwitch')) {
-            state.businessSelect = document.getElementById('timelineBusinessSelect');
-            return;
-        }
-
-        const panel = document.querySelector('.control-panel');
-        if (!panel || !contextApi()?.CONTEXTS) return;
-
-        const wrapper = document.createElement('label');
-        wrapper.id = 'timelineBusinessSwitch';
-        wrapper.className = 'timeline-business-switch';
-        wrapper.innerHTML = `
-            <span>Бізнес</span>
-            <select id="timelineBusinessSelect" aria-label="Бізнес таймлайну"></select>
-        `;
-
-        panel.insertBefore(wrapper, panel.firstChild);
-        state.businessSelect = wrapper.querySelector('select');
-        state.businessSelect.addEventListener('change', event => {
-            const selected = contextApi()?.CONTEXTS?.[event.target.value];
-            if (selected?.path && selected.key !== currentContext().key) {
-                window.location.href = selected.path;
-            }
-        });
-        refreshBusinessSwitcher();
-    }
-
-    function refreshBusinessSwitcher() {
-        const select = state.businessSelect || document.getElementById('timelineBusinessSelect');
-        const api = contextApi();
-        if (!select || !api?.CONTEXTS) return;
-
-        const contexts = Object.values(api.CONTEXTS).filter(ctx => canAccessContext(ctx));
-        select.innerHTML = contexts.map(ctx => `<option value="${ctx.key}">${escapeHtml(ctx.switchLabel || ctx.navLabel || ctx.productName || ctx.key)}</option>`).join('');
-        select.value = currentContext().key;
-        const wrapper = document.getElementById('timelineBusinessSwitch');
-        if (wrapper) wrapper.classList.toggle('hidden', contexts.length <= 1);
+    function removeBusinessSwitcher() {
+        document.getElementById('timelineBusinessSwitch')?.remove();
     }
 
     function createConstructorButton() {
@@ -487,8 +443,7 @@
     }
 
     function refreshAccess() {
-        createBusinessSwitcher();
-        refreshBusinessSwitcher();
+        removeBusinessSwitcher();
         const allowed = canConfigure();
         if (state.toggleBtn) state.toggleBtn.classList.toggle('hidden', !allowed);
         if (!allowed && state.constructorActive) toggleConstructorMode(false);
@@ -517,7 +472,7 @@
     function init() {
         if (state.initialized) return;
         state.initialized = true;
-        createBusinessSwitcher();
+        removeBusinessSwitcher();
         createConstructorButton();
         createPanel();
         markConfigurableElements();

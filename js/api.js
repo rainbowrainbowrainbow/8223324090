@@ -1041,6 +1041,25 @@ async function apiGetBusinessOperatingProfile(options = {}) {
     return await response.json();
 }
 
+async function apiGetBusinessCabinet(options = {}) {
+    const url = crmBusinessApiUrl(`${API_BASE}/business/cabinet`, options.context || getCrmBusinessContext(options.user));
+    const response = await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) });
+    if (!response || handleAuthError(response)) return null;
+    return await response.json();
+}
+
+async function apiSaveBusinessCabinet(payload = {}, options = {}) {
+    const context = options.context || payload.businessContext || payload.context || getCrmBusinessContext(options.user);
+    const url = crmBusinessApiUrl(`${API_BASE}/business/cabinet`, context);
+    const response = await apiFetchWithAuthRetry(url, {
+        method: 'PUT',
+        headers: getAuthHeaders(true),
+        body: JSON.stringify(crmBusinessPayload(payload, context))
+    });
+    if (!response || handleAuthError(response)) return null;
+    return await response.json();
+}
+
 async function hydrateCrmBusinessProfile(options = {}) {
     try {
         const payload = await apiGetBusinessOperatingProfile(options);

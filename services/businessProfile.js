@@ -7,7 +7,7 @@ const {
   resolveBusinessContextPolicy,
   resolveBusinessScope,
 } = require('./businessContext');
-const { getTimelineDisplaySettings } = require('./timelineResources');
+const { getBusinessCabinetSettings } = require('./businessCabinet');
 const { getOmniAccountStatusesAsync } = require('./omni-accounts');
 
 const START_PAGE_PATHS = Object.freeze({
@@ -39,10 +39,10 @@ function timelineRouteForContext(context) {
   return TIMELINE_CONTEXT_ROUTES[key] || '/dashboard';
 }
 
-function startPagePathForBusiness(context, timelineDisplay = {}) {
+function startPagePathForBusiness(context, timelineDisplay = {}, cabinet = null) {
   const startPage = timelineDisplay.timelineEnabled === false || timelineDisplay.mode === 'disabled'
     ? 'dashboard'
-    : String(timelineDisplay.startPage || 'timeline');
+    : String(cabinet?.startPage || timelineDisplay.startPage || 'timeline');
   if (startPage === 'timeline') return timelineRouteForContext(context);
   return START_PAGE_PATHS[startPage] || timelineRouteForContext(context);
 }
@@ -65,7 +65,7 @@ function moduleEnabledByTimelineCabinet(moduleId, timelineDisplay = {}) {
   return entries.some(timelineModule => enabledModules[timelineModule] !== false);
 }
 
-function buildModuleMap(context, timelineDisplay = {}) {
+function buildModuleMap(context, timelineDisplay = {}, cabinet = null) {
   const baseModules = businessModulesForContext(context);
   const enabled = {};
   baseModules.forEach(moduleId => { enabled[moduleId] = true; });
@@ -83,6 +83,17 @@ function buildModuleMap(context, timelineDisplay = {}) {
   if (timelineDisplay.mode === 'park' && timelineDisplay.parkKitchenMode === 'without_kitchen') {
     if (baseModules.includes('kitchen')) enabled.kitchen = false;
   }
+
+  if (cabinet?.modules?.enabled) {
+    baseModules.forEach(moduleId => {
+      if (Object.prototype.hasOwnProperty.call(cabinet.modules.enabled, moduleId)) {
+        enabled[moduleId] = cabinet.modules.enabled[moduleId] !== false;
+      }
+    });
+  }
+
+  if (baseModules.includes('dashboard')) enabled.dashboard = true;
+  if (baseModules.includes('settings')) enabled.settings = true;
 
   const enabledIds = baseModules.filter(moduleId => enabled[moduleId] !== false);
   const disabledIds = baseModules.filter(moduleId => enabled[moduleId] === false);
@@ -135,29 +146,32 @@ async function summarizeOmniIntegrations(context, modules) {
 async function buildBusinessEntry(db, context, options = {}) {
   const key = normalizeBusinessContext(context);
   const catalogEntry = businessContextCatalog().find(item => item.key === key) || { key, label: key, shortLabel: key };
-  const timelineDisplay = await getTimelineDisplaySettings(db, key);
-  const modules = buildModuleMap(key, timelineDisplay);
-  const startPath = startPagePathForBusiness(key, timelineDisplay);
+  const cabinet = await getBusinessCabinetSettings(db, key);
+  const timelineDisplay = cabinet.timeline;
+  const modules = buildModuleMap(key, timelineDisplay, cabinet);
+  const startPath = startPagePathForBusiness(key, timelineDisplay, cabinet);
   const entry = {
     ...catalogEntry,
     id: key,
     businessContext: key,
-    type: businessTypeForTimelineDisplay(timelineDisplay),
+    type: cabinet.businessType || businessTypeForTimelineDisplay(timelineDisplay),
     startPage: timelineDisplay.timelineEnabled === false || timelineDisplay.mode === 'disabled'
       ? 'dashboard'
-      : timelineDisplay.startPage,
+      : cabinet.startPage || timelineDisplay.startPage,
     startPagePath: startPath,
     timelineRoute: timelineRouteForContext(key),
     timeline: timelineDisplay,
+    cabinet,
     modules,
     shell: {
       startPage: timelineDisplay.timelineEnabled === false || timelineDisplay.mode === 'disabled'
         ? 'dashboard'
-        : timelineDisplay.startPage,
+        : cabinet.startPage || timelineDisplay.startPage,
       startPagePath: startPath,
       timelineEnabled: timelineDisplay.timelineEnabled !== false && timelineDisplay.mode !== 'disabled',
       timelineMode: timelineDisplay.mode,
       resourceModel: timelineDisplay.resourceModel,
+      businessType: cabinet.businessType,
     },
   };
 

@@ -440,6 +440,41 @@
     box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.08);
 }
 
+.timeline-toggle-button.is-locked {
+    cursor: default;
+    opacity: 0.72;
+}
+
+.business-module-grid {
+    gap: 7px;
+}
+
+.business-cabinet-guardrails {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.business-cabinet-guardrails span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.11);
+    color: #92400E;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.business-cabinet-guardrails .is-ok {
+    border-color: rgba(16, 185, 129, 0.25);
+    background: rgba(16, 185, 129, 0.1);
+    color: #047857;
+}
+
 .timeline-preset-button:focus-visible,
 .timeline-chip-button:focus-visible,
 .timeline-toggle-button:focus-visible {

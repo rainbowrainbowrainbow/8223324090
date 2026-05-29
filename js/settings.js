@@ -844,6 +844,8 @@ function getTimelineDisplayControls() {
         businessName: document.getElementById('settingsTimelineBusinessName'),
         state: document.getElementById('settingsTimelineControlState'),
         profileContract: document.getElementById('settingsBusinessProfileContract'),
+        businessModules: document.getElementById('settingsBusinessModuleGrid'),
+        businessGuardrails: document.getElementById('settingsBusinessGuardrails'),
         resourcesCard: document.getElementById('settingsTimelineResourcesCard'),
         resourcesTitle: document.getElementById('settingsTimelineResourcesTitle'),
         resourcesHint: document.getElementById('settingsTimelineResourcesHint'),
@@ -855,6 +857,39 @@ function getTimelineDisplayControls() {
 const TIMELINE_CONTROL_MODULES = ['timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products', 'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'];
 const TIMELINE_CONTROL_FEATURES = ['quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen', 'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'];
 const TIMELINE_CONTROL_POLICIES = ['allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup', 'enforceTeacherConflict', 'enforceResourceCapacity', 'notifyFirstOccurrenceOnly'];
+const BUSINESS_CABINET_SAFE_MODULES = ['dashboard', 'settings'];
+const BUSINESS_CABINET_MODULE_LABELS = {
+    dashboard: 'Дашборд',
+    timeline: 'Таймлайн',
+    tasks: 'Задачі',
+    chat: 'Чат',
+    customers: 'Клієнти',
+    leads: 'Ліди',
+    omni: 'Omni',
+    reports: 'Звіти',
+    finance: 'Фінанси',
+    copilot: 'Copilot',
+    staff: 'Персонал',
+    hr: 'HR',
+    training: 'Навчання',
+    checkin: 'Check-in',
+    programs: 'Продукти',
+    kitchen: 'Кухня',
+    catalogs: 'Каталоги',
+    content: 'Контент',
+    art: 'Арт',
+    graduation: 'Випускний',
+    sound: 'Звук',
+    afisha: 'Афіша',
+    certificates: 'Сертифікати',
+    kleshnya: 'Клешня',
+    guardian: 'Guardian',
+    center: 'Центр',
+    warehouse: 'Склад',
+    game: 'Гра',
+    demo: 'Demo',
+    settings: 'Налаштування'
+};
 
 function defaultTimelineResourceModel(mode) {
     if (mode === 'disabled') return 'none';
@@ -973,6 +1008,115 @@ function collectTimelineToggleButtons(selector, attr) {
     return values;
 }
 
+function activeBusinessModuleState() {
+    const activeProfile = window.CrmBusinessContext?.activeProfile?.();
+    const currentContext = window.CrmBusinessContext?.current?.();
+    const catalogEntry = currentContext && window.CrmBusinessContext?.contexts?.[currentContext];
+    const catalog = activeProfile?.modules?.catalog || catalogEntry?.modules || ['dashboard', 'settings'];
+    const enabled = activeProfile?.modules?.enabled || Object.fromEntries(catalog.map(key => [key, true]));
+    return {
+        catalog,
+        enabled,
+        enabledIds: catalog.filter(key => enabled[key] !== false),
+        disabledIds: catalog.filter(key => enabled[key] === false)
+    };
+}
+
+function moduleLabel(moduleId) {
+    return BUSINESS_CABINET_MODULE_LABELS[moduleId] || moduleId;
+}
+
+function renderBusinessCabinetModuleButtons(moduleState = null) {
+    const controls = getTimelineDisplayControls();
+    if (!controls.businessModules) return;
+    const state = moduleState?.catalog ? moduleState : activeBusinessModuleState();
+    const catalog = Array.isArray(state.catalog) && state.catalog.length ? state.catalog : ['dashboard', 'settings'];
+    const enabled = state.enabled || {};
+    controls.businessModules.innerHTML = catalog.map(moduleId => {
+        const locked = BUSINESS_CABINET_SAFE_MODULES.includes(moduleId);
+        const active = locked || enabled[moduleId] !== false;
+        return `<button type="button" class="timeline-toggle-button${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-business-module="${escapeHtml(moduleId)}" aria-pressed="${active ? 'true' : 'false'}"${locked ? ' disabled' : ''}>${escapeHtml(moduleLabel(moduleId))}</button>`;
+    }).join('');
+}
+
+function collectBusinessCabinetModules() {
+    const active = activeBusinessModuleState();
+    const enabled = { ...(active.enabled || {}) };
+    document.querySelectorAll('[data-business-module]').forEach(button => {
+        const moduleId = button.dataset.businessModule;
+        if (!moduleId) return;
+        enabled[moduleId] = BUSINESS_CABINET_SAFE_MODULES.includes(moduleId) || button.classList.contains('is-active');
+    });
+    BUSINESS_CABINET_SAFE_MODULES.forEach(moduleId => {
+        if ((active.catalog || []).includes(moduleId)) enabled[moduleId] = true;
+    });
+    const catalog = active.catalog || Object.keys(enabled);
+    return {
+        catalog,
+        enabled,
+        enabledIds: catalog.filter(moduleId => enabled[moduleId] !== false),
+        disabledIds: catalog.filter(moduleId => enabled[moduleId] === false)
+    };
+}
+
+function deriveBusinessModuleStateFromTimeline(settings = {}) {
+    const active = activeBusinessModuleState();
+    const catalog = active.catalog || [];
+    const enabled = { ...(active.enabled || {}) };
+    const map = {
+        timeline: 'timeline',
+        leads: 'leads',
+        customers: 'customers',
+        omni: 'omni',
+        tasks: 'tasks',
+        products: 'programs',
+        afisha: 'afisha',
+        kitchen: 'kitchen'
+    };
+    Object.entries(map).forEach(([timelineModule, businessModule]) => {
+        if (!catalog.includes(businessModule)) return;
+        if (Object.prototype.hasOwnProperty.call(settings.enabledModules || {}, timelineModule)) {
+            enabled[businessModule] = settings.enabledModules[timelineModule] !== false;
+        }
+    });
+    if (settings.timelineEnabled === false || settings.mode === 'disabled') {
+        if (catalog.includes('timeline')) enabled.timeline = false;
+    }
+    if (settings.mode === 'park' && settings.parkKitchenMode === 'without_kitchen' && catalog.includes('kitchen')) {
+        enabled.kitchen = false;
+    }
+    BUSINESS_CABINET_SAFE_MODULES.forEach(moduleId => {
+        if (catalog.includes(moduleId)) enabled[moduleId] = true;
+    });
+    return {
+        catalog,
+        enabled,
+        enabledIds: catalog.filter(moduleId => enabled[moduleId] !== false),
+        disabledIds: catalog.filter(moduleId => enabled[moduleId] === false)
+    };
+}
+
+function collectBusinessCabinetGuardrails(settings, modules) {
+    const warnings = [];
+    const enabled = modules?.enabled || {};
+    if (settings.timelineEnabled === false && settings.startPage === 'timeline') warnings.push('Стартову сторінку буде переведено на дашборд, бо таймлайн вимкнений.');
+    if (settings.startPage && enabled[settings.startPage] === false) warnings.push(`Стартова сторінка "${moduleLabel(settings.startPage)}" вимкнена в shell-модулях.`);
+    if (settings.mode !== 'park' && (enabled.kitchen || settings.timelineFeatures?.kitchen)) warnings.push('Кухня має сенс тільки для park-режиму.');
+    if (settings.mode !== 'education' && (enabled.teachers || enabled.lessonSeries)) warnings.push('Викладачі й серії занять працюють тільки в навчальному режимі.');
+    return warnings;
+}
+
+function renderBusinessCabinetGuardrails(settings, modules) {
+    const controls = getTimelineDisplayControls();
+    if (!controls.businessGuardrails) return;
+    const warnings = Array.isArray(settings?.guardrails) && settings.guardrails.length
+        ? settings.guardrails
+        : collectBusinessCabinetGuardrails(settings || {}, modules || collectBusinessCabinetModules());
+    controls.businessGuardrails.innerHTML = warnings.length
+        ? warnings.map(item => `<span>${escapeHtml(String(item))}</span>`).join('')
+        : '<span class="is-ok">Стан валідний: shell, модулі й стартова сторінка не конфліктують.</span>';
+}
+
 function applyTimelineSettingsToControls(settings = {}) {
     const controls = getTimelineDisplayControls();
     const normalized = normalizeTimelineControlSettings(settings);
@@ -997,6 +1141,11 @@ function applyTimelineSettingsToControls(settings = {}) {
             <span>Старт: ${escapeHtml(activeProfile?.startPagePath || normalized.startPage)} · type: ${escapeHtml(activeProfile?.type || normalized.mode)} · модулі: ${escapeHtml(modules.slice(0, 8).join(', ') || 'немає')}</span>
         `;
     }
+    const moduleState = settings.modules?.enabled
+        ? settings.modules
+        : deriveBusinessModuleStateFromTimeline(normalized);
+    renderBusinessCabinetModuleButtons(moduleState);
+    renderBusinessCabinetGuardrails({ ...settings, ...normalized }, moduleState);
     document.querySelectorAll('[data-timeline-preset]').forEach(button => {
         const presetResourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(button.dataset.mode);
         const active = button.dataset.mode === normalized.mode
@@ -1019,7 +1168,7 @@ function collectTimelineDisplaySettingsFromControls() {
     const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
     const startPage = document.querySelector('[data-timeline-start-page].is-active')?.dataset.timelineStartPage || (mode === 'disabled' ? 'dashboard' : 'timeline');
     const resourceModel = document.querySelector('[data-timeline-resource-model].is-active')?.dataset.timelineResourceModel || defaultTimelineResourceModel(mode);
-    return normalizeTimelineControlSettings({
+    const normalized = normalizeTimelineControlSettings({
         mode,
         timelineEnabled: mode !== 'disabled',
         parkKitchenMode,
@@ -1029,6 +1178,14 @@ function collectTimelineDisplaySettingsFromControls() {
         timelineFeatures: collectTimelineToggleButtons('[data-timeline-feature]', 'timelineFeature'),
         bookingPolicy: collectTimelineToggleButtons('[data-timeline-policy]', 'timelinePolicy')
     });
+    return {
+        ...normalized,
+        businessType: mode === 'disabled'
+            ? 'no_timeline'
+            : (mode === 'park' ? 'children_entertainment_park' : mode),
+        modules: collectBusinessCabinetModules(),
+        timeline: normalized
+    };
 }
 
 function timelineResourceTypeForMode(mode, settings = null) {
@@ -1104,6 +1261,7 @@ function refreshTimelineDisplaySettingsPreview() {
         controls.state.textContent = settings.timelineEnabled ? 'Таймлайн увімкнено' : 'Таймлайн вимкнено';
         controls.state.classList.toggle('is-disabled', !settings.timelineEnabled);
     }
+    renderBusinessCabinetGuardrails(settings, settings.modules || collectBusinessCabinetModules());
     if (controls.preview) controls.preview.textContent = timelineDisplayPreviewText(settings);
     renderTimelineResourcesManager().catch(error => console.warn('[TimelineResources] preview refresh failed', error));
 }
@@ -1156,6 +1314,22 @@ async function loadTimelineDisplaySettingsIntoModal() {
     if (!controls.mode) return;
     let settings = window.TimelineBusinessContext?.displaySettings?.() || { mode: 'park', parkKitchenMode: 'with_kitchen' };
     try {
+        if (typeof apiGetBusinessCabinet === 'function') {
+            const result = await apiGetBusinessCabinet();
+            if (result?.cabinet) {
+                settings = {
+                    ...(result.cabinet.timeline || {}),
+                    ...result.cabinet,
+                    mode: result.cabinet.timelineMode || result.cabinet.timeline?.mode || settings.mode,
+                    enabledModules: result.cabinet.timeline?.enabledModules || settings.enabledModules,
+                    timelineFeatures: result.cabinet.timelineFeatures || result.cabinet.timeline?.timelineFeatures || settings.timelineFeatures,
+                    bookingPolicy: result.cabinet.bookingPolicy || result.cabinet.timeline?.bookingPolicy || settings.bookingPolicy,
+                    modules: result.cabinet.modules
+                };
+                window.TimelineBusinessContext?.saveDisplaySettings?.(result.cabinet.timeline || settings);
+                await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+            }
+        } else {
         const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
             headers: getAuthHeaders(false)
         });
@@ -1163,6 +1337,7 @@ async function loadTimelineDisplaySettingsIntoModal() {
             const serverSettings = await res.json();
             settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
             await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+        }
         }
     } catch (error) {
         console.warn('[TimelineDisplay] Server display settings unavailable', error);
@@ -1174,6 +1349,26 @@ async function loadTimelineDisplaySettingsIntoModal() {
 async function saveTimelineDisplaySettingsFromSettings() {
     const payload = collectTimelineDisplaySettingsFromControls();
     try {
+        if (typeof apiSaveBusinessCabinet === 'function') {
+            const result = await apiSaveBusinessCabinet(payload);
+            if (!result?.success) throw new Error(result?.error || 'Business cabinet save failed');
+            const serverSettings = {
+                ...(result.cabinet?.timeline || {}),
+                ...result.cabinet,
+                mode: result.cabinet?.timelineMode || result.cabinet?.timeline?.mode || payload.mode,
+                enabledModules: result.cabinet?.timeline?.enabledModules || payload.enabledModules,
+                timelineFeatures: result.cabinet?.timelineFeatures || result.cabinet?.timeline?.timelineFeatures || payload.timelineFeatures,
+                bookingPolicy: result.cabinet?.bookingPolicy || result.cabinet?.timeline?.bookingPolicy || payload.bookingPolicy,
+                modules: result.cabinet?.modules || payload.modules
+            };
+            window.TimelineBusinessContext?.saveDisplaySettings?.(result.cabinet?.timeline || serverSettings);
+            if (result.businessProfile) window.CrmBusinessContext?.applyProfile?.(result.businessProfile, { updateUrl: false, emit: true });
+            else await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+            applyTimelineSettingsToControls(serverSettings);
+            showNotification('Бізнес-кабінет збережено. Перезавантажую сторінку...', 'success');
+            setTimeout(() => window.location.reload(), 450);
+            return;
+        }
         const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
             method: 'PUT',
             headers: getAuthHeaders(true),
@@ -1205,7 +1400,7 @@ function handleTimelineDisplayModeChange() {
 }
 
 function handleTimelineControlClick(event) {
-    const button = event.target.closest('[data-timeline-preset], [data-timeline-start-page], [data-timeline-resource-model], [data-timeline-module], [data-timeline-feature], [data-timeline-policy]');
+    const button = event.target.closest('[data-timeline-preset], [data-timeline-start-page], [data-timeline-resource-model], [data-timeline-module], [data-timeline-feature], [data-timeline-policy], [data-business-module]');
     if (!button) return;
     event.preventDefault();
     const controls = getTimelineDisplayControls();
@@ -1229,6 +1424,13 @@ function handleTimelineControlClick(event) {
     }
     if (button.dataset.timelineResourceModel) {
         setTimelineButtonGroupActive('[data-timeline-resource-model]', button.dataset.timelineResourceModel, 'timelineResourceModel');
+        refreshTimelineDisplaySettingsPreview();
+        return;
+    }
+    if (button.dataset.businessModule) {
+        if (BUSINESS_CABINET_SAFE_MODULES.includes(button.dataset.businessModule)) return;
+        button.classList.toggle('is-active');
+        button.setAttribute('aria-pressed', button.classList.contains('is-active') ? 'true' : 'false');
         refreshTimelineDisplaySettingsPreview();
         return;
     }

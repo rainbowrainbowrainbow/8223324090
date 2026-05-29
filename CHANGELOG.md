@@ -4,6 +4,19 @@
 
 ---
 
+## v0.68.20 - бізнес-кабінет shell
+
+### Business Cabinet v1 / module controls / timeline mirror / 29.05.2026 [codex]
+- **Додано persistent Business Cabinet contract** - новий `business_cabinet:<context>` зберігає тип бізнесу, стартову сторінку, shell-модулі, timeline mode, resource model, kitchen option, фічі та політики в одному per-business налаштуванні.
+- **З'явився API кабінету бізнесу** - `/api/business/cabinet` читає й зберігає бізнес-кабінет, а після save повертає оновлений `Business Operating Profile`, щоб shell не чекав stale localStorage.
+- **`timeline_display` лишився сумісним дзеркалом** - під час збереження бізнес-кабінету CRM оновлює legacy timeline setting для `event_genix` і `maysternya_doli`, тому поточний timeline-render не ламається.
+- **У налаштуваннях додано shell-модулі бізнесу** - тепер кнопками можна вмикати/вимикати основні входи CRM для активного бізнесу; `dashboard` і `settings` заблоковані як безпечний fallback.
+- **Business profile читає cabinet truth** - sidebar, стартова сторінка, тип бізнесу й module visibility тепер будуються з business cabinet, а не тільки з `timeline_display` або статичного catalog.
+- **Додано guardrails для невалідних станів** - вимкнений timeline не може лишити стартову сторінку `timeline`, вимкнений модуль не стає стартовим входом, а UI показує попередження до збереження.
+- **Regression guard розширено** - `timeline-resources` перевіряє сервіс `businessCabinet`, API routes, frontend save/load path, shell module UI і чисте дзеркалення в timeline display.
+
+---
+
 ## v0.68.19 - єдиний бізнес-профіль shell
 
 ### Business operating profile / shell sync / business module truth / 29.05.2026 [codex]

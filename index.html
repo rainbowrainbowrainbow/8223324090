@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.68.19">
-    <link rel="stylesheet" href="css/auth.css?v=0.68.19">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.19">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.19">
-    <link rel="stylesheet" href="css/timeline.css?v=0.68.19">
-    <link rel="stylesheet" href="css/panel.css?v=0.68.19">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.19">
-    <link rel="stylesheet" href="css/controls.css?v=0.68.19">
-    <link rel="stylesheet" href="css/features.css?v=0.68.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.19">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.19">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.19">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.19">
+    <link rel="stylesheet" href="css/base.css?v=0.68.20">
+    <link rel="stylesheet" href="css/auth.css?v=0.68.20">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.20">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.20">
+    <link rel="stylesheet" href="css/timeline.css?v=0.68.20">
+    <link rel="stylesheet" href="css/panel.css?v=0.68.20">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.20">
+    <link rel="stylesheet" href="css/controls.css?v=0.68.20">
+    <link rel="stylesheet" href="css/features.css?v=0.68.20">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.20">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.20">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.20">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.20">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.68.19">✨ 0.68.19</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.68.20">✨ 0.68.20</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.68.19 — єдиний бізнес-профіль shell</p>
+                <p class="tagline">AI First CRM v0.68.20 — бізнес-кабінет shell</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.19</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.20</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -972,6 +972,15 @@
                             <span>Налаштування зберігаються на сервері й керують shell, sidebar, стартовою сторінкою та API context.</span>
                         </div>
 
+                        <div class="timeline-control-block business-cabinet-shell-block">
+                            <div class="timeline-control-block-head">
+                                <strong>Shell-модулі бізнесу</strong>
+                                <span>Це керує тим, які основні входи CRM видно для активного бізнесу. Дашборд і налаштування лишаються як безпечний fallback.</span>
+                            </div>
+                            <div id="settingsBusinessModuleGrid" class="timeline-toggle-grid business-module-grid" role="group" aria-label="Shell-модулі бізнесу"></div>
+                            <div id="settingsBusinessGuardrails" class="business-cabinet-guardrails" aria-live="polite"></div>
+                        </div>
+
                         <div class="timeline-control-block">
                             <div class="timeline-control-block-head">
                                 <strong>Сценарій таймлайну</strong>
@@ -1624,11 +1633,22 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.68.20 — бізнес-кабінет shell</h4>
+                    <ul>
+                        <li><b>Business Cabinet став окремим contract</b> — <code>business_cabinet:&lt;context&gt;</code> зберігає тип бізнесу, стартову сторінку, shell-модулі, timeline mode, resource model, kitchen option, фічі й політики.</li>
+                        <li><b>Додано API кабінету</b> — <code>/api/business/cabinet</code> читає й зберігає налаштування, а після save повертає оновлений <code>Business Operating Profile</code>.</li>
+                        <li><b>Shell-модулі керуються кнопками</b> — у налаштуваннях можна вмикати/вимикати входи CRM для активного бізнесу; дашборд і налаштування лишаються захищеним fallback.</li>
+                        <li><b>Timeline лишився сумісним</b> — збереження бізнес-кабінету синхронізує <code>timeline_display</code>, тому поточний timeline-render працює через той самий runtime path.</li>
+                        <li><b>Guardrails видно до збереження</b> — CRM попереджає, якщо стартова сторінка або модулі конфліктують із вибраним типом бізнесу.</li>
+                        <li><b>Business profile читає cabinet truth</b> — sidebar, start page, module visibility і timeline shell тепер беруть істину з бізнес-кабінету.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.68.19 — єдиний бізнес-профіль shell</h4>
                     <ul>
-                        <li><b>Єдиний Business Operating Profile</b> — новий <code>/api/business/profile</code> повертає активний бізнес, дозволені бізнеси, timeline settings, стартову сторінку, модулі та Omni-статус одним contract.</li>
+                        <li><b>Єдиний Business Operating Profile</b> — <code>/api/business/profile</code> повертає активний бізнес, дозволені бізнеси, timeline settings, стартову сторінку, модулі та Omni-статус одним contract.</li>
                         <li><b>Shell читає backend truth</b> — після входу або verify CRM гідрує бізнес-профіль із сервера і вже з нього визначає стартову сторінку, timeline mode та business context.</li>
-                        <li><b>Sidebar синхронний із кабінетом бізнесу</b> — якщо модуль вимкнено в бізнес-кабінеті, він не лишається видимим у меню через старий localStorage або статичний business catalog.</li>
+                        <li><b>Sidebar синхронний із кабінетом бізнесу</b> — якщо модуль вимкнено в бізнес-профілі, він не лишається видимим у меню через старий localStorage або статичний catalog.</li>
                         <li><b>Перемикання бізнесу стало безпечнішим</b> — після switch CRM перезавантажує profile contract і не тримає старі module/start-page дані попереднього бізнесу.</li>
                         <li><b>У налаштуваннях видно profile summary</b> — бізнес-кабінет показує стартовий шлях, тип бізнесу і активні модулі, які реально читає shell.</li>
                     </ul>
@@ -10281,29 +10301,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.68.19"></script>
-    <script src="js/timeline-visibility.js?v=0.68.19"></script>
-    <script src="js/config.js?v=0.68.19"></script>
-    <script src="js/api.js?v=0.68.19"></script>
-    <script src="js/ui.js?v=0.68.19"></script>
-    <script src="js/auth.js?v=0.68.19"></script>
-    <script src="js/timeline-interaction-model.js?v=0.68.19"></script>
-    <script src="js/timeline.js?v=0.68.19"></script>
-    <script src="js/booking.js?v=0.68.19"></script>
-    <script src="js/settings.js?v=0.68.19"></script>
-    <script src="js/booking-form.js?v=0.68.19"></script>
-    <script src="js/booking-linked.js?v=0.68.19"></script>
-    <script src="js/settings-dashboard.js?v=0.68.19"></script>
-    <script src="js/settings-history.js?v=0.68.19"></script>
-    <script src="js/settings-afisha.js?v=0.68.19"></script>
-    <script src="js/settings-certificates.js?v=0.68.19"></script>
-    <script src="js/offline.js?v=0.68.19"></script>
-    <script src="js/crm-feature-registry.js?v=0.68.19"></script>
-    <script src="js/search.js?v=0.68.19"></script>
-    <script src="js/ws.js?v=0.68.19"></script>
-    <script src="js/app.js?v=0.68.19"></script>
-    <script src="js/kleshnya-widget.js?v=0.68.19"></script>
-    <script src="js/components/sidebar.js?v=0.68.19"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.19"></script>
+    <script src="js/timeline-context.js?v=0.68.20"></script>
+    <script src="js/timeline-visibility.js?v=0.68.20"></script>
+    <script src="js/config.js?v=0.68.20"></script>
+    <script src="js/api.js?v=0.68.20"></script>
+    <script src="js/ui.js?v=0.68.20"></script>
+    <script src="js/auth.js?v=0.68.20"></script>
+    <script src="js/timeline-interaction-model.js?v=0.68.20"></script>
+    <script src="js/timeline.js?v=0.68.20"></script>
+    <script src="js/booking.js?v=0.68.20"></script>
+    <script src="js/settings.js?v=0.68.20"></script>
+    <script src="js/booking-form.js?v=0.68.20"></script>
+    <script src="js/booking-linked.js?v=0.68.20"></script>
+    <script src="js/settings-dashboard.js?v=0.68.20"></script>
+    <script src="js/settings-history.js?v=0.68.20"></script>
+    <script src="js/settings-afisha.js?v=0.68.20"></script>
+    <script src="js/settings-certificates.js?v=0.68.20"></script>
+    <script src="js/offline.js?v=0.68.20"></script>
+    <script src="js/crm-feature-registry.js?v=0.68.20"></script>
+    <script src="js/search.js?v=0.68.20"></script>
+    <script src="js/ws.js?v=0.68.20"></script>
+    <script src="js/app.js?v=0.68.20"></script>
+    <script src="js/kleshnya-widget.js?v=0.68.20"></script>
+    <script src="js/components/sidebar.js?v=0.68.20"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.20"></script>
 </body>
 </html>

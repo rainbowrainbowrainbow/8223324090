@@ -6,6 +6,10 @@ const {
     buildModuleMap,
     startPagePathForBusiness
 } = require('../services/businessProfile');
+const {
+    normalizeBusinessCabinetSettings,
+    timelineDisplayFromBusinessCabinet
+} = require('../services/businessCabinet');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -170,4 +174,60 @@ test('business operating profile owns shell start page and module visibility', (
     assert.equal(disabledModules.enabled.leads, true);
     assert.equal(startPagePathForBusiness('event_genix', { mode: 'disabled', timelineEnabled: false, startPage: 'timeline' }), '/dashboard');
     assert.equal(startPagePathForBusiness('maysternya_doli', { mode: 'simple', timelineEnabled: true, startPage: 'timeline' }), '/maysternya-doli');
+});
+
+test('business cabinet is the persistent control surface for shell modules and timeline display', () => {
+    const service = read('services/businessCabinet.js');
+    const profile = read('services/businessProfile.js');
+    const settingsRoute = read('routes/settings.js');
+    const api = read('js/api.js');
+    const settings = read('js/settings.js');
+    const html = read('index.html');
+    const css = read('css/features.css');
+
+    assert.match(service, /business_cabinet:\$\{normalizeBusinessContext\(context\)\}/);
+    assert.match(service, /function normalizeBusinessCabinetSettings/);
+    assert.match(service, /async function saveBusinessCabinetSettings/);
+    assert.match(service, /timeline_display:\$\{key\}/);
+    assert.match(profile, /getBusinessCabinetSettings/);
+    assert.match(profile, /cabinet\.businessType/);
+    assert.match(profile, /cabinet\.startPage/);
+    assert.match(settingsRoute, /router\.get\('\/business\/cabinet'/);
+    assert.match(settingsRoute, /router\.put\('\/business\/cabinet'/);
+    assert.match(api, /async function apiGetBusinessCabinet/);
+    assert.match(api, /async function apiSaveBusinessCabinet/);
+    assert.match(settings, /function renderBusinessCabinetModuleButtons/);
+    assert.match(settings, /function collectBusinessCabinetModules/);
+    assert.match(settings, /apiSaveBusinessCabinet/);
+    assert.match(html, /settingsBusinessModuleGrid/);
+    assert.match(html, /settingsBusinessGuardrails/);
+    assert.match(css, /\.business-cabinet-guardrails/);
+
+    const disabledCabinet = normalizeBusinessCabinetSettings({
+        businessType: 'no_timeline',
+        startPage: 'timeline',
+        modules: { enabled: { dashboard: false, settings: false, timeline: true } }
+    }, 'event_genix');
+    assert.equal(disabledCabinet.businessType, 'no_timeline');
+    assert.equal(disabledCabinet.timelineMode, 'disabled');
+    assert.equal(disabledCabinet.startPage, 'dashboard');
+    assert.equal(disabledCabinet.modules.enabled.dashboard, true);
+    assert.equal(disabledCabinet.modules.enabled.settings, true);
+    assert.equal(disabledCabinet.modules.enabled.timeline, false);
+    assert.ok(disabledCabinet.guardrails.includes('timeline_start_requires_enabled_timeline'));
+
+    const darCabinet = normalizeBusinessCabinetSettings({}, 'dar');
+    assert.equal(darCabinet.businessType, 'no_timeline');
+    assert.equal(darCabinet.startPage, 'dashboard');
+    assert.equal(darCabinet.timelineEnabled, false);
+
+    const timeline = timelineDisplayFromBusinessCabinet({
+        businessContext: 'maysternya_doli',
+        businessType: 'simple',
+        startPage: 'timeline',
+        modules: { enabled: { timeline: true, leads: true, customers: true, omni: true, tasks: true } }
+    });
+    assert.equal(timeline.mode, 'simple');
+    assert.equal(timeline.startPage, 'timeline');
+    assert.equal(timeline.context, 'maysternya_doli');
 });

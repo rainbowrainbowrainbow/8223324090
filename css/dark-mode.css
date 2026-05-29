@@ -929,6 +929,18 @@ body.dark-mode .timeline-profile-contract {
     color: #9CA3AF;
 }
 
+body.dark-mode .business-cabinet-guardrails span {
+    border-color: rgba(245, 158, 11, 0.32);
+    background: rgba(245, 158, 11, 0.12);
+    color: #FCD34D;
+}
+
+body.dark-mode .business-cabinet-guardrails .is-ok {
+    border-color: rgba(45, 212, 191, 0.26);
+    background: rgba(20, 184, 166, 0.1);
+    color: #5EEAD4;
+}
+
 /* Dashboard */
 body.dark-mode .dash-list-item {
     background: var(--gray-100);

@@ -16,8 +16,11 @@ const {
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
+    businessContextFromRequest,
+    requireBusinessContext,
     resolveBusinessScope,
-    requireBusinessScope
+    requireBusinessScope,
+    requireWritableBusinessScope
 } = require('../services/businessContext');
 const {
     getTimelineDisplaySettings,
@@ -26,6 +29,13 @@ const {
     timelineResourceAvailability
 } = require('../services/timelineResources');
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
+const {
+    businessCabinetCatalog,
+    businessCabinetSettingsKey,
+    getBusinessCabinetSettings,
+    isTimelineContext,
+    saveBusinessCabinetSettings
+} = require('../services/businessCabinet');
 const {
     getChatSettingsBundle,
     getUnifiedAIConfig,
@@ -387,6 +397,63 @@ router.get('/business/profile', async (req, res) => {
         });
     } catch (err) {
         log.error('GET /business/profile error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/business/cabinet', async (req, res) => {
+    try {
+        const context = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, context)) return;
+        const cabinet = await getBusinessCabinetSettings(pool, context);
+        res.json({
+            success: true,
+            businessContext: context,
+            cabinet,
+            catalog: businessCabinetCatalog()
+        });
+    } catch (err) {
+        log.error('GET /business/cabinet error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.put('/business/cabinet', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        const scope = resolveBusinessScope(req);
+        if (!requireWritableBusinessScope(req, res, scope)) return;
+        const context = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, context)) return;
+        const cabinet = await saveBusinessCabinetSettings(pool, context, req.body || {}, req.user);
+        settingsCache.invalidate(businessCabinetSettingsKey(context));
+        if (isTimelineContext(context)) settingsCache.invalidate(`timeline_display:${context}`);
+        const businessProfile = await buildBusinessOperatingProfile(pool, req.user, {
+            scope: { ...scope, activeContext: context, selectedContexts: [context] },
+            includeIntegrations: true
+        });
+        logAdminAction('business_cabinet_update', 'settings', {
+            username: req.user?.username,
+            target: businessCabinetSettingsKey(context),
+            details: {
+                context,
+                businessType: cabinet.businessType,
+                timelineMode: cabinet.timelineMode,
+                timelineEnabled: cabinet.timelineEnabled,
+                startPage: cabinet.startPage,
+                enabledModules: cabinet.modules?.enabledIds || [],
+                disabledModules: cabinet.modules?.disabledIds || []
+            },
+            ip: req.ip,
+            requestId: req.headers['x-request-id']
+        });
+        res.json({
+            success: true,
+            businessContext: context,
+            cabinet,
+            businessProfile
+        });
+    } catch (err) {
+        log.error('PUT /business/cabinet error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });

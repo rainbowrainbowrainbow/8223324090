@@ -93,9 +93,15 @@ function makeDb(rows, links = []) {
                 )
             };
         }
-        if (/SELECT \* FROM bookings WHERE id = ANY\(\$1::text\[\]\) FOR UPDATE/i.test(sql)) {
+        if (/SELECT \* FROM bookings WHERE id = ANY\(\$1::text\[\]\)(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(sql)) {
             const ids = new Set(params[0] || []);
-            return { rows: state.rows.filter(row => ids.has(row.id)) };
+            const businessContext = sql.includes('COALESCE') ? params[1] : null;
+            return {
+                rows: state.rows.filter(row =>
+                    ids.has(row.id) &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext)
+                )
+            };
         }
         if (/INSERT INTO booking_banquet_links/i.test(sql)) {
             const [businessContext, bookingA, bookingB, relationType, label, createdByUserId, createdBy] = params;

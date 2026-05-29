@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.11 - таймлайн і бронювання за бізнесом
+
+### Timeline / bookings / business scope / 29.05.2026 [codex]
+- **Бронювання тепер редагуються тільки в активному timeline-бізнесі** - `confirm`, `delete`, `update`, `payment`, `linked-atomic` і banquet links спершу беруть активний `businessContext`, а потім шукають/міняють booking тільки в ньому.
+- **Лінії таймлайна ізольовані за бізнесом** - список і збереження `lines_by_date` більше не підтягують legacy-null рядки в `maysternya_doli`, але зберігають сумісність для старих park-даних.
+- **Side-effects не зʼєднують чужих клієнтів і фінанси** - customer link, `first_visit`, finance auto-delete/update, confirmation history і automation fetch отримали той самий `business_context`, що й booking.
+- **Frontend write API дублює активний контекст у URL і body** - create/full/update/confirm/linked flows стабільніше переживають refresh і route-compatibility між `/` та `/maysternya-doli`.
+- **Regression guard додано** - focused tests і `operational-business-context` фіксують scoped booking writes, lines scope, conflict checks і timeline API context.
+
+---
+
 ## v0.68.10 - задачі за бізнес-контекстом
 
 ### Task engine / business scope / tenant safety / 29.05.2026 [codex]

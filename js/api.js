@@ -1167,7 +1167,7 @@ async function apiGetBookings(date) {
 
 async function apiCreateBooking(booking) {
     try {
-        const response = await fetch(`${API_BASE}/bookings`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
@@ -1187,7 +1187,7 @@ async function apiCreateBooking(booking) {
 // v5.7: Create booking with linked bookings in one transaction
 async function apiCreateBookingFull(main, linked) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/full`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings/full')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({ main: timelineApiPayload(main), linked: (linked || []).map(item => timelineApiPayload(item)) }))
@@ -1254,7 +1254,7 @@ async function apiUpdateBooking(id, booking) {
 
 async function apiConfirmBooking(id, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/confirm`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/confirm`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
@@ -1273,7 +1273,7 @@ async function apiConfirmBooking(id, payload = {}) {
 
 async function apiUpdateLinkedBookingsAtomic(id, payload) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${id}/linked-atomic`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/linked-atomic`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))

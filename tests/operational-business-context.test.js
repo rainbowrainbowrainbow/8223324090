@@ -224,3 +224,30 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     assert.match(sidebar, /getAuthHeaders\(false\)/);
     assert.match(sidebar, /CrmBusinessContext\?\.apiUrl/);
 });
+
+test('timeline booking and line mutations stay inside the active timeline business context', () => {
+    const bookings = read('routes/bookings.js');
+    const lines = read('routes/lines.js');
+    const bookingService = read('services/booking.js');
+    const api = read('js/api.js');
+
+    assert.match(bookings, /function bookingContextSql/);
+    assert.match(bookings, /function getScopedBookingById/);
+    assert.match(bookings, /getScopedBookingById\(client, id, businessContext, \{ forUpdate: true \}\)/);
+    assert.match(bookings, /UPDATE bookings[\s\S]*WHERE \(id = \$4 OR linked_to = \$4\)[\s\S]*bookingContextSql\('', '\$5'\)/);
+    assert.match(bookings, /DELETE FROM bookings WHERE \(id = \$1 OR linked_to = \$1\) AND \$\{bookingContextSql\('', '\$2'\)\}/);
+    assert.match(bookings, /DELETE FROM finance_transactions WHERE booking_id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2/);
+    assert.match(bookings, /Customer does not belong to this business context/);
+    assert.match(bookings, /updateAtomicLinkedBookingFields\(client, id, mainPatch, businessContext\)/);
+    assert.match(bookings, /SELECT \* FROM bookings[\s\S]*id = ANY\(\$1::text\[\]\)[\s\S]*bookingContextSql\('', '\$2'\)/);
+
+    assert.match(lines, /COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
+    assert.match(lines, /DELETE FROM lines_by_date WHERE date = \$1 AND COALESCE\(business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
+    assert.match(bookingService, /COALESCE\(business_context, 'event_genix'\) = \$3/);
+    assert.match(bookingService, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\)/);
+
+    assert.match(api, /timelineApiUrl\('\/bookings'\)/);
+    assert.match(api, /timelineApiUrl\('\/bookings\/full'\)/);
+    assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/confirm`\)/);
+    assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/linked-atomic`\)/);
+});

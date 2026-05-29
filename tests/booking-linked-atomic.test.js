@@ -79,11 +79,17 @@ function makeDb(initialRows) {
             return { rows: [] };
         }
 
-        if (/SELECT \* FROM bookings WHERE id = \$1(?: FOR UPDATE)?$/i.test(sql)) {
-            return { rows: state.rows.filter(row => row.id === params[0]) };
+        if (/SELECT \* FROM bookings WHERE id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)?(?: FOR UPDATE)?$/i.test(sql)) {
+            const businessContext = sql.includes('COALESCE') ? params[1] : null;
+            return {
+                rows: state.rows.filter(row =>
+                    row.id === params[0] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext)
+                )
+            };
         }
 
-        if (/SELECT \* FROM bookings WHERE linked_to = \$1(?: AND business_context = \$2)? AND status != 'cancelled' FOR UPDATE/i.test(sql)) {
+        if (/SELECT \* FROM bookings WHERE linked_to = \$1(?: AND (?:business_context = \$2|COALESCE\(business_context, 'event_genix'\) = \$2))? AND status != 'cancelled' FOR UPDATE/i.test(sql)) {
             const businessContext = params[1];
             return {
                 rows: state.rows.filter(row =>
@@ -95,7 +101,8 @@ function makeDb(initialRows) {
         }
 
         if (/FROM bookings WHERE date = \$1 AND line_id = \$2/i.test(sql)) {
-            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const hasBusinessContext = sql.includes('business_context = $3') || sql.includes("COALESCE(business_context, 'event_genix') = $3");
+            const businessContext = hasBusinessContext ? params[2] : null;
             const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
@@ -109,7 +116,8 @@ function makeDb(initialRows) {
         }
 
         if (/FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
-            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const hasBusinessContext = sql.includes('business_context = $3') || sql.includes("COALESCE(business_context, 'event_genix') = $3");
+            const businessContext = hasBusinessContext ? params[2] : null;
             const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
@@ -123,7 +131,8 @@ function makeDb(initialRows) {
         }
 
         if (/WHERE \(hosts = \$1 OR second_animator = \$1::text\)/i.test(sql)) {
-            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const hasBusinessContext = sql.includes('business_context = $3') || sql.includes("COALESCE(business_context, 'event_genix') = $3");
+            const businessContext = hasBusinessContext ? params[2] : null;
             const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
@@ -138,9 +147,14 @@ function makeDb(initialRows) {
         }
 
         if (/^UPDATE bookings SET /i.test(sql)) {
-            const id = params[params.length - 1];
+            const scoped = sql.includes("COALESCE(business_context, 'event_genix')");
+            const id = scoped ? params[params.length - 2] : params[params.length - 1];
+            const businessContext = scoped ? params[params.length - 1] : null;
             const row = state.rows.find(item => item.id === id);
             if (!row) return { rows: [], rowCount: 0 };
+            if (businessContext && (row.business_context || 'event_genix') !== businessContext) {
+                return { rows: [], rowCount: 0 };
+            }
             const setClause = sql.match(/^UPDATE bookings SET (.+) WHERE id =/i)[1];
             let paramIndex = 0;
             for (const assignment of setClause.split(',')) {
@@ -291,6 +305,7 @@ test('linked-atomic Maysternya drag ignores same-time blockers from another time
         })
     ], async ({ baseUrl, state }) => {
         const res = await request(baseUrl, {
+            businessContext: 'maysternya_doli',
             main: { lineId: 'line-3' },
             linked: [],
             historyAction: 'drag',

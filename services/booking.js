@@ -56,7 +56,7 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, room, context, excludeId] : [date, room, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled'" +
+        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -76,7 +76,7 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, lineId, context, excludeId] : [date, lineId, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND business_context = $3 AND status != 'cancelled'" +
+        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -111,7 +111,7 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     const params = excludeId ? [date, programId, context, excludeId] : [date, programId, context];
     // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
-        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND business_context = $3 AND status != 'cancelled'" +
+        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -267,7 +267,7 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
     return db.query(
         `DELETE FROM lines_by_date l
          WHERE l.date = $1
-           AND l.business_context = $2
+           AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
            AND l.from_sheet IS DISTINCT FROM true
            AND (
                 l.line_id IN ('line1', 'line2', 'line1_' || $1, 'line2_' || $1)
@@ -279,7 +279,7 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
            AND NOT EXISTS (
                 SELECT 1 FROM bookings b
                 WHERE b.date = l.date
-                  AND b.business_context = l.business_context
+                  AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
                   AND b.line_id = l.line_id
                   AND b.status != 'cancelled'
            )
@@ -295,7 +295,10 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
 // --- Default lines ---
 
 async function ensureDefaultLines(date, db = pool) {
-    const existing = await db.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1 AND business_context = $2', [date, DEFAULT_TIMELINE_CONTEXT]);
+    const existing = await db.query(
+        "SELECT COUNT(*) FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, 'event_genix') = $2",
+        [date, DEFAULT_TIMELINE_CONTEXT]
+    );
     const count = parseInt(existing.rows[0].count);
     // v12.6: Only create defaults when NO lines exist (count === 0)
     // Previously count < 2 caused phantom "Аніматор 1/2" to reappear after user deleted a line

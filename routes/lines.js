@@ -45,8 +45,9 @@ router.get('/:date', async (req, res) => {
              LEFT JOIN staff_schedule ss
                 ON ss.staff_id = s.id
                AND ss.date = l.date
+               AND COALESCE(ss.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
                AND ss.status IN ('working', 'remote')
-             WHERE l.date = $1 AND COALESCE(l.business_context, $2) = $2
+             WHERE l.date = $1 AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
              ORDER BY
                 CASE WHEN ss.staff_id IS NULL THEN 1 ELSE 0 END,
                 ss.shift_start NULLS LAST,
@@ -85,7 +86,10 @@ router.post('/:date', async (req, res) => {
         if (!requireTimelineAction(req, res, businessContext, 'settings')) return;
 
         await client.query('BEGIN');
-        await client.query('DELETE FROM lines_by_date WHERE date = $1 AND business_context = $2', [date, businessContext]);
+        await client.query(
+            `DELETE FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
+            [date, businessContext]
+        );
 
         for (const line of lines) {
             await client.query(

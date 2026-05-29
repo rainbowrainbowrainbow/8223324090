@@ -76,14 +76,21 @@ function makeDb(initialRows) {
             state.tx.push(sql);
             return { rows: [], rowCount: 0 };
         }
-        if (/SELECT \* FROM bookings WHERE id = \$1 FOR UPDATE/i.test(sql)) {
-            return { rows: state.rows.filter(row => row.id === params[0]) };
+        if (/SELECT \* FROM bookings WHERE id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(sql)) {
+            const businessContext = sql.includes('COALESCE') ? params[1] : null;
+            return {
+                rows: state.rows.filter(row =>
+                    row.id === params[0] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext)
+                )
+            };
         }
         if (/UPDATE bookings SET status = 'confirmed'/i.test(sql)) {
-            const [confirmedBy, note, source, id] = params;
+            const [confirmedBy, note, source, id, businessContext] = params;
             const updated = [];
             for (const row of state.rows) {
-                if (row.id === id || row.linked_to === id) {
+                if ((row.id === id || row.linked_to === id) &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext)) {
                     row.status = 'confirmed';
                     row.confirmed_at = '2099-05-14T13:20:00.000Z';
                     row.confirmed_by = confirmedBy;

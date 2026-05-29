@@ -39,6 +39,19 @@ const log = createLogger('Bookings');
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
 
+function bookingContextSql(alias = '', placeholder = '$1') {
+    const column = alias ? `${alias}.business_context` : 'business_context';
+    return `COALESCE(${column}, '${DEFAULT_TIMELINE_CONTEXT}') = ${placeholder}`;
+}
+
+async function getScopedBookingById(queryable, id, businessContext, { forUpdate = false } = {}) {
+    const result = await queryable.query(
+        `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}${forUpdate ? ' FOR UPDATE' : ''}`,
+        [id, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    return result.rows[0] || null;
+}
+
 function sendBookingDenied(req, res, booking) {
     if (!canViewBooking(req.user, booking)) {
         return res.status(404).json(bookingAccessDeniedPayload());
@@ -76,7 +89,7 @@ function hasBookingLeadIdentity(booking, customerId) {
 async function getLineName(lineId, date, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     try {
         const result = await pool.query(
-            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2 AND COALESCE(business_context, $3) = $3',
+            `SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2 AND ${bookingContextSql('', '$3')}`,
             [lineId, date, businessContext || DEFAULT_TIMELINE_CONTEXT]
         );
         return result.rows[0]?.name || null;
@@ -138,6 +151,7 @@ async function insertBookingConfirmationHistory(client, { booking, actor, source
         ['booking_confirmed', actor?.username, JSON.stringify({
             entity_type: 'booking',
             entity_id: booking.id,
+            business_context: booking.business_context || DEFAULT_TIMELINE_CONTEXT,
             action_type: 'booking_confirmed',
             actor_user_id: actorUserId(actor),
             meta: {
@@ -324,7 +338,7 @@ async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND line_id = $2 AND business_context = $3 AND status != 'cancelled'
+         WHERE date = $1 AND line_id = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled'
            AND id != ALL($4::text[])`,
         [candidate.date, candidate.line_id, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
@@ -342,7 +356,7 @@ async function findAtomicRoomConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled'
+         WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled'
            AND id != ALL($4::text[])`,
         [candidate.date, candidate.room, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
@@ -355,11 +369,10 @@ async function findAtomicRoomConflict(client, candidate, excludeIds) {
     }) || null;
 }
 
-async function updateAtomicLinkedBookingFields(client, id, patch) {
+async function updateAtomicLinkedBookingFields(client, id, patch, businessContext) {
     const entries = Object.entries(patch);
     if (!entries.length) {
-        const current = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        return current.rows[0] || null;
+        return getScopedBookingById(client, id, businessContext);
     }
 
     const assignments = [];
@@ -370,9 +383,12 @@ async function updateAtomicLinkedBookingFields(client, id, patch) {
     }
     assignments.push('updated_at = NOW()');
     params.push(id);
+    params.push(businessContext || DEFAULT_TIMELINE_CONTEXT);
 
     const result = await client.query(
-        `UPDATE bookings SET ${assignments.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        `UPDATE bookings SET ${assignments.join(', ')}
+         WHERE id = $${params.length - 1} AND ${bookingContextSql('', `$${params.length}`)}
+         RETURNING *`,
         params
     );
     return result.rows[0] || null;
@@ -383,8 +399,10 @@ router.get('/occupancy', async (req, res) => {
     try {
         const from = req.query.from || new Date().toISOString().slice(0, 10);
         const to = req.query.to || from;
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
         const workdayHours = 10;
-        const params = [from, to, DEFAULT_TIMELINE_CONTEXT];
+        const params = [from, to, businessContext];
         const visibility = buildBookingVisibilityScope(req.user, params, 'b');
 
         const result = await pool.query(`
@@ -392,7 +410,7 @@ router.get('/occupancy', async (req, res) => {
                    COALESCE(SUM(b.duration), 0)::int AS total_minutes
             FROM bookings b
             WHERE b.date::date >= $1::date AND b.date::date <= $2::date
-              AND b.business_context = $3
+              AND ${bookingContextSql('b', '$3')}
               AND b.status != 'cancelled' AND b.linked_to IS NULL
               ${visibility}
             GROUP BY b.line_id
@@ -434,7 +452,7 @@ router.get('/:date', async (req, res) => {
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source
              FROM bookings b
-             WHERE b.date = $1 AND COALESCE(b.business_context, $2) = $2 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND b.status != 'cancelled'
                ${visibility}
              ORDER BY time`,
             params
@@ -450,6 +468,9 @@ router.get('/:date', async (req, res) => {
 router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res) => {
     const { id } = req.params;
     const targetId = req.body?.targetId || req.body?.target_id || req.body?.toBookingId;
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
     if (!validateId(id) || !validateId(targetId)) {
         return res.status(400).json({ success: false, error: 'Invalid booking ID' });
     }
@@ -462,8 +483,11 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
     try {
         await client.query('BEGIN');
         const bookingResult = await client.query(
-            'SELECT * FROM bookings WHERE id = ANY($1::text[]) FOR UPDATE',
-            [[id, targetId]]
+            `SELECT * FROM bookings
+              WHERE id = ANY($1::text[])
+                AND ${bookingContextSql('', '$2')}
+              FOR UPDATE`,
+            [[id, targetId], businessContext]
         );
         const bookings = bookingResult.rows;
         if (bookings.length !== 2) {
@@ -472,15 +496,6 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
         }
         const source = bookings.find(row => String(row.id) === String(id));
         const target = bookings.find(row => String(row.id) === String(targetId));
-        const businessContext = source.business_context || DEFAULT_TIMELINE_CONTEXT;
-        if (!requireTimelineContext(req, res, businessContext)) {
-            await client.query('ROLLBACK');
-            return;
-        }
-        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
-            await client.query('ROLLBACK');
-            return;
-        }
         if ((target.business_context || DEFAULT_TIMELINE_CONTEXT) !== businessContext) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Бронювання з різних контекстів не можна звʼязати' });
@@ -531,6 +546,9 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
 
 router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), async (req, res) => {
     const { id, targetId } = req.params;
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
     if (!validateId(id) || !validateId(targetId)) {
         return res.status(400).json({ success: false, error: 'Invalid booking ID' });
     }
@@ -542,8 +560,11 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
     try {
         await client.query('BEGIN');
         const bookingResult = await client.query(
-            'SELECT * FROM bookings WHERE id = ANY($1::text[]) FOR UPDATE',
-            [[id, targetId]]
+            `SELECT * FROM bookings
+              WHERE id = ANY($1::text[])
+                AND ${bookingContextSql('', '$2')}
+              FOR UPDATE`,
+            [[id, targetId], businessContext]
         );
         if (bookingResult.rows.length !== 2) {
             await client.query('ROLLBACK');
@@ -551,15 +572,6 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
         }
         const source = bookingResult.rows.find(row => String(row.id) === String(id));
         const target = bookingResult.rows.find(row => String(row.id) === String(targetId));
-        const businessContext = source.business_context || DEFAULT_TIMELINE_CONTEXT;
-        if (!requireTimelineContext(req, res, businessContext)) {
-            await client.query('ROLLBACK');
-            return;
-        }
-        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
-            await client.query('ROLLBACK');
-            return;
-        }
         if ((target.business_context || DEFAULT_TIMELINE_CONTEXT) !== businessContext) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Бронювання з різних контекстів не можна змінити разом' });
@@ -706,6 +718,16 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 customerId = custResult.rows[0].id;
             }
         }
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+            const scopedCustomer = await client.query(
+                "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                [customerId, businessContext]
+            );
+            if (!scopedCustomer.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Customer does not belong to this business context' });
+            }
+        }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
             b.id = await generateBookingNumber(client);
@@ -745,8 +767,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
                     updated_at = NOW()
-                 WHERE id = $2`,
-                [b.date, customerId]
+                 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3`,
+                [b.date, customerId, businessContext]
             );
         }
 
@@ -913,7 +935,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // Integration 7: Loyalty tier auto-upgrade
-        if (customerId) {
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
             setImmediate(async () => {
                 try {
                     const cust = await pool.query(
@@ -921,8 +943,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                                 c.loyalty_tier_id, lt.name AS current_tier_name
                          FROM customers c
                          LEFT JOIN loyalty_tiers lt ON lt.id = c.loyalty_tier_id
-                         WHERE c.id = $1`,
-                        [customerId]
+                         WHERE c.id = $1 AND COALESCE(c.business_context, 'event_genix') = $2`,
+                        [customerId, businessContext]
                     );
                     if (!cust.rowCount) return;
                     const c = cust.rows[0];
@@ -935,7 +957,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     if (!tiers.rowCount) return;
                     const newTier = tiers.rows[0];
                     if (newTier.id !== c.loyalty_tier_id) {
-                        await pool.query('UPDATE customers SET loyalty_tier_id = $1 WHERE id = $2', [newTier.id, customerId]);
+                        await pool.query(
+                            "UPDATE customers SET loyalty_tier_id = $1 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3",
+                            [newTier.id, customerId, businessContext]
+                        );
                         const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
                         const chatId = await getConfiguredChatId();
                         if (chatId) {
@@ -968,7 +993,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         });
 
         // v33.9.0: Post message to room channel
-        if (b.lineId) {
+        if (parkSideEffectsAllowedForContext(businessContext) && b.lineId) {
             setImmediate(async () => {
                 try {
                     const roomChan = await pool.query(
@@ -1091,6 +1116,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 customerId = custResult.rows[0].id;
             }
         }
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+            const scopedCustomer = await client.query(
+                "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
+                [customerId, businessContext]
+            );
+            if (!scopedCustomer.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Customer does not belong to this business context' });
+            }
+        }
 
         if (!main.id || !/^BK-\d{4}-\d{4,}$/.test(main.id)) {
             main.id = await generateBookingNumber(client);
@@ -1109,8 +1144,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
                     updated_at = NOW()
-                 WHERE id = $2`,
-                [main.date, customerId]
+                 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3`,
+                [main.date, customerId, businessContext]
             );
         }
 
@@ -1226,23 +1261,16 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         const { id } = req.params;
         const permanent = req.query.permanent === 'true';
         if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
 
         await client.query('BEGIN');
 
-        const bookingResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        const booking = bookingResult.rows[0];
+        const booking = await getScopedBookingById(client, id, businessContext);
         if (!booking) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
-        }
-        if (!requireTimelineContext(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT)) {
-            await client.query('ROLLBACK');
-            return;
-        }
-        const businessContext = booking.business_context || DEFAULT_TIMELINE_CONTEXT;
-        if (!requireTimelineAction(req, res, businessContext, 'delete')) {
-            await client.query('ROLLBACK');
-            return;
         }
         if (!canEditBooking(req.user, booking)) {
             await client.query('ROLLBACK');
@@ -1256,10 +1284,14 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         );
 
         if (permanent) {
-            await client.query('DELETE FROM bookings WHERE (id = $1 OR linked_to = $1) AND business_context = $2', [id, businessContext]);
+            await client.query(
+                `DELETE FROM bookings WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
+                [id, businessContext]
+            );
         } else {
             await client.query(
-                "UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE (id = $1 OR linked_to = $1) AND business_context = $2",
+                `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
+                 WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             );
         }
@@ -1270,8 +1302,8 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         if (parkSideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
             try {
                 await client.query(
-                    'DELETE FROM finance_transactions WHERE booking_id = $1',
-                    [id]
+                    "DELETE FROM finance_transactions WHERE booking_id = $1 AND COALESCE(business_context, 'event_genix') = $2",
+                    [id, businessContext]
                 );
             } catch (finErr) {
                 log.warn(`Finance auto-delete failed (non-critical): ${finErr.message}`);
@@ -1357,6 +1389,9 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
     if (body.historyAction && !ATOMIC_LINKED_HISTORY_ACTIONS.has(body.historyAction)) {
         return res.status(400).json({ error: 'Invalid history action' });
     }
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
 
     const mainPatch = pickAtomicLinkedPatch(body.main || {});
     const linkedInput = Array.isArray(body.linked) ? body.linked : [];
@@ -1375,20 +1410,10 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
     try {
         await client.query('BEGIN');
 
-        const mainResult = await client.query('SELECT * FROM bookings WHERE id = $1 FOR UPDATE', [id]);
-        const oldMain = mainResult.rows[0];
+        const oldMain = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!oldMain) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Booking not found' });
-        }
-        const businessContext = oldMain.business_context || DEFAULT_TIMELINE_CONTEXT;
-        if (!requireTimelineContext(req, res, businessContext)) {
-            await client.query('ROLLBACK');
-            return;
-        }
-        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
-            await client.query('ROLLBACK');
-            return;
         }
         if (!canEditBooking(req.user, oldMain)) {
             await client.query('ROLLBACK');
@@ -1400,7 +1425,11 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
 
         const linkedResult = await client.query(
-            "SELECT * FROM bookings WHERE linked_to = $1 AND business_context = $2 AND status != 'cancelled' FOR UPDATE",
+            `SELECT * FROM bookings
+              WHERE linked_to = $1
+                AND ${bookingContextSql('', '$2')}
+                AND status != 'cancelled'
+              FOR UPDATE`,
             [id, businessContext]
         );
         const linkedRows = linkedResult.rows;
@@ -1489,12 +1518,12 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             }
         }
 
-        const savedMainRow = await updateAtomicLinkedBookingFields(client, id, mainPatch);
+        const savedMainRow = await updateAtomicLinkedBookingFields(client, id, mainPatch, businessContext);
         const savedLinkedRows = [];
         const updatedLinkedRows = [];
         for (const row of linkedRows) {
             const patch = linkedPatchById.get(row.id) || {};
-            const savedRow = await updateAtomicLinkedBookingFields(client, row.id, patch);
+            const savedRow = await updateAtomicLinkedBookingFields(client, row.id, patch, businessContext);
             if (savedRow) savedLinkedRows.push(savedRow);
             if (savedRow && Object.keys(patch).length > 0) updatedLinkedRows.push(savedRow);
         }
@@ -1551,6 +1580,9 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
     const note = normalizeConfirmationNote(req.body?.note);
     const actor = req.user || {};
     const userId = actorUserId(actor);
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
     const client = await pool.connect();
     let confirmedRow = null;
     let confirmedRows = [];
@@ -1558,19 +1590,10 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        const currentResult = await client.query('SELECT * FROM bookings WHERE id = $1 FOR UPDATE', [id]);
-        const current = currentResult.rows[0];
+        const current = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!current) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Booking not found' });
-        }
-        if (!requireTimelineContext(req, res, current.business_context || DEFAULT_TIMELINE_CONTEXT)) {
-            await client.query('ROLLBACK');
-            return;
-        }
-        if (!requireTimelineAction(req, res, current.business_context || DEFAULT_TIMELINE_CONTEXT, 'edit')) {
-            await client.query('ROLLBACK');
-            return;
         }
         if (!canEditBooking(req.user, current)) {
             await client.query('ROLLBACK');
@@ -1604,9 +1627,10 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
                  confirmation_note = $2,
                  confirmation_source = $3,
                  updated_at = NOW()
-             WHERE id = $4 OR linked_to = $4
+             WHERE (id = $4 OR linked_to = $4)
+               AND ${bookingContextSql('', '$5')}
              RETURNING *`,
-            [userId, note, source, id]
+            [userId, note, source, id, businessContext]
         );
 
         confirmedRows = updateResult.rows;
@@ -1649,14 +1673,13 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const b = req.body;
     const clientUpdatedAt = b.updatedAt || null;
     if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
-
-    // v40: Merge missing fields from existing booking (before pool.connect to avoid leaks)
-    const existing = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
-    if (!existing.rows.length) { return res.status(404).json({ error: 'Booking not found' }); }
-    const old = existing.rows[0];
-    const businessContext = old.business_context || DEFAULT_TIMELINE_CONTEXT;
+    const businessContext = timelineContextFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+
+    // v40: Merge missing fields from existing booking (before pool.connect to avoid leaks)
+    const old = await getScopedBookingById(pool, id, businessContext);
+    if (!old) { return res.status(404).json({ error: 'Booking not found' }); }
     b.businessContext = businessContext;
     if (!canEditBooking(req.user, old)) {
         return sendBookingDenied(req, res, old);
@@ -1711,13 +1734,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         await client.query('BEGIN');
 
-        const oldResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        if (oldResult.rows.length === 0) {
+        const oldBooking = await getScopedBookingById(client, id, businessContext);
+        if (!oldBooking) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Бронювання не знайдено' });
         }
-        const oldBooking = oldResult.rows[0];
-
         if (!b.linkedTo) {
             // v19.13: Skip conflict checks if date/time/line/duration unchanged
             const timeSlotChanged = oldBooking.date !== b.date || oldBooking.time !== b.time
@@ -1737,11 +1758,16 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
             if (roomChanged && b.room && b.room !== 'Інше') {
                 // v12.6: Exclude linked bookings of this booking from room conflict check
-                const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1 AND business_context = $2', [id, businessContext]);
+                const linkedIds = await client.query(
+                    `SELECT id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')}`,
+                    [id, businessContext]
+                );
                 const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
                 let roomConflict = null;
                 const roomResult = await client.query(
-                    "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled' AND id != ALL($4::text[])",
+                    `SELECT id, time, duration, label, program_code
+                     FROM bookings
+                     WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled' AND id != ALL($4::text[])`,
                     [b.date, b.room, businessContext, excludeIds]
                 );
                 const newStart = timeToMinutes(b.time);
@@ -1829,7 +1855,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  payment_method=$26, pinata_mode=$27, client_pinata_service_price=$28,
                  client_pinata_service_note=$29, pinata_number=$30, pinata_filler_number=$31,
                  banquet_guests=$32, banquet_tables=$33, banquet_menu=$34
-                 WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
+                 WHERE id=$23
+                   AND ${bookingContextSql('', '$35')}
+                   AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
@@ -1837,7 +1865,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
-                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -1849,20 +1877,23 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  payment_method=$25, pinata_mode=$26, client_pinata_service_price=$27,
                  client_pinata_service_note=$28, pinata_number=$29, pinata_filler_number=$30,
                  banquet_guests=$31, banquet_tables=$32, banquet_menu=$33
-                 WHERE id=$23
+                 WHERE id=$23 AND ${bookingContextSql('', '$34')}
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
-                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
             );
         }
 
         // Optimistic locking: conflict detected (0 rows updated)
         if (updateResult.rowCount === 0) {
-            const currentResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
+            const currentResult = await client.query(
+                `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
+                [id, businessContext]
+            );
             await client.query('ROLLBACK');
 
             if (currentResult.rows.length === 0) {
@@ -1882,7 +1913,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
-            const linkedResult = await client.query('SELECT id, line_id FROM bookings WHERE linked_to = $1 AND business_context = $2', [id, businessContext]);
+            const linkedResult = await client.query(
+                `SELECT id, line_id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')}`,
+                [id, businessContext]
+            );
             const oldSecond = oldBooking.second_animator;
             const newSecond = b.secondAnimator;
             const secondChanged = (oldSecond || '') !== (newSecond || '');
@@ -1890,12 +1924,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             if (secondChanged && linkedResult.rows.length > 0) {
                 // Delete old linked bookings — secondAnimator changed or was cleared
                 for (const linked of linkedResult.rows) {
-                    await client.query('DELETE FROM bookings WHERE id = $1', [linked.id]);
+                    await client.query(
+                        `DELETE FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
+                        [linked.id, businessContext]
+                    );
                 }
                 // Create new linked booking if secondAnimator is set
                 if (newSecond) {
                     const lineRes = await client.query(
-                        'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND business_context = $3',
+                        `SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND ${bookingContextSql('', '$3')}`,
                         [newSecond, b.date, businessContext]
                     );
                     if (lineRes.rows.length > 0) {
@@ -1922,16 +1959,16 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5,
                          pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
                          client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
-                         updated_at=NOW() WHERE id=$12`,
+                          updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')}`,
                         [b.date, b.time, b.duration, newStatus, b.room, b.pinataFiller, b.pinataMode,
                          b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber,
-                         b.pinataFillerNumber, linked.id]
+                         b.pinataFillerNumber, linked.id, businessContext]
                     );
                 }
             } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
                 const lineRes = await client.query(
-                    'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND business_context = $3',
+                    `SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND ${bookingContextSql('', '$3')}`,
                     [newSecond, b.date, businessContext]
                 );
                 if (lineRes.rows.length > 0) {
@@ -2012,7 +2049,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
         if (sideEffectsAllowedForContext(businessContext) && statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
             // v8.3.2: Fetch fresh row from DB for automation (req.body may lack extra_data)
-            pool.query('SELECT * FROM bookings WHERE id = $1', [id])
+            pool.query(
+                `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}`,
+                [id, businessContext]
+            )
                 .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRow(r.rows[0]), _event: 'confirm' }) : null)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
@@ -2047,14 +2087,14 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
         const { id } = req.params;
         const { payment_method, fiscal_required } = req.body;
         if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
 
-        const existing = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        const booking = existing.rows[0];
+        const booking = await getScopedBookingById(pool, id, businessContext);
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found' });
         }
-        if (!requireTimelineContext(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT)) return;
-        if (!requireTimelineAction(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT, 'edit')) return;
         if (!canEditBooking(req.user, booking)) {
             return sendBookingDenied(req, res, booking);
         }
@@ -2076,8 +2116,11 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
         }
 
         params.push(id);
+        params.push(businessContext);
         const result = await pool.query(
-            `UPDATE bookings SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING id, payment_method, fiscal_required`,
+            `UPDATE bookings SET ${updates.join(', ')}
+             WHERE id = $${params.length - 1} AND ${bookingContextSql('', `$${params.length}`)}
+             RETURNING id, business_context, payment_method, fiscal_required`,
             params
         );
 

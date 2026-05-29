@@ -11,6 +11,11 @@ const { createLogger } = require('../utils/logger');
 
 const { requireRole } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const {
+    resolveBusinessScope,
+    requireBusinessScope,
+    pushBusinessScopeCondition
+} = require('../services/businessContext');
 const log = createLogger('Analytics');
 
 // RBAC: Analytics - manager-up, aligned with middleware/js/sidebar page access.
@@ -45,6 +50,38 @@ function actorScopedCacheKey(req, prefix, ...parts) {
         `name=${user.username || user.name || ''}`,
         ...parts
     ].join(':');
+}
+
+function businessScopeCachePart(scope) {
+    const contexts = Array.isArray(scope?.selectedContexts) && scope.selectedContexts.length
+        ? scope.selectedContexts.join(',')
+        : (scope?.activeContext || 'event_genix');
+    return `business=${scope?.mode || 'single'}:${contexts}`;
+}
+
+function scopedAnalyticsCacheKey(req, prefix, scope, ...parts) {
+    return actorScopedCacheKey(req, prefix, businessScopeCachePart(scope), ...parts);
+}
+
+function analyticsBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
+}
+
+function scopedParams(scope, alias = '', baseParams = []) {
+    const params = [...baseParams];
+    const businessCondition = pushBusinessScopeCondition(params, scope, alias);
+    return { params, businessCondition };
+}
+
+function businessScopeMeta(scope) {
+    return {
+        mode: scope.mode,
+        activeContext: scope.activeContext,
+        selectedContexts: scope.selectedContexts,
+        readOnly: scope.readOnly
+    };
 }
 
 // ==========================================
@@ -147,7 +184,7 @@ const PRODUCT_SALES_CODE_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'SERV' E
 const PRODUCT_SALES_NAME_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'Клієнтська піньята (послуга)' ELSE COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') END";
 const PRODUCT_SALES_CATEGORY_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'custom' ELSE COALESCE(NULLIF(b.category, ''), p.category, 'custom') END";
 
-function buildProductSalesWhere({ from, to, category, programId }, user) {
+function buildProductSalesWhere({ from, to, category, programId }, user, businessScope) {
     const params = [from, to];
     const where = [
         'b.date::date >= $1::date',
@@ -155,6 +192,7 @@ function buildProductSalesWhere({ from, to, category, programId }, user) {
         "b.status = 'confirmed'",
         "NULLIF(b.linked_to, '') IS NULL"
     ];
+    where.push(pushBusinessScopeCondition(params, businessScope, 'b'));
 
     if (category) {
         params.push(category);
@@ -208,7 +246,7 @@ function normalizeProductSalesDetail(row) {
     };
 }
 
-async function loadProductSalesData(query = {}, user = null) {
+async function loadProductSalesData(query = {}, user = null, businessScope = null) {
     const range = getMonthRange(query.month);
     const category = normalizeFilter(query.category, 50);
     const programId = normalizeFilter(query.programId, 120);
@@ -217,7 +255,7 @@ async function loadProductSalesData(query = {}, user = null) {
         to: range.to,
         category,
         programId
-    }, user);
+    }, user, businessScope || { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] });
 
     const [summaryResult, detailResult] = await Promise.all([
         pool.query(`
@@ -256,6 +294,7 @@ async function loadProductSalesData(query = {}, user = null) {
             FROM bookings b
             LEFT JOIN products p ON p.id = NULLIF(b.program_id, '')
             LEFT JOIN customers c ON c.id = b.customer_id
+                AND COALESCE(c.business_context, 'event_genix') = COALESCE(b.business_context, 'event_genix')
             ${whereSql}
             ORDER BY b.date::date, b.time, b.id
         `, params)
@@ -275,6 +314,7 @@ async function loadProductSalesData(query = {}, user = null) {
         success: true,
         period: range,
         filters: { category: category || '', programId: programId || '' },
+        businessScope: businessScope ? businessScopeMeta(businessScope) : null,
         totals,
         summary,
         details
@@ -412,6 +452,8 @@ router.use((req, res, next) => {
 
 router.get('/overview', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         const period = req.query.period || 'month';
         let from = req.query.from, to = req.query.to;
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
@@ -420,14 +462,19 @@ router.get('/overview', async (req, res) => {
         }
         const prev = getPrevRange(from, to);
 
-        const cacheKey = actorScopedCacheKey(req, 'overview', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'overview', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
-        const bookingsCurrParams = [from, to];
+        const { params: bookingsCurrParams, businessCondition: bookingsCurrBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const bookingsCurrScope = getVisibleBookingScope(req.user, bookingsCurrParams, 'b');
-        const bookingsPrevParams = [prev.from, prev.to];
+        const { params: bookingsPrevParams, businessCondition: bookingsPrevBusiness } = scopedParams(businessScope, 'b', [prev.from, prev.to]);
         const bookingsPrevScope = getVisibleBookingScope(req.user, bookingsPrevParams, 'b');
+        const { params: financeCurrParams, businessCondition: financeCurrBusiness } = scopedParams(businessScope, '', [from, to]);
+        const { params: financePrevParams, businessCondition: financePrevBusiness } = scopedParams(businessScope, '', [prev.from, prev.to]);
+        const { params: customersCurrParams, businessCondition: customersCurrBusiness } = scopedParams(businessScope, '', [from, to]);
+        const { params: customersPrevParams, businessCondition: customersPrevBusiness } = scopedParams(businessScope, '', [prev.from, prev.to]);
+        const { params: hrCurrParams, businessCondition: hrCurrBusiness } = scopedParams(businessScope, '', [from, to]);
 
         // Run all queries in parallel
         const [
@@ -446,6 +493,7 @@ router.get('/overview', async (req, res) => {
                     COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_check
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status != 'cancelled'
+                AND ${bookingsCurrBusiness}
                 ${bookingsCurrScope.sql}
             `, bookingsCurrParams),
             // Bookings — previous
@@ -456,6 +504,7 @@ router.get('/overview', async (req, res) => {
                     COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_check
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status != 'cancelled'
+                AND ${bookingsPrevBusiness}
                 ${bookingsPrevScope.sql}
             `, bookingsPrevParams),
             // Finance — current
@@ -466,31 +515,36 @@ router.get('/overview', async (req, res) => {
                     COUNT(*) FILTER (WHERE type='income')::int AS income_count,
                     COUNT(*) FILTER (WHERE type='expense')::int AS expense_count
                 FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
-            `, [from, to]),
+                  AND ${financeCurrBusiness}
+            `, financeCurrParams),
             // Finance — previous
             pool.query(`
                 SELECT
                     COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
                 FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
-            `, [prev.from, prev.to]),
+                  AND ${financePrevBusiness}
+            `, financePrevParams),
             // Customers — current period new
             pool.query(`
                 SELECT COUNT(*)::int AS new_customers
                 FROM customers WHERE created_at::date >= $1::date AND created_at::date <= $2::date
-            `, [from, to]),
+                  AND ${customersCurrBusiness}
+            `, customersCurrParams),
             // Customers — previous period new
             pool.query(`
                 SELECT COUNT(*)::int AS new_customers
                 FROM customers WHERE created_at::date >= $1::date AND created_at::date <= $2::date
-            `, [prev.from, prev.to]),
+                  AND ${customersPrevBusiness}
+            `, customersPrevParams),
             // HR — current period hours
             pool.query(`
                 SELECT
                     COALESCE(SUM(total_worked_minutes), 0)::int AS total_minutes,
                     COUNT(DISTINCT staff_id)::int AS active_staff
                 FROM hr_time_records WHERE record_date >= $1 AND record_date <= $2
-            `, [from, to])
+                  AND ${hrCurrBusiness}
+            `, hrCurrParams)
         ]);
 
         const bc = bookingsCurr.rows[0], bp = bookingsPrev.rows[0];
@@ -500,6 +554,7 @@ router.get('/overview', async (req, res) => {
 
         const data = {
             period: { from, to, prev: { from: prev.from, to: prev.to } },
+            businessScope: businessScopeMeta(businessScope),
             bookings: {
                 revenue: bc.revenue, total: bc.total, confirmed: bc.confirmed,
                 preliminary: bc.preliminary, avgCheck: bc.avg_check,
@@ -541,22 +596,27 @@ router.get('/overview', async (req, res) => {
 
 router.get('/charts', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         let from = req.query.from, to = req.query.to;
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             const range = getDateRange(req.query.period || 'month');
             from = range.from; to = range.to;
         }
 
-        const cacheKey = actorScopedCacheKey(req, 'charts', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'charts', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
-        const dailyBookingsParams = [from, to];
+        const { params: dailyBookingsParams, businessCondition: dailyBookingsBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const dailyBookingsScope = getVisibleBookingScope(req.user, dailyBookingsParams, 'b');
-        const topProgramsParams = [from, to];
+        const { params: dailyFinanceParams, businessCondition: dailyFinanceBusiness } = scopedParams(businessScope, '', [from, to]);
+        const { params: topProgramsParams, businessCondition: topProgramsBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const topProgramsScope = getVisibleBookingScope(req.user, topProgramsParams, 'b');
-        const weekdayLoadParams = [from, to];
+        const { params: topCategoriesParams, businessCondition: topCategoriesBusiness } = scopedParams(businessScope, 'ft', [from, to]);
+        const { params: weekdayLoadParams, businessCondition: weekdayLoadBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const weekdayLoadScope = getVisibleBookingScope(req.user, weekdayLoadParams, 'b');
+        const { params: customerSegmentsParams, businessCondition: customerSegmentsBusiness } = scopedParams(businessScope, '', []);
 
         const [dailyBookings, dailyFinance, topPrograms, topCategories, weekdayLoad, customerSegments] = await Promise.all([
             // Daily bookings
@@ -564,6 +624,7 @@ router.get('/charts', async (req, res) => {
                 SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
+                AND ${dailyBookingsBusiness}
                 ${dailyBookingsScope.sql}
                 GROUP BY date ORDER BY date
             `, dailyBookingsParams),
@@ -573,8 +634,9 @@ router.get('/charts', async (req, res) => {
                     COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
                 FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
+                  AND ${dailyFinanceBusiness}
                 GROUP BY date ORDER BY date
-            `, [from, to]),
+            `, dailyFinanceParams),
             // Top programs
             pool.query(`
                 SELECT
@@ -584,6 +646,7 @@ router.get('/charts', async (req, res) => {
                     COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
+                AND ${topProgramsBusiness}
                 ${topProgramsScope.sql}
                 GROUP BY 1, 2
                 ORDER BY revenue DESC LIMIT 10
@@ -595,15 +658,17 @@ router.get('/charts', async (req, res) => {
                 FROM finance_transactions ft
                 JOIN finance_categories fc ON ft.category_id = fc.id
                 WHERE ft.date::date >= $1::date AND ft.date::date <= $2::date
+                  AND ${topCategoriesBusiness}
                 GROUP BY fc.id, fc.name, fc.icon, fc.color
                 ORDER BY total DESC
-            `, [from, to]),
+            `, topCategoriesParams),
             // Day-of-week load
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM date::date)::int AS dow,
                     COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.linked_to IS NULL AND b.status = 'confirmed'
+                AND ${weekdayLoadBusiness}
                 ${weekdayLoadScope.sql}
                 GROUP BY dow ORDER BY dow
             `, weekdayLoadParams),
@@ -616,13 +681,15 @@ router.get('/charts', async (req, res) => {
                     COUNT(*) FILTER (WHERE total_bookings = 0)::int AS inactive,
                     COUNT(*)::int AS total
                 FROM customers
-            `)
+                WHERE ${customerSegmentsBusiness}
+            `, customerSegmentsParams)
         ]);
 
         const DOW_NAMES = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 
         const data = {
             period: { from, to },
+            businessScope: businessScopeMeta(businessScope),
             dailyBookings: dailyBookings.rows.map(r => ({ date: r.date, count: r.count, revenue: r.revenue })),
             dailyFinance: dailyFinance.rows.map(r => ({ date: r.date, income: r.income, expense: r.expense })),
             topPrograms: topPrograms.rows.map(r => ({
@@ -651,6 +718,8 @@ router.get('/charts', async (req, res) => {
 
 router.get('/comparison', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         let from = req.query.from, to = req.query.to;
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             const range = getDateRange(req.query.period || 'month');
@@ -658,40 +727,73 @@ router.get('/comparison', async (req, res) => {
         }
         const prev = getPrevRange(from, to);
 
-        const cacheKey = actorScopedCacheKey(req, 'comparison', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'comparison', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
         const metrics = [
             { key: 'bookingRevenue', label: 'Виручка бронювань', bookingScoped: true },
             { key: 'bookingCount', label: 'Кількість бронювань', bookingScoped: true },
-            { key: 'finIncome', label: 'Фінанси: доходи', sql: `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date` },
-            { key: 'finExpense', label: 'Фінанси: витрати', sql: `SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date` },
-            { key: 'newCustomers', label: 'Нових клієнтів', sql: `SELECT COUNT(*)::int AS val FROM customers WHERE created_at::date >= $1::date AND created_at::date <= $2::date` },
-            { key: 'hrHours', label: 'Робочих годин', sql: `SELECT COALESCE(ROUND(SUM(total_worked_minutes) / 60.0, 1), 0)::numeric AS val FROM hr_time_records WHERE record_date >= $1 AND record_date <= $2` }
+            { key: 'finIncome', label: 'Фінанси: доходи' },
+            { key: 'finExpense', label: 'Фінанси: витрати' },
+            { key: 'newCustomers', label: 'Нових клієнтів' },
+            { key: 'hrHours', label: 'Робочих годин' }
         ];
 
         const runMetric = (metric, metricFrom, metricTo) => {
             if (metric.key === 'bookingRevenue') {
-                const params = [metricFrom, metricTo];
+                const { params, businessCondition } = scopedParams(businessScope, 'b', [metricFrom, metricTo]);
                 const visibility = getVisibleBookingScope(req.user, params, 'b');
                 return pool.query(`
                     SELECT COALESCE(SUM(CASE WHEN b.status='confirmed' THEN b.price ELSE 0 END), 0)::int AS val
                     FROM bookings b
                     WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                       AND b.linked_to IS NULL AND b.status != 'cancelled'
+                      AND ${businessCondition}
                       ${visibility.sql}
                 `, params);
             }
             if (metric.key === 'bookingCount') {
-                const params = [metricFrom, metricTo];
+                const { params, businessCondition } = scopedParams(businessScope, 'b', [metricFrom, metricTo]);
                 const visibility = getVisibleBookingScope(req.user, params, 'b');
                 return pool.query(`
                     SELECT COUNT(*)::int AS val
                     FROM bookings b
                     WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                       AND b.linked_to IS NULL AND b.status != 'cancelled'
+                      AND ${businessCondition}
                       ${visibility.sql}
+                `, params);
+            }
+            if (metric.key === 'finIncome' || metric.key === 'finExpense') {
+                const { params, businessCondition } = scopedParams(businessScope, 'ft', [metricFrom, metricTo]);
+                const type = metric.key === 'finIncome' ? 'income' : 'expense';
+                return pool.query(`
+                    SELECT COALESCE(SUM(CASE WHEN ft.type = '${type}' THEN ft.amount ELSE 0 END), 0)::int AS val
+                    FROM finance_transactions ft
+                    WHERE ft.date::date >= $1::date
+                      AND ft.date::date <= $2::date
+                      AND ${businessCondition}
+                `, params);
+            }
+            if (metric.key === 'newCustomers') {
+                const { params, businessCondition } = scopedParams(businessScope, 'c', [metricFrom, metricTo]);
+                return pool.query(`
+                    SELECT COUNT(*)::int AS val
+                    FROM customers c
+                    WHERE c.created_at::date >= $1::date
+                      AND c.created_at::date <= $2::date
+                      AND ${businessCondition}
+                `, params);
+            }
+            if (metric.key === 'hrHours') {
+                const { params, businessCondition } = scopedParams(businessScope, 'tr', [metricFrom, metricTo]);
+                return pool.query(`
+                    SELECT COALESCE(ROUND(SUM(tr.total_worked_minutes) / 60.0, 1), 0)::numeric AS val
+                    FROM hr_time_records tr
+                    WHERE tr.record_date >= $1
+                      AND tr.record_date <= $2
+                      AND ${businessCondition}
                 `, params);
             }
             return pool.query(metric.sql, [metricFrom, metricTo]);
@@ -717,6 +819,7 @@ router.get('/comparison', async (req, res) => {
         const data = {
             current: { from, to },
             previous: { from: prev.from, to: prev.to },
+            businessScope: businessScopeMeta(businessScope),
             metrics: comparison
         };
 
@@ -734,6 +837,8 @@ router.get('/comparison', async (req, res) => {
 
 router.get('/conversion', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         const { period, year, month } = req.query;
         const y = parseInt(year) || new Date().getFullYear();
         const m = parseInt(month) || (new Date().getMonth() + 1);
@@ -752,7 +857,7 @@ router.get('/conversion', async (req, res) => {
             toDate = `${y}-${String(m).padStart(2, '0')}-${lastDay}`;
         }
 
-        const bookingParams = [fromDate, toDate];
+        const { params: bookingParams, businessCondition: bookingBusiness } = scopedParams(businessScope, 'b', [fromDate, toDate]);
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
 
         // Bookings per manager (created_by)
@@ -768,12 +873,14 @@ router.get('/conversion', async (req, res) => {
               AND b.created_by IS NOT NULL
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
+              AND ${bookingBusiness}
               ${bookingScope.sql}
             GROUP BY b.created_by
             ORDER BY revenue DESC
         `, bookingParams);
 
         // Leads per manager
+        const { params: leadsParams, businessCondition: leadsBusiness } = scopedParams(businessScope, 'l', [fromDate, toDate]);
         const leadsResult = await pool.query(`
             SELECT
                 u.name AS manager,
@@ -783,8 +890,9 @@ router.get('/conversion', async (req, res) => {
             FROM leads l
             JOIN users u ON l.assigned_to = u.id
             WHERE l.created_at >= $1 AND l.created_at <= ($2::date + INTERVAL '1 day')
+              AND ${leadsBusiness}
             GROUP BY u.name, u.username
-        `, [fromDate, toDate]).catch(() => ({ rows: [] }));
+        `, leadsParams).catch(() => ({ rows: [] }));
 
         // Combine data
         const leadsMap = {};
@@ -806,7 +914,7 @@ router.get('/conversion', async (req, res) => {
             };
         });
 
-        res.json({ success: true, managers, period: { from: fromDate, to: toDate } });
+        res.json({ success: true, managers, period: { from: fromDate, to: toDate }, businessScope: businessScopeMeta(businessScope) });
     } catch (err) {
         log.error('GET /conversion error', err);
         res.status(500).json({ success: false, error: 'Помилка аналітики конверсії' });
@@ -816,8 +924,10 @@ router.get('/conversion', async (req, res) => {
 // GET /api/analytics/deals-lifecycle — accepted vs closed leads for selected range
 router.get('/deals-lifecycle', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         const { from, to } = getRequestDateRange(req.query);
-        const cacheKey = actorScopedCacheKey(req, 'deals-lifecycle', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'deals-lifecycle', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
@@ -825,6 +935,7 @@ router.get('/deals-lifecycle', async (req, res) => {
         const closedPredicate = `(COALESCE(l.pipeline_stage, '') IN ('completed', 'closed') OR COALESCE(l.status, '') = 'completed')`;
         const dateExpr = `COALESCE(l.booked_at::date, l.event_date::date, l.created_at::date)`;
 
+        const { params: totalsParams, businessCondition: totalsBusiness } = scopedParams(businessScope, 'l', [from, to]);
         const totals = await pool.query(`
             SELECT
                 COUNT(DISTINCT l.id) FILTER (WHERE ${acceptedPredicate})::int AS accepted,
@@ -835,8 +946,10 @@ router.get('/deals-lifecycle', async (req, res) => {
             WHERE ${dateExpr} >= $1::date
               AND ${dateExpr} <= $2::date
               AND COALESCE(l.lead_type, 'quality') <> 'spam'
-        `, [from, to]);
+              AND ${totalsBusiness}
+        `, totalsParams);
 
+        const { params: trendParams, businessCondition: trendBusiness } = scopedParams(businessScope, 'l', [from, to]);
         const trend = await pool.query(`
             WITH days AS (
                 SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
@@ -851,6 +964,7 @@ router.get('/deals-lifecycle', async (req, res) => {
                 WHERE ${dateExpr} >= $1::date
                   AND ${dateExpr} <= $2::date
                   AND COALESCE(l.lead_type, 'quality') <> 'spam'
+                  AND ${trendBusiness}
             )
             SELECT
                 days.day::text AS date,
@@ -860,7 +974,7 @@ router.get('/deals-lifecycle', async (req, res) => {
             LEFT JOIN lead_days ON lead_days.day = days.day
             GROUP BY days.day
             ORDER BY days.day
-        `, [from, to]);
+        `, trendParams);
 
         const row = totals.rows[0] || {};
         const accepted = parseInt(row.accepted, 10) || 0;
@@ -868,6 +982,7 @@ router.get('/deals-lifecycle', async (req, res) => {
         const data = {
             success: true,
             period: { from, to },
+            businessScope: businessScopeMeta(businessScope),
             accepted,
             closed,
             lost: parseInt(row.lost, 10) || 0,
@@ -898,7 +1013,9 @@ router.get('/deals-lifecycle', async (req, res) => {
 
 router.get('/product-sales', async (req, res) => {
     try {
-        const data = await loadProductSalesData(req.query, req.user);
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
+        const data = await loadProductSalesData(req.query, req.user, businessScope);
         res.json(data);
     } catch (err) {
         if (err.statusCode === 400) log.warn(`GET /product-sales invalid query: ${err.message}`);
@@ -916,12 +1033,14 @@ router.get('/product-sales', async (req, res) => {
 
 router.get('/product-sales/export', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         const format = String(req.query.format || 'xlsx').toLowerCase();
         if (!['xlsx', 'csv'].includes(format)) {
             return res.status(400).json({ success: false, error: 'format має бути xlsx або csv' });
         }
 
-        const data = await loadProductSalesData(req.query, req.user);
+        const data = await loadProductSalesData(req.query, req.user, businessScope);
         const filename = formatExportFilename({
             month: data.period.month,
             category: data.filters.category,
@@ -954,24 +1073,26 @@ router.get('/product-sales/export', async (req, res) => {
 
 router.get('/bookings', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         let from = req.query.from, to = req.query.to;
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             const range = getDateRange(req.query.period || 'month');
             from = range.from; to = range.to;
         }
-        const cacheKey = actorScopedCacheKey(req, 'bookings', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'bookings', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
-        const totalsParams = [from, to];
+        const { params: totalsParams, businessCondition: totalsBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const totalsScope = getVisibleBookingScope(req.user, totalsParams, 'b');
-        const byProgramParams = [from, to];
+        const { params: byProgramParams, businessCondition: byProgramBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const byProgramScope = getVisibleBookingScope(req.user, byProgramParams, 'b');
-        const byDayParams = [from, to];
+        const { params: byDayParams, businessCondition: byDayBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const byDayScope = getVisibleBookingScope(req.user, byDayParams, 'b');
-        const byCategoryParams = [from, to];
+        const { params: byCategoryParams, businessCondition: byCategoryBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const byCategoryScope = getVisibleBookingScope(req.user, byCategoryParams, 'b');
-        const byWeekdayParams = [from, to];
+        const { params: byWeekdayParams, businessCondition: byWeekdayBusiness } = scopedParams(businessScope, 'b', [from, to]);
         const byWeekdayScope = getVisibleBookingScope(req.user, byWeekdayParams, 'b');
 
         const [totalsR, byProgramR, byDayR, byCategoryR, byWeekdayR] = await Promise.all([
@@ -983,6 +1104,7 @@ router.get('/bookings', async (req, res) => {
                        COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
+                AND ${totalsBusiness}
                 ${totalsScope.sql}
             `, totalsParams),
             pool.query(`
@@ -993,6 +1115,7 @@ router.get('/bookings', async (req, res) => {
                        COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
+                AND ${byProgramBusiness}
                 ${byProgramScope.sql}
                 GROUP BY 1, 2, 3 ORDER BY revenue DESC LIMIT 15
             `, byProgramParams),
@@ -1000,6 +1123,7 @@ router.get('/bookings', async (req, res) => {
                 SELECT b.date, COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
+                AND ${byDayBusiness}
                 ${byDayScope.sql}
                 GROUP BY b.date ORDER BY b.date
             `, byDayParams),
@@ -1008,6 +1132,7 @@ router.get('/bookings', async (req, res) => {
                        COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL AND b.category IS NOT NULL
+                AND ${byCategoryBusiness}
                 ${byCategoryScope.sql}
                 GROUP BY 1 ORDER BY revenue DESC
             `, byCategoryParams),
@@ -1016,6 +1141,7 @@ router.get('/bookings', async (req, res) => {
                        COALESCE(SUM(b.price), 0)::int AS revenue
                 FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date
                 AND b.status != 'cancelled' AND b.linked_to IS NULL
+                AND ${byWeekdayBusiness}
                 ${byWeekdayScope.sql}
                 GROUP BY EXTRACT(ISODOW FROM b.date::date) ORDER BY dow
             `, byWeekdayParams)
@@ -1024,6 +1150,7 @@ router.get('/bookings', async (req, res) => {
         const DOW_NAMES = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
         const data = {
             from, to,
+            businessScope: businessScopeMeta(businessScope),
             totals: totalsR.rows[0],
             byProgram: byProgramR.rows,
             byDay: byDayR.rows,
@@ -1044,41 +1171,50 @@ router.get('/bookings', async (req, res) => {
 
 router.get('/revenue', async (req, res) => {
     try {
+        const businessScope = analyticsBusinessScope(req, res);
+        if (!businessScope) return;
         let from = req.query.from, to = req.query.to;
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             const range = getDateRange(req.query.period || 'month');
             from = range.from; to = range.to;
         }
-        const cacheKey = actorScopedCacheKey(req, 'revenue', from, to);
+        const cacheKey = scopedAnalyticsCacheKey(req, 'revenue', businessScope, from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
+        const { params: totalsParams, businessCondition: totalsBusiness } = scopedParams(businessScope, '', [from, to]);
+        const { params: byCategoryParams, businessCondition: byCategoryBusiness } = scopedParams(businessScope, 'ft', [from, to]);
+        const { params: monthlyParams, businessCondition: monthlyBusiness } = scopedParams(businessScope, '', [from, to]);
         const [totalsR, byCategoryR, monthlyR] = await Promise.all([
             pool.query(`
                 SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS total_income,
                        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS total_expense
                 FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
-            `, [from, to]),
+                  AND ${totalsBusiness}
+            `, totalsParams),
             pool.query(`
                 SELECT fc.name AS category, fc.type, fc.icon, fc.color,
                        COUNT(*)::int AS count, COALESCE(SUM(ft.amount), 0)::int AS total
                 FROM finance_transactions ft
                 LEFT JOIN finance_categories fc ON ft.category_id = fc.id
                 WHERE ft.date::date >= $1::date AND ft.date::date <= $2::date
+                  AND ${byCategoryBusiness}
                 GROUP BY fc.id, fc.name, fc.type, fc.icon, fc.color ORDER BY total DESC
-            `, [from, to]),
+            `, byCategoryParams),
             pool.query(`
                 SELECT TO_CHAR(date::date, 'YYYY-MM') AS month,
                        COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
                 FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
+                  AND ${monthlyBusiness}
                 GROUP BY TO_CHAR(date::date, 'YYYY-MM') ORDER BY month
-            `, [from, to])
+            `, monthlyParams)
         ]);
 
         const t = totalsR.rows[0];
         const data = {
             from, to,
+            businessScope: businessScopeMeta(businessScope),
             totals: { totalIncome: t.total_income, totalExpense: t.total_expense, profit: t.total_income - t.total_expense },
             byCategory: byCategoryR.rows,
             monthly: monthlyR.rows

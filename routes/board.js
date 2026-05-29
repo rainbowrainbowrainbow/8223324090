@@ -8,19 +8,30 @@ const { requireMinRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const {
+    resolveBusinessScope,
+    requireBusinessScope,
+    pushBusinessScopeCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Board');
 
 // GET /api/board/stats — today's KPI for command panel
 router.get('/stats', async (req, res) => {
     try {
+        const businessScope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, businessScope)) return;
         const today = getKyivDateStr();
         const role = req.user.role;
         const REVENUE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
         const bookingParams = [today];
+        const bookingBusinessCondition = pushBusinessScopeCondition(bookingParams, businessScope, 'b');
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
         const revenueParams = [today];
+        const revenueBusinessCondition = pushBusinessScopeCondition(revenueParams, businessScope, 'b');
         const revenueScope = getVisibleBookingScope(req.user, revenueParams, 'b');
+        const staffParams = [today];
+        const staffBusinessCondition = pushBusinessScopeCondition(staffParams, businessScope, '');
 
         const results = await Promise.allSettled([
             // 0: Bookings today
@@ -29,12 +40,14 @@ router.get('/stats', async (req, res) => {
                     COUNT(*) FILTER (WHERE b.status = 'confirmed')::int as confirmed,
                     COUNT(*) FILTER (WHERE b.status = 'preliminary')::int as preliminary
                  FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled'
+                 AND ${bookingBusinessCondition}
                  ${bookingScope.sql}`, bookingParams
             ),
             // 1: Staff on shift today
             pool.query(
                 `SELECT COUNT(DISTINCT staff_id)::int as count FROM staff_schedule
-                 WHERE date = $1 AND status = 'working'`, [today]
+                 WHERE date = $1 AND status = 'working'
+                   AND ${staffBusinessCondition}`, staffParams
             ),
             // 2: Tasks progress
             pool.query(
@@ -49,6 +62,7 @@ router.get('/stats', async (req, res) => {
                 pool.query(
                     `SELECT COALESCE(SUM(b.price), 0)::int as revenue FROM bookings b
                      WHERE b.date = $1 AND b.status != 'cancelled'
+                     AND ${revenueBusinessCondition}
                      ${revenueScope.sql}`, revenueParams
                 ) : Promise.resolve({ rows: [{ revenue: null }] })
         ]);
@@ -69,7 +83,13 @@ router.get('/stats', async (req, res) => {
             tasksRemaining: tasks.remaining || 0,
             tasksTotal: tasks.total || 0,
             revenue: rev.revenue,
-            date: today
+            date: today,
+            businessScope: {
+                mode: businessScope.mode,
+                activeContext: businessScope.activeContext,
+                selectedContexts: businessScope.selectedContexts,
+                readOnly: businessScope.readOnly
+            }
         });
     } catch (err) {
         log.error('Board stats error', err);

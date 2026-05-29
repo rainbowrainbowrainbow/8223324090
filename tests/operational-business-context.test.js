@@ -122,3 +122,43 @@ test('shared CRM shell exposes safe read-only multi-business scope for core CRM 
     assert.match(reportsMigration, /ALTER TABLE report_table_drafts[\s\S]*business_context TEXT NOT NULL DEFAULT 'event_genix'/);
     assert.match(reportsMigration, /idx_reports_business_context_created/);
 });
+
+test('dashboard and analytics aggregates include selected business scope', () => {
+    const analytics = read('routes/analytics.js');
+    const stats = read('routes/stats.js');
+    const board = read('routes/board.js');
+    const migration = read('db/migrations/236_dashboard_analytics_business_context_scope.sql');
+
+    assert.match(analytics, /analyticsBusinessScope/);
+    assert.match(analytics, /scopedAnalyticsCacheKey/);
+    assert.match(analytics, /pushBusinessScopeCondition\(params, businessScope, 'b'\)/);
+    assert.match(analytics, /FROM finance_transactions ft[\s\S]*AND \$\{businessCondition\}/);
+    assert.match(analytics, /FROM customers c[\s\S]*AND \$\{businessCondition\}/);
+    assert.match(analytics, /FROM leads l[\s\S]*AND \$\{totalsBusiness\}/);
+    assert.match(analytics, /FROM hr_time_records tr[\s\S]*AND \$\{businessCondition\}/);
+    assert.match(analytics, /businessScope: businessScopeMeta\(businessScope\)/);
+    assert.doesNotMatch(analytics, /actorScopedCacheKey\(req, 'overview'/);
+    assert.doesNotMatch(analytics, /actorScopedCacheKey\(req, 'charts'/);
+    assert.doesNotMatch(analytics, /actorScopedCacheKey\(req, 'comparison'/);
+
+    assert.match(stats, /statsBusinessScope/);
+    assert.match(stats, /scopedStatsCacheKey/);
+    assert.match(stats, /pushBusinessScopeCondition\(hourParams, businessScope, 'b2'\)/);
+    assert.match(stats, /LEFT JOIN lines_by_date l[\s\S]*COALESCE\(l\.business_context, 'event_genix'\) = COALESCE\(b\.business_context, 'event_genix'\)/);
+    assert.match(stats, /FROM event_reviews er[\s\S]*WHERE \$\{summaryBusiness\}/);
+    assert.match(stats, /FROM team_pulse[\s\S]*AND \$\{dailyBusiness\}/);
+    assert.match(stats, /businessScope: businessScopeMeta\(businessScope\)/);
+
+    assert.match(board, /resolveBusinessScope/);
+    assert.match(board, /pushBusinessScopeCondition\(bookingParams, businessScope, 'b'\)/);
+    assert.match(board, /FROM staff_schedule[\s\S]*AND \$\{staffBusinessCondition\}/);
+    assert.match(board, /businessScope: \{/);
+
+    assert.match(migration, /ALTER TABLE hr_time_records[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /ALTER TABLE staff_schedule[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /ALTER TABLE event_reviews[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /ALTER TABLE team_pulse[\s\S]*business_context VARCHAR\(64\)/);
+    assert.match(migration, /idx_hr_time_records_business_date/);
+    assert.match(migration, /idx_event_reviews_business_created/);
+    assert.match(migration, /idx_team_pulse_business_date/);
+});

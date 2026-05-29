@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.9 - CRM 68: бізнес-аналітика за контекстом
+
+### Dashboard / analytics / business scope / 29.05.2026 [codex]
+- **Аналітика читає активний бізнес** - `overview`, `charts`, `comparison`, `conversion`, `bookings`, `revenue`, `deals-lifecycle` і product-sales додають `business_context` до bookings, finance, customers і leads aggregates.
+- **Stats API більше не кешує чужий бізнес** - `/api/stats/revenue`, `/programs`, `/load`, `/trends`, `/forecast`, `/reviews` і `/pulse` отримали business-aware cache key та SQL-фільтр.
+- **Board KPI став бізнес-скоупним там, де є durable scope** - бронювання, виручка і staff-on-shift рахуються в межах вибраного бізнесу; task-count лишився глобальним до окремої міграції задач.
+- **HR/reviews/pulse отримали durable `business_context`** - додано міграцію для `hr_time_records`, `staff_schedule`, `event_reviews` і `team_pulse`, щоб дашборд не підтягував park-операційні метрики в інші бізнеси.
+- **Regression guard додано** - `operational-business-context` тепер фіксує analytics/stats/board scope, scoped cache і нову міграцію.
+
+---
+
 ## v0.68.8 - CRM 68: звіти за бізнесом
 
 ### Reports / business scope / tenant safety / 29.05.2026 [codex]

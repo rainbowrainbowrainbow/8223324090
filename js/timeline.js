@@ -213,10 +213,16 @@ function getTimeRange(date) {
 }
 
 function getLineSubtitle(line) {
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    if (presentation?.mode === 'education') {
+        const count = Number(line?.bookingCount || 0);
+        return count > 0 ? `${count} зайнятих слотів` : 'вільний кабінет';
+    }
     if (line && line.shiftStart && line.shiftEnd) {
         return `${String(line.shiftStart).slice(0, 5)}-${String(line.shiftEnd).slice(0, 5)} · зі зміни`;
     }
     if (line && line.source === 'staff_schedule') return 'зі зміни';
+    if (presentation?.lineTypeLabel) return `редагувати ${presentation.lineTypeLabel}`;
     return 'редагувати';
 }
 
@@ -295,16 +301,31 @@ function renderTimeScale(date) {
 }
 
 function timelineShouldRenderAfisha() {
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    if (presentation) return presentation.showAfisha !== false;
     const ctx = window.TimelineBusinessContext?.current?.();
     return ctx?.showAfisha !== false;
 }
 
 function normalizeTimelineLinesForContext(lines = []) {
     const ctx = window.TimelineBusinessContext?.current?.();
-    if (ctx?.key !== 'maysternya_doli') return lines;
-    return lines.map(line => {
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    return lines.map((line, index) => {
         if (line?.id === 'md-consult-room' && ['Майстерня долі', 'Таймлайн МД'].includes(line.name)) {
             return { ...line, name: 'Олександр' };
+        }
+        if (presentation?.mode === 'education') {
+            const rawName = String(line?.name || '').trim();
+            const alreadyCabinet = /кабінет|каб\.|аудитор|classroom|room/i.test(rawName);
+            return {
+                ...line,
+                originalName: rawName,
+                name: alreadyCabinet ? rawName : `Кабінет ${index + 1}`,
+                resourceType: 'cabinet'
+            };
+        }
+        if (presentation?.mode === 'specialist' && !ctx?.isPrivateSurface && !String(line?.name || '').trim()) {
+            return { ...line, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
         }
         return line;
     });
@@ -421,13 +442,16 @@ async function renderTimeline() {
 
     lines.forEach(line => {
         try {
+        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
-        lineEl.className = 'timeline-line';
+        lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
+        lineEl.dataset.lineType = line.resourceType || window.TimelineBusinessContext?.presentation?.().lineTypeLabel || 'line';
 
         lineEl.innerHTML = `
             <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                <span class="line-sub">${escapeHtml(getLineSubtitle(line))}</span>
+                <span class="line-sub">${escapeHtml(getLineSubtitle(lineForHeader))}</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}
@@ -435,7 +459,6 @@ async function renderTimeline() {
         `;
 
         const lineGrid = lineEl.querySelector('.line-grid');
-        const lineBookings = bookings.filter(b => b.lineId === line.id);
         lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
 
         // v8.6: Render assigned afisha events on this animator's line

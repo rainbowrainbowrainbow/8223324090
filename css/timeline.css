@@ -270,6 +270,29 @@
     margin-top: 2px;
 }
 
+body.timeline-mode-education .timeline-line--education .line-header {
+    background: linear-gradient(135deg, rgba(14, 165, 134, 0.14) 0%, rgba(37, 99, 235, 0.04) 100%);
+}
+
+body.timeline-mode-education .timeline-line--education .line-name::before {
+    content: '▦';
+    color: #0EA586;
+    margin-right: 6px;
+}
+
+body.timeline-mode-education .timeline-line--education .line-sub {
+    color: #047857;
+    font-weight: 700;
+}
+
+body.timeline-mode-education .timeline-line--education:has(.booking-block) .line-header {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(14, 165, 134, 0.06) 100%);
+}
+
+body.timeline-mode-education .timeline-line--education:has(.booking-block) .line-sub {
+    color: #B45309;
+}
+
 /* Grid */
 .line-grid {
     flex: 1;

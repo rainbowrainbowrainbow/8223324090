@@ -187,7 +187,12 @@
 
     function defaultHiddenKeys() {
         const ctx = currentContext();
-        return new Set(Array.isArray(ctx.defaultHiddenElements) ? ctx.defaultHiddenElements : []);
+        const presentation = contextApi()?.presentation?.();
+        const keys = [
+            ...(Array.isArray(ctx.defaultHiddenElements) ? ctx.defaultHiddenElements : []),
+            ...(Array.isArray(presentation?.defaultHiddenElements) ? presentation.defaultHiddenElements : [])
+        ];
+        return new Set(keys);
     }
 
     function isHidden(key) {

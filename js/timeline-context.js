@@ -57,6 +57,139 @@
         }
     };
 
+    const DISPLAY_STORAGE_NAME = 'timeline_display_settings';
+    const DISPLAY_MODES = {
+        simple: {
+            key: 'simple',
+            label: 'Простий режим',
+            shortLabel: 'Простий',
+            bodyClass: 'timeline-mode-simple',
+            showAfisha: false,
+            showProductSales: false,
+            roomLoadLabel: 'Кабінети',
+            roomLoadTitle: 'Навантаження кабінетів',
+            addLineLabel: 'Додати спеціаліста',
+            addLineTitle: 'Додати лінію спеціаліста',
+            selectedLineLabel: 'Спеціаліст:',
+            lineTypeLabel: 'спеціаліст',
+            bookingTitle: 'Новий запис',
+            submitLabel: 'Записати',
+            programLabel: 'Послуга',
+            programSearchPlaceholder: 'Пошук послуги...',
+            roomLabel: 'Кабінет / канал',
+            roomOptionLabel: 'Кабінет',
+            groupLabel: 'Тема запиту (опційно)',
+            notesLabel: 'Коментар (опційно)',
+            customerNameLabel: 'Імʼя клієнта',
+            phoneLabel: 'Телефон / WhatsApp',
+            emptyLineName: 'Спеціаліст',
+            legendHtml: `
+                <span class="legend-item"><span class="dot custom"></span>Записи</span>
+                <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
+            `,
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification']
+        },
+        specialist: {
+            key: 'specialist',
+            label: 'Спеціаліст',
+            shortLabel: 'Спеціаліст',
+            bodyClass: 'timeline-mode-specialist',
+            showAfisha: false,
+            showProductSales: false,
+            roomLoadLabel: 'Кабінети',
+            roomLoadTitle: 'Навантаження кабінетів',
+            addLineLabel: 'Додати спеціаліста',
+            addLineTitle: 'Додати лінію спеціаліста',
+            selectedLineLabel: 'Спеціаліст:',
+            lineTypeLabel: 'спеціаліст',
+            bookingTitle: 'Новий запис',
+            submitLabel: 'Записати',
+            programLabel: 'Послуга',
+            programSearchPlaceholder: 'Пошук послуги...',
+            roomLabel: 'Кабінет / канал',
+            roomOptionLabel: 'Кабінет',
+            groupLabel: 'Тема / послуга',
+            notesLabel: 'Коментар',
+            customerNameLabel: 'Імʼя клієнта',
+            phoneLabel: 'Телефон',
+            emptyLineName: 'Спеціаліст',
+            legendHtml: `
+                <span class="legend-item"><span class="dot custom"></span>Послуги</span>
+                <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
+            `,
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
+        },
+        park: {
+            key: 'park',
+            label: 'Дитячий розважальний парк',
+            shortLabel: 'Парк',
+            bodyClass: 'timeline-mode-park',
+            showAfisha: true,
+            showProductSales: true,
+            roomLoadLabel: 'Кімнати',
+            roomLoadTitle: 'Навантаження кімнат',
+            addLineLabel: 'Додати аніматора',
+            addLineTitle: 'Надіслати запит на додавання аніматора через Telegram',
+            selectedLineLabel: 'Лінія:',
+            lineTypeLabel: 'аніматор',
+            bookingTitle: 'Нове бронювання',
+            submitLabel: 'Додати бронювання',
+            programLabel: 'Програма',
+            programSearchPlaceholder: 'Пошук програми...',
+            roomLabel: 'Кімната',
+            roomOptionLabel: 'Кімната',
+            groupLabel: 'Група / банкет',
+            notesLabel: 'Примітки',
+            customerNameLabel: 'Імʼя клієнта',
+            phoneLabel: 'Телефон',
+            emptyLineName: 'Аніматор',
+            legendHtml: `
+                <span class="legend-item"><span class="dot quest"></span>Квести</span>
+                <span class="legend-item"><span class="dot animation"></span>Анімація</span>
+                <span class="legend-item"><span class="dot show"></span>Шоу</span>
+                <span class="legend-item"><span class="dot photo"></span>Фото</span>
+                <span class="legend-item"><span class="dot masterclass"></span>МК</span>
+                <span class="legend-item"><span class="dot pinata"></span>Піньята</span>
+                <span class="legend-item"><span class="dot custom"></span>Інше</span>
+                <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
+            `,
+            defaultHiddenElements: []
+        },
+        education: {
+            key: 'education',
+            label: 'Навчальний заклад',
+            shortLabel: 'Навчання',
+            bodyClass: 'timeline-mode-education',
+            showAfisha: false,
+            showProductSales: false,
+            roomLoadLabel: 'Кабінети',
+            roomLoadTitle: 'Зайнятість кабінетів',
+            addLineLabel: 'Додати кабінет',
+            addLineTitle: 'Додати кабінет / аудиторію',
+            selectedLineLabel: 'Кабінет:',
+            lineTypeLabel: 'кабінет',
+            bookingTitle: 'Нове заняття',
+            submitLabel: 'Запланувати заняття',
+            programLabel: 'Заняття',
+            programSearchPlaceholder: 'Пошук заняття...',
+            roomLabel: 'Кабінет',
+            roomOptionLabel: 'Кабінет',
+            groupLabel: 'Група / клас',
+            notesLabel: 'Тема заняття / примітки',
+            customerNameLabel: 'Контакт / відповідальний',
+            phoneLabel: 'Телефон контакту',
+            emptyLineName: 'Кабінет',
+            legendHtml: `
+                <span class="legend-item"><span class="dot custom"></span>Заняття</span>
+                <span class="legend-item"><span class="dot masterclass"></span>Практика</span>
+                <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
+            `,
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification']
+        }
+    };
+    const VALID_DISPLAY_MODES = new Set(Object.keys(DISPLAY_MODES));
+    const VALID_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
+
     function normalizedPath() {
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
     }
@@ -105,6 +238,80 @@
         return `${ctx.storagePrefix}_${name}`;
     }
 
+    function displayStorageKey(ctx = currentContext()) {
+        return `${ctx.storagePrefix}_${DISPLAY_STORAGE_NAME}`;
+    }
+
+    function defaultDisplayMode(ctx = currentContext()) {
+        return ctx.key === 'maysternya_doli' ? 'simple' : 'park';
+    }
+
+    function safeJson(raw) {
+        try {
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function normalizeDisplaySettings(value, ctx = currentContext()) {
+        const fallbackMode = defaultDisplayMode(ctx);
+        const mode = VALID_DISPLAY_MODES.has(String(value?.mode || ''))
+            ? String(value.mode)
+            : fallbackMode;
+        const parkKitchenMode = VALID_PARK_KITCHEN_MODES.has(String(value?.parkKitchenMode || ''))
+            ? String(value.parkKitchenMode)
+            : 'with_kitchen';
+        return {
+            version: 1,
+            mode,
+            parkKitchenMode,
+            updatedAt: value?.updatedAt || null,
+            updatedBy: value?.updatedBy || null
+        };
+    }
+
+    function readDisplaySettings(ctx = currentContext()) {
+        const parsed = safeJson(localStorage.getItem(displayStorageKey(ctx)));
+        return normalizeDisplaySettings(parsed, ctx);
+    }
+
+    function saveDisplaySettings(next, options = {}) {
+        const ctx = options.context || currentContext();
+        const normalized = normalizeDisplaySettings({
+            ...readDisplaySettings(ctx),
+            ...(next || {}),
+            updatedAt: new Date().toISOString()
+        }, ctx);
+        localStorage.setItem(displayStorageKey(ctx), JSON.stringify(normalized));
+        window.dispatchEvent(new CustomEvent('timeline:display-settings-changed', {
+            detail: { context: ctx.key, settings: normalized }
+        }));
+        return normalized;
+    }
+
+    function presentation(ctx = currentContext()) {
+        const settings = readDisplaySettings(ctx);
+        const mode = DISPLAY_MODES[settings.mode] || DISPLAY_MODES[defaultDisplayMode(ctx)];
+        const kitchenEnabled = settings.parkKitchenMode !== 'without_kitchen';
+        const hidden = new Set([
+            ...(Array.isArray(ctx.defaultHiddenElements) ? ctx.defaultHiddenElements : []),
+            ...(Array.isArray(mode.defaultHiddenElements) ? mode.defaultHiddenElements : [])
+        ]);
+        if (mode.key !== 'park' || !kitchenEnabled) {
+            hidden.add('bookingPackageSummary');
+        }
+        return {
+            ...mode,
+            mode: mode.key,
+            context: ctx.key,
+            settings,
+            parkKitchenEnabled: mode.key === 'park' && kitchenEnabled,
+            showAfisha: mode.showAfisha === true && ctx.showAfisha !== false,
+            defaultHiddenElements: Array.from(hidden)
+        };
+    }
+
     function appendApiContext(url) {
         const ctx = currentContext();
         if (ctx.key === 'event_genix') return url;
@@ -118,57 +325,102 @@
         return { ...(payload || {}), businessContext: ctx.apiValue };
     }
 
+    function setControlText(el, text) {
+        if (!el) return;
+        const label = Array.from(el.children || []).find(child => child.tagName === 'SPAN' && !child.classList.contains('timeline-control-icon'))
+            || el.querySelector('span:last-child');
+        if (label) label.textContent = text;
+        else el.textContent = text;
+    }
+
+    function setFieldLabel(selector, text, html = false) {
+        const label = document.querySelector(selector)?.closest('.form-section')?.querySelector('label');
+        if (!label) return;
+        if (html) label.innerHTML = text;
+        else label.textContent = text;
+    }
+
     function applyLabels() {
         const ctx = currentContext();
+        const view = presentation(ctx);
         document.title = ctx.title;
-        document.body?.classList.toggle('timeline-context-maysternya', ctx.key === 'maysternya_doli');
-        document.body?.setAttribute('data-timeline-context', ctx.key);
+        if (document.body) {
+            document.body.classList.toggle('timeline-context-maysternya', ctx.key === 'maysternya_doli');
+            Object.values(DISPLAY_MODES).forEach(mode => {
+                document.body.classList.toggle(mode.bodyClass, mode.key === view.mode);
+            });
+            document.body.classList.toggle('timeline-park-with-kitchen', view.parkKitchenEnabled);
+            document.body.classList.toggle('timeline-park-without-kitchen', view.mode === 'park' && !view.parkKitchenEnabled);
+            document.body.setAttribute('data-timeline-context', ctx.key);
+            document.body.setAttribute('data-timeline-display-mode', view.mode);
+            document.body.setAttribute('data-timeline-park-kitchen', view.parkKitchenEnabled ? 'with_kitchen' : 'without_kitchen');
+        }
 
         const titleEl = document.querySelector('.em-logo-title');
         if (titleEl) titleEl.textContent = ctx.productName;
         const subEl = document.querySelector('.em-logo-sub');
         if (subEl) subEl.textContent = ctx.subtitle;
 
-        if (ctx.key === 'maysternya_doli') {
-            const salesBtn = document.getElementById('productSalesBtn');
-            if (salesBtn) salesBtn.classList.add('hidden');
-            const roomBtn = document.getElementById('roomLoadBtn');
-            if (roomBtn) roomBtn.textContent = 'Кабінети';
-            const addLineBtn = document.getElementById('addLineBtn');
-            if (addLineBtn) addLineBtn.textContent = 'Додати спеціаліста';
-            const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
-            if (selectedLineLabel) selectedLineLabel.textContent = 'Спеціаліст:';
-            const bookingNotesLabel = document.querySelector('#bookingNotes')?.closest('.form-section')?.querySelector('label');
-            if (bookingNotesLabel) bookingNotesLabel.textContent = 'Коментар (опційно)';
-            const groupLabel = document.querySelector('#bookingGroupName')?.closest('.form-section')?.querySelector('label');
-            if (groupLabel) groupLabel.textContent = 'Тема запиту (опційно)';
-            const customerNameLabel = document.querySelector('#customerName')?.closest('.form-section')?.querySelector('label');
-            if (customerNameLabel) customerNameLabel.innerHTML = 'Імʼя клієнта';
-            const phoneLabel = document.querySelector('#customerPhone')?.closest('.form-section')?.querySelector('label');
-            if (phoneLabel) phoneLabel.textContent = 'Телефон / WhatsApp';
-            const programLabel = document.querySelector('#programsIcons')?.closest('.form-section')?.querySelector('label');
-            if (programLabel) programLabel.textContent = 'Консультація';
-            const programSearch = document.getElementById('programSearch');
-            if (programSearch) programSearch.placeholder = 'Пошук консультації...';
-            const costumeSection = document.getElementById('costumeSelect')?.closest('.form-section');
-            if (costumeSection) costumeSection.classList.add('hidden');
-            document.getElementById('extraHostSection')?.classList.add('hidden');
-            const legend = document.querySelector('.legend');
-            if (legend) {
-                legend.innerHTML = `
-                    <span class="legend-item"><span class="dot custom"></span>Консультації</span>
-                    <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
-                `;
-            }
-            document.querySelectorAll('[title*="Афіша"], [title*="програм"], a[href="/programs"]').forEach(el => {
-                el.classList.add('hidden');
-            });
+        const salesBtn = document.getElementById('productSalesBtn');
+        if (salesBtn) salesBtn.classList.toggle('hidden', !view.showProductSales);
+        const roomBtn = document.getElementById('roomLoadBtn');
+        setControlText(roomBtn, view.roomLoadLabel);
+        if (roomBtn) roomBtn.title = view.roomLoadTitle;
+        const addLineBtn = document.getElementById('addLineBtn');
+        if (addLineBtn) {
+            const addLabel = addLineBtn.querySelector('span:last-child');
+            if (addLabel) addLabel.textContent = view.addLineLabel;
+            else addLineBtn.textContent = view.addLineLabel;
+            addLineBtn.title = view.addLineTitle;
+        }
+        const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
+        if (selectedLineLabel) selectedLineLabel.textContent = view.selectedLineLabel;
+        setFieldLabel('#bookingNotes', view.notesLabel);
+        setFieldLabel('#bookingGroupName', view.groupLabel);
+        setFieldLabel('#customerName', view.customerNameLabel, true);
+        setFieldLabel('#customerPhone', view.phoneLabel);
+        setFieldLabel('#programsIcons', view.programLabel);
+        setFieldLabel('#roomSelect', view.roomLabel);
+        const roomHeading = document.querySelector('.booking-room-first-heading strong');
+        if (roomHeading) roomHeading.textContent = view.roomLabel;
+        const roomHeadingHint = document.querySelector('.booking-room-first-heading small');
+        if (roomHeadingHint) {
+            roomHeadingHint.textContent = view.mode === 'education'
+                ? 'Кабінет береться з лінії таймлайну, щоб було видно зайнятість аудиторій'
+                : view.mode === 'park'
+                    ? 'Оберіть кімнату перед клієнтом, програмою або кухнею'
+                    : 'Ресурс запису заповнюється автоматично для простого режиму';
+        }
+        const roomHint = document.getElementById('bookingRoomHint');
+        if (roomHint) roomHint.textContent = view.mode === 'education'
+            ? 'Заняття зберігається у вибраному кабінеті.'
+            : view.mode === 'park'
+                ? 'Без кімнати бронювання не зберігається.'
+                : 'Для простого запису ресурс можна не заповнювати вручну.';
+        const roomSelect = document.getElementById('roomSelect');
+        if (roomSelect?.options?.[0]) roomSelect.options[0].textContent = `Оберіть ${view.roomOptionLabel.toLowerCase()}`;
+        const programSearch = document.getElementById('programSearch');
+        if (programSearch) programSearch.placeholder = view.programSearchPlaceholder;
+        const legend = document.querySelector('.legend');
+        if (legend) legend.innerHTML = view.legendHtml;
+        document.querySelectorAll('[title*="Афіша"], a[href="/programs"]').forEach(el => {
+            el.classList.toggle('hidden', !view.showAfisha);
+        });
+        document.querySelectorAll('[title*="програм"]').forEach(el => {
+            el.classList.toggle('hidden', view.mode !== 'park');
+        });
+        if (typeof window !== 'undefined' && window.TimelineVisibility?.applyVisibility) {
+            window.TimelineVisibility.applyVisibility();
         }
     }
 
     const api = {
         CONTEXTS,
+        DISPLAY_MODES,
         current: currentContext,
+        displaySettings: readDisplaySettings,
+        saveDisplaySettings,
+        presentation,
         userRoles,
         userPageAllowlist,
         hasAnyRole,

@@ -71,22 +71,29 @@ window.BookingForm = {
         const programId = formData?.programId || '';
         const room = formData?.room || '';
         const isMaysternya = typeof isMaysternyaBookingContext === 'function' && isMaysternyaBookingContext();
+        const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
+        const isNonParkTimelineMode = presentation.mode && presentation.mode !== 'park';
+        const isMaysternyaSimple = isMaysternya && presentation.mode === 'simple';
+        const roomOptional = isMaysternyaSimple || presentation.mode === 'simple' || presentation.mode === 'specialist';
 
         if (!room) {
-            if (!isMaysternya) {
+            if (!roomOptional) {
                 document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
-                return { valid: false, error: 'Оберіть кімнату' };
+                return { valid: false, error: presentation.mode === 'education' ? 'Оберіть кабінет' : 'Оберіть кімнату' };
             }
         }
         if (hasEvent && !programId) {
             document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
-            return { valid: false, error: isMaysternya ? 'Оберіть тип консультації' : 'Оберіть програму' };
+            const error = isMaysternyaSimple
+                ? 'Оберіть тип консультації'
+                : (presentation.mode === 'education' ? 'Оберіть заняття' : presentation.mode === 'park' ? 'Оберіть програму' : 'Оберіть послугу');
+            return { valid: false, error };
         }
 
         const program = hasEvent ? getProductsSync().find(p => p.id === programId) : null;
         if (hasEvent && !program) return { valid: false, error: 'Програму не знайдено' };
 
-        if (isMaysternya) {
+        if (isMaysternyaSimple || isNonParkTimelineMode) {
             return { valid: true };
         }
 

@@ -74,11 +74,39 @@ const MAYSTERNYA_DOLI_PROGRAMS = [
     { id: 'md_full_consult_40', code: 'Повна', label: 'Повна консультація(90)', name: 'Повна консультація', icon: '◆', category: 'custom', duration: 90, price: 0, hosts: 1, description: 'Повна консультація на 90 хвилин.' }
 ];
 
+const SPECIALIST_TIMELINE_PROGRAMS = [
+    { id: 'specialist_service_30', code: 'Послуга', label: 'Послуга(30)', name: 'Послуга 30 хв', icon: '◼', category: 'custom', duration: 30, price: 0, hosts: 1, description: 'Базовий слот спеціаліста на 30 хвилин.' },
+    { id: 'specialist_service_60', code: 'Послуга', label: 'Послуга(60)', name: 'Послуга 60 хв', icon: '◆', category: 'custom', duration: 60, price: 0, hosts: 1, description: 'Базовий слот спеціаліста на 60 хвилин.' },
+    { id: 'specialist_custom', code: 'Інше', label: 'Інше', name: 'Інша послуга', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
+];
+
+const EDUCATION_TIMELINE_PROGRAMS = [
+    { id: 'lesson_45', code: 'Урок', label: 'Урок(45)', name: 'Заняття 45 хв', icon: '📚', category: 'custom', duration: 45, price: 0, hosts: 1, description: 'Стандартне заняття або урок на 45 хвилин.' },
+    { id: 'lesson_60', code: 'Заняття', label: 'Заняття(60)', name: 'Заняття 60 хв', icon: '🧑‍🏫', category: 'custom', duration: 60, price: 0, hosts: 1, description: 'Подовжене заняття на 60 хвилин.' },
+    { id: 'practice_90', code: 'Практика', label: 'Практика(90)', name: 'Практичне заняття 90 хв', icon: '🧪', category: 'masterclass', duration: 90, price: 0, hosts: 1, description: 'Практичне або лабораторне заняття на 90 хвилин.' },
+    { id: 'education_custom', code: 'Інше', label: 'Інше', name: 'Інше заняття', icon: '✏️', category: 'custom', duration: 45, price: 0, hosts: 1, isCustom: true }
+];
+
 const IS_MAYSTERNYA_DOLI_TIMELINE = typeof window !== 'undefined'
     && window.TimelineBusinessContext
     && window.TimelineBusinessContext.current().key === 'maysternya_doli';
 
-const PROGRAMS = IS_MAYSTERNYA_DOLI_TIMELINE ? MAYSTERNYA_DOLI_PROGRAMS : EVENT_GENIX_PROGRAMS;
+const TIMELINE_PRESENTATION = typeof window !== 'undefined' && window.TimelineBusinessContext?.presentation
+    ? window.TimelineBusinessContext.presentation()
+    : null;
+const TIMELINE_DISPLAY_MODE = TIMELINE_PRESENTATION?.mode || (IS_MAYSTERNYA_DOLI_TIMELINE ? 'simple' : 'park');
+const IS_TIMELINE_PARK_MODE = TIMELINE_DISPLAY_MODE === 'park';
+const IS_TIMELINE_SIMPLE_MODE = TIMELINE_DISPLAY_MODE === 'simple';
+const IS_TIMELINE_SPECIALIST_MODE = TIMELINE_DISPLAY_MODE === 'specialist';
+const IS_TIMELINE_EDUCATION_MODE = TIMELINE_DISPLAY_MODE === 'education';
+const TIMELINE_PARK_HAS_KITCHEN = TIMELINE_PRESENTATION?.parkKitchenEnabled !== false;
+
+const PROGRAMS = (() => {
+    if (IS_MAYSTERNYA_DOLI_TIMELINE && IS_TIMELINE_SIMPLE_MODE) return MAYSTERNYA_DOLI_PROGRAMS;
+    if (IS_TIMELINE_EDUCATION_MODE) return EDUCATION_TIMELINE_PROGRAMS;
+    if (IS_TIMELINE_SIMPLE_MODE || IS_TIMELINE_SPECIALIST_MODE) return SPECIALIST_TIMELINE_PROGRAMS;
+    return EVENT_GENIX_PROGRAMS;
+})();
 
 function timelineConfigStorageKey(name) {
     if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
@@ -152,9 +180,11 @@ const CONFIG = {
 const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
 // Кольори категорій для canvas/minimap
-const CATEGORY_COLORS = IS_MAYSTERNYA_DOLI_TIMELINE
-    ? { custom: '#0EA586' }
-    : {
+const CATEGORY_COLORS = IS_TIMELINE_EDUCATION_MODE
+    ? { custom: '#0EA586', masterclass: '#2563EB' }
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? { custom: '#0EA586' }
+        : {
         quest: '#7C3AED', animation: '#2563EB', show: '#EA580C',
         photo: '#0891B2', masterclass: '#65A30D', pinata: '#DB2777', custom: '#64748B'
     };
@@ -163,33 +193,49 @@ const CATEGORY_COLORS = IS_MAYSTERNYA_DOLI_TIMELINE
 const LINE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
 
 // Порядок і назви категорій (єдине джерело правди)
-const CATEGORY_ORDER = IS_MAYSTERNYA_DOLI_TIMELINE
-    ? ['custom']
-    : ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata', 'custom'];
-const CATEGORY_NAMES = IS_MAYSTERNYA_DOLI_TIMELINE
-    ? { custom: 'Консультації' }
-    : {
+const CATEGORY_ORDER = IS_TIMELINE_EDUCATION_MODE
+    ? ['custom', 'masterclass']
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? ['custom']
+        : ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata', 'custom'];
+const CATEGORY_NAMES = IS_TIMELINE_EDUCATION_MODE
+    ? { custom: 'Заняття', masterclass: 'Практика' }
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? { custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги' }
+        : {
         quest: 'Квести', animation: 'Анімація', show: 'Шоу',
         photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
     };
 
 // Панель бронювання: інший порядок, деякі розширені назви
-const CATEGORY_ORDER_BOOKING = IS_MAYSTERNYA_DOLI_TIMELINE
-    ? ['custom']
-    : ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
-const CATEGORY_NAMES_BOOKING = IS_MAYSTERNYA_DOLI_TIMELINE
-    ? { custom: 'Консультації' }
-    : {
+const CATEGORY_ORDER_BOOKING = IS_TIMELINE_EDUCATION_MODE
+    ? ['custom', 'masterclass']
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? ['custom']
+        : ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
+const CATEGORY_NAMES_BOOKING = IS_TIMELINE_EDUCATION_MODE
+    ? { custom: 'Заняття', masterclass: 'Практика' }
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? { custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги' }
+        : {
         animation: 'Анімація', show: 'Wow-Шоу', quest: 'Квести',
         photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
     };
 
 // Каталог програм: повні назви, без 'custom'
-const CATEGORY_ORDER_CATALOG = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];
-const CATEGORY_NAMES_CATALOG = {
-    animation: 'Анімаційні розважальні програми', show: 'Wow-Шоу', quest: 'Квести',
-    photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти'
-};
+const CATEGORY_ORDER_CATALOG = IS_TIMELINE_EDUCATION_MODE
+    ? ['custom', 'masterclass']
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? ['custom']
+        : ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];
+const CATEGORY_NAMES_CATALOG = IS_TIMELINE_EDUCATION_MODE
+    ? { custom: 'Навчальні заняття', masterclass: 'Практичні заняття' }
+    : (!IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE)
+        ? { custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги спеціаліста' }
+        : {
+            animation: 'Анімаційні розважальні програми', show: 'Wow-Шоу', quest: 'Квести',
+            photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти'
+        };
 const CATEGORY_ICONS_CATALOG = {
     animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
 };
@@ -355,6 +401,10 @@ function mapApiProductToTimelineProduct(p) {
     };
 }
 
+function timelineDisplayUsesApiProducts() {
+    return IS_TIMELINE_PARK_MODE || IS_MAYSTERNYA_DOLI_TIMELINE;
+}
+
 /**
  * v7.0: Get products — from API cache, or fallback to hardcoded PROGRAMS.
  * Maps API response format (camelCase) to match PROGRAMS format for backward compat.
@@ -362,6 +412,12 @@ function mapApiProductToTimelineProduct(p) {
 async function getProducts() {
     const now = Date.now();
     const businessContext = getTimelineProductsBusinessContext();
+    if (!timelineDisplayUsesApiProducts()) {
+        AppState.productsBusinessContext = businessContext;
+        AppState.products = PROGRAMS;
+        AppState.productsLoadedAt = now;
+        return PROGRAMS;
+    }
     // Return cached if still fresh
     if (AppState.products
         && AppState.productsBusinessContext === businessContext

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.68.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.68.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.68.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.68.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.68.3">
-    <link rel="stylesheet" href="css/features.css?v=0.68.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.3">
+    <link rel="stylesheet" href="css/base.css?v=0.68.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.68.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.68.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.68.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.68.4">
+    <link rel="stylesheet" href="css/features.css?v=0.68.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.68.3">✨ 0.68.3</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.68.4">✨ 0.68.4</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.68.3 — Omni Telegram bridge</p>
+                <p class="tagline">AI First CRM v0.68.4 — режими таймлайну</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.3</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.4</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -888,6 +888,29 @@
             <span class="modal-close">&times;</span>
             <h3>⚙️ Налаштування</h3>
             <div class="settings-sections">
+                <!-- Режим таймлайну -->
+                <div class="settings-section" id="settingsTimelineDisplaySection">
+                    <h4>🧭 Режим таймлайну</h4>
+                    <p class="digest-hint">Обирає, як один і той самий таймлайн показує лінії, афішу, форму бронювання і доменні блоки.</p>
+                    <div class="form-group">
+                        <label for="settingsTimelineDisplayMode">Тип відображення:</label>
+                        <select id="settingsTimelineDisplayMode">
+                            <option value="simple">Простий режим</option>
+                            <option value="specialist">Спеціаліст</option>
+                            <option value="park">Дитячий розважальний парк</option>
+                            <option value="education">Навчальний заклад</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="settingsTimelineKitchenGroup">
+                        <label for="settingsTimelineKitchenMode">Опція парку:</label>
+                        <select id="settingsTimelineKitchenMode">
+                            <option value="with_kitchen">з кухнею</option>
+                            <option value="without_kitchen">без кухні</option>
+                        </select>
+                    </div>
+                    <div id="settingsTimelineDisplayPreview" class="digest-hint"></div>
+                    <button type="button" id="settingsSaveTimelineDisplayBtn" class="btn-submit">Зберегти режим таймлайну</button>
+                </div>
                 <!-- Аніматори -->
                 <div class="settings-section">
                     <h4>👥 Аніматори</h4>
@@ -1427,13 +1450,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.68.3 — CRM 68: Omni Telegram bridge</h4>
+                    <h4>v0.68.4 — CRM 68: режими таймлайну</h4>
                     <ul>
-                        <li><b>Telegram inbox для Майстерні завершено</b> — CRM може приймати inbox webhook і відповідати через зовнішній bot bridge без підміни report bot або global Telegram sender.</li>
-                        <li><b>Webhook secret додано</b> — <code>/api/omni/webhook/telegram</code> перевіряє <code>OMNI_TELEGRAM_WEBHOOK_SECRET</code>, якщо секрет налаштований.</li>
-                        <li><b>Business context ізольовано</b> — bridge env для <code>maysternya_doli</code> більше не підмішується в default бізнес-контекст.</li>
-                        <li><b>Send truth збережено</b> — manual Omni reply через bridge повертає чесний provider result і не викликає direct Telegram sender, якщо bridge активний.</li>
-                        <li><b>Regression guard додано</b> — focused Omni test покриває bridge readiness, send path і tenant-leak захист.</li>
+                        <li><b>Режим таймлайну винесено в налаштування</b> — доступні простий режим, спеціаліст, дитячий розважальний парк і навчальний заклад.</li>
+                        <li><b>Перемикання змінює presentation</b> — афіша, каталог програм, легенда, підписи ліній і форма бронювання перебудовуються під обраний режим.</li>
+                        <li><b>Парк лишається дефолтом</b> — поточний rich park flow з афішею, квестами й park-семантикою збережено для існуючих користувачів.</li>
+                        <li><b>Кухня стала park-опцією</b> — у режимі парку можна обрати <code>з кухнею</code> або <code>без кухні</code>.</li>
+                        <li><b>Навчальний режим показує кабінети</b> — лінії читаються як кабінети, видно зайнятість слотів і форму заняття.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -9914,29 +9937,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.68.3"></script>
-    <script src="js/timeline-visibility.js?v=0.68.3"></script>
-    <script src="js/config.js?v=0.68.3"></script>
-    <script src="js/api.js?v=0.68.3"></script>
-    <script src="js/ui.js?v=0.68.3"></script>
-    <script src="js/auth.js?v=0.68.3"></script>
-    <script src="js/timeline-interaction-model.js?v=0.68.3"></script>
-    <script src="js/timeline.js?v=0.68.3"></script>
-    <script src="js/booking.js?v=0.68.3"></script>
-    <script src="js/settings.js?v=0.68.3"></script>
-    <script src="js/booking-form.js?v=0.68.3"></script>
-    <script src="js/booking-linked.js?v=0.68.3"></script>
-    <script src="js/settings-dashboard.js?v=0.68.3"></script>
-    <script src="js/settings-history.js?v=0.68.3"></script>
-    <script src="js/settings-afisha.js?v=0.68.3"></script>
-    <script src="js/settings-certificates.js?v=0.68.3"></script>
-    <script src="js/offline.js?v=0.68.3"></script>
-    <script src="js/crm-feature-registry.js?v=0.68.3"></script>
-    <script src="js/search.js?v=0.68.3"></script>
-    <script src="js/ws.js?v=0.68.3"></script>
-    <script src="js/app.js?v=0.68.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.68.3"></script>
-    <script src="js/components/sidebar.js?v=0.68.3"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.3"></script>
+    <script src="js/timeline-context.js?v=0.68.4"></script>
+    <script src="js/timeline-visibility.js?v=0.68.4"></script>
+    <script src="js/config.js?v=0.68.4"></script>
+    <script src="js/api.js?v=0.68.4"></script>
+    <script src="js/ui.js?v=0.68.4"></script>
+    <script src="js/auth.js?v=0.68.4"></script>
+    <script src="js/timeline-interaction-model.js?v=0.68.4"></script>
+    <script src="js/timeline.js?v=0.68.4"></script>
+    <script src="js/booking.js?v=0.68.4"></script>
+    <script src="js/settings.js?v=0.68.4"></script>
+    <script src="js/booking-form.js?v=0.68.4"></script>
+    <script src="js/booking-linked.js?v=0.68.4"></script>
+    <script src="js/settings-dashboard.js?v=0.68.4"></script>
+    <script src="js/settings-history.js?v=0.68.4"></script>
+    <script src="js/settings-afisha.js?v=0.68.4"></script>
+    <script src="js/settings-certificates.js?v=0.68.4"></script>
+    <script src="js/offline.js?v=0.68.4"></script>
+    <script src="js/crm-feature-registry.js?v=0.68.4"></script>
+    <script src="js/search.js?v=0.68.4"></script>
+    <script src="js/ws.js?v=0.68.4"></script>
+    <script src="js/app.js?v=0.68.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.68.4"></script>
+    <script src="js/components/sidebar.js?v=0.68.4"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.4"></script>
 </body>
 </html>

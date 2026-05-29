@@ -829,10 +829,88 @@ async function saveTelegramChatId() {
 // НАЛАШТУВАННЯ (Settings v3.6)
 // ==========================================
 
+function timelineSettingsApiUrl(path) {
+    const url = `${API_BASE}${path}`;
+    return window.TimelineBusinessContext?.appendApiContext?.(url) || url;
+}
+
+function getTimelineDisplayControls() {
+    return {
+        mode: document.getElementById('settingsTimelineDisplayMode'),
+        kitchen: document.getElementById('settingsTimelineKitchenMode'),
+        kitchenGroup: document.getElementById('settingsTimelineKitchenGroup'),
+        preview: document.getElementById('settingsTimelineDisplayPreview')
+    };
+}
+
+function timelineDisplayPreviewText(mode, kitchenMode) {
+    const map = {
+        simple: 'Простий режим: мінімальний запис без афіші та park-полів.',
+        specialist: 'Спеціаліст: нейтральний запис спеціаліста без афіші та park-декору.',
+        park: kitchenMode === 'without_kitchen'
+            ? 'Парк без кухні: афіша і park-сценарії залишаються, кухонний блок приховано.'
+            : 'Парк з кухнею: поточний rich park mode з афішею, квестами і кухонним блоком.',
+        education: 'Навчальний заклад: лінії читаються як кабінети, записи — як заняття.'
+    };
+    return map[mode] || map.park;
+}
+
+function refreshTimelineDisplaySettingsPreview() {
+    const controls = getTimelineDisplayControls();
+    const mode = controls.mode?.value || 'park';
+    const kitchenMode = controls.kitchen?.value || 'with_kitchen';
+    if (controls.kitchenGroup) controls.kitchenGroup.classList.toggle('hidden', mode !== 'park');
+    if (controls.preview) controls.preview.textContent = timelineDisplayPreviewText(mode, kitchenMode);
+}
+
+async function loadTimelineDisplaySettingsIntoModal() {
+    const controls = getTimelineDisplayControls();
+    if (!controls.mode) return;
+    let settings = window.TimelineBusinessContext?.displaySettings?.() || { mode: 'park', parkKitchenMode: 'with_kitchen' };
+    try {
+        const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
+            headers: getAuthHeaders(false)
+        });
+        if (res.ok) {
+            const serverSettings = await res.json();
+            settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+        }
+    } catch (error) {
+        console.warn('[TimelineDisplay] Server display settings unavailable', error);
+    }
+    controls.mode.value = settings.mode || 'park';
+    if (controls.kitchen) controls.kitchen.value = settings.parkKitchenMode || 'with_kitchen';
+    refreshTimelineDisplaySettingsPreview();
+}
+
+async function saveTimelineDisplaySettingsFromSettings() {
+    const controls = getTimelineDisplayControls();
+    const mode = controls.mode?.value || 'park';
+    const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
+    const payload = { mode, parkKitchenMode };
+    try {
+        const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
+            method: 'PUT',
+            headers: getAuthHeaders(true),
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const serverSettings = await res.json();
+        window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings);
+        showNotification('Режим таймлайну збережено. Перезавантажую сторінку...', 'success');
+        setTimeout(() => window.location.reload(), 450);
+    } catch (error) {
+        console.warn('[TimelineDisplay] Failed to save server display settings', error);
+        showNotification('Не вдалося зберегти режим таймлайну на сервері.', 'error');
+    }
+}
+
 async function showSettings() {
     const animators = getSavedAnimators();
     const animatorsTextarea = document.getElementById('settingsAnimatorsList');
     if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
+
+    await loadTimelineDisplaySettingsIntoModal();
 
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {

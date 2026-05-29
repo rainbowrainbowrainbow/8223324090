@@ -226,6 +226,27 @@ function sanitizeTimelineVisibilityPayload(body) {
     return { version: 1, overrides };
 }
 
+const TIMELINE_DISPLAY_MODES = new Set(['simple', 'specialist', 'park', 'education']);
+const TIMELINE_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
+
+function timelineDisplaySettingsKey(context) {
+    return `timeline_display:${context || DEFAULT_TIMELINE_CONTEXT}`;
+}
+
+function defaultTimelineDisplayMode(context) {
+    return context === 'maysternya_doli' ? 'simple' : 'park';
+}
+
+function sanitizeTimelineDisplayPayload(body, context) {
+    const mode = TIMELINE_DISPLAY_MODES.has(String(body?.mode || ''))
+        ? String(body.mode)
+        : defaultTimelineDisplayMode(context);
+    const parkKitchenMode = TIMELINE_PARK_KITCHEN_MODES.has(String(body?.parkKitchenMode || ''))
+        ? String(body.parkKitchenMode)
+        : 'with_kitchen';
+    return { version: 1, mode, parkKitchenMode };
+}
+
 router.get('/settings/timeline-visibility', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
@@ -281,6 +302,64 @@ router.put('/settings/timeline-visibility', async (req, res) => {
         res.json(payload);
     } catch (err) {
         log.error('PUT /settings/timeline-visibility error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/settings/timeline-display', async (req, res) => {
+    try {
+        const context = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, context)) return;
+        const key = timelineDisplaySettingsKey(context);
+        const cached = settingsCache.get(key);
+        const raw = cached !== null
+            ? cached
+            : (await pool.query('SELECT value FROM settings WHERE key = $1', [key])).rows[0]?.value;
+        if (cached === null) settingsCache.set(key, raw || null);
+
+        let parsed = null;
+        try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+        res.json({
+            context,
+            ...sanitizeTimelineDisplayPayload(parsed || {}, context),
+            updatedAt: parsed?.updatedAt || null,
+            updatedBy: parsed?.updatedBy || null
+        });
+    } catch (err) {
+        log.error('GET /settings/timeline-display error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/settings/timeline-display', async (req, res) => {
+    try {
+        const context = timelineContextFromRequest(req);
+        if (!requireTimelineAction(req, res, context, 'settings')) return;
+        const key = timelineDisplaySettingsKey(context);
+        const payload = {
+            ...sanitizeTimelineDisplayPayload(req.body || {}, context),
+            context,
+            updatedAt: new Date().toISOString(),
+            updatedBy: req.user?.username || req.user?.id || null
+        };
+        const value = JSON.stringify(payload);
+        await pool.query(
+            `INSERT INTO settings (key, value)
+             VALUES ($1, $2)
+             ON CONFLICT (key) DO UPDATE SET value = $2`,
+            [key, value]
+        );
+        settingsCache.invalidate(key);
+        logAdminAction('timeline_display_update', 'settings', {
+            username: req.user?.username,
+            target: key,
+            details: { context, mode: payload.mode, parkKitchenMode: payload.parkKitchenMode },
+            ip: req.ip,
+            requestId: req.headers['x-request-id']
+        });
+        res.json(payload);
+    } catch (err) {
+        log.error('PUT /settings/timeline-display error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

@@ -724,6 +724,13 @@ function initSettingsListeners() {
     const settingsSaveTelegramBtn = document.getElementById('settingsSaveTelegramBtn');
     if (settingsSaveTelegramBtn) settingsSaveTelegramBtn.addEventListener('click', saveTelegramChatIdFromSettings);
 
+    const timelineDisplayMode = document.getElementById('settingsTimelineDisplayMode');
+    if (timelineDisplayMode) timelineDisplayMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    const timelineKitchenMode = document.getElementById('settingsTimelineKitchenMode');
+    if (timelineKitchenMode) timelineKitchenMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    const settingsSaveTimelineDisplayBtn = document.getElementById('settingsSaveTimelineDisplayBtn');
+    if (settingsSaveTimelineDisplayBtn) settingsSaveTimelineDisplayBtn.addEventListener('click', saveTimelineDisplaySettingsFromSettings);
+
     // v5.17: Thread ID save button
     const saveThreadIdBtn = document.getElementById('saveThreadIdBtn');
     if (saveThreadIdBtn) saveThreadIdBtn.addEventListener('click', saveThreadIdFromSettings);

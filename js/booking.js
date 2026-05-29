@@ -89,6 +89,38 @@ function isMaysternyaBookingContext() {
     return window.TimelineBusinessContext?.current?.().key === 'maysternya_doli';
 }
 
+function getTimelineBookingPresentation() {
+    return window.TimelineBusinessContext?.presentation?.() || {
+        mode: 'park',
+        bookingTitle: 'Нове бронювання',
+        submitLabel: 'Додати бронювання',
+        groupLabel: 'Група / банкет',
+        notesLabel: 'Примітки',
+        customerNameLabel: 'Імʼя клієнта',
+        phoneLabel: 'Телефон',
+        roomOptionLabel: 'Кімната',
+        parkKitchenEnabled: true
+    };
+}
+
+function isParkTimelineBookingMode() {
+    return getTimelineBookingPresentation().mode === 'park';
+}
+
+function isMinimalTimelineBookingMode() {
+    const mode = getTimelineBookingPresentation().mode;
+    return mode === 'simple' || mode === 'specialist';
+}
+
+function isEducationTimelineBookingMode() {
+    return getTimelineBookingPresentation().mode === 'education';
+}
+
+function timelineKitchenEnabled() {
+    const presentation = getTimelineBookingPresentation();
+    return presentation.mode === 'park' && presentation.parkKitchenEnabled !== false;
+}
+
 function isMaysternyaClosedSlotBooking(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
     const md = extra.maysternyaBooking || extra.maysternya || {};
@@ -107,6 +139,10 @@ function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
     }
     room.value = value;
     room.setAttribute('aria-invalid', 'false');
+}
+
+function ensureTimelineRoomOption(value) {
+    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет');
 }
 
 function getMaysternyaContactSnapshot() {
@@ -262,6 +298,41 @@ function prepareMaysternyaBookingPanel(options = {}) {
     renderBookingPackageSummary();
 }
 
+function prepareDisplayModeBookingPanel(options = {}) {
+    const presentation = getTimelineBookingPresentation();
+    const panel = document.getElementById('bookingPanel');
+    if (panel) {
+        panel.classList.toggle('booking-panel--minimal-timeline', isMinimalTimelineBookingMode());
+        panel.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
+    }
+    if (isParkTimelineBookingMode()) return;
+
+    const lineName = options.line?.name || presentation.roomOptionLabel || 'Кабінет';
+    if (isEducationTimelineBookingMode()) {
+        ensureTimelineRoomOption(lineName);
+    } else {
+        ensureTimelineRoomOption(isMaysternyaBookingContext() ? MAYSTERNYA_ONLINE_ROOM : presentation.roomOptionLabel);
+    }
+    setBookingWorkspaceHasEvent(true, { markDirty: false });
+
+    const title = document.querySelector('#bookingPanel .panel-header h3');
+    if (title && !AppState.editingBookingId) title.textContent = presentation.bookingTitle;
+    const submit = document.getElementById('bookingSubmitBtn');
+    if (submit && !AppState.editingBookingId) submit.textContent = presentation.submitLabel;
+
+    const groupName = document.getElementById('bookingGroupName');
+    if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Група, клас або курс' : 'Коротка тема запису';
+    const notes = document.getElementById('bookingNotes');
+    if (notes) notes.placeholder = isEducationTimelineBookingMode() ? 'Тема заняття, викладач або примітки' : 'Коментар до запису';
+    const customerName = document.getElementById('customerName');
+    if (customerName) customerName.placeholder = presentation.customerNameLabel;
+    const phone = document.getElementById('customerPhone');
+    if (phone) phone.placeholder = presentation.phoneLabel;
+    const customerMode = document.getElementById('bookingCustomerModeLabel');
+    if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'Опційно для заняття' : 'Опційно для запису';
+    renderBookingPackageSummary();
+}
+
 function bookingKitchenType(product) {
     const raw = product?.kitchenType || product?.kitchen_type || product?.category || '';
     if (raw === 'cake') return 'cake';
@@ -280,6 +351,7 @@ function toBookingMoney(value) {
 }
 
 function getBookingMenuProducts() {
+    if (!timelineKitchenEnabled()) return [];
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     return products
         .filter(p => {
@@ -707,7 +779,10 @@ async function openBookingPanel(time, lineId) {
         const closed = await closeBookingPanel(false);
         if (!closed) return false;
     }
-    document.getElementById('bookingPanel')?.classList.toggle('booking-panel--maysternya', isMaysternyaBookingContext());
+    const panelEl = document.getElementById('bookingPanel');
+    panelEl?.classList.toggle('booking-panel--maysternya', isMaysternyaBookingContext());
+    panelEl?.classList.toggle('booking-panel--minimal-timeline', isMinimalTimelineBookingMode());
+    panelEl?.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => l.id === lineId);
 
@@ -775,6 +850,7 @@ async function openBookingPanel(time, lineId) {
     resetBookingPackageWorkspace();
     applyLeadConversionContextToBookingForm();
     prepareMaysternyaBookingPanel();
+    prepareDisplayModeBookingPanel({ line });
 
     document.getElementById('bookingPanel')?.classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
@@ -1195,7 +1271,7 @@ async function closeBookingPanel(force = false) {
         });
     }
     document.getElementById('bookingPanel')?.classList.add('hidden');
-    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya');
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -1259,7 +1335,9 @@ async function renderProgramIcons() {
             icon.className = `program-icon ${p.category}`;
             icon.dataset.programId = p.id;
             icon.dataset.search = `${p.code} ${p.name} ${p.label}`.toLowerCase();
-            const cardName = IS_MAYSTERNYA_DOLI_TIMELINE ? p.name : p.code;
+            const cardName = (typeof TIMELINE_DISPLAY_MODE !== 'undefined' && TIMELINE_DISPLAY_MODE !== 'park') || IS_MAYSTERNYA_DOLI_TIMELINE
+                ? p.name
+                : p.code;
             const durationBadge = p.duration > 0
                 ? `<span class="program-duration ${p.duration <= 60 ? 'short' : 'long'}">${p.duration}'</span>`
                 : '';
@@ -1352,9 +1430,9 @@ function selectProgram(programId) {
         document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     }
 
-    // Package workspace is now always visible; banquet fields remain as legacy metadata.
+    // Package workspace is visible only for park timelines with kitchen enabled.
     const banquetFields = document.getElementById('banquetFields');
-    if (banquetFields) banquetFields.classList.remove('hidden');
+    if (banquetFields) banquetFields.classList.toggle('hidden', !timelineKitchenEnabled());
 
     // v5.9: Focus mode — collapse unselected categories (Progressive Disclosure)
     const allHeaders = document.querySelectorAll('#programsIcons .category-header');

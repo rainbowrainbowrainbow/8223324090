@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.3",
+  "version": "0.68.4",
   "eventGenix": {
-    "releaseLabel": "CRM 68: Omni Telegram bridge"
+    "releaseLabel": "CRM 68: режими таймлайну"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

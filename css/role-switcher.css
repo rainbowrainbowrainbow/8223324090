@@ -1,6 +1,0 @@
-/**
- * Compatibility tombstone.
- *
- * The legacy header RoleSwitcher no longer renders UI. Role preview is owned by
- * the compact dashboard shell control in dashboard.html/js/dashboard-page.js.
- */

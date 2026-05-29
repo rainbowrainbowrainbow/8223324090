@@ -2975,7 +2975,6 @@ body.dark-mode .cabinet-task-priority--critical {
     }
 }
 
-/* nav-text always visible — emoji-only mode removed in v19.5 */
 /* Tasks taxonomy and operational packs */
 .subcat-filters {
     display: flex;

@@ -198,13 +198,6 @@ const CSS_SURFACE = [
         reason: 'Shared responsive overrides across authenticated CRM pages.'
     },
     {
-        file: 'css/role-switcher.css',
-        owner: 'shared-access-ui',
-        category: 'shared',
-        status: 'active',
-        reason: 'Creator-only role preview switcher styles; the obsolete right-side role panel is removed.'
-    },
-    {
         file: 'css/sound.css',
         owner: 'sound',
         category: 'page-scoped',

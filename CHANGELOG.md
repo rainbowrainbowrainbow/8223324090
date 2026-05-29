@@ -4,6 +4,17 @@
 
 ---
 
+## v0.68.2 - CRM 68: cleanup мертвого коду
+
+### Shell cleanup / dead code / 29.05.2026 [codex]
+- **Tombstone assets видалено повністю** - прибрано порожній `css/role-switcher.css`, `js/role-panel.js` і всі live HTML-підключення до legacy role switcher CSS.
+- **Старі shell fallback-и прибрано** - видалено код під неіснуючі `darkModeToggle`, `darkModeIcon`, night settings DOM і старі `sidebarActions`.
+- **CSS surface очищено** - `config/cssSurface.js` і `docs/CSS_SURFACE.md` більше не тримають неіснуючий role-switcher asset.
+- **Guardrail оновлено** - UI smoke тепер перевіряє, що tombstone assets і старі DOM fallback-и не повертаються.
+- **Cache/version references синхронізовано** - asset tags, service worker cache names, login badge, changelog CTA і `/api/version` contract переведені на `0.68.2`.
+
+---
+
 ## v0.68.1 - CRM 68: системний cleanup
 
 ### Cleanup / frontend hygiene / 29.05.2026 [codex]

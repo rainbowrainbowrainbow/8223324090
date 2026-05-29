@@ -2607,7 +2607,6 @@ const Sidebar = (() => {
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
         const collapseBtn = _ensureSidebarCollapseButton(sidebar);
-        _removeLegacySidebarActions(sidebar);
         _ensureCompactProfileAvatar(sidebar);
         if (sidebar) sidebar.dataset.sidebarStateOwner = 'aurora';
         if (sidebar) {
@@ -2645,23 +2644,6 @@ const Sidebar = (() => {
             });
         }
         // Desktop collapsed state remains owned by the shared shell controls.
-    }
-
-    function _removeLegacySidebarActions(sidebar) {
-        const root = sidebar || document;
-        root.querySelectorAll('#sidebarActions, .sidebar-actions').forEach((el) => el.remove());
-        [
-            'sidebarHistoryBtn',
-            'sidebarAfishaBtn',
-            'sidebarCertificatesBtn',
-            'sidebarDashboardBtn',
-            'sidebarSettingsBtn',
-            'sidebarDigestBtn',
-            'sidebarPointsBtn'
-        ].forEach((id) => {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        });
     }
 
     function _ensureCompactProfileAvatar(sidebar) {

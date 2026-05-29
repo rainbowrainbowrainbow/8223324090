@@ -47,7 +47,6 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages.css` | shared-ui | `shared` | active | Shared page-level layout helpers for static CRM pages. |
 | `css/panel.css` | timeline | `shell` | active | Root shell side panel styles. |
 | `css/responsive.css` | shared-ui | `shared` | active | Shared responsive overrides across authenticated CRM pages. |
-| `css/role-switcher.css` | shared-access-ui | `shared` | active | Creator-only role preview switcher styles; the obsolete right-side role panel is removed. |
 | `css/sound.css` | sound | `page-scoped` | active | Sound library page styles. |
 | `css/timeline.css` | timeline | `shell` | active | Root booking timeline styles. |
 | `landing/style.css` | landing | `landing-scoped-large` | active-large | Public landing site styles outside the authenticated CRM CSS directory. |

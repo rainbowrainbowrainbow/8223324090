@@ -147,11 +147,6 @@ function _checkAutoOpen() {
 
 function loadPreferences() {
     AppState.darkMode = initDarkMode();
-    // Sync toggle checkbox and icon with actual dark mode state
-    const darkToggle = document.getElementById('darkModeToggle');
-    if (darkToggle) darkToggle.checked = AppState.darkMode;
-    const darkIcon = document.getElementById('darkModeIcon');
-    if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
     AppState.compactMode = localStorage.getItem(timelineStorageKey('compact_mode')) === 'true';
     const zoomKey = timelineStorageKey('zoom_level');
     const savedZoomRaw = localStorage.getItem(zoomKey);
@@ -827,12 +822,6 @@ function initUIControlListeners() {
         btn.addEventListener('click', () => changeZoom(parseInt(btn.dataset.zoom)));
     });
 
-    const darkToggle = document.getElementById('darkModeToggle');
-    if (darkToggle) darkToggle.addEventListener('change', toggleDarkMode);
-
-    // Night settings init
-    if (typeof initNightSettings === 'function') initNightSettings();
-
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.addEventListener('change', toggleCompactMode);
 
@@ -929,8 +918,6 @@ function initUIControlListeners() {
             localStorage.setItem('pzp_sidebar_collapsed', isCollapsed);
         });
     }
-
-    document.getElementById('sidebarActions')?.remove();
 }
 
 function initModalListeners() {

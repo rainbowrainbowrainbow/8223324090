@@ -1244,12 +1244,6 @@ function showMainApp() {
         window.TimelineVisibility.applyVisibility?.();
     }
 
-    // Dark mode toggle
-    const darkToggle = document.getElementById('darkModeToggle');
-    if (darkToggle) darkToggle.checked = AppState.darkMode;
-    const darkIcon = document.getElementById('darkModeIcon');
-    if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
-
     // Compact mode toggle
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.checked = AppState.compactMode;
@@ -2335,11 +2329,6 @@ function applyCrmThemeMode(isDark, persist = true) {
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     if (persist) localStorage.setItem('pzp_dark_mode', String(dark));
     if (typeof AppState !== 'undefined') AppState.darkMode = dark;
-
-    const legacyToggle = document.getElementById('darkModeToggle');
-    if (legacyToggle) legacyToggle.checked = dark;
-    const legacyIcon = document.getElementById('darkModeIcon');
-    if (legacyIcon) legacyIcon.textContent = dark ? '☀️' : '🌙';
 
     syncHeaderThemeToggle();
     window.dispatchEvent(new CustomEvent('crm:theme-changed', { detail: { dark } }));

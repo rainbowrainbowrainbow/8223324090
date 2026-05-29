@@ -499,8 +499,6 @@ body.dark-mode .sidebar-overlay {
     background: rgba(0,0,0,0.65);
 }
 
-/* Quick stats cards removed in v20.9.1 (redundant with dashboard) */
-
 /* Skeleton dark */
 body.dark-mode .skeleton {
     background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
@@ -1121,8 +1119,6 @@ body.dark-mode .status-badge--cancelled {
     color: #FCA5A5;
     border-color: rgba(239,68,68,0.3);
 }
-
-/* Quick stats bar removed in v20.9.1 */
 
 /* Kleshnya futuristic terminal in dark — enhanced glow */
 body.dark-mode .kleshnya-fab {

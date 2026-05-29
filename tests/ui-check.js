@@ -900,12 +900,11 @@ const pagesWithObsoleteRightPanel = htmlFiles.filter(file => {
         .map(m => m[1].split('?')[0]);
     const obsoleteScript = ['js', 'role-panel.js'].join('/');
     const obsoleteStyle = ['css', 'role-panel.css'].join('/');
-    return scripts.includes(obsoleteScript) || styles.includes(obsoleteStyle);
+    const obsoleteRoleSwitcherStyle = ['css', 'role-switcher.css'].join('/');
+    return scripts.includes(obsoleteScript) || styles.includes(obsoleteStyle) || styles.includes(obsoleteRoleSwitcherStyle);
 });
-const roleSwitcherCss = fs.readFileSync(path.join(ROOT, 'css', 'role-switcher.css'), 'utf8');
-const rolePanelTombstone = fs.readFileSync(path.join(ROOT, 'js', 'role-panel.js'), 'utf8');
-check('Obsolete right-side role panel is not mounted by any page', pagesWithObsoleteRightPanel.length === 0 && rolePanelTombstone.includes('Compatibility tombstone') && !rolePanelTombstone.includes('createElement'));
-check('Legacy role switcher CSS is a tombstone for dashboard-owned preview', roleSwitcherCss.includes('Compatibility tombstone') && roleSwitcherCss.includes('dashboard shell control') && !roleSwitcherCss.includes('.role-switcher-dropdown') && !roleSwitcherCss.includes('.role-panel-fab') && !roleSwitcherCss.includes('.role-panel {'));
+check('Obsolete role panel and legacy role switcher assets are fully removed from pages', pagesWithObsoleteRightPanel.length === 0 && !fs.existsSync(path.join(ROOT, 'js', 'role-panel.js')) && !fs.existsSync(path.join(ROOT, 'css', 'role-switcher.css')));
+check('Legacy dark-mode/sidebar shell DOM fallbacks are removed from live JS', !appCode.includes('darkModeToggle') && !authCode.includes('darkModeToggle') && !uiCode.includes('function toggleDarkMode') && !uiCode.includes('function initNightSettings') && !sidebarCode.includes('_removeLegacySidebarActions') && !sidebarCode.includes('sidebarActions'));
 
 // Check lead modal action binding
 const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');

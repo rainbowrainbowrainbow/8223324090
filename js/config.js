@@ -253,10 +253,6 @@ function initDarkMode() {
             document.body.classList.toggle('dark-mode', sysDark);
             document.documentElement.setAttribute('data-theme', sysDark ? 'dark' : 'light');
             document.documentElement.style.colorScheme = sysDark ? 'dark' : 'light';
-            const icon = document.getElementById('darkModeIcon');
-            if (icon) icon.textContent = sysDark ? '☀️' : '🌙';
-            const toggle = document.getElementById('darkModeToggle');
-            if (toggle) toggle.checked = sysDark;
         });
     }
 

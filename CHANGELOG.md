@@ -4,6 +4,15 @@
 
 ---
 
+## v0.68.0 - CRM 68: іконка діалогу клієнта
+
+### Release marker / Customers / Omni / 29.05.2026 [codex]
+- **CRM 68 відкрито з customer dialog fix** - релізний маркер піднято з `v0.67.19` до `v0.68.0`, щоб поточний live-фікс іконки діалогу йшов уже як версія 68.
+- **Cache/version references синхронізовано** - HTML asset tags, service worker cache names, login badge, tagline, changelog CTA і `/api/version` contract переведені на `0.68.0`.
+- **Функціональний зміст лишається тим самим production slice** - іконка в customer communication hub відкриває exact/suggested/search Omni path без fake-click і без дубльованого Omni-контролю.
+
+---
+
 ## v0.67.19 - CRM 67.19: іконка діалогу клієнта
 
 ### Customers / Omni / communication hub / 29.05.2026 [codex]

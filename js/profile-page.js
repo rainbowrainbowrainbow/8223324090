@@ -13,7 +13,6 @@ let myNotes = [];
 let walletData = null;
 let currentUserId = null;
 let isOwnProfile = true;
-let roomData = null; // deprecated — Room tab removed
 let questsData = null;
 let titlesData = null;
 let shopItems = [];
@@ -945,7 +944,6 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/inventory') : null,
         apiGet('/achievements'),
         null, // notes retired from My Cabinet/profile surface
-        null, // room removed
         isOwnProfile ? apiGet('/quests/daily') : null,
         isOwnProfile ? apiGet('/quests/titles') : null,
         isOwnProfile ? apiGet('/streaks') : null,
@@ -960,13 +958,12 @@ async function loadProfileData(userId) {
     myInventory = results[2] || [];
     myAchievements = results[3] || [];
     myNotes = results[4] || [];
-    roomData = results[5];
-    questsData = results[6];
-    titlesData = results[7];
-    allStreaks = results[8];
-    myCabinetData = results[9];
-    syncCabinetPulseCounts(results[10], results[11]);
-    profileSecurityData = results[12];
+    questsData = results[5];
+    titlesData = results[6];
+    allStreaks = results[7];
+    myCabinetData = results[8];
+    syncCabinetPulseCounts(results[9], results[10]);
+    profileSecurityData = results[11];
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
     ensureActiveProfessionKey();
 }

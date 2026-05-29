@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.1 - CRM 68: системний cleanup
+
+### Cleanup / frontend hygiene / 29.05.2026 [codex]
+- **Прибрано debug-залишки у frontend** - видалено закоментовані `console.log` з timeline/chat/api і живий check-in лог, який не був потрібний у production console.
+- **Профіль очищено від Room-tab хвоста** - видалено мертвий `roomData` state-slot і зайвий `Promise.all` placeholder після попереднього видалення Room tab.
+- **Cleanup register оновлено** - зафіксовано актуальний inventory системи, підтверджено що orphan root HTML/routes не знайдено, а `checkin.html` лишається живою сторінкою `/checkin`.
+- **Cache/version references синхронізовано** - asset tags, service worker cache names, login badge, changelog CTA і `/api/version` contract переведені на `0.68.1`.
+
+---
+
 ## v0.68.0 - CRM 68: іконка діалогу клієнта
 
 ### Release marker / Customers / Omni / 29.05.2026 [codex]

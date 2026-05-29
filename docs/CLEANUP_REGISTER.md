@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-05-12  
+Last refreshed: 2026-05-29
 Current product version source: `package.json`
 
 ## Operating Model
@@ -25,29 +25,28 @@ as a later pack.
 
 Use `npm run cleanup:inventory` for the current generated view.
 
-Known high-change areas from the latest manual snapshot:
+Known high-change areas from the latest inventory snapshot:
 
-- `routes/`: 76 files, API ownership and auth boundaries.
-- `services/`: 49 files, business logic and scheduler side effects.
-- `js/`: 54 files, large vanilla frontend modules.
-- `css/`: 25 files plus `landing/style.css`, shared UI and page-specific styling.
-- `tests/`: 85 files, mixed unit, route smoke, UI smoke, and live API tests.
-- `db/migrations/`: 159 migrations, with documented legacy duplicate/gap debt.
-- `landing/`: public landing materials and static assets.
+- `routes/`: 80 files, API ownership and auth boundaries.
+- `services/`: 91 files, business logic and scheduler side effects.
+- `js/`: 67 files, large vanilla frontend modules.
+- `css/`: 29 files plus `landing/style.css`, shared UI and page-specific styling.
+- `tests/`: 147 files, mixed unit, route smoke, UI smoke, and live API tests.
+- `db/migrations/`: 226 migrations, with documented legacy duplicate/gap debt.
+- `landing/`: 12 public landing materials and static assets.
 
 Large files that should not be casually reformatted:
 
-- `js/chat-page.js`
-- `css/chat.css`
-- `landing/style.css`
-- `css/features.css`
-- `css/modals.css`
 - `index.html`
-- `services/guardian.js`
-- `js/settings.js`
-- `routes/chat.js`
-- `services/scheduler.js`
-- `routes/hr.js`
+- `css/chat.css`
+- `css/assistant-rail.css`
+- `css/sidebar-aurora.css`
+- `js/dashboard-page.js`
+- `js/chat-page.js`
+- `css/dashboard.css`
+- `js/profile-page.js`
+- `css/pages.css`
+- `profile.html`
 
 ## Cleanup Tracks
 
@@ -78,6 +77,20 @@ Status: started.
 - Root markdown is now intentionally limited to active operating documents:
   `AGENTS.md`, `README.md`, `DB_MIGRATION_GOVERNANCE.md`, and `CHANGELOG.md`.
 - Added a static-doc guard test so old root planning docs do not drift back.
+
+2026-05-29 update:
+
+- Refreshed `npm run cleanup:inventory`; no unmounted `routes/*.js` files and
+  no orphan root HTML files were reported.
+- Removed low-risk frontend debug leftovers from `js/api.js`, `js/chat-page.js`,
+  `js/timeline.js`, and `checkin.html`.
+- Removed the stale `roomData` profile state slot left after the Room tab
+  removal.
+- Confirmed `checkin.html` is still a live static page owned by `/checkin`, so
+  it is not a deletion candidate.
+- Current environment risk: the local shell is Node 24/npm 11 while the repo
+  baseline requires Node 22/npm 10, so cleanup verification should still be
+  repeated under the canonical runtime before broad deletion packs.
 
 ### 2. Route, Page, And Ownership Map
 

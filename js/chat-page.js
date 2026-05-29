@@ -7107,7 +7107,6 @@
 
         try {
             var channelParam = _currentChannel ? '&channelId=' + _currentChannel.id : '';
-            // console.log('[Guardian] Loading digest for', dateStr, channelParam ? 'channel ' + _currentChannel.id : 'all channels');
             var resp = await fetch('/api/guardian/reports?limit=10' + channelParam, { headers: _headers() });
             if (!resp.ok) {
                 console.error('[Guardian] Digest fetch failed:', resp.status, resp.statusText);
@@ -7117,7 +7116,6 @@
                 return;
             }
             var reports = await resp.json();
-            // console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
             if (!reports || reports.length === 0) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small><br>' +
                     '<button type="button" class="guardian-digest-generate-btn">🔄 Згенерувати зараз</button></div>';
@@ -7174,7 +7172,6 @@
     var _isAdmin = false;
 
     function _initGuardianUI() {
-        // console.log('[Guardian] Initializing guardian UI');
         // Check if user is admin
         try {
             var token = localStorage.getItem('pzp_token');
@@ -8315,7 +8312,6 @@
             // Request notification permission
             var permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                // console.log('[Chat] Notification permission denied');
                 return;
             }
 
@@ -8342,7 +8338,6 @@
                 endpoint: sub.endpoint,
                 keys: sub.keys
             });
-            // console.log('[Chat] Push subscription saved');
         } catch (err) {
             console.warn('[Chat] Push notifications not available:', err.message);
         }

@@ -316,7 +316,6 @@ async function renderTimeline() {
         normalizeTimelineModeState(AppState);
     }
     const selectedDate = new Date(AppState.selectedDate);
-    // console.log('[Timeline] renderTimeline START gen=' + thisGen + ' date=' + formatDate(selectedDate));
 
     try {
         if (hasActiveTimelineInteractionState()) {
@@ -358,11 +357,8 @@ async function renderTimeline() {
         console.error('[Timeline] Critical fetch error:', err);
     }
 
-    // console.log('[Timeline] DATA gen=' + thisGen + ' lines=' + lines.length + ' bookings=' + bookings.length + ' afisha=' + (afishaEvents || []).length);
-
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (thisGen !== _renderGen) {
-        // console.log('[Timeline] ABORT stale gen=' + thisGen + ' current=' + _renderGen);
         return;
     }
 
@@ -423,8 +419,6 @@ async function renderTimeline() {
         } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
     }
 
-    // console.log('[Timeline] Rendering ' + lines.length + ' lines...');
-
     lines.forEach(line => {
         try {
         const lineEl = document.createElement('div');
@@ -459,8 +453,6 @@ async function renderTimeline() {
         lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
     });
-
-    // console.log('[Timeline] DONE gen=' + thisGen + ' rendered=' + container.querySelectorAll('.timeline-line').length + ' children');
 
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 

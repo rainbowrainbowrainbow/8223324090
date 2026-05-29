@@ -8591,6 +8591,12 @@ const DashboardPage = (() => {
         updateDashboardRolePreviewControl();
         announceDashboardContextToAssistant();
     });
+    window.addEventListener('workingRoleChanged', () => {
+        if (!_config) return;
+        renderWidgets();
+        updateDashboardRolePreviewControl();
+        announceDashboardContextToAssistant();
+    });
     window.addEventListener('crm:tasks-updated', () => {
         refreshTaskRelatedWidgets();
     });

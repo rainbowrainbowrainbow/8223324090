@@ -4,6 +4,18 @@
 
 ---
 
+## v0.67.18 - CRM 67.18: робочі ролі й додаткові доступи
+
+### Profile / working roles / extraRoles / 29.05.2026 [codex]
+- **Роль у профілі стала реальним entrypoint** - клік по поточній ролі відкриває контроль із `Base role`, `Additional granted roles`, `Current working role`, наслідками режиму та поверненням до base role.
+- **`role`, `extraRoles` і working role розділено явно** - `role` лишається базовою роллю акаунта, `extraRoles` є persisted grants, а `activeRole`/`workingRole` визначає режим shell-композиції.
+- **Preview більше не плутається з grant-flow** - `RolePreview` лишився creator/director preview-інструментом, а реальний `WorkingRole` має окремий storage, owner guard і invalid-state recovery.
+- **Shell отримує один working-role signal** - sidebar, dashboard preset, quick access і start page читають active/effective role та перебудовуються після `workingRoleChanged`.
+- **HR access editor пояснює додаткові ролі чесно** - створення/редагування акаунта прямо каже, що поле `extraRoles` є реальним grant, який користувач побачить у профілі.
+- **Додано regression guards** - UI smoke фіксує профільний role-flow control, окремий `WorkingRole` у auth layer і HR-пояснення persisted grants.
+
+---
+
 ## v0.67.17 - CRM 67.17: стабільний бізнес-перемикач
 
 ### Timeline shell / sidebar switcher / state hardening / 29.05.2026 [codex]

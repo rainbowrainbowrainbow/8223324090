@@ -317,6 +317,101 @@ function profileRoleLabel(role) {
     return labels[role] || role || 'Працівник';
 }
 
+function profileExtraRoles(data = profileData) {
+    const user = profileUser(data);
+    const baseRole = String(user.role || data?.role || '').trim();
+    const roles = [];
+    if (Array.isArray(user.extraRoles)) roles.push(...user.extraRoles);
+    if (Array.isArray(user.extra_roles)) roles.push(...user.extra_roles);
+    if (Array.isArray(user.roles)) roles.push(...user.roles.filter(role => role !== baseRole));
+    return Array.from(new Set(roles.filter(Boolean).map(role => String(role).trim()).filter(role => role && role !== baseRole)));
+}
+
+function profileWorkingRoleState(data = profileData) {
+    const user = profileUser(data);
+    if (window.WorkingRole?.getState) return window.WorkingRole.getState(user);
+    const baseRole = String(user.role || data?.role || '').trim();
+    const extraRoles = profileExtraRoles(data);
+    const activeRole = String(user.activeRole || user.workingRole || baseRole || '').trim();
+    const availableRoles = Array.from(new Set([baseRole, ...extraRoles].filter(Boolean)));
+    return {
+        baseRole,
+        realRole: baseRole,
+        extraRoles,
+        availableRoles,
+        activeRole,
+        workingRole: activeRole,
+        effectiveRole: activeRole,
+        isBaseActive: activeRole === baseRole,
+        baseLabel: profileRoleLabel(baseRole),
+        realLabel: profileRoleLabel(baseRole),
+        activeLabel: profileRoleLabel(activeRole),
+        workingLabel: profileRoleLabel(activeRole),
+        effectiveLabel: profileRoleLabel(activeRole),
+        changedSurfaces: profileWorkingRoleImpact(activeRole)
+    };
+}
+
+function profileWorkingRoleImpact(role) {
+    const startPage = window.RoleShell?.getStartPage?.(role) || '/dashboard';
+    const dashboardPreset = window.RoleShell?.getDashboardPreset?.(role) || role || 'default';
+    const quickAccess = window.RoleShell?.getQuickAccessHrefs?.(role) || [];
+    return [
+        { label: 'Sidebar / navigation', detail: 'Рольовий фокус меню, порядок груп і quick access перебудовуються під цей режим.' },
+        { label: 'Dashboard preset', detail: `Preset: ${dashboardPreset}` },
+        { label: 'Quick access', detail: quickAccess.length ? quickAccess.join(' · ') : 'Базовий набір швидких входів' },
+        { label: 'Start page', detail: startPage }
+    ];
+}
+
+function renderProfileWorkingRoleControl(state = profileWorkingRoleState()) {
+    const available = Array.isArray(state.availableRoles) ? state.availableRoles.filter(Boolean) : [];
+    const extraRoles = Array.isArray(state.extraRoles) ? state.extraRoles.filter(Boolean) : [];
+    const activeRole = state.activeRole || state.workingRole || state.baseRole || '';
+    const baseRole = state.baseRole || state.realRole || '';
+    const roleButtons = available.length
+        ? available.map(role => {
+            const active = role === activeRole;
+            const base = role === baseRole;
+            return `<button type="button" class="profile-working-role-option ${active ? 'active' : ''}" data-profile-working-role="${escapeHtml(role)}" aria-pressed="${active ? 'true' : 'false'}">
+                <b>${escapeHtml(window.RoleShell?.getRoleLabel?.(role) || profileRoleLabel(role))}</b>
+                <span>${base ? 'Base role' : 'Granted extra role'}</span>
+            </button>`;
+        }).join('')
+        : '<div class="profile-working-role-empty">Роль акаунта ще не завантажена.</div>';
+    const extraHtml = extraRoles.length
+        ? extraRoles.map(role => `<span>${escapeHtml(window.RoleShell?.getRoleLabel?.(role) || profileRoleLabel(role))}</span>`).join('')
+        : '<em>Додаткові ролі ще не надані</em>';
+    const impact = (Array.isArray(state.changedSurfaces) && state.changedSurfaces.length ? state.changedSurfaces : profileWorkingRoleImpact(activeRole))
+        .map(item => `<li><b>${escapeHtml(item.label || item.key || '')}</b><span>${escapeHtml(item.detail || '')}</span></li>`)
+        .join('');
+    const previewNotice = state.previewRole
+        ? `<div class="profile-working-role-preview-note">Preview зараз активний як ${escapeHtml(state.previewLabel || profileRoleLabel(state.previewRole))}. Реальна working role лишається ${escapeHtml(state.activeLabel || profileRoleLabel(activeRole))}.</div>`
+        : '';
+    return `
+        <div id="profileWorkingRolePanel" class="profile-working-role-panel" hidden>
+            <div class="profile-working-role-head">
+                <div>
+                    <span class="profile-kicker">Working role flow</span>
+                    <h2>Робоча роль акаунта</h2>
+                </div>
+                <button type="button" class="profile-working-role-close" data-profile-working-role-close aria-label="Закрити">×</button>
+            </div>
+            <div class="profile-working-role-grid">
+                <div><span>Base role</span><b>${escapeHtml(state.baseLabel || profileRoleLabel(baseRole))}</b></div>
+                <div><span>Current working role</span><b>${escapeHtml(state.activeLabel || state.workingLabel || profileRoleLabel(activeRole))}</b></div>
+                <div class="profile-working-role-grants"><span>Additional granted roles</span><div>${extraHtml}</div></div>
+            </div>
+            ${previewNotice}
+            <div class="profile-working-role-options" role="list" aria-label="Доступні робочі ролі">${roleButtons}</div>
+            ${!state.isBaseActive && baseRole ? `<button type="button" class="profile-working-role-reset" data-profile-working-role-reset>Switch back to base role</button>` : ''}
+            <div class="profile-working-role-impact">
+                <h3>What changes in this mode</h3>
+                <ul>${impact}</ul>
+            </div>
+        </div>`;
+}
+
 const PROFILE_PROFESSION_GUIDES = {
     creator: {
         focus: 'Стратегія CRM, контроль системи, фінальні рішення і якість операцій.',
@@ -821,6 +916,7 @@ async function initProfilePage() {
         const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
         if (!user) { window.location.href = '/'; return; }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        window.WorkingRole?.hydrate?.();
         currentUserId = user.id;
     } catch (e) { window.location.href = '/'; return; }
 
@@ -1171,6 +1267,8 @@ function renderProfile() {
     const username = profileUsername(p);
     const role = profileRole(p);
     const roleLabel = profileRoleLabel(role);
+    const workingRoleState = profileWorkingRoleState(p);
+    const workingRoleLabel = workingRoleState.activeLabel || workingRoleState.workingLabel || roleLabel;
     const professionEntries = profileProfessionEntries();
     const primaryProfession = professionEntries[0];
     const secondaryCount = Math.max(0, professionEntries.length - 1);
@@ -1196,12 +1294,18 @@ function renderProfile() {
                 <div class="profile-identity-copy">
                     <div class="profile-kicker">Особистий робочий профіль</div>
                     <h1>${escapeHtml(name)}</h1>
-                    <div class="profile-role-line">
-                        <span>${escapeHtml(primaryProfession.title)}</span>
-                        ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : ''}
-                        <span>Доступ: ${escapeHtml(roleLabel)}</span>
-                        ${username ? `<span>@${escapeHtml(username)}</span>` : ''}
-                        <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                    <div class="profile-working-role-wrap">
+                        <div class="profile-role-line">
+                            <span>${escapeHtml(primaryProfession.title)}</span>
+                            ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : ''}
+                            ${isOwnProfile ? `<button type="button" id="profileWorkingRoleTrigger" class="profile-working-role-trigger" aria-expanded="false" aria-controls="profileWorkingRolePanel">
+                                <small>Робоча роль</small>
+                                <b>${escapeHtml(workingRoleLabel)}</b>
+                            </button>` : `<span>Доступ: ${escapeHtml(roleLabel)}</span>`}
+                            ${username ? `<span>@${escapeHtml(username)}</span>` : ''}
+                            <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                        </div>
+                        ${isOwnProfile ? renderProfileWorkingRoleControl(workingRoleState) : ''}
                     </div>
                     ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
                     ${p.user?.bio || p.bio ? `<div class="profile-bio">${escapeHtml(p.user?.bio || p.bio)}</div>` : ''}
@@ -4947,6 +5051,34 @@ function closeProfileWidgetTooltips(except = null) {
     });
 }
 
+function closeProfileWorkingRolePanel() {
+    const panel = document.getElementById('profileWorkingRolePanel');
+    const trigger = document.getElementById('profileWorkingRoleTrigger');
+    if (panel) panel.hidden = true;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
+function setProfileWorkingRolePanelOpen(open) {
+    const panel = document.getElementById('profileWorkingRolePanel');
+    const trigger = document.getElementById('profileWorkingRoleTrigger');
+    if (!panel || !trigger) return;
+    panel.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function refreshProfileWorkingRoleSurface() {
+    renderProfile();
+}
+
+function setProfileWorkingRole(role) {
+    const ok = window.WorkingRole?.setActiveRole?.(role);
+    if (!ok) {
+        if (typeof showNotification === 'function') showNotification('Цю робочу роль не надано цьому акаунту', 'error');
+        return;
+    }
+    refreshProfileWorkingRoleSurface();
+}
+
 function navigateProfileWidget(target) {
     const href = String(target || '').trim();
     if (!href) return;
@@ -5012,12 +5144,54 @@ function attachProfileListeners() {
         document.addEventListener('click', event => {
             if (!event.target.closest('.cabinet-task-actions, .cabinet-reschedule-wrap')) closeCabinetSnoozeMenus();
             if (!event.target.closest('.profile-cockpit-widget')) closeProfileWidgetTooltips();
+            if (!event.target.closest('.profile-working-role-wrap')) closeProfileWorkingRolePanel();
             if (!event.target.closest('.cabinet-completed-day-divider')) closeCabinetCompletedDayDividers();
         });
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') closeCabinetSnoozeMenus();
             if (event.key === 'Escape') closeProfileWidgetTooltips();
+            if (event.key === 'Escape') closeProfileWorkingRolePanel();
             if (event.key === 'Escape') closeCabinetCompletedDayDividers();
+        });
+    }
+
+    const workingRoleTrigger = document.getElementById('profileWorkingRoleTrigger');
+    if (workingRoleTrigger && workingRoleTrigger.dataset.profileWorkingRoleBound !== 'true') {
+        workingRoleTrigger.dataset.profileWorkingRoleBound = 'true';
+        workingRoleTrigger.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setProfileWorkingRolePanelOpen(document.getElementById('profileWorkingRolePanel')?.hidden !== false);
+        });
+    }
+
+    document.querySelectorAll('[data-profile-working-role]').forEach(button => {
+        if (button.dataset.profileWorkingRoleBound === 'true') return;
+        button.dataset.profileWorkingRoleBound = 'true';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setProfileWorkingRole(button.dataset.profileWorkingRole || '');
+        });
+    });
+
+    const workingRoleReset = document.querySelector('[data-profile-working-role-reset]');
+    if (workingRoleReset && workingRoleReset.dataset.profileWorkingRoleBound !== 'true') {
+        workingRoleReset.dataset.profileWorkingRoleBound = 'true';
+        workingRoleReset.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (window.WorkingRole?.resetToBase?.()) refreshProfileWorkingRoleSurface();
+        });
+    }
+
+    const workingRoleClose = document.querySelector('[data-profile-working-role-close]');
+    if (workingRoleClose && workingRoleClose.dataset.profileWorkingRoleBound !== 'true') {
+        workingRoleClose.dataset.profileWorkingRoleBound = 'true';
+        workingRoleClose.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeProfileWorkingRolePanel();
         });
     }
 
@@ -5797,4 +5971,13 @@ function setMonthlyFilter(category) {
 // ==========================================
 // INIT
 // ==========================================
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('workingRoleChanged', () => {
+        if (profileData && isOwnProfile) renderProfile();
+    });
+    window.addEventListener('rolePreviewChanged', () => {
+        if (profileData && isOwnProfile) renderProfile();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initProfilePage);

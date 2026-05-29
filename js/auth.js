@@ -171,6 +171,7 @@ async function checkSession() {
         const user = await apiVerifyToken();
         if (user) {
             AppState.currentUser = user;
+            window.WorkingRole?.hydrate?.();
             showMainApp();
             if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
             return;
@@ -187,6 +188,7 @@ async function login(username, password) {
         const data = await apiLogin(username, password);
         AppState.currentUser = data.user;
         rememberAuthSession(data);
+        window.WorkingRole?.hydrate?.();
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         // Start every authenticated session from the account's timeline surface.
@@ -583,6 +585,8 @@ const ACTION_PERMISSIONS = {
 
 const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
 const ROLE_PREVIEW_SESSION_KEY = 'testRole';
+const ROLE_WORKING_STORAGE_KEY = 'pzp_working_role';
+const ROLE_WORKING_OWNER_KEY = 'pzp_working_role_owner';
 
 const ROLE_SHELL_DEFAULT = {
     startPage: '/dashboard',
@@ -732,6 +736,72 @@ function getRealUserRole(user = AppState.currentUser) {
     return _normalizeRoleKey(user?.role || user?.account_role || user?.accountRole) || null;
 }
 
+function _safeStorageGet(storage, key) {
+    try {
+        return storage?.getItem?.(key) || '';
+    } catch {
+        return '';
+    }
+}
+
+function _safeStorageSet(storage, key, value) {
+    try {
+        storage?.setItem?.(key, String(value));
+    } catch {}
+}
+
+function _safeStorageRemove(storage, key) {
+    try {
+        storage?.removeItem?.(key);
+    } catch {}
+}
+
+function _workingRoleOwnerKey(user = AppState.currentUser) {
+    return String(user?.id || user?.username || '').trim();
+}
+
+function getGrantedExtraRoles(user = AppState.currentUser) {
+    const primary = getRealUserRole(user);
+    const roles = [];
+    if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+    if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+    if (Array.isArray(user?.roles)) roles.push(...user.roles.filter(role => role !== primary));
+    return Array.from(new Set(roles
+        .map(role => _normalizeRoleKey(role))
+        .filter(role => role && role !== primary)));
+}
+
+function getAvailableWorkingRoles(user = AppState.currentUser) {
+    const primary = getRealUserRole(user);
+    return Array.from(new Set([primary, ...getGrantedExtraRoles(user)].filter(Boolean)));
+}
+
+function clearStoredWorkingRole() {
+    _safeStorageRemove(localStorage, ROLE_WORKING_STORAGE_KEY);
+    _safeStorageRemove(localStorage, ROLE_WORKING_OWNER_KEY);
+}
+
+function getStoredWorkingRole(user = AppState.currentUser) {
+    const raw = _safeStorageGet(localStorage, ROLE_WORKING_STORAGE_KEY);
+    const owner = _safeStorageGet(localStorage, ROLE_WORKING_OWNER_KEY);
+    const currentOwner = _workingRoleOwnerKey(user);
+    if (owner && currentOwner && owner !== currentOwner) {
+        clearStoredWorkingRole();
+        return null;
+    }
+    const role = _normalizeRoleKey(raw);
+    if (!role) return null;
+    if (!getAvailableWorkingRoles(user).includes(role)) {
+        clearStoredWorkingRole();
+        return null;
+    }
+    return role;
+}
+
+function getActiveWorkingRole(user = AppState.currentUser) {
+    return getStoredWorkingRole(user) || getRealUserRole(user);
+}
+
 function canPreviewRoles(user = AppState.currentUser) {
     return ['creator', 'director'].includes(getRealUserRole(user));
 }
@@ -759,7 +829,7 @@ function getStoredPreviewRole(user = AppState.currentUser) {
 }
 
 function getEffectiveUserRole(user = AppState.currentUser) {
-    return getStoredPreviewRole(user) || getRealUserRole(user);
+    return getStoredPreviewRole(user) || getActiveWorkingRole(user);
 }
 
 const RoleShell = {
@@ -781,6 +851,165 @@ const RoleShell = {
     }
 };
 window.RoleShell = RoleShell;
+
+function describeWorkingRoleImpact(role) {
+    const config = _getRoleConfig(role);
+    return [
+        {
+            key: 'sidebar',
+            label: 'Sidebar / navigation',
+            detail: 'Змінює рольовий фокус меню, порядок груп і quick access; grant-доступи акаунта лишаються правдою безпеки.'
+        },
+        {
+            key: 'dashboard',
+            label: 'Dashboard preset',
+            detail: `Dashboard працює з preset: ${RoleShell.getDashboardPreset(role) || 'default'}.`
+        },
+        {
+            key: 'quick_access',
+            label: 'Quick access',
+            detail: (config.quickAccess || ROLE_SHELL_DEFAULT.quickAccess).join(' · ')
+        },
+        {
+            key: 'start_page',
+            label: 'Start page',
+            detail: getRoleStartPage(role) || ROLE_SHELL_DEFAULT.startPage
+        }
+    ];
+}
+
+function getWorkingRoleState(user = AppState.currentUser) {
+    const baseRole = getRealUserRole(user);
+    const extraRoles = getGrantedExtraRoles(user);
+    const availableRoles = getAvailableWorkingRoles(user);
+    const activeRole = getActiveWorkingRole(user) || baseRole || availableRoles[0] || null;
+    const previewRole = getStoredPreviewRole(user);
+    const effectiveRole = previewRole || activeRole;
+    return {
+        baseRole,
+        realRole: baseRole,
+        extraRoles,
+        availableRoles,
+        activeRole,
+        workingRole: activeRole,
+        previewRole,
+        effectiveRole,
+        isBaseActive: Boolean(baseRole && activeRole === baseRole),
+        baseLabel: RoleShell.getRoleLabel(baseRole),
+        realLabel: RoleShell.getRoleLabel(baseRole),
+        extraRoleLabels: extraRoles.map(role => ({ role, label: RoleShell.getRoleLabel(role) })),
+        activeLabel: RoleShell.getRoleLabel(activeRole),
+        workingLabel: RoleShell.getRoleLabel(activeRole),
+        previewLabel: previewRole ? RoleShell.getRoleLabel(previewRole) : '',
+        effectiveLabel: RoleShell.getRoleLabel(effectiveRole),
+        startPage: getRoleStartPage(effectiveRole),
+        dashboardPreset: RoleShell.getDashboardPreset(effectiveRole),
+        quickAccess: RoleShell.getQuickAccessHrefs(effectiveRole),
+        changedSurfaces: describeWorkingRoleImpact(activeRole)
+    };
+}
+
+function syncWorkingRoleToCurrentUser(state = getWorkingRoleState()) {
+    const user = AppState.currentUser;
+    if (!user) return;
+    user.activeRole = state.activeRole || null;
+    user.workingRole = state.activeRole || null;
+    user.effectiveRole = state.effectiveRole || null;
+    user.previewRole = state.previewRole || null;
+    try {
+        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+    } catch {}
+}
+
+function applyRoleShellState(state) {
+    syncWorkingRoleToCurrentUser(state);
+    document.body?.classList.toggle('role-preview-active', Boolean(state.previewRole));
+    document.body?.classList.toggle('working-role-active', Boolean(state.activeRole && state.baseRole && state.activeRole !== state.baseRole));
+    if (state.previewRole) {
+        document.body?.setAttribute('data-preview-role', state.previewRole);
+    } else {
+        document.body?.removeAttribute('data-preview-role');
+    }
+    if (state.activeRole) {
+        document.body?.setAttribute('data-working-role', state.activeRole);
+    } else {
+        document.body?.removeAttribute('data-working-role');
+    }
+    if (typeof Sidebar !== 'undefined') {
+        Sidebar.render?.();
+        Sidebar.initUserCard?.();
+    }
+    document.querySelectorAll('[data-page-access]').forEach(el => {
+        const page = _normalizePagePath(el.dataset.pageAccess);
+        if (!page) return;
+        el.classList.toggle('hidden', _isPageAllowedForRole(page, state.effectiveRole) !== true && !canAccessPage(page));
+    });
+    document.querySelectorAll('.sidebar-admin-only').forEach(el => {
+        el.classList.toggle('hidden', !['creator', 'director'].includes(state.effectiveRole));
+    });
+    document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
+        const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+        el.classList.toggle('hidden', viewerRoles.includes(state.effectiveRole));
+    });
+}
+
+const WorkingRole = {
+    getBaseRole(user = AppState.currentUser) {
+        return getRealUserRole(user);
+    },
+    getExtraRoles(user = AppState.currentUser) {
+        return getGrantedExtraRoles(user);
+    },
+    getAvailableRoles(user = AppState.currentUser) {
+        return getAvailableWorkingRoles(user);
+    },
+    getActiveRole(user = AppState.currentUser) {
+        return getActiveWorkingRole(user);
+    },
+    getEffectiveRole(user = AppState.currentUser) {
+        return getEffectiveUserRole(user);
+    },
+    getState(user = AppState.currentUser) {
+        return getWorkingRoleState(user);
+    },
+    setActiveRole(role) {
+        const nextRole = _normalizeRoleKey(role);
+        const user = AppState.currentUser || {};
+        const available = getAvailableWorkingRoles(user);
+        if (!nextRole || !available.includes(nextRole)) return false;
+        const baseRole = getRealUserRole(user);
+        sessionStorage.removeItem(ROLE_PREVIEW_SESSION_KEY);
+        localStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
+        if (nextRole === baseRole) {
+            clearStoredWorkingRole();
+        } else {
+            _safeStorageSet(localStorage, ROLE_WORKING_STORAGE_KEY, nextRole);
+            _safeStorageSet(localStorage, ROLE_WORKING_OWNER_KEY, _workingRoleOwnerKey(user));
+        }
+        this.refreshShell({ mode: 'working-role', role: nextRole });
+        if (typeof showNotification === 'function') {
+            showNotification(`Робоча роль: ${RoleShell.getRoleLabel(nextRole)}`, 'success');
+        }
+        return true;
+    },
+    resetToBase() {
+        const baseRole = getRealUserRole();
+        if (!baseRole) return false;
+        return this.setActiveRole(baseRole);
+    },
+    hydrate() {
+        const state = this.getState();
+        applyRoleShellState(state);
+        return state;
+    },
+    refreshShell(detail = {}) {
+        const state = this.getState();
+        applyRoleShellState(state);
+        window.dispatchEvent(new CustomEvent('workingRoleChanged', { detail: { ...state, ...detail } }));
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail } }));
+    }
+};
+window.WorkingRole = WorkingRole;
 
 const RolePreview = {
     canPreview(user = AppState.currentUser) {
@@ -813,7 +1042,7 @@ const RolePreview = {
     clearPreviewRole() {
         sessionStorage.removeItem(ROLE_PREVIEW_SESSION_KEY);
         localStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
-        const role = getRealUserRole();
+        const role = getActiveWorkingRole();
         this.refreshShell({ mode: 'reset', role });
         if (typeof showNotification === 'function') {
             showNotification('Перегляд ролі скинуто', 'success');
@@ -821,10 +1050,12 @@ const RolePreview = {
         return true;
     },
     getState(user = AppState.currentUser) {
-        const realRole = getRealUserRole(user);
+        const workingState = getWorkingRoleState(user);
+        const realRole = workingState.baseRole;
         const previewRole = getStoredPreviewRole(user);
-        const effectiveRole = previewRole || realRole;
+        const effectiveRole = previewRole || workingState.activeRole || realRole;
         return {
+            ...workingState,
             realRole,
             previewRole,
             effectiveRole,
@@ -840,28 +1071,7 @@ const RolePreview = {
     },
     refreshShell(detail = {}) {
         const state = this.getState();
-        document.body?.classList.toggle('role-preview-active', Boolean(state.previewRole));
-        if (state.previewRole) {
-            document.body?.setAttribute('data-preview-role', state.previewRole);
-        } else {
-            document.body?.removeAttribute('data-preview-role');
-        }
-        if (typeof Sidebar !== 'undefined') {
-            Sidebar.render?.();
-            Sidebar.initUserCard?.();
-        }
-        document.querySelectorAll('[data-page-access]').forEach(el => {
-            const page = _normalizePagePath(el.dataset.pageAccess);
-            if (!page) return;
-            el.classList.toggle('hidden', _isPageAllowedForRole(page, state.effectiveRole) !== true);
-        });
-        document.querySelectorAll('.sidebar-admin-only').forEach(el => {
-            el.classList.toggle('hidden', !['creator', 'director'].includes(state.effectiveRole));
-        });
-        document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
-            const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
-            el.classList.toggle('hidden', viewerRoles.includes(state.effectiveRole));
-        });
+        applyRoleShellState(state);
         window.dispatchEvent(new CustomEvent('rolePreviewChanged', { detail: { ...state, ...detail } }));
         window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail } }));
     }
@@ -876,7 +1086,9 @@ function getUserRoles() {
     const previewRole = getStoredPreviewRole();
     if (previewRole) return [previewRole];
     const roles = [];
-    const primary = getUserRole();
+    const activeRole = getActiveWorkingRole();
+    const primary = getRealUserRole();
+    if (activeRole) roles.push(activeRole);
     if (primary) roles.push(primary);
     const user = AppState.currentUser || {};
     if (Array.isArray(user.roles)) roles.push(...user.roles);
@@ -2455,6 +2667,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     AppState.currentUser = user;
                 }
             }
+
+            window.WorkingRole?.hydrate?.();
 
             // Fill header #currentUser
             const el = document.getElementById('currentUser');

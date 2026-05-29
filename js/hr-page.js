@@ -1627,7 +1627,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
         { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' },
-        { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
+        { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
     ], {
         icon: '👤',
@@ -1880,7 +1880,7 @@ async function openAccountAccessEditor(userId, button) {
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
         { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' },
-        { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant' },
+        { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' }
     ], {
         icon: '🛂',

@@ -10,6 +10,10 @@ const {
     normalizeBusinessCabinetSettings,
     timelineDisplayFromBusinessCabinet
 } = require('../services/businessCabinet');
+const {
+    normalizeTimelineDisplaySettings,
+    resourceTypeForDisplayMode
+} = require('../services/timelineResources');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -49,6 +53,18 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /resourceBlock/);
 });
 
+test('park timeline keeps legacy animator lines even if resource model is mis-set', () => {
+    const normalized = normalizeTimelineDisplaySettings({
+        mode: 'park',
+        resourceModel: 'animator'
+    }, 'event_genix');
+
+    assert.equal(normalized.mode, 'park');
+    assert.equal(normalized.resourceModel, 'auto');
+    assert.equal(resourceTypeForDisplayMode('park', { resourceModel: 'animator' }), null);
+    assert.equal(resourceTypeForDisplayMode('education', { resourceModel: 'cabinet' }), 'cabinet');
+});
+
 test('lines route switches resource-backed modes away from animator sync', () => {
     const route = read('routes/lines.js');
     assert.match(route, /getTimelineDisplaySettings/);
@@ -56,6 +72,7 @@ test('lines route switches resource-backed modes away from animator sync', () =>
     assert.match(route, /timelineResourceLinesForMode\(pool, businessContext, display\.mode, display\)/);
     assert.match(route, /X-Timeline-Lines-Source', 'timeline_resources'/);
     assert.match(route, /syncTimelineResourcesFromLines\(client, businessContext, resourceType, lines\)/);
+    assert.match(read('services/timelineResources.js'), /if \(normalizedMode === 'park'\) return null/);
 });
 
 test('free-room path becomes business-aware resource availability for cabinet modes', () => {
@@ -202,6 +219,8 @@ test('business cabinet is the persistent control surface for shell modules and t
     assert.match(settings, /apiSaveBusinessCabinet/);
     assert.match(settings, /if \(result\?\.cabinet\)/);
     assert.match(settings, /Legacy display settings fallback unavailable/);
+    assert.match(read('js/timeline-context.js'), /if \(displayMode\?\.key === 'park'\) return null/);
+    assert.match(settings, /currentMode === 'park' \? 'auto' : button\.dataset\.timelineResourceModel/);
     assert.match(html, /settingsBusinessModuleGrid/);
     assert.match(html, /settingsBusinessGuardrails/);
     assert.match(css, /\.business-cabinet-guardrails/);

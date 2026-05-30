@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.22 - другий ведучий park timeline
+
+### Park timeline / second host selector / 30.05.2026 [codex]
+- **Виправлено вибір другого ведучого у парку Закревського** - park timeline більше не перемикає рядки аніматорів у `timeline_resources`, навіть якщо в налаштуваннях випадково збережено `resourceModel: animator`.
+- **Park лишається на реальних лініях зміни** - `/api/lines/:date` для `event_genix` знову використовує staff schedule / `lines_by_date`, тому список другого ведучого бере тих самих аніматорів, які видно на таймлайні.
+- **Settings UI більше не зберігає хибний resource engine для park** - у park-сценарії модель рядків нормалізується в `auto`, а resource manager не підміняє live-аніматорів.
+- **Regression guard додано** - `timeline-resources` перевіряє, що park при `resourceModel: animator` все одно повертає legacy animator lines, а education/cabinet режими лишаються resource-backed.
+
+---
+
 ## v0.68.21 - guardrails бізнес-кабінету
 
 ### Business Cabinet hotfix / permissions / fallback / 30.05.2026 [codex]

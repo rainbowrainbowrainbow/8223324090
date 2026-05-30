@@ -955,7 +955,9 @@ function normalizeTimelineControlSettings(settings = {}) {
     const startPage = ['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks'].includes(settings.startPage)
         ? settings.startPage
         : (mode === 'disabled' ? 'dashboard' : 'timeline');
-    const resourceModel = ['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online'].includes(settings.resourceModel)
+    const resourceModel = mode === 'park'
+        ? 'auto'
+        : ['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online'].includes(settings.resourceModel)
         ? settings.resourceModel
         : defaultTimelineResourceModel(mode);
     const enabledModules = mergeTimelineToggleDefaults(settings.enabledModules, defaultTimelineControlModules(mode, parkKitchenMode), TIMELINE_CONTROL_MODULES);
@@ -1190,6 +1192,7 @@ function collectTimelineDisplaySettingsFromControls() {
 
 function timelineResourceTypeForMode(mode, settings = null) {
     const normalized = normalizeTimelineControlSettings({ ...(settings || {}), mode });
+    if (normalized.mode === 'park') return null;
     if (window.TimelineBusinessContext?.resourceTypeForMode) {
         return window.TimelineBusinessContext.resourceTypeForMode(normalized.mode, normalized);
     }
@@ -1444,7 +1447,12 @@ function handleTimelineControlClick(event) {
         return;
     }
     if (button.dataset.timelineResourceModel) {
-        setTimelineButtonGroupActive('[data-timeline-resource-model]', button.dataset.timelineResourceModel, 'timelineResourceModel');
+        const currentMode = controls.mode?.value || 'park';
+        setTimelineButtonGroupActive(
+            '[data-timeline-resource-model]',
+            currentMode === 'park' ? 'auto' : button.dataset.timelineResourceModel,
+            'timelineResourceModel'
+        );
         refreshTimelineDisplaySettingsPreview();
         return;
     }

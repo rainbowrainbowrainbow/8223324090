@@ -184,13 +184,17 @@ function normalizeTimelineDisplaySettings(value, context) {
         enabledModules.bookings = false;
     }
 
+    const resourceModel = mode === 'park'
+        ? 'auto'
+        : normalizeResourceModel(value?.resourceModel, mode);
+
     return {
         version: 2,
         timelineEnabled: mode !== 'disabled',
         mode,
         parkKitchenMode,
         startPage: normalizeStartPage(value?.startPage, mode),
-        resourceModel: normalizeResourceModel(value?.resourceModel, mode),
+        resourceModel,
         enabledModules,
         timelineFeatures,
         bookingPolicy,
@@ -214,6 +218,7 @@ async function getTimelineDisplaySettings(db = defaultPool, context = DEFAULT_TI
 
 function resourceTypeForDisplayMode(mode, settings = null) {
     const normalizedMode = String(mode || '').trim();
+    if (normalizedMode === 'park') return null;
     const model = normalizeResourceModel(settings?.resourceModel, normalizedMode);
     if (model === 'none') return null;
     if (RESOURCE_TYPES.has(model)) return model;

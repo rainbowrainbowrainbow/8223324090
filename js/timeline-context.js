@@ -392,9 +392,10 @@
         const startPage = VALID_START_PAGES.has(String(value?.startPage || ''))
             ? String(value.startPage)
             : (mode === 'disabled' ? 'dashboard' : 'timeline');
-        const resourceModel = VALID_RESOURCE_MODELS.has(String(value?.resourceModel || ''))
+        let resourceModel = VALID_RESOURCE_MODELS.has(String(value?.resourceModel || ''))
             ? String(value.resourceModel)
             : defaultResourceModelForMode(mode);
+        if (mode === 'park') resourceModel = 'auto';
         const enabledModules = normalizeToggleRecord(value?.enabledModules, defaultModulesForMode(mode, parkKitchenMode), MODULE_KEYS);
         const timelineFeatures = normalizeToggleRecord(value?.timelineFeatures, defaultFeaturesForMode(mode, parkKitchenMode), FEATURE_KEYS);
         const bookingPolicy = normalizeToggleRecord(value?.bookingPolicy, defaultBookingPolicyForMode(mode), POLICY_KEYS);
@@ -480,6 +481,7 @@
 
     function resourceTypeForMode(mode, settings = null) {
         const displayMode = DISPLAY_MODES[String(mode || '')] || DISPLAY_MODES[defaultDisplayMode(currentContext())];
+        if (displayMode?.key === 'park') return null;
         const resourceModel = VALID_RESOURCE_MODELS.has(String(settings?.resourceModel || ''))
             ? String(settings.resourceModel)
             : defaultResourceModelForMode(displayMode.key);

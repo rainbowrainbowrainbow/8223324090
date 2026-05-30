@@ -749,7 +749,7 @@ function bookingKitchenType(product) {
 }
 
 function bookingKitchenTypeLabel(type) {
-    return type === 'cake' ? 'РўРѕСЂС‚' : 'РњРµРЅСЋ';
+    return type === 'cake' ? 'Торт' : 'Меню';
 }
 
 function toBookingMoney(value) {
@@ -813,7 +813,7 @@ function bookingMenuPositionsToLegacyText(positions = getBookingMenuPositions())
     return positions.map(item => {
         const qty = Number(item.quantity) % 1 === 0 ? String(item.quantity) : String(item.quantity).replace('.', ',');
         const unit = item.servingUnit ? ` ${item.servingUnit}` : '';
-        const price = item.unitPrice ? ` x ${item.unitPrice} РіСЂРЅ` : '';
+        const price = item.unitPrice ? ` x ${item.unitPrice} грн` : '';
         const note = item.note ? ` (${item.note})` : '';
         return `${item.title} - ${qty}${unit}${price}${note}`;
     }).join('\n');
@@ -827,12 +827,12 @@ function renderBookingMenuProductOptions() {
     const groups = new Map();
     products.forEach(product => {
         const type = bookingKitchenType(product);
-        const sectionPrefix = type === 'cake' ? 'РўРѕСЂС‚Рё' : 'РњРµРЅСЋ';
+        const sectionPrefix = type === 'cake' ? 'Торти' : 'Меню';
         const section = `${sectionPrefix}${product.menuSection ? ` В· ${product.menuSection}` : ''}`;
         if (!groups.has(section)) groups.set(section, []);
         groups.get(section).push(product);
     });
-    select.innerHTML = '<option value="">РћР±РµСЂС–С‚СЊ РїРѕР·РёС†С–СЋ Р· РјРµРЅСЋ Р°Р±Рѕ С‚РѕСЂС‚</option>';
+    select.innerHTML = '<option value="">Оберіть позицію з меню або торт</option>';
     groups.forEach((items, section) => {
         const group = document.createElement('optgroup');
         group.label = section;
@@ -927,7 +927,7 @@ function addBookingMenuPositionFromForm() {
     const product = productId ? getBookingMenuProducts().find(p => p.id === productId) : null;
     const title = product?.name || product?.label || productSelect?.selectedOptions?.[0]?.dataset.title || '';
     if (!title) {
-        showNotification('РћР±РµСЂС–С‚СЊ РїРѕР·РёС†С–СЋ РјРµРЅСЋ', 'error');
+        showNotification('Оберіть позицію меню', 'error');
         return;
     }
     const quantity = Math.max(Number(document.getElementById('bookingMenuQuantity')?.value || 1), 0.1);

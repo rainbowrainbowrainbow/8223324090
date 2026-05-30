@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.27",
+  "version": "0.68.28",
   "eventGenix": {
-    "releaseLabel": "гаряче виправлення mobile timeline toolbar"
+    "releaseLabel": "гаряче виправлення тексту меню кухні"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -64,3 +64,4 @@
     "jsdom": "^29.0.1"
   }
 }
+

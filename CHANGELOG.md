@@ -4,6 +4,15 @@
 
 ---
 
+## v0.68.24 - booking event toggle hotfix
+
+### Booking workspace / event guard / 30.05.2026 [codex]
+- **Вибрана програма знову робить бронювання подією** - якщо `selectedProgram` вже заповнений, booking workspace не звалюється в `lead_only` або `kitchen_only` лише через stale `bookingHasEventToggle`.
+- **Park booking більше не вимагає "щось по кухні" для звичайного заходу** - submit path читає явний вибір програми як сигнал event-сценарію, тому зберігає програму, а не переходить у no-event валідацію.
+- **Regression guard додано** - `booking-package-contract` фіксує, що `getBookingFormData()` піднімає `hasEvent`, коли є явний `selectedProgramId`.
+
+---
+
 ## v0.68.23 - другий ведучий staff fallback
 
 ### Park timeline / second host fallback / 30.05.2026 [codex]

@@ -2033,8 +2033,10 @@ function updateCustomDuration() {
 
 function getBookingFormData() {
     const maysternyaMode = isMaysternyaBookingContext();
-    const hasEvent = maysternyaMode ? true : getBookingWorkspaceHasEvent();
-    const programId = hasEvent ? document.getElementById('selectedProgram')?.value : '';
+    const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
+    const hasExplicitProgram = Boolean(selectedProgramId);
+    const hasEvent = maysternyaMode ? true : (getBookingWorkspaceHasEvent() || hasExplicitProgram);
+    const programId = hasEvent ? selectedProgramId : '';
     const room = document.getElementById('roomSelect')?.value || '';
     const effectiveRoom = maysternyaMode ? (room || MAYSTERNYA_ONLINE_ROOM) : room;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;

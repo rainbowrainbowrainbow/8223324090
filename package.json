@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.23",
+  "version": "0.68.24",
   "eventGenix": {
-    "releaseLabel": "другий ведучий staff fallback"
+    "releaseLabel": "booking event toggle hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

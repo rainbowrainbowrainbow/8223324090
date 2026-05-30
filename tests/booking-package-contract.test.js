@@ -102,6 +102,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
 
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
+    assert.match(bookingJs, /const hasExplicitProgram = Boolean\(selectedProgramId\)/);
+    assert.match(bookingJs, /const hasEvent = maysternyaMode \? true : \(getBookingWorkspaceHasEvent\(\) \|\| hasExplicitProgram\)/);
     assert.match(bookingJs, /booking_workspace_v2/);
     assert.match(bookingJs, /room\.required = true/);
     assert.match(bookingJs, /const room = document\.getElementById\('roomSelect'\)\?\.value \|\| '';/);

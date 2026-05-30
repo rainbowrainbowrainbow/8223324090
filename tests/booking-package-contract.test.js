@@ -90,13 +90,19 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     const customerRoute = read('routes', 'customers.js');
 
     assert.match(html, /bookingHasEventToggle/);
+    assert.match(html, /bookingKitchenToggle/);
+    assert.match(html, /bookingLeadDetailsToggle/);
     assert.match(html, /bookingScenarioBar/);
-    assert.match(html, /booking-room-first-heading/);
+    assert.match(html, /booking-section-heading/);
     assert.match(html, /id="roomSelect" required aria-required="true"/);
     assert.match(html, /bookingLeadDetailsSection/);
-    assert.match(html, /booking-workspace-heading/);
+    assert.match(html, /bookingModeSelector/);
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingPackageSummary/);
+    assert.match(html, /bookingStickyFooter/);
+    assert.match(html, /bookingCreateCustomerBtn/);
+    assert.match(html, /bookingChangeCustomerBtn/);
+    assert.match(html, /programCategoryChips/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="bookingHasEventToggle"'));
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
@@ -113,6 +119,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /programBasePrice/);
     assert.match(bookingJs, /positionsSubtotal/);
     assert.match(bookingJs, /finalTotal/);
+    assert.match(bookingJs, /getSmartBookingValidationState/);
+    assert.match(bookingJs, /updateBookingSubmitState/);
+    assert.match(bookingJs, /renderProgramCategoryChips/);
+    assert.match(bookingJs, /renderSelectedProgramSummary/);
     assert.match(bookingJs, /bookingCustomerDuplicateHint/);
     assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
     assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);

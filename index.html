@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.68.24">
-    <link rel="stylesheet" href="css/auth.css?v=0.68.24">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.24">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.24">
-    <link rel="stylesheet" href="css/timeline.css?v=0.68.24">
-    <link rel="stylesheet" href="css/panel.css?v=0.68.24">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.24">
-    <link rel="stylesheet" href="css/controls.css?v=0.68.24">
-    <link rel="stylesheet" href="css/features.css?v=0.68.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.24">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.24">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.24">
+    <link rel="stylesheet" href="css/base.css?v=0.68.25">
+    <link rel="stylesheet" href="css/auth.css?v=0.68.25">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.25">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.25">
+    <link rel="stylesheet" href="css/timeline.css?v=0.68.25">
+    <link rel="stylesheet" href="css/panel.css?v=0.68.25">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.25">
+    <link rel="stylesheet" href="css/controls.css?v=0.68.25">
+    <link rel="stylesheet" href="css/features.css?v=0.68.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.25">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.25">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.68.25">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.68.24">✨ 0.68.24</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.68.25">✨ 0.68.25</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.68.24 — booking event toggle hotfix</p>
+                <p class="tagline">AI First CRM v0.68.25 — гаряче виправлення кухні та ведучих</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.24</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.68.25</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -306,7 +306,7 @@
 
             <form id="bookingForm" class="booking-form">
                 <!-- C1: Обрані дата, час та лінія -->
-                <div class="selected-info">
+                <div class="selected-info booking-context-card">
                     <div class="info-item">
                         <span class="info-label">Дата:</span>
                         <span id="selectedDateDisplay" class="info-value">-</span>
@@ -340,16 +340,15 @@
                     <button type="button" id="maysternyaCloseSlotBtn" class="maysternya-close-slot-btn">Закрити слот</button>
                 </div>
 
-                <div class="booking-workspace-heading booking-room-first-heading">
-                    <span class="booking-workspace-step">1</span>
-                    <div>
-                        <strong>Кімната</strong>
-                        <small>Оберіть кімнату перед клієнтом, програмою або кухнею</small>
+                <section class="booking-section booking-room-first-section">
+                    <div class="booking-section-heading booking-room-first-heading">
+                        <div>
+                            <strong>Обов’язковий мінімум</strong>
+                            <small>Спочатку кімната і клієнт, потім лише потрібні блоки.</small>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Кімната -->
-                <div class="form-section booking-room-first-section">
+                <div class="form-section">
                     <label for="roomSelect">Кімната <span class="required-mark">*</span> <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
                     <div id="freeRoomsPanel" class="free-rooms-panel hidden"></div>
                     <select id="roomSelect" required aria-required="true" aria-describedby="bookingRoomHint">
@@ -380,28 +379,115 @@
                     <small id="bookingRoomHint" class="form-hint">Без кімнати бронювання не зберігається.</small>
                 </div>
 
-                <div id="bookingScenarioBar" class="booking-scenario-bar" aria-live="polite">
-                    <span id="bookingScenarioChip" class="booking-scenario-chip">Заявка</span>
-                    <span id="bookingScenarioText" class="booking-scenario-text">Кімната обирається першою; подію або кухню додайте за потреби.</span>
+                <div class="booking-section-heading booking-section-heading--compact">
+                    <div>
+                        <strong>Клієнт</strong>
+                        <small>Спочатку знайдіть існуючу картку. Нового клієнта відкривайте лише за потреби.</small>
+                    </div>
+                </div>
+                <input type="checkbox" id="customerDataToggle" checked hidden aria-hidden="true">
+                <div id="customerDataSection" class="customer-data-section">
+                    <div class="form-section booking-customer-search-section">
+                        <label for="customerSearch">Клієнт <span class="required-mark">*</span></label>
+                        <div class="customer-search-wrap">
+                            <input type="text" id="customerSearch" placeholder="Пошук за ім’ям, телефоном або Instagram..." autocomplete="off">
+                            <div id="customerSearchResults" class="customer-search-results hidden"></div>
+                        </div>
+                        <input type="hidden" id="selectedCustomerId">
+                    </div>
+                    <div id="bookingCustomerSearchState" class="booking-customer-search-state hidden"></div>
+                    <div id="bookingSelectedCustomerCard" class="booking-selected-customer hidden"></div>
+                    <div class="booking-client-actions">
+                        <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Оберіть клієнта або створіть нового.</span>
+                        <div class="booking-client-actions__buttons">
+                            <button type="button" id="bookingChangeCustomerBtn" class="booking-mini-action hidden">Змінити</button>
+                            <button type="button" id="bookingCreateCustomerBtn" class="booking-mini-action booking-mini-action--primary">+ Створити нового клієнта</button>
+                        </div>
+                    </div>
+                    <div id="bookingNewCustomerForm" class="booking-new-customer-form hidden">
+                        <div class="customer-fields">
+                            <div class="form-section">
+                                <label>Ім’я клієнта <span class="required-mark">*</span></label>
+                                <input type="text" id="customerName" placeholder="Прізвище Ім’я">
+                            </div>
+                            <div class="form-section">
+                                <label>Телефон</label>
+                                <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
+                            </div>
+                            <div class="form-section">
+                                <label>Instagram</label>
+                                <input type="text" id="customerInstagram" placeholder="username">
+                            </div>
+                            <div class="form-section booking-child-field">
+                                <label>Ім’я дитини</label>
+                                <input type="text" id="customerChildName" placeholder="Ім’я іменинника">
+                            </div>
+                            <div class="form-section booking-child-field">
+                                <label>Дата народження дитини</label>
+                                <input type="date" id="customerChildBirthday">
+                            </div>
+                            <div class="form-section booking-customer-source-field">
+                                <label>Звідки дізналися</label>
+                                <select id="customerSource">
+                                    <option value="">— не вказано —</option>
+                                    <option value="instagram">Instagram</option>
+                                    <option value="google">Google</option>
+                                    <option value="recommendation">Рекомендація</option>
+                                    <option value="repeat">Повторний клієнт</option>
+                                    <option value="lead">Лід</option>
+                                    <option value="other">Інше</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="customerInfo" class="customer-info hidden">
+                        <span class="customer-info-badge" id="customerVisitBadge">0 візитів</span>
+                    </div>
+                    <div id="bookingCustomerDuplicateHint" class="booking-duplicate-hint hidden"></div>
                 </div>
 
-                <div class="booking-event-toggle-card">
-                    <label class="booking-event-toggle-label" for="bookingHasEventToggle">
+                <div class="booking-section-heading booking-section-heading--compact">
+                    <div>
+                        <strong>Що входить у бронювання?</strong>
+                        <small>Увімкніть лише ті блоки, які реально потрібні менеджеру зараз.</small>
+                    </div>
+                </div>
+                <div class="booking-mode-selector" id="bookingModeSelector">
+                    <label class="booking-mode-card" for="bookingHasEventToggle">
                         <input type="checkbox" id="bookingHasEventToggle">
-                        <span>
-                            <strong>Є подія / програма</strong>
-                            <small>Увімкніть, щоб показати програму, ведучих і подієві параметри.</small>
+                        <span class="booking-mode-card__copy">
+                            <strong>Подія / програма</strong>
+                            <small>Анімація, квест, шоу, майстер-клас або інша програма.</small>
+                        </span>
+                    </label>
+                    <label class="booking-mode-card" for="bookingKitchenToggle">
+                        <input type="checkbox" id="bookingKitchenToggle">
+                        <span class="booking-mode-card__copy">
+                            <strong>Кухня / меню</strong>
+                            <small>Додати позиції меню, гостей, стіл і ручний опис.</small>
+                        </span>
+                    </label>
+                    <label class="booking-mode-card" for="bookingLeadDetailsToggle">
+                        <input type="checkbox" id="bookingLeadDetailsToggle">
+                        <span class="booking-mode-card__copy">
+                            <strong>Деталі ліда</strong>
+                            <small>Джерело, інтерес і коментар менеджера.</small>
                         </span>
                     </label>
                 </div>
 
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">2</span>
-                    <div>
-                        <strong>Основна заявка</strong>
-                        <small>Назва, контекст і нотатки оператора після вибору кімнати</small>
-                    </div>
+                <div id="bookingScenarioBar" class="booking-scenario-bar" aria-live="polite">
+                    <span id="bookingScenarioChip" class="booking-scenario-chip">Заявка</span>
+                    <span id="bookingScenarioText" class="booking-scenario-text">Кімната і клієнт обов’язкові; додаткові блоки вмикайте за потреби.</span>
                 </div>
+
+                <section class="booking-section booking-notes-section">
+                    <div class="booking-section-heading booking-section-heading--compact">
+                        <div>
+                            <strong>Базова заявка</strong>
+                            <small>Коротка тема і примітки оператора без зайвого шуму.</small>
+                        </div>
+                    </div>
 
                 <!-- Примітки -->
                 <div class="form-section">
@@ -414,6 +500,7 @@
                     <label>Назва заявки / група (опційно)</label>
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі, кухня для компанії" title="Об'єднує бронювання в одну подію або заявку">
                 </div>
+                </section>
 
                 <div id="educationLessonSection" class="education-lesson-section hidden" aria-live="polite">
                     <div class="education-lesson-heading">
@@ -466,11 +553,11 @@
                 </div>
 
                 <div id="bookingEventFields" class="booking-event-fields hidden">
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">3</span>
+                <section class="booking-section booking-event-section">
+                <div class="booking-section-heading">
                     <div>
                         <strong>Подія / програма</strong>
-                        <small>Програма, ведучі та операційні параметри події</small>
+                        <small>Програма, костюм, ведучі та параметри event-частини.</small>
                     </div>
                 </div>
 
@@ -516,6 +603,7 @@
                     <div class="program-search-wrap">
                         <input type="text" id="programSearch" class="program-search-input" placeholder="Пошук програми..." autocomplete="off">
                     </div>
+                    <div id="programCategoryChips" class="program-category-chips" aria-label="Категорії програм"></div>
                     <div class="programs-icons" id="programsIcons">
                         <!-- Генерується через JS -->
                     </div>
@@ -523,7 +611,9 @@
                 </div>
 
                 <!-- Інфо про обрану програму -->
-                <div id="programDetails" class="program-details hidden">
+                <div id="programDetails" class="program-details program-details--summary">
+                    <div class="program-details-title">Обрана програма</div>
+                    <div id="programDetailsEmpty" class="program-details-empty">Оберіть програму зі списку.</div>
                     <div class="detail-row">
                         <span>Тривалість:</span>
                         <span id="detailDuration">-</span>
@@ -650,77 +740,9 @@
                         <div class="tshirt-size-item"><label for="tshirtXL">XL</label><input type="number" id="tshirtXL" min="0" max="30" value="0"></div>
                     </div>
                 </div>
+                </section>
                 </div>
-
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">4</span>
-                    <div>
-                        <strong>Клієнт</strong>
-                        <small>Знайдіть існуючу картку або створіть нового клієнта прямо тут</small>
-                    </div>
-                </div>
-                <input type="checkbox" id="customerDataToggle" checked hidden aria-hidden="true">
-                <div id="customerDataSection" class="customer-data-section">
-                    <div class="booking-client-actions">
-                        <button type="button" id="bookingClearCustomerBtn" class="booking-mini-action">+ Новий клієнт</button>
-                        <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Обов'язковий блок бронювання</span>
-                    </div>
-                    <div class="form-section booking-customer-search-section">
-                        <label>Пошук клієнта</label>
-                        <div class="customer-search-wrap">
-                            <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
-                            <div id="customerSearchResults" class="customer-search-results hidden"></div>
-                        </div>
-                        <input type="hidden" id="selectedCustomerId">
-                    </div>
-                    <div class="customer-fields">
-                        <div class="form-section">
-                            <label>Ім'я клієнта <span class="required-mark">*</span></label>
-                            <input type="text" id="customerName" placeholder="Прізвище Ім'я">
-                        </div>
-                        <div class="form-section">
-                            <label>Телефон</label>
-                            <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
-                        </div>
-                        <div class="form-section">
-                            <label>Instagram</label>
-                            <input type="text" id="customerInstagram" placeholder="username">
-                        </div>
-                        <div class="form-section booking-child-field">
-                            <label>Ім'я дитини</label>
-                            <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
-                        </div>
-                        <div class="form-section booking-child-field">
-                            <label>Дата народження дитини</label>
-                            <input type="date" id="customerChildBirthday">
-                        </div>
-                        <div class="form-section booking-customer-source-field">
-                            <label>Звідки дізналися</label>
-                            <select id="customerSource">
-                                <option value="">— не вказано —</option>
-                                <option value="instagram">Instagram</option>
-                                <option value="google">Google</option>
-                                <option value="recommendation">Рекомендація</option>
-                                <option value="repeat">Повторний клієнт</option>
-                                <option value="lead">Лід</option>
-                                <option value="other">Інше</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="customerInfo" class="customer-info hidden">
-                        <span class="customer-info-badge" id="customerVisitBadge">0 візитів</span>
-                    </div>
-                    <div id="bookingCustomerDuplicateHint" class="booking-duplicate-hint hidden"></div>
-                </div>
-
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">5</span>
-                    <div>
-                        <strong>Лід / деталі заявки</strong>
-                        <small>Джерело, інтерес, діти та коментарі без переходу в інший модуль</small>
-                    </div>
-                </div>
-                <details id="bookingLeadDetailsSection" class="booking-disclosure-section">
+                <details id="bookingLeadDetailsSection" class="booking-disclosure-section hidden">
                     <summary>Заповнити деталі ліда</summary>
                     <div class="booking-lead-grid">
                         <div class="form-section">
@@ -765,14 +787,13 @@
                     </div>
                 </details>
 
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">6</span>
-                    <div>
-                        <strong>Кухня / комерційні позиції</strong>
-                        <small>Меню та торти з каталогу додаються до підсумку заявки</small>
+                <div id="banquetFields" class="booking-menu-workspace hidden">
+                    <div class="booking-section-heading booking-section-heading--compact">
+                        <div>
+                            <strong>Кухня / меню</strong>
+                            <small>Додавайте лише потрібні позиції, а ручний legacy-опис тримайте окремо.</small>
+                        </div>
                     </div>
-                </div>
-                <div id="banquetFields" class="booking-menu-workspace">
                     <div class="booking-menu-grid">
                         <div class="form-section">
                             <label>Позиція</label>
@@ -782,7 +803,7 @@
                         </div>
                         <div class="form-section">
                             <label>К-сть</label>
-                            <input type="number" id="bookingMenuQuantity" min="0.1" step="0.5" value="1">
+                            <input type="number" id="bookingMenuQuantity" min="0.1" step="0.1" value="1">
                         </div>
                         <div class="form-section">
                             <label>Ціна</label>
@@ -796,10 +817,6 @@
                     <button type="button" id="bookingMenuAddBtn" class="booking-menu-add-btn">+ Додати позицію</button>
                     <div id="bookingMenuPositionsList" class="booking-menu-positions-list"></div>
                     <input type="hidden" id="bookingMenuPositionsJson">
-                    <div class="booking-menu-legacy">
-                        <label for="banquetMenu">Legacy опис меню</label>
-                        <textarea id="banquetMenu" rows="3" placeholder="Автоматично формується з позицій; можна доповнити вручну"></textarea>
-                    </div>
                     <div class="booking-menu-banquet-meta">
                         <div class="form-section">
                             <label>Гостей</label>
@@ -810,17 +827,13 @@
                             <input type="number" id="banquetTables" min="0" placeholder="0">
                         </div>
                     </div>
-                </div>
-
-                <div class="booking-workspace-heading">
-                    <span class="booking-workspace-step">7</span>
-                    <div>
-                        <strong>Підсумок</strong>
-                        <small>Перевірте пакет перед збереженням</small>
-                    </div>
-                </div>
-                <div id="bookingPackageSummary" class="booking-package-summary">
-                    <div class="booking-summary-empty">Оберіть програму, клієнта і позиції меню — підсумок оновиться автоматично.</div>
+                    <details id="bookingLegacyMenuDetails" class="booking-disclosure-section booking-disclosure-section--compact">
+                        <summary>Ручний опис меню / legacy</summary>
+                        <div class="booking-menu-legacy">
+                            <label for="banquetMenu">Legacy опис меню</label>
+                            <textarea id="banquetMenu" rows="3" placeholder="Автоматично формується з позицій; можна доповнити вручну"></textarea>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- v3.2: Статус бронювання -->
@@ -845,8 +858,18 @@
                         <span class="toggle-text">🔇 Без сповіщень (тихе бронювання)</span>
                     </label>
                 </div>
-
-                <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
+                <div class="booking-sticky-footer" id="bookingStickyFooter">
+                    <div class="booking-sticky-footer__top">
+                        <div>
+                            <strong>Підсумок</strong>
+                            <small id="bookingSubmitHint">Оберіть кімнату та клієнта.</small>
+                        </div>
+                    </div>
+                    <div id="bookingPackageSummary" class="booking-package-summary">
+                        <div class="booking-summary-empty">Оберіть кімнату і клієнта — підсумок оновиться автоматично.</div>
+                    </div>
+                    <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
+                </div>
             </form>
         </aside>
 
@@ -1632,6 +1655,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.68.25 — гаряче виправлення кухні та ведучих</h4>
+                    <ul>
+                        <li><b>Кількість у кухні більше не ламається на <code>1</code></b> — поле <code>bookingMenuQuantity</code> тепер має крок <code>0.1</code>, тому стандартні й дробові значення проходять без browser validation trap.</li>
+                        <li><b>Другий і додатковий ведучий знову беруться з реальних ліній дня</b> — dropdown більше не тягне staff fallback і показує тільки вільні лінії на вибраний час, збережені в <code>lines_by_date</code>.</li>
+                        <li><b>Role dropdown у профілі більше не обрізається</b> — меню робочої ролі відкривається поверх шапки профілю без clipping.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.68.24 — booking event toggle hotfix</h4>
                     <ul>
@@ -10337,29 +10368,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.68.24"></script>
-    <script src="js/timeline-visibility.js?v=0.68.24"></script>
-    <script src="js/config.js?v=0.68.24"></script>
-    <script src="js/api.js?v=0.68.24"></script>
-    <script src="js/ui.js?v=0.68.24"></script>
-    <script src="js/auth.js?v=0.68.24"></script>
-    <script src="js/timeline-interaction-model.js?v=0.68.24"></script>
-    <script src="js/timeline.js?v=0.68.24"></script>
-    <script src="js/booking.js?v=0.68.24"></script>
-    <script src="js/settings.js?v=0.68.24"></script>
-    <script src="js/booking-form.js?v=0.68.24"></script>
-    <script src="js/booking-linked.js?v=0.68.24"></script>
-    <script src="js/settings-dashboard.js?v=0.68.24"></script>
-    <script src="js/settings-history.js?v=0.68.24"></script>
-    <script src="js/settings-afisha.js?v=0.68.24"></script>
-    <script src="js/settings-certificates.js?v=0.68.24"></script>
-    <script src="js/offline.js?v=0.68.24"></script>
-    <script src="js/crm-feature-registry.js?v=0.68.24"></script>
-    <script src="js/search.js?v=0.68.24"></script>
-    <script src="js/ws.js?v=0.68.24"></script>
-    <script src="js/app.js?v=0.68.24"></script>
-    <script src="js/kleshnya-widget.js?v=0.68.24"></script>
-    <script src="js/components/sidebar.js?v=0.68.24"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.24"></script>
+    <script src="js/timeline-context.js?v=0.68.25"></script>
+    <script src="js/timeline-visibility.js?v=0.68.25"></script>
+    <script src="js/config.js?v=0.68.25"></script>
+    <script src="js/api.js?v=0.68.25"></script>
+    <script src="js/ui.js?v=0.68.25"></script>
+    <script src="js/auth.js?v=0.68.25"></script>
+    <script src="js/timeline-interaction-model.js?v=0.68.25"></script>
+    <script src="js/timeline.js?v=0.68.25"></script>
+    <script src="js/booking.js?v=0.68.25"></script>
+    <script src="js/settings.js?v=0.68.25"></script>
+    <script src="js/booking-form.js?v=0.68.25"></script>
+    <script src="js/booking-linked.js?v=0.68.25"></script>
+    <script src="js/settings-dashboard.js?v=0.68.25"></script>
+    <script src="js/settings-history.js?v=0.68.25"></script>
+    <script src="js/settings-afisha.js?v=0.68.25"></script>
+    <script src="js/settings-certificates.js?v=0.68.25"></script>
+    <script src="js/offline.js?v=0.68.25"></script>
+    <script src="js/crm-feature-registry.js?v=0.68.25"></script>
+    <script src="js/search.js?v=0.68.25"></script>
+    <script src="js/ws.js?v=0.68.25"></script>
+    <script src="js/app.js?v=0.68.25"></script>
+    <script src="js/kleshnya-widget.js?v=0.68.25"></script>
+    <script src="js/components/sidebar.js?v=0.68.25"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.68.25"></script>
 </body>
 </html>

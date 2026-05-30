@@ -51,12 +51,14 @@ test('booking hosts remains a host-count field, never a staff identity in runtim
     assert.deepEqual(offenders, []);
 });
 
-test('park second-host picker can use active staff fallback and create real linked occupancy', () => {
+test('park second-host picker uses real day lines and only keeps free linked occupancy candidates', () => {
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
 
-    assert.match(bookingJs, /fetchParkAnimatorStaffCandidates/);
-    assert.match(bookingJs, /\/api\/staff\?active=true/);
+    assert.doesNotMatch(bookingJs, /fetchParkAnimatorStaffCandidates/);
+    assert.match(bookingJs, /filterAnimatorLineCandidatesForOpenSlot/);
+    assert.match(bookingJs, /checkConflicts\(candidate\.id, time, duration, excludeId\)/);
+    assert.match(bookingJs, /findEditingLinkedBookingIdForLine/);
     assert.match(bookingJs, /selectedAnimatorLineCandidate\('secondAnimatorSelect'/);
     assert.match(bookingJs, /option\.dataset\.lineId = line\.id/);
 

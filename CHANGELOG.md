@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.25 - гаряче виправлення кухні та ведучих
+
+### Booking workspace / host picker / profile shell / 30.05.2026 [codex]
+- **Кількість у кухні більше не ламається на `1`** - поле `bookingMenuQuantity` тепер має крок `0.1`, тому менеджер може вводити і цілі, і дробові значення без browser validation trap.
+- **Другий і додатковий ведучий знову чесні** - dropdown більше не тягне staff fallback; він показує тільки реальні лінії дня з `lines_by_date`, відсікає зайняті слоти на вибраний час і лишає вже прив'язану linked-лінію при редагуванні.
+- **Role dropdown у профілі більше не обрізається** - робоча роль відкривається поверх `profile-header` без clipping, тому меню `Творець` та інші ролі видно повністю.
+- **Regression guard оновлено** - `booking-hosts-semantics` фіксує line-only host picker з conflict filtering, а booking workspace лишається сумісним із поточним backend payload.
+
+---
+
 ## v0.68.24 - booking event toggle hotfix
 
 ### Booking workspace / event guard / 30.05.2026 [codex]

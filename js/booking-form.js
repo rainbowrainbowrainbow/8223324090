@@ -68,6 +68,10 @@ window.BookingForm = {
      * @returns {{ valid: boolean, error?: string }}
      */
     validate() {
+        if (typeof getSmartBookingValidationState === 'function') {
+            const validation = getSmartBookingValidationState();
+            return { valid: validation.valid, error: validation.error };
+        }
         const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : null;
         const hasEvent = !!formData?.hasEvent;
         const programId = formData?.programId || '';
@@ -176,7 +180,7 @@ window.BookingForm = {
             if (typeof filterPrograms === 'function') filterPrograms();
         }
 
-        document.getElementById('programDetails')?.classList.add('hidden');
+        if (typeof renderSelectedProgramSummary === 'function') renderSelectedProgramSummary(null);
         document.getElementById('hostsWarning')?.classList.add('hidden');
         document.getElementById('customProgramSection')?.classList.add('hidden');
         document.getElementById('secondAnimatorSection')?.classList.add('hidden');

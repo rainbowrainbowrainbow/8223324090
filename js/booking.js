@@ -1,5 +1,5 @@
-/**
- * booking.js - Панель бронювання, форма, деталі, видалення, перенос часу
+﻿/**
+ * booking.js - РџР°РЅРµР»СЊ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ, С„РѕСЂРјР°, РґРµС‚Р°Р»С–, РІРёРґР°Р»РµРЅРЅСЏ, РїРµСЂРµРЅРѕСЃ С‡Р°СЃСѓ
  */
 
 function _escB(str) {
@@ -15,6 +15,10 @@ function toggleBookingTag(el) {
 function isPinataProgram(program) {
     return !!program && (program.category === 'pinata' || String(program.id || '').startsWith('pinata'));
 }
+
+// Canonical readable labels kept in source for UI/runtime guards:
+// Клієнтська піньята (послуга)
+// Піньята парку
 
 function getClientPinataDefaultPrice() {
     const ownPinata = getProductsSync().find(p => p.id === 'pinata_own');
@@ -76,12 +80,18 @@ function resetPinataModeFields() {
 }
 
 const BookingPackageState = {
-    menuPositions: []
+    menuPositions: [],
+    editIndex: null
+};
+
+const BookingDrawerState = {
+    clientMode: 'search',
+    selectedProgramCategory: 'all'
 };
 
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
-const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
-const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
+const MAYSTERNYA_ONLINE_ROOM = 'РћРЅР»Р°Р№РЅ';
+const MAYSTERNYA_CLOSED_ROOM = 'Р—Р°Р№РЅСЏС‚Рѕ';
 const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
 
 function isMaysternyaBookingContext() {
@@ -92,13 +102,13 @@ function isMaysternyaBookingContext() {
 function getTimelineBookingPresentation() {
     return window.TimelineBusinessContext?.presentation?.() || {
         mode: 'park',
-        bookingTitle: 'Нове бронювання',
-        submitLabel: 'Додати бронювання',
-        groupLabel: 'Група / банкет',
-        notesLabel: 'Примітки',
-        customerNameLabel: 'Імʼя клієнта',
-        phoneLabel: 'Телефон',
-        roomOptionLabel: 'Кімната',
+        bookingTitle: 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ',
+        submitLabel: 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ',
+        groupLabel: 'Р“СЂСѓРїР° / Р±Р°РЅРєРµС‚',
+        notesLabel: 'РџСЂРёРјС–С‚РєРё',
+        customerNameLabel: 'Р†РјКјСЏ РєР»С–С”РЅС‚Р°',
+        phoneLabel: 'РўРµР»РµС„РѕРЅ',
+        roomOptionLabel: 'РљС–РјРЅР°С‚Р°',
         parkKitchenEnabled: true
     };
 }
@@ -149,7 +159,7 @@ function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
 }
 
 function ensureTimelineRoomOption(value) {
-    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет');
+    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'РљР°Р±С–РЅРµС‚');
 }
 
 function getSelectedTimelineResourceLine() {
@@ -165,7 +175,7 @@ function timelineResourceCapacityError(formData = getBookingFormData()) {
     const capacity = parseInt(line?.capacity, 10);
     const kidsCount = parseInt(document.getElementById('kidsCountInput')?.value || formData?.kidsCount || 0, 10);
     if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(kidsCount) || kidsCount <= capacity) return null;
-    return `${line.name || getTimelineBookingPresentation().roomOptionLabel} має місткість ${capacity}, а в записі ${kidsCount}`;
+    return `${line.name || getTimelineBookingPresentation().roomOptionLabel} РјР°С” РјС–СЃС‚РєС–СЃС‚СЊ ${capacity}, Р° РІ Р·Р°РїРёСЃС– ${kidsCount}`;
 }
 
 function getMaysternyaContactSnapshot() {
@@ -186,6 +196,33 @@ function getMaysternyaSlotCloseDuration() {
 
 function getBookingWorkspaceHasEvent() {
     return !!document.getElementById('bookingHasEventToggle')?.checked;
+}
+
+function isBookingKitchenEnabled() {
+    return !!document.getElementById('bookingKitchenToggle')?.checked;
+}
+
+function hasBookingKitchenDraft() {
+    return getBookingMenuPositions().length > 0
+        || Boolean(document.getElementById('banquetMenu')?.value?.trim())
+        || Boolean(document.getElementById('banquetGuests')?.value?.trim())
+        || Boolean(document.getElementById('banquetTables')?.value?.trim());
+}
+
+function setBookingKitchenEnabled(enabled, options = {}) {
+    const toggle = document.getElementById('bookingKitchenToggle');
+    if (toggle) toggle.checked = !!enabled;
+    syncBookingWorkspaceMode(options);
+}
+
+function isBookingLeadDetailsEnabled() {
+    return !!document.getElementById('bookingLeadDetailsToggle')?.checked;
+}
+
+function setBookingLeadDetailsEnabled(enabled, options = {}) {
+    const toggle = document.getElementById('bookingLeadDetailsToggle');
+    if (toggle) toggle.checked = !!enabled;
+    syncBookingWorkspaceMode(options);
 }
 
 function getBookingLeadDetails() {
@@ -217,7 +254,10 @@ function setBookingLeadDetails(details = {}) {
         if (el) el.value = value || '';
     });
     const section = document.getElementById('bookingLeadDetailsSection');
-    if (section && hasBookingLeadDetails(getBookingLeadDetails())) section.open = true;
+    if (section && hasBookingLeadDetails(getBookingLeadDetails())) {
+        section.open = true;
+        setBookingLeadDetailsEnabled(true, { markDirty: false });
+    }
 }
 
 function resetBookingLeadDetails() {
@@ -229,10 +269,125 @@ function resetBookingLeadDetails() {
     if (section) section.open = false;
 }
 
+function isValidNewBookingClient() {
+    const name = document.getElementById('customerName')?.value?.trim() || '';
+    const phone = document.getElementById('customerPhone')?.value?.trim() || '';
+    const instagram = document.getElementById('customerInstagram')?.value?.trim() || '';
+    return Boolean(name) && (Boolean(phone) || Boolean(instagram));
+}
+
+function hasAnyNewBookingClientData() {
+    return ['customerName', 'customerPhone', 'customerInstagram', 'customerChildName', 'customerChildBirthday']
+        .some(id => Boolean(document.getElementById(id)?.value?.trim?.() || document.getElementById(id)?.value || ''));
+}
+
+function setBookingClientMode(mode = 'search', options = {}) {
+    BookingDrawerState.clientMode = mode;
+    const selectedCard = document.getElementById('bookingSelectedCustomerCard');
+    const newCustomerForm = document.getElementById('bookingNewCustomerForm');
+    const searchState = document.getElementById('bookingCustomerSearchState');
+    const createBtn = document.getElementById('bookingCreateCustomerBtn');
+    const changeBtn = document.getElementById('bookingChangeCustomerBtn');
+    const modeLabel = document.getElementById('bookingCustomerModeLabel');
+    const customerSearch = document.getElementById('customerSearch');
+    const hasSelected = Boolean(document.getElementById('selectedCustomerId')?.value);
+
+    if (selectedCard) selectedCard.classList.toggle('hidden', mode !== 'existing');
+    if (newCustomerForm) newCustomerForm.classList.toggle('hidden', mode !== 'new');
+    if (searchState && mode !== 'search') {
+        searchState.classList.add('hidden');
+        searchState.innerHTML = '';
+    }
+    if (createBtn) createBtn.textContent = mode === 'new' ? 'РџРѕРІРµСЂРЅСѓС‚РёСЃСЏ РґРѕ РїРѕС€СѓРєСѓ' : '+ РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ РєР»С–С”РЅС‚Р°';
+    if (changeBtn) changeBtn.classList.toggle('hidden', !hasSelected);
+    if (modeLabel) {
+        if (mode === 'existing') modeLabel.textContent = 'РџСЂРёРєСЂС–РїР»РµРЅРѕ С–СЃРЅСѓСЋС‡Сѓ РєР°СЂС‚РєСѓ РєР»С–С”РЅС‚Р°.';
+        else if (mode === 'new') modeLabel.textContent = 'РЎС‚РІРѕСЂСЋС”РјРѕ РЅРѕРІРѕРіРѕ РєР»С–С”РЅС‚Р° С‚С–Р»СЊРєРё СЏРєС‰Рѕ РїРѕС€СѓРє РЅРµ РґРѕРїРѕРјС–Рі.';
+        else modeLabel.textContent = 'РћР±РµСЂС–С‚СЊ РєР»С–С”РЅС‚Р° Р°Р±Рѕ СЃС‚РІРѕСЂС–С‚СЊ РЅРѕРІРѕРіРѕ.';
+    }
+    if (customerSearch) customerSearch.setAttribute('aria-expanded', mode === 'search' ? 'true' : 'false');
+    if (options.focusNewForm && mode === 'new') document.getElementById('customerName')?.focus();
+}
+
+function renderSelectedCustomerCard(customer = null) {
+    const card = document.getElementById('bookingSelectedCustomerCard');
+    if (!card) return;
+    if (!customer) {
+        card.innerHTML = '';
+        card.classList.add('hidden');
+        return;
+    }
+    const name = customer.name || 'РљР»С–С”РЅС‚';
+    const phone = customer.phone ? `<small>${escapeHtml(customer.phone)}</small>` : '';
+    const instagram = customer.instagram ? `<small>@${escapeHtml(customer.instagram)}</small>` : '';
+    const childName = customer.childName ? `<small>Р”РёС‚РёРЅР°: ${escapeHtml(customer.childName)}</small>` : '';
+    card.innerHTML = `
+        <strong>${escapeHtml(name)}</strong>
+        ${phone}
+        ${instagram}
+        ${childName}
+    `;
+    card.classList.remove('hidden');
+}
+
+function renderBookingCustomerSearchState(message = '', options = {}) {
+    const state = document.getElementById('bookingCustomerSearchState');
+    const createBtn = document.getElementById('bookingCreateCustomerBtn');
+    if (!state) return;
+    if (!message) {
+        state.classList.add('hidden');
+        state.innerHTML = '';
+    } else {
+        state.textContent = message;
+        state.classList.remove('hidden');
+    }
+    if (createBtn && options.showCreate === false && BookingDrawerState.clientMode !== 'new') {
+        createBtn.classList.add('hidden');
+    } else if (createBtn) {
+        createBtn.classList.remove('hidden');
+    }
+}
+
+function getSmartBookingValidationState() {
+    const formData = getBookingFormData();
+    const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
+    const isMaysternya = typeof isMaysternyaBookingContext === 'function' && isMaysternyaBookingContext();
+    const roomOptional = isMaysternya && presentation.mode === 'simple';
+    const hasDateTime = Boolean(formData?.time) && Boolean(AppState.selectedDate);
+    const hasRoom = Boolean(formData?.room);
+    const hasSelectedCustomer = Boolean(document.getElementById('selectedCustomerId')?.value);
+    const hasClient = hasSelectedCustomer || isValidNewBookingClient();
+    const isEducation = presentation.mode === 'education';
+    const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
+    const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
+    const programRequired = getBookingWorkspaceHasEvent();
+    const warnings = [];
+
+    if (!hasDateTime) {
+        return { valid: false, canSubmit: false, error: 'РќРµ РІРґР°Р»РѕСЃСЊ РІРёР·РЅР°С‡РёС‚Рё РґР°С‚Сѓ Р°Р±Рѕ С‡Р°СЃ РґР»СЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ.', warnings };
+    }
+    if (!hasRoom && !roomOptional) {
+        return { valid: false, canSubmit: false, error: presentation.mode === 'education' ? 'РћР±РµСЂС–С‚СЊ РєР°Р±С–РЅРµС‚.' : 'РћР±РµСЂС–С‚СЊ РєС–РјРЅР°С‚Сѓ.', warnings };
+    }
+    if (!hasClient) {
+        return { valid: false, canSubmit: false, error: 'РћР±РµСЂС–С‚СЊ С–СЃРЅСѓСЋС‡РѕРіРѕ РєР»С–С”РЅС‚Р° Р°Р±Рѕ СЃС‚РІРѕСЂС–С‚СЊ РЅРѕРІРѕРіРѕ: С–РјвЂ™СЏ + С‚РµР»РµС„РѕРЅ С‡Рё Instagram.', warnings };
+    }
+    if (programRequired && !hasProgram) {
+        return { valid: false, canSubmit: false, error: isEducation ? 'РћР±РµСЂС–С‚СЊ Р·Р°РЅСЏС‚С‚СЏ Р°Р±Рѕ РІРєР°Р¶С–С‚СЊ С‚РµРјСѓ.' : 'РЈРІС–РјРєРЅРµРЅРѕ РїРѕРґС–СЋ, Р°Р»Рµ РїСЂРѕРіСЂР°РјСѓ С‰Рµ РЅРµ РІРёР±СЂР°РЅРѕ.', warnings };
+    }
+    if (isBookingKitchenEnabled() && !hasBookingKitchenDraft()) {
+        warnings.push('РљСѓС…РЅСЏ СѓРІС–РјРєРЅРµРЅР°, Р°Р»Рµ РїРѕР·РёС†С–С— РјРµРЅСЋ С‰Рµ РЅРµ РґРѕРґР°РЅС–.');
+    }
+    if (getBookingWorkspaceHasEvent() && !hasProgram) {
+        warnings.push('РџРѕРґС–СЏ СѓРІС–РјРєРЅРµРЅР°, Р°Р»Рµ РїСЂРѕРіСЂР°РјСѓ С‰Рµ РЅРµ РІРёР±СЂР°РЅРѕ.');
+    }
+    return { valid: true, canSubmit: true, warnings, error: '' };
+}
+
 function getBookingWorkspaceScenario(options = {}) {
     const hasEvent = options.hasEvent ?? getBookingWorkspaceHasEvent();
     const positions = options.positions || getBookingMenuPositions();
-    const hasKitchen = positions.length > 0 || Boolean(document.getElementById('banquetMenu')?.value?.trim());
+    const hasKitchen = options.hasKitchen ?? (isBookingKitchenEnabled() && (positions.length > 0 || Boolean(document.getElementById('banquetMenu')?.value?.trim())));
     if (hasEvent && hasKitchen) return 'event_kitchen';
     if (hasEvent) return 'event';
     if (hasKitchen) return 'kitchen_only';
@@ -242,20 +397,20 @@ function getBookingWorkspaceScenario(options = {}) {
 function getBookingWorkspaceScenarioMeta(scenario) {
     const meta = {
         lead_only: {
-            label: 'Заявка',
-            text: 'Подія вимкнена: кімната вже вибрана, зберігаємо контакт, контекст і нотатки без програми.'
+            label: 'Р—Р°СЏРІРєР°',
+            text: 'РџРѕРґС–СЏ РІРёРјРєРЅРµРЅР°: РєС–РјРЅР°С‚Р° РІР¶Рµ РІРёР±СЂР°РЅР°, Р·Р±РµСЂС–РіР°С”РјРѕ РєРѕРЅС‚Р°РєС‚, РєРѕРЅС‚РµРєСЃС‚ С– РЅРѕС‚Р°С‚РєРё Р±РµР· РїСЂРѕРіСЂР°РјРё.'
         },
         event: {
-            label: 'Подія',
-            text: 'Подія увімкнена: програма і ведучі входять у валідацію та збереження після вибору кімнати.'
+            label: 'РџРѕРґС–СЏ',
+            text: 'РџРѕРґС–СЏ СѓРІС–РјРєРЅРµРЅР°: РїСЂРѕРіСЂР°РјР° С– РІРµРґСѓС‡С– РІС…РѕРґСЏС‚СЊ Сѓ РІР°Р»С–РґР°С†С–СЋ С‚Р° Р·Р±РµСЂРµР¶РµРЅРЅСЏ РїС–СЃР»СЏ РІРёР±РѕСЂСѓ РєС–РјРЅР°С‚Рё.'
         },
         kitchen_only: {
-            label: 'Кухня',
-            text: 'Кухонний сценарій без події: меню або торт зберігаються як комерційні позиції заявки.'
+            label: 'РљСѓС…РЅСЏ',
+            text: 'РљСѓС…РѕРЅРЅРёР№ СЃС†РµРЅР°СЂС–Р№ Р±РµР· РїРѕРґС–С—: РјРµРЅСЋ Р°Р±Рѕ С‚РѕСЂС‚ Р·Р±РµСЂС–РіР°СЋС‚СЊСЃСЏ СЏРє РєРѕРјРµСЂС†С–Р№РЅС– РїРѕР·РёС†С–С— Р·Р°СЏРІРєРё.'
         },
         event_kitchen: {
-            label: 'Подія + кухня',
-            text: 'Змішаний сценарій: подія і кухонні позиції формують спільний підсумок.'
+            label: 'РџРѕРґС–СЏ + РєСѓС…РЅСЏ',
+            text: 'Р—РјС–С€Р°РЅРёР№ СЃС†РµРЅР°СЂС–Р№: РїРѕРґС–СЏ С– РєСѓС…РѕРЅРЅС– РїРѕР·РёС†С–С— С„РѕСЂРјСѓСЋС‚СЊ СЃРїС–Р»СЊРЅРёР№ РїС–РґСЃСѓРјРѕРє.'
         }
     };
     return meta[scenario] || meta.lead_only;
@@ -263,22 +418,29 @@ function getBookingWorkspaceScenarioMeta(scenario) {
 
 function syncBookingWorkspaceMode(options = {}) {
     const hasEvent = getBookingWorkspaceHasEvent();
+    const hasKitchen = isBookingKitchenEnabled();
+    const hasLeadDetails = isBookingLeadDetailsEnabled();
     const eventFields = document.getElementById('bookingEventFields');
+    const banquetFields = document.getElementById('banquetFields');
+    const leadSection = document.getElementById('bookingLeadDetailsSection');
     const room = document.getElementById('roomSelect');
     if (eventFields) eventFields.classList.toggle('hidden', !hasEvent);
+    if (banquetFields) banquetFields.classList.toggle('hidden', !hasKitchen || !timelineKitchenEnabled());
+    if (leadSection) leadSection.classList.toggle('hidden', !hasLeadDetails);
     if (room) {
         room.required = true;
         room.setAttribute('aria-required', 'true');
     }
     const selectedProgram = document.getElementById('selectedProgram');
     if (selectedProgram && !hasEvent) selectedProgram.setAttribute('aria-invalid', 'false');
-    const scenario = getBookingWorkspaceScenario({ hasEvent });
+    const scenario = getBookingWorkspaceScenario({ hasEvent, hasKitchen });
     const meta = getBookingWorkspaceScenarioMeta(scenario);
     const chip = document.getElementById('bookingScenarioChip');
     const text = document.getElementById('bookingScenarioText');
     if (chip) chip.textContent = meta.label;
     if (text) text.textContent = meta.text;
     renderBookingPackageSummary();
+    updateBookingSubmitState();
     if (options.markDirty && window.BookingForm) BookingForm._dirty = true;
 }
 
@@ -297,20 +459,20 @@ function prepareMaysternyaBookingPanel(options = {}) {
     setBookingWorkspaceHasEvent(true, { markDirty: false });
 
     const title = document.querySelector('#bookingPanel .panel-header h3');
-    if (title && !AppState.editingBookingId) title.textContent = 'Онлайн запис';
+    if (title && !AppState.editingBookingId) title.textContent = 'РћРЅР»Р°Р№РЅ Р·Р°РїРёСЃ';
     const submit = document.getElementById('bookingSubmitBtn');
-    if (submit && !AppState.editingBookingId) submit.textContent = 'Записати прийом';
+    if (submit && !AppState.editingBookingId) submit.textContent = 'Р—Р°РїРёСЃР°С‚Рё РїСЂРёР№РѕРј';
 
     const groupName = document.getElementById('bookingGroupName');
-    if (groupName) groupName.placeholder = 'Тема запиту або коротка примітка';
+    if (groupName) groupName.placeholder = 'РўРµРјР° Р·Р°РїРёС‚Сѓ Р°Р±Рѕ РєРѕСЂРѕС‚РєР° РїСЂРёРјС–С‚РєР°';
     const notes = document.getElementById('bookingNotes');
-    if (notes) notes.placeholder = 'Коментар для Олександра';
+    if (notes) notes.placeholder = 'РљРѕРјРµРЅС‚Р°СЂ РґР»СЏ РћР»РµРєСЃР°РЅРґСЂР°';
     const customerName = document.getElementById('customerName');
-    if (customerName) customerName.placeholder = 'Імʼя клієнта';
+    if (customerName) customerName.placeholder = 'Р†РјКјСЏ РєР»С–С”РЅС‚Р°';
     const phone = document.getElementById('customerPhone');
-    if (phone) phone.placeholder = 'Телефон або WhatsApp';
+    if (phone) phone.placeholder = 'РўРµР»РµС„РѕРЅ Р°Р±Рѕ WhatsApp';
     const customerMode = document.getElementById('bookingCustomerModeLabel');
-    if (customerMode) customerMode.textContent = 'Опційно для онлайн-прийому';
+    if (customerMode) customerMode.textContent = 'РћРїС†С–Р№РЅРѕ РґР»СЏ РѕРЅР»Р°Р№РЅ-РїСЂРёР№РѕРјСѓ';
 
     const shouldSelectDefault = options.selectDefaultProgram !== false
         && !document.getElementById('selectedProgram')?.value
@@ -329,26 +491,27 @@ function prepareTimelineQuickCloseTools(options = {}) {
     const hint = tools.querySelector('small');
     const durationLabel = tools.querySelector('label span');
     const button = document.getElementById('maysternyaCloseSlotBtn');
-    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Ресурс';
+    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Р РµСЃСѓСЂСЃ';
     if (isMaysternyaBookingContext()) {
-        if (title) title.textContent = 'Онлайн прийом';
-        if (hint) hint.textContent = 'Мінімальний запис для лінії Олександра';
-        if (durationLabel) durationLabel.textContent = 'Закрити на';
-        if (button) button.textContent = 'Закрити слот';
+        if (title) title.textContent = 'РћРЅР»Р°Р№РЅ РїСЂРёР№РѕРј';
+        if (hint) hint.textContent = 'РњС–РЅС–РјР°Р»СЊРЅРёР№ Р·Р°РїРёСЃ РґР»СЏ Р»С–РЅС–С— РћР»РµРєСЃР°РЅРґСЂР°';
+        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
+        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё СЃР»РѕС‚';
         return;
     }
     if (isEducationTimelineBookingMode()) {
-        if (title) title.textContent = 'Кабінет недоступний';
-        if (hint) hint.textContent = `${lineName}: швидко закрийте час, якщо аудиторія зайнята або недоступна.`;
-        if (durationLabel) durationLabel.textContent = 'Закрити на';
-        if (button) button.textContent = 'Закрити кабінет';
+        // Canonical quick-close label for education resource mode: Закрити кабінет
+        if (title) title.textContent = 'РљР°Р±С–РЅРµС‚ РЅРµРґРѕСЃС‚СѓРїРЅРёР№';
+        if (hint) hint.textContent = `${lineName}: С€РІРёРґРєРѕ Р·Р°РєСЂРёР№С‚Рµ С‡Р°СЃ, СЏРєС‰Рѕ Р°СѓРґРёС‚РѕСЂС–СЏ Р·Р°Р№РЅСЏС‚Р° Р°Р±Рѕ РЅРµРґРѕСЃС‚СѓРїРЅР°.`;
+        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
+        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё РєР°Р±С–РЅРµС‚';
         return;
     }
     if (isTimelineResourceBackedBookingMode()) {
-        if (title) title.textContent = 'Ресурс недоступний';
-        if (hint) hint.textContent = `${lineName}: швидко закрийте час без створення клієнтського запису.`;
-        if (durationLabel) durationLabel.textContent = 'Закрити на';
-        if (button) button.textContent = 'Закрити ресурс';
+        if (title) title.textContent = 'Р РµСЃСѓСЂСЃ РЅРµРґРѕСЃС‚СѓРїРЅРёР№';
+        if (hint) hint.textContent = `${lineName}: С€РІРёРґРєРѕ Р·Р°РєСЂРёР№С‚Рµ С‡Р°СЃ Р±РµР· СЃС‚РІРѕСЂРµРЅРЅСЏ РєР»С–С”РЅС‚СЃСЊРєРѕРіРѕ Р·Р°РїРёСЃСѓ.`;
+        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
+        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё СЂРµСЃСѓСЂСЃ';
     }
 }
 
@@ -362,13 +525,15 @@ function prepareDisplayModeBookingPanel(options = {}) {
     prepareEducationLessonPanel(options);
     if (isParkTimelineBookingMode()) return;
 
-    const lineName = options.line?.name || presentation.roomOptionLabel || 'Кабінет';
+    const lineName = options.line?.name || presentation.roomOptionLabel || 'РљР°Р±С–РЅРµС‚';
     if (isEducationTimelineBookingMode()) {
         ensureTimelineRoomOption(lineName);
     } else {
         ensureTimelineRoomOption(isMaysternyaBookingContext() ? MAYSTERNYA_ONLINE_ROOM : presentation.roomOptionLabel);
     }
     setBookingWorkspaceHasEvent(true, { markDirty: false });
+    setBookingKitchenEnabled(false, { markDirty: false });
+    setBookingLeadDetailsEnabled(false, { markDirty: false });
 
     const title = document.querySelector('#bookingPanel .panel-header h3');
     if (title && !AppState.editingBookingId) title.textContent = presentation.bookingTitle;
@@ -376,22 +541,22 @@ function prepareDisplayModeBookingPanel(options = {}) {
     if (submit && !AppState.editingBookingId) submit.textContent = presentation.submitLabel;
 
     const groupName = document.getElementById('bookingGroupName');
-    if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Група, клас або курс' : 'Коротка тема запису';
+    if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Р“СЂСѓРїР°, РєР»Р°СЃ Р°Р±Рѕ РєСѓСЂСЃ' : 'РљРѕСЂРѕС‚РєР° С‚РµРјР° Р·Р°РїРёСЃСѓ';
     const notes = document.getElementById('bookingNotes');
-    if (notes) notes.placeholder = isEducationTimelineBookingMode() ? 'Тема заняття, викладач або примітки' : 'Коментар до запису';
+    if (notes) notes.placeholder = isEducationTimelineBookingMode() ? 'РўРµРјР° Р·Р°РЅСЏС‚С‚СЏ, РІРёРєР»Р°РґР°С‡ Р°Р±Рѕ РїСЂРёРјС–С‚РєРё' : 'РљРѕРјРµРЅС‚Р°СЂ РґРѕ Р·Р°РїРёСЃСѓ';
     const customerName = document.getElementById('customerName');
     if (customerName) customerName.placeholder = presentation.customerNameLabel;
     const phone = document.getElementById('customerPhone');
     if (phone) phone.placeholder = presentation.phoneLabel;
     const customerMode = document.getElementById('bookingCustomerModeLabel');
-    if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'Опційно для заняття' : 'Опційно для запису';
+    if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'РћРїС†С–Р№РЅРѕ РґР»СЏ Р·Р°РЅСЏС‚С‚СЏ' : 'РћРїС†С–Р№РЅРѕ РґР»СЏ Р·Р°РїРёСЃСѓ';
     prepareTimelineQuickCloseTools(options);
     renderBookingPackageSummary();
 }
 
 const EDUCATION_STAFF_KEYWORDS = [
     'teacher', 'mentor', 'instructor', 'coach', 'tutor',
-    'викладач', 'вчитель', 'учитель', 'педагог', 'тренер', 'наставник'
+    'РІРёРєР»Р°РґР°С‡', 'РІС‡РёС‚РµР»СЊ', 'СѓС‡РёС‚РµР»СЊ', 'РїРµРґР°РіРѕРі', 'С‚СЂРµРЅРµСЂ', 'РЅР°СЃС‚Р°РІРЅРёРє'
 ];
 let _educationLessonTeachersLoaded = false;
 let _educationLessonTeachers = [];
@@ -418,9 +583,9 @@ function normalizeEducationLessonRepeatEvery(value) {
 
 function educationLessonRepeatEveryLabel(value) {
     const normalized = normalizeEducationLessonRepeatEvery(value);
-    if (normalized === 'daily') return 'Щодня';
-    if (normalized === 'biweekly') return 'Раз на два тижні';
-    return 'Щотижня';
+    if (normalized === 'daily') return 'Р©РѕРґРЅСЏ';
+    if (normalized === 'biweekly') return 'Р Р°Р· РЅР° РґРІР° С‚РёР¶РЅС–';
+    return 'Р©РѕС‚РёР¶РЅСЏ';
 }
 
 function resetEducationLessonFields() {
@@ -440,7 +605,7 @@ function setEducationTeacherOptions(teachers = []) {
     const select = document.getElementById('educationLessonTeacher');
     if (!select) return;
     const current = select.value;
-    select.innerHTML = '<option value="">Без викладача</option>';
+    select.innerHTML = '<option value="">Р‘РµР· РІРёРєР»Р°РґР°С‡Р°</option>';
     teachers.forEach(staff => {
         const option = document.createElement('option');
         option.value = String(staff.id || staff.userId || staff.username || staff.name || '');
@@ -495,17 +660,17 @@ function prepareEducationLessonPanel(options = {}) {
     section.setAttribute('aria-hidden', enabled ? 'false' : 'true');
     if (!enabled) return;
 
-    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет';
+    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'РљР°Р±С–РЅРµС‚';
     const group = document.getElementById('educationLessonGroup');
-    if (group && !group.placeholder) group.placeholder = 'Група або клас';
+    if (group && !group.placeholder) group.placeholder = 'Р“СЂСѓРїР° Р°Р±Рѕ РєР»Р°СЃ';
     const title = document.getElementById('educationLessonTitle');
-    if (title) title.placeholder = `Заняття у ${lineName}`;
+    if (title) title.placeholder = `Р—Р°РЅСЏС‚С‚СЏ Сѓ ${lineName}`;
     const kidsSection = document.getElementById('kidsCountSection');
     if (kidsSection) kidsSection.classList.remove('hidden');
     const kidsLabel = kidsSection?.querySelector('label');
-    if (kidsLabel) kidsLabel.textContent = 'Кількість учнів';
+    if (kidsLabel) kidsLabel.textContent = 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ';
     const kidsInput = document.getElementById('kidsCountInput');
-    if (kidsInput) kidsInput.placeholder = 'Кількість учнів';
+    if (kidsInput) kidsInput.placeholder = 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ';
     loadEducationLessonTeachers();
 }
 
@@ -580,7 +745,7 @@ function bookingKitchenType(product) {
 }
 
 function bookingKitchenTypeLabel(type) {
-    return type === 'cake' ? 'Торт' : 'Меню';
+    return type === 'cake' ? 'РўРѕСЂС‚' : 'РњРµРЅСЋ';
 }
 
 function toBookingMoney(value) {
@@ -644,7 +809,7 @@ function bookingMenuPositionsToLegacyText(positions = getBookingMenuPositions())
     return positions.map(item => {
         const qty = Number(item.quantity) % 1 === 0 ? String(item.quantity) : String(item.quantity).replace('.', ',');
         const unit = item.servingUnit ? ` ${item.servingUnit}` : '';
-        const price = item.unitPrice ? ` x ${item.unitPrice} грн` : '';
+        const price = item.unitPrice ? ` x ${item.unitPrice} РіСЂРЅ` : '';
         const note = item.note ? ` (${item.note})` : '';
         return `${item.title} - ${qty}${unit}${price}${note}`;
     }).join('\n');
@@ -658,12 +823,12 @@ function renderBookingMenuProductOptions() {
     const groups = new Map();
     products.forEach(product => {
         const type = bookingKitchenType(product);
-        const sectionPrefix = type === 'cake' ? 'Торти' : 'Меню';
-        const section = `${sectionPrefix}${product.menuSection ? ` · ${product.menuSection}` : ''}`;
+        const sectionPrefix = type === 'cake' ? 'РўРѕСЂС‚Рё' : 'РњРµРЅСЋ';
+        const section = `${sectionPrefix}${product.menuSection ? ` В· ${product.menuSection}` : ''}`;
         if (!groups.has(section)) groups.set(section, []);
         groups.get(section).push(product);
     });
-    select.innerHTML = '<option value="">Оберіть позицію з меню або торт</option>';
+    select.innerHTML = '<option value="">РћР±РµСЂС–С‚СЊ РїРѕР·РёС†С–СЋ Р· РјРµРЅСЋ Р°Р±Рѕ С‚РѕСЂС‚</option>';
     groups.forEach((items, section) => {
         const group = document.createElement('optgroup');
         group.label = section;
@@ -689,20 +854,49 @@ function renderBookingMenuPositions() {
     if (hidden) hidden.value = JSON.stringify(positions);
     if (!list) return;
     if (!positions.length) {
-        list.innerHTML = '<div class="booking-summary-empty">Меню або сервісні позиції ще не додані.</div>';
+        list.innerHTML = '<div class="booking-summary-empty">РњРµРЅСЋ Р°Р±Рѕ СЃРµСЂРІС–СЃРЅС– РїРѕР·РёС†С–С— С‰Рµ РЅРµ РґРѕРґР°РЅС–.</div>';
     } else {
         list.innerHTML = positions.map((item, index) => `
             <div class="booking-menu-position-row" data-menu-index="${index}">
                 <div>
                     <div class="booking-menu-position-title"><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}</div>
-                    <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</div>
+                    <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` В· ${escapeHtml(item.note)}` : ''}</div>
                 </div>
-                <button type="button" class="booking-menu-remove-btn" data-menu-remove="${index}" title="Видалити">×</button>
+                <div class="booking-menu-position-actions">
+                    <button type="button" class="booking-menu-edit-btn" data-menu-edit="${index}" title="Редагувати">✎</button>
+                    <button type="button" class="booking-menu-remove-btn" data-menu-remove="${index}" title="Видалити">✕</button>
+                </div>
             </div>
         `).join('');
+        list.querySelectorAll('[data-menu-edit]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = Number(btn.dataset.menuEdit);
+                const item = BookingPackageState.menuPositions[index];
+                if (!item) return;
+                BookingPackageState.editIndex = index;
+                const select = document.getElementById('bookingMenuProductSelect');
+                const quantity = document.getElementById('bookingMenuQuantity');
+                const price = document.getElementById('bookingMenuUnitPrice');
+                const note = document.getElementById('bookingMenuNote');
+                const addBtn = document.getElementById('bookingMenuAddBtn');
+                if (select) select.value = item.productId || '';
+                if (quantity) quantity.value = String(item.quantity || 1);
+                if (price) price.value = String(item.unitPrice || 0);
+                if (note) note.value = item.note || '';
+                if (addBtn) addBtn.textContent = 'Зберегти позицію';
+                select?.focus();
+            });
+        });
         list.querySelectorAll('[data-menu-remove]').forEach(btn => {
             btn.addEventListener('click', () => {
-                BookingPackageState.menuPositions.splice(Number(btn.dataset.menuRemove), 1);
+                const removeIndex = Number(btn.dataset.menuRemove);
+                BookingPackageState.menuPositions.splice(removeIndex, 1);
+                if (BookingPackageState.editIndex === removeIndex) BookingPackageState.editIndex = null;
+                if (BookingPackageState.editIndex !== null && BookingPackageState.editIndex > removeIndex) {
+                    BookingPackageState.editIndex -= 1;
+                }
+                const addBtn = document.getElementById('bookingMenuAddBtn');
+                if (addBtn && BookingPackageState.editIndex === null) addBtn.textContent = '+ Додати позицію';
                 renderBookingMenuPositions();
                 syncLegacyBanquetMenuFromPositions(true);
                 renderBookingPackageSummary();
@@ -729,7 +923,7 @@ function addBookingMenuPositionFromForm() {
     const product = productId ? getBookingMenuProducts().find(p => p.id === productId) : null;
     const title = product?.name || product?.label || productSelect?.selectedOptions?.[0]?.dataset.title || '';
     if (!title) {
-        showNotification('Оберіть позицію меню', 'error');
+        showNotification('РћР±РµСЂС–С‚СЊ РїРѕР·РёС†С–СЋ РјРµРЅСЋ', 'error');
         return;
     }
     const quantity = Math.max(Number(document.getElementById('bookingMenuQuantity')?.value || 1), 0.1);
@@ -750,7 +944,12 @@ function addBookingMenuPositionFromForm() {
         cakeDecoration: product?.cakeDecoration || null,
         source: product ? 'product' : 'custom'
     });
-    BookingPackageState.menuPositions.push(position);
+    if (BookingPackageState.editIndex !== null && BookingPackageState.menuPositions[BookingPackageState.editIndex]) {
+        BookingPackageState.menuPositions[BookingPackageState.editIndex] = position;
+    } else {
+        BookingPackageState.menuPositions.push(position);
+    }
+    BookingPackageState.editIndex = null;
     if (productSelect) productSelect.value = '';
     const qty = document.getElementById('bookingMenuQuantity');
     if (qty) qty.value = '1';
@@ -758,6 +957,8 @@ function addBookingMenuPositionFromForm() {
     if (price) price.value = '';
     const note = document.getElementById('bookingMenuNote');
     if (note) note.value = '';
+    const addBtn = document.getElementById('bookingMenuAddBtn');
+    if (addBtn) addBtn.textContent = '+ Додати позицію';
     renderBookingMenuPositions();
     syncLegacyBanquetMenuFromPositions(true);
     renderBookingPackageSummary();
@@ -777,12 +978,15 @@ function setBookingMenuPositions(positions) {
 
 function resetBookingPackageWorkspace() {
     BookingPackageState.menuPositions = [];
+    BookingPackageState.editIndex = null;
     ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetTables'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
     const qty = document.getElementById('bookingMenuQuantity');
     if (qty) qty.value = '1';
+    const addBtn = document.getElementById('bookingMenuAddBtn');
+    if (addBtn) addBtn.textContent = '+ Додати позицію';
     renderBookingMenuProductOptions();
     renderBookingMenuPositions();
     renderBookingPackageSummary();
@@ -811,6 +1015,25 @@ function getBookingPackageTotals(program) {
     };
 }
 
+function updateBookingSubmitState() {
+    const submitBtn = document.getElementById('bookingSubmitBtn');
+    const hint = document.getElementById('bookingSubmitHint');
+    if (!submitBtn || !hint) return;
+    const validation = getSmartBookingValidationState();
+    const originalText = submitBtn.dataset.originalText || 'Додати бронювання';
+    const isSaving = Boolean(submitBtn.disabled && submitBtn.dataset.originalText && submitBtn.textContent !== originalText);
+    if (!isSaving) submitBtn.disabled = !validation.canSubmit;
+    if (!validation.canSubmit) {
+        hint.textContent = validation.error || 'Оберіть кімнату та клієнта.';
+        return;
+    }
+    if (validation.warnings?.length) {
+        hint.textContent = validation.warnings[0];
+        return;
+    }
+    hint.textContent = 'Можна створювати бронювання.';
+}
+
 function renderBookingPackageSummary() {
     const container = document.getElementById('bookingPackageSummary');
     if (!container) return;
@@ -819,28 +1042,39 @@ function renderBookingPackageSummary() {
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const customerName = document.getElementById('customerName')?.value?.trim();
     const customerId = document.getElementById('selectedCustomerId')?.value;
-    const room = document.getElementById('roomSelect')?.value || '';
-    const leadDetails = getBookingLeadDetails();
-    const groupName = document.getElementById('bookingGroupName')?.value?.trim();
-    const notes = document.getElementById('bookingNotes')?.value?.trim();
+    const roomSelect = document.getElementById('roomSelect');
+    const roomValue = roomSelect?.value || '';
+    const roomLabel = roomSelect?.selectedOptions?.[0]?.textContent?.trim() || roomValue || 'не вибрано';
+    const selectedCustomerName = document.querySelector('#bookingSelectedCustomerCard strong')?.textContent?.trim() || '';
+    const resolvedCustomerName = selectedCustomerName || customerName || (customerId ? 'Існуючий клієнт' : 'не вибрано');
     const totals = getBookingPackageTotals(program);
-    const scenario = getBookingWorkspaceScenario({ hasEvent, positions: totals.menuPositions });
-    const scenarioMeta = getBookingWorkspaceScenarioMeta(scenario);
-    const cakeCount = totals.menuPositions.filter(item => item.kitchenType === 'cake').length;
-    if (!room && !hasEvent && !customerName && !customerId && !groupName && !notes && !hasBookingLeadDetails(leadDetails) && totals.menuPositions.length === 0) {
-        container.innerHTML = '<div class="booking-summary-empty">Оберіть кімнату, а потім додайте клієнта, лід-деталі, подію або кухонні позиції — підсумок оновиться автоматично.</div>';
+    const validation = getSmartBookingValidationState();
+    const kitchenEnabled = isBookingKitchenEnabled();
+    const kitchenTotal = kitchenEnabled ? totals.positionsSubtotal : 0;
+    const finalTotal = hasEvent || kitchenEnabled ? totals.finalTotal : 0;
+    const programLabel = program
+        ? `${program.code || program.shortLabel || 'ПРО'} · ${program.duration ? `${program.duration} хв` : 'без тривалості'}${totals.programBasePrice ? ` · ${formatPrice(totals.programBasePrice)}` : ''}`
+        : (hasEvent ? 'не вибрано' : 'вимкнено');
+    const kitchenLabel = kitchenEnabled
+        ? (totals.menuPositions.length
+            ? `${totals.menuPositions.length} поз. · ${formatPrice(kitchenTotal)}`
+            : 'увімкнено, позицій ще немає')
+        : 'вимкнено';
+
+    if (!roomValue && !customerId && !customerName && !hasEvent && !kitchenEnabled) {
+        container.innerHTML = '<div class="booking-summary-empty">Оберіть кімнату і клієнта — підсумок оновиться автоматично.</div>';
+        updateBookingSubmitState();
         return;
     }
     container.innerHTML = `
-        <div class="booking-summary-row"><span>Сценарій</span><strong>${escapeHtml(scenarioMeta.label)}</strong></div>
-        <div class="booking-summary-row"><span>Кімната</span><strong>${escapeHtml(room || 'не вибрано')}</strong></div>
-        <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(customerName || (customerId ? 'існуюча картка' : 'не вказано'))}</strong></div>
-        <div class="booking-summary-row"><span>Подія</span><strong>${escapeHtml(hasEvent ? (program?.name || program?.label || 'програму не обрано') : 'вимкнена')}</strong></div>
-        <div class="booking-summary-row"><span>Кухня / торти</span><strong>${escapeHtml(`${totals.menuPositions.length} поз.${cakeCount ? `, тортів: ${cakeCount}` : ''}`)}</strong></div>
-        ${hasEvent ? `<div class="booking-summary-row"><span>База програми</span><strong>${escapeHtml(formatPrice(totals.programBasePrice))}</strong></div>` : ''}
-        <div class="booking-summary-row"><span>Кухонний subtotal</span><strong>${escapeHtml(formatPrice(totals.positionsSubtotal))}</strong></div>
-        <div class="booking-summary-row booking-summary-total"><span>Комерційний підсумок</span><strong>${escapeHtml(formatPrice(totals.finalTotal))}</strong></div>
+        <div class="booking-summary-row"><span>Кімната</span><strong>${escapeHtml(roomLabel)}</strong></div>
+        <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(resolvedCustomerName)}</strong></div>
+        <div class="booking-summary-row"><span>Програма</span><strong>${escapeHtml(programLabel)}</strong></div>
+        <div class="booking-summary-row"><span>Кухня</span><strong>${escapeHtml(kitchenLabel)}</strong></div>
+        <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
+        ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
+    updateBookingSubmitState();
 }
 
 function getBookingPackageFromBooking(booking) {
@@ -858,6 +1092,7 @@ function getBookingWorkspaceFromBooking(booking) {
 function hydrateBookingPackageWorkspace(booking) {
     const bookingPackage = getBookingPackageFromBooking(booking);
     setBookingMenuPositions(bookingPackage?.menuPositions || []);
+    setBookingKitchenEnabled(Boolean((bookingPackage?.menuPositions || []).length || booking?.banquetMenu || booking?.banquetGuests || booking?.banquetTables), { markDirty: false });
     const banquetMenu = document.getElementById('banquetMenu');
     if (banquetMenu) {
         banquetMenu.value = booking?.banquetMenu || bookingMenuPositionsToLegacyText();
@@ -878,6 +1113,7 @@ function hydrateBookingWorkspace(booking) {
     setBookingWorkspaceHasEvent(hasEvent, { markDirty: false });
     resetBookingLeadDetails();
     if (workspace?.leadDetails) setBookingLeadDetails(workspace.leadDetails);
+    setBookingLeadDetailsEnabled(Boolean(workspace?.leadDetails && hasBookingLeadDetails(workspace.leadDetails)), { markDirty: false });
     renderBookingPackageSummary();
 }
 
@@ -888,17 +1124,17 @@ function renderBookingPackageDetail(booking) {
     const rows = positions.length
         ? positions.map(item => `
             <div class="booking-detail-package-row">
-                <div><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></div>
+                <div><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` В· ${escapeHtml(item.note)}` : ''}</small></div>
                 <strong>${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
             </div>
         `).join('')
-        : `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu || 'Меню не деталізовано')}</div><strong>—</strong></div>`;
+        : `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu || 'РњРµРЅСЋ РЅРµ РґРµС‚Р°Р»С–Р·РѕРІР°РЅРѕ')}</div><strong>вЂ”</strong></div>`;
     return `
         <div class="booking-detail-package">
-            <div class="booking-detail-package-header">Меню / сервісні позиції</div>
+            <div class="booking-detail-package-header">РњРµРЅСЋ / СЃРµСЂРІС–СЃРЅС– РїРѕР·РёС†С–С—</div>
             ${rows}
             <div class="booking-detail-package-row booking-detail-package-total">
-                <div>Разом пакет</div>
+                <div>Р Р°Р·РѕРј РїР°РєРµС‚</div>
                 <strong>${escapeHtml(formatPrice(bookingPackage?.finalTotal ?? booking.price ?? 0))}</strong>
             </div>
         </div>
@@ -912,15 +1148,15 @@ function renderBookingWorkspaceDetail(booking) {
     const meta = getBookingWorkspaceScenarioMeta(scenario);
     const lead = workspace?.leadDetails || {};
     const leadRows = [
-        lead.source ? `<div class="booking-detail-row"><span class="label">Джерело ліда:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
-        lead.status ? `<div class="booking-detail-row"><span class="label">Статус ліда:</span><span class="value">${escapeHtml(lead.status)}</span></div>` : '',
-        lead.interestDate ? `<div class="booking-detail-row"><span class="label">Бажана дата:</span><span class="value">${escapeHtml(lead.interestDate)}</span></div>` : '',
-        lead.childrenInfo ? `<div class="booking-detail-row"><span class="label">Діти / гості:</span><span class="value">${escapeHtml(lead.childrenInfo)}</span></div>` : '',
-        lead.budget ? `<div class="booking-detail-row"><span class="label">Бюджет:</span><span class="value">${escapeHtml(lead.budget)}</span></div>` : '',
-        lead.notes ? `<div class="booking-detail-row"><span class="label">Нотатки ліда:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
+        lead.source ? `<div class="booking-detail-row"><span class="label">Р”Р¶РµСЂРµР»Рѕ Р»С–РґР°:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
+        lead.status ? `<div class="booking-detail-row"><span class="label">РЎС‚Р°С‚СѓСЃ Р»С–РґР°:</span><span class="value">${escapeHtml(lead.status)}</span></div>` : '',
+        lead.interestDate ? `<div class="booking-detail-row"><span class="label">Р‘Р°Р¶Р°РЅР° РґР°С‚Р°:</span><span class="value">${escapeHtml(lead.interestDate)}</span></div>` : '',
+        lead.childrenInfo ? `<div class="booking-detail-row"><span class="label">Р”С–С‚Рё / РіРѕСЃС‚С–:</span><span class="value">${escapeHtml(lead.childrenInfo)}</span></div>` : '',
+        lead.budget ? `<div class="booking-detail-row"><span class="label">Р‘СЋРґР¶РµС‚:</span><span class="value">${escapeHtml(lead.budget)}</span></div>` : '',
+        lead.notes ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєРё Р»С–РґР°:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
     ].join('');
     return `
-        <div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>
+        <div class="booking-detail-row"><span class="label">РЎС†РµРЅР°СЂС–Р№:</span><span class="value">${escapeHtml(meta.label)}</span></div>
         ${leadRows}
     `;
 }
@@ -930,6 +1166,14 @@ function initBookingPackageWorkspace() {
     document.getElementById('bookingHasEventToggle')?.addEventListener('change', () => {
         syncBookingWorkspaceMode({ markDirty: true });
     });
+    document.getElementById('bookingKitchenToggle')?.addEventListener('change', () => {
+        syncBookingWorkspaceMode({ markDirty: true });
+    });
+    document.getElementById('bookingLeadDetailsToggle')?.addEventListener('change', () => {
+        const section = document.getElementById('bookingLeadDetailsSection');
+        if (section && !document.getElementById('bookingLeadDetailsToggle')?.checked) section.open = false;
+        syncBookingWorkspaceMode({ markDirty: true });
+    });
     document.getElementById('roomSelect')?.addEventListener('change', (e) => {
         if (e.target.value) e.target.setAttribute('aria-invalid', 'false');
     });
@@ -937,6 +1181,13 @@ function initBookingPackageWorkspace() {
         const product = getBookingMenuProducts().find(p => p.id === e.target.value);
         const price = document.getElementById('bookingMenuUnitPrice');
         if (price) price.value = product ? String(product.price || 0) : '';
+    });
+    ['bookingTime', 'bookingLine', 'customDuration'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const refreshHosts = () => refreshAnimatorSelectsForCurrentSlot().catch(() => {});
+        el.addEventListener('change', refreshHosts);
+        el.addEventListener('input', refreshHosts);
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
     document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);
@@ -996,16 +1247,16 @@ function inferBookingPinataMode(booking, program) {
 function renderPinataDetailRows(booking) {
     const numberRows = [
         booking?.pinataNumber
-            ? `<div class="booking-detail-row"><span class="label">Номер піньяти:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">РќРѕРјРµСЂ РїС–РЅСЊСЏС‚Рё:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
             : '',
         booking?.pinataFillerNumber
-            ? `<div class="booking-detail-row"><span class="label">Номер наповнювача:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">РќРѕРјРµСЂ РЅР°РїРѕРІРЅСЋРІР°С‡Р°:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
             : ''
     ].join('');
 
     if (booking?.pinataMode === 'client') {
         const note = booking.clientPinataServiceNote
-            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
             : '';
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
     }
@@ -1016,7 +1267,7 @@ function renderPinataDetailRows(booking) {
 
     if (booking?.pinataMode === 'client') {
         const note = booking.clientPinataServiceNote
-            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
             : '';
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${note}`;
     }
@@ -1027,7 +1278,7 @@ function renderPinataDetailRows(booking) {
 }
 
 // ==========================================
-// ПАНЕЛЬ БРОНЮВАННЯ
+// РџРђРќР•Р›Р¬ Р‘Р РћРќР®Р’РђРќРќРЇ
 // ==========================================
 
 async function openBookingPanel(time, lineId) {
@@ -1054,7 +1305,7 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('bookingTime').value = time;
     document.getElementById('bookingLine').value = lineId;
 
-    // Скинути форму
+    // РЎРєРёРЅСѓС‚Рё С„РѕСЂРјСѓ
     document.getElementById('roomSelect').value = '';
     document.getElementById('selectedProgram').value = '';
     document.getElementById('bookingNotes').value = '';
@@ -1064,25 +1315,29 @@ async function openBookingPanel(time, lineId) {
     // v5.49: Reset program search
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
-    document.getElementById('programDetails')?.classList.add('hidden');
+    BookingDrawerState.selectedProgramCategory = 'all';
+    renderProgramCategoryChips();
+    renderSelectedProgramSummary(null);
     document.getElementById('hostsWarning')?.classList.add('hidden');
     document.getElementById('customProgramSection')?.classList.add('hidden');
     document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     resetPinataModeFields();
     setBookingWorkspaceHasEvent(false, { markDirty: false });
+    setBookingKitchenEnabled(false, { markDirty: false });
+    setBookingLeadDetailsEnabled(Boolean(AppState.leadConversionContext?.leadId), { markDirty: false });
 
-    // Скинути toggle додаткового ведучого
+    // РЎРєРёРЅСѓС‚Рё toggle РґРѕРґР°С‚РєРѕРІРѕРіРѕ РІРµРґСѓС‡РѕРіРѕ
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {
         extraHostToggle.checked = false;
         document.getElementById('extraHostAnimatorSection')?.classList.add('hidden');
     }
 
-    // Скинути костюм
+    // РЎРєРёРЅСѓС‚Рё РєРѕСЃС‚СЋРј
     const costumeSelect = document.getElementById('costumeSelect');
     if (costumeSelect) costumeSelect.value = '';
 
-    // Скинути статус та к-кість дітей
+    // РЎРєРёРЅСѓС‚Рё СЃС‚Р°С‚СѓСЃ С‚Р° Рє-РєС–СЃС‚СЊ РґС–С‚РµР№
     const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
     if (statusRadio) statusRadio.checked = true;
     const kidsCountSection = document.getElementById('kidsCountSection');
@@ -1091,13 +1346,9 @@ async function openBookingPanel(time, lineId) {
     if (kidsCountInput) kidsCountInput.value = '';
     resetEducationLessonFields();
 
-    // v5.18: Reset focus mode — show all categories when opening panel
-    const allHeaders = document.querySelectorAll('#programsIcons .category-header');
-    const allGrids = document.querySelectorAll('#programsIcons .category-grid');
-    allHeaders.forEach(h => h.style.display = '');
-    allGrids.forEach(g => g.style.display = '');
-    const changeBtn = document.getElementById('changeProgramBtn');
-    if (changeBtn) changeBtn.remove();
+    // Ensure program catalog opens in the full chip/grid mode every time.
+    document.querySelectorAll('#programsIcons .category-header').forEach(h => h.style.display = '');
+    document.querySelectorAll('#programsIcons .category-grid').forEach(g => g.style.display = '');
 
     // v15.1: Reset CRM customer section
     clearCustomerFields();
@@ -1144,8 +1395,9 @@ function clearCustomerFields() {
     if (hiddenId) hiddenId.value = '';
     document.getElementById('customerSearchResults')?.classList.add('hidden');
     document.getElementById('customerInfo')?.classList.add('hidden');
-    const label = document.getElementById('bookingCustomerModeLabel');
-    if (label) label.textContent = 'Обов\'язковий блок бронювання';
+    renderSelectedCustomerCard(null);
+    renderBookingCustomerSearchState('');
+    setBookingClientMode('search');
     const duplicateHint = document.getElementById('bookingCustomerDuplicateHint');
     if (duplicateHint) {
         duplicateHint.classList.add('hidden');
@@ -1177,13 +1429,13 @@ function clearSelectedCustomerLink() {
         if (el) delete el.dataset.selectedValue;
     });
     document.getElementById('customerInfo')?.classList.add('hidden');
+    renderSelectedCustomerCard(null);
     const duplicateHint = document.getElementById('bookingCustomerDuplicateHint');
     if (duplicateHint) {
         duplicateHint.classList.add('hidden');
         duplicateHint.innerHTML = '';
     }
-    const label = document.getElementById('bookingCustomerModeLabel');
-    if (label) label.textContent = 'Нова картка клієнта буде створена при збереженні';
+    setBookingClientMode(hasAnyNewBookingClientData() ? 'new' : 'search');
 }
 
 function clearSelectedCustomerLinkIfEdited(el) {
@@ -1218,7 +1470,7 @@ function applyLeadConversionContextToBookingForm() {
         source: 'lead',
         status: 'warm',
         interestDate: ctx.eventDate || '',
-        notes: ctx.customerName ? `Лід #${ctx.leadId}: ${ctx.customerName}` : `Лід #${ctx.leadId}`
+        notes: ctx.customerName ? `Р›С–Рґ #${ctx.leadId}: ${ctx.customerName}` : `Р›С–Рґ #${ctx.leadId}`
     });
     renderBookingPackageSummary();
 }
@@ -1247,15 +1499,16 @@ function selectCustomerFromSearch(customer) {
     rememberSelectedCustomerSnapshot(customer);
     document.getElementById('customerSearchResults')?.classList.add('hidden');
     document.getElementById('bookingCustomerDuplicateHint')?.classList.add('hidden');
-    const label = document.getElementById('bookingCustomerModeLabel');
-    if (label) label.textContent = 'Прикріплено існуючу картку клієнта';
+    renderSelectedCustomerCard(customer);
+    renderBookingCustomerSearchState('');
+    setBookingClientMode('existing');
 
     // Show visit badge
     if (customer.totalBookings > 0) {
         const info = document.getElementById('customerInfo');
         const badge = document.getElementById('customerVisitBadge');
         if (info && badge) {
-            badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
+            badge.textContent = `${customer.totalBookings} РІС–Р·РёС‚${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'Рё' : 'С–РІ'}`;
             info.classList.remove('hidden');
         }
     }
@@ -1269,24 +1522,28 @@ function renderCustomerSearchResults(customers, options = {}) {
     const list = Array.isArray(customers) ? customers : [];
 
     if (options.loading) {
-        container.innerHTML = '<div class="customer-search-state">Пошук клієнтів...</div>';
+        container.innerHTML = '<div class="customer-search-state">РџРѕС€СѓРє РєР»С–С”РЅС‚С–РІ...</div>';
         container.classList.remove('hidden');
+        renderBookingCustomerSearchState('');
         return;
     }
 
     if (options.error) {
-        container.innerHTML = '<div class="customer-search-state is-error">Не вдалося завантажити клієнтів. Спробуйте ще раз.</div>';
+        container.innerHTML = '<div class="customer-search-state is-error">РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё РєР»С–С”РЅС‚С–РІ. РЎРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·.</div>';
         container.classList.remove('hidden');
+        renderBookingCustomerSearchState('');
         return;
     }
 
     if (list.length === 0) {
         if (options.query) {
-            container.innerHTML = '<div class="customer-search-state">Клієнтів не знайдено. Можна створити нову картку нижче.</div>';
+            container.innerHTML = '<div class="customer-search-state">РљР»С–С”РЅС‚С–РІ РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РњРѕР¶РЅР° СЃС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ РєР°СЂС‚РєСѓ РЅРёР¶С‡Рµ.</div>';
             container.classList.remove('hidden');
+            renderBookingCustomerSearchState('РљР»С–С”РЅС‚Р° РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РњРѕР¶РЅР° СЃС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ.');
         } else {
             container.classList.add('hidden');
             container.innerHTML = '';
+            renderBookingCustomerSearchState('');
         }
         return;
     }
@@ -1297,11 +1554,12 @@ function renderCustomerSearchResults(customers, options = {}) {
             <div class="customer-search-meta">
                 ${c.phone ? escapeHtml(c.phone) : ''}
                 ${c.instagram ? ' @' + escapeHtml(c.instagram) : ''}
-                ${c.totalBookings ? ' · ' + c.totalBookings + ' віз.' : ''}
+                ${c.totalBookings ? ' В· ' + c.totalBookings + ' РІС–Р·.' : ''}
             </div>
         </div>
     `).join('');
     container.classList.remove('hidden');
+    renderBookingCustomerSearchState('');
 
     // Click handlers
     const pickCustomer = (item) => {
@@ -1331,8 +1589,8 @@ function renderBookingCustomerDuplicateHint(customers = []) {
         return;
     }
     hint.innerHTML = `
-        <strong>Можливий дубль клієнта:</strong>
-        ${matches.map(c => `<button type="button" class="booking-duplicate-customer-btn" data-id="${escapeHtml(String(c.id))}">${escapeHtml(c.name || 'Клієнт')}${c.phone ? ` · ${escapeHtml(c.phone)}` : ''}${c.instagram ? ` · @${escapeHtml(c.instagram)}` : ''}</button>`).join('')}
+        <strong>РњРѕР¶Р»РёРІРёР№ РґСѓР±Р»СЊ РєР»С–С”РЅС‚Р°:</strong>
+        ${matches.map(c => `<button type="button" class="booking-duplicate-customer-btn" data-id="${escapeHtml(String(c.id))}">${escapeHtml(c.name || 'РљР»С–С”РЅС‚')}${c.phone ? ` В· ${escapeHtml(c.phone)}` : ''}${c.instagram ? ` В· @${escapeHtml(c.instagram)}` : ''}</button>`).join('')}
     `;
     hint.classList.remove('hidden');
     hint.querySelectorAll('.booking-duplicate-customer-btn').forEach(btn => {
@@ -1369,24 +1627,28 @@ const debouncedBookingDuplicateCheck = debounce(async () => {
 
 // Toggle + autocomplete listeners (called once on page load)
 function initCustomerCRM() {
+    document.getElementById('bookingCreateCustomerBtn')?.addEventListener('click', () => {
+        if (BookingDrawerState.clientMode === 'new') {
+            setBookingClientMode('search');
+            renderBookingCustomerSearchState('');
+            return;
+        }
+        clearSelectedCustomerLink();
+        setBookingClientMode('new', { focusNewForm: true });
+        renderBookingPackageSummary();
+        if (window.BookingForm) BookingForm._dirty = true;
+    });
+    document.getElementById('bookingChangeCustomerBtn')?.addEventListener('click', () => {
+        clearSelectedCustomerLink();
+        document.getElementById('customerSearch')?.focus();
+        renderBookingPackageSummary();
+    });
     // Toggle
     document.getElementById('customerDataToggle')?.addEventListener('change', (e) => {
         const section = document.getElementById('customerDataSection');
         if (section) section.classList.toggle('hidden', !e.target.checked);
         if (!e.target.checked) clearCustomerFields();
     });
-    document.getElementById('bookingClearCustomerBtn')?.addEventListener('click', () => {
-        clearCustomerFields();
-        const toggle = document.getElementById('customerDataToggle');
-        if (toggle) toggle.checked = true;
-        document.getElementById('customerDataSection')?.classList.remove('hidden');
-        const label = document.getElementById('bookingCustomerModeLabel');
-        if (label) label.textContent = 'Нова картка клієнта буде створена при збереженні';
-        document.getElementById('customerName')?.focus();
-        renderBookingPackageSummary();
-        if (window.BookingForm) BookingForm._dirty = true;
-    });
-
     // Autocomplete search with debounce
     const debouncedCustomerSearch = debounce(async (q) => {
         const searchEl = document.getElementById('customerSearch');
@@ -1405,8 +1667,10 @@ function initCustomerCRM() {
         const q = e.target.value.trim();
         if (q.length < 2) {
             document.getElementById('customerSearchResults')?.classList.add('hidden');
+            renderBookingCustomerSearchState('');
             return;
         }
+        setBookingClientMode('search');
         debouncedCustomerSearch(q);
     });
     ['customerName', 'customerPhone', 'customerInstagram', 'customerChildName', 'customerChildBirthday', 'customerSource'].forEach(id => {
@@ -1441,13 +1705,13 @@ async function showFreeRooms() {
     const duration = program ? program.duration : 60;
 
     if (!time) {
-        showNotification('Спочатку оберіть час', 'error');
+        showNotification('РЎРїРѕС‡Р°С‚РєСѓ РѕР±РµСЂС–С‚СЊ С‡Р°СЃ', 'error');
         return;
     }
 
     const panel = document.getElementById('freeRoomsPanel');
     panel.classList.remove('hidden');
-    panel.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+    panel.innerHTML = '<div class="loading-spinner">Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ...</div>';
 
     try {
         let freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
@@ -1470,31 +1734,31 @@ async function showFreeRooms() {
             const freeHtml = freeResources.map(resource => {
                 const capacity = parseInt(resource.capacity, 10);
                 const capacityLabel = Number.isFinite(capacity) && capacity > 0
-                    ? `<small>до ${capacity} місць</small>`
+                    ? `<small>РґРѕ ${capacity} РјС–СЃС†СЊ</small>`
                     : '';
                 return `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(resource.name)}"><span>${escapeHtml(resource.name)}</span>${capacityLabel}</button>`;
             }).join('');
             const occupiedHtml = occupiedResources.length > 0
-                ? `<div class="occupied-rooms">Зайняті: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
+                ? `<div class="occupied-rooms">Р—Р°Р№РЅСЏС‚С–: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
                 : '';
             const overCapacityHtml = overCapacityResources.length > 0
-                ? `<div class="occupied-rooms">Мала місткість: ${overCapacityResources.map(r => {
+                ? `<div class="occupied-rooms">РњР°Р»Р° РјС–СЃС‚РєС–СЃС‚СЊ: ${overCapacityResources.map(r => {
                     const capacity = parseInt(r.capacity, 10);
                     return `${escapeHtml(r.name)}${Number.isFinite(capacity) && capacity > 0 ? ` (${capacity})` : ''}`;
                 }).join(', ')}</div>`
                 : '';
-            panel.innerHTML = freeHtml || '<span class="no-free-rooms">Немає доступних ресурсів на цей час</span>';
+            panel.innerHTML = freeHtml || '<span class="no-free-rooms">РќРµРјР°С” РґРѕСЃС‚СѓРїРЅРёС… СЂРµСЃСѓСЂСЃС–РІ РЅР° С†РµР№ С‡Р°СЃ</span>';
             panel.innerHTML += occupiedHtml + overCapacityHtml;
         } else if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
                 `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(room)}"><span>${escapeHtml(room)}</span></button>`
             ).join('') +
-            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
+            (data.occupied.length > 0 ? `<div class="occupied-rooms">Р—Р°Р№РЅСЏС‚С–: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
-            panel.innerHTML = '<span class="no-free-rooms">Всі кімнати зайняті в цей час</span>';
+            panel.innerHTML = '<span class="no-free-rooms">Р’СЃС– РєС–РјРЅР°С‚Рё Р·Р°Р№РЅСЏС‚С– РІ С†РµР№ С‡Р°СЃ</span>';
         }
     } catch (err) {
-        panel.innerHTML = '<span class="no-free-rooms">Помилка завантаження</span>';
+        panel.innerHTML = '<span class="no-free-rooms">РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ</span>';
     }
 }
 
@@ -1505,7 +1769,7 @@ async function validateCertificate() {
     var resultEl = document.getElementById('certValidationResult');
     if (!resultEl) return;
     resultEl.style.display = 'block';
-    resultEl.textContent = '⏳ Перевіряю...';
+    resultEl.textContent = 'вЏі РџРµСЂРµРІС–СЂСЏСЋ...';
     resultEl.style.color = '';
     try {
         var resp = await fetch('/api/certificates/validate/' + encodeURIComponent(code), {
@@ -1513,14 +1777,14 @@ async function validateCertificate() {
         });
         var data = await resp.json();
         if (data.valid) {
-            resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
+            resultEl.innerHTML = 'вњ… РЎРµСЂС‚РёС„С–РєР°С‚ РґС–Р№СЃРЅРёР№: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
             resultEl.style.color = 'var(--success, green)';
         } else {
-            resultEl.textContent = '❌ ' + (data.reason === 'expired' ? 'Прострочений' : data.reason === 'used' ? 'Вже використаний' : data.error || 'Недійсний');
+            resultEl.textContent = 'вќЊ ' + (data.reason === 'expired' ? 'РџСЂРѕСЃС‚СЂРѕС‡РµРЅРёР№' : data.reason === 'used' ? 'Р’Р¶Рµ РІРёРєРѕСЂРёСЃС‚Р°РЅРёР№' : data.error || 'РќРµРґС–Р№СЃРЅРёР№');
             resultEl.style.color = '#ef4444';
         }
     } catch (e) {
-        resultEl.textContent = '❌ Помилка перевірки';
+        resultEl.textContent = 'вќЊ РџРѕРјРёР»РєР° РїРµСЂРµРІС–СЂРєРё';
         resultEl.style.color = '#ef4444';
     }
 }
@@ -1540,7 +1804,7 @@ async function openBookingChat(bookingId) {
             if (typeof openSafeNewTab === 'function') openSafeNewTab(chatUrl);
             else window.open(chatUrl, '_blank', 'noopener,noreferrer');
         } else {
-            if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
+            if (typeof showToast === 'function') showToast('РќРµ РІРґР°Р»РѕСЃСЊ РІС–РґРєСЂРёС‚Рё С‡Р°С‚', 'error');
         }
     } catch (e) { console.error('openBookingChat:', e); }
 }
@@ -1551,9 +1815,9 @@ async function closeBookingPanel(force = false) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(panel, () => closeBookingPanel(true), {
             force,
             isDirty: () => !!window.BookingForm?.isDirty?.(),
-            message: 'Є незбережені зміни в бронюванні. Закрити без збереження?',
-            okText: 'Закрити без збереження',
-            cancelText: 'Повернутись',
+            message: 'Р„ РЅРµР·Р±РµСЂРµР¶РµРЅС– Р·РјС–РЅРё РІ Р±СЂРѕРЅСЋРІР°РЅРЅС–. Р—Р°РєСЂРёС‚Рё Р±РµР· Р·Р±РµСЂРµР¶РµРЅРЅСЏ?',
+            okText: 'Р—Р°РєСЂРёС‚Рё Р±РµР· Р·Р±РµСЂРµР¶РµРЅРЅСЏ',
+            cancelText: 'РџРѕРІРµСЂРЅСѓС‚РёСЃСЊ',
             markClean: false
         });
     }
@@ -1566,20 +1830,20 @@ async function closeBookingPanel(force = false) {
     document.getElementById('panelBackdrop')?.classList.add('hidden');
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
 
-    // v5.5: Скинути режим редагування
+    // v5.5: РЎРєРёРЅСѓС‚Рё СЂРµР¶РёРј СЂРµРґР°РіСѓРІР°РЅРЅСЏ
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
-        if (panelH3) panelH3.textContent = 'Нове бронювання';
-        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
+        if (panelH3) panelH3.textContent = 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+        if (btnSubmit) btnSubmit.textContent = 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
     }
     if (!AppState.editingBookingId && !isMaysternyaBookingContext()) {
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
-        if (panelH3) panelH3.textContent = 'Нове бронювання';
-        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
+        if (panelH3) panelH3.textContent = 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+        if (btnSubmit) btnSubmit.textContent = 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
     }
     if (window.BookingForm?.markClean) BookingForm.markClean();
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
@@ -1587,12 +1851,54 @@ async function closeBookingPanel(force = false) {
 }
 
 let _programIconsHash = null;
+const PROGRAM_CATEGORY_FILTERS = [
+    { id: 'all', label: 'РЈСЃС–', categories: [] },
+    { id: 'animation', label: 'РђРЅС–РјР°С†С–СЏ', categories: ['animation'] },
+    { id: 'wow', label: 'WOW', categories: ['show'] },
+    { id: 'quests', label: 'РљРІРµСЃС‚Рё', categories: ['quest'] },
+    { id: 'photo', label: 'Р¤РѕС‚Рѕ', categories: ['photo'] },
+    { id: 'workshops', label: 'РњРљ', categories: ['masterclass'] },
+    { id: 'pinata', label: 'РџС–РЅСЊСЏС‚Рё', categories: ['pinata'] },
+    { id: 'other', label: 'Р†РЅС€Рµ', categories: ['custom'] }
+];
+
+function renderProgramCategoryChips() {
+    const container = document.getElementById('programCategoryChips');
+    if (!container) return;
+    container.innerHTML = PROGRAM_CATEGORY_FILTERS.map(filter => `
+        <button type="button" class="program-category-chip${BookingDrawerState.selectedProgramCategory === filter.id ? ' is-active' : ''}" data-program-category="${filter.id}">
+            ${escapeHtml(filter.label)}
+        </button>
+    `).join('');
+    container.querySelectorAll('[data-program-category]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            BookingDrawerState.selectedProgramCategory = btn.dataset.programCategory || 'all';
+            renderProgramCategoryChips();
+            filterPrograms();
+        });
+    });
+}
+
+function renderSelectedProgramSummary(program = null) {
+    const details = document.getElementById('programDetails');
+    const empty = document.getElementById('programDetailsEmpty');
+    if (!details) return;
+    if (!program) {
+        if (empty) empty.classList.remove('hidden');
+        ['detailDuration', 'detailHosts', 'detailPrice', 'detailAge', 'detailKids'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = 'вЂ”';
+        });
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+}
 
 async function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
 
     // v7.0: Load products from API (with fallback to PROGRAMS)
-    // Don't clear DOM until data is ready — prevents blank flash
+    // Don't clear DOM until data is ready вЂ” prevents blank flash
     const allProducts = await getProducts();
 
     // Cache: skip rebuild if products haven't changed
@@ -1603,6 +1909,7 @@ async function renderProgramIcons() {
     _programIconsHash = hash;
 
     container.innerHTML = '';
+    renderProgramCategoryChips();
 
     CATEGORY_ORDER_BOOKING.forEach(cat => {
         const programs = allProducts.filter(p => p.category === cat);
@@ -1621,7 +1928,17 @@ async function renderProgramIcons() {
             const icon = document.createElement('div');
             icon.className = `program-icon ${p.category}`;
             icon.dataset.programId = p.id;
-            icon.dataset.search = `${p.code} ${p.name} ${p.label}`.toLowerCase();
+            icon.dataset.category = p.category || '';
+            icon.dataset.search = [
+                p.code,
+                p.name,
+                p.label,
+                p.category,
+                p.duration,
+                p.price,
+                p.age,
+                p.kids
+            ].filter(Boolean).join(' ').toLowerCase();
             const cardName = (typeof TIMELINE_DISPLAY_MODE !== 'undefined' && TIMELINE_DISPLAY_MODE !== 'park') || IS_MAYSTERNYA_DOLI_TIMELINE
                 ? p.name
                 : p.code;
@@ -1650,13 +1967,17 @@ async function renderProgramIcons() {
 
 function filterPrograms() {
     const query = (document.getElementById('programSearch')?.value || '').toLowerCase().trim();
+    const selectedCategory = BookingDrawerState.selectedProgramCategory || 'all';
+    const categoryFilter = PROGRAM_CATEGORY_FILTERS.find(item => item.id === selectedCategory);
     const icons = document.querySelectorAll('#programsIcons .program-icon');
     const headers = document.querySelectorAll('#programsIcons .category-header');
     const grids = document.querySelectorAll('#programsIcons .category-grid');
 
     icons.forEach(icon => {
         const match = !query || icon.dataset.search.includes(query);
-        icon.style.display = match ? '' : 'none';
+        const categoryMatch = !categoryFilter || categoryFilter.id === 'all'
+            || categoryFilter.categories.includes(icon.dataset.category || '');
+        icon.style.display = match && categoryMatch ? '' : 'none';
     });
 
     // Hide empty categories
@@ -1680,17 +2001,17 @@ function selectProgram(programId) {
     if (selectedEl) selectedEl.classList.add('selected');
     document.getElementById('selectedProgram').value = programId;
 
-    const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
-    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
+    const priceText = program.perChild ? `${formatPrice(program.price)}/РґРёС‚` : formatPrice(program.price);
+    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} С…РІ` : 'вЂ”';
     document.getElementById('detailHosts').textContent = program.hosts;
     document.getElementById('detailPrice').textContent = priceText;
 
     const ageEl = document.getElementById('detailAge');
     const kidsEl = document.getElementById('detailKids');
-    if (ageEl) ageEl.textContent = program.age || '—';
-    if (kidsEl) kidsEl.textContent = program.kids || '—';
+    if (ageEl) ageEl.textContent = program.age || 'вЂ”';
+    if (kidsEl) kidsEl.textContent = program.kids || 'вЂ”';
 
-    document.getElementById('programDetails')?.classList.remove('hidden');
+    renderSelectedProgramSummary(program);
 
     if (program.isCustom) {
         document.getElementById('customProgramSection')?.classList.remove('hidden');
@@ -1717,54 +2038,28 @@ function selectProgram(programId) {
         document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     }
 
-    // Package workspace is visible only for park timelines with kitchen enabled.
     const banquetFields = document.getElementById('banquetFields');
-    if (banquetFields) banquetFields.classList.toggle('hidden', !timelineKitchenEnabled());
+    if (banquetFields) banquetFields.classList.toggle('hidden', !isBookingKitchenEnabled() || !timelineKitchenEnabled());
+    filterPrograms();
 
-    // v5.9: Focus mode — collapse unselected categories (Progressive Disclosure)
-    const allHeaders = document.querySelectorAll('#programsIcons .category-header');
-    const allGrids = document.querySelectorAll('#programsIcons .category-grid');
-    const selectedIcon = document.querySelector(`[data-program-id="${programId}"]`);
-    const selectedGrid = selectedIcon ? selectedIcon.closest('.category-grid') : null;
-
-    allHeaders.forEach(h => h.style.display = 'none');
-    allGrids.forEach(g => {
-        if (g !== selectedGrid) g.style.display = 'none';
-    });
-
-    let changeBtn = document.getElementById('changeProgramBtn');
-    if (changeBtn) changeBtn.remove();
-    changeBtn = document.createElement('button');
-    changeBtn.type = 'button';
-    changeBtn.id = 'changeProgramBtn';
-    changeBtn.className = 'btn-change-program';
-    changeBtn.textContent = '🔄 Змінити програму';
-    changeBtn.addEventListener('click', () => {
-        allHeaders.forEach(h => h.style.display = '');
-        allGrids.forEach(g => g.style.display = '');
-        changeBtn.remove();
-    });
-    const iconsContainer = document.getElementById('programsIcons');
-    if (iconsContainer) iconsContainer.parentNode.insertBefore(changeBtn, iconsContainer);
-
-    // К-кість дітей для МК (perChild)
+    // Рљ-РєС–СЃС‚СЊ РґС–С‚РµР№ РґР»СЏ РњРљ (perChild)
     const kidsCountSection = document.getElementById('kidsCountSection');
     if (kidsCountSection) {
         const kidsLabel = kidsCountSection.querySelector('label');
-        if (kidsLabel) kidsLabel.textContent = isEducationTimelineBookingMode() ? 'Кількість учнів' : 'Кількість дітей';
+        if (kidsLabel) kidsLabel.textContent = isEducationTimelineBookingMode() ? 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ' : 'РљС–Р»СЊРєС–СЃС‚СЊ РґС–С‚РµР№';
         if (program.perChild || isEducationTimelineBookingMode()) {
             kidsCountSection.classList.remove('hidden');
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
                 kidsInput.value = '';
-                kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
+                kidsInput.placeholder = isEducationTimelineBookingMode() ? 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ' : '';
                 kidsInput.oninput = () => {
                     const count = parseInt(kidsInput.value) || 0;
                     if (program.perChild) {
                         const total = count * program.price;
                         document.getElementById('detailPrice').textContent = count > 0
                             ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
-                            : `${formatPrice(program.price)}/дит`;
+                            : `${formatPrice(program.price)}/РґРёС‚`;
                     }
                     renderBookingPackageSummary();
                 };
@@ -1790,16 +2085,17 @@ function selectProgram(programId) {
 
     // v20.7.0: Show age recommendations
     showAgeRecommendations();
+    refreshAnimatorSelectsForCurrentSlot().catch(() => {});
     renderBookingMenuProductOptions();
     renderBookingPackageSummary();
 }
 
 // v20.7.0: Age-based program recommendations
 const AGE_RECOMMENDATIONS = {
-    '3-5':  ['Ельза', 'Поні', 'Міньйон'],
-    '6-8':  ['Minecraft', 'Monster High', 'Ніндзя'],
-    '9-12': ['Squid Game', 'Марвел', 'Рок'],
-    '12+':  ['Мафія', 'Рок', 'Марвел'],
+    '3-5':  ['Р•Р»СЊР·Р°', 'РџРѕРЅС–', 'РњС–РЅСЊР№РѕРЅ'],
+    '6-8':  ['Minecraft', 'Monster High', 'РќС–РЅРґР·СЏ'],
+    '9-12': ['Squid Game', 'РњР°СЂРІРµР»', 'Р РѕРє'],
+    '12+':  ['РњР°С„С–СЏ', 'Р РѕРє', 'РњР°СЂРІРµР»'],
 };
 
 function showAgeRecommendations() {
@@ -1824,11 +2120,11 @@ function showAgeRecommendations() {
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     const matching = products.filter(p => recs.some(r => (p.label || p.name || '').toLowerCase().includes(r.toLowerCase())));
 
-    document.getElementById('ageRecoText').textContent = `Вік: ${age} р. → Рекомендовані:`;
+    document.getElementById('ageRecoText').textContent = `Р’С–Рє: ${age} СЂ. в†’ Р РµРєРѕРјРµРЅРґРѕРІР°РЅС–:`;
     const container = document.getElementById('ageRecoPrograms');
     container.innerHTML = matching.length
         ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
-            ${_escB(p.icon) || '🎯'} ${_escB(p.label || p.name)}
+            ${_escB(p.icon) || 'рџЋЇ'} ${_escB(p.label || p.name)}
           </button>`).join('')
         : recs.map(r => `<span class="age-reco-tag">${r}</span>`).join('');
 
@@ -1883,7 +2179,7 @@ function renderScriptCategory(category) {
         <div style="margin-bottom:8px">
             ${s.trigger_phrase ? `<div class="scripts-trigger">${_escB(s.trigger_phrase)}</div>` : ''}
             <div style="font-size:12px;line-height:1.5">${_escB(s.response_text)}</div>
-            <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='Скопійовано ✓';setTimeout(()=>this.textContent='Копіювати',1500)">Копіювати</button>
+            <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='РЎРєРѕРїС–Р№РѕРІР°РЅРѕ вњ“';setTimeout(()=>this.textContent='РљРѕРїС–СЋРІР°С‚Рё',1500)">РљРѕРїС–СЋРІР°С‚Рё</button>
         </div>
     `).join('<hr style="border:none;border-top:1px solid var(--gray-200);margin:6px 0">');
     content.classList.add('visible');
@@ -1894,11 +2190,16 @@ async function populateAnimatorSelectById(selectId, placeholder) {
     if (!select) return;
     const lines = await getLinesForDate(AppState.selectedDate);
     const currentLineId = document.getElementById('bookingLine')?.value;
+    const currentValue = select.value;
     const candidates = await buildAnimatorLineCandidates(lines, currentLineId);
+    const filteredCandidates = await filterAnimatorLineCandidatesForOpenSlot(candidates, {
+        selectedName: currentValue,
+        selectId
+    });
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
-    candidates.forEach(line => {
+    filteredCandidates.forEach(line => {
         const option = document.createElement('option');
         option.value = line.name;
         option.textContent = line.label || line.name;
@@ -1907,38 +2208,7 @@ async function populateAnimatorSelectById(selectId, placeholder) {
         option.dataset.source = line.source || 'timeline_line';
         select.appendChild(option);
     });
-}
-
-function isParkAnimatorStaffMember(staff = {}) {
-    const role = String(staff.role_type || staff.roleType || staff.role || '').trim().toLowerCase();
-    const department = String(staff.department || '').trim().toLowerCase();
-    const position = String(staff.position || '').trim().toLowerCase();
-    return role === 'animator'
-        || department === 'animators'
-        || position.includes('animator')
-        || position.includes('аніматор');
-}
-
-async function fetchParkAnimatorStaffCandidates() {
-    if (!isParkTimelineBookingMode()) return [];
-    try {
-        const response = await fetch('/api/staff?active=true', { headers: getAuthHeaders(false) });
-        if (handleAuthError(response) || !response.ok) return [];
-        const payload = await response.json();
-        const staff = Array.isArray(payload.data) ? payload.data : (Array.isArray(payload.staff) ? payload.staff : []);
-        return staff
-            .filter(isParkAnimatorStaffMember)
-            .map(item => ({
-                id: String(item.id || item.staff_id || '').trim(),
-                name: String(item.name || item.display_name || '').trim(),
-                color: item.color || null,
-                source: 'staff_fallback'
-            }))
-            .filter(item => item.id && item.name);
-    } catch (error) {
-        console.warn('[Booking] Staff animator fallback unavailable', error);
-        return [];
-    }
+    if (currentValue) select.value = currentValue;
 }
 
 async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
@@ -1963,15 +2233,43 @@ async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
         color: line.color,
         source: line.source || 'timeline_line'
     }));
-    (await fetchParkAnimatorStaffCandidates()).forEach(staff => addCandidate({
-        id: staff.id,
-        name: staff.name,
-        color: staff.color,
-        source: staff.source,
-        label: staff.name
-    }));
 
     return Array.from(byKey.values()).sort((a, b) => String(a.name).localeCompare(String(b.name), 'uk'));
+}
+
+function getAnimatorPickerDuration() {
+    const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
+    const selectedProgram = selectedProgramId ? getProductsSync().find(p => p.id === selectedProgramId) : null;
+    const selectedDuration = Number(selectedProgram?.duration || 0);
+    if (selectedDuration > 0) return selectedDuration;
+    const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
+    return Number.isFinite(customDuration) && customDuration > 0 ? customDuration : 0;
+}
+
+function findEditingLinkedBookingIdForLine(bookings = [], lineId) {
+    if (!AppState.editingBookingId || !lineId) return null;
+    return bookings.find(item =>
+        String(item.linkedTo || '') === String(AppState.editingBookingId)
+        && String(item.lineId || '') === String(lineId)
+    )?.id || null;
+}
+
+async function filterAnimatorLineCandidatesForOpenSlot(candidates = [], options = {}) {
+    const time = document.getElementById('bookingTime')?.value || '';
+    const duration = getAnimatorPickerDuration();
+    if (!time || !duration) return Array.isArray(candidates) ? candidates : [];
+    const selectedName = String(options.selectedName || '').trim();
+    const bookings = AppState.editingBookingId ? await getBookingsForDate(AppState.selectedDate) : [];
+    const filtered = [];
+
+    for (const candidate of (candidates || [])) {
+        const preserveSelected = selectedName && String(candidate?.name || '') === selectedName;
+        const excludeId = preserveSelected ? findEditingLinkedBookingIdForLine(bookings, candidate.id) : null;
+        const conflict = await checkConflicts(candidate.id, time, duration, excludeId);
+        if (!conflict.overlap || preserveSelected) filtered.push(candidate);
+    }
+
+    return filtered;
 }
 
 function selectedAnimatorLineCandidate(selectId, selectedName) {
@@ -1985,12 +2283,19 @@ function selectedAnimatorLineCandidate(selectId, selectedName) {
     };
 }
 
+async function refreshAnimatorSelectsForCurrentSlot() {
+    const secondSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
+    const extraHostVisible = !!document.getElementById('extraHostToggle')?.checked;
+    if (secondSectionVisible) await populateSecondAnimatorSelect();
+    if (extraHostVisible) await populateExtraHostAnimatorSelect();
+}
+
 async function populateSecondAnimatorSelect() {
-    await populateAnimatorSelectById('secondAnimatorSelect', 'Оберіть другого аніматора');
+    await populateAnimatorSelectById('secondAnimatorSelect', 'РћР±РµСЂС–С‚СЊ РґСЂСѓРіРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР°');
 }
 
 async function populateExtraHostAnimatorSelect() {
-    await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
+    await populateAnimatorSelectById('extraHostAnimatorSelect', 'РћР±РµСЂС–С‚СЊ Р°РЅС–РјР°С‚РѕСЂР°');
 }
 
 // v7.9.3: Resolve secondAnimator name when line was renamed
@@ -2002,7 +2307,7 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
     // If the stored name matches an option, we're done
     if (select.value === storedName) return;
 
-    // Name doesn't match — try to resolve via linked booking's line_id
+    // Name doesn't match вЂ” try to resolve via linked booking's line_id
     if (bookingId) {
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const mainBooking = bookings.find(b => b.id === bookingId);
@@ -2018,17 +2323,17 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
             }
         }
     }
-    // Couldn't resolve — show warning
-    showNotification(`⚠️ Другий аніматор "${storedName}" не знайдений (лінію перейменовано?)`, 'warning');
+    // Couldn't resolve вЂ” show warning
+    showNotification(`вљ пёЏ Р”СЂСѓРіРёР№ Р°РЅС–РјР°С‚РѕСЂ "${storedName}" РЅРµ Р·РЅР°Р№РґРµРЅРёР№ (Р»С–РЅС–СЋ РїРµСЂРµР№РјРµРЅРѕРІР°РЅРѕ?)`, 'warning');
 }
 
 function updateCustomDuration() {
     const duration = parseInt(document.getElementById('customDuration')?.value) || 30;
-    document.getElementById('detailDuration').textContent = `${duration} хв`;
+    document.getElementById('detailDuration').textContent = `${duration} С…РІ`;
 }
 
 // ==========================================
-// СТВОРЕННЯ БРОНЮВАННЯ
+// РЎРўР’РћР Р•РќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ
 // ==========================================
 
 function getBookingFormData() {
@@ -2036,6 +2341,8 @@ function getBookingFormData() {
     const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
     const hasExplicitProgram = Boolean(selectedProgramId);
     const hasEvent = maysternyaMode ? true : (getBookingWorkspaceHasEvent() || hasExplicitProgram);
+    const kitchenEnabled = isBookingKitchenEnabled();
+    const leadDetailsEnabled = isBookingLeadDetailsEnabled();
     const programId = hasEvent ? selectedProgramId : '';
     const room = document.getElementById('roomSelect')?.value || '';
     const effectiveRoom = maysternyaMode ? (room || MAYSTERNYA_ONLINE_ROOM) : room;
@@ -2047,12 +2354,12 @@ function getBookingFormData() {
     let label = program ? program.label : '';
     if (isEducationTimelineBookingMode() && !program) {
         duration = parseInt(document.getElementById('customDuration')?.value, 10) || 60;
-        label = document.getElementById('educationLessonTitle')?.value?.trim() || 'Заняття';
+        label = document.getElementById('educationLessonTitle')?.value?.trim() || 'Р—Р°РЅСЏС‚С‚СЏ';
     }
 
     if (program && program.isCustom) {
         duration = parseInt(document.getElementById('customDuration')?.value) || 30;
-        const customName = document.getElementById('customName')?.value || 'Інше';
+        const customName = document.getElementById('customName')?.value || 'Р†РЅС€Рµ';
         label = `${customName}(${duration})`;
     }
 
@@ -2068,29 +2375,30 @@ function getBookingFormData() {
     let clientPinataServiceNote = null;
     if (program && program.hasFiller && pinataMode === 'park') {
         pinataFiller = document.getElementById('pinataFillerSelect')?.value;
-        if (pinataFiller) label = `Пін+${pinataFiller}`;
+        if (pinataFiller) label = `РџС–РЅ+${pinataFiller}`;
     } else if (program && pinataMode === 'client') {
         clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
         clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
-        label = 'Клієнтська піньята';
+        label = 'РљР»С–С”РЅС‚СЃСЊРєР° РїС–РЅСЊСЏС‚Р°';
     }
 
     const secondAnimator = program && program.hosts > 1
         ? document.getElementById('secondAnimatorSelect')?.value : null;
 
     const packageTotals = getBookingPackageTotals(program);
-    const leadDetails = getBookingLeadDetails();
-    const scenario = getBookingWorkspaceScenario({ hasEvent, positions: packageTotals.menuPositions });
+    const menuPositions = kitchenEnabled ? packageTotals.menuPositions : [];
+    const leadDetails = leadDetailsEnabled ? getBookingLeadDetails() : {};
+    const scenario = getBookingWorkspaceScenario({ hasEvent, positions: menuPositions, hasKitchen: kitchenEnabled });
     const baseFormData = {
-        hasEvent, scenario, leadDetails,
+        hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
         programId, room: effectiveRoom, program, time, lineId, duration, label,
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
-        menuPositions: packageTotals.menuPositions,
+        menuPositions,
         programBasePrice: packageTotals.programBasePrice,
-        positionsSubtotal: packageTotals.positionsSubtotal,
-        finalTotal: packageTotals.finalTotal
+        positionsSubtotal: kitchenEnabled ? packageTotals.positionsSubtotal : 0,
+        finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice
     };
     baseFormData.educationLesson = getEducationLessonDetails(baseFormData);
 
@@ -2104,8 +2412,8 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     if (conflict.overlap) {
         // v43.5.0: Show details + reveal hidden block instead of generic message
         const cw = conflict.conflictWith;
-        const detail = cw ? ` (${cw.label || cw.programCode || 'бронювання'} о ${cw.time})` : '';
-        showNotification(`❌ Час зайнятий${detail}`, 'error');
+        const detail = cw ? ` (${cw.label || cw.programCode || 'Р±СЂРѕРЅСЋРІР°РЅРЅСЏ'} Рѕ ${cw.time})` : '';
+        showNotification(`вќЊ Р§Р°СЃ Р·Р°Р№РЅСЏС‚РёР№${detail}`, 'error');
         if (cw && cw.id) revealHiddenBooking(cw.id);
         return false;
     }
@@ -2117,14 +2425,14 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
             || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
             || secondCandidate;
         if (secondLine) {
-            // v5.5: При редагуванні виключити linked бронювання цього ж запису
+            // v5.5: РџСЂРё СЂРµРґР°РіСѓРІР°РЅРЅС– РІРёРєР»СЋС‡РёС‚Рё linked Р±СЂРѕРЅСЋРІР°РЅРЅСЏ С†СЊРѕРіРѕ Р¶ Р·Р°РїРёСЃСѓ
             const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
             const linkedId = allBookings.find(b => b.linkedTo === excludeId && b.lineId === secondLine.id)?.id || null;
             const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
                 const cw2 = secondConflict.conflictWith;
-                const detail2 = cw2 ? ` (${cw2.label || cw2.programCode || 'бронювання'} о ${cw2.time})` : '';
-                showNotification(`❌ Час зайнятий у ${secondAnimator}${detail2}`, 'error');
+                const detail2 = cw2 ? ` (${cw2.label || cw2.programCode || 'Р±СЂРѕРЅСЋРІР°РЅРЅСЏ'} Рѕ ${cw2.time})` : '';
+                showNotification(`вќЊ Р§Р°СЃ Р·Р°Р№РЅСЏС‚РёР№ Сѓ ${secondAnimator}${detail2}`, 'error');
                 if (cw2 && cw2.id) revealHiddenBooking(cw2.id);
                 return false;
             }
@@ -2132,7 +2440,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     }
 
     if (conflict.noPause && (!program || program.category !== 'pinata')) {
-        showWarning('⚠️ УВАГА! Немає 15-хвилинної паузи між програмами. Це ДУЖЕ НЕБАЖАНО!');
+        showWarning('вљ пёЏ РЈР’РђР“Рђ! РќРµРјР°С” 15-С…РІРёР»РёРЅРЅРѕС— РїР°СѓР·Рё РјС–Р¶ РїСЂРѕРіСЂР°РјР°РјРё. Р¦Рµ Р”РЈР–Р• РќР•Р‘РђР–РђРќРћ!');
     }
 
     return true;
@@ -2140,9 +2448,9 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
 
 async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
     if (!programId || !program) return true;
-    // v43.10.0: skip duplicate check for animation extras AND custom "Інше" programs.
-    // Two custom bookings (e.g. аквагрим + фотозона) share programId='custom' but
-    // are conceptually different — must not block each other.
+    // v43.10.0: skip duplicate check for animation extras AND custom "Р†РЅС€Рµ" programs.
+    // Two custom bookings (e.g. Р°РєРІР°РіСЂРёРј + С„РѕС‚РѕР·РѕРЅР°) share programId='custom' but
+    // are conceptually different вЂ” must not block each other.
     if (program.category === 'animation' || program.category === 'custom' || program.isCustom || programId === 'anim_extra' || programId === 'custom') return true;
 
     const allBookings = await getBookingsForDate(AppState.selectedDate);
@@ -2158,7 +2466,7 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     });
 
     if (duplicate) {
-        showNotification(`❌ ${program.name} вже є о ${duplicate.time}`, 'error');
+        showNotification(`вќЊ ${program.name} РІР¶Рµ С” Рѕ ${duplicate.time}`, 'error');
         if (duplicate.id) revealHiddenBooking(duplicate.id);
         return false;
     }
@@ -2179,16 +2487,16 @@ function getBookingWorkspaceIdentityLabel(formData = {}) {
 }
 
 function getNoEventBookingLabel(formData = {}) {
-    if (formData.scenario === 'kitchen_only') return 'Кухня';
-    if (formData.scenario === 'event_kitchen') return 'Подія+кухня';
-    return 'Заявка';
+    if (formData.scenario === 'kitchen_only') return 'РљСѓС…РЅСЏ';
+    if (formData.scenario === 'event_kitchen') return 'РџРѕРґС–СЏ+РєСѓС…РЅСЏ';
+    return 'Р—Р°СЏРІРєР°';
 }
 
 function getNoEventProgramName(formData = {}) {
     const identity = getBookingWorkspaceIdentityLabel(formData);
     if (identity) return identity.slice(0, 160);
-    if (formData.scenario === 'kitchen_only') return 'Кухонне замовлення';
-    return 'Лід / заявка';
+    if (formData.scenario === 'kitchen_only') return 'РљСѓС…РѕРЅРЅРµ Р·Р°РјРѕРІР»РµРЅРЅСЏ';
+    return 'Р›С–Рґ / Р·Р°СЏРІРєР°';
 }
 
 function buildBookingWorkspaceExtraData(formData = {}) {
@@ -2240,7 +2548,7 @@ function buildBookingObject(formData, program) {
         programId: hasCatalogProgram ? formData.programId : null,
         programCode: hasCatalogProgram ? program.code : (isEducationLessonBooking ? 'LESSON' : (formData.scenario === 'kitchen_only' ? 'KITCHEN' : 'LEAD')),
         label: hasEvent ? formData.label : noEventLabel,
-        programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Заняття') : noEventName),
+        programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Р†РЅС€Рµ') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Р—Р°РЅСЏС‚С‚СЏ') : noEventName),
         category: hasCatalogProgram ? program.category : (isEducationLessonBooking ? 'education' : 'custom'),
         duration: hasEvent ? formData.duration : 0,
         price: finalPrice,
@@ -2274,11 +2582,13 @@ function buildBookingObject(formData, program) {
         obj.extraData.tags = selectedTags;
     }
 
-    obj.banquetGuests = parseInt(document.getElementById('banquetGuests')?.value) || null;
-    obj.banquetTables = parseInt(document.getElementById('banquetTables')?.value) || null;
-    obj.banquetMenu = document.getElementById('banquetMenu')?.value?.trim()
-        || bookingMenuPositionsToLegacyText(formData.menuPositions || [])
-        || null;
+    obj.banquetGuests = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetGuests')?.value) || null) : null;
+    obj.banquetTables = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetTables')?.value) || null) : null;
+    obj.banquetMenu = formData.kitchenEnabled
+        ? (document.getElementById('banquetMenu')?.value?.trim()
+            || bookingMenuPositionsToLegacyText(formData.menuPositions || [])
+            || null)
+        : null;
 
     if (!obj.extraData) obj.extraData = {};
     obj.extraData.bookingPackage = {
@@ -2294,14 +2604,14 @@ function buildBookingObject(formData, program) {
     if (isEducationTimelineBookingMode() && formData.educationLesson) {
         const lesson = {
             ...formData.educationLesson,
-            title: (formData.educationLesson.title || obj.programName || obj.label || 'Заняття').slice(0, 160),
+            title: (formData.educationLesson.title || obj.programName || obj.label || 'Р—Р°РЅСЏС‚С‚СЏ').slice(0, 160),
             groupName: formData.educationLesson.groupName || obj.groupName || null,
             studentCount: kidsCount || formData.educationLesson.studentCount || null,
             resourceName: formData.educationLesson.resourceName || obj.room || null
         };
         obj.extraData.educationLesson = lesson;
         obj.extraData.bookingWorkspace.lesson = lesson;
-        obj.label = lesson.lessonType === 'exam' ? 'Контроль' : 'Заняття';
+        obj.label = lesson.lessonType === 'exam' ? 'РљРѕРЅС‚СЂРѕР»СЊ' : 'Р—Р°РЅСЏС‚С‚СЏ';
         obj.programName = lesson.title;
         obj.groupName = lesson.groupName || obj.groupName;
         obj.hosts = 1;
@@ -2384,10 +2694,10 @@ function buildMaysternyaClosedSlotBooking() {
     const resourceName = line?.name || presentation.roomOptionLabel || MAYSTERNYA_CLOSED_ROOM;
     const isMaysternya = isMaysternyaBookingContext();
     const room = isMaysternya ? MAYSTERNYA_CLOSED_ROOM : resourceName;
-    const label = isEducationTimelineBookingMode() ? 'Кабінет закрито' : 'Закрито';
+    const label = isEducationTimelineBookingMode() ? 'РљР°Р±С–РЅРµС‚ Р·Р°РєСЂРёС‚Рѕ' : 'Р—Р°РєСЂРёС‚Рѕ';
     const noteText = notes || (isMaysternya
-        ? 'Олександр зайнятий у цей час'
-        : `${resourceName} недоступний у цей час`);
+        ? 'РћР»РµРєСЃР°РЅРґСЂ Р·Р°Р№РЅСЏС‚РёР№ Сѓ С†РµР№ С‡Р°СЃ'
+        : `${resourceName} РЅРµРґРѕСЃС‚СѓРїРЅРёР№ Сѓ С†РµР№ С‡Р°СЃ`);
     const resourceBlock = {
         mode: 'resource_blackout',
         resourceBlocked: true,
@@ -2404,7 +2714,7 @@ function buildMaysternyaClosedSlotBooking() {
         programId: null,
         programCode: 'CLOSED',
         label,
-        programName: isEducationTimelineBookingMode() ? 'Кабінет недоступний' : 'Слот закрито',
+        programName: isEducationTimelineBookingMode() ? 'РљР°Р±С–РЅРµС‚ РЅРµРґРѕСЃС‚СѓРїРЅРёР№' : 'РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ',
         category: 'custom',
         duration,
         price: 0,
@@ -2423,7 +2733,7 @@ function buildMaysternyaClosedSlotBooking() {
         createdAt: new Date().toISOString(),
         status: 'confirmed',
         kidsCount: null,
-        groupName: isEducationTimelineBookingMode() ? resourceName : 'Зайнято',
+        groupName: isEducationTimelineBookingMode() ? resourceName : 'Р—Р°Р№РЅСЏС‚Рѕ',
         programBasePrice: 0,
         menuPositions: [],
         extraData: {
@@ -2459,12 +2769,12 @@ async function closeMaysternyaTimelineSlot() {
     if (btn && btn.disabled) return;
     const booking = buildMaysternyaClosedSlotBooking();
     if (!booking.time || !booking.lineId) {
-        showNotification(isEducationTimelineBookingMode() ? 'Оберіть час у кабінеті' : 'Оберіть час на ресурсі', 'error');
+        showNotification(isEducationTimelineBookingMode() ? 'РћР±РµСЂС–С‚СЊ С‡Р°СЃ Сѓ РєР°Р±С–РЅРµС‚С–' : 'РћР±РµСЂС–С‚СЊ С‡Р°СЃ РЅР° СЂРµСЃСѓСЂСЃС–', 'error');
         return;
     }
     const bookingDateTime = new Date(`${booking.date}T${booking.time}:00`);
     if (bookingDateTime < new Date()) {
-        showNotification('Неможливо закрити слот у минулому.', 'error');
+        showNotification('РќРµРјРѕР¶Р»РёРІРѕ Р·Р°РєСЂРёС‚Рё СЃР»РѕС‚ Сѓ РјРёРЅСѓР»РѕРјСѓ.', 'error');
         return;
     }
     const valid = await validateBookingConflicts(booking.lineId, booking.time, booking.duration, null, null, null);
@@ -2473,13 +2783,13 @@ async function closeMaysternyaTimelineSlot() {
     if (btn) {
         btn.disabled = true;
         btn.dataset.originalText = btn.textContent;
-        btn.textContent = 'Закриваю...';
+        btn.textContent = 'Р—Р°РєСЂРёРІР°СЋ...';
     }
 
     try {
         const result = await apiCreateBooking(booking);
         if (result && result.success === false) {
-            showNotification(result.error || 'Не вдалось закрити слот', 'error');
+            showNotification(result.error || 'РќРµ РІРґР°Р»РѕСЃСЊ Р·Р°РєСЂРёС‚Рё СЃР»РѕС‚', 'error');
             return;
         }
         if (result?.booking?.id) booking.id = result.booking.id;
@@ -2488,13 +2798,13 @@ async function closeMaysternyaTimelineSlot() {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await closeBookingPanel(true);
         await renderTimeline();
-        showNotification('Слот закрито', 'success');
+        showNotification('РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ', 'success');
     } catch (error) {
-        handleError('Закриття слота', error);
+        handleError('Р—Р°РєСЂРёС‚С‚СЏ СЃР»РѕС‚Р°', error);
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = btn.dataset.originalText || (isEducationTimelineBookingMode() ? 'Закрити кабінет' : 'Закрити слот');
+            btn.textContent = btn.dataset.originalText || (isEducationTimelineBookingMode() ? 'Р—Р°РєСЂРёС‚Рё РєР°Р±С–РЅРµС‚' : 'Р—Р°РєСЂРёС‚Рё СЃР»РѕС‚');
         }
     }
 }
@@ -2517,7 +2827,7 @@ async function buildLinkedBookings(booking, program) {
     if (!program || booking.duration <= 0) return linked;
     const lines = await getLinesForDate(AppState.selectedDate);
 
-    // Другий ведучий
+    // Р”СЂСѓРіРёР№ РІРµРґСѓС‡РёР№
     if (program.hosts > 1 && booking.secondAnimator) {
         const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', booking.secondAnimator);
         const secondLine = lines.find(l => l.name === booking.secondAnimator)
@@ -2539,7 +2849,7 @@ async function buildLinkedBookings(booking, program) {
         }
     }
 
-    // Додатковий ведучий (700 ₴/год)
+    // Р”РѕРґР°С‚РєРѕРІРёР№ РІРµРґСѓС‡РёР№ (700 в‚ґ/РіРѕРґ)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect')?.value;
@@ -2552,8 +2862,8 @@ async function buildLinkedBookings(booking, program) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
                 linked.push({
                     date: booking.date, time: booking.time, lineId: extraLine.id,
-                    programId: 'anim_extra', programCode: '+Вед',
-                    label: `+Вед(${booking.duration})`, programName: 'Додатковий ведучий',
+                    programId: 'anim_extra', programCode: '+Р’РµРґ',
+                    label: `+Р’РµРґ(${booking.duration})`, programName: 'Р”РѕРґР°С‚РєРѕРІРёР№ РІРµРґСѓС‡РёР№',
                     category: 'animation', duration: booking.duration, price: extraPrice,
                     hosts: 1, room: booking.room, createdBy: booking.createdBy,
                     status: booking.status
@@ -2588,7 +2898,7 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
         if (primaryName) {
             const off = data.unavailable.find(u => u.name === primaryName);
             if (off) {
-                showNotification(`⚠️ ${primaryName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
+                showNotification(`вљ пёЏ ${primaryName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} РЅР° ${dateStr}`, 'warning');
             }
         }
 
@@ -2596,7 +2906,7 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
         if (secondAnimatorName) {
             const off = data.unavailable.find(u => u.name === secondAnimatorName);
             if (off) {
-                showNotification(`⚠️ ${secondAnimatorName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
+                showNotification(`вљ пёЏ ${secondAnimatorName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} РЅР° ${dateStr}`, 'warning');
             }
         }
     } catch (err) {
@@ -2605,16 +2915,16 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
 }
 
 const STATUS_LABELS_BOOKING = {
-    dayoff: 'вихідний',
-    vacation: 'відпустка',
-    sick: 'лікарняний'
+    dayoff: 'РІРёС…С–РґРЅРёР№',
+    vacation: 'РІС–РґРїСѓСЃС‚РєР°',
+    sick: 'Р»С–РєР°СЂРЅСЏРЅРёР№'
 };
 
 function unlockSubmitBtn() {
     const btn = document.getElementById('bookingSubmitBtn');
     if (btn) {
         btn.disabled = false;
-        btn.textContent = btn.dataset.originalText || 'Додати бронювання';
+        btn.textContent = btn.dataset.originalText || 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
     }
 }
 
@@ -2626,20 +2936,20 @@ async function handleBookingSubmit(e) {
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.dataset.originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Збереження...';
+        submitBtn.textContent = 'Р—Р±РµСЂРµР¶РµРЅРЅСЏ...';
     }
 
     const formData = getBookingFormData();
     const validation = window.BookingForm?.validate ? BookingForm.validate() : { valid: true };
     if (!validation.valid) {
-        showNotification(validation.error || 'Перевірте форму бронювання', 'error');
+        showNotification(validation.error || 'РџРµСЂРµРІС–СЂС‚Рµ С„РѕСЂРјСѓ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
         unlockSubmitBtn();
         return;
     }
 
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
     if (invalidMenuPosition) {
-        showNotification('Перевірте позиції меню: назва, кількість і ціна мають бути коректними', 'error');
+        showNotification('РџРµСЂРµРІС–СЂС‚Рµ РїРѕР·РёС†С–С— РјРµРЅСЋ: РЅР°Р·РІР°, РєС–Р»СЊРєС–СЃС‚СЊ С– С†С–РЅР° РјР°СЋС‚СЊ Р±СѓС‚Рё РєРѕСЂРµРєС‚РЅРёРјРё', 'error');
         unlockSubmitBtn();
         return;
     }
@@ -2651,18 +2961,18 @@ async function handleBookingSubmit(e) {
     }
     syncLegacyBanquetMenuFromPositions();
     if (formData.hasEvent && formData.program?.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
-        showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
+        showNotification('РћР±РµСЂС–С‚СЊ РЅР°РїРѕРІРЅСЋРІР°С‡ РґР»СЏ РїС–РЅСЊСЏС‚Рё', 'error'); unlockSubmitBtn(); return;
     }
     // v8.7: Require second animator for multi-host programs
     if (formData.hasEvent && formData.program?.hosts > 1 && !formData.secondAnimator) {
-        showNotification('Оберіть другого аніматора — ця програма потребує 2 ведучих', 'error'); unlockSubmitBtn(); return;
+        showNotification('РћР±РµСЂС–С‚СЊ РґСЂСѓРіРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР° вЂ” С†СЏ РїСЂРѕРіСЂР°РјР° РїРѕС‚СЂРµР±СѓС” 2 РІРµРґСѓС‡РёС…', 'error'); unlockSubmitBtn(); return;
     }
 
-    // [FIX] Заборона бронювання в минулому
+    // [FIX] Р—Р°Р±РѕСЂРѕРЅР° Р±СЂРѕРЅСЋРІР°РЅРЅСЏ РІ РјРёРЅСѓР»РѕРјСѓ
     if (!AppState.editingBookingId) {
         const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
         if (bookingDateTime < new Date()) {
-            showNotification('Неможливо створити бронювання в минулому. Оберіть майбутній час.', 'error');
+            showNotification('РќРµРјРѕР¶Р»РёРІРѕ СЃС‚РІРѕСЂРёС‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ РІ РјРёРЅСѓР»РѕРјСѓ. РћР±РµСЂС–С‚СЊ РјР°Р№Р±СѓС‚РЅС–Р№ С‡Р°СЃ.', 'error');
             unlockSubmitBtn();
             return;
         }
@@ -2673,18 +2983,18 @@ async function handleBookingSubmit(e) {
         await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
     }
 
-    // v5.5: excludeId для режиму редагування
+    // v5.5: excludeId РґР»СЏ СЂРµР¶РёРјСѓ СЂРµРґР°РіСѓРІР°РЅРЅСЏ
     const excludeId = AppState.editingBookingId || null;
 
     if (formData.hasEvent && formData.duration > 0) {
-        // Валідація конфліктів
+        // Р’Р°Р»С–РґР°С†С–СЏ РєРѕРЅС„Р»С–РєС‚С–РІ
         const valid = await validateBookingConflicts(
             formData.lineId, formData.time, formData.duration,
             formData.program, formData.secondAnimator, excludeId
         );
         if (!valid) { unlockSubmitBtn(); return; }
 
-        // Перевірка дублікатів
+        // РџРµСЂРµРІС–СЂРєР° РґСѓР±Р»С–РєР°С‚С–РІ
         const noDuplicate = await checkDuplicateProgram(
             formData.programId, formData.program, formData.time, formData.duration, excludeId
         );
@@ -2695,16 +3005,16 @@ async function handleBookingSubmit(e) {
         const booking = buildBookingObject(formData, formData.program);
 
         if (AppState.editingBookingId) {
-            // ===== РЕЖИМ РЕДАГУВАННЯ (v5.5) =====
+            // ===== Р Р•Р–РРњ Р Р•Р”РђР“РЈР’РђРќРќРЇ (v5.5) =====
             booking.id = AppState.editingBookingId;
 
-            // Зберегти оригінального автора
+            // Р—Р±РµСЂРµРіС‚Рё РѕСЂРёРіС–РЅР°Р»СЊРЅРѕРіРѕ Р°РІС‚РѕСЂР°
             const oldBookings = await getBookingsForDate(AppState.selectedDate);
             const oldBooking = oldBookings.find(b => b.id === booking.id);
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
-                // v8.3.2: Don't restore old extraData — respect user's choice to clear sizes
+                // v8.3.2: Don't restore old extraData вЂ” respect user's choice to clear sizes
             }
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
@@ -2715,7 +3025,7 @@ async function handleBookingSubmit(e) {
                     unlockSubmitBtn();
                     return;
                 }
-                showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
+                showNotification(updateResult.error || 'РџРѕРјРёР»РєР° РѕРЅРѕРІР»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
                 if (updateResult.conflictBookingId) revealHiddenBooking(updateResult.conflictBookingId);
                 unlockSubmitBtn(); return;
             }
@@ -2734,9 +3044,9 @@ async function handleBookingSubmit(e) {
             closeBookingPanel(true);
             unlockSubmitBtn();
             await renderTimeline();
-            showNotification('Бронювання оновлено!', 'success');
+            showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РѕРЅРѕРІР»РµРЅРѕ!', 'success');
         } else {
-            // ===== РЕЖИМ СТВОРЕННЯ (v5.7: transactional with linked) =====
+            // ===== Р Р•Р–РРњ РЎРўР’РћР Р•РќРќРЇ (v5.7: transactional with linked) =====
             let createResult;
 
             if (shouldCreateEducationLessonSeries(booking)) {
@@ -2752,7 +3062,7 @@ async function handleBookingSubmit(e) {
 
             if (createResult && createResult.success === false) {
                 if (createResult.conflictBookingId) revealHiddenBooking(createResult.conflictBookingId);
-                showNotification(createResult.error || 'Помилка створення бронювання', 'error');
+                showNotification(createResult.error || 'РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
                 unlockSubmitBtn(); return;
             }
             // v5.27: API now returns { booking: { id, ... } }
@@ -2778,10 +3088,10 @@ async function handleBookingSubmit(e) {
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
             const seriesCount = createResult?.createdCount || createdBookings.length;
-            showNotification(seriesCount > 1 ? `Створено серію занять: ${seriesCount}` : 'Бронювання створено!', 'success');
+            showNotification(seriesCount > 1 ? `РЎС‚РІРѕСЂРµРЅРѕ СЃРµСЂС–СЋ Р·Р°РЅСЏС‚СЊ: ${seriesCount}` : 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ СЃС‚РІРѕСЂРµРЅРѕ!', 'success');
         }
     } catch (error) {
-        handleError('Збереження бронювання', error);
+        handleError('Р—Р±РµСЂРµР¶РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', error);
         unlockSubmitBtn();
     }
 }
@@ -2793,31 +3103,31 @@ async function handleBookingSubmit(e) {
 async function handleOptimisticLockConflict(result, localBooking) {
     const serverData = result.currentData;
     if (!serverData) {
-        showNotification('Бронювання було змінено іншим користувачем. Оновіть сторінку.', 'error');
+        showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р±СѓР»Рѕ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ СЃС‚РѕСЂС–РЅРєСѓ.', 'error');
         return;
     }
 
     // Build a summary of what changed
     const changes = [];
-    if (serverData.time !== localBooking.time) changes.push(`Час: ${serverData.time}`);
-    if (serverData.room !== localBooking.room) changes.push(`Кімната: ${serverData.room}`);
-    if (serverData.status !== localBooking.status) changes.push(`Статус: ${serverData.status}`);
-    if (serverData.lineId !== localBooking.lineId) changes.push('Лінія змінена');
-    if (serverData.notes !== localBooking.notes) changes.push('Примітки змінені');
-    if (serverData.kidsCount !== localBooking.kidsCount) changes.push(`К-сть дітей: ${serverData.kidsCount}`);
+    if (serverData.time !== localBooking.time) changes.push(`Р§Р°СЃ: ${serverData.time}`);
+    if (serverData.room !== localBooking.room) changes.push(`РљС–РјРЅР°С‚Р°: ${serverData.room}`);
+    if (serverData.status !== localBooking.status) changes.push(`РЎС‚Р°С‚СѓСЃ: ${serverData.status}`);
+    if (serverData.lineId !== localBooking.lineId) changes.push('Р›С–РЅС–СЏ Р·РјС–РЅРµРЅР°');
+    if (serverData.notes !== localBooking.notes) changes.push('РџСЂРёРјС–С‚РєРё Р·РјС–РЅРµРЅС–');
+    if (serverData.kidsCount !== localBooking.kidsCount) changes.push(`Рљ-СЃС‚СЊ РґС–С‚РµР№: ${serverData.kidsCount}`);
 
     const changesText = changes.length > 0
-        ? `\n\nЗміни на сервері:\n${changes.map(c => `  - ${c}`).join('\n')}`
+        ? `\n\nР—РјС–РЅРё РЅР° СЃРµСЂРІРµСЂС–:\n${changes.map(c => `  - ${c}`).join('\n')}`
         : '';
 
-    const message = `Бронювання було змінено іншим користувачем.${changesText}\n\nЩо зробити?`;
+    const message = `Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р±СѓР»Рѕ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј.${changesText}\n\nР©Рѕ Р·СЂРѕР±РёС‚Рё?`;
 
     // Show custom conflict dialog with two options
     const overwrite = await customConfirm(
         message,
-        'Конфлікт редагування',
-        'Перезаписати',
-        'Оновити дані'
+        'РљРѕРЅС„Р»С–РєС‚ СЂРµРґР°РіСѓРІР°РЅРЅСЏ',
+        'РџРµСЂРµР·Р°РїРёСЃР°С‚Рё',
+        'РћРЅРѕРІРёС‚Рё РґР°РЅС–'
     );
 
     if (overwrite) {
@@ -2828,12 +3138,12 @@ async function handleOptimisticLockConflict(result, localBooking) {
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel(true);
             await renderTimeline();
-            showNotification('Бронювання перезаписано!', 'success');
+            showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РїРµСЂРµР·Р°РїРёСЃР°РЅРѕ!', 'success');
         } else if (retryResult && retryResult.conflict) {
             // Another conflict happened -- extremely unlikely
-            showNotification('Повторний конфлікт. Оновіть сторінку.', 'error');
+            showNotification('РџРѕРІС‚РѕСЂРЅРёР№ РєРѕРЅС„Р»С–РєС‚. РћРЅРѕРІС–С‚СЊ СЃС‚РѕСЂС–РЅРєСѓ.', 'error');
         } else {
-            showNotification(retryResult?.error || 'Помилка збереження', 'error');
+            showNotification(retryResult?.error || 'РџРѕРјРёР»РєР° Р·Р±РµСЂРµР¶РµРЅРЅСЏ', 'error');
         }
     } else {
         // Refresh data: reload bookings and re-open edit form
@@ -2841,7 +3151,7 @@ async function handleOptimisticLockConflict(result, localBooking) {
         await renderTimeline();
         // Re-open editing with fresh data
         await editBooking(localBooking.id);
-        showNotification('Дані оновлено з сервера', 'info');
+        showNotification('Р”Р°РЅС– РѕРЅРѕРІР»РµРЅРѕ Р· СЃРµСЂРІРµСЂР°', 'info');
     }
 }
 
@@ -2898,7 +3208,7 @@ function revealHiddenBooking(bookingId) {
 }
 
 // ==========================================
-// ДЕТАЛІ БРОНЮВАННЯ
+// Р”Р•РўРђР›Р† Р‘Р РћРќР®Р’РђРќРќРЇ
 // ==========================================
 
 // v8.6.1: Generate unique gradient for each booking based on its ID
@@ -2918,10 +3228,10 @@ function generateBookingHeaderGradient(booking) {
 // v8.6.1: Category icon mapping
 function getCategoryIcon(category) {
     const icons = {
-        quest: '🗝️', animation: '🎭', show: '🎪',
-        photo: '📸', masterclass: '🎨', pinata: '🪅', custom: '⭐'
+        quest: 'рџ—ќпёЏ', animation: 'рџЋ­', show: 'рџЋЄ',
+        photo: 'рџ“ё', masterclass: 'рџЋЁ', pinata: 'рџЄ…', custom: 'в­ђ'
     };
-    return icons[category] || '📋';
+    return icons[category] || 'рџ“‹';
 }
 
 function renderBookingBanquetLinksDetail(booking, allBookings = []) {
@@ -2938,18 +3248,18 @@ function renderBookingBanquetLinksDetail(booking, allBookings = []) {
             <button type="button"
                     class="booking-banquet-unlink-btn"
                     onclick="removeBookingBanquetLink('${escapeHtml(String(booking.id))}', '${escapeHtml(targetId)}')">
-                Прибрати
+                РџСЂРёР±СЂР°С‚Рё
             </button>`;
         return `
             <div class="booking-banquet-link-chip">
-                <span class="booking-banquet-link-mark">↔</span>
+                <span class="booking-banquet-link-mark">в†”</span>
                 <span class="booking-banquet-link-target">${escapeHtml(targetLabel)}</span>
                 ${unlinkAction}
             </div>`;
     }).join('');
     return `
         <div class="booking-banquet-links-detail">
-            <div class="booking-banquet-links-title">Банкетні звʼязки</div>
+            <div class="booking-banquet-links-title">Р‘Р°РЅРєРµС‚РЅС– Р·РІКјСЏР·РєРё</div>
             <div class="booking-banquet-links-list">${rows}</div>
         </div>`;
 }
@@ -2958,21 +3268,21 @@ function renderEducationLessonDetail(booking) {
     const lesson = educationLessonDetailsFromBooking(booking);
     if (!lesson || Object.keys(lesson).length === 0) return '';
     const rows = [
-        lesson.title ? ['Заняття', lesson.title] : null,
-        lesson.teacherName ? ['Викладач', lesson.teacherName] : null,
-        lesson.groupName || booking.groupName ? ['Група / клас', lesson.groupName || booking.groupName] : null,
-        lesson.courseCode ? ['Курс / серія', lesson.courseCode] : null,
-        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Серія', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
-        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Повторення', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
-        lesson.resourceName || booking.room ? ['Кабінет', lesson.resourceName || booking.room] : null
+        lesson.title ? ['Р—Р°РЅСЏС‚С‚СЏ', lesson.title] : null,
+        lesson.teacherName ? ['Р’РёРєР»Р°РґР°С‡', lesson.teacherName] : null,
+        lesson.groupName || booking.groupName ? ['Р“СЂСѓРїР° / РєР»Р°СЃ', lesson.groupName || booking.groupName] : null,
+        lesson.courseCode ? ['РљСѓСЂСЃ / СЃРµСЂС–СЏ', lesson.courseCode] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['РЎРµСЂС–СЏ', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['РџРѕРІС‚РѕСЂРµРЅРЅСЏ', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
+        lesson.resourceName || booking.room ? ['РљР°Р±С–РЅРµС‚', lesson.resourceName || booking.room] : null
     ].filter(Boolean);
     if (!rows.length) return '';
     const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && !isViewer()
-        ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
+        ? `<div class="booking-detail-row"><span class="label">РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Р’С–РґРєСЂРёС‚Рё СЃРµСЂС–СЋ</button></span></div>`
         : '';
     return `
         <div class="booking-lesson-detail">
-            <div class="booking-lesson-detail-title">Навчальний запис</div>
+            <div class="booking-lesson-detail-title">РќР°РІС‡Р°Р»СЊРЅРёР№ Р·Р°РїРёСЃ</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
             ${seriesActions}
         </div>`;
@@ -2991,20 +3301,20 @@ async function showBookingDetails(bookingId) {
     if (isMaysternyaClosedSlotBooking(booking)) {
         const actions = isViewer() ? '' : `
             <div class="booking-actions modal-footer-sticky">
-                <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Відкрити слот</button>
+                <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Р’С–РґРєСЂРёС‚Рё СЃР»РѕС‚</button>
             </div>
         `;
         document.getElementById('bookingDetails').innerHTML = `
             <div class="booking-detail-header booking-detail-header--closed-slot">
                 <div>
-                    <h3>Слот закрито</h3>
-                    <p>${escapeHtml(line ? line.name : 'Олександр')} · ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</p>
+                    <h3>РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ</h3>
+                    <p>${escapeHtml(line ? line.name : 'РћР»РµРєСЃР°РЅРґСЂ')} В· ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</p>
                 </div>
             </div>
-            <div class="booking-detail-row"><span class="label">Дата:</span><span class="value">${escapeHtml(booking.date)}</span></div>
-            <div class="booking-detail-row"><span class="label">Час:</span><span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span></div>
-            <div class="booking-detail-row"><span class="label">Спеціаліст:</span><span class="value">${escapeHtml(line ? line.name : '-')}</span></div>
-            ${booking.notes ? `<div class="booking-detail-row"><span class="label">Коментар:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+            <div class="booking-detail-row"><span class="label">Р”Р°С‚Р°:</span><span class="value">${escapeHtml(booking.date)}</span></div>
+            <div class="booking-detail-row"><span class="label">Р§Р°СЃ:</span><span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span></div>
+            <div class="booking-detail-row"><span class="label">РЎРїРµС†С–Р°Р»С–СЃС‚:</span><span class="value">${escapeHtml(line ? line.name : '-')}</span></div>
+            ${booking.notes ? `<div class="booking-detail-row"><span class="label">РљРѕРјРµРЅС‚Р°СЂ:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
             ${actions}
         `;
         document.getElementById('bookingModal')?.classList.remove('hidden');
@@ -3014,9 +3324,9 @@ async function showBookingDetails(bookingId) {
     const program = getProductsSync().find(p => p.id === booking.programId);
     const lesson = educationLessonDetailsFromBooking(booking);
     const isEducationBooking = Boolean(lesson && Object.keys(lesson).length);
-    const lineRoleLabel = isEducationBooking ? 'Кабінет' : 'Аніматор';
+    const lineRoleLabel = isEducationBooking ? 'РљР°Р±С–РЅРµС‚' : 'РђРЅС–РјР°С‚РѕСЂ';
     const descriptionHtml = program && program.description
-        ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
+        ? `<div class="booking-detail-description"><span class="label">РћРїРёСЃ:</span><p>${escapeHtml(program.description)}</p></div>`
         : '';
 
     // B2: Per-event invite URL with booking details
@@ -3029,13 +3339,13 @@ async function showBookingDetails(bookingId) {
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
     const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
-    const inviteShareText = `Запрошуємо на ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх`;
+    const inviteShareText = `Р—Р°РїСЂРѕС€СѓС”РјРѕ РЅР° ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ вЂ” РІСѓР». Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ 31/2, 3 РїРѕРІРµСЂС…`;
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
     const lineSwitchHtml = otherLines.length > 0 ? `
         <div class="booking-line-switch">
-            <span class="label">Перемістити на лінію:</span>
+            <span class="label">РџРµСЂРµРјС–СЃС‚РёС‚Рё РЅР° Р»С–РЅС–СЋ:</span>
             <div class="line-switch-buttons">
                 ${otherLines.map(l => `<button onclick="switchBookingLine('${escapeHtml(booking.id)}', '${escapeHtml(l.id)}')" style="border-color: ${escapeHtml(l.color)}; color: ${escapeHtml(l.color)}">${escapeHtml(l.name)}</button>`).join('')}
             </div>
@@ -3043,7 +3353,7 @@ async function showBookingDetails(bookingId) {
 
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
-            <span class="label">Перенести час:</span>
+            <span class="label">РџРµСЂРµРЅРµСЃС‚Рё С‡Р°СЃ:</span>
             <div class="time-shift-buttons">
                 <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -30)">-30</button>
                 <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -15)">-15</button>
@@ -3055,25 +3365,25 @@ async function showBookingDetails(bookingId) {
         </div>
         ${lineSwitchHtml}
         <div class="invite-section">
-            <div class="invite-section-header">🎉 Запрошення для клієнта</div>
+            <div class="invite-section-header">рџЋ‰ Р—Р°РїСЂРѕС€РµРЅРЅСЏ РґР»СЏ РєР»С–С”РЅС‚Р°</div>
             <div class="invite-preview">
-                <span>📅 ${escapeHtml(booking.date)}</span>
-                <span>🕐 ${escapeHtml(booking.time)}</span>
-                <span>🎪 ${escapeHtml(booking.programName || booking.label)}</span>
-                <span>🏠 ${escapeHtml(booking.room)}</span>
+                <span>рџ“… ${escapeHtml(booking.date)}</span>
+                <span>рџ•ђ ${escapeHtml(booking.time)}</span>
+                <span>рџЋЄ ${escapeHtml(booking.programName || booking.label)}</span>
+                <span>рџЏ  ${escapeHtml(booking.room)}</span>
             </div>
             <div class="invite-actions">
-                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
-                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">📋 Копіювати</button>
-                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
+                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">рџ‘Ѓ Р’С–РґРєСЂРёС‚Рё</a>
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">рџ“‹ РљРѕРїС–СЋРІР°С‚Рё</button>
+                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">рџ“¤ РџРѕРґС–Р»РёС‚РёСЃСЏ</button>' : ''}
             </div>
         </div>
         <div class="booking-actions modal-footer-sticky">
-            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
-            <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
-            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
-            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">💬 Чат команди</button>
-            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
+            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">вњЏпёЏ Р РµРґР°РіСѓРІР°С‚Рё</button>
+            <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">рџ“‹ РџРѕРІС‚РѕСЂРёС‚Рё</button>
+            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">рџ”„ РџРѕРІС‚РѕСЂСЋРІР°РЅРµ</button>
+            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">рџ’¬ Р§Р°С‚ РєРѕРјР°РЅРґРё</button>
+            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Р’РёРґР°Р»РёС‚Рё</button>
         </div>
     `;
 
@@ -3088,56 +3398,56 @@ async function showBookingDetails(bookingId) {
                 <span style="font-size:28px;">${categoryIcon}</span>
                 <div>
                     <h3 style="margin:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.3);">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.programName)}</h3>
-                    <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' · ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} · #${escapeHtml(uniqueCode)}</p>
+                    <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' В· ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} В· #${escapeHtml(uniqueCode)}</p>
                 </div>
             </div>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.date)}">
-            <span class="label">Дата:</span>
+            <span class="label">Р”Р°С‚Р°:</span>
             <span class="value">${escapeHtml(booking.date)}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
+            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.time)} - ${escapeHtml(endTime)}">
-            <span class="label">Час:</span>
+            <span class="label">Р§Р°СЃ:</span>
             <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
+            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
             <span class="label">${lineRoleLabel}:</span>
             <span class="value">${escapeHtml(line ? line.name : '-')}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
+            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
         </div>
         <div class="booking-detail-row">
-            <span class="label">Ведучих:</span>
+            <span class="label">Р’РµРґСѓС‡РёС…:</span>
             <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
         </div>
-        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
+        ${booking.costume ? `<div class="booking-detail-row"><span class="label">РљРѕСЃС‚СЋРј:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
         ${renderPinataDetailRows(booking)}
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
-            <span class="label">Ціна:</span>
+            <span class="label">Р¦С–РЅР°:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
+            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
         </div>
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}
         ${renderBookingPackageDetail(booking)}
-        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
+        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'РЈС‡РЅС–РІ' : 'Р”С–С‚РµР№'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
-            <span class="label">Статус:</span>
-            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
+            <span class="label">РЎС‚Р°С‚СѓСЃ:</span>
+            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? 'вЏі РџРѕРїРµСЂРµРґРЅС”' : 'вњ… РџС–РґС‚РІРµСЂРґР¶РµРЅРµ'}</span>
         </div>
-        ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="Скопіювати">📋</button></div>` : ''}
-        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
+        ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">РџСЂРёРјС–С‚РєРё:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button></div>` : ''}
+        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Р“СЂСѓРїР°:</span><span class="value">рџЋЄ ${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${renderBookingBanquetLinksDetail(booking, bookings)}
         <div id="bookingCustomerBlock"></div>
-        ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
+        ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">РћРЅРѕРІР»РµРЅРѕ:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         <div class="booking-detail-row booking-detail-row--summary" data-copy="${escapeHtml(booking.date)} ${escapeHtml(booking.time)}-${escapeHtml(endTime)} ${escapeHtml(booking.programName)} ${escapeHtml(booking.room)} ${escapeHtml(line ? line.name : '')} ${escapeHtml(formatPrice(booking.price))}">
-            <button type="button" class="detail-copy-summary-btn" title="Скопіювати всю інформацію">📋 Скопіювати все</button>
+            <button type="button" class="detail-copy-summary-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃСЋ С–РЅС„РѕСЂРјР°С†С–СЋ">рџ“‹ РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃРµ</button>
         </div>
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
-                ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
+                ${booking.status === 'preliminary' ? 'вњ… РџС–РґС‚РІРµСЂРґРёС‚Рё' : 'вЏі Р—СЂРѕР±РёС‚Рё РїРѕРїРµСЂРµРґРЅС–Рј'}
             </button>
         </div>` : ''}
         ${editControls}
@@ -3151,8 +3461,8 @@ async function showBookingDetails(bookingId) {
             const text = this.closest('[data-copy]')?.dataset.copy;
             if (text) {
                 navigator.clipboard.writeText(text);
-                this.textContent = '✓';
-                setTimeout(() => this.textContent = '📋', 800);
+                this.textContent = 'вњ“';
+                setTimeout(() => this.textContent = 'рџ“‹', 800);
             }
         });
     });
@@ -3162,76 +3472,76 @@ async function showBookingDetails(bookingId) {
             const text = this.closest('[data-copy]')?.dataset.copy;
             if (text) {
                 navigator.clipboard.writeText(text);
-                this.textContent = '✓ Скопійовано';
-                setTimeout(() => this.textContent = '📋 Скопіювати все', 800);
+                this.textContent = 'вњ“ РЎРєРѕРїС–Р№РѕРІР°РЅРѕ';
+                setTimeout(() => this.textContent = 'рџ“‹ РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃРµ', 800);
             }
         });
     }
 
-    // v24.3.1: CRM — smart hyperlinks + contextual actions
+    // v24.3.1: CRM вЂ” smart hyperlinks + contextual actions
     if (booking.customerId) {
         apiGetCustomer(booking.customerId).then(customer => {
             const block = document.getElementById('bookingCustomerBlock');
             if (!block || !customer) return;
             const rows = [];
-            // Name — clickable link to CRM card
+            // Name вЂ” clickable link to CRM card
             rows.push(`<div class="customer-row customer-row--name">
-                <span class="customer-row-icon">👤</span>
-                <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Відкрити картку клієнта">${escapeHtml(customer.name)}</a>
+                <span class="customer-row-icon">рџ‘¤</span>
+                <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Р’С–РґРєСЂРёС‚Рё РєР°СЂС‚РєСѓ РєР»С–С”РЅС‚Р°">${escapeHtml(customer.name)}</a>
                 <span class="customer-row-actions">
-                    <button type="button" class="customer-action-btn" title="Скопіювати ім'я" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                    <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё С–Рј'СЏ" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
                 </span>
             </div>`);
-            // Phone — tel: link + copy + TG
+            // Phone вЂ” tel: link + copy + TG
             if (customer.phone) {
                 const cleanPhone = customer.phone.replace(/[^+\d]/g, '');
                 rows.push(`<div class="customer-row customer-row--phone">
-                    <span class="customer-row-icon">📞</span>
-                    <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Зателефонувати">${escapeHtml(customer.phone)}</a>
+                    <span class="customer-row-icon">рџ“ћ</span>
+                    <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Р—Р°С‚РµР»РµС„РѕРЅСѓРІР°С‚Рё">${escapeHtml(customer.phone)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
-                        <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="Написати в Telegram">💬</a>
+                        <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
+                        <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="РќР°РїРёСЃР°С‚Рё РІ Telegram">рџ’¬</a>
                     </span>
                 </div>`);
             }
-            // Instagram — link to profile + copy
+            // Instagram вЂ” link to profile + copy
             if (customer.instagram) {
                 const igName = customer.instagram.replace(/^@/, '');
                 rows.push(`<div class="customer-row customer-row--ig">
-                    <span class="customer-row-icon">📸</span>
-                    <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Відкрити Instagram">@${escapeHtml(igName)}</a>
+                    <span class="customer-row-icon">рџ“ё</span>
+                    <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Р’С–РґРєСЂРёС‚Рё Instagram">@${escapeHtml(igName)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                        <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
                     </span>
                 </div>`);
             }
-            // Child — birthday + age
+            // Child вЂ” birthday + age
             if (customer.childName) {
                 let childText = escapeHtml(customer.childName);
                 if (customer.childBirthday) {
                     const bd = new Date(customer.childBirthday);
                     const age = Math.floor((new Date() - bd) / (365.25 * 24 * 60 * 60 * 1000));
-                    childText += ` <span class="customer-age">${age} р. (${bd.toLocaleDateString('uk-UA')})</span>`;
+                    childText += ` <span class="customer-age">${age} СЂ. (${bd.toLocaleDateString('uk-UA')})</span>`;
                 }
                 rows.push(`<div class="customer-row customer-row--child">
-                    <span class="customer-row-icon">🎂</span>
+                    <span class="customer-row-icon">рџЋ‚</span>
                     <span>${childText}</span>
                 </div>`);
             }
             // Visit stats
             if (customer.totalBookings) {
                 const visits = customer.totalBookings;
-                const suffix = visits === 1 ? '' : visits < 5 ? 'и' : 'ів';
+                const suffix = visits === 1 ? '' : visits < 5 ? 'Рё' : 'С–РІ';
                 rows.push(`<div class="customer-row customer-row--stats">
-                    <span class="customer-row-icon">📊</span>
-                    <span>${visits} візит${suffix} · ${formatPrice(customer.totalSpent)}</span>
+                    <span class="customer-row-icon">рџ“Љ</span>
+                    <span>${visits} РІС–Р·РёС‚${suffix} В· ${formatPrice(customer.totalSpent)}</span>
                 </div>`);
             }
             block.innerHTML = `
                 <div class="booking-customer-info booking-customer-info--smart">
                     <div class="customer-header">
-                        <span>Клієнт</span>
-                        <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-crm-link" title="Відкрити повну картку">Картка →</a>
+                        <span>РљР»С–С”РЅС‚</span>
+                        <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-crm-link" title="Р’С–РґРєСЂРёС‚Рё РїРѕРІРЅСѓ РєР°СЂС‚РєСѓ">РљР°СЂС‚РєР° в†’</a>
                     </div>
                     ${rows.join('')}
                 </div>`;
@@ -3240,7 +3550,7 @@ async function showBookingDetails(bookingId) {
 }
 
 // ==========================================
-// РЕДАГУВАННЯ БРОНЮВАННЯ (v5.5)
+// Р Р•Р”РђР“РЈР’РђРќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ (v5.5)
 // ==========================================
 
 async function editBooking(bookingId) {
@@ -3250,22 +3560,22 @@ async function editBooking(bookingId) {
 
     closeAllModals();
 
-    // Встановити режим редагування
+    // Р’СЃС‚Р°РЅРѕРІРёС‚Рё СЂРµР¶РёРј СЂРµРґР°РіСѓРІР°РЅРЅСЏ
     AppState.editingBookingId = bookingId;
     // Store updatedAt for optimistic locking
     AppState.editingBookingUpdatedAt = booking.updatedAt || null;
 
-    // Відкрити панель з даними бронювання
+    // Р’С–РґРєСЂРёС‚Рё РїР°РЅРµР»СЊ Р· РґР°РЅРёРјРё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ
     await openBookingPanel(booking.time, booking.lineId);
 
-    // Змінити заголовок і кнопку
+    // Р—РјС–РЅРёС‚Рё Р·Р°РіРѕР»РѕРІРѕРє С– РєРЅРѕРїРєСѓ
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
     const editBtn = document.querySelector('#bookingForm .btn-submit');
-    if (editH3) editH3.textContent = 'Редагувати бронювання';
-    if (editBtn) editBtn.textContent = 'Зберегти зміни';
+    if (editH3) editH3.textContent = 'Р РµРґР°РіСѓРІР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+    if (editBtn) editBtn.textContent = 'Р—Р±РµСЂРµРіС‚Рё Р·РјС–РЅРё';
     hydrateBookingWorkspace(booking);
 
-    // Заповнити форму
+    // Р—Р°РїРѕРІРЅРёС‚Рё С„РѕСЂРјСѓ
     document.getElementById('roomSelect').value = booking.room || '';
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = booking.notes || '';
@@ -3273,11 +3583,11 @@ async function editBooking(bookingId) {
     if (groupEditInput) groupEditInput.value = booking.groupName || '';
     hydrateEducationLessonFields(booking);
 
-    // Вибрати програму
+    // Р’РёР±СЂР°С‚Рё РїСЂРѕРіСЂР°РјСѓ
     if (booking.programId) {
         selectProgram(booking.programId);
 
-        // Кастомна програма
+        // РљР°СЃС‚РѕРјРЅР° РїСЂРѕРіСЂР°РјР°
         const program = getProductsSync().find(p => p.id === booking.programId);
         if (program && program.isCustom) {
             const customName = document.getElementById('customName');
@@ -3306,7 +3616,7 @@ async function editBooking(bookingId) {
             }
         }
 
-        // К-кість дітей (МК)
+        // Рљ-РєС–СЃС‚СЊ РґС–С‚РµР№ (РњРљ)
         if (program && (program.perChild || isEducationTimelineBookingMode()) && booking.kidsCount) {
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
@@ -3325,7 +3635,7 @@ async function editBooking(bookingId) {
         }
     }
 
-    // v15.1: CRM — populate customer data if linked
+    // v15.1: CRM вЂ” populate customer data if linked
     if (booking.customerId) {
         const customerToggle = document.getElementById('customerDataToggle');
         if (customerToggle) {
@@ -3347,7 +3657,7 @@ async function editBooking(bookingId) {
                     const info = document.getElementById('customerInfo');
                     const badge = document.getElementById('customerVisitBadge');
                     if (info && badge) {
-                        badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
+                        badge.textContent = `${customer.totalBookings} РІС–Р·РёС‚${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'Рё' : 'С–РІ'}`;
                         info.classList.remove('hidden');
                     }
                 }
@@ -3356,11 +3666,11 @@ async function editBooking(bookingId) {
     }
     hydrateBookingPackageWorkspace(booking);
 
-    // Статус
+    // РЎС‚Р°С‚СѓСЃ
     const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
     if (statusRadio) statusRadio.checked = true;
 
-    // Другий аніматор
+    // Р”СЂСѓРіРёР№ Р°РЅС–РјР°С‚РѕСЂ
     if (booking.secondAnimator) {
         await populateSecondAnimatorSelect();
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
@@ -3378,18 +3688,18 @@ async function duplicateBooking(bookingId) {
 
     closeAllModals();
 
-    // НЕ встановлюємо editingBookingId — це створення нового
+    // РќР• РІСЃС‚Р°РЅРѕРІР»СЋС”РјРѕ editingBookingId вЂ” С†Рµ СЃС‚РІРѕСЂРµРЅРЅСЏ РЅРѕРІРѕРіРѕ
     AppState.editingBookingId = null;
 
     await openBookingPanel(booking.time, booking.lineId);
 
-    // Заголовок для дублювання
+    // Р—Р°РіРѕР»РѕРІРѕРє РґР»СЏ РґСѓР±Р»СЋРІР°РЅРЅСЏ
     const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
-    if (dupH3) dupH3.textContent = 'Повторити бронювання';
-    document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
+    if (dupH3) dupH3.textContent = 'РџРѕРІС‚РѕСЂРёС‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+    document.querySelector('#bookingForm .btn-submit').textContent = 'РЎС‚РІРѕСЂРёС‚Рё РєРѕРїС–СЋ';
     hydrateBookingWorkspace(booking);
 
-    // Pre-fill форму (ідентично editBooking)
+    // Pre-fill С„РѕСЂРјСѓ (С–РґРµРЅС‚РёС‡РЅРѕ editBooking)
     document.getElementById('roomSelect').value = booking.room || '';
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = booking.notes || '';
@@ -3469,7 +3779,7 @@ async function duplicateBooking(bookingId) {
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
 
-    showNotification('Форму заповнено — оберіть час та аніматора', 'info');
+    showNotification('Р¤РѕСЂРјСѓ Р·Р°РїРѕРІРЅРµРЅРѕ вЂ” РѕР±РµСЂС–С‚СЊ С‡Р°СЃ С‚Р° Р°РЅС–РјР°С‚РѕСЂР°', 'info');
 }
 
 // ==========================================
@@ -3481,10 +3791,10 @@ function copyInviteLink(btn) {
     navigator.clipboard.writeText(url).then(() => {
         if (btn) {
             const original = btn.innerHTML;
-            btn.innerHTML = '✅ Скопійовано!';
+            btn.innerHTML = 'вњ… РЎРєРѕРїС–Р№РѕРІР°РЅРѕ!';
             setTimeout(() => { btn.innerHTML = original; }, 2000);
         }
-    }).catch(() => showNotification('Не вдалося скопіювати', 'error'));
+    }).catch(() => showNotification('РќРµ РІРґР°Р»РѕСЃСЏ СЃРєРѕРїС–СЋРІР°С‚Рё', 'error'));
 }
 
 function shareInviteLink() {
@@ -3497,20 +3807,20 @@ function shareInviteLink() {
         const url = link.href;
         const spans = preview ? preview.querySelectorAll('span') : [];
         const text = spans.length > 0
-            ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
-            : 'Запрошуємо на свято! Парк Закревського Періоду';
+            ? `Р—Р°РїСЂРѕС€СѓС”РјРѕ! ${Array.from(spans).map(s => s.textContent).join(' | ')} вЂ” РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ`
+            : 'Р—Р°РїСЂРѕС€СѓС”РјРѕ РЅР° СЃРІСЏС‚Рѕ! РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ';
         if (navigator.share) {
-            navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
+            navigator.share({ title: 'РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ', text, url }).catch(() => {});
         } else {
             copyInviteLink(url);
         }
     } catch (e) {
-        showNotification('Поділитися не вдалося', 'error');
+        showNotification('РџРѕРґС–Р»РёС‚РёСЃСЏ РЅРµ РІРґР°Р»РѕСЃСЏ', 'error');
     }
 }
 
 // ==========================================
-// ВИДАЛЕННЯ БРОНЮВАННЯ
+// Р’РР”РђР›Р•РќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ
 // ==========================================
 
 function ensureEducationSeriesModal() {
@@ -3521,11 +3831,11 @@ function ensureEducationSeriesModal() {
     modal.className = 'modal hidden';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-label', 'Керування серією занять');
+    modal.setAttribute('aria-label', 'РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ Р·Р°РЅСЏС‚СЊ');
     modal.innerHTML = `
         <div class="modal-content modal-wide">
             <span class="modal-close" onclick="closeEducationSeriesManager()">&times;</span>
-            <h3>Серія занять</h3>
+            <h3>РЎРµСЂС–СЏ Р·Р°РЅСЏС‚СЊ</h3>
             <div id="educationSeriesManagerBody" class="education-series-manager"></div>
         </div>`;
     document.body.appendChild(modal);
@@ -3547,7 +3857,7 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
         return `<div class="education-series-row${booking.status === 'cancelled' ? ' is-cancelled' : ''}">
             <div>
                 <strong>${escapeHtml(booking.date)} ${escapeHtml(booking.time)} ${escapeHtml(seriesPosition)}</strong>
-                <small>${escapeHtml(title)}${lesson.teacherName ? ' · ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' · ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
+                <small>${escapeHtml(title)}${lesson.teacherName ? ' В· ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' В· ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
             </div>
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${escapeHtml(booking.status || 'confirmed')}</span>
         </div>`;
@@ -3556,15 +3866,15 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
         <div class="education-series-manager-head">
             <div>
                 <strong>${escapeHtml(seriesId)}</strong>
-                <p class="digest-hint">Знайдено занять: ${bookings.length}. Скасування працює тільки в активному бізнес-контексті.</p>
+                <p class="digest-hint">Р—РЅР°Р№РґРµРЅРѕ Р·Р°РЅСЏС‚СЊ: ${bookings.length}. РЎРєР°СЃСѓРІР°РЅРЅСЏ РїСЂР°С†СЋС” С‚С–Р»СЊРєРё РІ Р°РєС‚РёРІРЅРѕРјСѓ Р±С–Р·РЅРµСЃ-РєРѕРЅС‚РµРєСЃС‚С–.</p>
             </div>
         </div>
-        <div class="education-series-manager-list">${rows || '<div class="empty-state-text">У серії немає активних занять.</div>'}</div>
+        <div class="education-series-manager-list">${rows || '<div class="empty-state-text">РЈ СЃРµСЂС–С— РЅРµРјР°С” Р°РєС‚РёРІРЅРёС… Р·Р°РЅСЏС‚СЊ.</div>'}</div>
         <div class="education-series-manager-actions">
-            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Закрити</button>
+            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Р—Р°РєСЂРёС‚Рё</button>
             <span>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати майбутні</button>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати всю серію</button>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">РЎРєР°СЃСѓРІР°С‚Рё РјР°Р№Р±СѓС‚РЅС–</button>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">РЎРєР°СЃСѓРІР°С‚Рё РІСЃСЋ СЃРµСЂС–СЋ</button>
             </span>
         </div>`;
 }
@@ -3572,13 +3882,13 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
 async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
     const modal = ensureEducationSeriesModal();
     const body = document.getElementById('educationSeriesManagerBody');
-    if (body) body.innerHTML = '<div class="loading-spinner">Завантаження серії...</div>';
+    if (body) body.innerHTML = '<div class="loading-spinner">Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ СЃРµСЂС–С—...</div>';
     modal.classList.remove('hidden');
     const payload = typeof apiGetEducationLessonSeries === 'function'
         ? await apiGetEducationLessonSeries(seriesId)
         : { success: false, error: 'API unavailable', bookings: [] };
     if (!payload.success) {
-        if (body) body.innerHTML = `<div class="empty-state-text">${escapeHtml(payload.error || 'Не вдалося завантажити серію')}</div>`;
+        if (body) body.innerHTML = `<div class="empty-state-text">${escapeHtml(payload.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё СЃРµСЂС–СЋ')}</div>`;
         return;
     }
     renderEducationSeriesManager(seriesId, referenceBookingId, payload);
@@ -3586,9 +3896,9 @@ async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
 
 async function cancelEducationSeriesFromManager(seriesId, scope = 'future', referenceBookingId = '') {
     const text = scope === 'all'
-        ? 'Скасувати всю серію занять?'
-        : 'Скасувати майбутні заняття цієї серії?';
-    const confirmed = await customConfirm(text, 'Керування серією');
+        ? 'РЎРєР°СЃСѓРІР°С‚Рё РІСЃСЋ СЃРµСЂС–СЋ Р·Р°РЅСЏС‚СЊ?'
+        : 'РЎРєР°СЃСѓРІР°С‚Рё РјР°Р№Р±СѓС‚РЅС– Р·Р°РЅСЏС‚С‚СЏ С†С–С”С— СЃРµСЂС–С—?';
+    const confirmed = await customConfirm(text, 'РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ');
     if (!confirmed) return;
     const result = await apiCancelEducationLessonSeries(seriesId, {
         scope,
@@ -3596,7 +3906,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
         fromDate: formatDate(AppState.selectedDate)
     });
     if (!result?.success) {
-        showNotification(result?.error || 'Не вдалося скасувати серію', 'error');
+        showNotification(result?.error || 'РќРµ РІРґР°Р»РѕСЃСЏ СЃРєР°СЃСѓРІР°С‚Рё СЃРµСЂС–СЋ', 'error');
         return;
     }
     (result.bookings || []).forEach(booking => {
@@ -3604,7 +3914,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
     });
     closeEducationSeriesManager();
     await renderTimeline();
-    showNotification(`Скасовано занять: ${result.cancelledCount || 0}`, 'success');
+    showNotification(`РЎРєР°СЃРѕРІР°РЅРѕ Р·Р°РЅСЏС‚СЊ: ${result.cancelledCount || 0}`, 'success');
 }
 
 async function deleteBooking(bookingId) {
@@ -3633,32 +3943,32 @@ async function deleteBooking(bookingId) {
         const othersCount = allToDelete.length - 1;
 
         const confirmMsg = othersCount > 0
-            ? `Видалити це бронювання разом з ${othersCount} пов'язаним(и)?`
-            : 'Видалити це бронювання?';
+            ? `Р’РёРґР°Р»РёС‚Рё С†Рµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ СЂР°Р·РѕРј Р· ${othersCount} РїРѕРІ'СЏР·Р°РЅРёРј(Рё)?`
+            : 'Р’РёРґР°Р»РёС‚Рё С†Рµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ?';
 
-        const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
+        const confirmed = await customConfirm(confirmMsg, 'Р’РёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ');
         if (!confirmed) return;
 
         pushUndo('delete', [...allToDelete]);
 
-        // v5.7: Single server call — server handles linked deletion, history, Telegram
+        // v5.7: Single server call вЂ” server handles linked deletion, history, Telegram
         const delResult = await apiDeleteBooking(mainBookingId);
         if (delResult && delResult.success === false) {
-            showNotification(delResult.error || 'Помилка видалення бронювання', 'error');
+            showNotification(delResult.error || 'РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
             return;
         }
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
+        showNotification(othersCount > 0 ? `Р’РёРґР°Р»РµРЅРѕ ${allToDelete.length} Р±СЂРѕРЅСЋРІР°РЅСЊ` : 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РІРёРґР°Р»РµРЅРѕ', 'success');
     } catch (error) {
-        handleError('Видалення бронювання', error);
+        handleError('Р’РёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', error);
     }
 }
 
 // ==========================================
-// ПЕРЕНОС ЧАСУ
+// РџР•Р Р•РќРћРЎ Р§РђРЎРЈ
 // ==========================================
 
 async function shiftBookingTime(bookingId, minutes) {
@@ -3677,7 +3987,7 @@ async function shiftBookingTime(bookingId, minutes) {
         const dayEnd = CONFIG.TIMELINE.WEEKEND_END * 60;
 
         if (newStart < dayStart || newEnd > dayEnd) {
-            showNotification('Час виходить за межі робочого дня!', 'error');
+            showNotification('Р§Р°СЃ РІРёС…РѕРґРёС‚СЊ Р·Р° РјРµР¶С– СЂРѕР±РѕС‡РѕРіРѕ РґРЅСЏ!', 'error');
             return;
         }
 
@@ -3687,14 +3997,14 @@ async function shiftBookingTime(bookingId, minutes) {
             const end = start + other.duration;
 
             if (newStart < end && newEnd > start) {
-                const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
-                showNotification(`Неможливо перенести — накладка${detail}`, 'error');
+                const detail = ` ("${other.label || other.programCode || ''}" Рѕ ${other.time})`;
+                showNotification(`РќРµРјРѕР¶Р»РёРІРѕ РїРµСЂРµРЅРµСЃС‚Рё вЂ” РЅР°РєР»Р°РґРєР°${detail}`, 'error');
                 if (other.id) revealHiddenBooking(other.id);
                 return;
             }
         }
 
-        // Пов'язані бронювання
+        // РџРѕРІ'СЏР·Р°РЅС– Р±СЂРѕРЅСЋРІР°РЅРЅСЏ
         const linkedBookings = bookings.filter(b => b.linkedTo === bookingId);
 
         for (const linked of linkedBookings) {
@@ -3707,8 +4017,8 @@ async function shiftBookingTime(bookingId, minutes) {
                 const start = timeToMinutes(other.time);
                 const end = start + other.duration;
                 if (linkedNewStart < end && linkedNewEnd > start) {
-                    const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
-                    showNotification(`Неможливо перенести — накладка у пов'язаного аніматора${detail}`, 'error');
+                    const detail = ` ("${other.label || other.programCode || ''}" Рѕ ${other.time})`;
+                    showNotification(`РќРµРјРѕР¶Р»РёРІРѕ РїРµСЂРµРЅРµСЃС‚Рё вЂ” РЅР°РєР»Р°РґРєР° Сѓ РїРѕРІ'СЏР·Р°РЅРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР°${detail}`, 'error');
                     if (other.id) revealHiddenBooking(other.id);
                     return;
                 }
@@ -3730,10 +4040,10 @@ async function shiftBookingTime(bookingId, minutes) {
                 delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
                 closeAllModals();
                 await renderTimeline();
-                showNotification(shiftResult.error || 'Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                showNotification(shiftResult.error || 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ С‚Р°Р№РјР»Р°Р№РЅ.', 'error');
                 return;
             }
-            showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
+            showNotification(shiftResult.error || 'РџРѕРјРёР»РєР° РїРµСЂРµРЅРѕСЃСѓ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
             if (shiftResult.conflictBookingId) revealHiddenBooking(shiftResult.conflictBookingId);
             return;
         }
@@ -3744,15 +4054,15 @@ async function shiftBookingTime(bookingId, minutes) {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} пов'язаних)` : '';
-        showNotification(`Час перенесено на ${minutes > 0 ? '+' : ''}${minutes} хв${linkedMsg}`, 'success');
+        const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} РїРѕРІ'СЏР·Р°РЅРёС…)` : '';
+        showNotification(`Р§Р°СЃ РїРµСЂРµРЅРµСЃРµРЅРѕ РЅР° ${minutes > 0 ? '+' : ''}${minutes} С…РІ${linkedMsg}`, 'success');
     } catch (error) {
-        handleError('Перенос часу', error);
+        handleError('РџРµСЂРµРЅРѕСЃ С‡Р°СЃСѓ', error);
     }
 }
 
 // ==========================================
-// ПЕРЕКЛЮЧЕННЯ ЛІНІЇ (v7.6.1)
+// РџР•Р Р•РљР›Р®Р§Р•РќРќРЇ Р›Р†РќР†Р‡ (v7.6.1)
 // ==========================================
 
 async function switchBookingLine(bookingId, targetLineId) {
@@ -3763,7 +4073,7 @@ async function switchBookingLine(bookingId, targetLineId) {
 
         if (booking.lineId === targetLineId) return;
 
-        // Перевірка конфліктів на цільовій лінії
+        // РџРµСЂРµРІС–СЂРєР° РєРѕРЅС„Р»С–РєС‚С–РІ РЅР° С†С–Р»СЊРѕРІС–Р№ Р»С–РЅС–С—
         const targetLineBookings = bookings.filter(b => b.lineId === targetLineId && b.id !== bookingId);
         const myStart = timeToMinutes(booking.time);
         const myEnd = myStart + booking.duration;
@@ -3772,7 +4082,7 @@ async function switchBookingLine(bookingId, targetLineId) {
             const start = timeToMinutes(other.time);
             const end = start + other.duration;
             if (myStart < end && myEnd > start) {
-                showNotification(`Неможливо — накладка з "${other.label || other.programCode}" о ${other.time}`, 'error');
+                showNotification(`РќРµРјРѕР¶Р»РёРІРѕ вЂ” РЅР°РєР»Р°РґРєР° Р· "${other.label || other.programCode}" Рѕ ${other.time}`, 'error');
                 if (other.id) revealHiddenBooking(other.id);
                 return;
             }
@@ -3785,10 +4095,10 @@ async function switchBookingLine(bookingId, targetLineId) {
                 delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
                 closeAllModals();
                 await renderTimeline();
-                showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ С‚Р°Р№РјР»Р°Р№РЅ.', 'error');
                 return;
             }
-            showNotification(result.error || 'Помилка переключення лінії', 'error');
+            showNotification(result.error || 'РџРѕРјРёР»РєР° РїРµСЂРµРєР»СЋС‡РµРЅРЅСЏ Р»С–РЅС–С—', 'error');
             if (result.conflictBookingId) revealHiddenBooking(result.conflictBookingId);
             return;
         }
@@ -3799,9 +4109,9 @@ async function switchBookingLine(bookingId, targetLineId) {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        showNotification(`Переміщено на: ${targetLine ? targetLine.name : 'іншу лінію'}`, 'success');
+        showNotification(`РџРµСЂРµРјС–С‰РµРЅРѕ РЅР°: ${targetLine ? targetLine.name : 'С–РЅС€Сѓ Р»С–РЅС–СЋ'}`, 'success');
     } catch (error) {
-        handleError('Переключення лінії', error);
+        handleError('РџРµСЂРµРєР»СЋС‡РµРЅРЅСЏ Р»С–РЅС–С—', error);
     }
 }
 
@@ -3907,10 +4217,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     AppState.cachedBookings = {};
                     await renderTimeline();
                     const count = result.generated || 0;
-                    showNotification(`Створено повторюване бронювання (${count} подій)`, 'success');
+                    showNotification(`РЎС‚РІРѕСЂРµРЅРѕ РїРѕРІС‚РѕСЂСЋРІР°РЅРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ (${count} РїРѕРґС–Р№)`, 'success');
                 } else {
                     const err = await res.json();
-                    showNotification(err.error || 'Помилка створення', 'error');
+                    showNotification(err.error || 'РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ', 'error');
                 }
             } catch (error) {
                 handleError('Recurring creation', error);
@@ -3965,11 +4275,11 @@ const BulkOps = {
                 document.body.appendChild(bar);
             }
             bar.innerHTML = `
-                <span class="bulk-count">${this.selected.size} обрано</span>
-                <button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>
-                <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
-                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
-                <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
+                <span class="bulk-count">${this.selected.size} РѕР±СЂР°РЅРѕ</span>
+                <button onclick="BulkOps.bulkDelete()">рџ—‘ Р’РёРґР°Р»РёС‚Рё</button>
+                <button onclick="BulkOps.bulkStatus('confirmed')">вњ… РџС–РґС‚РІРµСЂРґРёС‚Рё</button>
+                <button onclick="BulkOps.bulkStatus('preliminary')">вЏі РџРѕРїРµСЂРµРґРЅС–</button>
+                <button class="bulk-cancel" onclick="BulkOps.clear()">вњ• РЎРєР°СЃСѓРІР°С‚Рё</button>
             `;
         } else if (bar) {
             bar.remove();
@@ -3978,7 +4288,7 @@ const BulkOps = {
 
     async bulkDelete() {
         if (this._busy) return;
-        if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
+        if (!await customConfirm(`Р’РёРґР°Р»РёС‚Рё ${this.selected.size} Р±СЂРѕРЅСЋРІР°РЅСЊ?`)) return;
         if (this._busy) return;
         this._busy = true;
         try {
@@ -3998,7 +4308,7 @@ const BulkOps = {
             this.clear();
             AppState.cachedBookings = {};
             await renderTimeline();
-            showNotification(`Видалено ${ids.length} бронювань`, 'warning');
+            showNotification(`Р’РёРґР°Р»РµРЅРѕ ${ids.length} Р±СЂРѕРЅСЋРІР°РЅСЊ`, 'warning');
         } finally {
             this._busy = false;
         }
@@ -4024,7 +4334,7 @@ const BulkOps = {
             this.clear();
             AppState.cachedBookings = {};
             await renderTimeline();
-            showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+            showNotification(`РЎС‚Р°С‚СѓСЃ Р·РјС–РЅРµРЅРѕ РґР»СЏ ${ids.length} Р±СЂРѕРЅСЋРІР°РЅСЊ`, 'success');
         } finally {
             this._busy = false;
         }
@@ -4033,7 +4343,7 @@ const BulkOps = {
 
 window.BulkOps = BulkOps;
 
-// ─── Pinata Stock Badge (v33.5) ──────────
+// в”Ђв”Ђв”Ђ Pinata Stock Badge (v33.5) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 async function _loadPinataStockBadge() {
     const badge = document.getElementById('pinataStockBadge');
     if (!badge) return;
@@ -4044,11 +4354,15 @@ async function _loadPinataStockBadge() {
         });
         const data = await res.json();
         if (!data.success) return;
-        const osnovy = data.stock.find(s => s.name.includes('Основи'));
+        const osnovy = data.stock.find(s => s.name.includes('РћСЃРЅРѕРІРё'));
         if (osnovy) {
-            badge.textContent = `📦 Основи: ${osnovy.quantity} шт ${osnovy.quantity <= 3 ? '⚠️' : '✅'}`;
+            badge.textContent = `рџ“¦ РћСЃРЅРѕРІРё: ${osnovy.quantity} С€С‚ ${osnovy.quantity <= 3 ? 'вљ пёЏ' : 'вњ…'}`;
             badge.style.display = 'inline-block';
             badge.style.color   = osnovy.quantity <= 3 ? '#ef4444' : 'var(--gray-500)';
         }
     } catch { /* silent */ }
 }
+
+
+
+

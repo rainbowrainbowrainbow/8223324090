@@ -613,6 +613,21 @@
     .header-content {
         padding: 6px 10px;
         justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .header .btn-search {
+        flex: 1 1 160px;
+        min-width: 0;
+    }
+
+    .header .btn-search kbd {
+        display: none;
+    }
+
+    .user-panel {
+        margin-left: auto;
     }
 
     .main-content,
@@ -634,10 +649,15 @@
     /* v7.8.3: Toolbar — CSS Grid with explicit 3 rows */
     .control-panel {
         display: grid;
-        grid-template-columns: 1fr auto;
-        grid-template-rows: auto auto auto;
-        gap: 6px;
-        padding: 10px 12px;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "date"
+            "status"
+            "view"
+            "tools"
+            "actions";
+        gap: 10px;
+        padding: 12px;
         margin-bottom: 10px;
         max-width: 100%;
     }
@@ -648,12 +668,12 @@
 
     /* v7.8.3: Row 1 — Date navigation (full width) */
     .date-controls {
-        grid-column: 1 / -1;
-        grid-row: 1;
+        grid-area: date;
         display: flex;
-        justify-content: center;
-        flex-wrap: nowrap;
+        justify-content: flex-start;
+        flex-wrap: wrap;
         gap: 6px;
+        min-width: 0;
     }
 
     .date-controls .btn-nav {
@@ -664,14 +684,19 @@
     }
 
     .date-controls input[type="date"] {
-        flex: 1;
+        flex: 1 1 180px;
         min-width: 0;
         padding: 8px 6px;
         font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     }
 
     .date-controls .day-info {
-        flex: 0 0 auto;
+        order: 10;
+        flex: 1 1 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
     }
 
     .day-label {
@@ -681,17 +706,19 @@
 
     /* v7.8.3: Row 2 — Status filter + Period selector */
     .status-filter-controls {
-        grid-column: 1;
-        grid-row: 2;
+        grid-area: status;
         min-width: 0;
-        justify-content: center;
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
     }
 
     .status-filter-btn {
-        flex: 1;
+        width: 100%;
         text-align: center;
-        padding: 6px 4px;
-        font-size: 10px;
+        padding: 8px 6px;
+        font-size: 11px;
         min-height: 44px;
         min-width: 0;
         white-space: nowrap;
@@ -700,45 +727,75 @@
     }
 
     .view-mode-controls {
-        grid-column: 2;
-        grid-row: 2;
+        grid-area: view;
         min-width: 0;
+        width: 100%;
+    }
+
+    .view-mode-controls .period-selector {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
     }
 
     .period-btn {
-        font-size: 10px;
-        padding: 6px 8px;
+        width: 100%;
+        font-size: 12px;
+        padding: 8px 10px;
         min-height: 44px;
     }
 
     /* v7.8.3: Row 3 — Zoom + toggles + action buttons */
     .v32-controls {
-        grid-column: 1;
-        grid-row: 3;
+        grid-area: tools;
         min-width: 0;
         justify-content: flex-start;
-        flex-wrap: nowrap;
+        align-items: stretch;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .zoom-controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        flex: 1 1 100%;
     }
 
     .action-buttons {
-        grid-column: 2;
-        grid-row: 3;
-        display: flex;
-        gap: 4px;
-        justify-self: end;
-        align-self: center;
+        grid-area: actions;
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        justify-self: stretch;
+        align-self: stretch;
     }
 
     .zoom-controls .zoom-btn {
-        padding: 6px 8px;
-        font-size: 10px;
+        width: 100%;
+        padding: 8px 6px;
+        font-size: 11px;
         min-height: 44px;
     }
 
     .toggle-mini {
+        flex: 1 1 calc(50% - 3px);
+        justify-content: center;
         font-size: 13px;
-        padding: 4px 6px;
+        padding: 8px 10px;
         min-height: 44px;
+    }
+
+    .btn-room-load,
+    .btn-menu-toggle,
+    .btn-product-sales,
+    .btn-export,
+    .btn-undo {
+        width: 100%;
+        justify-content: center;
     }
 
     /* v5.15: Today button mobile */
@@ -1238,44 +1295,44 @@
     .main-content { padding: 6px; }
 
     /* v7.8.6: Ultra-compact header */
-    .header-content { padding: 5px 8px; }
+    .header-content { padding: 6px 8px; gap: 8px; }
     .logo-img-small { width: 26px; height: 26px; }
     .nav-link { padding: 4px 10px; font-size: 14px; }
     .btn-logout { padding: 4px 8px; font-size: 10px; }
 
     /* v7.8.3: Toolbar ultra-compact */
-    .control-panel { gap: 3px; padding: 6px; }
-    .date-controls { gap: 3px; }
+    .control-panel { gap: 8px; padding: 8px; }
+    .date-controls { gap: 4px; }
     .date-controls input[type="date"] {
-        padding: 6px 4px;
+        padding: 8px 6px;
         font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     }
     .date-controls .btn-nav {
-        width: 34px;
-        height: 32px;
-        min-width: 34px;
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
         padding: 0;
         font-size: 13px;
     }
     .btn-today {
-        padding: 5px 6px;
-        font-size: 10px;
-        min-height: 32px;
+        padding: 6px 8px;
+        font-size: 11px;
+        min-height: 40px;
     }
 
     /* v7.8.8: WCAG compromise — min 34px on extra small */
-    .status-filter-btn { font-size: 11px; padding: 4px 2px; min-height: 34px; }
-    .period-btn { font-size: 11px; padding: 4px 5px; min-height: 34px; }
-    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: 11px; min-height: 34px; }
-    .toggle-mini { padding: 4px 5px; min-height: 34px; font-size: 12px; }
+    .status-filter-btn { font-size: 11px; padding: 6px 4px; min-height: 40px; }
+    .period-btn { font-size: 11px; padding: 6px 6px; min-height: 40px; }
+    .zoom-controls .zoom-btn { padding: 6px 6px; font-size: 11px; min-height: 40px; }
+    .toggle-mini { padding: 6px 6px; min-height: 40px; font-size: 12px; }
 
     /* Timeline: narrower headers */
     .time-scale { margin-left: 60px; }
     .line-header { width: 60px; min-width: 60px; }
     .line-name { font-size: 10px; }
 
-    .btn-export { font-size: 10px; padding: 4px 6px; min-height: 34px; }
-    .btn-menu-toggle { font-size: 10px; padding: 4px 6px; min-height: 34px; }
+    .btn-export { font-size: 11px; padding: 6px 8px; min-height: 40px; }
+    .btn-menu-toggle { font-size: 11px; padding: 6px 8px; min-height: 40px; }
 }
 
 /* ==========================================
@@ -1290,17 +1347,17 @@
     .nav-link { padding: 3px 8px; font-size: 13px; }
     .btn-logout { padding: 3px 6px; font-size: 11px; }
 
-    .control-panel { gap: 2px; padding: 4px; }
-    .date-controls { gap: 2px; }
-    .date-controls .btn-nav { width: 32px; height: 32px; min-width: 32px; font-size: 12px; }
+    .control-panel { gap: 6px; padding: 6px; }
+    .date-controls { gap: 4px; }
+    .date-controls .btn-nav { width: 38px; height: 38px; min-width: 38px; font-size: 12px; }
 
     .time-scale { margin-left: 50px; }
     .line-header { width: 50px; min-width: 50px; }
     .line-name { font-size: 11px; }
 
-    .status-filter-btn { font-size: 8px; min-height: 32px; }
-    .period-btn { font-size: 8px; min-height: 32px; }
-    .zoom-controls .zoom-btn { font-size: 8px; min-height: 32px; }
+    .status-filter-btn { font-size: 10px; min-height: 38px; }
+    .period-btn { font-size: 10px; min-height: 38px; }
+    .zoom-controls .zoom-btn { font-size: 10px; min-height: 38px; }
 
     .mini-time-mark { width: 60px; min-width: 60px; }
     .mini-time-scale { margin-left: 50px; }

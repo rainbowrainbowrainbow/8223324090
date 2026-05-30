@@ -102,13 +102,13 @@ function isMaysternyaBookingContext() {
 function getTimelineBookingPresentation() {
     return window.TimelineBusinessContext?.presentation?.() || {
         mode: 'park',
-        bookingTitle: 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ',
-        submitLabel: 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ',
-        groupLabel: 'Р“СЂСѓРїР° / Р±Р°РЅРєРµС‚',
-        notesLabel: 'РџСЂРёРјС–С‚РєРё',
-        customerNameLabel: 'Р†РјКјСЏ РєР»С–С”РЅС‚Р°',
-        phoneLabel: 'РўРµР»РµС„РѕРЅ',
-        roomOptionLabel: 'РљС–РјРЅР°С‚Р°',
+        bookingTitle: 'Нове бронювання',
+        submitLabel: 'Додати бронювання',
+        groupLabel: 'Група / банкет',
+        notesLabel: 'Примітки',
+        customerNameLabel: 'Імʼя клієнта',
+        phoneLabel: 'Телефон',
+        roomOptionLabel: 'Кімната',
         parkKitchenEnabled: true
     };
 }
@@ -298,12 +298,12 @@ function setBookingClientMode(mode = 'search', options = {}) {
         searchState.classList.add('hidden');
         searchState.innerHTML = '';
     }
-    if (createBtn) createBtn.textContent = mode === 'new' ? 'РџРѕРІРµСЂРЅСѓС‚РёСЃСЏ РґРѕ РїРѕС€СѓРєСѓ' : '+ РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ РєР»С–С”РЅС‚Р°';
+    if (createBtn) createBtn.textContent = mode === 'new' ? 'Повернутися до пошуку' : '+ Створити нового клієнта';
     if (changeBtn) changeBtn.classList.toggle('hidden', !hasSelected);
     if (modeLabel) {
-        if (mode === 'existing') modeLabel.textContent = 'РџСЂРёРєСЂС–РїР»РµРЅРѕ С–СЃРЅСѓСЋС‡Сѓ РєР°СЂС‚РєСѓ РєР»С–С”РЅС‚Р°.';
-        else if (mode === 'new') modeLabel.textContent = 'РЎС‚РІРѕСЂСЋС”РјРѕ РЅРѕРІРѕРіРѕ РєР»С–С”РЅС‚Р° С‚С–Р»СЊРєРё СЏРєС‰Рѕ РїРѕС€СѓРє РЅРµ РґРѕРїРѕРјС–Рі.';
-        else modeLabel.textContent = 'РћР±РµСЂС–С‚СЊ РєР»С–С”РЅС‚Р° Р°Р±Рѕ СЃС‚РІРѕСЂС–С‚СЊ РЅРѕРІРѕРіРѕ.';
+        if (mode === 'existing') modeLabel.textContent = 'Прикріплено існуючу картку клієнта.';
+        else if (mode === 'new') modeLabel.textContent = 'Створюємо нового клієнта тільки якщо пошук не допоміг.';
+        else modeLabel.textContent = 'Оберіть клієнта або створіть нового.';
     }
     if (customerSearch) customerSearch.setAttribute('aria-expanded', mode === 'search' ? 'true' : 'false');
     if (options.focusNewForm && mode === 'new') document.getElementById('customerName')?.focus();
@@ -317,10 +317,10 @@ function renderSelectedCustomerCard(customer = null) {
         card.classList.add('hidden');
         return;
     }
-    const name = customer.name || 'РљР»С–С”РЅС‚';
+    const name = customer.name || 'Клієнт';
     const phone = customer.phone ? `<small>${escapeHtml(customer.phone)}</small>` : '';
     const instagram = customer.instagram ? `<small>@${escapeHtml(customer.instagram)}</small>` : '';
-    const childName = customer.childName ? `<small>Р”РёС‚РёРЅР°: ${escapeHtml(customer.childName)}</small>` : '';
+    const childName = customer.childName ? `<small>Дитина: ${escapeHtml(customer.childName)}</small>` : '';
     card.innerHTML = `
         <strong>${escapeHtml(name)}</strong>
         ${phone}
@@ -364,22 +364,22 @@ function getSmartBookingValidationState() {
     const warnings = [];
 
     if (!hasDateTime) {
-        return { valid: false, canSubmit: false, error: 'РќРµ РІРґР°Р»РѕСЃСЊ РІРёР·РЅР°С‡РёС‚Рё РґР°С‚Сѓ Р°Р±Рѕ С‡Р°СЃ РґР»СЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ.', warnings };
+        return { valid: false, canSubmit: false, error: 'Не вдалося визначити дату або час для бронювання.', warnings };
     }
     if (!hasRoom && !roomOptional) {
-        return { valid: false, canSubmit: false, error: presentation.mode === 'education' ? 'РћР±РµСЂС–С‚СЊ РєР°Р±С–РЅРµС‚.' : 'РћР±РµСЂС–С‚СЊ РєС–РјРЅР°С‚Сѓ.', warnings };
+        return { valid: false, canSubmit: false, error: presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.', warnings };
     }
     if (!hasClient) {
-        return { valid: false, canSubmit: false, error: 'РћР±РµСЂС–С‚СЊ С–СЃРЅСѓСЋС‡РѕРіРѕ РєР»С–С”РЅС‚Р° Р°Р±Рѕ СЃС‚РІРѕСЂС–С‚СЊ РЅРѕРІРѕРіРѕ: С–РјвЂ™СЏ + С‚РµР»РµС„РѕРЅ С‡Рё Instagram.', warnings };
+        return { valid: false, canSubmit: false, error: 'Оберіть існуючого клієнта або створіть нового: імʼя + телефон чи Instagram.', warnings };
     }
     if (programRequired && !hasProgram) {
-        return { valid: false, canSubmit: false, error: isEducation ? 'РћР±РµСЂС–С‚СЊ Р·Р°РЅСЏС‚С‚СЏ Р°Р±Рѕ РІРєР°Р¶С–С‚СЊ С‚РµРјСѓ.' : 'РЈРІС–РјРєРЅРµРЅРѕ РїРѕРґС–СЋ, Р°Р»Рµ РїСЂРѕРіСЂР°РјСѓ С‰Рµ РЅРµ РІРёР±СЂР°РЅРѕ.', warnings };
+        return { valid: false, canSubmit: false, error: isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Увімкнено подію, але програму ще не вибрано.', warnings };
     }
     if (isBookingKitchenEnabled() && !hasBookingKitchenDraft()) {
-        warnings.push('РљСѓС…РЅСЏ СѓРІС–РјРєРЅРµРЅР°, Р°Р»Рµ РїРѕР·РёС†С–С— РјРµРЅСЋ С‰Рµ РЅРµ РґРѕРґР°РЅС–.');
+        warnings.push('Кухня увімкнена, але позиції меню ще не додані.');
     }
     if (getBookingWorkspaceHasEvent() && !hasProgram) {
-        warnings.push('РџРѕРґС–СЏ СѓРІС–РјРєРЅРµРЅР°, Р°Р»Рµ РїСЂРѕРіСЂР°РјСѓ С‰Рµ РЅРµ РІРёР±СЂР°РЅРѕ.');
+        warnings.push('Подія увімкнена, але програму ще не вибрано.');
     }
     return { valid: true, canSubmit: true, warnings, error: '' };
 }
@@ -397,20 +397,20 @@ function getBookingWorkspaceScenario(options = {}) {
 function getBookingWorkspaceScenarioMeta(scenario) {
     const meta = {
         lead_only: {
-            label: 'Р—Р°СЏРІРєР°',
-            text: 'РџРѕРґС–СЏ РІРёРјРєРЅРµРЅР°: РєС–РјРЅР°С‚Р° РІР¶Рµ РІРёР±СЂР°РЅР°, Р·Р±РµСЂС–РіР°С”РјРѕ РєРѕРЅС‚Р°РєС‚, РєРѕРЅС‚РµРєСЃС‚ С– РЅРѕС‚Р°С‚РєРё Р±РµР· РїСЂРѕРіСЂР°РјРё.'
+            label: 'Заявка',
+            text: 'Подія вимкнена: кімната вже вибрана, зберігаємо контакт, контекст і нотатки без програми.'
         },
         event: {
-            label: 'РџРѕРґС–СЏ',
-            text: 'РџРѕРґС–СЏ СѓРІС–РјРєРЅРµРЅР°: РїСЂРѕРіСЂР°РјР° С– РІРµРґСѓС‡С– РІС…РѕРґСЏС‚СЊ Сѓ РІР°Р»С–РґР°С†С–СЋ С‚Р° Р·Р±РµСЂРµР¶РµРЅРЅСЏ РїС–СЃР»СЏ РІРёР±РѕСЂСѓ РєС–РјРЅР°С‚Рё.'
+            label: 'Подія',
+            text: 'Подія увімкнена: програма і ведучі входять у валідацію та збереження після вибору кімнати.'
         },
         kitchen_only: {
-            label: 'РљСѓС…РЅСЏ',
-            text: 'РљСѓС…РѕРЅРЅРёР№ СЃС†РµРЅР°СЂС–Р№ Р±РµР· РїРѕРґС–С—: РјРµРЅСЋ Р°Р±Рѕ С‚РѕСЂС‚ Р·Р±РµСЂС–РіР°СЋС‚СЊСЃСЏ СЏРє РєРѕРјРµСЂС†С–Р№РЅС– РїРѕР·РёС†С–С— Р·Р°СЏРІРєРё.'
+            label: 'Кухня',
+            text: 'Кухонний сценарій без події: меню або торт зберігаються як комерційні позиції заявки.'
         },
         event_kitchen: {
-            label: 'РџРѕРґС–СЏ + РєСѓС…РЅСЏ',
-            text: 'Р—РјС–С€Р°РЅРёР№ СЃС†РµРЅР°СЂС–Р№: РїРѕРґС–СЏ С– РєСѓС…РѕРЅРЅС– РїРѕР·РёС†С–С— С„РѕСЂРјСѓСЋС‚СЊ СЃРїС–Р»СЊРЅРёР№ РїС–РґСЃСѓРјРѕРє.'
+            label: 'Подія + кухня',
+            text: 'Змішаний сценарій: подія і кухонні позиції формують спільний підсумок.'
         }
     };
     return meta[scenario] || meta.lead_only;
@@ -424,8 +424,12 @@ function syncBookingWorkspaceMode(options = {}) {
     const banquetFields = document.getElementById('banquetFields');
     const leadSection = document.getElementById('bookingLeadDetailsSection');
     const room = document.getElementById('roomSelect');
+    const showKitchenFields = hasKitchen && timelineKitchenEnabled();
     if (eventFields) eventFields.classList.toggle('hidden', !hasEvent);
-    if (banquetFields) banquetFields.classList.toggle('hidden', !hasKitchen || !timelineKitchenEnabled());
+    if (banquetFields) {
+        banquetFields.classList.toggle('hidden', !showKitchenFields);
+        banquetFields.hidden = !showKitchenFields;
+    }
     if (leadSection) leadSection.classList.toggle('hidden', !hasLeadDetails);
     if (room) {
         room.required = true;
@@ -464,15 +468,15 @@ function prepareMaysternyaBookingPanel(options = {}) {
     if (submit && !AppState.editingBookingId) submit.textContent = 'Р—Р°РїРёСЃР°С‚Рё РїСЂРёР№РѕРј';
 
     const groupName = document.getElementById('bookingGroupName');
-    if (groupName) groupName.placeholder = 'РўРµРјР° Р·Р°РїРёС‚Сѓ Р°Р±Рѕ РєРѕСЂРѕС‚РєР° РїСЂРёРјС–С‚РєР°';
+    if (groupName) groupName.placeholder = 'Тема запиту або коротка примітка';
     const notes = document.getElementById('bookingNotes');
-    if (notes) notes.placeholder = 'РљРѕРјРµРЅС‚Р°СЂ РґР»СЏ РћР»РµРєСЃР°РЅРґСЂР°';
+    if (notes) notes.placeholder = 'Коментар для Олександри';
     const customerName = document.getElementById('customerName');
-    if (customerName) customerName.placeholder = 'Р†РјКјСЏ РєР»С–С”РЅС‚Р°';
+    if (customerName) customerName.placeholder = 'Імʼя клієнта';
     const phone = document.getElementById('customerPhone');
-    if (phone) phone.placeholder = 'РўРµР»РµС„РѕРЅ Р°Р±Рѕ WhatsApp';
+    if (phone) phone.placeholder = 'Телефон або WhatsApp';
     const customerMode = document.getElementById('bookingCustomerModeLabel');
-    if (customerMode) customerMode.textContent = 'РћРїС†С–Р№РЅРѕ РґР»СЏ РѕРЅР»Р°Р№РЅ-РїСЂРёР№РѕРјСѓ';
+    if (customerMode) customerMode.textContent = 'Опційно для онлайн-прийому';
 
     const shouldSelectDefault = options.selectDefaultProgram !== false
         && !document.getElementById('selectedProgram')?.value
@@ -493,25 +497,25 @@ function prepareTimelineQuickCloseTools(options = {}) {
     const button = document.getElementById('maysternyaCloseSlotBtn');
     const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Р РµСЃСѓСЂСЃ';
     if (isMaysternyaBookingContext()) {
-        if (title) title.textContent = 'РћРЅР»Р°Р№РЅ РїСЂРёР№РѕРј';
-        if (hint) hint.textContent = 'РњС–РЅС–РјР°Р»СЊРЅРёР№ Р·Р°РїРёСЃ РґР»СЏ Р»С–РЅС–С— РћР»РµРєСЃР°РЅРґСЂР°';
-        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
-        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё СЃР»РѕС‚';
+        if (title) title.textContent = 'Онлайн прийом';
+        if (hint) hint.textContent = 'Мінімальний запис для лінії Олександри';
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити слот';
         return;
     }
     if (isEducationTimelineBookingMode()) {
         // Canonical quick-close label for education resource mode: Закрити кабінет
-        if (title) title.textContent = 'РљР°Р±С–РЅРµС‚ РЅРµРґРѕСЃС‚СѓРїРЅРёР№';
-        if (hint) hint.textContent = `${lineName}: С€РІРёРґРєРѕ Р·Р°РєСЂРёР№С‚Рµ С‡Р°СЃ, СЏРєС‰Рѕ Р°СѓРґРёС‚РѕСЂС–СЏ Р·Р°Р№РЅСЏС‚Р° Р°Р±Рѕ РЅРµРґРѕСЃС‚СѓРїРЅР°.`;
-        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
-        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё РєР°Р±С–РЅРµС‚';
+        if (title) title.textContent = 'Кабінет недоступний';
+        if (hint) hint.textContent = `${lineName}: швидко закрийте час, якщо аудиторія зайнята або недоступна.`;
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити кабінет';
         return;
     }
     if (isTimelineResourceBackedBookingMode()) {
-        if (title) title.textContent = 'Р РµСЃСѓСЂСЃ РЅРµРґРѕСЃС‚СѓРїРЅРёР№';
-        if (hint) hint.textContent = `${lineName}: С€РІРёРґРєРѕ Р·Р°РєСЂРёР№С‚Рµ С‡Р°СЃ Р±РµР· СЃС‚РІРѕСЂРµРЅРЅСЏ РєР»С–С”РЅС‚СЃСЊРєРѕРіРѕ Р·Р°РїРёСЃСѓ.`;
-        if (durationLabel) durationLabel.textContent = 'Р—Р°РєСЂРёС‚Рё РЅР°';
-        if (button) button.textContent = 'Р—Р°РєСЂРёС‚Рё СЂРµСЃСѓСЂСЃ';
+        if (title) title.textContent = 'Ресурс недоступний';
+        if (hint) hint.textContent = `${lineName}: швидко закрийте час без створення клієнтського запису.`;
+        if (durationLabel) durationLabel.textContent = 'Закрити на';
+        if (button) button.textContent = 'Закрити ресурс';
     }
 }
 
@@ -525,7 +529,7 @@ function prepareDisplayModeBookingPanel(options = {}) {
     prepareEducationLessonPanel(options);
     if (isParkTimelineBookingMode()) return;
 
-    const lineName = options.line?.name || presentation.roomOptionLabel || 'РљР°Р±С–РЅРµС‚';
+    const lineName = options.line?.name || presentation.roomOptionLabel || 'Кабінет';
     if (isEducationTimelineBookingMode()) {
         ensureTimelineRoomOption(lineName);
     } else {
@@ -541,15 +545,15 @@ function prepareDisplayModeBookingPanel(options = {}) {
     if (submit && !AppState.editingBookingId) submit.textContent = presentation.submitLabel;
 
     const groupName = document.getElementById('bookingGroupName');
-    if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Р“СЂСѓРїР°, РєР»Р°СЃ Р°Р±Рѕ РєСѓСЂСЃ' : 'РљРѕСЂРѕС‚РєР° С‚РµРјР° Р·Р°РїРёСЃСѓ';
+    if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Група, клас або курс' : 'Коротка тема запису';
     const notes = document.getElementById('bookingNotes');
-    if (notes) notes.placeholder = isEducationTimelineBookingMode() ? 'РўРµРјР° Р·Р°РЅСЏС‚С‚СЏ, РІРёРєР»Р°РґР°С‡ Р°Р±Рѕ РїСЂРёРјС–С‚РєРё' : 'РљРѕРјРµРЅС‚Р°СЂ РґРѕ Р·Р°РїРёСЃСѓ';
+    if (notes) notes.placeholder = isEducationTimelineBookingMode() ? 'Тема заняття, викладач або примітки' : 'Коментар до запису';
     const customerName = document.getElementById('customerName');
     if (customerName) customerName.placeholder = presentation.customerNameLabel;
     const phone = document.getElementById('customerPhone');
     if (phone) phone.placeholder = presentation.phoneLabel;
     const customerMode = document.getElementById('bookingCustomerModeLabel');
-    if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'РћРїС†С–Р№РЅРѕ РґР»СЏ Р·Р°РЅСЏС‚С‚СЏ' : 'РћРїС†С–Р№РЅРѕ РґР»СЏ Р·Р°РїРёСЃСѓ';
+    if (customerMode) customerMode.textContent = isEducationTimelineBookingMode() ? 'Опційно для заняття' : 'Опційно для запису';
     prepareTimelineQuickCloseTools(options);
     renderBookingPackageSummary();
 }
@@ -854,7 +858,7 @@ function renderBookingMenuPositions() {
     if (hidden) hidden.value = JSON.stringify(positions);
     if (!list) return;
     if (!positions.length) {
-        list.innerHTML = '<div class="booking-summary-empty">РњРµРЅСЋ Р°Р±Рѕ СЃРµСЂРІС–СЃРЅС– РїРѕР·РёС†С–С— С‰Рµ РЅРµ РґРѕРґР°РЅС–.</div>';
+        list.innerHTML = '<div class="booking-summary-empty">Меню або сервісні позиції ще не додані.</div>';
     } else {
         list.innerHTML = positions.map((item, index) => `
             <div class="booking-menu-position-row" data-menu-index="${index}">
@@ -1522,14 +1526,14 @@ function renderCustomerSearchResults(customers, options = {}) {
     const list = Array.isArray(customers) ? customers : [];
 
     if (options.loading) {
-        container.innerHTML = '<div class="customer-search-state">РџРѕС€СѓРє РєР»С–С”РЅС‚С–РІ...</div>';
+        container.innerHTML = '<div class="customer-search-state">Шукаємо клієнтів...</div>';
         container.classList.remove('hidden');
         renderBookingCustomerSearchState('');
         return;
     }
 
     if (options.error) {
-        container.innerHTML = '<div class="customer-search-state is-error">РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё РєР»С–С”РЅС‚С–РІ. РЎРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·.</div>';
+        container.innerHTML = '<div class="customer-search-state is-error">Не вдалося завантажити клієнтів. Спробуйте ще раз.</div>';
         container.classList.remove('hidden');
         renderBookingCustomerSearchState('');
         return;
@@ -1537,9 +1541,9 @@ function renderCustomerSearchResults(customers, options = {}) {
 
     if (list.length === 0) {
         if (options.query) {
-            container.innerHTML = '<div class="customer-search-state">РљР»С–С”РЅС‚С–РІ РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РњРѕР¶РЅР° СЃС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ РєР°СЂС‚РєСѓ РЅРёР¶С‡Рµ.</div>';
+            container.innerHTML = '<div class="customer-search-state">Клієнтів не знайдено. Можна створити нову картку нижче.</div>';
             container.classList.remove('hidden');
-            renderBookingCustomerSearchState('РљР»С–С”РЅС‚Р° РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РњРѕР¶РЅР° СЃС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ.');
+            renderBookingCustomerSearchState('Клієнта не знайдено. Можна створити нового.');
         } else {
             container.classList.add('hidden');
             container.innerHTML = '';
@@ -2039,7 +2043,11 @@ function selectProgram(programId) {
     }
 
     const banquetFields = document.getElementById('banquetFields');
-    if (banquetFields) banquetFields.classList.toggle('hidden', !isBookingKitchenEnabled() || !timelineKitchenEnabled());
+    if (banquetFields) {
+        const showKitchenFields = isBookingKitchenEnabled() && timelineKitchenEnabled();
+        banquetFields.classList.toggle('hidden', !showKitchenFields);
+        banquetFields.hidden = !showKitchenFields;
+    }
     filterPrograms();
 
     // Рљ-РєС–СЃС‚СЊ РґС–С‚РµР№ РґР»СЏ РњРљ (perChild)

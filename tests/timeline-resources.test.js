@@ -194,11 +194,14 @@ test('business cabinet is the persistent control surface for shell modules and t
     assert.match(profile, /cabinet\.startPage/);
     assert.match(settingsRoute, /router\.get\('\/business\/cabinet'/);
     assert.match(settingsRoute, /router\.put\('\/business\/cabinet'/);
+    assert.match(settingsRoute, /isTimelineContext\(context\) && !requireTimelineAction\(req, res, context, 'settings'\)/);
     assert.match(api, /async function apiGetBusinessCabinet/);
     assert.match(api, /async function apiSaveBusinessCabinet/);
     assert.match(settings, /function renderBusinessCabinetModuleButtons/);
     assert.match(settings, /function collectBusinessCabinetModules/);
     assert.match(settings, /apiSaveBusinessCabinet/);
+    assert.match(settings, /if \(result\?\.cabinet\)/);
+    assert.match(settings, /Legacy display settings fallback unavailable/);
     assert.match(html, /settingsBusinessModuleGrid/);
     assert.match(html, /settingsBusinessGuardrails/);
     assert.match(css, /\.business-cabinet-guardrails/);

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.21 - guardrails бізнес-кабінету
+
+### Business Cabinet hotfix / permissions / fallback / 30.05.2026 [codex]
+- **Закрито permission bypass для timeline-бізнесів** - `PUT /api/business/cabinet` тепер для `event_genix` і `maysternya_doli` проходить через `requireTimelineAction(..., 'settings')`, тому правила Майстерні Долі не обходяться новим business-cabinet route.
+- **Load fallback став чесним** - якщо `/api/business/cabinet` не повернув cabinet або впав, settings UI пробує legacy `/settings/timeline-display`, а не лишає користувача на stale runtime/local state.
+- **Toast перевірено як UTF-8** - повідомлення `Бізнес-кабінет збережено...` у файлі лишається коректним Unicode; regression check підтверджує, що це не битий browser text.
+- **Regression guard розширено** - `timeline-resources` перевіряє permission guard у route і fallback path у frontend settings.
+
+---
+
 ## v0.68.20 - бізнес-кабінет shell
 
 ### Business Cabinet v1 / module controls / timeline mirror / 29.05.2026 [codex]

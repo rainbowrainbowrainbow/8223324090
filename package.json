@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.20",
+  "version": "0.68.21",
   "eventGenix": {
-    "releaseLabel": "бізнес-кабінет shell"
+    "releaseLabel": "guardrails бізнес-кабінету"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

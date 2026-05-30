@@ -1328,19 +1328,40 @@ async function loadTimelineDisplaySettingsIntoModal() {
                 };
                 window.TimelineBusinessContext?.saveDisplaySettings?.(result.cabinet.timeline || settings);
                 await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+            } else {
+                const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
+                    headers: getAuthHeaders(false)
+                });
+                if (res.ok) {
+                    const serverSettings = await res.json();
+                    settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                    await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+                }
             }
         } else {
-        const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
-            headers: getAuthHeaders(false)
-        });
-        if (res.ok) {
-            const serverSettings = await res.json();
-            settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
-            await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
-        }
+            const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
+                headers: getAuthHeaders(false)
+            });
+            if (res.ok) {
+                const serverSettings = await res.json();
+                settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+            }
         }
     } catch (error) {
         console.warn('[TimelineDisplay] Server display settings unavailable', error);
+        try {
+            const res = await fetch(timelineSettingsApiUrl('/settings/timeline-display'), {
+                headers: getAuthHeaders(false)
+            });
+            if (res.ok) {
+                const serverSettings = await res.json();
+                settings = window.TimelineBusinessContext?.saveDisplaySettings?.(serverSettings) || serverSettings;
+                await window.CrmBusinessContext?.hydrateProfile?.({ updateUrl: false, emit: true });
+            }
+        } catch (fallbackError) {
+            console.warn('[TimelineDisplay] Legacy display settings fallback unavailable', fallbackError);
+        }
     }
     applyTimelineSettingsToControls(settings);
     await renderTimelineResourcesManager();

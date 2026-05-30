@@ -424,6 +424,7 @@ router.put('/business/cabinet', requireRole('creator', 'director'), async (req, 
         if (!requireWritableBusinessScope(req, res, scope)) return;
         const context = businessContextFromRequest(req);
         if (!requireBusinessContext(req, res, context)) return;
+        if (isTimelineContext(context) && !requireTimelineAction(req, res, context, 'settings')) return;
         const cabinet = await saveBusinessCabinetSettings(pool, context, req.body || {}, req.user);
         settingsCache.invalidate(businessCabinetSettingsKey(context));
         if (isTimelineContext(context)) settingsCache.invalidate(`timeline_display:${context}`);

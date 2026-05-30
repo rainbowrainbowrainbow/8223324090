@@ -1894,17 +1894,95 @@ async function populateAnimatorSelectById(selectId, placeholder) {
     if (!select) return;
     const lines = await getLinesForDate(AppState.selectedDate);
     const currentLineId = document.getElementById('bookingLine')?.value;
+    const candidates = await buildAnimatorLineCandidates(lines, currentLineId);
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
-    lines.forEach(line => {
-        if (line.id !== currentLineId) {
-            const option = document.createElement('option');
-            option.value = line.name;
-            option.textContent = line.name;
-            select.appendChild(option);
-        }
+    candidates.forEach(line => {
+        const option = document.createElement('option');
+        option.value = line.name;
+        option.textContent = line.label || line.name;
+        option.dataset.lineId = line.id;
+        option.dataset.lineName = line.name;
+        option.dataset.source = line.source || 'timeline_line';
+        select.appendChild(option);
     });
+}
+
+function isParkAnimatorStaffMember(staff = {}) {
+    const role = String(staff.role_type || staff.roleType || staff.role || '').trim().toLowerCase();
+    const department = String(staff.department || '').trim().toLowerCase();
+    const position = String(staff.position || '').trim().toLowerCase();
+    return role === 'animator'
+        || department === 'animators'
+        || position.includes('animator')
+        || position.includes('аніматор');
+}
+
+async function fetchParkAnimatorStaffCandidates() {
+    if (!isParkTimelineBookingMode()) return [];
+    try {
+        const response = await fetch('/api/staff?active=true', { headers: getAuthHeaders(false) });
+        if (handleAuthError(response) || !response.ok) return [];
+        const payload = await response.json();
+        const staff = Array.isArray(payload.data) ? payload.data : (Array.isArray(payload.staff) ? payload.staff : []);
+        return staff
+            .filter(isParkAnimatorStaffMember)
+            .map(item => ({
+                id: String(item.id || item.staff_id || '').trim(),
+                name: String(item.name || item.display_name || '').trim(),
+                color: item.color || null,
+                source: 'staff_fallback'
+            }))
+            .filter(item => item.id && item.name);
+    } catch (error) {
+        console.warn('[Booking] Staff animator fallback unavailable', error);
+        return [];
+    }
+}
+
+async function buildAnimatorLineCandidates(lines = [], currentLineId = '') {
+    const normalizedCurrentLineId = String(currentLineId || '').trim();
+    const currentLine = (lines || []).find(line => String(line.id) === normalizedCurrentLineId);
+    const currentName = String(currentLine?.name || '').trim().toLowerCase();
+    const byKey = new Map();
+
+    function addCandidate(candidate) {
+        const id = String(candidate?.id || candidate?.lineId || candidate?.staffId || '').trim();
+        const name = String(candidate?.name || '').trim();
+        if (!id || !name) return;
+        if (id === normalizedCurrentLineId) return;
+        if (currentName && name.toLowerCase() === currentName) return;
+        const key = name.toLowerCase();
+        if (!byKey.has(key)) byKey.set(key, { ...candidate, id, name });
+    }
+
+    (lines || []).forEach(line => addCandidate({
+        id: line.id,
+        name: line.name,
+        color: line.color,
+        source: line.source || 'timeline_line'
+    }));
+    (await fetchParkAnimatorStaffCandidates()).forEach(staff => addCandidate({
+        id: staff.id,
+        name: staff.name,
+        color: staff.color,
+        source: staff.source,
+        label: staff.name
+    }));
+
+    return Array.from(byKey.values()).sort((a, b) => String(a.name).localeCompare(String(b.name), 'uk'));
+}
+
+function selectedAnimatorLineCandidate(selectId, selectedName) {
+    const select = document.getElementById(selectId);
+    const option = select?.selectedOptions?.[0];
+    if (!option || !option.value || option.value !== selectedName) return null;
+    return {
+        id: option.dataset.lineId || option.value,
+        name: option.dataset.lineName || option.value,
+        source: option.dataset.source || 'select'
+    };
 }
 
 async function populateSecondAnimatorSelect() {
@@ -2032,7 +2110,10 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
 
     if (secondAnimator) {
         const lines = await getLinesForDate(AppState.selectedDate);
-        const secondLine = lines.find(l => l.name === secondAnimator);
+        const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', secondAnimator);
+        const secondLine = lines.find(l => l.name === secondAnimator)
+            || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
+            || secondCandidate;
         if (secondLine) {
             // v5.5: При редагуванні виключити linked бронювання цього ж запису
             const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
@@ -2436,7 +2517,10 @@ async function buildLinkedBookings(booking, program) {
 
     // Другий ведучий
     if (program.hosts > 1 && booking.secondAnimator) {
-        const secondLine = lines.find(l => l.name === booking.secondAnimator);
+        const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', booking.secondAnimator);
+        const secondLine = lines.find(l => l.name === booking.secondAnimator)
+            || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
+            || secondCandidate;
         if (secondLine) {
             linked.push({
                 date: booking.date, time: booking.time, lineId: secondLine.id,
@@ -2458,7 +2542,10 @@ async function buildLinkedBookings(booking, program) {
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect')?.value;
         if (extraHostAnimator) {
-            const extraLine = lines.find(l => l.name === extraHostAnimator);
+            const extraCandidate = selectedAnimatorLineCandidate('extraHostAnimatorSelect', extraHostAnimator);
+            const extraLine = lines.find(l => l.name === extraHostAnimator)
+                || lines.find(l => String(l.id) === String(extraCandidate?.id || ''))
+                || extraCandidate;
             if (extraLine) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
                 linked.push({

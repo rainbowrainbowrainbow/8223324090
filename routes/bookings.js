@@ -100,6 +100,83 @@ async function getLineName(lineId, date, businessContext = DEFAULT_TIMELINE_CONT
     }
 }
 
+const PARK_FALLBACK_LINE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
+
+function staffAnimatorWhere(alias = 's') {
+    return `(
+        ${alias}.role_type = 'animator'
+        OR ${alias}.department = 'animators'
+        OR LOWER(COALESCE(${alias}.position, '')) LIKE '%animator%'
+        OR LOWER(COALESCE(${alias}.position, '')) LIKE '%аніматор%'
+    )`;
+}
+
+function fallbackLineColor(value) {
+    const numeric = Math.abs(parseInt(value, 10) || 0);
+    return PARK_FALLBACK_LINE_COLORS[numeric % PARK_FALLBACK_LINE_COLORS.length];
+}
+
+async function ensureParkAnimatorLine(client, { businessContext, date, lineId, name }) {
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    if (context !== DEFAULT_TIMELINE_CONTEXT) return null;
+
+    const safeDate = String(date || '').trim();
+    const requestedLineId = String(lineId || '').trim();
+    const requestedName = String(name || '').trim();
+    if (!safeDate || (!requestedLineId && !requestedName)) return null;
+
+    const existing = await client.query(
+        `SELECT line_id, name, color
+           FROM lines_by_date
+          WHERE date = $1
+            AND ${bookingContextSql('', '$2')}
+            AND (
+                ($3 <> '' AND line_id = $3)
+                OR ($4 <> '' AND LOWER(BTRIM(name)) = LOWER(BTRIM($4)))
+            )
+          ORDER BY CASE WHEN line_id = $3 THEN 0 ELSE 1 END
+          LIMIT 1`,
+        [safeDate, context, requestedLineId, requestedName]
+    );
+    if (existing.rows[0]) {
+        return {
+            lineId: existing.rows[0].line_id,
+            name: existing.rows[0].name,
+            color: existing.rows[0].color
+        };
+    }
+
+    const staff = await client.query(
+        `SELECT id, name, display_name, color
+           FROM staff s
+          WHERE s.is_active = true
+            AND ${staffAnimatorWhere('s')}
+            AND (
+                ($1 <> '' AND s.id::text = $1)
+                OR ($2 <> '' AND LOWER(BTRIM(s.name)) = LOWER(BTRIM($2)))
+                OR ($2 <> '' AND LOWER(BTRIM(COALESCE(s.display_name, ''))) = LOWER(BTRIM($2)))
+            )
+          ORDER BY CASE WHEN s.id::text = $1 THEN 0 ELSE 1 END, s.name
+          LIMIT 1`,
+        [requestedLineId, requestedName]
+    );
+    const row = staff.rows[0];
+    if (!row) return null;
+
+    const resolvedLineId = String(row.id);
+    const resolvedName = row.display_name || row.name;
+    const color = row.color || fallbackLineColor(row.id);
+    await client.query(
+        `INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+         VALUES ($1, $2, $3, $4, $5, false)
+         ON CONFLICT (business_context, date, line_id)
+         DO UPDATE SET name = EXCLUDED.name, color = EXCLUDED.color`,
+        [context, safeDate, resolvedLineId, resolvedName, color]
+    );
+
+    return { lineId: resolvedLineId, name: resolvedName, color };
+}
+
 const CONFIRMATION_SOURCES = new Set([
     'booking_panel',
     'dashboard',
@@ -992,6 +1069,21 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
         applyBookingPackage(b);
 
+        let ensuredSecondAnimatorLine = null;
+        if (!b.linkedTo && Number(b.hosts || 0) > 1 && b.secondAnimator) {
+            ensuredSecondAnimatorLine = await ensureParkAnimatorLine(client, {
+                businessContext,
+                date: b.date,
+                lineId: null,
+                name: b.secondAnimator
+            });
+            if (!ensuredSecondAnimatorLine) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Другого ведучого не знайдено серед активних аніматорів' });
+            }
+            b.secondAnimator = ensuredSecondAnimatorLine.name;
+        }
+
         if (!b.linkedTo) {
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, null, businessContext);
             if (conflict.overlap) {
@@ -1000,6 +1092,17 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     success: false,
                     error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
                 });
+            }
+
+            if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
+                const secondConflict = await checkServerConflicts(client, b.date, ensuredSecondAnimatorLine.lineId, b.time, b.duration || 0, null, businessContext);
+                if (secondConflict.overlap) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        error: `Час зайнятий у другого ведучого: ${secondConflict.conflictWith.label || secondConflict.conflictWith.program_code}`
+                    });
+                }
             }
 
             const duplicate = await checkServerDuplicate(client, b.date, b.programId, b.time, b.duration || 0, null, businessContext);
@@ -1098,6 +1201,21 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
              RETURNING *`,
             [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
         );
+
+        if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
+            const linkedId = await generateBookingNumber(client);
+            await client.query(
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+                [linkedId, businessContext, b.date, b.time, ensuredSecondAnimatorLine.lineId, b.programId, b.programCode,
+                 b.label, b.programName, b.category, b.duration, 0, b.hosts,
+                 b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
+                 b.pinataFillerNumber, b.clientPinataServicePrice,
+                 b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
+                 b.createdBy, b.id, b.status || 'confirmed', b.kidsCount || null, b.groupName || null,
+                 null]
+            );
+        }
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
         // Update first_visit which is not covered by the trigger
@@ -1615,7 +1733,8 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
 router.post('/full', requireAction('create_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { main, linked } = req.body;
+        const { main } = req.body;
+        const linked = Array.isArray(req.body?.linked) ? req.body.linked : [];
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'create')) return;
@@ -1647,6 +1766,69 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         await client.query('BEGIN');
+
+        for (const lb of linked) {
+            const ensuredLinkedLine = await ensureParkAnimatorLine(client, {
+                businessContext,
+                date: lb.date || main.date,
+                lineId: lb.lineId,
+                name: lb.secondAnimator || null
+            });
+            if (ensuredLinkedLine) {
+                lb.lineId = ensuredLinkedLine.lineId;
+                if (lb.secondAnimator) lb.secondAnimator = ensuredLinkedLine.name;
+            }
+        }
+
+        if (Number(main.hosts || 0) > 1 && main.secondAnimator) {
+            const hasSecondLinked = linked.some(lb => lb.secondAnimator === main.secondAnimator
+                || (
+                    lb.programId === main.programId
+                    && String(lb.date || main.date) === String(main.date)
+                    && String(lb.time || main.time) === String(main.time)
+                    && Number(lb.price || 0) === 0
+                ));
+            if (!hasSecondLinked) {
+                const ensuredSecondLine = await ensureParkAnimatorLine(client, {
+                    businessContext,
+                    date: main.date,
+                    lineId: null,
+                    name: main.secondAnimator
+                });
+                if (!ensuredSecondLine) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, error: 'Другого ведучого не знайдено серед активних аніматорів' });
+                }
+                linked.push({
+                    date: main.date,
+                    time: main.time,
+                    lineId: ensuredSecondLine.lineId,
+                    programId: main.programId,
+                    programCode: main.programCode,
+                    label: main.label,
+                    programName: main.programName,
+                    category: main.category,
+                    duration: main.duration,
+                    price: 0,
+                    hosts: main.hosts,
+                    secondAnimator: ensuredSecondLine.name,
+                    pinataFiller: main.pinataFiller,
+                    pinataMode: main.pinataMode,
+                    pinataNumber: main.pinataNumber,
+                    pinataFillerNumber: main.pinataFillerNumber,
+                    clientPinataServicePrice: main.clientPinataServicePrice,
+                    clientPinataServiceNote: main.clientPinataServiceNote,
+                    costume: main.costume || null,
+                    room: main.room,
+                    notes: main.notes,
+                    createdBy: main.createdBy,
+                    status: main.status || 'confirmed',
+                    kidsCount: main.kidsCount || null,
+                    groupName: main.groupName || null,
+                    extraData: null
+                });
+            }
+        }
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0, null, businessContext);
         if (conflict.overlap) {
@@ -2533,18 +2715,20 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 }
                 // Create new linked booking if secondAnimator is set
                 if (newSecond) {
-                    const lineRes = await client.query(
-                        `SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND ${bookingContextSql('', '$3')}`,
-                        [newSecond, b.date, businessContext]
-                    );
-                    if (lineRes.rows.length > 0) {
+                    const ensuredLine = await ensureParkAnimatorLine(client, {
+                        businessContext,
+                        date: b.date,
+                        lineId: null,
+                        name: newSecond
+                    });
+                    if (ensuredLine) {
                         const newLinkedId = await generateBookingNumber(client);
                         await client.query(
                             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                            [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
+                            [newLinkedId, businessContext, b.date, b.time, ensuredLine.lineId, b.programId, b.programCode,
                              b.label, b.programName, b.category, b.duration, 0, b.hosts,
-                             b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
+                             ensuredLine.name, b.pinataFiller, b.pinataMode, b.pinataNumber,
                              b.pinataFillerNumber, b.clientPinataServicePrice,
                              b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
                              b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
@@ -2569,18 +2753,20 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 }
             } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
-                const lineRes = await client.query(
-                    `SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND ${bookingContextSql('', '$3')}`,
-                    [newSecond, b.date, businessContext]
-                );
-                if (lineRes.rows.length > 0) {
+                const ensuredLine = await ensureParkAnimatorLine(client, {
+                    businessContext,
+                    date: b.date,
+                    lineId: null,
+                    name: newSecond
+                });
+                if (ensuredLine) {
                     const newLinkedId = await generateBookingNumber(client);
                     await client.query(
                         `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                        [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
+                        [newLinkedId, businessContext, b.date, b.time, ensuredLine.lineId, b.programId, b.programCode,
                          b.label, b.programName, b.category, b.duration, 0, b.hosts,
-                         b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
+                         ensuredLine.name, b.pinataFiller, b.pinataMode, b.pinataNumber,
                          b.pinataFillerNumber, b.clientPinataServicePrice,
                          b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
                          b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,

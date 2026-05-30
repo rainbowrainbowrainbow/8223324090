@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.23 - другий ведучий staff fallback
+
+### Park timeline / second host fallback / 30.05.2026 [codex]
+- **Dropdown другого ведучого більше не залежить тільки від ліній дня** - якщо на дату є тільки одна live-лінія, CRM підтягує активних аніматорів зі Staff і дає вибрати другого/додаткового ведучого.
+- **Вибір ведучого передає реальний lineId** - опції другого та додаткового ведучого несуть `data-line-id`, тому conflict check і linked booking працюють по вибраному аніматору, а не тільки по текстовому імені.
+- **Backend гарантує лінію перед записом** - `/api/bookings/full`, legacy create і edit створюють/оновлюють `lines_by_date` для активного Staff-аніматора перед linked occupancy, щоб бронювання реально зʼявлялось на таймлайні.
+- **Regression guard додано** - `booking-hosts-semantics` фіксує Staff fallback і серверне створення реальної зайнятості для другого ведучого.
+
+---
+
 ## v0.68.22 - другий ведучий park timeline
 
 ### Park timeline / second host selector / 30.05.2026 [codex]

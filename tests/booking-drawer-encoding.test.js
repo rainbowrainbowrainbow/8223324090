@@ -52,17 +52,20 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /icon\.type = 'button'/);
     assert.match(bookingJs, /aria-pressed/);
 
-    assert.match(panelCss, /--booking-footer-space:\s*230px/);
+    assert.match(panelCss, /--booking-footer-space:\s*calc\(28px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /scroll-padding-bottom:\s*var\(--booking-footer-space\)/);
-    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*bottom:\s*0;/);
+    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*position:\s*static;/);
+    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*max-width:\s*560px;/);
     assert.doesNotMatch(panelCss, /bottom:\s*calc\(0px - 18px\)/);
     assert.doesNotMatch(panelCss, /margin:\s*20px -24px -18px/);
+    assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*position:\s*sticky;/);
+    assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*calc\(var\(--booking-panel-pad-x\) \* -1\)/);
 
     assert.match(panelCss, /\.btn-submit:disabled/);
     assert.match(panelCss, /\.booking-mode-card:focus-within/);
     assert.match(panelCss, /\.booking-menu-add-btn:focus-visible/);
     assert.match(panelCss, /\.program-icon:focus-visible/);
-    assert.match(responsiveCss, /--booking-footer-space:\s*250px/);
+    assert.match(responsiveCss, /--booking-footer-space:\s*calc\(32px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(responsiveCss, /width:\s*min\(92vw,\s*680px\)/);
 });
 

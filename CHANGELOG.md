@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.31 - компактний підсумок бронювання
+
+### Booking drawer summary / 31.05.2026 [codex]
+- **Підсумок більше не липне посередині drawer** - booking summary переведено зі sticky overlay у звичайну компактну checkout-картку в потоці форми.
+- **Картка підсумку стала вужчою і спокійнішою** - прибрано full-bleed negative margins, додано `max-width: 560px`, внутрішній border radius і нормальний відступ від полів.
+- **Mobile лишився повноширинним, але без overlay** - на вузьких екранах підсумок займає ширину форми, не накладається на інпути і не висить у центрі viewport.
+- **Regression guard оновлено** - тест фіксує, що booking summary не повертається до `position: sticky` і не використовує негативні width/margin hacks.
+
+---
+
 ## v0.68.30 - полірування кнопок бронювання
 
 ### Booking drawer interactions / 31.05.2026 [codex]

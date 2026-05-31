@@ -8,7 +8,7 @@
 
 .booking-panel {
     --booking-panel-pad-x: 24px;
-    --booking-footer-space: 230px;
+    --booking-footer-space: calc(28px + env(safe-area-inset-bottom, 0px));
     position: fixed;
     top: 0;
     right: 0;
@@ -1736,15 +1736,14 @@ body.timeline-mode-education .booking-block.education-lesson {
 }
 
 .booking-sticky-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 6;
-    margin: 20px calc(var(--booking-panel-pad-x) * -1) 0;
-    padding: 14px var(--booking-panel-pad-x) calc(18px + env(safe-area-inset-bottom, 0px));
-    background: linear-gradient(180deg, rgba(18, 24, 42, 0.84) 0%, rgba(18, 24, 42, 0.97) 22%, rgba(18, 24, 42, 1) 100%);
-    border-top: 1px solid rgba(76, 201, 240, 0.16);
-    box-shadow: 0 -12px 30px rgba(3, 10, 24, 0.48);
-    backdrop-filter: blur(8px);
+    position: static;
+    max-width: 560px;
+    margin: 18px 0 0 auto;
+    padding: 14px;
+    background: linear-gradient(180deg, rgba(18, 24, 42, 0.96) 0%, rgba(18, 24, 42, 1) 100%);
+    border: 1px solid rgba(76, 201, 240, 0.16);
+    border-radius: 14px;
+    box-shadow: 0 12px 28px rgba(3, 10, 24, 0.26);
 }
 
 .booking-sticky-footer__top {

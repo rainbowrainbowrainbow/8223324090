@@ -36,6 +36,11 @@ test('builds Kyiv slot windows with ordered start and end instants', () => {
     assert.ok(window.end.getTime() > window.start.getTime());
 });
 
+test('dateOnly keeps date-only values fixed and converts timestamps by Kyiv day', () => {
+    assert.equal(scheduling.dateOnly('2026-05-31'), '2026-05-31');
+    assert.equal(scheduling.dateOnly('2026-05-30T21:30:00.000Z'), '2026-05-31');
+});
+
 test('canonical schedule metadata marks date-only tasks before exact-time tasks', () => {
     const dateOnly = scheduling.scheduleSortMeta({ date: '2026-05-21', created_at: '2026-05-20T10:00:00Z' }, new Date('2026-05-20T10:00:00Z'));
     const timed = scheduling.scheduleSortMeta({ scheduled_start_at: '2026-05-21T09:00:00Z', created_at: '2026-05-20T10:00:00Z' }, new Date('2026-05-20T10:00:00Z'));

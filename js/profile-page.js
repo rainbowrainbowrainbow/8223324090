@@ -3248,11 +3248,25 @@ function cabinetTaskQuickCounts(data = myCabinetData) {
     const stats = data?.stats || {};
     const quick = stats.taskQuick || stats.tasksQuick || {};
     const completed = Number(quick.completedToday ?? stats.todayDone ?? quick.completed ?? stats.completedCount ?? stats.doneCount ?? 0);
-    const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? cabinetList('today').length ?? 0);
+    const todayFallback = Array.isArray(data?.today) ? data.today.length : cabinetList('today').length;
+    const overdueFallback = Array.isArray(data?.overdue) ? data.overdue.length : cabinetList('overdue').length;
+    const todayRemaining = Number(quick.todayRemaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? todayFallback ?? 0);
+    const overdueCarryover = Number(quick.overdueCarryover ?? stats.overdueCarryoverCount ?? stats.overdueCarryover ?? overdueFallback ?? 0);
+    const safeToday = Number.isFinite(todayRemaining) && todayRemaining > 0 ? todayRemaining : 0;
+    const safeOverdue = Number.isFinite(overdueCarryover) && overdueCarryover > 0 ? overdueCarryover : 0;
+    const remaining = Number(
+        quick.activeMyDay
+        ?? stats.activeMyDayCount
+        ?? stats.activeMyDay
+        ?? (safeOverdue > 0 ? safeToday + safeOverdue : quick.remaining)
+        ?? safeToday
+    );
     return {
         completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
         remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
-        scope: quick.scope || 'completed_today_and_active_today_or_undated'
+        todayRemaining: safeToday > 0 ? Math.floor(safeToday) : 0,
+        overdueCarryover: safeOverdue > 0 ? Math.floor(safeOverdue) : 0,
+        scope: quick.scope || 'completed_today_and_active_my_day_or_undated'
     };
 }
 

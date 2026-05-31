@@ -57,7 +57,7 @@ test('profile my day ordering keeps decomposed groups and sorts newest tasks fir
     assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [4, 3, 2, 1]);
 });
 
-test('profile quick task card uses completed-today and today-or-undated remaining counts', () => {
+test('profile quick task card uses completed-today and active My Day workload counts', () => {
     const ctx = loadProfileTaskerContext();
     const counts = ctx.cabinetTaskQuickCounts({
         stats: {
@@ -65,20 +65,45 @@ test('profile quick task card uses completed-today and today-or-undated remainin
                 completed: 99,
                 completedToday: 12,
                 remaining: 3,
-                scope: 'completed_today_and_active_today_or_undated'
+                activeMyDay: 4,
+                todayRemaining: 3,
+                overdueCarryover: 1,
+                scope: 'completed_today_and_active_my_day_or_undated'
             }
         }
     });
 
     assert.equal(counts.completed, 12);
-    assert.equal(counts.remaining, 3);
-    assert.equal(counts.scope, 'completed_today_and_active_today_or_undated');
+    assert.equal(counts.remaining, 4);
+    assert.equal(counts.todayRemaining, 3);
+    assert.equal(counts.overdueCarryover, 1);
+    assert.equal(counts.scope, 'completed_today_and_active_my_day_or_undated');
     const html = ctx.renderCabinetTaskQuickSplit(counts);
     assert.match(html, /cabinet-quick-half--completed/);
     assert.match(html, /cabinet-quick-half--remaining/);
     assert.match(html, />12</);
-    assert.match(html, />3</);
+    assert.match(html, />4</);
     assert.match(html, /виконано сьогодні/);
+});
+
+test('profile quick task card counts overdue carry-over when activeMyDay is absent', () => {
+    const ctx = loadProfileTaskerContext();
+    const counts = ctx.cabinetTaskQuickCounts({
+        today: [{ id: 1 }],
+        overdue: [{ id: 2 }],
+        stats: {
+            taskQuick: {
+                completedToday: 0,
+                remaining: 1
+            }
+        }
+    });
+
+    assert.equal(counts.completed, 0);
+    assert.equal(counts.remaining, 2);
+    assert.equal(counts.todayRemaining, 1);
+    assert.equal(counts.overdueCarryover, 1);
+    assert.equal(counts.scope, 'completed_today_and_active_my_day_or_undated');
 });
 
 test('profile task-count quick segment keeps users in My Day cockpit', () => {
@@ -510,7 +535,7 @@ test('profile unfinished gamification tabs use soon lockdown by role', () => {
     assert.doesNotMatch(ctx.renderInventory(), /\uD83C\uDF92/);
 });
 
-test('my cabinet task projection counts scheduled workload by today or no date, not all active tasks', () => {
+test('my cabinet task projection counts today, undated and overdue carry-over workload', () => {
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
@@ -520,7 +545,12 @@ test('my cabinet task projection counts scheduled workload by today or no date, 
     assert.match(source, /completedToday:\s*quickStats\.done_today/);
     assert.match(source, /completedTotal:\s*quickStats\.done_total/);
     assert.match(source, /remaining_today/);
+    assert.match(source, /overdue_carryover/);
+    assert.match(source, /active_my_day/);
+    assert.match(source, /remaining:\s*activeMyDay/);
+    assert.match(source, /scope:\s*'completed_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
+    assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);

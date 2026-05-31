@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.40 - Мій день: точний лічильник задач
+
+### Profile tasker / 31.05.2026 [codex]
+- **Лічильник `Мій день` тепер рахує весь активний день** - активні задачі включають сьогоднішні, задачі без дати та прострочені carry-over задачі, які реально видно у денному cockpit.
+- **Дата задач синхронізована з Kyiv timezone** - ISO timestamp-и більше не ріжуться через UTC `toISOString()`, тому JS helper і SQL projection використовують один день Києва.
+- **API віддає явні поля для діагностики** - `/api/tasks/my-cabinet` повертає `todayRemaining`, `overdueCarryover` і `activeMyDay`, щоб UI не змішував різні значення.
+- **Regression guard додано** - тести фіксують carry-over у quick card і Kyiv date-only поведінку на межі доби.
+
+---
+
 ## v0.68.39 - Без stale shell після деплою
 
 ### Release delivery / 31.05.2026 [codex]

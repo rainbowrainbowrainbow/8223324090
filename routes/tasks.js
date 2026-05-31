@@ -35,6 +35,7 @@ const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 const {
     attachTaskSchedule,
     canonicalTaskOrderSql,
+    dateOnly: taskKyivDateOnly,
     getAvailability,
     getSchedulePolicy,
     hasSchedulePayload,
@@ -537,10 +538,7 @@ function normalizeTaskOsFields(body = {}, oldTask = {}) {
 }
 
 function taskDateOnly(value) {
-    if (!value) return null;
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
-    return d.toISOString().slice(0, 10);
+    return taskKyivDateOnly(value);
 }
 
 function taskWorkloadDate(task = {}) {
@@ -1480,13 +1478,24 @@ router.get('/my-cabinet', async (req, res) => {
                     COUNT(*) FILTER (
                         WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                           AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
-                    )::int AS remaining_today
+                    )::int AS remaining_today,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+                          AND ${quickDateSql} < $${quickParams.length}::date
+                    )::int AS overdue_carryover,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+                          AND (${quickDateSql} <= $${quickParams.length}::date OR ${quickDateSql} IS NULL)
+                    )::int AS active_my_day
              FROM tasks t
              WHERE ${quickOwnerMatch}
                ${quickBusinessCondition}`,
             quickParams
         );
         const quickStats = quickResult.rows[0] || {};
+        const remainingToday = Number(quickStats.remaining_today || 0);
+        const overdueCarryover = Number(quickStats.overdue_carryover || 0);
+        const activeMyDay = Number(quickStats.active_my_day || 0) || remainingToday + overdueCarryover || buckets.today.length + buckets.overdue.length;
         const prefs = await ensureTaskPreferences(userId);
         res.json({
             success: true,
@@ -1502,15 +1511,23 @@ router.get('/my-cabinet', async (req, res) => {
             preferences: prefs,
             stats: {
                 todayDone: quickStats.done_today || 0,
-                todayPlanned: quickStats.remaining_today || buckets.today.length,
+                todayPlanned: remainingToday || buckets.today.length,
+                todayWorkloadCount: remainingToday || buckets.today.length,
+                overdueCarryover,
+                overdueCarryoverCount: overdueCarryover,
+                activeMyDay,
+                activeMyDayCount: activeMyDay,
                 taskQuick: {
                     completed: quickStats.done_today || 0,
                     completedToday: quickStats.done_today || 0,
                     completedTotal: quickStats.done_total || 0,
                     completedHistoryShown: completedHistory.length,
                     completedHistoryOverflow: Math.max(0, Number(quickStats.done_total || 0) - completedHistory.length),
-                    remaining: quickStats.remaining_today || buckets.today.length,
-                    scope: 'completed_today_and_active_today_or_undated'
+                    remaining: activeMyDay,
+                    todayRemaining: remainingToday || buckets.today.length,
+                    overdueCarryover,
+                    activeMyDay,
+                    scope: 'completed_today_and_active_my_day_or_undated'
                 },
                 waitingCount: buckets.waiting.length,
                 overdueCount: buckets.overdue.length,

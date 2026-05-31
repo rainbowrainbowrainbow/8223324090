@@ -29,6 +29,43 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
     assertCleanEncoding('index.html booking panel', html.slice(start, end + '</aside>'.length));
 });
 
+test('booking drawer controls keep reliable hit targets and footer spacing', () => {
+    const html = read('index.html');
+    const bookingJs = read('js', 'booking.js');
+    const panelCss = read('css', 'panel.css');
+    const responsiveCss = read('css', 'responsive.css');
+
+    [
+        'bookingHasEventToggle',
+        'bookingKitchenToggle',
+        'bookingLeadDetailsToggle',
+        'bookingMenuAddBtn',
+        'bookingCreateCustomerBtn',
+        'bookingSubmitBtn'
+    ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
+
+    assert.match(bookingJs, /bookingHasEventToggle'\)\?\.addEventListener\('change'/);
+    assert.match(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);
+    assert.match(bookingJs, /bookingLeadDetailsToggle'\)\?\.addEventListener\('change'/);
+    assert.match(bookingJs, /bookingMenuAddBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /document\.createElement\('button'\)/);
+    assert.match(bookingJs, /icon\.type = 'button'/);
+    assert.match(bookingJs, /aria-pressed/);
+
+    assert.match(panelCss, /--booking-footer-space:\s*230px/);
+    assert.match(panelCss, /scroll-padding-bottom:\s*var\(--booking-footer-space\)/);
+    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*bottom:\s*0;/);
+    assert.doesNotMatch(panelCss, /bottom:\s*calc\(0px - 18px\)/);
+    assert.doesNotMatch(panelCss, /margin:\s*20px -24px -18px/);
+
+    assert.match(panelCss, /\.btn-submit:disabled/);
+    assert.match(panelCss, /\.booking-mode-card:focus-within/);
+    assert.match(panelCss, /\.booking-menu-add-btn:focus-visible/);
+    assert.match(panelCss, /\.program-icon:focus-visible/);
+    assert.match(responsiveCss, /--booking-footer-space:\s*250px/);
+    assert.match(responsiveCss, /width:\s*min\(92vw,\s*680px\)/);
+});
+
 test('booking drawer keeps readable Ukrainian labels for manager-facing controls', () => {
     const bookingJs = read('js', 'booking.js');
     const bookingHtml = read('index.html');

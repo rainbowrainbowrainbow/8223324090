@@ -1315,7 +1315,10 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('bookingNotes').value = '';
     const groupInput = document.getElementById('bookingGroupName');
     if (groupInput) groupInput.value = '';
-    document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
+    document.querySelectorAll('.program-icon').forEach(i => {
+        i.classList.remove('selected');
+        i.setAttribute('aria-pressed', 'false');
+    });
     // v5.49: Reset program search
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
@@ -1929,7 +1932,8 @@ async function renderProgramIcons() {
         grid.className = 'category-grid';
         grid.dataset.category = cat;
         programs.forEach(p => {
-            const icon = document.createElement('div');
+            const icon = document.createElement('button');
+            icon.type = 'button';
             icon.className = `program-icon ${p.category}`;
             icon.dataset.programId = p.id;
             icon.dataset.category = p.category || '';
@@ -1949,6 +1953,8 @@ async function renderProgramIcons() {
             const durationBadge = p.duration > 0
                 ? `<span class="program-duration ${p.duration <= 60 ? 'short' : 'long'}">${p.duration}'</span>`
                 : '';
+            icon.setAttribute('aria-pressed', 'false');
+            icon.setAttribute('aria-label', `Обрати програму ${cardName}${p.duration ? `, ${p.duration} хв` : ''}`);
             icon.innerHTML = `
                 ${durationBadge}
                 <span class="icon-circle"><span class="icon">${_escB(p.icon)}</span></span>
@@ -2000,9 +2006,15 @@ function selectProgram(programId) {
     if (!program) return;
     if (!getBookingWorkspaceHasEvent()) setBookingWorkspaceHasEvent(true, { markDirty: true });
 
-    document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
+    document.querySelectorAll('.program-icon').forEach(i => {
+        i.classList.remove('selected');
+        i.setAttribute('aria-pressed', 'false');
+    });
     const selectedEl = document.querySelector(`[data-program-id="${programId}"]`);
-    if (selectedEl) selectedEl.classList.add('selected');
+    if (selectedEl) {
+        selectedEl.classList.add('selected');
+        selectedEl.setAttribute('aria-pressed', 'true');
+    }
     document.getElementById('selectedProgram').value = programId;
 
     const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
@@ -2934,6 +2946,7 @@ function unlockSubmitBtn() {
         btn.disabled = false;
         btn.textContent = btn.dataset.originalText || 'Додати бронювання';
     }
+    updateBookingSubmitState();
 }
 
 async function handleBookingSubmit(e) {

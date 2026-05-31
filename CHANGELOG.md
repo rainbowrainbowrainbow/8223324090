@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.30 - полірування кнопок бронювання
+
+### Booking drawer interactions / 31.05.2026 [codex]
+- **Кнопки в drawer стали справжніми interactive targets** - картки програм тепер рендеряться як `button type="button"` з `aria-pressed`, тому вибір програми стабільніший для mouse/touch/keyboard і не тригерить submit форми.
+- **Sticky-підсумок більше не перекриває поля** - прибрано негативний `bottom`/margin, додано контрольований нижній відступ форми та mobile/tablet spacing, щоб нижні кнопки і поля лишались клікабельними.
+- **UX-стани стали чеснішими** - submit має видимий disabled-стан, mode cards/action buttons отримали focus-visible, а tablet booking drawer повернувся до широкого smart-layout замість старої вузької панелі.
+- **Regression guard оновлено** - `booking-drawer-encoding.test.js` тепер перевіряє не тільки текст, а й контракт кнопок, footer spacing і responsive width.
+
+---
+
 ## v0.68.29 - гаряче виправлення текстів бронювання
 
 ### Booking drawer encoding / 31.05.2026 [codex]

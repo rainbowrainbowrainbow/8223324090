@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.49 - Profile snapped layout fix
+
+### Profile / 31.05.2026 [codex]
+- **Профіль більше не ламається у half-screen desktop** - сторінка `/profile` тепер адаптується за реальною шириною контенту після sidebar, а не тільки за шириною всього viewport.
+- **Додано content-width layout guard** - `profile-work` container queries переводять header, професійні панелі, робочий контекст і вкладки у стабільну mid-width схему.
+- **Вкладки профілю стали акуратнішими** - у snapped desktop вони лишаються в компактному рядку з внутрішнім scroll, без горизонтального overflow усієї сторінки.
+- **Wide desktop і mobile збережені** - 1440/1920 лишають двозонний desktop header, а вузькі екрани не створюють page-level overflow.
+
+---
+
 ## v0.68.48 - HR canvas direct links
 
 ### HR / 31.05.2026 [codex]

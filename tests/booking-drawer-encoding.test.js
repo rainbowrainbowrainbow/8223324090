@@ -55,7 +55,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /--booking-footer-space:\s*calc\(28px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /scroll-padding-bottom:\s*var\(--booking-footer-space\)/);
     assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*position:\s*static;/);
-    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*max-width:\s*560px;/);
+    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*width:\s*100%;/);
+    assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*max-width:\s*none;/);
     assert.match(panelCss, /\.booking-summary-note--error/);
     assert.match(panelCss, /\.btn-submit\.btn-submit--needs-input/);
     assert.doesNotMatch(panelCss, /bottom:\s*calc\(0px - 18px\)/);

@@ -126,6 +126,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /submitBtn\.disabled = false/);
     assert.match(bookingJs, /setAttribute\('aria-disabled', validation\.canSubmit \? 'false' : 'true'\)/);
     assert.match(bookingJs, /collectCreatedBookingRecords/);
+    assert.match(bookingJs, /NO_EVENT_TIMELINE_DURATION/);
+    assert.match(bookingJs, /getBookingScenarioContentState/);
+    assert.match(bookingJs, /revealCreatedBookingBlocks/);
+    assert.match(bookingJs, /createdBookingVisibilityMessage/);
+    assert.match(bookingJs, /booking-block--just-created/);
+    assert.match(bookingJs, /Оберіть програму або додайте зміст заявки/);
     assert.match(bookingJs, /Сервер не підтвердив створення бронювання/);
     assert.match(bookingJs, /updateBookingSubmitState/);
     assert.match(bookingJs, /renderProgramCategoryChips/);

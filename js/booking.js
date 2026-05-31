@@ -91,6 +91,7 @@ const BookingDrawerState = {
 };
 
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
+const NO_EVENT_TIMELINE_DURATION = 30;
 const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
 const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
 const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
@@ -241,6 +242,26 @@ function hasBookingLeadDetails(details = getBookingLeadDetails()) {
     return Object.values(details || {}).some(value => String(value || '').trim());
 }
 
+function getBookingScenarioContentState(formData = {}) {
+    const menuPositions = Array.isArray(formData.menuPositions) ? formData.menuPositions : getBookingMenuPositions();
+    const leadDetails = formData.leadDetails || getBookingLeadDetails();
+    const kitchenEnabled = formData.kitchenEnabled ?? isBookingKitchenEnabled();
+    const leadDetailsEnabled = formData.leadDetailsEnabled ?? isBookingLeadDetailsEnabled();
+    const hasProgram = Boolean(formData.programId || document.getElementById('selectedProgram')?.value);
+    const hasKitchenContent = kitchenEnabled && (menuPositions.length > 0 || hasBookingKitchenDraft());
+    const hasLeadContent = leadDetailsEnabled && hasBookingLeadDetails(leadDetails);
+    const hasNotes = Boolean(document.getElementById('bookingNotes')?.value?.trim());
+    const hasGroup = Boolean(document.getElementById('bookingGroupName')?.value?.trim());
+    return {
+        hasProgram,
+        hasKitchenContent,
+        hasLeadContent,
+        hasNotes,
+        hasGroup,
+        hasAnyContent: hasProgram || hasKitchenContent || hasLeadContent || hasNotes || hasGroup
+    };
+}
+
 function setBookingLeadDetails(details = {}) {
     const map = {
         bookingLeadSource: details.source || details.sourceChannel || '',
@@ -362,6 +383,7 @@ function getSmartBookingValidationState() {
     const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
     const programRequired = getBookingWorkspaceHasEvent();
+    const scenarioContent = getBookingScenarioContentState(formData);
     const warnings = [];
     const errors = [];
     const invalidFields = [];
@@ -393,6 +415,10 @@ function getSmartBookingValidationState() {
     if (programRequired && !hasProgram) {
         errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Увімкнено подію, але програму ще не вибрано.');
         invalidFields.push(isEducation ? 'educationLessonTitle' : 'selectedProgram');
+    }
+    if (presentation.mode === 'park' && !programRequired && !scenarioContent.hasAnyContent) {
+        errors.push('Оберіть програму або додайте зміст заявки: позицію кухні, деталі ліда чи примітку.');
+        invalidFields.push('bookingHasEventToggle', 'bookingKitchenToggle', 'bookingLeadDetailsToggle', 'selectedProgram');
     }
     if (isBookingKitchenEnabled() && !hasBookingKitchenDraft()) {
         warnings.push('Кухня увімкнена, але позиції меню ще не додані.');
@@ -438,7 +464,10 @@ function applyBookingValidationInvalidFields(validation) {
         'customerPhone',
         'customerInstagram',
         'selectedProgram',
-        'educationLessonTitle'
+        'educationLessonTitle',
+        'bookingHasEventToggle',
+        'bookingKitchenToggle',
+        'bookingLeadDetailsToggle'
     ];
     const invalid = new Set(validation?.invalidFields || []);
     fieldIds.forEach(id => {
@@ -2655,7 +2684,7 @@ function buildBookingObject(formData, program) {
         label: hasEvent ? formData.label : noEventLabel,
         programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Заняття') : noEventName),
         category: hasCatalogProgram ? program.category : (isEducationLessonBooking ? 'education' : 'custom'),
-        duration: hasEvent ? formData.duration : 0,
+        duration: hasEvent ? formData.duration : NO_EVENT_TIMELINE_DURATION,
         price: finalPrice,
         hosts: hasCatalogProgram ? program.hosts : (isEducationLessonBooking ? 1 : 0),
         secondAnimator: hasEvent ? formData.secondAnimator : null,
@@ -3056,6 +3085,81 @@ function createResultConfirmed(createResult) {
     return collectCreatedBookingRecords(createResult).length > 0;
 }
 
+function bookingBlockSelectorId(value) {
+    const raw = String(value || '');
+    if (!raw) return '';
+    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(raw);
+    return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function findCreatedBookingBlock(booking = {}) {
+    const id = booking?.id || booking?.bookingId;
+    const selectorId = bookingBlockSelectorId(id);
+    if (!selectorId) return null;
+    return document.querySelector(`.booking-block[data-booking-id="${selectorId}"]`);
+}
+
+function focusCreatedBookingBlocks(createdBookings = []) {
+    const blocks = createdBookings
+        .map(findCreatedBookingBlock)
+        .filter(Boolean);
+    blocks.forEach(block => {
+        block.classList.add('booking-block--just-created');
+        window.setTimeout(() => block.classList.remove('booking-block--just-created'), 4500);
+    });
+    const firstVisible = blocks.find(block => !block.classList.contains('status-hidden'));
+    if (firstVisible?.scrollIntoView) {
+        firstVisible.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    }
+    return {
+        expectedCount: createdBookings.filter(item => item?.id || item?.bookingId).length,
+        foundCount: blocks.length,
+        visibleCount: blocks.filter(block => !block.classList.contains('status-hidden')).length
+    };
+}
+
+function revealCreatedBookingBlocks(createdBookings = []) {
+    let visibility = focusCreatedBookingBlocks(createdBookings);
+    if (visibility.foundCount > 0 && visibility.visibleCount === 0 && typeof resetStatusFilter === 'function') {
+        resetStatusFilter();
+        visibility = focusCreatedBookingBlocks(createdBookings);
+    }
+    return visibility;
+}
+
+function createdBookingIsLeadOnly(booking = {}) {
+    const workspace = booking.extraData?.bookingWorkspace
+        || booking.extra_data?.bookingWorkspace
+        || booking.extraData?.booking_workspace
+        || booking.extra_data?.booking_workspace
+        || {};
+    return !booking.programId && (booking.programCode === 'LEAD' || workspace.scenario === 'lead_only');
+}
+
+function createdBookingSuccessMessage(createdBookings = [], seriesCount = 1) {
+    if (seriesCount > 1) return `Створено серію занять: ${seriesCount}`;
+    const primary = createdBookings[0] || {};
+    if (createdBookingIsLeadOnly(primary)) {
+        return 'Заявку створено без програми. Для події увімкніть «Подія / програма» і виберіть програму.';
+    }
+    return 'Бронювання створено!';
+}
+
+function createdBookingVisibilityMessage(createdBookings = []) {
+    const primary = createdBookings[0] || {};
+    const expectedDate = formatDate(AppState.selectedDate);
+    const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const actual = [];
+    if (primary.date && primary.date !== expectedDate) actual.push(`дата ${primary.date}`);
+    if (primary.businessContext && expectedContext && primary.businessContext !== expectedContext) {
+        actual.push(`бізнес ${primary.businessContext}`);
+    }
+    if (actual.length) {
+        return `Сервер створив запис, але не в поточному зрізі таймлайну: ${actual.join(', ')}. Відкрито ${expectedDate}${expectedContext ? ` / ${expectedContext}` : ''}.`;
+    }
+    return 'Сервер створив запис, але поточний таймлайн його не показав. Перевірте бізнес, дату/лінію або оновіть сторінку.';
+}
+
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
@@ -3221,7 +3325,13 @@ async function handleBookingSubmit(e) {
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
             const seriesCount = createResult?.createdCount || createdBookings.length;
-            showNotification(seriesCount > 1 ? `Створено серію занять: ${seriesCount}` : 'Бронювання створено!', 'success');
+            const visibility = revealCreatedBookingBlocks(createdBookings);
+            if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
+                console.error('Created booking is not visible after timeline refresh', { createdBookings, visibility });
+                showNotification(createdBookingVisibilityMessage(createdBookings), 'warning');
+            } else {
+                showNotification(createdBookingSuccessMessage(createdBookings, seriesCount), 'success');
+            }
         }
     } catch (error) {
         handleError('Збереження бронювання', error);

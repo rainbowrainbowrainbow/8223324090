@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.51 - Timeline move summary truth
+
+### Timeline / 31.05.2026 [codex]
+- **Toast переносу більше не бреше** - після drag/drop повідомлення будується з canonical before/after change set, а не з time-only шаблону.
+- **Зміна ведучого видима одразу** - якщо бронювання або linked second-host блок переїхав на іншу лінію, summary пише `змінили ведучого з X на Y`.
+- **Line/resource diff теж у контракті** - для кабінетів і спеціалістів той самий механізм показує зміну кабінету/спеціаліста замість мовчазного переносу.
+- **Undo лишився aligned** - кнопка `Скасувати` використовує той самий drag intent / undo snapshot, тому відкатує ті поля, які названі у summary.
+
+---
+
 ## v0.68.50 - Subtask completed metrics truth
 
 ### Tasks / Profile / 31.05.2026 [codex]

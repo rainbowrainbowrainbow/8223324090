@@ -109,11 +109,14 @@ test('timeline drag regression matrix keeps preview, save, and undo aligned', as
             const payload = model.buildDragAtomicPayload(intent);
             const snapshot = model.buildDragUndoSnapshot(intent, savedDragResult(intent));
             const undoPayload = model.buildDragUndoAtomicPayload(snapshot, savedDragResult(intent).booking);
+            const changeSet = model.buildDragChangeSet(intent);
 
             assert.deepEqual(summarizeConflict(preview), summarizeConflict(final));
             assert.equal(final.valid, true);
             assert.deepEqual(payload.main, row.expectedMainPayload);
             assert.deepEqual(payload.linked, row.expectedLinkedPayload);
+            assert.equal(changeSet.time.changed, row.currentTime !== draggedBooking.time);
+            assert.equal(changeSet.line.changed, row.targetLineId !== draggedBooking.lineId);
             assert.deepEqual(undoPayload.main, { time: '14:00', lineId: 'line-1' });
             assert.deepEqual(undoPayload.linked, [{ id: 'BK-linked', time: '14:10', lineId: 'line-2' }]);
             assert.equal(undoPayload.historyAction, 'undo_drag');

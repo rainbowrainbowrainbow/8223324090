@@ -1224,7 +1224,7 @@ body.dragging-active {
     background: var(--gray-800);
     color: var(--white);
     padding: 12px 20px;
-    border-radius: var(--radius-full);
+    border-radius: 18px;
     font-size: var(--font-sm);
     font-weight: 700;
     z-index: 9000;
@@ -1233,7 +1233,13 @@ body.dragging-active {
     align-items: center;
     gap: 12px;
     animation: dragToastSlideUp 0.3s var(--ease-smooth);
-    max-width: 90vw;
+    max-width: min(92vw, 860px);
+}
+
+.drag-undo-toast__message {
+    min-width: 0;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 
 .drag-undo-toast button {

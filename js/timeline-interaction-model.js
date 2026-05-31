@@ -263,6 +263,99 @@
         };
     }
 
+    function labelForBooking(booking = {}) {
+        return booking.label || booking.programCode || booking.programName || booking.room || (booking.id ? `#${booking.id}` : 'Бронювання');
+    }
+
+    function buildDragChangeSet(intent) {
+        const lineChanges = (intent.candidates || [])
+            .filter(candidate => !sameLine(candidate.old?.lineId, candidate.next?.lineId))
+            .map(candidate => ({
+                id: candidate.id,
+                bookingId: candidate.id,
+                bookingLabel: labelForBooking(candidate.old),
+                isMain: Boolean(candidate.isMain),
+                isDragged: Boolean(candidate.isDragged),
+                oldLineId: candidate.old?.lineId ?? null,
+                newLineId: candidate.next?.lineId ?? null
+            }));
+        const deltaMinutes = Number(intent.timeDelta || 0);
+        return {
+            type: 'drag-change-set',
+            bookingId: intent.mainBooking?.id || null,
+            draggedBookingId: intent.draggedBooking?.id || null,
+            primaryLabel: labelForBooking(intent.draggedBooking || intent.mainBooking),
+            time: {
+                changed: deltaMinutes !== 0,
+                deltaMinutes,
+                oldTime: intent.draggedBooking?.time || minutesToTimeValue(intent.startMin),
+                newTime: intent.targetTime
+            },
+            line: {
+                changed: lineChanges.length > 0,
+                changes: lineChanges
+            },
+            lineChanges,
+            changedFields: [
+                ...(deltaMinutes !== 0 ? ['time'] : []),
+                ...(lineChanges.length > 0 ? ['line'] : [])
+            ]
+        };
+    }
+
+    function lineNameFromOptions(lineId, options = {}) {
+        const id = idOf(lineId);
+        if (typeof options.resolveLineName === 'function') {
+            const resolved = options.resolveLineName(id);
+            if (resolved) return String(resolved);
+        }
+        const names = options.lineNames || {};
+        if (names instanceof Map && names.has(id)) return String(names.get(id));
+        if (own(names, id) && names[id]) return String(names[id]);
+        return id ? `лінію ${id}` : 'іншу лінію';
+    }
+
+    function formatSignedMinutes(delta) {
+        const minutes = Number(delta || 0);
+        return `${minutes > 0 ? '+' : ''}${minutes}`;
+    }
+
+    function uniqueLineChanges(changes = []) {
+        const seen = new Set();
+        const result = [];
+        changes.forEach(change => {
+            const key = `${idOf(change.oldLineId)}>${idOf(change.newLineId)}>${idOf(change.bookingId)}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            result.push(change);
+        });
+        return result;
+    }
+
+    function formatDragChangeSummary(changeSet, options = {}) {
+        const primaryLabel = options.primaryLabel || changeSet?.primaryLabel || 'Бронювання';
+        const assignmentLabel = options.assignmentLabel || 'лінію';
+        const parts = [];
+
+        if (changeSet?.time?.changed) {
+            parts.push(`${primaryLabel} перенесено на ${formatSignedMinutes(changeSet.time.deltaMinutes)} хв`);
+        } else {
+            parts.push(primaryLabel);
+        }
+
+        const lineChanges = uniqueLineChanges(changeSet?.lineChanges || changeSet?.line?.changes || []);
+        lineChanges.forEach(change => {
+            const oldName = lineNameFromOptions(change.oldLineId, options);
+            const newName = lineNameFromOptions(change.newLineId, options);
+            const labelSuffix = lineChanges.length > 1 && change.bookingLabel
+                ? ` ${change.bookingLabel}:`
+                : '';
+            parts.push(`змінили ${assignmentLabel}${labelSuffix} з ${oldName} на ${newName}`);
+        });
+
+        return parts.join(', ');
+    }
+
     function buildResizeInteractionIntent(input = {}) {
         const booking = input.booking;
         const group = resolveTimelineBookingGroup(booking, input.allBookings || []);
@@ -406,6 +499,8 @@
         buildDragAtomicPayload,
         buildDragUndoSnapshot,
         buildDragUndoAtomicPayload,
+        buildDragChangeSet,
+        formatDragChangeSummary,
         buildResizeInteractionIntent,
         buildResizeAtomicPayload,
         buildResizeUndoSnapshot,

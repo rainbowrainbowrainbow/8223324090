@@ -1873,6 +1873,33 @@ function _removeDropGhost() {
     if (ghost) ghost.remove();
 }
 
+function _timelineLineLabels() {
+    const labels = {};
+    const addLine = (line) => {
+        if (!line || line.id === undefined || line.id === null) return;
+        const label = line.name || line.label || line.title || line.displayName;
+        if (label) labels[String(line.id)] = String(label);
+    };
+    const dateLines = AppState.linesByDate?.[AppState.selectedDate] || [];
+    dateLines.forEach(addLine);
+    (AppState.lines || []).forEach(addLine);
+    document.querySelectorAll('.line-header[data-line-id]').forEach(header => {
+        const id = header.dataset.lineId;
+        const name = header.querySelector('.line-name')?.textContent?.trim();
+        if (id && name) labels[String(id)] = name;
+    });
+    return labels;
+}
+
+function _timelineDragAssignmentLabel() {
+    const presentation = window.TimelineBusinessContext?.presentation?.() || {};
+    const resourceType = presentation.resourceType || (typeof TIMELINE_DISPLAY_MODE !== 'undefined' && TIMELINE_DISPLAY_MODE === 'park' ? 'animator' : '');
+    if (resourceType === 'animator') return 'ведучого';
+    if (resourceType === 'cabinet') return 'кабінет';
+    if (resourceType === 'specialist') return 'спеціаліста';
+    return 'лінію';
+}
+
 // --- Auto-scroll when dragging near edges ---
 function _handleDragEdgeScroll(clientX) {
     const s = _bookingDragState;
@@ -2080,6 +2107,8 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             oldTime: minutesToTime(intent.startMin)
         };
         const payload = model.buildDragAtomicPayload(intent, historyData);
+        const changeSet = model.buildDragChangeSet ? model.buildDragChangeSet(intent) : null;
+        const lineLabels = _timelineLineLabels();
         const atomicResult = await apiUpdateLinkedBookingsAtomic(intent.mainBooking.id, payload);
         if (atomicResult && atomicResult.success === false) {
             showNotification(atomicResult.error || 'Помилка переміщення', 'error');
@@ -2094,7 +2123,11 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
         invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
 
-        _showDragUndoToast(s.draggedBooking || s.booking, intent.timeDelta, intent.lineChanged, intent.targetLineId);
+        _showDragUndoToast(changeSet || {
+            primaryLabel: (s.draggedBooking || s.booking)?.label || (s.draggedBooking || s.booking)?.programCode,
+            time: { changed: intent.timeDelta !== 0, deltaMinutes: intent.timeDelta },
+            lineChanges: intent.lineChanged ? [{ oldLineId: intent.startLineId, newLineId: intent.targetLineId }] : []
+        }, lineLabels);
 
         return true;
     } catch (error) {
@@ -2135,30 +2168,22 @@ function _rollbackDragVisuals(state) {
 }
 
 // --- Undo toast ---
-function _showDragUndoToast(booking, timeDelta, lineChanged, targetLineId = null) {
+function _showDragUndoToast(changeSet, lineLabels = {}) {
     // Remove existing toast
     const existingToast = document.querySelector('.drag-undo-toast');
     if (existingToast) existingToast.remove();
 
-    const label = booking.label || booking.programCode;
-    let message;
-    if (lineChanged && timeDelta !== 0) {
-        const targetHeader = document.querySelector(`.line-header[data-line-id="${targetLineId || ''}"] .line-name`) ||
-            document.querySelector(`.line-grid[data-line-id="${targetLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
-        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
-        message = `${label} → ${targetName} (${timeDelta > 0 ? '+' : ''}${timeDelta} хв)`;
-    } else if (lineChanged) {
-        const targetHeader = document.querySelector(`.line-grid[data-line-id="${targetLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
-        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
-        message = `${label} → ${targetName}`;
-    } else {
-        message = `${label} перенесено на ${timeDelta > 0 ? '+' : ''}${timeDelta} хв`;
-    }
-
+    const model = timelineInteractionModel();
+    const message = model?.formatDragChangeSummary
+        ? model.formatDragChangeSummary(changeSet, {
+            lineNames: lineLabels,
+            assignmentLabel: _timelineDragAssignmentLabel()
+        })
+        : `${changeSet?.primaryLabel || 'Бронювання'} переміщено`;
     const toast = document.createElement('div');
     toast.className = 'drag-undo-toast';
     toast.innerHTML = `
-        <span>${escapeHtml(message)}</span>
+        <span class="drag-undo-toast__message">${escapeHtml(message)}</span>
         <button>Скасувати</button>
     `;
 

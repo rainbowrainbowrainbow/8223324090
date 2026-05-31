@@ -171,6 +171,58 @@ test('drag undo snapshot uses persisted saved rows when server result is availab
     assert.equal(payload.historyAction, 'undo_drag');
 });
 
+test('drag change summary includes time and host line reassignment from the same canonical intent', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', label: 'КВ1(60)' });
+    const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', linkedTo: 'BK-main', label: '+Вед(60)' });
+
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: linked,
+        allBookings: [main, linked],
+        startMin: 14 * 60 + 15,
+        currentMin: 14 * 60 + 10,
+        startLineId: 'line-2',
+        targetLineId: 'line-4'
+    });
+    const changeSet = model.buildDragChangeSet(intent);
+    const summary = model.formatDragChangeSummary(changeSet, {
+        assignmentLabel: 'ведучого',
+        lineNames: {
+            'line-2': 'Анна',
+            'line-4': 'Діана'
+        }
+    });
+
+    assert.deepEqual(changeSet.changedFields, ['time', 'line']);
+    assert.deepEqual(changeSet.lineChanges, [{
+        id: 'BK-linked',
+        bookingId: 'BK-linked',
+        bookingLabel: '+Вед(60)',
+        isMain: false,
+        isDragged: true,
+        oldLineId: 'line-2',
+        newLineId: 'line-4'
+    }]);
+    assert.equal(summary, '+Вед(60) перенесено на -5 хв, змінили ведучого з Анна на Діана');
+});
+
+test('drag change summary keeps time-only moves compact', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', label: 'АН(60)' });
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: main,
+        allBookings: [main],
+        startMin: 14 * 60,
+        currentMin: 14 * 60 + 30,
+        startLineId: 'line-1',
+        targetLineId: 'line-1'
+    });
+    const summary = model.formatDragChangeSummary(model.buildDragChangeSet(intent), {
+        assignmentLabel: 'ведучого',
+        lineNames: { 'line-1': 'Анна' }
+    });
+
+    assert.equal(summary, 'АН(60) перенесено на +30 хв');
+});
+
 test('resize undo snapshot and payload use persisted saved duration', () => {
     const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', duration: 60 });
     const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', linkedTo: 'BK-main', duration: 60 });

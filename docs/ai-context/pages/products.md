@@ -36,6 +36,15 @@ Products is the product hub for park products, programs, kitchen/menu/cakes surf
 - Manage kitchen/menu/cakes items.
 - Open catalog surfaces.
 - Generate/apply catalog media where supported.
+- Generate one AI icon per program through Products -> AI-іконки програм. The icon pipeline is manual, single-program only, and stores the final image under CRM uploads.
+
+## AI Icon Configuration
+
+- `OPENROUTER_API_KEY` enables OpenRouter image generation.
+- `PROGRAM_ICON_IMAGE_PROVIDER=auto` uses OpenRouter when `OPENROUTER_API_KEY` is configured and otherwise keeps the legacy Kie.ai provider.
+- Default cheap OpenRouter image model: `openai/gpt-5-image-mini`.
+- Prompt refinement model can be changed with `PROGRAM_ICON_PROMPT_MODEL` or from the Products AI-icon settings modal.
+- Do not store provider keys in repo files or product settings JSON; keys must stay in production env variables only.
 
 ## Data Sources
 

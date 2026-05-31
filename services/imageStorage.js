@@ -21,7 +21,10 @@ const PUBLIC_PREFIX = '/uploads/catalog-images';
  */
 async function uploadFromUrl(sourceUrl, filename, options = {}) {
     try {
-        log.info(`Downloading image from ${sourceUrl.substring(0, 60)}...`);
+        const sourcePreview = String(sourceUrl || '').startsWith('data:image/')
+            ? 'data:image/...'
+            : String(sourceUrl || '').substring(0, 60);
+        log.info(`Downloading image from ${sourcePreview}...`);
         const imageBuffer = await downloadImage(sourceUrl);
         if (!imageBuffer || imageBuffer.length === 0) {
             log.error('Downloaded empty image from', sourceUrl);
@@ -49,6 +52,15 @@ async function uploadFromUrl(sourceUrl, filename, options = {}) {
  */
 function downloadImage(url) {
     return new Promise((resolve, reject) => {
+        if (String(url || '').startsWith('data:image/')) {
+            try {
+                const match = String(url).match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/);
+                if (!match) return reject(new Error('Invalid data URL image'));
+                return resolve(Buffer.from(match[1], 'base64'));
+            } catch (err) {
+                return reject(err);
+            }
+        }
         const client = url.startsWith('https') ? https : http;
         client.get(url, { timeout: 30000 }, (res) => {
             // Follow redirects

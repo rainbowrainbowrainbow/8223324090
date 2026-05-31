@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.41 - OpenRouter генерація AI-іконок
+
+### Products / 31.05.2026 [codex]
+- **AI-іконки програм тепер мають OpenRouter image-provider** - `auto` режим використовує `OPENROUTER_API_KEY`, якщо ключ є в env, і генерує через OpenRouter image models без окремого Kie job.
+- **Дешева модель за замовчуванням** - для OpenRouter налаштовано `openai/gpt-5-image-mini`; у налаштуваннях Products можна змінити provider, image model і prompt model.
+- **CRM зберігає image output одразу** - OpenRouter data URL або image URL проходить через CRM upload storage, тому фінальна іконка не залежить від тимчасового provider URL.
+- **Legacy Kie.ai не зламано** - якщо OpenRouter ключа немає, `auto` лишає старий Kie.ai шлях; batch/backfill як і раніше відсутні.
+
+---
+
 ## v0.68.40 - Мій день: точний лічильник задач
 
 ### Profile tasker / 31.05.2026 [codex]

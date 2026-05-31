@@ -2258,6 +2258,13 @@ async function startProductIconGeneration(productId) {
             renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
             return;
         }
+        if (result.done || result.status === 'succeeded') {
+            productIconGenerationInFlight.delete(productId);
+            showNotification('AI-іконку збережено у програмі', 'success');
+            renderProducts();
+            renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+            return;
+        }
         showNotification(result.deduped ? 'AI-іконка вже генерується' : 'Генерацію AI-іконки запущено', 'success');
         renderProducts();
         renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
@@ -2321,9 +2328,13 @@ async function openProgramIconSettingsModal() {
         return;
     }
     productIconSettingsCache = result;
+    fillProgramIconModelOptions(result.imageModelOptions || []);
     fillProgramIconSettingsForm(result.settings || {});
     const meta = document.getElementById('programIconSettingsMeta');
-    if (meta) meta.textContent = `${result.provider || 'kie.ai'} · ${result.model || 'nano-banana-2'} · без batch`;
+    if (meta) {
+        const ready = result.providerReady ? 'ключ підключено' : 'ключ не підключено';
+        meta.textContent = `${result.provider || 'openrouter'} · ${result.model || 'openai/gpt-5-image-mini'} · prompt ${result.promptModel || 'openai/gpt-5.4-nano'} · ${ready} · без batch`;
+    }
     setProgramIconSettingsStatus('Налаштування готові до редагування.', 'success');
 }
 
@@ -2333,6 +2344,9 @@ function closeProgramIconSettingsModal() {
 
 function fillProgramIconSettingsForm(settings = {}) {
     const fields = {
+        programIconImageProvider: settings.imageProvider || 'auto',
+        programIconImageModel: settings.imageModel || '',
+        programIconPromptModel: settings.promptModel || 'openai/gpt-5.4-nano',
         programIconSystemInstructions: settings.systemInstructions,
         programIconUserTemplate: settings.userTemplate,
         programIconStyleRules: settings.styleRules,
@@ -2344,8 +2358,17 @@ function fillProgramIconSettingsForm(settings = {}) {
     });
 }
 
+function fillProgramIconModelOptions(options = []) {
+    const list = document.getElementById('programIconImageModelOptions');
+    if (!list || !Array.isArray(options) || !options.length) return;
+    list.innerHTML = options.map(option => `<option value="${escapeHtml(option.value || '')}">${escapeHtml(option.label || option.value || '')}</option>`).join('');
+}
+
 function readProgramIconSettingsForm() {
     return {
+        imageProvider: document.getElementById('programIconImageProvider')?.value || 'auto',
+        imageModel: document.getElementById('programIconImageModel')?.value || '',
+        promptModel: document.getElementById('programIconPromptModel')?.value || '',
         systemInstructions: document.getElementById('programIconSystemInstructions')?.value || '',
         userTemplate: document.getElementById('programIconUserTemplate')?.value || '',
         styleRules: document.getElementById('programIconStyleRules')?.value || '',

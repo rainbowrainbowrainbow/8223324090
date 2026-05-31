@@ -22,8 +22,12 @@ const {
     PROGRAM_ICON_SETTINGS_KEY,
     PROGRAM_ICON_PROVIDER,
     PROGRAM_ICON_IMAGE_MODEL,
+    PROGRAM_ICON_PROMPT_MODEL,
+    PROGRAM_ICON_PROVIDER_OPTIONS,
+    PROGRAM_ICON_IMAGE_MODEL_OPTIONS,
     DEFAULT_PROGRAM_ICON_SETTINGS,
     sanitizeProgramIconSettings,
+    resolveProgramIconRuntime,
     buildDeterministicProgramIconPrompt,
     startProgramIconGeneration,
     pollProgramIconJob,
@@ -1162,12 +1166,19 @@ router.get('/catalogs', async (req, res) => {
 router.get('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     try {
         const settings = await loadProgramIconSettings();
+        const runtime = resolveProgramIconRuntime(settings);
         res.json({
             success: true,
             settings,
             defaults: DEFAULT_PROGRAM_ICON_SETTINGS,
-            provider: PROGRAM_ICON_PROVIDER,
-            model: PROGRAM_ICON_IMAGE_MODEL
+            provider: runtime.provider,
+            requestedProvider: runtime.requestedProvider,
+            model: runtime.imageModel,
+            promptModel: runtime.promptModel,
+            providerReady: runtime.providerReady,
+            keyStatus: runtime.keys,
+            providerOptions: PROGRAM_ICON_PROVIDER_OPTIONS,
+            imageModelOptions: PROGRAM_ICON_IMAGE_MODEL_OPTIONS
         });
     } catch (err) {
         log.error('Get program icon settings error', err);
@@ -1320,6 +1331,67 @@ router.post('/:id/program-icon/generate', productProgramIconRateLimit, requireRo
     try {
         const settings = await loadProgramIconSettings();
         const generation = await startProgramIconGeneration(product, settings);
+        if (generation.done && generation.imageUrl) {
+            const savedUrl = await persistProgramIconImage(product, generation.imageUrl);
+            if (!savedUrl) {
+                await updateProgramIconFailed(id, businessContext, req.user.username, 'Generated image could not be saved to CRM uploads').catch(() => {});
+                const fresh = await getProductWithPriceRule(pool, id, businessContext);
+                return res.status(502).json({
+                    success: false,
+                    done: true,
+                    status: 'failed',
+                    error: 'Generated image could not be saved to CRM uploads',
+                    product: fresh ? mapProductRow(fresh) : null
+                });
+            }
+            await pool.query(
+                `UPDATE products
+                 SET icon_url = $1,
+                     icon_generation_status = 'succeeded',
+                     icon_job_id = $2,
+                     icon_prompt_source_snapshot = $3::jsonb,
+                     icon_llm_prompt_output = $4,
+                     icon_final_image_prompt = $5,
+                     icon_provider = $6,
+                     icon_model = $7,
+                     icon_last_error = NULL,
+                     icon_generated_at = NOW(),
+                     updated_at = NOW(),
+                     updated_by = $8
+                 WHERE id = $9
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10
+                   AND icon_job_id = $11`,
+                [
+                    savedUrl,
+                    generation.taskId,
+                    JSON.stringify({
+                        ...generation.sourceSnapshot,
+                        promptSource: generation.promptSource,
+                        promptFallbackReason: generation.promptFallbackReason,
+                        promptModel: generation.promptModel,
+                        usage: generation.usage || null
+                    }),
+                    generation.llmPromptOutput,
+                    generation.finalPrompt,
+                    generation.provider,
+                    generation.model,
+                    req.user.username,
+                    id,
+                    businessContext,
+                    startToken
+                ]
+            );
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.json({
+                success: true,
+                done: true,
+                status: 'succeeded',
+                imageUrl: savedUrl,
+                taskId: generation.taskId,
+                promptSource: generation.promptSource,
+                product: mapProductRow(fresh)
+            });
+        }
         await pool.query(
             `UPDATE products
              SET icon_generation_status = 'pending',

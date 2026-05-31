@@ -28,18 +28,25 @@ test('program icon generation schema persists icon state and prompt/debug trail'
     assert.match(migration, /program_icon_generation/);
 });
 
-test('program icon service keeps prompt fallback, cheap still-image provider, and no batch path', () => {
+test('program icon service keeps prompt fallback, OpenRouter image provider, and no batch path', () => {
     const service = read('services/programIconGeneration.js');
+    const storage = read('services/imageStorage.js');
     const impl = require('../services/programIconGeneration');
 
-    assert.equal(impl.PROGRAM_ICON_PROVIDER, 'kie.ai');
-    assert.equal(impl.PROGRAM_ICON_IMAGE_MODEL, process.env.PROGRAM_ICON_IMAGE_MODEL || 'nano-banana-2');
+    assert.ok(['kie.ai', 'openrouter'].includes(impl.PROGRAM_ICON_PROVIDER));
+    assert.ok(impl.PROGRAM_ICON_IMAGE_MODEL);
+    assert.match(service, /openai\/gpt-5-image-mini/);
+    assert.match(service, /OPENROUTER_API_KEY not configured/);
+    assert.match(service, /modalities:\s*\['image', 'text'\]/);
+    assert.match(service, /parseOpenRouterImageUrl/);
+    assert.match(service, /resolveProgramIconRuntime/);
     assert.match(service, /openRouterChat/);
     assert.match(service, /buildDeterministicProgramIconPrompt/);
     assert.match(service, /fallbackTemplate/);
     assert.match(service, /KIE_API_KEY not configured/);
     assert.match(service, /\/api\/v1\/jobs\/createTask/);
     assert.match(service, /\/api\/v1\/jobs\/recordInfo\?taskId=/);
+    assert.match(storage, /startsWith\('data:image\/'\)/);
     assert.doesNotMatch(service, /batch-generate|bulk-generate|auto-backfill/i);
 
     const prompt = impl.buildDeterministicProgramIconPrompt({
@@ -52,6 +59,15 @@ test('program icon service keeps prompt fallback, cheap still-image provider, an
     assert.match(prompt, /Quest Mystery/);
     assert.match(prompt, /No text/);
     assert.ok(prompt.length <= 1800);
+
+    const parsed = impl.parseOpenRouterImageUrl({
+        choices: [{ message: { images: [{ image_url: { url: 'data:image/png;base64,AAAA' } }] } }]
+    });
+    assert.equal(parsed, 'data:image/png;base64,AAAA');
+
+    const runtime = impl.resolveProgramIconRuntime({ imageProvider: 'openrouter', imageModel: '', promptModel: 'openai/gpt-5.4-nano' });
+    assert.equal(runtime.provider, 'openrouter');
+    assert.equal(runtime.imageModel, 'openai/gpt-5-image-mini');
 
     const { errors } = impl.sanitizeProgramIconSettings({ systemInstructions: '', userTemplate: '', styleRules: '', fallbackTemplate: '' });
     assert.ok(errors.length >= 3);
@@ -69,6 +85,9 @@ test('products API exposes guarded single-program icon endpoints and persisted r
     assert.match(route, /icon_generation_status = 'pending'/);
     assert.match(route, /deduped: true/);
     assert.match(route, /persistProgramIconImage/);
+    assert.match(route, /status:\s*'succeeded'/);
+    assert.match(route, /providerOptions/);
+    assert.match(route, /imageModelOptions/);
     assert.match(route, /buildDeterministicProgramIconPrompt/);
     assert.match(route, /iconUrl: row\.icon_url/);
     assert.match(route, /iconGenerationStatus: row\.icon_generation_status/);
@@ -83,6 +102,9 @@ test('products UI gives operators explicit generate/status/retry/settings surfac
     assert.match(html, /id="programIconSettingsBtn"/);
     assert.match(html, /id="programIconGenerationPanel"/);
     assert.match(html, /id="programIconSettingsModal"/);
+    assert.match(html, /id="programIconImageProvider"/);
+    assert.match(html, /id="programIconImageModel"/);
+    assert.match(html, /id="programIconPromptModel"/);
     assert.match(html, /id="programIconSystemInstructions"/);
     assert.match(html, /program-icon-ai-panel/);
     assert.match(page, /productIconGenerationInFlight/);
@@ -95,6 +117,8 @@ test('products UI gives operators explicit generate/status/retry/settings surfac
     assert.match(page, /apiGetProductProgramIconStatus/);
     assert.match(page, /apiGetProgramIconSettings/);
     assert.match(page, /apiUpdateProgramIconSettings/);
+    assert.match(page, /fillProgramIconModelOptions/);
+    assert.match(page, /programIconImageProvider/);
     assert.match(api, /apiGenerateProductProgramIcon/);
     assert.match(api, /apiGetProductProgramIconStatus/);
     assert.match(api, /apiGetProgramIconSettings/);

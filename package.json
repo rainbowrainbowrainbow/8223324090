@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.40",
+  "version": "0.68.41",
   "eventGenix": {
-    "releaseLabel": "Мій день: точний лічильник задач"
+    "releaseLabel": "OpenRouter генерація AI-іконок"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

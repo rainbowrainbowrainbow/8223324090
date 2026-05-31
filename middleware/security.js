@@ -60,7 +60,13 @@ function isHtmlPagePath(pathname) {
 
 function cacheControl(req, res, next) {
     const p = req.path;
-    if (isHtmlPagePath(p)) {
+    if (p === '/sw.js') {
+        // Service worker must never be immutable; stale workers can keep serving
+        // an old CRM shell after a deploy even when HTML asset tags are current.
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+    } else if (isHtmlPagePath(p)) {
         // HTML: always revalidate
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');

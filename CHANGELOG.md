@@ -4,6 +4,15 @@
 
 ---
 
+## v0.68.39 - Без stale shell після деплою
+
+### Release delivery / 31.05.2026 [codex]
+- **Service worker більше не кешується як immutable JS** - `/sw.js` отримав `Cache-Control: no-cache, no-store, must-revalidate`, щоб браузер не тримав старий app shell після деплою.
+- **Додано guard у UI smoke** - тест фіксує, що service worker script не потрапляє під загальне правило `public, max-age=604800, immutable` для JS/CSS assets.
+- **Production symptom закрито на рівні доставки** - якщо сервер уже на новій версії, але вкладка тримає старі `booking.js`/`timeline.js`, наступні reload/update цикли не повинні застрягати на старому worker cache.
+
+---
+
 ## v0.68.38 - Видимість бронювання на таймлайні
 
 ### Timeline booking / 31.05.2026 [codex]

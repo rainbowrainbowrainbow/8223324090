@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.3 - Business context and resource truth
+
+### Timeline / Business context / Multi-cabinet / 31.05.2026 [codex]
+- **Бізнес-контекст таймлайна став одним джерелом правди** - активний бізнес тепер береться з route/URL/CRM shell через `TimelineBusinessContext.state()`, а перемикання бізнесу чистить кеші ліній і бронювань та перемальовує таймлайн без stale-даних.
+- **Лінії отримали канонічну resource identity** - `lineId`, `resourceId`, `resourceType`, `businessContext` і `source` проходять від resource model/API до frontend, щоб park-аніматори, кабінети й спеціалісти не губилися після refresh або schedule-derived ліній.
+- **WebSocket більше не підмішує чужий бізнес** - booking/line events з іншого `businessContext` ігноруються у поточному timeline shell, тому перемикання бізнесів не має тягнути чужі оновлення в активну проєкцію.
+- **Діагностика створення бронювання точніша** - після create CRM ще раз чекає DOM-блок, а warning тепер пояснює не лише missing line/filter, а й час поза видимим діапазоном або нульову тривалість запису.
+
+---
+
 ## v0.69.2 - HR canvas usability tails
 
 ### HR / Structure canvas / 31.05.2026 [codex]

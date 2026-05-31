@@ -200,6 +200,34 @@ async function visibleLineByDate(queryable, { businessContext, date, lineId }) {
     return row ? { lineId: row.line_id, name: row.name, color: row.color, source: 'lines_by_date' } : null;
 }
 
+function ensureBookingExtraDataObject(booking) {
+    if (!booking) return {};
+    if (booking.extraData && typeof booking.extraData === 'object' && !Array.isArray(booking.extraData)) return booking.extraData;
+    if (typeof booking.extraData === 'string' && booking.extraData.trim()) {
+        try {
+            const parsed = JSON.parse(booking.extraData);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                booking.extraData = parsed;
+                return booking.extraData;
+            }
+        } catch {}
+    }
+    booking.extraData = {};
+    return booking.extraData;
+}
+
+function attachTimelineIdentityToBooking(booking, identity = {}) {
+    const extra = ensureBookingExtraDataObject(booking);
+    extra.timelineIdentity = {
+        businessContext: identity.businessContext || booking.businessContext || DEFAULT_TIMELINE_CONTEXT,
+        resourceId: identity.resourceId || identity.lineId || booking.lineId || null,
+        resourceType: identity.resourceType || identity.type || null,
+        resourceName: identity.resourceName || identity.name || booking.lineName || booking.room || null,
+        source: identity.source || null
+    };
+    return extra.timelineIdentity;
+}
+
 async function ensureBookingTimelineLine(client, booking, businessContext, { name = null } = {}) {
     if (!booking || !booking.date || !booking.lineId) return null;
 
@@ -216,6 +244,13 @@ async function ensureBookingTimelineLine(client, booking, businessContext, { nam
         booking.resourceId = resource.resourceId;
         booking.resourceType = resource.type;
         if (!String(booking.room || '').trim()) booking.room = resource.name;
+        attachTimelineIdentityToBooking(booking, {
+            businessContext,
+            resourceId: resource.resourceId,
+            resourceType: resource.type,
+            resourceName: resource.name,
+            source: 'timeline_resource'
+        });
         return {
             lineId: String(booking.lineId),
             name: resource.name,
@@ -229,7 +264,16 @@ async function ensureBookingTimelineLine(client, booking, businessContext, { nam
         date: booking.date,
         lineId: booking.lineId
     });
-    if (existingLine) return existingLine;
+    if (existingLine) {
+        attachTimelineIdentityToBooking(booking, {
+            businessContext,
+            lineId: existingLine.lineId,
+            resourceType: businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist',
+            resourceName: existingLine.name,
+            source: existingLine.source
+        });
+        return existingLine;
+    }
 
     const ensuredLine = await ensureParkAnimatorLine(client, {
         businessContext,
@@ -240,6 +284,13 @@ async function ensureBookingTimelineLine(client, booking, businessContext, { nam
     if (!ensuredLine) return null;
 
     booking.lineId = ensuredLine.lineId;
+    attachTimelineIdentityToBooking(booking, {
+        businessContext,
+        lineId: ensuredLine.lineId,
+        resourceType: businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist',
+        resourceName: ensuredLine.name,
+        source: 'staff_animator'
+    });
     return { ...ensuredLine, source: 'staff_animator' };
 }
 
@@ -1397,6 +1448,12 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
+        if (ensuredPrimaryLine) {
+            booking.lineName = ensuredPrimaryLine.name || null;
+            booking.resourceId = booking.lineId || ensuredPrimaryLine.lineId || null;
+            booking.resourceType = b.resourceType || b.extraData?.timelineIdentity?.resourceType || (businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist');
+            booking.timelineIdentity = b.extraData?.timelineIdentity || null;
+        }
 
         // WebSocket: notify other clients
         broadcast('booking:created', booking, req.user?.id?.toString(), b.date);

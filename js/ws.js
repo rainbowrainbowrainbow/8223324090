@@ -430,6 +430,10 @@ var ParkWS = (function () {
      */
     function _handleBookingEvent(message) {
         _debug('[WS] Booking event:', message.type, message.payload);
+        if (!_payloadMatchesCurrentTimelineBusiness(message.payload)) {
+            _debug('[WS] Ignoring booking event for another business context:', message.payload && message.payload.businessContext);
+            return;
+        }
 
         // Invalidate booking cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -463,6 +467,10 @@ var ParkWS = (function () {
      */
     function _handleLineEvent(message) {
         _debug('[WS] Line event:', message.type, message.payload);
+        if (!_payloadMatchesCurrentTimelineBusiness(message.payload)) {
+            _debug('[WS] Ignoring line event for another business context:', message.payload && message.payload.businessContext);
+            return;
+        }
 
         // Invalidate lines cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -515,6 +523,29 @@ var ParkWS = (function () {
                 renderTimeline();
             }
         }, 300); // 300ms debounce
+    }
+
+    function _currentTimelineBusinessContext() {
+        return window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+            || window.TimelineBusinessContext?.current?.()?.apiValue
+            || window.TimelineBusinessContext?.current?.()?.key
+            || window.CrmBusinessContext?.current?.()
+            || 'event_genix';
+    }
+
+    function _payloadBusinessContext(payload) {
+        return payload?.businessContext
+            || payload?.business_context
+            || payload?.context
+            || payload?.booking?.businessContext
+            || payload?.booking?.business_context
+            || null;
+    }
+
+    function _payloadMatchesCurrentTimelineBusiness(payload) {
+        var context = _payloadBusinessContext(payload);
+        if (!context) return true;
+        return String(context) === String(_currentTimelineBusinessContext());
     }
 
     /**

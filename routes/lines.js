@@ -70,6 +70,9 @@ router.get('/:date', async (req, res) => {
         );
         const lines = result.rows.map(row => ({
             id: row.line_id,
+            resourceId: row.line_id,
+            resourceType: 'animator',
+            businessContext,
             name: row.name,
             color: row.color,
             fromSheet: row.from_sheet,
@@ -80,7 +83,12 @@ router.get('/:date', async (req, res) => {
             source: row.staff_id ? 'staff_schedule' : (row.from_sheet ? 'sheet' : 'manual')
         }));
         res.set('X-Timeline-Lines-Source', sync.source);
-        res.json(lines.length ? lines : (businessContext === DEFAULT_TIMELINE_CONTEXT ? [] : MAYSTERNYA_DEFAULT_LINES));
+        res.json(lines.length ? lines : (businessContext === DEFAULT_TIMELINE_CONTEXT ? [] : MAYSTERNYA_DEFAULT_LINES.map(line => ({
+            ...line,
+            resourceId: line.id,
+            resourceType: 'specialist',
+            businessContext
+        }))));
     } catch (err) {
         log.error('Error fetching lines', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -109,6 +117,7 @@ router.post('/:date', async (req, res) => {
                 id: resource.resourceId,
                 resourceId: resource.resourceId,
                 resourceType: resource.type,
+                businessContext,
                 name: resource.name,
                 shortName: resource.shortName,
                 color: resource.color,

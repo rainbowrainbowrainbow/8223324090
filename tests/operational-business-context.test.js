@@ -281,9 +281,14 @@ test('timeline booking and line mutations stay inside the active timeline busine
     const lines = read('routes/lines.js');
     const bookingService = read('services/booking.js');
     const api = read('js/api.js');
+    const timelineContext = read('js/timeline-context.js');
+    const timeline = read('js/timeline.js');
+    const ws = read('js/ws.js');
 
     assert.match(bookings, /function bookingContextSql/);
     assert.match(bookings, /function getScopedBookingById/);
+    assert.match(bookings, /attachTimelineIdentityToBooking/);
+    assert.match(bookings, /extra\.timelineIdentity/);
     assert.match(bookings, /getScopedBookingById\(client, id, businessContext, \{ forUpdate: true \}\)/);
     assert.match(bookings, /UPDATE bookings[\s\S]*WHERE \(id = \$4 OR linked_to = \$4\)[\s\S]*bookingContextSql\('', '\$5'\)/);
     assert.match(bookings, /DELETE FROM bookings WHERE \(id = \$1 OR linked_to = \$1\) AND \$\{bookingContextSql\('', '\$2'\)\}/);
@@ -293,6 +298,8 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(bookings, /SELECT \* FROM bookings[\s\S]*id = ANY\(\$1::text\[\]\)[\s\S]*bookingContextSql\('', '\$2'\)/);
 
     assert.match(lines, /COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
+    assert.match(lines, /businessContext,\s*name: row\.name/);
+    assert.match(lines, /resourceType: 'animator'/);
     assert.match(lines, /DELETE FROM lines_by_date WHERE date = \$1 AND COALESCE\(business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
     assert.match(bookingService, /COALESCE\(business_context, 'event_genix'\) = \$3/);
     assert.match(bookingService, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\)/);
@@ -301,6 +308,18 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(api, /timelineApiUrl\('\/bookings\/full'\)/);
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/confirm`\)/);
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/linked-atomic`\)/);
+
+    assert.match(timelineContext, /function contextState/);
+    assert.match(timelineContext, /state: contextState/);
+    assert.match(timelineContext, /timeline:business-context-changed/);
+    assert.match(timelineContext, /crmBusinessContextChanged/);
+    assert.match(timeline, /contextState\?\.activeBusinessContext/);
+    assert.match(timeline, /function handleTimelineBusinessContextChanged/);
+    assert.match(timeline, /AppState\.cachedBookings = \{\}/);
+    assert.match(timeline, /businessContext: line\?\.businessContext/);
+    assert.match(ws, /function _payloadMatchesCurrentTimelineBusiness/);
+    assert.match(ws, /Ignoring booking event for another business context/);
+    assert.match(ws, /Ignoring line event for another business context/);
 });
 
 test('background booking notifications and legacy bot reads stay inside a timeline business context', () => {

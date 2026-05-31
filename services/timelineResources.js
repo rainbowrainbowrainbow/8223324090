@@ -343,6 +343,7 @@ function resourceToLine(resource) {
         id: resource.resourceId,
         resourceId: resource.resourceId,
         resourceType: resource.type,
+        businessContext: resource.businessContext || DEFAULT_TIMELINE_CONTEXT,
         name: resource.name,
         shortName: resource.shortName,
         color: resource.color || '#10B981',
@@ -355,6 +356,7 @@ function resourceToLine(resource) {
         shiftEnd: null,
         shiftStatus: null,
         source: 'timeline_resource',
+        resourceSource: 'timeline_resource',
         sortOrder: resource.sortOrder
     };
 }

@@ -232,10 +232,64 @@
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
     }
 
-    function currentContext() {
+    function normalizeContextKey(value) {
+        const key = String(value || '').trim().toLowerCase();
+        return CONTEXTS[key] ? key : 'event_genix';
+    }
+
+    function currentRouteContext() {
         const path = normalizedPath();
         if (path === CONTEXTS.maysternya_doli.path) return CONTEXTS.maysternya_doli;
-        return CONTEXTS.event_genix;
+        return null;
+    }
+
+    function currentUrlContext() {
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            const requested = params.get('businessContext') || params.get('business_context');
+            const key = normalizeContextKey(requested);
+            return CONTEXTS[requested ? key : ''] || null;
+        } catch {
+            return null;
+        }
+    }
+
+    function currentCrmContext() {
+        try {
+            const key = normalizeContextKey(window.CrmBusinessContext?.current?.());
+            return CONTEXTS[key] || null;
+        } catch {
+            return null;
+        }
+    }
+
+    function currentContext() {
+        return currentRouteContext()
+            || currentUrlContext()
+            || currentCrmContext()
+            || CONTEXTS.event_genix;
+    }
+
+    function contextState() {
+        const ctx = currentContext();
+        const crmState = window.CrmBusinessContext?.state?.();
+        return {
+            activeBusinessId: ctx.key,
+            activeBusinessContext: ctx.apiValue,
+            source: currentRouteContext() ? 'route' : (currentUrlContext() ? 'url' : (crmState?.source || 'timeline_default')),
+            routeBusinessId: currentRouteContext()?.key || null,
+            crmBusinessId: crmState?.activeBusinessId || null,
+            lastExplicitBusinessId: crmState?.lastExplicitBusinessId || null,
+            availableBusinesses: Array.isArray(crmState?.availableBusinesses)
+                ? crmState.availableBusinesses.filter(item => CONTEXTS[item?.id || item?.key])
+                : Object.values(CONTEXTS).map(item => ({
+                    id: item.key,
+                    key: item.key,
+                    label: item.brandName,
+                    shortLabel: item.switchLabel,
+                    route: item.path
+                }))
+        };
     }
 
     function userRoles(user) {
@@ -604,6 +658,7 @@
         CONTEXTS,
         DISPLAY_MODES,
         current: currentContext,
+        state: contextState,
         displaySettings: readDisplaySettings,
         saveDisplaySettings,
         presentation,
@@ -620,6 +675,26 @@
     };
 
     window.TimelineBusinessContext = api;
+
+    let lastAppliedContextKey = currentContext().key;
+    function notifyContextBridge(source) {
+        const previous = lastAppliedContextKey;
+        const current = currentContext().key;
+        lastAppliedContextKey = current;
+        applyLabels();
+        window.dispatchEvent(new CustomEvent('timeline:business-context-changed', {
+            detail: {
+                previous,
+                current,
+                source: source || 'unknown',
+                state: contextState()
+            }
+        }));
+    }
+
+    window.addEventListener('crmBusinessContextChanged', () => notifyContextBridge('crmBusinessContextChanged'));
+    window.addEventListener('crmBusinessContextHydrated', () => notifyContextBridge('crmBusinessContextHydrated'));
+    window.addEventListener('crmBusinessProfileChanged', () => notifyContextBridge('crmBusinessProfileChanged'));
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', applyLabels, { once: true });

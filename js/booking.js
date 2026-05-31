@@ -3184,6 +3184,23 @@ function revealCreatedBookingBlocks(createdBookings = []) {
     return visibility;
 }
 
+function waitForCreatedBookingBlocks(createdBookings = [], timeoutMs = 1200) {
+    const expectedIds = createdBookings
+        .map(item => item?.id || item?.bookingId)
+        .filter(Boolean);
+    if (!expectedIds.length) return Promise.resolve(false);
+    const startedAt = Date.now();
+    return new Promise(resolve => {
+        const tick = () => {
+            const found = expectedIds.some(id => findCreatedBookingBlock({ id }));
+            if (found) return resolve(true);
+            if (Date.now() - startedAt >= timeoutMs) return resolve(false);
+            window.requestAnimationFrame ? window.requestAnimationFrame(tick) : window.setTimeout(tick, 50);
+        };
+        tick();
+    });
+}
+
 function createdBookingIsLeadOnly(booking = {}) {
     const workspace = booking.extraData?.bookingWorkspace
         || booking.extra_data?.bookingWorkspace
@@ -3204,7 +3221,8 @@ function createdBookingSuccessMessage(createdBookings = [], seriesCount = 1) {
 
 function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = null) {
     const expectedDate = formatDate(AppState.selectedDate);
-    const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const visibleLineIds = snapshot?.lineIds instanceof Set
         ? snapshot.lineIds
         : new Set((AppState.lines || []).map(line => String(line?.id || '')).filter(Boolean));
@@ -3229,6 +3247,15 @@ function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = nu
         if (lineId && visibleLineIds.size && !visibleLineIds.has(lineId)) {
             reasons.push(`лінія ${lineId} не відкрита в поточному таймлайні`);
         }
+        const time = String(source?.time || '').slice(0, 5);
+        const range = AppState.selectedDate ? getTimeRange(new Date(AppState.selectedDate)) : null;
+        if (time && range) {
+            const minutes = timeToMinutes(time);
+            if (minutes < range.start * 60 || minutes >= range.end * 60) {
+                reasons.push(`час ${time} поза видимим діапазоном ${range.start}:00-${range.end}:00`);
+            }
+        }
+        if (Number(source?.duration || 0) <= 0) reasons.push('тривалість запису 0 хв');
         const filter = AppState.statusFilter || 'all';
         if (!block && status === 'preliminary' && filter === 'confirmed') reasons.push('попередній запис прихований фільтром "Підтверджені"');
         if (!block && status && status !== 'preliminary' && filter === 'preliminary') reasons.push('підтверджений запис прихований фільтром "Попередні"');
@@ -3247,7 +3274,8 @@ function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) 
         : null;
     const source = primaryServer ? { ...primary, ...primaryServer } : primary;
     const expectedDate = formatDate(AppState.selectedDate);
-    const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const actual = [];
     const primaryDate = normalizeBookingDateKey(source.date);
     if (primaryDate && primaryDate !== expectedDate) actual.push(`дата ${primaryDate}`);
@@ -3520,6 +3548,10 @@ async function handleBookingSubmit(e) {
                     visibility,
                     diagnostics: createdBookingVisibilityDiagnostics(createdBookings, timelineSnapshot)
                 });
+                await waitForCreatedBookingBlocks(createdBookings);
+                visibility = revealCreatedBookingBlocks(createdBookings);
+            }
+            if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
                 showNotification(createdBookingVisibilityMessage(createdBookings, timelineSnapshot), 'warning');
             } else {
                 showNotification(createdBookingSuccessMessage(createdBookings, seriesCount), 'success');

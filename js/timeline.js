@@ -13,7 +13,9 @@ let _renderGen = 0;
 function _debugRender() {}
 
 function timelineCacheScopeKey() {
-    const context = window.TimelineBusinessContext?.current?.()?.apiValue
+    const contextState = window.TimelineBusinessContext?.state?.();
+    const context = contextState?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue
         || window.TimelineBusinessContext?.current?.()?.key
         || 'event_genix';
     const presentation = window.TimelineBusinessContext?.presentation?.();
@@ -383,25 +385,56 @@ function normalizeTimelineLinesForContext(lines = []) {
     const ctx = window.TimelineBusinessContext?.current?.();
     const presentation = window.TimelineBusinessContext?.presentation?.();
     return lines.map((line, index) => {
+        const normalizedId = String(line?.resourceId || line?.id || line?.lineId || '').trim();
+        const identity = {
+            ...line,
+            id: normalizedId || String(index + 1),
+            resourceId: normalizedId || String(index + 1),
+            resourceType: line?.resourceType || line?.type || presentation?.resourceType || (presentation?.mode === 'park' ? 'animator' : 'resource'),
+            businessContext: line?.businessContext || line?.business_context || ctx?.apiValue || ctx?.key || 'event_genix',
+            source: line?.source || line?.resourceSource || (line?.resourceId ? 'timeline_resource' : 'timeline_line')
+        };
         if (line?.id === 'md-consult-room' && ['Майстерня долі', 'Таймлайн МД'].includes(line.name)) {
-            return { ...line, name: 'Олександр' };
+            return { ...identity, name: 'Олександр' };
         }
         if (presentation?.mode === 'education') {
             const rawName = String(line?.name || '').trim();
             const alreadyCabinet = /кабінет|каб\.|аудитор|classroom|room/i.test(rawName);
             return {
-                ...line,
+                ...identity,
                 originalName: rawName,
                 name: alreadyCabinet ? rawName : `Кабінет ${index + 1}`,
                 resourceType: 'cabinet'
             };
         }
         if (presentation?.mode === 'specialist' && !ctx?.isPrivateSurface && !String(line?.name || '').trim()) {
-            return { ...line, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
+            return { ...identity, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
         }
-        return line;
+        return identity;
     });
 }
+
+async function handleTimelineBusinessContextChanged(event) {
+    const detail = event?.detail || {};
+    if (detail.previous && detail.current && detail.previous === detail.current) return;
+    if (typeof AppState === 'undefined') return;
+    AppState.cachedBookings = {};
+    AppState.cachedLines = {};
+    AppState.linesByDate = {};
+    AppState.lines = [];
+    if (typeof closeBookingPanel === 'function') {
+        closeBookingPanel(true).catch?.(() => {});
+    }
+    if (typeof renderTimeline === 'function' && document.getElementById('timelineLines')) {
+        await renderTimeline();
+    }
+}
+
+window.addEventListener('timeline:business-context-changed', event => {
+    handleTimelineBusinessContextChanged(event).catch(error => {
+        console.warn('[Timeline] business context refresh failed', error);
+    });
+});
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;

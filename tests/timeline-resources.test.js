@@ -13,7 +13,8 @@ const {
 const {
     normalizeTimelineDisplaySettings,
     resourceTypeForDisplayMode,
-    findTimelineResourceByName
+    findTimelineResourceByName,
+    resourceToLine
 } = require('../services/timelineResources');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -85,6 +86,28 @@ test('timeline resource lookup can recover stale booking line ids by visible res
     assert.equal(resource.type, 'cabinet');
     assert.match(queries[0].sql, /LOWER\(BTRIM\(name\)\)/);
     assert.deepEqual(queries[0].params, ['event_genix', 'Кабінет A', 'cabinet']);
+});
+
+test('timeline resources expose canonical line identity to the frontend', () => {
+    const line = resourceToLine({
+        businessContext: 'event_genix',
+        resourceId: 'cabinet-a',
+        type: 'cabinet',
+        name: 'Cabinet A',
+        shortName: 'A',
+        color: '#10B981',
+        capacity: 8,
+        equipment: ['projector'],
+        metadata: { floor: 2 },
+        sortOrder: 10
+    });
+
+    assert.equal(line.id, 'cabinet-a');
+    assert.equal(line.resourceId, 'cabinet-a');
+    assert.equal(line.resourceType, 'cabinet');
+    assert.equal(line.businessContext, 'event_genix');
+    assert.equal(line.source, 'timeline_resource');
+    assert.equal(line.resourceSource, 'timeline_resource');
 });
 
 test('park timeline keeps legacy animator lines even if resource model is mis-set', () => {

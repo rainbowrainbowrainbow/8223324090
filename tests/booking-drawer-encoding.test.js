@@ -87,7 +87,10 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.doesNotMatch(timelineJs, /AppState\.cachedBookings\[dateStr\]/);
     assert.doesNotMatch(timelineJs, /AppState\.cachedLines\[dateStr\]/);
     assert.match(bookingJs, /createdBookingVisibilityDiagnostics/);
+    assert.match(bookingJs, /waitForCreatedBookingBlocks/);
     assert.match(bookingJs, /лінія \$\{lineId\} не відкрита в поточному таймлайні/);
+    assert.match(bookingJs, /поза видимим діапазоном/);
+    assert.match(bookingJs, /тривалість запису 0 хв/);
     assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
     assert.match(bookingJs, /getLinesForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);

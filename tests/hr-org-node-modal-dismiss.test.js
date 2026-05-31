@@ -42,6 +42,27 @@ function createHarness() {
                     companyStructureNodes = nodes;
                     selectedCompanyStructureNodeId = nodes[0]?.id || null;
                 },
+                renderCanvas() {
+                    document.body.innerHTML = [
+                        '<button id="hrOrgLineToolBtn"></button>',
+                        '<button id="hrOrgRelinkSelectedBtn"></button>',
+                        '<button id="hrOrgClearParentBtn"></button>',
+                        '<span id="hrOrgLinkStatus"></span>',
+                        '<h4 id="hrOrgDetailTitle"></h4>',
+                        '<p id="hrOrgDetailText"></p>',
+                        '<button id="hrOrgEditSelectedBtn"></button>',
+                        '<button id="hrOrgDetailRelinkBtn"></button>',
+                        '<button id="hrOrgDetailDetachBtn"></button>',
+                        '<textarea id="companyStructureText"></textarea>',
+                        '<textarea id="companyStructureNotes"></textarea>',
+                        '<textarea id="companyInstructionsText"></textarea>',
+                        '<span id="companyStructureStatus"></span>',
+                        '<div id="companyOrgChart" class="hr-org-stage"></div>'
+                    ].join('');
+                    hrFetch = async () => ({ success: true, data: { nodes: companyStructureNodes, updatedAt: '2099-05-31T12:00:00Z' } });
+                    initCompanyOrgChart();
+                },
+                nodes() { return companyStructureNodes; },
                 open: openCompanyOrgNodeEditor,
                 overlay() { return document.getElementById('hrOrgNodeEditorOverlay'); }
             };
@@ -116,4 +137,35 @@ test('HR org/profession editor routes dirty explicit close through discard guard
 
     assert.equal(api.overlay(), null);
     assert.equal(window.__confirmCalls.length, 2);
+});
+
+test('HR org/profession editor exposes relation and grid position controls', () => {
+    const { window, api } = createHarness();
+    api.open('animators');
+    const form = window.document.getElementById('hrOrgNodeForm');
+
+    assert.ok(form.querySelector('.hr-org-node-editor-summary')?.textContent.includes('ID:'));
+    assert.equal(form.querySelector('input[name="x"]')?.value, '100');
+    assert.equal(form.querySelector('input[name="y"]')?.value, '100');
+    assert.ok(form.querySelector('select[name="parentId"]'));
+});
+
+test('HR org canvas exposes ports and creates persisted parent links through the line tool flow', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: null, order: 1, stack: null, meta: 'child', x: 90, y: 120 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 2, stack: null, meta: 'parent', x: 330, y: 30 }
+    ]);
+    api.renderCanvas();
+
+    assert.equal(window.document.querySelectorAll('.hr-org-port--child').length, 2);
+    assert.equal(window.document.querySelectorAll('.hr-org-port--parent').length, 2);
+
+    click(window, window.document.querySelector('[data-org-link-source="child"]'));
+    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
+    click(window, window.document.querySelector('[data-org-link-target="parent"]'));
+    await settle();
+
+    assert.equal(api.nodes().find(node => node.id === 'child').parentId, 'parent');
+    assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"] .hr-org-link-hit'));
 });

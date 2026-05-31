@@ -2061,10 +2061,11 @@ const ORG_ALLOWED_LANES = Object.keys(ORG_LANE_LABELS);
 const ORG_CANVAS_MIN_WIDTH = 1280;
 const ORG_CANVAS_MIN_HEIGHT = 900;
 const ORG_CANVAS_PADDING = 72;
+const ORG_GRID_STEP = 30;
 const ORG_NODE_WIDTH = 168;
-const ORG_NODE_HEIGHT = 78;
+const ORG_NODE_HEIGHT = 108;
 const ORG_ROOT_NODE_WIDTH = 220;
-const ORG_ROOT_NODE_HEIGHT = 98;
+const ORG_ROOT_NODE_HEIGHT = 128;
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
     director: { x: 530, y: 24 },
     deputy_director: { x: 555, y: 158 },
@@ -2147,6 +2148,12 @@ function clampCompanyOrgCoord(value, max) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
     return Math.max(0, Math.min(max, Math.round(numeric)));
+}
+
+function snapCompanyOrgCoord(value, max = 5000) {
+    const coord = clampCompanyOrgCoord(value, max);
+    if (coord === null) return null;
+    return Math.max(0, Math.min(max, Math.round(coord / ORG_GRID_STEP) * ORG_GRID_STEP));
 }
 
 function companyOrgNodeSize(node = {}) {
@@ -2232,6 +2239,10 @@ function companyStructureNodeById(id) {
     return companyStructureNodes.find(node => node.id === id) || null;
 }
 
+function companyStructureChildrenOf(parentId) {
+    return sortCompanyStructureNodes(companyStructureNodes.filter(node => node.parentId === parentId));
+}
+
 function companyStructureNodesByLane(lane) {
     return sortCompanyStructureNodes(companyStructureNodes.filter(node => node.lane === lane));
 }
@@ -2294,8 +2305,25 @@ function renderCompanyOrgLinks() {
         const parent = node.parentId ? byId.get(node.parentId) : null;
         if (!parent) return '';
         const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
-        return `<path class="hr-org-link${active}" data-org-link-child="${escapeHtml(node.id)}" d="${companyOrgLinkPath(parent, node)}"></path>`;
+        const path = companyOrgLinkPath(parent, node);
+        return `
+            <g class="hr-org-link-group${active}" tabindex="0" role="button" data-org-link-child="${escapeHtml(node.id)}" aria-label="Лінія: ${escapeHtml(parent.title)} керує ${escapeHtml(node.title)}">
+                <path class="hr-org-link-hit" d="${path}"></path>
+                <path class="hr-org-link${active}" d="${path}"></path>
+            </g>`;
     }).join('');
+    layer.querySelectorAll('[data-org-link-child]').forEach(link => {
+        const activate = () => {
+            const child = companyStructureNodeById(link.dataset.orgLinkChild);
+            if (child) selectCompanyOrgNodeById(child.id);
+        };
+        link.addEventListener('click', activate);
+        link.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            activate();
+        });
+    });
 }
 
 function renderCompanyOrgNode(node) {
@@ -2304,13 +2332,17 @@ function renderCompanyOrgNode(node) {
     const active = node.id === selectedCompanyStructureNodeId ? ' is-active' : '';
     const linking = node.id === companyOrgLinkingNodeId ? ' is-link-source' : '';
     const size = companyOrgNodeSize(node);
+    const description = String(node.description || '').trim();
     return `
         <span class="hr-org-node-shell${linking}" data-org-node-shell="${escapeHtml(node.id)}" style="left:${Number(node.x || 0)}px;top:${Number(node.y || 0)}px;width:${size.width}px;height:${size.height}px;">
+            <button type="button" class="hr-org-port hr-org-port--parent" data-org-link-target="${escapeHtml(node.id)}" aria-label="Підключити лінію до ${escapeHtml(node.title)} як до керівника"></button>
             <button type="button" class="hr-org-node hr-org-node--${tone}${active}" data-org-node-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(node.title)}. Перетягніть, щоб змінити місце.">
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
                 <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
+                ${description ? `<span class="hr-org-node-description">${escapeHtml(description)}</span>` : ''}
             </button>
-            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити лінію для ${escapeHtml(node.title)}">↕</button>
+            <button type="button" class="hr-org-port hr-org-port--child" data-org-link-source="${escapeHtml(node.id)}" aria-label="Почати лінію від ${escapeHtml(node.title)}"></button>
+            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити лінію для ${escapeHtml(node.title)}">🔗</button>
             <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
         </span>`;
 }
@@ -2338,6 +2370,17 @@ function bindCompanyOrgChartEvents(stage) {
         button.addEventListener('click', event => {
             event.stopPropagation();
             openCompanyOrgNodeEditor(button.dataset.orgEdit);
+        });
+    });
+    stage.querySelectorAll('[data-org-link-target]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const targetId = button.dataset.orgLinkTarget;
+            if (companyOrgLinkingNodeId) {
+                completeCompanyOrgLink(targetId);
+            } else {
+                selectCompanyOrgNodeById(targetId);
+            }
         });
     });
     stage.querySelectorAll('[data-org-link-source]').forEach(button => {
@@ -2373,7 +2416,7 @@ function renderCompanyOrgChart() {
 
 function startCompanyOrgDrag(event, nodeId) {
     if (companyOrgLinkingNodeId) return;
-    if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-source]')) return;
+    if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-source], [data-org-link-target]')) return;
     const node = companyStructureNodeById(nodeId);
     const shell = event.currentTarget.closest('[data-org-node-shell]');
     if (!node || !shell) return;
@@ -2399,8 +2442,8 @@ function moveCompanyOrgDrag(event) {
     if (!node) return;
     const dx = event.clientX - companyOrgDragState.startPointerX;
     const dy = event.clientY - companyOrgDragState.startPointerY;
-    const nextX = clampCompanyOrgCoord(companyOrgDragState.startX + dx, 5000) ?? 0;
-    const nextY = clampCompanyOrgCoord(companyOrgDragState.startY + dy, 5000) ?? 0;
+    const nextX = snapCompanyOrgCoord(companyOrgDragState.startX + dx, 5000) ?? 0;
+    const nextY = snapCompanyOrgCoord(companyOrgDragState.startY + dy, 5000) ?? 0;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) companyOrgDragState.moved = true;
     node.x = nextX;
     node.y = nextY;
@@ -2451,6 +2494,9 @@ function startCompanyOrgLinkMode(nodeId = selectedCompanyStructureNodeId) {
     companyOrgLinkingNodeId = node.id;
     renderCompanyOrgChart();
     selectCompanyOrgNodeById(node.id);
+    if (typeof showNotification === 'function') {
+        showNotification(`Оберіть порт або картку керівника для "${node.title}"`, 'info');
+    }
 }
 
 function cancelCompanyOrgLinkMode() {
@@ -2518,8 +2564,11 @@ function autoArrangeCompanyOrgChart() {
 
 function updateCompanyOrgLinkStatus() {
     const status = document.getElementById('hrOrgLinkStatus');
+    const lineTool = document.getElementById('hrOrgLineToolBtn');
     const relinkButton = document.getElementById('hrOrgRelinkSelectedBtn');
     const clearButton = document.getElementById('hrOrgClearParentBtn');
+    const detailRelinkButton = document.getElementById('hrOrgDetailRelinkBtn');
+    const detailDetachButton = document.getElementById('hrOrgDetailDetachBtn');
     const node = companyStructureNodeById(selectedCompanyStructureNodeId);
     if (status) {
         if (companyOrgLinkingNodeId) {
@@ -2531,6 +2580,15 @@ function updateCompanyOrgLinkStatus() {
             status.classList.remove('is-active');
         }
     }
+    if (lineTool) {
+        lineTool.disabled = !node;
+        lineTool.classList.toggle('is-active', Boolean(companyOrgLinkingNodeId));
+        lineTool.setAttribute('aria-pressed', companyOrgLinkingNodeId ? 'true' : 'false');
+        lineTool.onclick = () => {
+            if (companyOrgLinkingNodeId) cancelCompanyOrgLinkMode();
+            else if (node) startCompanyOrgLinkMode(node.id);
+        };
+    }
     if (relinkButton) {
         relinkButton.disabled = !node;
         relinkButton.onclick = () => node && startCompanyOrgLinkMode(node.id);
@@ -2538,6 +2596,14 @@ function updateCompanyOrgLinkStatus() {
     if (clearButton) {
         clearButton.disabled = !node || !node.parentId;
         clearButton.onclick = clearSelectedCompanyOrgParent;
+    }
+    if (detailRelinkButton) {
+        detailRelinkButton.disabled = !node;
+        detailRelinkButton.onclick = () => node && startCompanyOrgLinkMode(node.id);
+    }
+    if (detailDetachButton) {
+        detailDetachButton.disabled = !node || !node.parentId;
+        detailDetachButton.onclick = clearSelectedCompanyOrgParent;
     }
 }
 
@@ -2572,10 +2638,13 @@ function updateCompanyOrgDetail(node) {
     if (text) text.textContent = node?.description || 'Роль у структурі компанії.';
     if (meta) {
         const parent = node?.parentId ? companyStructureNodeById(node.parentId) : null;
+        const childCount = node ? companyStructureChildrenOf(node.id).length : 0;
         meta.innerHTML = node ? `
             <span>${escapeHtml(ORG_LANE_LABELS[node.lane] || 'Рівень')}</span>
             <span>${escapeHtml(ORG_TONE_LABELS[node.tone] || 'Тип')}</span>
             ${parent ? `<span>Підпорядкування: ${escapeHtml(parent.title)}</span>` : '<span>Кореневий вузол</span>'}
+            <span>Дочірніх: ${childCount}</span>
+            <span>Сітка: ${Math.round(Number(node.x || 0))}, ${Math.round(Number(node.y || 0))}</span>
         ` : '';
     }
     if (editButton) {
@@ -2640,6 +2709,8 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
     const node = companyStructureNodeById(nodeId);
     if (!node) return;
     closeCompanyOrgNodeEditor();
+    const parentNode = node.parentId ? companyStructureNodeById(node.parentId) : null;
+    const childCount = companyStructureChildrenOf(node.id).length;
     const parentOptions = [
         '<option value="">Без батьківського вузла</option>',
         ...sortCompanyStructureNodes(companyStructureNodes)
@@ -2667,6 +2738,12 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
                     Опис / відповідальність
                     <textarea name="description" rows="4" maxlength="1200">${escapeHtml(node.description)}</textarea>
                 </label>
+                <div class="hr-org-node-editor-summary" aria-label="Поточний стан вузла">
+                    <span>ID: <b>${escapeHtml(node.id)}</b></span>
+                    <span>Керівник: <b>${escapeHtml(parentNode?.title || 'немає')}</b></span>
+                    <span>Дочірніх ролей: <b>${childCount}</b></span>
+                    <span>Позиція на сітці: <b>${Math.round(Number(node.x || 0))}, ${Math.round(Number(node.y || 0))}</b></span>
+                </div>
                 <div class="hr-org-node-form-row">
                     <label>
                         Візуальний тип
@@ -2695,6 +2772,16 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
                     <label>
                         Підпис
                         <input type="text" name="meta" maxlength="80" value="${escapeHtml(node.meta || '')}" placeholder="Напр. сервіс">
+                    </label>
+                </div>
+                <div class="hr-org-node-form-row">
+                    <label>
+                        X на полотні
+                        <input type="number" name="x" min="0" max="5000" step="${ORG_GRID_STEP}" value="${Math.round(Number(node.x || 0))}">
+                    </label>
+                    <label>
+                        Y на полотні
+                        <input type="number" name="y" min="0" max="5000" step="${ORG_GRID_STEP}" value="${Math.round(Number(node.y || 0))}">
                     </label>
                 </div>
                 <div class="hr-org-node-form-actions">
@@ -2732,6 +2819,8 @@ async function saveCompanyOrgNodeFromEditor(event) {
     const formData = new FormData(form);
     const order = Number(formData.get('order'));
     const parentId = String(formData.get('parentId') || '').trim();
+    const x = snapCompanyOrgCoord(formData.get('x'), 5000);
+    const y = snapCompanyOrgCoord(formData.get('y'), 5000);
     if (parentId && companyOrgWouldCreateCycle(nodeId, parentId)) {
         showNotification('Таке підпорядкування створить цикл у структурі', 'warning');
         return;
@@ -2745,7 +2834,9 @@ async function saveCompanyOrgNodeFromEditor(event) {
         parentId: parentId && parentId !== nodeId ? parentId : null,
         stack: String(formData.get('stack') || '').trim().slice(0, 64) || null,
         order: Number.isFinite(order) ? order : companyStructureNodes[index].order,
-        meta: String(formData.get('meta') || '').trim().slice(0, 80) || null
+        meta: String(formData.get('meta') || '').trim().slice(0, 80) || null,
+        x: x ?? companyStructureNodes[index].x,
+        y: y ?? companyStructureNodes[index].y
     };
     companyStructureNodes[index] = nextNode;
     companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);

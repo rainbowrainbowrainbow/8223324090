@@ -2435,6 +2435,26 @@ function findCabinetTask(taskId) {
     return null;
 }
 
+function cabinetTaskProjectionContainsId(data, taskId) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id || !data || typeof data !== 'object') return false;
+    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
+    return buckets.some(bucket => Array.isArray(data[bucket])
+        && data[bucket].some(task => normalizeCabinetTaskId(task?.id || task?.taskId || task?.task_id) === id));
+}
+
+function createdCabinetTaskId(result = {}) {
+    return normalizeCabinetTaskId(result?.task?.id || result?.task?.taskId || result?.task?.task_id || result?.taskId || result?.task_id || result?.id);
+}
+
+function renderCabinetActiveTab() {
+    const tabContent = document.getElementById('tabContent');
+    if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
+        tabContent.innerHTML = renderTabContent();
+        attachProfileListeners();
+    }
+}
+
 function cabinetCompletedHistoryList() {
     return cabinetList('completedHistory');
 }
@@ -4437,14 +4457,49 @@ async function handleCabinetTaskActionClick(event) {
     }
 }
 
-async function refreshMyCabinetTab() {
+async function refreshMyCabinetTab(options = {}) {
     myCabinetData = await apiGet('/tasks/my-cabinet');
     await refreshCabinetPulseCounts();
-    const tabContent = document.getElementById('tabContent');
-    if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
-        tabContent.innerHTML = renderTabContent();
-        attachProfileListeners();
+    if (!options.silent) renderCabinetActiveTab();
+    return myCabinetData;
+}
+
+async function verifyCabinetCreatedTask(result = {}) {
+    const taskId = createdCabinetTaskId(result);
+    if (!taskId) {
+        return {
+            ok: false,
+            reason: 'missing_id',
+            message: 'Сервер не повернув ID створеної задачі. Успіх не підтверджено.'
+        };
     }
+
+    const projection = await refreshMyCabinetTab({ silent: true });
+    if (cabinetTaskProjectionContainsId(projection, taskId)) {
+        return { ok: true, taskId };
+    }
+
+    const canonical = await apiGet(`/tasks/${encodeURIComponent(taskId)}`);
+    const canonicalId = createdCabinetTaskId({ task: canonical });
+    if (canonicalId === taskId) {
+        const retryProjection = await refreshMyCabinetTab({ silent: true });
+        if (cabinetTaskProjectionContainsId(retryProjection, taskId)) {
+            return { ok: true, taskId };
+        }
+        return {
+            ok: false,
+            taskId,
+            reason: 'projection_missing',
+            message: `Сервер створив задачу #${taskId}, але Мій день її не повернув. Перевірте бізнес-контекст або відкрийте повний список задач.`
+        };
+    }
+
+    return {
+        ok: false,
+        taskId,
+        reason: 'canonical_missing',
+        message: `CRM не підтвердила задачу #${taskId} після створення. Оновіть сторінку і перевірте список задач.`
+    };
 }
 
 async function setCabinetTaskStatus(taskId, status, options = {}) {
@@ -4472,7 +4527,7 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     } else if (!options.silent && typeof showNotification === 'function') {
         showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
     }
-    await refreshMyCabinetTab();
+    renderCabinetActiveTab();
 }
 
 async function snoozeCabinetTask(taskId, minutes) {
@@ -4619,7 +4674,15 @@ async function createCabinetTask(event, mode) {
         }
         return;
     }
-    lastCabinetCreatedTaskId = normalizeCabinetTaskId(result.task?.id || result.taskId || result.id) || lastCabinetCreatedTaskId;
+    const verification = await verifyCabinetCreatedTask(result);
+    if (!verification.ok) {
+        if (typeof showNotification === 'function') {
+            showNotification(verification.message || 'Створення задачі не підтверджено', 'warning');
+        }
+        return;
+    }
+
+    lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
     if (input) input.value = '';
     const subtaskList = document.getElementById('cabinetSubtaskList');
     if (subtaskList) subtaskList.innerHTML = '';

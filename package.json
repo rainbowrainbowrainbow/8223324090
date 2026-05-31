@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.41",
+  "version": "0.68.42",
   "eventGenix": {
-    "releaseLabel": "OpenRouter генерація AI-іконок"
+    "releaseLabel": "Мій день: правдиве створення задач"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

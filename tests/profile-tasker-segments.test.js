@@ -148,6 +148,106 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.doesNotMatch(expandedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
 });
 
+function installCabinetCreateDom(ctx, title) {
+    const elements = new Map();
+    const addElement = (id, node) => elements.set(id, node);
+    addElement('cabinetTaskTitle', { value: title, focus() {} });
+    addElement('cabinetTaskKind', { value: 'action' });
+    addElement('cabinetTaskMode', { value: 'personal' });
+    addElement('cabinetTaskDate', { value: '2099-05-31' });
+    addElement('cabinetTaskCategory', { value: 'personal' });
+    addElement('cabinetTaskPriority', { value: 'normal' });
+    addElement('cabinetTaskVisibility', { value: 'me_only' });
+    addElement('cabinetTaskReportRequired', { checked: false });
+    addElement('cabinetTaskAllowReschedule', { checked: true });
+    addElement('cabinetSubtaskList', { innerHTML: '' });
+    addElement('cabinetSubtaskAcceptDraftBtn', { setAttribute() {} });
+    addElement('cabinetSubtaskDraftStatus', { textContent: '', className: '' });
+    addElement('cabinetDecompositionMode', { value: 'none' });
+    addElement('cabinetDecompositionTemplate', { disabled: false });
+    addElement('cabinetSubtaskDraftBtn', { disabled: false, textContent: '' });
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return elements.get(id) || null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+    return elements;
+}
+
+test('profile My Day create accepts URL-first titles and confirms the refreshed cabinet projection before success', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'https://example.com перевірити';
+    const elements = installCabinetCreateDom(ctx, title);
+    const notices = [];
+    let createdPayload = null;
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim(), task_mode: draft.mode, visibility: draft.visibility };
+        },
+        async createTask(payload) {
+            createdPayload = payload;
+            return { success: true, task: { id: 501, title: payload.title } };
+        }
+    };
+    ctx.apiGet = async (url) => {
+        if (url === '/tasks/my-cabinet') {
+            return {
+                all: [{ id: 501, title }],
+                today: [{ id: 501, title }],
+                overdue: [],
+                waiting: [],
+                private: [],
+                completedHistory: [],
+                stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+            };
+        }
+        return null;
+    };
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createdPayload.title, title);
+    assert.equal(createdPayload.ownerUserId, 7);
+    assert.equal(elements.get('cabinetTaskTitle').value, '');
+    assert.equal(notices.at(-1)?.type, 'success');
+});
+
+test('profile My Day create does not fake success when the created task is missing from the refreshed projection', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'https://example.com';
+    const elements = installCabinetCreateDom(ctx, title);
+    const notices = [];
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim(), task_mode: draft.mode, visibility: draft.visibility };
+        },
+        async createTask(payload) {
+            return { success: true, task: { id: 777, title: payload.title } };
+        }
+    };
+    ctx.apiGet = async (url) => {
+        if (url === '/tasks/my-cabinet') return { all: [], today: [], overdue: [], waiting: [], private: [], completedHistory: [] };
+        if (url === '/tasks/777') return { id: 777, title };
+        return null;
+    };
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(elements.get('cabinetTaskTitle').value, title);
+    assert.equal(notices.some(item => item.type === 'success'), false);
+    assert.equal(notices.at(-1)?.type, 'warning');
+});
+
 test('profile my day and my tasks keep distinct presentation scopes', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext(`

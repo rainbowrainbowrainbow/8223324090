@@ -198,6 +198,13 @@ function createFakePool() {
                     ]
                 };
             }
+            if (/SELECT id, username, name, role FROM users WHERE users\.id = \$1 AND COALESCE\(is_active, true\) = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
+                const users = {
+                    1: { id: 1, username: 'route-smoke', name: 'Route Smoke', role: 'creator' },
+                    2: { id: 2, username: 'dasha', name: 'Dasha', role: 'manager' }
+                };
+                return { rows: users[params[0]] ? [users[params[0]]] : [] };
+            }
             if (/FROM task_action_history/i.test(text)) {
                 return { rows: [{
                     id: 41,
@@ -1027,6 +1034,30 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)
             && q.params[/^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 15 : 14] === 'lead'
             && q.params[/^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 16 : 15] === '501'));
+    });
+
+    it('creates URL-first Profile My Day tasks through the canonical task route', async () => {
+        const title = 'https://example.com перевірити';
+        const res = await request('POST', '/api/tasks', {
+            title,
+            ownerUserId: 1,
+            category: 'personal',
+            task_mode: 'personal',
+            task_kind: 'action',
+            visibility: 'me_only',
+            workflow_state: 'inbox',
+            date: '2099-05-31',
+            source_type: 'manual',
+            source_module: 'profile_my_cabinet',
+            source_surface: 'profile_my_cabinet'
+        }, withAuth({}, 'creator'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.task.title, title);
+        assert.equal(res.data.task.ownerUserId, 1);
+        assert.ok(queries.some(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)
+            && q.params[/^INSERT INTO tasks \(business_context,/i.test(q.text.trim()) ? 1 : 0] === title));
     });
 
     it('validates and applies lead assignee updates', async () => {

@@ -51,8 +51,10 @@ const {
 const {
     hasSubtaskPayload,
     listTaskSubtasks,
+    normalizeSubtaskReorderIds,
     normalizeSubtaskRow,
     normalizeSubtaskSourceType,
+    reorderTaskSubtasks,
     replaceTaskSubtasks,
     subtaskPayloadFromBody,
     subtaskProgress
@@ -1883,11 +1885,22 @@ router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
         const title = String(req.body.title || '').trim();
         if (!title) return res.status(400).json({ error: 'title required' });
         const sourceType = normalizeSubtaskSourceType(req.body.source_type || req.body.sourceType || 'manual');
+        const rawSortOrder = req.body.sort_order ?? req.body.sortOrder;
+        const parsedSortOrder = Number.parseInt(rawSortOrder, 10);
+        const sortOrder = Number.isInteger(parsedSortOrder) ? parsedSortOrder : null;
         const result = await pool.query(
             `INSERT INTO task_subtasks (task_id, title, sort_order, source_type)
-             VALUES ($1, $2, COALESCE($3, 0), $4)
+             VALUES (
+                $1,
+                $2,
+                COALESCE(
+                    $3::int,
+                    (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM task_subtasks WHERE task_id = $1)
+                ),
+                $4
+             )
              RETURNING *`,
-            [req.params.id, title, parseInt(req.body.sort_order ?? req.body.sortOrder ?? 0, 10) || 0, sourceType]
+            [req.params.id, title, sortOrder, sourceType]
         );
         await pool.query(
             `UPDATE tasks
@@ -1902,7 +1915,21 @@ router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-// PATCH /api/tasks/:id/subtasks/:subtaskId — toggle/update checklist item
+// POST /api/tasks/:id/subtasks/reorder - persist checklist drag-and-drop order
+router.post('/:id/subtasks/reorder', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        await loadMutableTask(req.params.id, req.user, businessScope);
+        const orderedIds = normalizeSubtaskReorderIds(req.body);
+        const subtasks = await reorderTaskSubtasks(pool, req.params.id, orderedIds);
+        res.json({ success: true, subtasks });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// PATCH /api/tasks/:id/subtasks/:subtaskId - toggle/update checklist item
 router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);

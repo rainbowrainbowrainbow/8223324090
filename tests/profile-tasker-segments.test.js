@@ -389,6 +389,9 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
     assert.match(html, /data-cabinet-subtasks-panel="44"/);
     assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(html, /data-cabinet-inline-subtask/);
+    assert.match(html, /data-cabinet-subtask-drag-handle/);
+    assert.match(html, /draggable="true"/);
     assert.match(html, /data-cabinet-subtask-done/);
 });
 

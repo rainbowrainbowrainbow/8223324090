@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.43",
+  "version": "0.68.44",
   "eventGenix": {
-    "releaseLabel": "HR структура canvas"
+    "releaseLabel": "Subtasks reorder у профілі"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -37,6 +37,8 @@ let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
 let cabinetTaskDragDropBound = false;
 let cabinetTaskDragState = null;
+let cabinetSubtaskDragDropBound = false;
+let cabinetSubtaskDragState = null;
 let cabinetUndoToastTimer = null;
 let profileSecurityData = null;
 let cabinetSavedDecompositionTemplates = [];
@@ -3709,7 +3711,11 @@ function normalizeCabinetSubtask(item = {}) {
     return {
         id: item.id || item.subtaskId || item.subtask_id || '',
         title: item.title || '',
-        isDone: item.is_done === true || item.isDone === true
+        isDone: item.is_done === true || item.isDone === true,
+        sort_order: Number.parseInt(item.sort_order ?? item.sortOrder ?? 0, 10) || 0,
+        sortOrder: Number.parseInt(item.sort_order ?? item.sortOrder ?? 0, 10) || 0,
+        source_type: item.source_type || item.sourceType || 'manual',
+        sourceType: item.source_type || item.sourceType || 'manual'
     };
 }
 
@@ -3795,10 +3801,13 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null)
         body = subtasks.length
             ? subtasks.map(item => {
                 const subtask = normalizeCabinetSubtask(item);
-                return `<label class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''}">
+                return `<div class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''}" data-cabinet-inline-subtask data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}">
+                    <button type="button" class="cabinet-subtask-drag-handle" data-cabinet-subtask-drag-handle draggable="true" aria-label="Перетягнути підзадачу" title="Перетягніть, щоб змінити порядок">⋮⋮</button>
+                    <label class="cabinet-subtask-inline-check">
                     <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
                     <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
-                </label>`;
+                    </label>
+                </div>`;
             }).join('')
             : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
     }
@@ -4197,6 +4206,212 @@ async function updateCabinetSubtaskDone(input) {
     rerenderCabinetTaskTabs();
 }
 
+function cabinetSubtaskOrderFromList(list) {
+    return Array.from(list?.querySelectorAll?.('[data-cabinet-inline-subtask]') || [])
+        .map(row => normalizeCabinetTaskId(row.dataset.subtaskId))
+        .filter(Boolean);
+}
+
+function cabinetSubtasksFromList(list) {
+    return Array.from(list?.querySelectorAll?.('[data-cabinet-inline-subtask]') || [])
+        .map((row, index) => ({
+            id: normalizeCabinetTaskId(row.dataset.subtaskId),
+            title: row.querySelector('.cabinet-subtask-inline-check span')?.textContent || '',
+            isDone: row.classList.contains('is-done') || row.querySelector('[data-cabinet-subtask-done]')?.checked === true,
+            sort_order: index,
+            sortOrder: index
+        }))
+        .filter(item => item.id);
+}
+
+function clearCabinetSubtaskDropPlacement() {
+    document.querySelectorAll('.cabinet-subtask-inline-item.is-drop-before, .cabinet-subtask-inline-item.is-drop-after').forEach(row => {
+        row.classList.remove('is-drop-before', 'is-drop-after');
+    });
+}
+
+function clearCabinetSubtaskDropMarkers() {
+    clearCabinetSubtaskDropPlacement();
+    document.querySelectorAll('.cabinet-subtask-inline-item.is-dragging').forEach(row => {
+        row.classList.remove('is-dragging');
+    });
+    document.body?.classList.remove('cabinet-subtask-dragging');
+}
+
+function orderCabinetSubtasksByIds(taskId, orderedIds = [], fallback = []) {
+    const task = findCabinetTask(taskId) || {};
+    const current = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || fallback || [];
+    const byId = new Map(current.map(item => [Number(normalizeCabinetSubtask(item).id), normalizeCabinetSubtask(item)]));
+    const ordered = orderedIds
+        .map((id, index) => {
+            const subtask = byId.get(Number(id));
+            if (!subtask) return null;
+            return {
+                ...subtask,
+                sort_order: index,
+                sortOrder: index
+            };
+        })
+        .filter(Boolean);
+    if (ordered.length !== orderedIds.length) return null;
+    return ordered;
+}
+
+async function saveCabinetSubtaskOrder(taskId, orderedIds = [], previousSubtasks = []) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id || orderedIds.length < 2) return false;
+    const optimistic = orderCabinetSubtasksByIds(id, orderedIds, previousSubtasks);
+    if (!optimistic) return false;
+    cabinetSubtaskCache.set(id, optimistic);
+    updateCabinetTaskSubtaskSummary(id, optimistic);
+
+    const result = await apiPost(`/tasks/${id}/subtasks/reorder`, { subtaskIds: orderedIds });
+    if (!result?.success || !Array.isArray(result.subtasks)) {
+        const previous = previousSubtasks.map(normalizeCabinetSubtask);
+        cabinetSubtaskCache.set(id, previous);
+        updateCabinetTaskSubtaskSummary(id, previous);
+        rerenderCabinetTaskTabs();
+        if (typeof showNotification === 'function') {
+            showNotification(result?.error || 'Не вдалося зберегти порядок підзадач', 'error');
+        }
+        return false;
+    }
+    const canonical = result.subtasks.map(normalizeCabinetSubtask);
+    cabinetSubtaskCache.set(id, canonical);
+    updateCabinetTaskSubtaskSummary(id, canonical);
+    notifyTaskWidgetsChanged({ action: 'subtask_reorder', taskId: id });
+    return true;
+}
+
+function handleCabinetSubtaskDragStart(event) {
+    const handle = event.target?.closest?.('[data-cabinet-subtask-drag-handle]');
+    const row = handle?.closest?.('[data-cabinet-inline-subtask]');
+    if (!row || !row.closest('.cabinet-shell')) return;
+    const taskId = normalizeCabinetTaskId(row.dataset.taskId);
+    const subtaskId = normalizeCabinetTaskId(row.dataset.subtaskId);
+    if (!taskId || !subtaskId) {
+        event.preventDefault();
+        return;
+    }
+    event.stopPropagation();
+    cabinetSubtaskDragState = { taskId, subtaskId };
+    row.classList.add('is-dragging');
+    document.body?.classList.add('cabinet-subtask-dragging');
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('application/x-eventgenix-subtask', `${taskId}:${subtaskId}`);
+        event.dataTransfer.setData('text/plain', String(subtaskId));
+    }
+}
+
+function handleCabinetSubtaskDragOver(event) {
+    if (!cabinetSubtaskDragState) return;
+    const row = event.target?.closest?.('[data-cabinet-inline-subtask]');
+    if (!row || Number(row.dataset.taskId) !== cabinetSubtaskDragState.taskId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    clearCabinetSubtaskDropPlacement();
+    const rect = row.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    row.classList.add(before ? 'is-drop-before' : 'is-drop-after');
+}
+
+async function persistCabinetSubtaskDrop(targetRow, insertAfter = false) {
+    if (!targetRow || !cabinetSubtaskDragState) return;
+    const taskId = cabinetSubtaskDragState.taskId;
+    const list = targetRow.closest('.cabinet-subtask-inline-list');
+    const dragged = list?.querySelector(`[data-cabinet-inline-subtask][data-subtask-id="${cabinetSubtaskDragState.subtaskId}"]`);
+    if (!list || !dragged || Number(targetRow.dataset.taskId) !== taskId) return;
+    const previous = (cabinetSubtaskCache.get(taskId) || cabinetSubtasksFromList(list)).map(normalizeCabinetSubtask);
+    const previousOrder = cabinetSubtaskOrderFromList(list);
+    if (dragged !== targetRow) {
+        if (insertAfter) {
+            targetRow.insertAdjacentElement('afterend', dragged);
+        } else {
+            list.insertBefore(dragged, targetRow);
+        }
+    }
+    const nextOrder = cabinetSubtaskOrderFromList(list);
+    if (nextOrder.join(',') === previousOrder.join(',')) return;
+    list.classList.add('is-reorder-saving');
+    const ok = await saveCabinetSubtaskOrder(taskId, nextOrder, previous);
+    list.classList.remove('is-reorder-saving');
+    if (ok && typeof showNotification === 'function') {
+        showNotification('Порядок підзадач збережено', 'success');
+    }
+}
+
+async function handleCabinetSubtaskDrop(event) {
+    if (!cabinetSubtaskDragState) return;
+    const row = event.target?.closest?.('[data-cabinet-inline-subtask]');
+    if (!row || Number(row.dataset.taskId) !== cabinetSubtaskDragState.taskId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = row.getBoundingClientRect();
+    const insertAfter = event.clientY >= rect.top + rect.height / 2;
+    try {
+        await persistCabinetSubtaskDrop(row, insertAfter);
+    } catch (error) {
+        console.error('Profile cabinet subtask reorder failed', error);
+        if (typeof showNotification === 'function') {
+            showNotification(error?.message || 'Не вдалося зберегти порядок підзадач', 'error');
+        }
+        rerenderCabinetTaskTabs();
+    } finally {
+        cabinetSubtaskDragState = null;
+        clearCabinetSubtaskDropMarkers();
+    }
+}
+
+function handleCabinetSubtaskDragEnd() {
+    cabinetSubtaskDragState = null;
+    clearCabinetSubtaskDropMarkers();
+}
+
+async function moveCabinetSubtaskByKeyboard(handle, direction) {
+    const row = handle?.closest?.('[data-cabinet-inline-subtask]');
+    const list = row?.closest?.('.cabinet-subtask-inline-list');
+    if (!row || !list) return;
+    const taskId = normalizeCabinetTaskId(row.dataset.taskId);
+    const rows = Array.from(list.querySelectorAll('[data-cabinet-inline-subtask]'));
+    const index = rows.indexOf(row);
+    const targetIndex = index + direction;
+    if (!taskId || index < 0 || targetIndex < 0 || targetIndex >= rows.length) return;
+    const previous = (cabinetSubtaskCache.get(taskId) || cabinetSubtasksFromList(list)).map(normalizeCabinetSubtask);
+    if (direction < 0) {
+        list.insertBefore(row, rows[targetIndex]);
+    } else {
+        rows[targetIndex].insertAdjacentElement('afterend', row);
+    }
+    const nextOrder = cabinetSubtaskOrderFromList(list);
+    list.classList.add('is-reorder-saving');
+    const ok = await saveCabinetSubtaskOrder(taskId, nextOrder, previous);
+    list.classList.remove('is-reorder-saving');
+    if (ok) {
+        const nextRow = list.querySelector(`[data-cabinet-inline-subtask][data-subtask-id="${row.dataset.subtaskId}"] [data-cabinet-subtask-drag-handle]`);
+        nextRow?.focus();
+    }
+}
+
+function handleCabinetSubtaskHandleKeydown(event) {
+    const handle = event.target?.closest?.('[data-cabinet-subtask-drag-handle]');
+    if (!handle) return;
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    moveCabinetSubtaskByKeyboard(handle, event.key === 'ArrowUp' ? -1 : 1);
+}
+
+function bindCabinetSubtaskDragDrop() {
+    if (cabinetSubtaskDragDropBound) return;
+    cabinetSubtaskDragDropBound = true;
+    document.addEventListener('dragstart', handleCabinetSubtaskDragStart);
+    document.addEventListener('dragover', handleCabinetSubtaskDragOver);
+    document.addEventListener('drop', handleCabinetSubtaskDrop);
+    document.addEventListener('dragend', handleCabinetSubtaskDragEnd);
+    document.addEventListener('keydown', handleCabinetSubtaskHandleKeydown);
+}
+
 function normalizeCabinetRestoreStatus(value) {
     return ['todo', 'in_progress'].includes(value) ? value : 'todo';
 }
@@ -4266,6 +4481,7 @@ function isCabinetTaskDragInteractiveTarget(target) {
 function handleCabinetTaskDragStart(event) {
     const card = event.target?.closest?.('[data-cabinet-task-drag]');
     if (!card || !card.closest('.cabinet-shell')) return;
+    if (event.target?.closest?.('[data-cabinet-inline-subtask]')) return;
     if (card.dataset.cabinetTaskDragTarget && card.dataset.cabinetTaskDragTarget !== 'today') return;
     if (isCabinetTaskDragInteractiveTarget(event.target)) {
         event.preventDefault();
@@ -5405,6 +5621,7 @@ function attachProfileListeners() {
         button.addEventListener('click', () => setCabinetTaskComposerExpanded(!cabinetTaskComposerExpanded, { focusTitle: !cabinetTaskComposerExpanded }));
     });
     bindCabinetTaskDragDrop();
+    bindCabinetSubtaskDragDrop();
     bindCabinetSubtasks();
 
     // Inventory slot click — equip/unequip

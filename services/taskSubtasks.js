@@ -56,6 +56,25 @@ function normalizeSubtasksInput(value, options = {}) {
         .map((item, index) => ({ ...item, sort_order: index }));
 }
 
+function normalizeSubtaskReorderIds(value = {}) {
+    const source = Array.isArray(value)
+        ? value
+        : (Array.isArray(value.subtaskIds)
+            ? value.subtaskIds
+            : (Array.isArray(value.subtasks)
+                ? value.subtasks
+                : (Array.isArray(value.order) ? value.order : [])));
+    return source
+        .map(item => optionalInteger(item?.id || item?.subtaskId || item?.subtask_id || item))
+        .filter(Boolean);
+}
+
+function createSubtaskOrderError(message, statusCode = 400) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
 function subtaskProgress(doneCount, totalCount) {
     const done = Math.max(0, Number.parseInt(doneCount, 10) || 0);
     const total = Math.max(0, Number.parseInt(totalCount, 10) || 0);
@@ -143,6 +162,60 @@ async function listTaskSubtasks(db, taskId) {
         [taskId]
     );
     return sortSubtaskRows(result.rows);
+}
+
+async function reorderTaskSubtasks(db, taskId, orderInput) {
+    const normalizedTaskId = optionalInteger(taskId);
+    const orderedIds = normalizeSubtaskReorderIds(orderInput);
+    if (!normalizedTaskId) throw createSubtaskOrderError('Invalid task id', 400);
+    if (orderedIds.length < 2) throw createSubtaskOrderError('At least two subtasks are required for reorder', 400);
+    if (new Set(orderedIds).size !== orderedIds.length) {
+        throw createSubtaskOrderError('Duplicate subtask ids are not allowed', 400);
+    }
+
+    const client = typeof db.connect === 'function' ? await db.connect() : null;
+    const query = client || db;
+    try {
+        if (client) await query.query('BEGIN');
+        const existingResult = await query.query(
+            `SELECT *
+             FROM task_subtasks
+             WHERE task_id = $1
+             ORDER BY sort_order ASC, id ASC
+             FOR UPDATE`,
+            [normalizedTaskId]
+        );
+        const existingRows = sortSubtaskRows(existingResult.rows);
+        if (existingRows.length !== orderedIds.length) {
+            throw createSubtaskOrderError('Subtask order must include every subtask for this task', 400);
+        }
+        const existingIds = new Set(existingRows.map(item => Number(item.id)));
+        const hasOnlyKnownIds = orderedIds.every(id => existingIds.has(Number(id)));
+        if (!hasOnlyKnownIds) {
+            throw createSubtaskOrderError('Subtask order contains unknown subtask ids', 400);
+        }
+
+        for (let index = 0; index < orderedIds.length; index += 1) {
+            await query.query(
+                `UPDATE task_subtasks
+                 SET sort_order = $1,
+                     updated_at = NOW()
+                 WHERE task_id = $2 AND id = $3`,
+                [index, normalizedTaskId, orderedIds[index]]
+            );
+        }
+        await query.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [normalizedTaskId]);
+        const rows = await listTaskSubtasks(query, normalizedTaskId);
+        if (client) await query.query('COMMIT');
+        return rows;
+    } catch (err) {
+        if (client) {
+            try { await query.query('ROLLBACK'); } catch {}
+        }
+        throw err;
+    } finally {
+        if (client) client.release();
+    }
 }
 
 async function createTaskSubtasks(db, taskId, subtasks, options = {}) {
@@ -240,11 +313,13 @@ module.exports = {
     hasSubtaskPayload,
     listTaskSubtasks,
     normalizeSubtaskInput,
+    normalizeSubtaskReorderIds,
     normalizeSubtaskRow,
     normalizeSubtaskRows,
     normalizeSubtaskSummary,
     normalizeSubtaskSourceType,
     normalizeSubtasksInput,
+    reorderTaskSubtasks,
     replaceTaskSubtasks,
     subtaskPayloadFromBody,
     subtaskCompletionState,

@@ -6,7 +6,9 @@ const path = require('node:path');
 const {
     hasSubtaskPayload,
     normalizeSubtaskInput,
+    normalizeSubtaskReorderIds,
     normalizeSubtasksInput,
+    reorderTaskSubtasks,
     subtaskCompletionState,
     subtaskPayloadFromBody,
     subtaskProgress
@@ -34,6 +36,50 @@ test('detects accepted API subtask payload names', () => {
     assert.equal(hasSubtaskPayload({ task_subtasks: [] }), true);
     assert.equal(hasSubtaskPayload({ title: 'No decomposition' }), false);
     assert.deepEqual(subtaskPayloadFromBody({ taskSubtasks: [{ title: 'A' }] }), [{ title: 'A' }]);
+});
+
+test('normalizes subtask reorder payload variants', () => {
+    assert.deepEqual(normalizeSubtaskReorderIds({ subtaskIds: ['4', 2, null, 'bad'] }), [4, 2]);
+    assert.deepEqual(normalizeSubtaskReorderIds({ subtasks: [{ id: 9 }, { subtaskId: '8' }, { subtask_id: 7 }] }), [9, 8, 7]);
+    assert.deepEqual(normalizeSubtaskReorderIds({ order: [3, 1, 2] }), [3, 1, 2]);
+});
+
+test('reorders task subtasks transactionally with canonical sort_order', async () => {
+    const rows = [
+        { id: 3, task_id: 77, title: 'Third', is_done: false, sort_order: 0, source_type: 'manual' },
+        { id: 4, task_id: 77, title: 'Fourth', is_done: true, sort_order: 1, source_type: 'manual' },
+        { id: 5, task_id: 77, title: 'Fifth', is_done: false, sort_order: 2, source_type: 'manual' }
+    ];
+    const statements = [];
+    const client = {
+        async query(text, params = []) {
+            statements.push({ text, params });
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/SELECT \*\s+FROM task_subtasks/i.test(text) && /FOR UPDATE/i.test(text)) {
+                return { rows: rows.map(row => ({ ...row })) };
+            }
+            if (/UPDATE task_subtasks/i.test(text)) {
+                const [sortOrder, taskId, subtaskId] = params;
+                const row = rows.find(item => item.task_id === Number(taskId) && item.id === Number(subtaskId));
+                if (row) row.sort_order = Number(sortOrder);
+                return { rows: [] };
+            }
+            if (/UPDATE tasks SET updated_at = NOW\(\) WHERE id = \$1/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/SELECT \*\s+FROM task_subtasks/i.test(text) && /ORDER BY sort_order ASC, id ASC/i.test(text)) {
+                return { rows: rows.slice().sort((a, b) => a.sort_order - b.sort_order || a.id - b.id) };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        },
+        release() {}
+    };
+    const result = await reorderTaskSubtasks({ connect: async () => client }, 77, { subtaskIds: [5, 3, 4] });
+
+    assert.deepEqual(result.map(item => item.id), [5, 3, 4]);
+    assert.deepEqual(result.map(item => item.sortOrder), [0, 1, 2]);
+    assert.equal(statements[0].text, 'BEGIN');
+    assert.equal(statements.at(-1).text, 'COMMIT');
 });
 
 test('calculates equal-weight subtask progress', () => {
@@ -77,4 +123,14 @@ test('list projections carry concrete subtask rows for clickable decomposed card
     const projectionCount = (route.match(/COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/g) || []).length;
     assert.ok(projectionCount >= 2, 'tasks list and my-cabinet projection should include subtask arrays');
     assert.match(route, /json_agg\(json_build_object\(\s*'id', id,\s*'task_id', task_id,\s*'title', title,/);
+});
+
+test('profile subtasks expose persisted reorder contract', () => {
+    const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tasks.js'), 'utf8');
+    const profile = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile-page.js'), 'utf8');
+    assert.match(route, /router\.post\('\/:id\/subtasks\/reorder'/);
+    assert.match(route, /reorderTaskSubtasks\(pool, req\.params\.id, orderedIds\)/);
+    assert.match(profile, /data-cabinet-subtask-drag-handle/);
+    assert.match(profile, /apiPost\(`\/tasks\/\$\{id\}\/subtasks\/reorder`/);
+    assert.match(profile, /notifyTaskWidgetsChanged\(\{ action: 'subtask_reorder'/);
 });

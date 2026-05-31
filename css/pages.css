@@ -2356,8 +2356,9 @@ body.dark-mode .cabinet-task-composer-hint {
 }
 
 .cabinet-subtask-inline-item {
+    position: relative;
     display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr);
     gap: 7px;
     align-items: start;
     padding: 6px 7px;
@@ -2368,13 +2369,76 @@ body.dark-mode .cabinet-task-composer-hint {
     font-weight: 800;
 }
 
-.cabinet-subtask-inline-item input {
+.cabinet-subtask-drag-handle {
+    width: 26px;
+    min-height: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.74);
+    color: #64748b;
+    font-weight: 950;
+    line-height: 1;
+    cursor: grab;
+}
+
+.cabinet-subtask-drag-handle:active {
+    cursor: grabbing;
+}
+
+.cabinet-subtask-drag-handle:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.58);
+    outline-offset: 2px;
+}
+
+.cabinet-subtask-inline-check {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 7px;
+    align-items: start;
+    min-width: 0;
+}
+
+.cabinet-subtask-inline-check input {
     margin-top: 1px;
 }
 
-.cabinet-subtask-inline-item.is-done span {
+.cabinet-subtask-inline-check span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cabinet-subtask-inline-item.is-done .cabinet-subtask-inline-check span {
     color: var(--gray-400, #9ca3af);
     text-decoration: line-through;
+}
+
+.cabinet-subtask-inline-item.is-dragging {
+    opacity: 0.56;
+}
+
+.cabinet-subtask-inline-item.is-drop-before::before,
+.cabinet-subtask-inline-item.is-drop-after::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 999px;
+    background: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
+}
+
+.cabinet-subtask-inline-item.is-drop-before::before {
+    top: -4px;
+}
+
+.cabinet-subtask-inline-item.is-drop-after::after {
+    bottom: -4px;
+}
+
+.cabinet-subtask-inline-list.is-reorder-saving {
+    opacity: 0.78;
+    pointer-events: none;
 }
 
 .cabinet-subtask-inline-empty {
@@ -2567,6 +2631,12 @@ body.dark-mode .cabinet-subtask-inline-item {
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(148, 163, 184, 0.20);
     color: var(--profile-dark-text, #f8fafc);
+}
+
+body.dark-mode .cabinet-subtask-drag-handle {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(30, 41, 59, 0.86);
+    color: var(--profile-dark-muted, #94a3b8);
 }
 
 body.dark-mode .cabinet-subtask-compact-summary {

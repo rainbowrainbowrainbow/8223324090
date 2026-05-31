@@ -4,6 +4,14 @@
 
 ---
 
+## v0.68.34 - релізне закріплення бронювання
+
+### Release / 31.05.2026 [codex]
+- **Окремий patch-реліз поверх фікса створення подій** - версію піднято після виправлення booking creation truth, щоб live-кеші, service worker і asset tags гарантовано перейшли на новий пакет.
+- **Cache-busting синхронізовано по всіх CRM сторінках** - HTML/JS/CSS посилання, service worker cache names і `/api/version` приведені до `v0.68.34`.
+
+---
+
 ## v0.68.33 - чітке створення подій
 
 ### Booking creation truth / 31.05.2026 [codex]

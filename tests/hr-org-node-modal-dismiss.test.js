@@ -56,15 +56,11 @@ function createHarness() {
                 },
                 renderCanvas() {
                     document.body.innerHTML = [
-                        '<button id="hrOrgLineToolBtn"></button>',
-                        '<button id="hrOrgRelinkSelectedBtn"></button>',
-                        '<button id="hrOrgClearParentBtn"></button>',
+                        '<button id="hrOrgAutoLayoutBtn"></button>',
                         '<span id="hrOrgLinkStatus"></span>',
                         '<h4 id="hrOrgDetailTitle"></h4>',
                         '<p id="hrOrgDetailText"></p>',
                         '<button id="hrOrgEditSelectedBtn"></button>',
-                        '<button id="hrOrgDetailRelinkBtn"></button>',
-                        '<button id="hrOrgDetailDetachBtn"></button>',
                         '<textarea id="companyStructureText"></textarea>',
                         '<textarea id="companyStructureNotes"></textarea>',
                         '<textarea id="companyInstructionsText"></textarea>',
@@ -162,7 +158,7 @@ test('HR org/profession editor exposes relation and grid position controls', () 
     assert.ok(form.querySelector('select[name="parentId"]'));
 });
 
-test('HR org canvas exposes ports and creates persisted parent links through the line tool flow', async () => {
+test('HR org canvas creates visible parent links directly through node ports', async () => {
     const { window, api } = createHarness();
     api.setNodes([
         { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: null, order: 1, stack: null, meta: 'child', x: 90, y: 120 },
@@ -172,11 +168,13 @@ test('HR org canvas exposes ports and creates persisted parent links through the
 
     assert.equal(window.document.querySelectorAll('.hr-org-port--child').length, 2);
     assert.equal(window.document.querySelectorAll('.hr-org-port--parent').length, 2);
-    assert.equal(window.document.querySelectorAll('.hr-org-port--child[data-org-link-source]').length, 0);
+    assert.equal(window.document.querySelectorAll('[data-org-link-parent-port]').length, 2);
+    assert.equal(window.document.querySelectorAll('[data-org-link-child-port]').length, 2);
 
-    click(window, window.document.querySelector('[data-org-link-source="child"]'));
-    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
-    click(window, window.document.querySelector('[data-org-link-target="parent"]'));
+    click(window, window.document.querySelector('[data-org-link-parent-port="parent"]'));
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), true);
+    assert.ok(window.document.querySelector('.hr-org-link-preview'));
+    click(window, window.document.querySelector('[data-org-link-child-port="child"]'));
     await settle();
 
     assert.equal(api.nodes().find(node => node.id === 'child').parentId, 'parent');
@@ -191,12 +189,12 @@ test('HR org canvas does not create links from card clicks while relinking is ac
     ]);
     api.renderCanvas();
 
-    click(window, window.document.querySelector('[data-org-link-source="child"]'));
+    click(window, window.document.querySelector('[data-org-link-child-port="child"]'));
     click(window, window.document.querySelector('[data-org-node-id="parent"]'));
     await settle();
 
     assert.equal(api.nodes().find(node => node.id === 'child').parentId, null);
-    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), true);
 });
 
 test('HR org canvas drag cancels sticky relink mode and persists the moved node position', async () => {
@@ -207,8 +205,8 @@ test('HR org canvas drag cancels sticky relink mode and persists the moved node 
     ]);
     api.renderCanvas();
 
-    click(window, window.document.querySelector('[data-org-link-source="child"]'));
-    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
+    click(window, window.document.querySelector('[data-org-link-child-port="child"]'));
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), true);
 
     const node = window.document.querySelector('[data-org-node-id="parent"]');
     node.dispatchEvent(pointer(window, 'pointerdown', { pointerId: 8, clientX: 100, clientY: 100 }));
@@ -217,7 +215,25 @@ test('HR org canvas drag cancels sticky relink mode and persists the moved node 
     await settle();
 
     const moved = api.nodes().find(item => item.id === 'parent');
-    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'false');
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), false);
     assert.equal(moved.x, 390);
     assert.equal(moved.y, 60);
+});
+
+test('HR org auto-arrange spreads cards instead of stacking roles on top of each other', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'director', title: 'Director', description: 'Root.', tone: 'gold', lane: 'root', parentId: null, order: 1, stack: null, meta: 'root', x: 0, y: 0 },
+        { id: 'admin', title: 'Admin', description: 'Admin.', tone: 'purple', lane: 'operations', parentId: 'director', order: 2, stack: null, meta: 'admin', x: 0, y: 0 },
+        { id: 'bar', title: 'Bar', description: 'Bar.', tone: 'violet', lane: 'support', parentId: 'director', order: 3, stack: null, meta: 'bar', x: 0, y: 0 },
+        { id: 'hr', title: 'HR', description: 'HR.', tone: 'blue', lane: 'leadership', parentId: 'director', order: 4, stack: null, meta: 'people', x: 0, y: 0 }
+    ]);
+    api.renderCanvas();
+
+    click(window, window.document.getElementById('hrOrgAutoLayoutBtn'));
+    await settle();
+
+    const positions = api.nodes().map(node => `${node.x}:${node.y}`);
+    assert.equal(new Set(positions).size, positions.length);
+    assert.ok(api.nodes().every(node => Number(node.x) >= 0 && Number(node.y) >= 0));
 });

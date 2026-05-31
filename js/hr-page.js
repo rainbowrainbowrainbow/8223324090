@@ -316,7 +316,8 @@ function initNewTabs() {
         const selected = readStaffSecondaryProfessionSelection();
         populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
     });
-    document.getElementById('hrOrgAutoLayoutBtn')?.addEventListener('click', autoArrangeCompanyOrgChart);
+    const autoLayoutButton = document.getElementById('hrOrgAutoLayoutBtn');
+    if (autoLayoutButton) autoLayoutButton.onclick = autoArrangeCompanyOrgChart;
     initCompanyOrgChart();
 }
 
@@ -2029,16 +2030,23 @@ async function saveStaffEdit() {
 
 const DEFAULT_COMPANY_STRUCTURE_TEXT = [
     'Директор',
-    '  Заступник директора',
-    '    Топ-менеджер -> Менеджер(и)',
-    '    HR',
-    '    Бухгалтер',
-    '    Арт-директор -> Адміністратори -> Старший батутіст, Аніматори, Офіціанти, Бариста, Рецепція',
-    '    Маркетолог',
-    '    IT-спеціаліст',
-    '  Шеф-кухар -> Кухарі, Мийка',
-    '  Шеф-кондитер -> Кондитери, Мийка цех',
-    '  Технічний персонал -> Гардероб, Прибирання, Завгосп'
+    'Заступник директора',
+    'Топ-менеджер',
+    'Менеджер(и)',
+    'HR',
+    'Бухгалтер',
+    'Арт-директор',
+    'Адміністратори',
+    'Аніматори',
+    'Офіціанти',
+    'Бариста',
+    'Рецепція',
+    'Шеф-кухар',
+    'Кухарі',
+    'Мийка',
+    'Шеф-кондитер',
+    'Кондитери',
+    'Технічний персонал'
 ].join('\n');
 
 const ORG_TONE_LABELS = {
@@ -2066,6 +2074,9 @@ const ORG_NODE_WIDTH = 168;
 const ORG_NODE_HEIGHT = 108;
 const ORG_ROOT_NODE_WIDTH = 220;
 const ORG_ROOT_NODE_HEIGHT = 128;
+const ORG_AUTO_LAYOUT_X_GAP = 54;
+const ORG_AUTO_LAYOUT_ROOT_GAP = 88;
+const ORG_AUTO_LAYOUT_ROW_GAP = 168;
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
     director: { x: 530, y: 24 },
     deputy_director: { x: 555, y: 158 },
@@ -2097,49 +2108,57 @@ const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
 
 const DEFAULT_COMPANY_STRUCTURE_NODES = [
     { id: 'director', title: 'Директор', description: 'Фінальне рішення, стратегія, ресурси і правила роботи компанії.', tone: 'gold', lane: 'root', parentId: null, stack: null, order: 10, meta: 'центр рішень' },
-    { id: 'deputy_director', title: 'Заступник директора', description: 'Тримає операційний контур, контролює виконання рішень і синхронізує керівників напрямів.', tone: 'blue', lane: 'deputy', parentId: 'director', stack: null, order: 20, meta: 'операційне керування' },
-    { id: 'top_manager', title: 'Топ-менеджер', description: 'Веде менеджерський блок, контролює продажі, бронювання і якість сервісного циклу.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: 'management', order: 30, meta: 'менеджмент' },
-    { id: 'managers', title: 'Менеджер(и)', description: 'Працюють із клієнтами, лідами, бронюваннями і щоденними задачами.', tone: 'blue', lane: 'leadership', parentId: 'top_manager', stack: 'management', order: 31, meta: 'оператори CRM' },
-    { id: 'hr', title: 'HR', description: 'Набір, структура команди, зміни, onboarding, дисципліна і кадровий контур.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 40, meta: 'люди' },
-    { id: 'accountant', title: 'Бухгалтер', description: 'Фінансові документи, зарплати, звірки і контроль обліку.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 50, meta: 'фінанси' },
-    { id: 'art_director', title: 'Арт-директор', description: 'Керує творчим виробництвом, програмами, костюмами, дизайнами і випускними матеріалами.', tone: 'purple', lane: 'leadership', parentId: 'deputy_director', stack: 'art', order: 60, meta: 'креатив' },
-    { id: 'admins', title: 'Адміністратори', description: 'Підтримують зал, комунікацію з гостями, порядок і операційне закриття змін.', tone: 'purple', lane: 'leadership', parentId: 'art_director', stack: 'art', order: 61, meta: 'зал' },
-    { id: 'marketer', title: 'Маркетолог', description: 'Маркетинг, комунікації, контент і кампанії для залучення клієнтів.', tone: 'blue', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 70, meta: 'попит' },
-    { id: 'it_specialist', title: 'IT-спеціаліст', description: 'Підтримує CRM, технічні інтеграції, обладнання і цифрові процеси.', tone: 'violet', lane: 'leadership', parentId: 'deputy_director', stack: null, order: 80, meta: 'системи' },
-    { id: 'senior_trampoline', title: 'Старший батутіст', description: 'Відповідає за батутну зону, інструкторів, безпеку і якість активностей.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: 'trampoline', order: 90, meta: 'батутна зона' },
-    { id: 'trampoline_instructors', title: 'Батутісти-інструктори', description: 'Проводять активності, стежать за безпекою дітей і підтримують правила зони.', tone: 'purple', lane: 'operations', parentId: 'senior_trampoline', stack: 'trampoline', order: 91, meta: 'інструктори' },
-    { id: 'animators', title: 'Аніматори', description: 'Проводять програми, інтерактиви та дитячі свята згідно зі сценарієм.', tone: 'purple', lane: 'operations', parentId: 'art_director', stack: null, order: 100, meta: 'програми' },
-    { id: 'waiters', title: 'Офіціанти', description: 'Сервіс столів, подача, комунікація з гостями і підтримка банкетів.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 110, meta: 'сервіс' },
-    { id: 'barista', title: 'Бариста', description: 'Кавовий бар, напої, швидкість видачі і якість продукту.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 120, meta: 'бар' },
-    { id: 'reception', title: 'Рецепція', description: 'Перша точка контакту гостей, вхідний потік, оплати і навігація.', tone: 'purple', lane: 'operations', parentId: 'admins', stack: null, order: 130, meta: 'вхід' },
-    { id: 'chef', title: 'Шеф-кухар', description: 'Керує кухнею, меню, якістю страв, закупками і кухонною дисципліною.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'kitchen', order: 140, meta: 'кухня' },
-    { id: 'cooks', title: 'Кухарі', description: 'Готують страви, тримають стандарти та швидкість видачі.', tone: 'violet', lane: 'support', parentId: 'chef', stack: 'kitchen', order: 141, meta: 'виробництво' },
-    { id: 'dishwash', title: 'Мийка', description: 'Посуд, чистота кухонного циклу і санітарна підтримка.', tone: 'violet', lane: 'support', parentId: 'chef', stack: 'kitchen', order: 142, meta: 'санітарія' },
-    { id: 'pastry_chef', title: 'Шеф-кондитер', description: 'Керує кондитерським напрямом, виробництвом десертів і стандартами якості.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'pastry', order: 150, meta: 'кондитерка' },
-    { id: 'pastry_team', title: 'Кондитери', description: 'Виготовляють десерти, декор і кондитерські позиції для подій.', tone: 'violet', lane: 'support', parentId: 'pastry_chef', stack: 'pastry', order: 151, meta: 'виробництво' },
-    { id: 'pastry_wash', title: 'Мийка цех', description: 'Підтримує чистоту і порядок у кондитерському цеху.', tone: 'violet', lane: 'support', parentId: 'pastry_chef', stack: 'pastry', order: 152, meta: 'санітарія' },
-    { id: 'technical_staff', title: 'Технічний персонал', description: 'Технічна готовність простору, ремонт, обладнання і господарські задачі.', tone: 'violet', lane: 'support', parentId: 'deputy_director', stack: 'technical', order: 160, meta: 'інфраструктура' },
-    { id: 'wardrobe', title: 'Гардероб', description: 'Одяг гостей, контроль речей і порядок у гардеробній зоні.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 161, meta: 'гості' },
-    { id: 'cleaning', title: 'Прибирання', description: 'Чистота залу, санвузлів, службових зон і підтримка стандартів протягом дня.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 162, meta: 'чистота' },
-    { id: 'facilities', title: 'Завгосп', description: 'Господарський запас, дрібний ремонт, закупки і побутова підтримка.', tone: 'violet', lane: 'support', parentId: 'technical_staff', stack: 'technical', order: 163, meta: 'господарство' }
+    { id: 'deputy_director', title: 'Заступник директора', description: 'Тримає операційний контур, контролює виконання рішень і синхронізує керівників напрямів.', tone: 'blue', lane: 'deputy', parentId: null, stack: null, order: 20, meta: 'операційне керування' },
+    { id: 'top_manager', title: 'Топ-менеджер', description: 'Веде менеджерський блок, контролює продажі, бронювання і якість сервісного циклу.', tone: 'blue', lane: 'leadership', parentId: null, stack: 'management', order: 30, meta: 'менеджмент' },
+    { id: 'managers', title: 'Менеджер(и)', description: 'Працюють із клієнтами, лідами, бронюваннями і щоденними задачами.', tone: 'blue', lane: 'leadership', parentId: null, stack: 'management', order: 31, meta: 'оператори CRM' },
+    { id: 'hr', title: 'HR', description: 'Набір, структура команди, зміни, onboarding, дисципліна і кадровий контур.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 40, meta: 'люди' },
+    { id: 'accountant', title: 'Бухгалтер', description: 'Фінансові документи, зарплати, звірки і контроль обліку.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 50, meta: 'фінанси' },
+    { id: 'art_director', title: 'Арт-директор', description: 'Керує творчим виробництвом, програмами, костюмами, дизайнами і випускними матеріалами.', tone: 'purple', lane: 'leadership', parentId: null, stack: 'art', order: 60, meta: 'креатив' },
+    { id: 'admins', title: 'Адміністратори', description: 'Підтримують зал, комунікацію з гостями, порядок і операційне закриття змін.', tone: 'purple', lane: 'leadership', parentId: null, stack: 'art', order: 61, meta: 'зал' },
+    { id: 'marketer', title: 'Маркетолог', description: 'Маркетинг, комунікації, контент і кампанії для залучення клієнтів.', tone: 'blue', lane: 'leadership', parentId: null, stack: null, order: 70, meta: 'попит' },
+    { id: 'it_specialist', title: 'IT-спеціаліст', description: 'Підтримує CRM, технічні інтеграції, обладнання і цифрові процеси.', tone: 'violet', lane: 'leadership', parentId: null, stack: null, order: 80, meta: 'системи' },
+    { id: 'senior_trampoline', title: 'Старший батутіст', description: 'Відповідає за батутну зону, інструкторів, безпеку і якість активностей.', tone: 'purple', lane: 'operations', parentId: null, stack: 'trampoline', order: 90, meta: 'батутна зона' },
+    { id: 'trampoline_instructors', title: 'Батутісти-інструктори', description: 'Проводять активності, стежать за безпекою дітей і підтримують правила зони.', tone: 'purple', lane: 'operations', parentId: null, stack: 'trampoline', order: 91, meta: 'інструктори' },
+    { id: 'animators', title: 'Аніматори', description: 'Проводять програми, інтерактиви та дитячі свята згідно зі сценарієм.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 100, meta: 'програми' },
+    { id: 'waiters', title: 'Офіціанти', description: 'Сервіс столів, подача, комунікація з гостями і підтримка банкетів.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 110, meta: 'сервіс' },
+    { id: 'barista', title: 'Бариста', description: 'Кавовий бар, напої, швидкість видачі і якість продукту.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 120, meta: 'бар' },
+    { id: 'reception', title: 'Рецепція', description: 'Перша точка контакту гостей, вхідний потік, оплати і навігація.', tone: 'purple', lane: 'operations', parentId: null, stack: null, order: 130, meta: 'вхід' },
+    { id: 'chef', title: 'Шеф-кухар', description: 'Керує кухнею, меню, якістю страв, закупками і кухонною дисципліною.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 140, meta: 'кухня' },
+    { id: 'cooks', title: 'Кухарі', description: 'Готують страви, тримають стандарти та швидкість видачі.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 141, meta: 'виробництво' },
+    { id: 'dishwash', title: 'Мийка', description: 'Посуд, чистота кухонного циклу і санітарна підтримка.', tone: 'violet', lane: 'support', parentId: null, stack: 'kitchen', order: 142, meta: 'санітарія' },
+    { id: 'pastry_chef', title: 'Шеф-кондитер', description: 'Керує кондитерським напрямом, виробництвом десертів і стандартами якості.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 150, meta: 'кондитерка' },
+    { id: 'pastry_team', title: 'Кондитери', description: 'Виготовляють десерти, декор і кондитерські позиції для подій.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 151, meta: 'виробництво' },
+    { id: 'pastry_wash', title: 'Мийка цех', description: 'Підтримує чистоту і порядок у кондитерському цеху.', tone: 'violet', lane: 'support', parentId: null, stack: 'pastry', order: 152, meta: 'санітарія' },
+    { id: 'technical_staff', title: 'Технічний персонал', description: 'Технічна готовність простору, ремонт, обладнання і господарські задачі.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 160, meta: 'інфраструктура' },
+    { id: 'wardrobe', title: 'Гардероб', description: 'Одяг гостей, контроль речей і порядок у гардеробній зоні.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 161, meta: 'гості' },
+    { id: 'cleaning', title: 'Прибирання', description: 'Чистота залу, санвузлів, службових зон і підтримка стандартів протягом дня.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 162, meta: 'чистота' },
+    { id: 'facilities', title: 'Завгосп', description: 'Господарський запас, дрібний ремонт, закупки і побутова підтримка.', tone: 'violet', lane: 'support', parentId: null, stack: 'technical', order: 163, meta: 'господарство' }
 ];
 
 let companyStructureNodes = [];
 let selectedCompanyStructureNodeId = 'director';
 let companyOrgLinkingNodeId = null;
+let companyOrgLinkingEndpoint = null;
+let companyOrgLinkPointer = null;
 let companyOrgDragState = null;
 let companyOrgSaveTimer = null;
 let companyOrgKeyboardBound = false;
 let companyOrgSuppressNextClick = false;
 
-function setCompanyOrgLinkMode(nodeId) {
+function setCompanyOrgLinkMode(nodeId, endpoint = 'child') {
     companyOrgLinkingNodeId = nodeId || null;
+    companyOrgLinkingEndpoint = companyOrgLinkingNodeId ? (endpoint === 'parent' ? 'parent' : 'child') : null;
+    companyOrgLinkPointer = null;
     const stage = document.getElementById('companyOrgChart');
     stage?.classList.toggle('is-linking', Boolean(companyOrgLinkingNodeId));
     document.querySelectorAll('[data-org-node-shell]').forEach(shell => {
-        shell.classList.toggle('is-link-source', shell.dataset.orgNodeShell === companyOrgLinkingNodeId);
+        const isOrigin = shell.dataset.orgNodeShell === companyOrgLinkingNodeId;
+        shell.classList.toggle('is-link-source', isOrigin);
+        shell.classList.toggle('is-link-parent-origin', isOrigin && companyOrgLinkingEndpoint === 'parent');
+        shell.classList.toggle('is-link-child-origin', isOrigin && companyOrgLinkingEndpoint === 'child');
     });
     updateCompanyOrgLinkStatus();
+    renderCompanyOrgLinks();
 }
 
 function cloneCompanyStructureNodes(nodes) {
@@ -2298,8 +2317,23 @@ function companyOrgNodeAnchor(node, edge = 'center') {
 function companyOrgLinkPath(parent, child) {
     const start = companyOrgNodeAnchor(parent, 'bottom');
     const end = companyOrgNodeAnchor(child, 'top');
+    return companyOrgFloatingLinkPath(start, end);
+}
+
+function companyOrgFloatingLinkPath(start, end) {
     const midY = Math.round((start.y + end.y) / 2);
     return `M ${Math.round(start.x)} ${Math.round(start.y)} C ${Math.round(start.x)} ${midY}, ${Math.round(end.x)} ${midY}, ${Math.round(end.x)} ${Math.round(end.y)}`;
+}
+
+function companyOrgPreviewLinkPath() {
+    if (!companyOrgLinkingNodeId || !companyOrgLinkingEndpoint) return '';
+    const origin = companyStructureNodeById(companyOrgLinkingNodeId);
+    if (!origin) return '';
+    const edge = companyOrgLinkingEndpoint === 'parent' ? 'bottom' : 'top';
+    const start = companyOrgNodeAnchor(origin, edge);
+    const fallbackY = companyOrgLinkingEndpoint === 'parent' ? start.y + 180 : start.y - 180;
+    const end = companyOrgLinkPointer || { x: start.x, y: Math.max(0, fallbackY) };
+    return companyOrgFloatingLinkPath(start, end);
 }
 
 function renderCompanyOrgLinks() {
@@ -2311,10 +2345,11 @@ function renderCompanyOrgLinks() {
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
     const byId = new Map(companyStructureNodes.map(node => [node.id, node]));
-    layer.innerHTML = companyStructureNodes.map(node => {
+    const linkHtml = companyStructureNodes.map(node => {
         const parent = node.parentId ? byId.get(node.parentId) : null;
         if (!parent) return '';
         const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
+        if (!active) return '';
         const path = companyOrgLinkPath(parent, node);
         return `
             <g class="hr-org-link-group${active}" tabindex="0" role="button" data-org-link-child="${escapeHtml(node.id)}" aria-label="Лінія: ${escapeHtml(parent.title)} керує ${escapeHtml(node.title)}">
@@ -2322,6 +2357,9 @@ function renderCompanyOrgLinks() {
                 <path class="hr-org-link${active}" d="${path}"></path>
             </g>`;
     }).join('');
+    const previewPath = companyOrgPreviewLinkPath();
+    const previewHtml = previewPath ? `<path class="hr-org-link-preview" d="${previewPath}"></path>` : '';
+    layer.innerHTML = `${linkHtml}${previewHtml}`;
     layer.querySelectorAll('[data-org-link-child]').forEach(link => {
         const activate = () => {
             const child = companyStructureNodeById(link.dataset.orgLinkChild);
@@ -2341,18 +2379,19 @@ function renderCompanyOrgNode(node) {
     const meta = node.meta || ORG_TONE_LABELS[tone] || '';
     const active = node.id === selectedCompanyStructureNodeId ? ' is-active' : '';
     const linking = node.id === companyOrgLinkingNodeId ? ' is-link-source' : '';
+    const lane = ORG_ALLOWED_LANES.includes(node.lane) ? node.lane : 'leadership';
     const size = companyOrgNodeSize(node);
     const description = String(node.description || '').trim();
     return `
-        <span class="hr-org-node-shell${linking}" data-org-node-shell="${escapeHtml(node.id)}" style="left:${Number(node.x || 0)}px;top:${Number(node.y || 0)}px;width:${size.width}px;height:${size.height}px;">
-            <button type="button" class="hr-org-port hr-org-port--parent" data-org-link-target="${escapeHtml(node.id)}" aria-label="Підключити лінію до ${escapeHtml(node.title)} як до керівника"></button>
-            <button type="button" class="hr-org-node hr-org-node--${tone}${active}" data-org-node-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(node.title)}. Перетягніть, щоб змінити місце.">
+        <span class="hr-org-node-shell${linking}" data-org-node-shell="${escapeHtml(node.id)}" data-org-lane="${escapeHtml(lane)}" style="left:${Number(node.x || 0)}px;top:${Number(node.y || 0)}px;width:${size.width}px;height:${size.height}px;">
+            <button type="button" class="hr-org-port hr-org-port--child" data-org-link-child-port="${escapeHtml(node.id)}" aria-label="Точка підпорядкування для ${escapeHtml(node.title)}" title="Ця роль підпорядковується"></button>
+            <button type="button" class="hr-org-node hr-org-node--${tone} hr-org-node--lane-${lane}${active}" data-org-node-id="${escapeHtml(node.id)}" aria-label="${escapeHtml(node.title)}. Перетягніть, щоб змінити місце.">
+                <span class="hr-org-node-lane">${escapeHtml(ORG_LANE_LABELS[lane] || 'Роль')}</span>
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
                 <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
                 ${description ? `<span class="hr-org-node-description">${escapeHtml(description)}</span>` : ''}
             </button>
-            <span class="hr-org-port hr-org-port--child" aria-hidden="true"></span>
-            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити керівника для ${escapeHtml(node.title)}" title="Змінити керівника">🔗</button>
+            <button type="button" class="hr-org-port hr-org-port--parent" data-org-link-parent-port="${escapeHtml(node.id)}" aria-label="Точка керівника для ${escapeHtml(node.title)}" title="Ця роль керує іншою"></button>
             <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
         </span>`;
 }
@@ -2385,26 +2424,22 @@ function bindCompanyOrgChartEvents(stage) {
             openCompanyOrgNodeEditor(button.dataset.orgEdit);
         });
     });
-    stage.querySelectorAll('[data-org-link-target]').forEach(button => {
+    stage.querySelectorAll('[data-org-link-child-port]').forEach(button => {
         button.addEventListener('click', event => {
             event.stopPropagation();
-            const targetId = button.dataset.orgLinkTarget;
-            if (companyOrgLinkingNodeId) {
-                completeCompanyOrgLink(targetId);
-            } else {
-                selectCompanyOrgNodeById(targetId);
-            }
+            handleCompanyOrgPortClick('child', button.dataset.orgLinkChildPort, event);
         });
     });
-    stage.querySelectorAll('[data-org-link-source]').forEach(button => {
+    stage.querySelectorAll('[data-org-link-parent-port]').forEach(button => {
         button.addEventListener('click', event => {
             event.stopPropagation();
-            startCompanyOrgLinkMode(button.dataset.orgLinkSource);
+            handleCompanyOrgPortClick('parent', button.dataset.orgLinkParentPort, event);
         });
     });
+    stage.addEventListener('mousemove', updateCompanyOrgLinkPointer);
     stage.addEventListener('click', event => {
         if (!companyOrgLinkingNodeId) return;
-        if (event.target.closest?.('[data-org-node-shell], [data-org-link-target], [data-org-link-source], [data-org-edit], [data-org-link-child]')) return;
+        if (event.target.closest?.('[data-org-node-shell], [data-org-link-child-port], [data-org-link-parent-port], [data-org-edit], [data-org-link-child]')) return;
         cancelCompanyOrgLinkMode();
     });
 }
@@ -2433,7 +2468,7 @@ function renderCompanyOrgChart() {
 }
 
 function startCompanyOrgDrag(event, nodeId) {
-    if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-source], [data-org-link-target]')) return;
+    if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-child-port], [data-org-link-parent-port]')) return;
     if (companyOrgLinkingNodeId) {
         setCompanyOrgLinkMode(null);
     }
@@ -2518,16 +2553,72 @@ function companyOrgWouldCreateCycle(childId, parentId) {
     return false;
 }
 
-function startCompanyOrgLinkMode(nodeId = selectedCompanyStructureNodeId) {
+function updateCompanyOrgLinkPointer(event) {
+    if (!companyOrgLinkingNodeId) return;
+    const stage = document.getElementById('companyOrgChart');
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    companyOrgLinkPointer = {
+        x: Math.max(0, event.clientX - rect.left),
+        y: Math.max(0, event.clientY - rect.top)
+    };
+    renderCompanyOrgLinks();
+}
+
+function startCompanyOrgPortLink(endpoint, nodeId) {
     const node = companyStructureNodeById(nodeId);
     if (!node) return;
     selectedCompanyStructureNodeId = node.id;
-    renderCompanyOrgChart();
-    setCompanyOrgLinkMode(node.id);
+    setCompanyOrgLinkMode(node.id, endpoint);
     selectCompanyOrgNodeById(node.id);
     if (typeof showNotification === 'function') {
-        showNotification(`Оберіть верхню точку керівника для "${node.title}". Esc — скасувати.`, 'info');
+        const next = endpoint === 'parent'
+            ? 'натисніть верхній кружок ролі, яка буде підпорядкована'
+            : 'натисніть нижній кружок ролі-керівника';
+        showNotification(`Лінія почалась від "${node.title}": ${next}. Esc — скасувати.`, 'info');
     }
+}
+
+function completeCompanyOrgLinkPair(childId, parentId) {
+    const child = companyStructureNodeById(childId);
+    const parent = companyStructureNodeById(parentId);
+    if (!child || !parent) return cancelCompanyOrgLinkMode();
+    if (child.id === parent.id) {
+        showNotification('Роль не може бути підпорядкована сама собі', 'warning');
+        return;
+    }
+    if (companyOrgWouldCreateCycle(child.id, parent.id)) {
+        showNotification('Таке зʼєднання створить цикл у структурі', 'warning');
+        return;
+    }
+    child.parentId = parent.id;
+    setCompanyOrgLinkMode(null);
+    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    syncCompanyStructureText();
+    renderCompanyOrgChart();
+    selectCompanyOrgNodeById(child.id);
+    saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
+        if (saved) showNotification(`Лінію створено: ${parent.title} → ${child.title}`, 'success');
+    });
+}
+
+function handleCompanyOrgPortClick(endpoint, nodeId, event = null) {
+    if (event) updateCompanyOrgLinkPointer(event);
+    if (!companyOrgLinkingNodeId) {
+        startCompanyOrgPortLink(endpoint, nodeId);
+        return;
+    }
+    if (companyOrgLinkingEndpoint === endpoint) {
+        startCompanyOrgPortLink(endpoint, nodeId);
+        return;
+    }
+    const childId = endpoint === 'child' ? nodeId : companyOrgLinkingNodeId;
+    const parentId = endpoint === 'parent' ? nodeId : companyOrgLinkingNodeId;
+    completeCompanyOrgLinkPair(childId, parentId);
+}
+
+function startCompanyOrgLinkMode(nodeId = selectedCompanyStructureNodeId) {
+    startCompanyOrgPortLink('child', nodeId);
 }
 
 function cancelCompanyOrgLinkMode(options = {}) {
@@ -2543,26 +2634,10 @@ function cancelCompanyOrgLinkMode(options = {}) {
 function completeCompanyOrgLink(parentId) {
     const childId = companyOrgLinkingNodeId;
     if (!childId) return;
-    const child = companyStructureNodeById(childId);
-    const parent = companyStructureNodeById(parentId);
-    if (!child || !parent) return cancelCompanyOrgLinkMode();
-    if (child.id === parent.id) {
-        showNotification('Вузол не може бути підпорядкований самому собі', 'warning');
-        return;
+    if (companyOrgLinkingEndpoint === 'parent') {
+        return completeCompanyOrgLinkPair(parentId, companyOrgLinkingNodeId);
     }
-    if (companyOrgWouldCreateCycle(child.id, parent.id)) {
-        showNotification('Таке з’єднання створить цикл у структурі', 'warning');
-        return;
-    }
-    child.parentId = parent.id;
-    setCompanyOrgLinkMode(null);
-    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
-    syncCompanyStructureText();
-    renderCompanyOrgChart();
-    selectCompanyOrgNodeById(child.id);
-    saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
-        if (saved) showNotification('Лінію підпорядкування оновлено', 'success');
-    });
+    completeCompanyOrgLinkPair(childId, parentId);
 }
 
 function clearSelectedCompanyOrgParent() {
@@ -2578,15 +2653,79 @@ function clearSelectedCompanyOrgParent() {
     });
 }
 
-function autoArrangeCompanyOrgChart() {
-    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes).map((node, index) => {
-        const position = companyOrgDefaultPosition(node, index);
+function autoArrangeFlatCompanyOrgNodes(nodes) {
+    const sorted = sortCompanyStructureNodes(nodes);
+    const columns = Math.max(2, Math.min(6, Math.ceil(Math.sqrt(sorted.length * 1.35))));
+    return sorted.map((node, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
         return {
             ...node,
-            x: position.x,
-            y: position.y
+            x: snapCompanyOrgCoord(ORG_CANVAS_PADDING + column * 230),
+            y: snapCompanyOrgCoord(ORG_CANVAS_PADDING + row * 160)
         };
     });
+}
+
+function autoArrangeTreeCompanyOrgNodes(nodes) {
+    const normalized = normalizeCompanyStructureNodes(nodes);
+    const byId = new Map(normalized.map(node => [node.id, node]));
+    const children = new Map();
+    normalized.forEach(node => children.set(node.id, []));
+    normalized.forEach(node => {
+        if (node.parentId && byId.has(node.parentId)) {
+            children.get(node.parentId)?.push(node);
+        }
+    });
+    children.forEach(list => list.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.title).localeCompare(String(b.title), 'uk')));
+    const roots = sortCompanyStructureNodes(normalized.filter(node => !node.parentId || !byId.has(node.parentId)));
+    const hasAnyLink = normalized.some(node => node.parentId && byId.has(node.parentId));
+    if (!hasAnyLink) return autoArrangeFlatCompanyOrgNodes(normalized);
+
+    const widthById = new Map();
+    const measure = node => {
+        const size = companyOrgNodeSize(node);
+        const childList = children.get(node.id) || [];
+        if (!childList.length) {
+            widthById.set(node.id, size.width);
+            return size.width;
+        }
+        const childrenWidth = childList.reduce((sum, child, index) => sum + measure(child) + (index ? ORG_AUTO_LAYOUT_X_GAP : 0), 0);
+        const width = Math.max(size.width, childrenWidth);
+        widthById.set(node.id, width);
+        return width;
+    };
+
+    roots.forEach(measure);
+    const next = normalized.map(node => ({ ...node }));
+    const nextById = new Map(next.map(node => [node.id, node]));
+    const place = (node, left, depth) => {
+        const target = nextById.get(node.id);
+        const size = companyOrgNodeSize(node);
+        const width = widthById.get(node.id) || size.width;
+        if (target) {
+            target.x = snapCompanyOrgCoord(left + (width - size.width) / 2);
+            target.y = snapCompanyOrgCoord(ORG_CANVAS_PADDING + depth * ORG_AUTO_LAYOUT_ROW_GAP);
+        }
+        let cursor = left;
+        (children.get(node.id) || []).forEach((child, index) => {
+            if (index) cursor += ORG_AUTO_LAYOUT_X_GAP;
+            place(child, cursor, depth + 1);
+            cursor += widthById.get(child.id) || companyOrgNodeSize(child).width;
+        });
+    };
+
+    let cursor = ORG_CANVAS_PADDING;
+    roots.forEach((root, index) => {
+        if (index) cursor += ORG_AUTO_LAYOUT_ROOT_GAP;
+        place(root, cursor, 0);
+        cursor += widthById.get(root.id) || companyOrgNodeSize(root).width;
+    });
+    return sortCompanyStructureNodes(next);
+}
+
+function autoArrangeCompanyOrgChart() {
+    companyStructureNodes = autoArrangeTreeCompanyOrgNodes(companyStructureNodes);
     setCompanyOrgLinkMode(null);
     syncCompanyStructureText();
     renderCompanyOrgChart();
@@ -2598,47 +2737,18 @@ function autoArrangeCompanyOrgChart() {
 
 function updateCompanyOrgLinkStatus() {
     const status = document.getElementById('hrOrgLinkStatus');
-    const lineTool = document.getElementById('hrOrgLineToolBtn');
-    const relinkButton = document.getElementById('hrOrgRelinkSelectedBtn');
-    const clearButton = document.getElementById('hrOrgClearParentBtn');
-    const detailRelinkButton = document.getElementById('hrOrgDetailRelinkBtn');
-    const detailDetachButton = document.getElementById('hrOrgDetailDetachBtn');
-    const node = companyStructureNodeById(selectedCompanyStructureNodeId);
     if (status) {
         if (companyOrgLinkingNodeId) {
             const source = companyStructureNodeById(companyOrgLinkingNodeId);
-            status.textContent = source ? `Змінюємо керівника для "${source.title}": натисніть верхню точку керівника або Esc` : 'Оберіть верхню точку керівника або Esc';
+            const next = companyOrgLinkingEndpoint === 'parent'
+                ? 'натисніть верхній кружок ролі, яка буде підпорядкована'
+                : 'натисніть нижній кружок ролі-керівника';
+            status.textContent = source ? `Лінія від "${source.title}": ${next}. Esc — скасувати.` : 'Натисніть другий кружок або Esc';
             status.classList.add('is-active');
         } else {
-            status.textContent = 'Перетягуйте картки. Для звʼязку оберіть роль і натисніть "Зʼєднати".';
+            status.textContent = 'Лінії не вмикаються кнопками: натисніть кружок на одній картці, потім кружок на іншій.';
             status.classList.remove('is-active');
         }
-    }
-    if (lineTool) {
-        lineTool.disabled = !node;
-        lineTool.classList.toggle('is-active', Boolean(companyOrgLinkingNodeId));
-        lineTool.setAttribute('aria-pressed', companyOrgLinkingNodeId ? 'true' : 'false');
-        lineTool.textContent = companyOrgLinkingNodeId ? 'Скасувати лінію' : 'Зʼєднати роль';
-        lineTool.onclick = () => {
-            if (companyOrgLinkingNodeId) cancelCompanyOrgLinkMode();
-            else if (node) startCompanyOrgLinkMode(node.id);
-        };
-    }
-    if (relinkButton) {
-        relinkButton.disabled = !node;
-        relinkButton.onclick = () => node && startCompanyOrgLinkMode(node.id);
-    }
-    if (clearButton) {
-        clearButton.disabled = !node || !node.parentId;
-        clearButton.onclick = clearSelectedCompanyOrgParent;
-    }
-    if (detailRelinkButton) {
-        detailRelinkButton.disabled = !node;
-        detailRelinkButton.onclick = () => node && startCompanyOrgLinkMode(node.id);
-    }
-    if (detailDetachButton) {
-        detailDetachButton.disabled = !node || !node.parentId;
-        detailDetachButton.onclick = clearSelectedCompanyOrgParent;
     }
 }
 
@@ -2894,6 +3004,8 @@ function initCompanyOrgChart() {
     if (!companyStructureNodes.length) {
         companyStructureNodes = cloneCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
     }
+    const autoButton = document.getElementById('hrOrgAutoLayoutBtn');
+    if (autoButton) autoButton.onclick = autoArrangeCompanyOrgChart;
     companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
     syncCompanyStructureText();
     renderCompanyOrgChart();

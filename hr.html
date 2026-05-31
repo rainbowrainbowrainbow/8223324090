@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.68.47">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.47">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.47">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.47">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.47">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.47">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.47">
+    <link rel="stylesheet" href="css/base.css?v=0.68.48">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.48">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.48">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.48">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.48">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.48">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.48">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -249,6 +249,19 @@
             stroke: rgba(20,184,166,0.95);
             stroke-width: 4;
         }
+        .hr-org-link-preview {
+            fill: none;
+            stroke: rgba(45,212,191,0.96);
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-dasharray: 10 8;
+            pointer-events: none;
+            filter: drop-shadow(0 0 10px rgba(45,212,191,0.30));
+            animation: hrOrgPreviewDash .7s linear infinite;
+        }
+        @keyframes hrOrgPreviewDash {
+            to { stroke-dashoffset: -18; }
+        }
         .hr-org-link-group:focus-visible .hr-org-link,
         .hr-org-link-group:hover .hr-org-link {
             stroke: rgba(20,184,166,0.90);
@@ -271,16 +284,16 @@
             flex-direction: column;
             align-items: flex-start;
             justify-content: center;
-            gap: 5px;
+            gap: 6px;
             min-width: 168px;
             min-height: 108px;
-            padding: 14px 58px 14px 16px;
-            border-radius: 10px;
+            padding: 16px 50px 16px 16px;
+            border-radius: 14px;
             border: 1px solid var(--gray-200);
             background: var(--white);
             color: var(--gray-900);
             font-family: inherit;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 800;
             line-height: 1.22;
             text-align: left;
@@ -290,6 +303,15 @@
             user-select: none;
             box-shadow: 0 10px 24px rgba(15,23,42,0.08);
             transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+        }
+        .hr-org-node::after {
+            content: "";
+            position: absolute;
+            inset: 10px auto 10px 0;
+            width: 5px;
+            border-radius: 0 999px 999px 0;
+            background: currentColor;
+            opacity: .45;
         }
         .hr-org-node:hover,
         .hr-org-node.is-active {
@@ -310,12 +332,11 @@
         .hr-org-stage.is-linking .hr-org-node:not(.is-active) {
             cursor: grab;
         }
-        .hr-org-stage.is-linking .hr-org-port--parent {
+        .hr-org-stage.is-linking .hr-org-port {
             opacity: 1;
             pointer-events: auto;
             cursor: crosshair;
             transform: translateX(-50%) scale(1.24);
-            background: #14B8A6;
             border-color: rgba(255,255,255,0.96);
             box-shadow: 0 0 0 6px rgba(20,184,166,0.18), 0 10px 22px rgba(15,23,42,0.22);
         }
@@ -325,8 +346,26 @@
         }
         .hr-org-node-title {
             display: block;
-            max-width: 150px;
+            max-width: 154px;
+            color: inherit;
+            font-size: 15px;
+            font-weight: 950;
+            line-height: 1.08;
             overflow-wrap: anywhere;
+        }
+        .hr-org-node-lane {
+            display: inline-flex;
+            max-width: 154px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.12);
+            color: currentColor;
+            font-size: 9px;
+            font-weight: 950;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            opacity: .88;
         }
         .hr-org-node-meta {
             display: block;
@@ -352,49 +391,53 @@
         .hr-org-port {
             position: absolute;
             z-index: 4;
-            width: 16px;
-            height: 16px;
+            width: 24px;
+            height: 24px;
             display: grid;
             place-items: center;
-            border: 2px solid rgba(255,255,255,0.92);
+            border: 3px solid rgba(255,255,255,0.94);
             border-radius: 999px;
             background: rgba(20,184,166,0.82);
             color: #032F2B;
             font-size: 0;
-            cursor: default;
-            opacity: 0;
-            pointer-events: none;
-            box-shadow: 0 8px 18px rgba(15,23,42,0.20);
+            cursor: crosshair;
+            opacity: .92;
+            pointer-events: auto;
+            box-shadow: 0 8px 18px rgba(15,23,42,0.24), 0 0 0 4px rgba(20,184,166,0.10);
             transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
         }
         .hr-org-port::after {
             content: "";
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: inherit;
             background: rgba(255,255,255,0.98);
         }
-        .hr-org-stage.is-linking .hr-org-port--parent:hover,
-        .hr-org-stage.is-linking .hr-org-port--parent:focus-visible {
+        .hr-org-port:hover,
+        .hr-org-port:focus-visible,
+        .hr-org-stage.is-linking .hr-org-port:hover,
+        .hr-org-stage.is-linking .hr-org-port:focus-visible {
             outline: none;
-            transform: translateX(-50%) scale(1.18);
+            transform: translateX(-50%) scale(1.16);
             box-shadow: 0 0 0 5px rgba(20,184,166,0.18), 0 10px 22px rgba(15,23,42,0.24);
         }
-        .hr-org-port--parent {
-            top: -8px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(14,165,233,0.86);
-        }
         .hr-org-port--child {
-            bottom: -8px;
+            top: -12px;
             left: 50%;
             transform: translateX(-50%);
-            opacity: 0;
+            background: linear-gradient(135deg, #38BDF8, #14B8A6);
         }
-        .hr-org-node-shell:hover .hr-org-port--child,
-        .hr-org-node-shell.is-link-source .hr-org-port--child {
-            opacity: .75;
+        .hr-org-port--parent {
+            bottom: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #F59E0B, #EC4899);
+        }
+        .hr-org-node-shell.is-link-parent-origin .hr-org-port--parent,
+        .hr-org-node-shell.is-link-child-origin .hr-org-port--child {
+            transform: translateX(-50%) scale(1.28);
+            opacity: 1;
+            box-shadow: 0 0 0 7px rgba(245,158,11,0.18), 0 12px 26px rgba(0,0,0,0.28);
         }
         .hr-org-node-edit {
             position: absolute;
@@ -410,29 +453,6 @@
             color: var(--gray-600);
             font-size: 12px;
             cursor: pointer;
-        }
-        .hr-org-node-link {
-            position: absolute;
-            right: 36px;
-            top: 8px;
-            width: 24px;
-            height: 22px;
-            display: grid;
-            place-items: center;
-            border: 1px solid rgba(20,184,166,0.30);
-            border-radius: 999px;
-            background: rgba(20,184,166,0.12);
-            color: #0F766E;
-            font-size: 12px;
-            font-weight: 900;
-            cursor: pointer;
-        }
-        .hr-org-node-link:hover,
-        .hr-org-node-link:focus-visible {
-            outline: none;
-            border-color: rgba(20,184,166,0.64);
-            background: rgba(20,184,166,0.22);
-            box-shadow: 0 0 0 3px rgba(20,184,166,0.14);
         }
         .hr-org-node--gold {
             min-width: 220px;
@@ -458,17 +478,23 @@
         }
         .hr-org-node--blue {
             border-color: rgba(14,165,233,0.28);
-            background: #F0F9FF;
+            background:
+                radial-gradient(130px 90px at 95% 0%, rgba(56,189,248,0.18), transparent 64%),
+                #F0F9FF;
             color: #0C4A6E;
         }
         .hr-org-node--purple {
             border-color: rgba(168,85,247,0.24);
-            background: #FAF5FF;
+            background:
+                radial-gradient(130px 90px at 95% 0%, rgba(168,85,247,0.18), transparent 64%),
+                #FAF5FF;
             color: #581C87;
         }
         .hr-org-node--violet {
             border-color: rgba(124,58,237,0.24);
-            background: #F5F3FF;
+            background:
+                radial-gradient(130px 90px at 95% 0%, rgba(124,58,237,0.18), transparent 64%),
+                #F5F3FF;
             color: #4C1D95;
         }
         .hr-org-line {
@@ -701,7 +727,6 @@
         body.dark-mode .hr-org-node--purple { background: rgba(168,85,247,0.12); color: #E9D5FF; }
         body.dark-mode .hr-org-node--violet { background: rgba(124,58,237,0.14); color: #DDD6FE; }
         body.dark-mode .hr-org-node-edit,
-        body.dark-mode .hr-org-node-link,
         body.dark-mode .hr-org-detail-action,
         body.dark-mode .hr-org-node-editor-summary,
         body.dark-mode .hr-org-detail-meta span,
@@ -2330,10 +2355,7 @@
                         </div>
                         <div class="hr-org-tools" aria-label="Інструменти структури компанії">
                             <button type="button" id="hrOrgAutoLayoutBtn" class="hr-org-tool-btn">Авто-впорядкувати</button>
-                            <button type="button" id="hrOrgLineToolBtn" class="hr-org-tool-btn" aria-pressed="false">🔗 Створити лінію</button>
-                            <button type="button" id="hrOrgRelinkSelectedBtn" class="hr-org-tool-btn">Перепідключити</button>
-                            <button type="button" id="hrOrgClearParentBtn" class="hr-org-tool-btn">Прибрати лінію</button>
-                            <span id="hrOrgLinkStatus" class="hr-org-link-status">Перетягуйте вузли або змінюйте лінії підпорядкування</span>
+                            <span id="hrOrgLinkStatus" class="hr-org-link-status">Для лінії натисніть один кружок на картці, потім другий кружок на іншій картці.</span>
                         </div>
                         <div class="hr-org-layout">
                             <div class="hr-org-canvas" aria-label="Інтерактивна організаційна структура компанії">
@@ -2346,10 +2368,6 @@
                                 <h4 id="hrOrgDetailTitle">Директор</h4>
                                 <p id="hrOrgDetailText">Фінальна відповідальність за бізнес, фінанси, команду, стандарти й стратегічні рішення.</p>
                                 <button type="button" id="hrOrgEditSelectedBtn" class="hr-org-detail-edit">Редагувати вузол</button>
-                                <div class="hr-org-detail-actions" aria-label="Дії зі звʼязками обраної ролі">
-                                    <button type="button" id="hrOrgDetailRelinkBtn" class="hr-org-detail-action">Зʼєднати</button>
-                                    <button type="button" id="hrOrgDetailDetachBtn" class="hr-org-detail-action">Відʼєднати</button>
-                                </div>
                             </aside>
                         </div>
                         <textarea id="companyStructureText" aria-label="Текстова версія структури компанії" style="display:none;"></textarea>
@@ -2677,15 +2695,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.68.47"></script>
-    <script src="js/config.js?v=0.68.47"></script>
-    <script src="js/notification.js?v=0.68.47"></script>
-    <script src="js/api.js?v=0.68.47"></script>
-    <script src="js/auth.js?v=0.68.47"></script>
-    <script src="js/components/sidebar.js?v=0.68.47"></script>
+    <script src="js/ui.js?v=0.68.48"></script>
+    <script src="js/config.js?v=0.68.48"></script>
+    <script src="js/notification.js?v=0.68.48"></script>
+    <script src="js/api.js?v=0.68.48"></script>
+    <script src="js/auth.js?v=0.68.48"></script>
+    <script src="js/components/sidebar.js?v=0.68.48"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.68.47"></script>
-    <script src="js/alerts.js?v=0.68.47"></script><script>
+    <script src="js/hr-page.js?v=0.68.48"></script>
+    <script src="js/alerts.js?v=0.68.48"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

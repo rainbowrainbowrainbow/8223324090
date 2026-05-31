@@ -480,7 +480,7 @@ async function addNewLine() {
             AppState.pendingPollInterval = null;
             removePendingLine();
             // Очистити кеш та перерендерити
-            delete AppState.cachedLines[dateStr];
+            window.invalidateTimelineDateCache?.(dateStr, { bookings: false });
             await renderTimeline();
             showNotification('Аніматора додано!', 'success');
         } else if (statusResult.status === 'rejected') {
@@ -2319,7 +2319,7 @@ async function shiftAfishaItem(id, deltaMinutes) {
     if (result && result.success) {
         await renderAfishaList();
         if (formatDate(AppState.selectedDate) === item.date) {
-            delete AppState.cachedBookings[item.date];
+            window.invalidateTimelineDateCache?.(item.date, { lines: false });
             await renderTimeline();
         }
     }
@@ -2379,8 +2379,8 @@ async function handleAfishaEditSubmit(e) {
         showNotification('Подію оновлено', 'success');
         await renderAfishaList();
         if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === date) {
-            if (oldDate) delete AppState.cachedBookings[oldDate];
-            delete AppState.cachedBookings[date];
+            if (oldDate) window.invalidateTimelineDateCache?.(oldDate, { lines: false });
+            window.invalidateTimelineDateCache?.(date, { lines: false });
             await renderTimeline();
         }
     }
@@ -2476,7 +2476,7 @@ async function addAfishaItem() {
         await renderAfishaList();
         // Refresh timeline if viewing same date
         if (formatDate(AppState.selectedDate) === date) {
-            delete AppState.cachedBookings[date];
+            window.invalidateTimelineDateCache?.(date, { lines: false });
             await renderTimeline();
         }
     } else {
@@ -2496,7 +2496,7 @@ async function deleteAfishaItem(id) {
         await renderAfishaList();
         // v8.3: Refresh timeline to remove deleted block
         const currentDate = formatDate(AppState.selectedDate);
-        delete AppState.cachedBookings[currentDate];
+        window.invalidateTimelineDateCache?.(currentDate, { lines: false });
         await renderTimeline();
     }
 }

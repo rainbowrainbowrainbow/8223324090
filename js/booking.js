@@ -115,6 +115,16 @@ function getTimelineBookingPresentation() {
     };
 }
 
+function invalidateBookingTimelineDateCache(date, options) {
+    if (typeof window.invalidateTimelineDateCache === 'function') {
+        window.invalidateTimelineDateCache(date, options);
+        return;
+    }
+    const key = formatDate(date);
+    if (options?.bookings !== false) delete AppState.cachedBookings[key];
+    if (options?.lines !== false) delete AppState.cachedLines[key];
+}
+
 function isParkTimelineBookingMode() {
     return getTimelineBookingPresentation().mode === 'park';
 }
@@ -167,7 +177,7 @@ function ensureTimelineRoomOption(value) {
 function getSelectedTimelineResourceLine() {
     const dateStr = formatDate(AppState.selectedDate);
     const lineId = document.getElementById('bookingLine')?.value || AppState.selectedLineId;
-    const lines = AppState.linesByDate?.[dateStr] || AppState.lines || [];
+    const lines = AppState.lines || AppState.linesByDate?.[dateStr] || [];
     return lines.find(line => String(line.id) === String(lineId)) || null;
 }
 
@@ -2571,7 +2581,7 @@ function getBookingFormData() {
 }
 
 async function validateBookingConflicts(lineId, time, duration, program, secondAnimator, excludeId = null) {
-    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
     const conflict = await checkConflicts(lineId, time, duration, excludeId);
 
     if (conflict.overlap) {
@@ -2960,7 +2970,7 @@ async function closeMaysternyaTimelineSlot() {
         if (result?.booking?.id) booking.id = result.booking.id;
         else if (result?.id) booking.id = result.id;
         pushUndo('create', [booking]);
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         await closeBookingPanel(true);
         await renderTimeline();
         showNotification('Слот закрито', 'success');
@@ -3176,6 +3186,31 @@ function createdBookingSuccessMessage(createdBookings = [], seriesCount = 1) {
     return 'Бронювання створено!';
 }
 
+function createdBookingVisibilityDiagnostics(createdBookings = []) {
+    const expectedDate = formatDate(AppState.selectedDate);
+    const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const visibleLineIds = new Set((AppState.lines || []).map(line => String(line?.id || '')).filter(Boolean));
+    return createdBookings.map(booking => {
+        const id = booking?.id || booking?.bookingId || '';
+        const reasons = [];
+        const date = normalizeBookingDateKey(booking?.date);
+        const lineId = String(booking?.lineId || booking?.line_id || '').trim();
+        const block = findCreatedBookingBlock(booking);
+
+        if (date && date !== expectedDate) reasons.push(`дата ${date}`);
+        if (booking?.businessContext && expectedContext && booking.businessContext !== expectedContext) {
+            reasons.push(`бізнес ${booking.businessContext}`);
+        }
+        if (lineId && visibleLineIds.size && !visibleLineIds.has(lineId)) {
+            reasons.push(`лінія ${lineId} не відкрита в поточному таймлайні`);
+        }
+        if (block?.classList?.contains('status-hidden')) reasons.push('запис прихований фільтром статусу');
+        if (!block && !reasons.length) reasons.push('DOM-блок не відрендерився після refresh');
+
+        return { id, date, lineId, reasons };
+    });
+}
+
 function createdBookingVisibilityMessage(createdBookings = []) {
     const primary = createdBookings[0] || {};
     const expectedDate = formatDate(AppState.selectedDate);
@@ -3188,6 +3223,11 @@ function createdBookingVisibilityMessage(createdBookings = []) {
     }
     if (actual.length) {
         return `Сервер створив запис, але не в поточному зрізі таймлайну: ${actual.join(', ')}. Відкрито ${expectedDate}${expectedContext ? ` / ${expectedContext}` : ''}.`;
+    }
+    const diagnostics = createdBookingVisibilityDiagnostics(createdBookings);
+    const reason = diagnostics.flatMap(item => item.reasons || [])[0];
+    if (reason) {
+        return `Сервер створив запис, але поточний таймлайн його не показав: ${reason}. Оновіть сторінку або оберіть правильну лінію.`;
     }
     return 'Сервер створив запис, але поточний таймлайн його не показав. Перевірте бізнес, дату/лінію або оновіть сторінку.';
 }
@@ -3203,8 +3243,7 @@ async function refreshCreatedBookingsFromServer(createdBookings = []) {
     );
     if (!expectedIds.size) return false;
 
-    delete AppState.cachedBookings[currentDate];
-    delete AppState.cachedLines[currentDate];
+    invalidateBookingTimelineDateCache(currentDate);
     const fresh = await getBookingsForDate(AppState.selectedDate, { force: true });
     if (!Array.isArray(fresh)) return false;
     return fresh.some(item => expectedIds.has(String(item?.id || item?.bookingId || '')));
@@ -3321,7 +3360,7 @@ async function handleBookingSubmit(e) {
 
             AppState.editingBookingId = null;
 
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
             closeBookingPanel(true);
             unlockSubmitBtn();
             await renderTimeline();
@@ -3371,8 +3410,7 @@ async function handleBookingSubmit(e) {
             const selectedDateKey = formatDate(AppState.selectedDate);
             changedDates.add(selectedDateKey);
             changedDates.forEach(date => {
-                delete AppState.cachedBookings[date];
-                delete AppState.cachedLines[date];
+                invalidateBookingTimelineDateCache(date);
             });
             closeBookingPanel(true);
             unlockSubmitBtn();
@@ -3388,7 +3426,11 @@ async function handleBookingSubmit(e) {
                 }
             }
             if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
-                console.error('Created booking is not visible after timeline refresh', { createdBookings, visibility });
+                console.error('Created booking is not visible after timeline refresh', {
+                    createdBookings,
+                    visibility,
+                    diagnostics: createdBookingVisibilityDiagnostics(createdBookings)
+                });
                 showNotification(createdBookingVisibilityMessage(createdBookings), 'warning');
             } else {
                 showNotification(createdBookingSuccessMessage(createdBookings, seriesCount), 'success');
@@ -3439,7 +3481,7 @@ async function handleOptimisticLockConflict(result, localBooking) {
         localBooking.updatedAt = serverData.updatedAt;
         const retryResult = await apiUpdateBooking(localBooking.id, localBooking);
         if (retryResult && retryResult.success) {
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
             closeBookingPanel(true);
             await renderTimeline();
             showNotification('Бронювання перезаписано!', 'success');
@@ -3451,7 +3493,7 @@ async function handleOptimisticLockConflict(result, localBooking) {
         }
     } else {
         // Refresh data: reload bookings and re-open edit form
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
         // Re-open editing with fresh data
         await editBooking(localBooking.id);
@@ -4214,7 +4256,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
         return;
     }
     (result.bookings || []).forEach(booking => {
-        if (booking.date) delete AppState.cachedBookings[booking.date];
+        if (booking.date) invalidateBookingTimelineDateCache(booking.date, { lines: false });
     });
     closeEducationSeriesManager();
     await renderTimeline();
@@ -4262,7 +4304,7 @@ async function deleteBooking(bookingId) {
             return;
         }
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         closeAllModals();
         await renderTimeline();
         showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
@@ -4341,7 +4383,7 @@ async function shiftBookingTime(bookingId, minutes) {
         });
         if (shiftResult && shiftResult.success === false) {
             if (shiftResult.conflict) {
-                delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+                invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
                 closeAllModals();
                 await renderTimeline();
                 showNotification(shiftResult.error || 'Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
@@ -4355,7 +4397,7 @@ async function shiftBookingTime(bookingId, minutes) {
         // v5.51: Push undo for shift (stores bookingId, reverse minutes, linked bookings)
         pushUndo('shift', { bookingId, minutes: -minutes, linked: linkedBookings.map(l => l.id) });
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         closeAllModals();
         await renderTimeline();
         const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} повʼязаних)` : '';
@@ -4396,7 +4438,7 @@ async function switchBookingLine(bookingId, targetLineId) {
         const result = await apiUpdateBooking(bookingId, updated);
         if (result && result.success === false) {
             if (result.conflict) {
-                delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+                invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
                 closeAllModals();
                 await renderTimeline();
                 showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
@@ -4410,7 +4452,7 @@ async function switchBookingLine(bookingId, targetLineId) {
         const lines = await getLinesForDate(AppState.selectedDate);
         const targetLine = lines.find(l => l.id === targetLineId);
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         closeAllModals();
         await renderTimeline();
         showNotification(`Переміщено на: ${targetLine ? targetLine.name : 'іншу лінію'}`, 'success');

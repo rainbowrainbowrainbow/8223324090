@@ -68,8 +68,26 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-mode-card:focus-within/);
     assert.match(panelCss, /\.booking-menu-add-btn:focus-visible/);
     assert.match(panelCss, /\.program-icon:focus-visible/);
+    assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-mode-section/);
+    assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-filler-section select/);
+    assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-service-section input/);
     assert.match(responsiveCss, /--booking-footer-space:\s*calc\(32px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(responsiveCss, /width:\s*min\(92vw,\s*680px\)/);
+});
+
+test('timeline caches are scoped by business and display mode before booking visibility checks', () => {
+    const timelineJs = read('js', 'timeline.js');
+    const bookingJs = read('js', 'booking.js');
+
+    assert.match(timelineJs, /function timelineCacheScopeKey/);
+    assert.match(timelineJs, /function timelineCacheKeyForDate/);
+    assert.match(timelineJs, /getTimelineCacheEntry\(AppState\.cachedLines/);
+    assert.match(timelineJs, /getTimelineCacheEntry\(AppState\.cachedBookings/);
+    assert.match(timelineJs, /window\.invalidateTimelineDateCache = invalidateTimelineDateCache/);
+    assert.doesNotMatch(timelineJs, /AppState\.cachedBookings\[dateStr\]/);
+    assert.doesNotMatch(timelineJs, /AppState\.cachedLines\[dateStr\]/);
+    assert.match(bookingJs, /createdBookingVisibilityDiagnostics/);
+    assert.match(bookingJs, /лінія \$\{lineId\} не відкрита в поточному таймлайні/);
 });
 
 test('booking drawer keeps readable Ukrainian labels for manager-facing controls', () => {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.38 - Видимість бронювання на таймлайні
+
+### Timeline booking / 31.05.2026 [codex]
+- **Сервер гарантує видиму лінію перед створенням бронювання** - create/full paths перевіряють active timeline line або resource до `INSERT INTO bookings`; Park може відновити лінію з активного Staff-аніматора, а невидимий `lineId` тепер повертає чесну помилку замість зеленого success.
+- **Timeline cache привʼязано до бізнесу і режиму відображення** - bookings/lines більше не кешуються тільки по даті, тому Park, Майстерня Долі та resource-backed режими не підмішують старі лінії після перемикання.
+- **Warning став діагностичним** - якщо серверний запис все ж не зʼявився після refresh, CRM показує конкретну причину: дата, бізнес, відсутня лінія або status-filter.
+- **Піньята-блоки повернуті в темну тему таймлайна** - mode/shared/filler/client service поля мають dark surface, readable labels, темні inputs/selects і focus state.
+
+---
+
 ## v0.68.37 - AI іконки програм
 
 ### Products / 31.05.2026 [codex]

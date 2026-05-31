@@ -22,7 +22,11 @@ const {
     normalizeBusinessContext
 } = require('../services/businessContext');
 const { normalizeCustomerSource } = require('../services/customerSource');
-const { findTimelineResource } = require('../services/timelineResources');
+const {
+    findTimelineResource,
+    getTimelineDisplaySettings,
+    resourceTypeForDisplayMode
+} = require('../services/timelineResources');
 const {
     bookingAccessDeniedPayload,
     buildBookingVisibilityScope,
@@ -175,6 +179,70 @@ async function ensureParkAnimatorLine(client, { businessContext, date, lineId, n
     );
 
     return { lineId: resolvedLineId, name: resolvedName, color };
+}
+
+async function visibleLineByDate(queryable, { businessContext, date, lineId }) {
+    const safeDate = String(date || '').trim();
+    const safeLineId = String(lineId || '').trim();
+    if (!safeDate || !safeLineId) return null;
+
+    const result = await queryable.query(
+        `SELECT line_id, name, color
+           FROM lines_by_date
+          WHERE date = $1
+            AND ${bookingContextSql('', '$2')}
+            AND line_id = $3
+          LIMIT 1`,
+        [safeDate, businessContext || DEFAULT_TIMELINE_CONTEXT, safeLineId]
+    );
+    const row = result.rows[0];
+    return row ? { lineId: row.line_id, name: row.name, color: row.color, source: 'lines_by_date' } : null;
+}
+
+async function ensureBookingTimelineLine(client, booking, businessContext, { name = null } = {}) {
+    if (!booking || !booking.date || !booking.lineId) return null;
+
+    const display = await getTimelineDisplaySettings(client, businessContext);
+    const resourceType = resourceTypeForDisplayMode(display.mode, display);
+
+    if (resourceType) {
+        const resource = await findTimelineResource(client, businessContext, booking.lineId, { type: resourceType });
+        if (!resource || resource.type !== resourceType) return null;
+        booking.resourceId = resource.resourceId;
+        booking.resourceType = resource.type;
+        return {
+            lineId: String(booking.lineId),
+            name: resource.name,
+            color: resource.color,
+            source: 'timeline_resource'
+        };
+    }
+
+    const existingLine = await visibleLineByDate(client, {
+        businessContext,
+        date: booking.date,
+        lineId: booking.lineId
+    });
+    if (existingLine) return existingLine;
+
+    const ensuredLine = await ensureParkAnimatorLine(client, {
+        businessContext,
+        date: booking.date,
+        lineId: booking.lineId,
+        name
+    });
+    if (!ensuredLine) return null;
+
+    booking.lineId = ensuredLine.lineId;
+    return { ...ensuredLine, source: 'staff_animator' };
+}
+
+function bookingLineUnavailablePayload() {
+    return {
+        success: false,
+        error: 'Лінію для бронювання не знайдено в поточному таймлайні. Оновіть сторінку і оберіть лінію ще раз.',
+        code: 'booking_line_not_visible'
+    };
 }
 
 const CONFIRMATION_SOURCES = new Set([
@@ -1069,6 +1137,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
         applyBookingPackage(b);
 
+        const ensuredPrimaryLine = await ensureBookingTimelineLine(client, b, businessContext, {
+            name: b.lineName || b.animatorName || null
+        });
+        if (!ensuredPrimaryLine) {
+            await client.query('ROLLBACK');
+            return res.status(400).json(bookingLineUnavailablePayload());
+        }
+
         let ensuredSecondAnimatorLine = null;
         if (!b.linkedTo && Number(b.hosts || 0) > 1 && b.secondAnimator) {
             ensuredSecondAnimatorLine = await ensureParkAnimatorLine(client, {
@@ -1766,6 +1842,27 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         await client.query('BEGIN');
+
+        const ensuredMainLine = await ensureBookingTimelineLine(client, main, businessContext, {
+            name: main.lineName || main.animatorName || null
+        });
+        if (!ensuredMainLine) {
+            await client.query('ROLLBACK');
+            return res.status(400).json(bookingLineUnavailablePayload());
+        }
+
+        for (const lb of linked) {
+            if (!lb.date) lb.date = main.date;
+            if (!lb.time) lb.time = main.time;
+            const ensuredLinkedLine = await ensureBookingTimelineLine(client, lb, businessContext, {
+                name: lb.lineName || lb.secondAnimator || null
+            });
+            if (!ensuredLinkedLine) {
+                await client.query('ROLLBACK');
+                return res.status(400).json(bookingLineUnavailablePayload());
+            }
+            if (lb.secondAnimator) lb.secondAnimator = ensuredLinkedLine.name || lb.secondAnimator;
+        }
 
         for (const lb of linked) {
             const ensuredLinkedLine = await ensureParkAnimatorLine(client, {

@@ -63,7 +63,11 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingJs, /option\.dataset\.lineId = line\.id/);
 
     assert.match(bookingsRoute, /async function ensureParkAnimatorLine/);
+    assert.match(bookingsRoute, /async function ensureBookingTimelineLine/);
     assert.match(bookingsRoute, /INSERT INTO lines_by_date \(business_context, date, line_id, name, color, from_sheet\)/);
+    assert.match(bookingsRoute, /const ensuredPrimaryLine = await ensureBookingTimelineLine\(client, b, businessContext/s);
+    assert.match(bookingsRoute, /const ensuredMainLine = await ensureBookingTimelineLine\(client, main, businessContext/s);
+    assert.match(bookingsRoute, /booking_line_not_visible/);
     assert.match(bookingsRoute, /ensureParkAnimatorLine\(client, \{\s*businessContext,\s*date: lb\.date \|\| main\.date/s);
     assert.match(bookingsRoute, /Number\(main\.hosts \|\| 0\) > 1 && main\.secondAnimator/);
 });

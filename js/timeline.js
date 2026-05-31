@@ -12,10 +12,57 @@ let _renderGen = 0;
 // v7.0.1: Render debug (console only)
 function _debugRender() {}
 
+function timelineCacheScopeKey() {
+    const context = window.TimelineBusinessContext?.current?.()?.apiValue
+        || window.TimelineBusinessContext?.current?.()?.key
+        || 'event_genix';
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    const mode = presentation?.mode || 'park';
+    const resourceType = presentation?.resourceType || 'line';
+    return `${context}|${mode}|${resourceType}`;
+}
+
+function timelineCacheKeyForDate(date) {
+    return `${timelineCacheScopeKey()}|${formatDate(date)}`;
+}
+
+function getTimelineCacheEntry(cache, date) {
+    if (!cache) return null;
+    const key = timelineCacheKeyForDate(date);
+    const entry = cache[key];
+    if (entry?.scopeKey === timelineCacheScopeKey()) return entry;
+    return null;
+}
+
+function setTimelineCacheEntry(cache, date, data) {
+    if (!cache) return;
+    const key = timelineCacheKeyForDate(date);
+    const legacyKey = formatDate(date);
+    cache[key] = { data, ts: Date.now(), scopeKey: timelineCacheScopeKey() };
+    if (legacyKey !== key) delete cache[legacyKey];
+}
+
+function invalidateTimelineDateCache(date, options = {}) {
+    const dateStr = formatDate(date);
+    const clearBookings = options.bookings !== false;
+    const clearLines = options.lines !== false;
+    const clearFrom = cache => {
+        if (!cache) return;
+        Object.keys(cache).forEach(key => {
+            if (key === dateStr || key.endsWith(`|${dateStr}`)) delete cache[key];
+        });
+    };
+    if (clearBookings) clearFrom(AppState.cachedBookings);
+    if (clearLines) clearFrom(AppState.cachedLines);
+}
+
+window.invalidateTimelineDateCache = invalidateTimelineDateCache;
+window.getTimelineCacheEntry = getTimelineCacheEntry;
+
 // v3.9: Cache with TTL
 async function getLinesForDate(date) {
     const dateStr = formatDate(date);
-    const cached = AppState.cachedLines[dateStr];
+    const cached = getTimelineCacheEntry(AppState.cachedLines, dateStr);
     if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
@@ -33,7 +80,7 @@ async function getLinesForDate(date) {
         return [];
     }
     if (lines.length > 0) {
-        AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+        setTimelineCacheEntry(AppState.cachedLines, dateStr, lines);
     }
     return lines;
 }
@@ -47,7 +94,7 @@ async function saveLinesForDate(date, lines) {
         showNotification('Помилка збереження ліній. Спробуйте ще раз.', 'error');
         return false;
     }
-    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    setTimelineCacheEntry(AppState.cachedLines, dateStr, lines);
     AppState.lines = lines;
     AppState.linesByDate = AppState.linesByDate || {};
     AppState.linesByDate[dateStr] = lines;
@@ -396,7 +443,7 @@ async function renderTimeline() {
         console.warn('[Timeline] Lines empty — scheduling retry in 2s');
         setTimeout(() => {
             AppState._linesRetryScheduled = false;
-            delete AppState.cachedLines[retryDateStr];
+            invalidateTimelineDateCache(retryDateStr, { bookings: false });
             if (formatDate(AppState.selectedDate) === retryDateStr) {
                 renderTimeline();
             }
@@ -1124,7 +1171,7 @@ async function completeBanquetLinkDraft(targetBooking) {
         showNotification(result?.error || 'Не вдалося створити банкетний звʼязок', 'error');
         return;
     }
-    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     showNotification('Банкетний звʼязок створено', 'success');
 }
@@ -1135,7 +1182,7 @@ async function removeBookingBanquetLink(sourceId, targetId) {
         showNotification(result?.error || 'Не вдалося прибрати банкетний звʼязок', 'error');
         return false;
     }
-    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     if (typeof showBookingDetails === 'function') {
         showBookingDetails(sourceId);
@@ -1215,8 +1262,7 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
                         ? `Розподіл скинуто (${data.reset} подій)`
                         : `Розподілено ${data.distribution?.length || 0} подій по ведучих`
                     );
-                    delete AppState.cachedBookings[dateStr];
-                    delete AppState.cachedLines[dateStr];
+                    invalidateTimelineDateCache(dateStr);
                     await renderTimeline();
                 }
             } catch (err) {
@@ -1579,8 +1625,7 @@ function _beginBookingDrag(block, booking, startHour, e) {
 }
 
 function _getTimelineCachedBookings() {
-    const dateStr = formatDate(AppState.selectedDate);
-    const cached = AppState.cachedBookings[dateStr];
+    const cached = getTimelineCacheEntry(AppState.cachedBookings, AppState.selectedDate);
     return (cached && cached.data) || [];
 }
 
@@ -1842,8 +1887,7 @@ function _updateConflictPreview(newMin, lineId, timeDelta) {
     const s = _bookingDragState;
     if (!s) return;
 
-    const dateStr = formatDate(AppState.selectedDate);
-    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const allBookings = _getTimelineCachedBookings();
     const intent = _buildDragIntentFromState({ ...s, currentMin: newMin, newLineId: lineId }, timeDelta, lineId !== s.startLineId);
     const result = intent
         ? timelineInteractionModel().evaluateTimelineCandidateConflicts(intent, allBookings, {
@@ -1952,8 +1996,7 @@ function _handleBookingDragCancel(e) {
 // --- Validate drag positions using cached data ---
 function _validateDragDrop(state, timeDelta) {
     const s = state;
-    const dateStr = formatDate(AppState.selectedDate);
-    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const allBookings = _getTimelineCachedBookings();
     const intent = _buildDragIntentFromState(s, timeDelta, s.newLineId !== s.startLineId);
     const model = timelineInteractionModel();
     if (!intent || !model?.evaluateTimelineCandidateConflicts) {
@@ -2026,7 +2069,7 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
 
         pushUndo('drag', model.buildDragUndoSnapshot(intent, atomicResult));
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
 
         _showDragUndoToast(s.draggedBooking || s.booking, intent.timeDelta, intent.lineChanged, intent.targetLineId);
@@ -2229,7 +2272,7 @@ async function persistGraduationSegments(booking, segments, { successMessage = '
         }
         return false;
     }
-    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     showNotification(successMessage, 'success');
     return true;
@@ -2568,8 +2611,7 @@ async function _handleResizeEnd(e) {
     }
 
     // Client-side conflict check
-    const dateStr = formatDate(AppState.selectedDate);
-    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const allBookings = _getTimelineCachedBookings();
     const model = timelineInteractionModel();
     const resizeIntent = model?.buildResizeInteractionIntent?.({
         booking: s.booking,
@@ -2633,7 +2675,7 @@ async function _handleResizeEnd(e) {
         } else {
             pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
 
-            delete AppState.cachedBookings[dateStr];
+            invalidateTimelineDateCache(dateStr, { lines: false });
             await renderTimeline();
             showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
             _triggerHaptic('success');
@@ -3247,8 +3289,7 @@ function initRoomLoadPanel() {
         panel.classList.add('visible');
         btn.classList.add('active');
         btn.setAttribute('aria-expanded', 'true');
-        const dateStr = formatDate(AppState.selectedDate);
-        const cached = AppState.cachedBookings[dateStr];
+        const cached = getTimelineCacheEntry(AppState.cachedBookings, AppState.selectedDate);
         if (cached) updateRoomLoadPanel(cached.data, AppState.selectedDate);
     };
 
@@ -3382,7 +3423,7 @@ function updateRoomLoadPanel(bookings, date) {
 // v3.9: Cache with TTL
 async function getBookingsForDate(date, options = {}) {
     const dateStr = formatDate(date);
-    const cached = AppState.cachedBookings[dateStr];
+    const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr);
     if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
@@ -3397,6 +3438,6 @@ async function getBookingsForDate(date, options = {}) {
         if (cached && Array.isArray(cached.data)) return cached.data;
         return [];
     }
-    AppState.cachedBookings[dateStr] = { data: bookings, ts: Date.now() };
+    setTimelineCacheEntry(AppState.cachedBookings, dateStr, bookings);
     return bookings;
 }

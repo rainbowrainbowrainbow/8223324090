@@ -372,7 +372,7 @@ var ParkWS = (function () {
         // Invalidate booking cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
         if (affectedDate && typeof AppState !== 'undefined' && AppState.cachedBookings) {
-            delete AppState.cachedBookings[affectedDate];
+            window.invalidateTimelineDateCache?.(affectedDate, { lines: false });
         }
 
         // Invalidate SW API cache for the affected date
@@ -405,7 +405,7 @@ var ParkWS = (function () {
         // Invalidate lines cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
         if (affectedDate && typeof AppState !== 'undefined' && AppState.cachedLines) {
-            delete AppState.cachedLines[affectedDate];
+            window.invalidateTimelineDateCache?.(affectedDate, { bookings: false });
         }
 
         // Invalidate SW API cache

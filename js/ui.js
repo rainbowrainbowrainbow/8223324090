@@ -1612,7 +1612,8 @@ async function changeBookingStatus(bookingId, newStatus) {
                 showNotification(confirmResult?.error || 'Помилка: не вдалося підтвердити бронювання', 'error');
                 return;
             }
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
+            else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeAllModals();
             await renderTimeline();
             showNotification('Бронювання підтверджено', 'success');
@@ -1638,7 +1639,8 @@ async function changeBookingStatus(bookingId, newStatus) {
 
         // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
+        else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
         showNotification(`Статус: ${newStatus === 'preliminary' ? 'Попереднє' : 'Підтверджене'}`, 'success');

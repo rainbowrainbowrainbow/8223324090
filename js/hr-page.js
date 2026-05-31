@@ -2074,9 +2074,11 @@ const ORG_NODE_WIDTH = 168;
 const ORG_NODE_HEIGHT = 108;
 const ORG_ROOT_NODE_WIDTH = 220;
 const ORG_ROOT_NODE_HEIGHT = 128;
-const ORG_AUTO_LAYOUT_X_GAP = 54;
-const ORG_AUTO_LAYOUT_ROOT_GAP = 88;
-const ORG_AUTO_LAYOUT_ROW_GAP = 168;
+const ORG_AUTO_LAYOUT_X_GAP = 96;
+const ORG_AUTO_LAYOUT_ROOT_GAP = 132;
+const ORG_AUTO_LAYOUT_ROW_GAP = 190;
+const ORG_COLLISION_PADDING_X = 48;
+const ORG_COLLISION_PADDING_Y = 36;
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
     director: { x: 530, y: 24 },
     deputy_director: { x: 555, y: 158 },
@@ -2320,6 +2322,19 @@ function companyOrgLinkPath(parent, child) {
     return companyOrgFloatingLinkPath(start, end);
 }
 
+function companyOrgFocusedLinkSet() {
+    const focusIds = new Set([selectedCompanyStructureNodeId, companyOrgLinkingNodeId].filter(Boolean));
+    const visible = new Set();
+    if (!focusIds.size) return visible;
+    companyStructureNodes.forEach(node => {
+        if (!node.parentId) return;
+        if (focusIds.has(node.id) || focusIds.has(node.parentId)) {
+            visible.add(node.id);
+        }
+    });
+    return visible;
+}
+
 function companyOrgFloatingLinkPath(start, end) {
     const midY = Math.round((start.y + end.y) / 2);
     return `M ${Math.round(start.x)} ${Math.round(start.y)} C ${Math.round(start.x)} ${midY}, ${Math.round(end.x)} ${midY}, ${Math.round(end.x)} ${Math.round(end.y)}`;
@@ -2345,11 +2360,12 @@ function renderCompanyOrgLinks() {
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
     const byId = new Map(companyStructureNodes.map(node => [node.id, node]));
+    const focusedLinks = companyOrgFocusedLinkSet();
     const linkHtml = companyStructureNodes.map(node => {
         const parent = node.parentId ? byId.get(node.parentId) : null;
         if (!parent) return '';
         const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
-        if (!active) return '';
+        if (!focusedLinks.has(node.id)) return '';
         const path = companyOrgLinkPath(parent, node);
         return `
             <g class="hr-org-link-group${active}" tabindex="0" role="button" data-org-link-child="${escapeHtml(node.id)}" aria-label="Лінія: ${escapeHtml(parent.title)} керує ${escapeHtml(node.title)}">
@@ -2378,7 +2394,9 @@ function renderCompanyOrgNode(node) {
     const tone = ORG_ALLOWED_TONES.includes(node.tone) ? node.tone : 'blue';
     const meta = node.meta || ORG_TONE_LABELS[tone] || '';
     const active = node.id === selectedCompanyStructureNodeId ? ' is-active' : '';
-    const linking = node.id === companyOrgLinkingNodeId ? ' is-link-source' : '';
+    const linking = node.id === companyOrgLinkingNodeId
+        ? ` is-link-source${companyOrgLinkingEndpoint === 'parent' ? ' is-link-parent-origin' : ' is-link-child-origin'}`
+        : '';
     const lane = ORG_ALLOWED_LANES.includes(node.lane) ? node.lane : 'leadership';
     const size = companyOrgNodeSize(node);
     const description = String(node.description || '').trim();
@@ -2608,6 +2626,10 @@ function handleCompanyOrgPortClick(endpoint, nodeId, event = null) {
         startCompanyOrgPortLink(endpoint, nodeId);
         return;
     }
+    if (companyOrgLinkingNodeId === nodeId && companyOrgLinkingEndpoint === endpoint) {
+        cancelCompanyOrgLinkMode();
+        return;
+    }
     if (companyOrgLinkingEndpoint === endpoint) {
         startCompanyOrgPortLink(endpoint, nodeId);
         return;
@@ -2653,18 +2675,58 @@ function clearSelectedCompanyOrgParent() {
     });
 }
 
+function companyOrgNodeRect(node) {
+    const size = companyOrgNodeSize(node);
+    return {
+        x: Number(node.x || 0),
+        y: Number(node.y || 0),
+        width: size.width,
+        height: size.height
+    };
+}
+
+function companyOrgRectsOverlap(a, b) {
+    return a.x < b.x + b.width + ORG_COLLISION_PADDING_X
+        && a.x + a.width + ORG_COLLISION_PADDING_X > b.x
+        && a.y < b.y + b.height + ORG_COLLISION_PADDING_Y
+        && a.y + a.height + ORG_COLLISION_PADDING_Y > b.y;
+}
+
+function resolveCompanyOrgNodeOverlaps(nodes) {
+    const sorted = sortCompanyStructureNodes(nodes).map(node => ({ ...node }));
+    const placed = [];
+    sorted.forEach(node => {
+        let guard = 0;
+        let rect = companyOrgNodeRect(node);
+        while (placed.some(item => companyOrgRectsOverlap(rect, item.rect)) && guard < sorted.length * 3) {
+            const offender = placed.find(item => companyOrgRectsOverlap(rect, item.rect));
+            if (!offender) break;
+            const sameBand = Math.abs(rect.y - offender.rect.y) < Math.max(rect.height, offender.rect.height) + ORG_COLLISION_PADDING_Y;
+            if (sameBand) {
+                node.x = snapCompanyOrgCoord(offender.rect.x + offender.rect.width + ORG_COLLISION_PADDING_X, 5000) ?? node.x;
+            } else {
+                node.y = snapCompanyOrgCoord(offender.rect.y + offender.rect.height + ORG_COLLISION_PADDING_Y, 5000) ?? node.y;
+            }
+            rect = companyOrgNodeRect(node);
+            guard += 1;
+        }
+        placed.push({ node, rect });
+    });
+    return sortCompanyStructureNodes(sorted);
+}
+
 function autoArrangeFlatCompanyOrgNodes(nodes) {
     const sorted = sortCompanyStructureNodes(nodes);
     const columns = Math.max(2, Math.min(6, Math.ceil(Math.sqrt(sorted.length * 1.35))));
-    return sorted.map((node, index) => {
+    return resolveCompanyOrgNodeOverlaps(sorted.map((node, index) => {
         const column = index % columns;
         const row = Math.floor(index / columns);
         return {
             ...node,
-            x: snapCompanyOrgCoord(ORG_CANVAS_PADDING + column * 230),
-            y: snapCompanyOrgCoord(ORG_CANVAS_PADDING + row * 160)
+            x: snapCompanyOrgCoord(ORG_CANVAS_PADDING + column * 260),
+            y: snapCompanyOrgCoord(ORG_CANVAS_PADDING + row * 180)
         };
-    });
+    }));
 }
 
 function autoArrangeTreeCompanyOrgNodes(nodes) {
@@ -2721,7 +2783,7 @@ function autoArrangeTreeCompanyOrgNodes(nodes) {
         place(root, cursor, 0);
         cursor += widthById.get(root.id) || companyOrgNodeSize(root).width;
     });
-    return sortCompanyStructureNodes(next);
+    return resolveCompanyOrgNodeOverlaps(next);
 }
 
 function autoArrangeCompanyOrgChart() {

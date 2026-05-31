@@ -181,6 +181,20 @@ test('HR org canvas creates visible parent links directly through node ports', a
     assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"] .hr-org-link-hit'));
 });
 
+test('HR org canvas keeps saved relations focused instead of rendering every line at once', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 1, stack: null, meta: 'child', x: 90, y: 120 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 2, stack: null, meta: 'parent', x: 330, y: 30 },
+        { id: 'other_child', title: 'Other child', description: 'Other child role.', tone: 'purple', lane: 'operations', parentId: 'other_parent', order: 3, stack: null, meta: 'ops', x: 90, y: 360 },
+        { id: 'other_parent', title: 'Other parent', description: 'Other parent role.', tone: 'violet', lane: 'support', parentId: null, order: 4, stack: null, meta: 'support', x: 330, y: 300 }
+    ]);
+    api.renderCanvas();
+
+    assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"]'));
+    assert.equal(window.document.querySelector('.hr-org-link-group[data-org-link-child="other_child"]'), null);
+});
+
 test('HR org canvas does not create links from card clicks while relinking is active', async () => {
     const { window, api } = createHarness();
     api.setNodes([
@@ -195,6 +209,24 @@ test('HR org canvas does not create links from card clicks while relinking is ac
 
     assert.equal(api.nodes().find(node => node.id === 'child').parentId, null);
     assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), true);
+});
+
+test('HR org canvas lets the same port click cancel pending link mode', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: null, order: 1, stack: null, meta: 'child', x: 90, y: 120 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 2, stack: null, meta: 'parent', x: 330, y: 30 }
+    ]);
+    api.renderCanvas();
+
+    const port = window.document.querySelector('[data-org-link-parent-port="parent"]');
+    click(window, port);
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), true);
+    click(window, port);
+    await settle();
+
+    assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), false);
+    assert.equal(api.nodes().find(node => node.id === 'child').parentId, null);
 });
 
 test('HR org canvas drag cancels sticky relink mode and persists the moved node position', async () => {
@@ -236,4 +268,21 @@ test('HR org auto-arrange spreads cards instead of stacking roles on top of each
     const positions = api.nodes().map(node => `${node.x}:${node.y}`);
     assert.equal(new Set(positions).size, positions.length);
     assert.ok(api.nodes().every(node => Number(node.x) >= 0 && Number(node.y) >= 0));
+
+    const rects = api.nodes().map(node => ({
+        id: node.id,
+        x: Number(node.x),
+        y: Number(node.y),
+        width: node.tone === 'gold' ? 220 : 168,
+        height: node.tone === 'gold' ? 128 : 108
+    }));
+    rects.forEach((a, index) => {
+        rects.slice(index + 1).forEach(b => {
+            const overlap = a.x < b.x + b.width + 24
+                && a.x + a.width + 24 > b.x
+                && a.y < b.y + b.height + 24
+                && a.y + a.height + 24 > b.y;
+            assert.equal(overlap, false, `${a.id} should not overlap ${b.id}`);
+        });
+    });
 });

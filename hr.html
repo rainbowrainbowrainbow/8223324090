@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.69.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.69.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.69.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.69.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.69.1">
+    <link rel="stylesheet" href="css/base.css?v=0.69.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.69.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.69.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.69.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.69.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -358,7 +358,7 @@
             max-width: 154px;
             padding: 3px 7px;
             border-radius: 999px;
-            background: rgba(255,255,255,0.12);
+            background: rgba(15,23,42,0.08);
             color: currentColor;
             font-size: 9px;
             font-weight: 950;
@@ -367,13 +367,20 @@
             letter-spacing: .08em;
             opacity: .88;
         }
+        .hr-org-node--lane-root .hr-org-node-lane { background: rgba(245,158,11,0.20); }
+        .hr-org-node--lane-deputy .hr-org-node-lane,
+        .hr-org-node--lane-leadership .hr-org-node-lane { background: rgba(14,165,233,0.16); }
+        .hr-org-node--lane-operations .hr-org-node-lane { background: rgba(168,85,247,0.18); }
+        .hr-org-node--lane-support .hr-org-node-lane { background: rgba(124,58,237,0.18); }
         .hr-org-node-meta {
             display: block;
             color: var(--gray-500);
-            font-size: 10px;
-            font-weight: 800;
+            max-width: 154px;
+            font-size: 11px;
+            font-weight: 900;
             text-transform: uppercase;
             letter-spacing: .06em;
+            overflow-wrap: anywhere;
         }
         .hr-org-node-description {
             display: -webkit-box;
@@ -726,6 +733,13 @@
         body.dark-mode .hr-org-node--blue { background: rgba(14,165,233,0.12); color: #BAE6FD; }
         body.dark-mode .hr-org-node--purple { background: rgba(168,85,247,0.12); color: #E9D5FF; }
         body.dark-mode .hr-org-node--violet { background: rgba(124,58,237,0.14); color: #DDD6FE; }
+        body.dark-mode .hr-org-node-meta,
+        body.dark-mode .hr-org-node-description {
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-org-node-lane {
+            background: rgba(15,23,42,0.34);
+        }
         body.dark-mode .hr-org-node-edit,
         body.dark-mode .hr-org-detail-action,
         body.dark-mode .hr-org-node-editor-summary,
@@ -2695,15 +2709,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.69.1"></script>
-    <script src="js/config.js?v=0.69.1"></script>
-    <script src="js/notification.js?v=0.69.1"></script>
-    <script src="js/api.js?v=0.69.1"></script>
-    <script src="js/auth.js?v=0.69.1"></script>
-    <script src="js/components/sidebar.js?v=0.69.1"></script>
+    <script src="js/ui.js?v=0.69.2"></script>
+    <script src="js/config.js?v=0.69.2"></script>
+    <script src="js/notification.js?v=0.69.2"></script>
+    <script src="js/api.js?v=0.69.2"></script>
+    <script src="js/auth.js?v=0.69.2"></script>
+    <script src="js/components/sidebar.js?v=0.69.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.69.1"></script>
-    <script src="js/alerts.js?v=0.69.1"></script><script>
+    <script src="js/hr-page.js?v=0.69.2"></script>
+    <script src="js/alerts.js?v=0.69.2"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

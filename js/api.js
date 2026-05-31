@@ -2149,6 +2149,79 @@ async function apiSaveProductMenuAiDraft(id, payload = {}) {
     }
 }
 
+async function apiGetProgramIconSettings() {
+    try {
+        const response = await fetch(`${API_BASE}/products/program-icon-settings`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', errors: body.errors || [] };
+        return body;
+    } catch (err) {
+        console.error('API getProgramIconSettings error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateProgramIconSettings(settings = {}) {
+    try {
+        if (!guardCrmBusinessWrite('налаштовувати AI-іконки програм')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'налаштовувати AI-іконки програм') };
+        }
+        const response = await fetch(`${API_BASE}/products/program-icon-settings`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ settings })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', errors: body.errors || [] };
+        return body;
+    } catch (err) {
+        console.error('API updateProgramIconSettings error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGenerateProductProgramIcon(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('генерувати AI-іконку програми')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'генерувати AI-іконку програми') };
+        }
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/generate`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(crmBusinessPayload(payload || {}, getProductBusinessContextValue(payload)))
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', ...body };
+        return body;
+    } catch (err) {
+        console.error('API generateProductProgramIcon error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetProductProgramIconStatus(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/status${qs}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', ...body };
+        return body;
+    } catch (err) {
+        console.error('API getProductProgramIconStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 // v5.0: Auth API
 async function apiLogin(username, password) {
     const response = await fetch(`${API_BASE}/auth/login`, {

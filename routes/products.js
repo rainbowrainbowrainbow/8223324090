@@ -18,6 +18,17 @@ const {
     requireWritableBusinessScope
 } = require('../services/businessContext');
 const { openRouterChat } = require('../services/copilot');
+const {
+    PROGRAM_ICON_SETTINGS_KEY,
+    PROGRAM_ICON_PROVIDER,
+    PROGRAM_ICON_IMAGE_MODEL,
+    DEFAULT_PROGRAM_ICON_SETTINGS,
+    sanitizeProgramIconSettings,
+    buildDeterministicProgramIconPrompt,
+    startProgramIconGeneration,
+    pollProgramIconJob,
+    persistProgramIconImage
+} = require('../services/programIconGeneration');
 
 const log = createLogger('Products');
 
@@ -72,6 +83,11 @@ const PRODUCT_MUTATION_ROLES = ['admin', 'manager'];
 const productMenuAiRateLimit = createWriteRateLimiter('product-menu-ai-draft', {
     windowMs: 60 * 1000,
     max: 12,
+    methods: ['POST']
+});
+const productProgramIconRateLimit = createWriteRateLimiter('product-program-icon-generation', {
+    windowMs: 60 * 1000,
+    max: 6,
     methods: ['POST']
 });
 const MENU_AI_BLOCK_KEYS = ['nameDescription', 'allergens', 'ingredients', 'priceCost'];
@@ -206,6 +222,65 @@ function safeJsonObject(value, fallback = {}) {
         }
     }
     return { ...fallback };
+}
+
+async function loadProgramIconSettings(db = pool) {
+    try {
+        const result = await db.query(
+            'SELECT value FROM product_ai_settings WHERE key = $1 LIMIT 1',
+            [PROGRAM_ICON_SETTINGS_KEY]
+        );
+        const { settings } = sanitizeProgramIconSettings(result.rows[0]?.value || DEFAULT_PROGRAM_ICON_SETTINGS);
+        return settings;
+    } catch (err) {
+        log.warn(`Program icon settings fallback: ${err.message}`);
+        return { ...DEFAULT_PROGRAM_ICON_SETTINGS };
+    }
+}
+
+async function saveProgramIconSettings(settings, username) {
+    const { settings: sanitized, errors } = sanitizeProgramIconSettings(settings);
+    if (errors.length) return { settings: sanitized, errors };
+    await pool.query(
+        `INSERT INTO product_ai_settings (key, value, updated_at, updated_by)
+         VALUES ($1, $2::jsonb, NOW(), $3)
+         ON CONFLICT (key) DO UPDATE SET
+             value = EXCLUDED.value,
+             updated_at = NOW(),
+             updated_by = EXCLUDED.updated_by`,
+        [PROGRAM_ICON_SETTINGS_KEY, JSON.stringify(sanitized), username]
+    );
+    return { settings: sanitized, errors: [] };
+}
+
+function requireProgramIconProduct(product) {
+    if (!product) return { ok: false, status: 404, error: 'Product not found' };
+    if ((product.domain || 'program') !== 'program') {
+        return {
+            ok: false,
+            status: 400,
+            error: 'AI icon generation is available only for entertainment programs'
+        };
+    }
+    return { ok: true };
+}
+
+function productIconLockKey(businessContext, productId) {
+    return ['products.program-icon', businessContext || DEFAULT_BUSINESS_CONTEXT, productId].join('|');
+}
+
+async function updateProgramIconFailed(productId, businessContext, username, errorMessage) {
+    await pool.query(
+        `UPDATE products
+         SET icon_generation_status = 'failed',
+             icon_last_error = $1,
+             icon_job_id = NULL,
+             updated_at = NOW(),
+             updated_by = $2
+         WHERE id = $3
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+        [cleanNullableString(errorMessage, 1000), username, productId, businessContext]
+    );
 }
 
 function parseAIJsonObject(text) {
@@ -852,6 +927,16 @@ function mapProductRow(row) {
         label: row.label,
         name: row.name,
         icon: row.icon,
+        iconUrl: row.icon_url || null,
+        iconGenerationStatus: row.icon_generation_status || 'idle',
+        iconPromptSourceSnapshot: safeJsonObject(row.icon_prompt_source_snapshot || {}),
+        iconLlmPromptOutput: row.icon_llm_prompt_output || null,
+        iconFinalImagePrompt: row.icon_final_image_prompt || null,
+        iconProvider: row.icon_provider || null,
+        iconModel: row.icon_model || null,
+        iconLastError: row.icon_last_error || null,
+        iconGeneratedAt: row.icon_generated_at || null,
+        iconJobId: row.icon_job_id || null,
         category: row.category,
         duration: row.duration,
         price: hasCenterPrice ? centerPrice : legacyPrice,
@@ -1074,6 +1159,35 @@ router.get('/catalogs', async (req, res) => {
     }
 });
 
+router.get('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    try {
+        const settings = await loadProgramIconSettings();
+        res.json({
+            success: true,
+            settings,
+            defaults: DEFAULT_PROGRAM_ICON_SETTINGS,
+            provider: PROGRAM_ICON_PROVIDER,
+            model: PROGRAM_ICON_IMAGE_MODEL
+        });
+    } catch (err) {
+        log.error('Get program icon settings error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.put('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    try {
+        const result = await saveProgramIconSettings(req.body?.settings || req.body || {}, req.user.username);
+        if (result.errors.length) {
+            return res.status(400).json({ success: false, errors: result.errors, settings: result.settings });
+        }
+        res.json({ success: true, settings: result.settings });
+    } catch (err) {
+        log.error('Save program icon settings error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // GET /api/products/:id — Get single product
 // POST /api/products/menu-ai-draft — AI-assisted menu card draft, never canonical truth
 router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
@@ -1142,6 +1256,231 @@ router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUT
     } catch (err) {
         log.error('Generate product menu AI draft error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/program-icon/generate', productProgramIconRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    let product;
+    let startToken = null;
+    const businessContext = requireProductBusinessContext(req, res);
+    if (!businessContext) return;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [productIconLockKey(businessContext, id)]);
+        const locked = await client.query(
+            `SELECT *
+             FROM products
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [id, businessContext]
+        );
+        product = locked.rows[0];
+        const check = requireProgramIconProduct(product);
+        if (!check.ok) {
+            await client.query('ROLLBACK');
+            return res.status(check.status).json({ success: false, error: check.error });
+        }
+        if (product.icon_generation_status === 'pending' && product.icon_job_id) {
+            await client.query('ROLLBACK');
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.json({
+                success: true,
+                status: 'pending',
+                deduped: true,
+                taskId: product.icon_job_id,
+                product: mapProductRow(fresh)
+            });
+        }
+
+        startToken = `starting:${crypto.randomUUID()}`;
+        await client.query(
+            `UPDATE products
+             SET icon_generation_status = 'pending',
+                 icon_job_id = $1,
+                 icon_last_error = NULL,
+                 updated_at = NOW(),
+                 updated_by = $2
+             WHERE id = $3
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+            [startToken, req.user.username, id, businessContext]
+        );
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Prepare program icon generation error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const settings = await loadProgramIconSettings();
+        const generation = await startProgramIconGeneration(product, settings);
+        await pool.query(
+            `UPDATE products
+             SET icon_generation_status = 'pending',
+                 icon_job_id = $1,
+                 icon_prompt_source_snapshot = $2::jsonb,
+                 icon_llm_prompt_output = $3,
+                 icon_final_image_prompt = $4,
+                 icon_provider = $5,
+                 icon_model = $6,
+                 icon_last_error = $7,
+                 updated_at = NOW(),
+                 updated_by = $8
+             WHERE id = $9
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10
+               AND icon_job_id = $11`,
+            [
+                generation.taskId,
+                JSON.stringify({
+                    ...generation.sourceSnapshot,
+                    promptSource: generation.promptSource,
+                    promptFallbackReason: generation.promptFallbackReason
+                }),
+                generation.llmPromptOutput,
+                generation.finalPrompt,
+                generation.provider,
+                generation.model,
+                generation.promptFallbackReason,
+                req.user.username,
+                id,
+                businessContext,
+                startToken
+            ]
+        );
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        res.json({
+            success: true,
+            status: 'pending',
+            taskId: generation.taskId,
+            promptSource: generation.promptSource,
+            product: mapProductRow(fresh)
+        });
+    } catch (err) {
+        log.error('Start program icon generation error', err);
+        const settings = await loadProgramIconSettings();
+        await updateProgramIconFailed(id, businessContext, req.user.username, err.message || 'Program icon generation failed').catch(() => {});
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        const statusCode = err.code === 'provider_not_configured' ? 503 : 502;
+        res.status(statusCode).json({
+            success: false,
+            error: err.message || 'Program icon generation failed',
+            code: err.code || 'program_icon_generation_failed',
+            fallbackPrompt: buildDeterministicProgramIconPrompt(product, settings),
+            product: fresh ? mapProductRow(fresh) : null
+        });
+    }
+});
+
+router.get('/:id/program-icon/status', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+    const businessContext = requireProductBusinessContext(req, res);
+    if (!businessContext) return;
+
+    try {
+        const product = await getProductWithPriceRule(pool, id, businessContext);
+        const check = requireProgramIconProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const mapped = mapProductRow(product);
+        if (product.icon_generation_status !== 'pending' || !product.icon_job_id || String(product.icon_job_id).startsWith('starting:')) {
+            return res.json({ success: true, done: product.icon_generation_status === 'succeeded', product: mapped });
+        }
+
+        const job = await pollProgramIconJob(product.icon_job_id);
+        if (!job.done && !job.failed) {
+            return res.json({
+                success: true,
+                done: false,
+                status: 'pending',
+                state: job.state,
+                product: mapped
+            });
+        }
+
+        if (job.failed) {
+            await updateProgramIconFailed(id, businessContext, req.user.username, job.error || 'Image generation failed');
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.json({
+                success: false,
+                done: true,
+                status: 'failed',
+                error: job.error || 'Image generation failed',
+                product: mapProductRow(fresh)
+            });
+        }
+
+        const savedUrl = await persistProgramIconImage(product, job.imageUrl);
+        if (!savedUrl) {
+            await updateProgramIconFailed(id, businessContext, req.user.username, 'Generated image could not be saved to CRM uploads');
+            const fresh = await getProductWithPriceRule(pool, id, businessContext);
+            return res.status(502).json({
+                success: false,
+                done: true,
+                status: 'failed',
+                error: 'Generated image could not be saved to CRM uploads',
+                product: mapProductRow(fresh)
+            });
+        }
+        const finalUrl = savedUrl;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [productIconLockKey(businessContext, id)]);
+            const locked = await client.query(
+                `SELECT id, icon_generation_status
+                 FROM products
+                 WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 FOR UPDATE`,
+                [id, businessContext]
+            );
+            if (!locked.rowCount) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Product not found' });
+            }
+            if (locked.rows[0].icon_generation_status !== 'succeeded') {
+                await client.query(
+                    `UPDATE products
+                     SET icon_url = $1,
+                         icon_generation_status = 'succeeded',
+                         icon_last_error = NULL,
+                         icon_generated_at = NOW(),
+                         updated_at = NOW(),
+                         updated_by = $2
+                     WHERE id = $3
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+                    [finalUrl, req.user.username, id, businessContext]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        res.json({
+            success: true,
+            done: true,
+            status: 'succeeded',
+            imageUrl: finalUrl,
+            product: mapProductRow(fresh)
+        });
+    } catch (err) {
+        log.error('Poll program icon generation error', err);
+        await updateProgramIconFailed(id, businessContext, req.user.username, err.message || 'Program icon polling failed').catch(() => {});
+        const fresh = await getProductWithPriceRule(pool, id, businessContext).catch(() => null);
+        res.status(err.code === 'provider_not_configured' ? 503 : 500).json({
+            success: false,
+            error: err.message || 'Internal server error',
+            product: fresh ? mapProductRow(fresh) : null
+        });
     }
 });
 

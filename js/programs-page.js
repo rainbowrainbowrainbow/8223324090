@@ -175,6 +175,16 @@ async function initPage() {
     document.getElementById('productAiApproveBlockBtn')?.addEventListener('click', approveMenuAiBlock);
     document.getElementById('productAiRegenerateBlockBtn')?.addEventListener('click', regenerateMenuAiBlock);
     document.getElementById('productAiApplyBtn')?.addEventListener('click', applyMenuAiReviewFinal);
+    document.getElementById('programIconSettingsBtn')?.addEventListener('click', openProgramIconSettingsModal);
+    document.getElementById('programIconSettingsCloseBtn')?.addEventListener('click', closeProgramIconSettingsModal);
+    document.getElementById('programIconSettingsCancelBtn')?.addEventListener('click', closeProgramIconSettingsModal);
+    document.getElementById('programIconSettingsSaveBtn')?.addEventListener('click', saveProgramIconSettingsFromModal);
+    document.getElementById('programIconSettingsResetBtn')?.addEventListener('click', resetProgramIconSettingsModal);
+    document.getElementById('programIconSettingsModal')?.addEventListener('click', (event) => {
+        if (event.target?.id === 'programIconSettingsModal' && !productIconSettingsSaving) {
+            closeProgramIconSettingsModal();
+        }
+    });
     document.getElementById('productAiReviewModal')?.addEventListener('click', (event) => {
         if (event.target?.id === 'productAiReviewModal') {
             setMenuAiReviewStatus('Завершіть або скасуйте AI-review перед закриттям.', 'warning');
@@ -310,6 +320,9 @@ let productSaveInFlight = false;
 let menuAiReviewState = null;
 let menuAiReviewSaving = false;
 const productDeleteInFlight = new Set();
+const productIconGenerationInFlight = new Set();
+let productIconSettingsCache = null;
+let productIconSettingsSaving = false;
 
 const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
 
@@ -494,6 +507,9 @@ function syncProductReadOnlyUi() {
         'productAiApproveBlockBtn',
         'productAiRegenerateBlockBtn',
         'productAiApplyBtn',
+        'programIconSettingsBtn',
+        'programIconSettingsSaveBtn',
+        'programIconSettingsResetBtn',
         'productDocSaveBtn',
         'productDocUnlinkBtn'
     ].forEach(id => {
@@ -504,7 +520,7 @@ function syncProductReadOnlyUi() {
         if (readOnly) el.title = productReadOnlyMessage('редагувати продукти');
         else el.removeAttribute('title');
     });
-    document.querySelectorAll('[onclick^="openProductForm"], [onclick^="deleteProduct"], [onclick^="toggleProductDocumentFlag"]').forEach(el => {
+    document.querySelectorAll('[onclick^="openProductForm"], [onclick^="deleteProduct"], [onclick^="toggleProductDocumentFlag"], .program-icon-generate-btn').forEach(el => {
         el.disabled = readOnly;
         el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
         el.classList.toggle('crm-business-readonly-control', readOnly);
@@ -838,6 +854,63 @@ function getKitchenType(product = {}) {
     return null;
 }
 
+function getProgramIconStatusMeta(product = {}) {
+    const status = product.iconGenerationStatus || 'idle';
+    if (status === 'pending') return { label: 'Генерується', tone: 'pending' };
+    if (status === 'succeeded') return { label: 'Збережено', tone: 'success' };
+    if (status === 'failed') return { label: 'Помилка', tone: 'failed' };
+    return { label: product.iconUrl ? 'Збережено' : 'Не згенеровано', tone: product.iconUrl ? 'success' : 'idle' };
+}
+
+function renderProgramIconVisual(product = {}) {
+    const iconUrl = product.iconUrl || product.icon_url;
+    if (iconUrl) {
+        return `
+            <span class="program-icon program-icon-ai-thumb" title="AI-іконка збережена">
+                <img src="${escapeHtml(iconUrl)}" alt="">
+            </span>
+        `;
+    }
+    return `<span class="program-icon">${escapeHtml(product.icon || '🎯')}</span>`;
+}
+
+function renderProgramIconPanel(product = {}, canManage = false) {
+    if (getProductDomain(product) !== 'program') return '';
+    const status = product.iconGenerationStatus || 'idle';
+    const meta = getProgramIconStatusMeta(product);
+    const productId = escapeJsString(product.id);
+    const inFlight = productIconGenerationInFlight.has(product.id) || status === 'pending';
+    const hasDebug = product.iconFinalImagePrompt || product.iconLastError || product.iconGeneratedAt;
+    const buttonLabel = status === 'failed'
+        ? 'Повторити AI-іконку'
+        : (product.iconUrl ? 'Перегенерувати AI-іконку' : 'Згенерувати AI-іконку');
+
+    return `
+        <div class="program-icon-ai-panel" data-icon-product-id="${escapeHtml(product.id)}">
+            <div class="program-icon-ai-head">
+                <span class="program-icon-status ${escapeHtml(meta.tone)}">${escapeHtml(meta.label)}</span>
+                ${product.iconProvider ? `<span class="program-icon-provider">${escapeHtml(product.iconProvider)} · ${escapeHtml(product.iconModel || '')}</span>` : '<span class="program-icon-provider">cheap still-image path</span>'}
+            </div>
+            ${product.iconLastError ? `<p class="program-icon-error">${escapeHtml(product.iconLastError)}</p>` : ''}
+            ${hasDebug ? `
+                <details class="program-icon-debug">
+                    <summary>Prompt / debug</summary>
+                    ${product.iconGeneratedAt ? `<p>Згенеровано: ${escapeHtml(String(product.iconGeneratedAt))}</p>` : ''}
+                    ${product.iconFinalImagePrompt ? `<textarea readonly>${escapeHtml(product.iconFinalImagePrompt)}</textarea>` : ''}
+                </details>
+            ` : ''}
+            ${canManage ? `
+                <button type="button"
+                    class="btn-page-secondary program-icon-generate-btn"
+                    onclick="startProductIconGeneration('${productId}')"
+                    ${inFlight ? 'disabled aria-disabled="true"' : ''}>
+                    ${inFlight ? 'Генерується…' : escapeHtml(buttonLabel)}
+                </button>
+            ` : ''}
+        </div>
+    `;
+}
+
 function renderProgramProducts(grid, canManage) {
     let filtered = allProducts.filter(p => getProductDomain(p) === 'program');
     if (currentCategory !== 'all') {
@@ -855,7 +928,7 @@ function renderProgramProducts(grid, canManage) {
             <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
                 <div class="card-header">
                     <div>
-                        <span class="program-icon">${escapeHtml(p.icon)}</span>
+                        ${renderProgramIconVisual(p)}
                         <span class="card-title">${escapeHtml(p.name)}</span>
                         ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
                     </div>
@@ -869,6 +942,7 @@ function renderProgramProducts(grid, canManage) {
                     ${p.kidsCapacity ? `<span>${escapeHtml(p.kidsCapacity)} діт</span>` : ''}
                 </div>
                 ${p.description ? `<p class="program-desc">${escapeHtml(p.description).substring(0, 120)}${p.description.length > 120 ? '...' : ''}</p>` : ''}
+                ${renderProgramIconPanel(p, canManage)}
                 ${renderDocumentPanel(p, canManage)}
                 ${canManage ? `
                     <div class="card-actions">
@@ -2146,6 +2220,175 @@ async function submitTechCardWriteOff() {
     if (freshResultEl) freshResultEl.innerHTML = resultHtml;
 }
 
+function renderProductFormIconGeneration(product = null, domain = 'program') {
+    const panel = document.getElementById('programIconGenerationPanel');
+    if (!panel) return;
+    const isProgram = domain === 'program' && product?.id;
+    panel.classList.toggle('hidden', !isProgram);
+    if (!isProgram) {
+        panel.innerHTML = '';
+        return;
+    }
+    panel.innerHTML = renderProgramIconPanel(product, canManageProducts());
+}
+
+async function startProductIconGeneration(productId) {
+    if (!guardProductWrite('генерувати AI-іконку програми')) return;
+    if (!productId || productIconGenerationInFlight.has(productId)) return;
+    const product = allProducts.find(item => item.id === productId);
+    if (!product) {
+        showNotification('Програму не знайдено в поточному списку', 'error');
+        return;
+    }
+    if (getProductDomain(product) !== 'program') {
+        showNotification('AI-іконки доступні тільки для програм', 'error');
+        return;
+    }
+
+    productIconGenerationInFlight.add(productId);
+    renderProducts();
+    renderProductFormIconGeneration(product, getProductDomain(product));
+    try {
+        const result = await apiGenerateProductProgramIcon(productId, { businessContext: getProductApiBusinessContext() });
+        if (result?.product) updateProductInState(result.product);
+        if (!result?.success) {
+            showNotification(result?.error || 'Не вдалося запустити AI-іконку', 'error');
+            productIconGenerationInFlight.delete(productId);
+            renderProducts();
+            renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+            return;
+        }
+        showNotification(result.deduped ? 'AI-іконка вже генерується' : 'Генерацію AI-іконки запущено', 'success');
+        renderProducts();
+        renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+        pollProductIconGeneration(productId, 0);
+    } catch (err) {
+        productIconGenerationInFlight.delete(productId);
+        showNotification(err.message || 'Не вдалося запустити AI-іконку', 'error');
+        renderProducts();
+        renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+    }
+}
+
+async function pollProductIconGeneration(productId, attempt = 0) {
+    const maxAttempts = 18;
+    try {
+        const result = await apiGetProductProgramIconStatus(productId, { businessContext: getProductApiBusinessContext() });
+        if (result?.product) updateProductInState(result.product);
+        const latest = allProducts.find(item => item.id === productId);
+        renderProducts();
+        renderProductFormIconGeneration(latest, 'program');
+
+        if (result?.done || result?.status === 'succeeded') {
+            productIconGenerationInFlight.delete(productId);
+            showNotification('AI-іконку збережено у програмі', 'success');
+            renderProducts();
+            renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+            return;
+        }
+        if (result && result.success === false && result.status === 'failed') {
+            productIconGenerationInFlight.delete(productId);
+            showNotification(result.error || 'Генерація AI-іконки завершилась помилкою', 'error');
+            renderProducts();
+            renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+            return;
+        }
+        if (attempt >= maxAttempts) {
+            productIconGenerationInFlight.delete(productId);
+            showNotification('AI-іконка ще генерується. Статус збережено, можна оновити пізніше.', 'warning');
+            renderProducts();
+            renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+            return;
+        }
+        window.setTimeout(() => pollProductIconGeneration(productId, attempt + 1), 5000);
+    } catch (err) {
+        productIconGenerationInFlight.delete(productId);
+        showNotification(err.message || 'Не вдалося перевірити статус AI-іконки', 'error');
+        renderProducts();
+        renderProductFormIconGeneration(allProducts.find(item => item.id === productId), 'program');
+    }
+}
+
+async function openProgramIconSettingsModal() {
+    if (!guardProductWrite('налаштовувати AI-іконки програм')) return;
+    const modal = document.getElementById('programIconSettingsModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    setProgramIconSettingsStatus('Завантажуємо налаштування…', '');
+    const result = await apiGetProgramIconSettings();
+    if (!result?.success) {
+        setProgramIconSettingsStatus(result?.error || 'Не вдалося завантажити налаштування', 'error');
+        return;
+    }
+    productIconSettingsCache = result;
+    fillProgramIconSettingsForm(result.settings || {});
+    const meta = document.getElementById('programIconSettingsMeta');
+    if (meta) meta.textContent = `${result.provider || 'kie.ai'} · ${result.model || 'nano-banana-2'} · без batch`;
+    setProgramIconSettingsStatus('Налаштування готові до редагування.', 'success');
+}
+
+function closeProgramIconSettingsModal() {
+    document.getElementById('programIconSettingsModal')?.classList.add('hidden');
+}
+
+function fillProgramIconSettingsForm(settings = {}) {
+    const fields = {
+        programIconSystemInstructions: settings.systemInstructions,
+        programIconUserTemplate: settings.userTemplate,
+        programIconStyleRules: settings.styleRules,
+        programIconFallbackTemplate: settings.fallbackTemplate
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value || '';
+    });
+}
+
+function readProgramIconSettingsForm() {
+    return {
+        systemInstructions: document.getElementById('programIconSystemInstructions')?.value || '',
+        userTemplate: document.getElementById('programIconUserTemplate')?.value || '',
+        styleRules: document.getElementById('programIconStyleRules')?.value || '',
+        fallbackTemplate: document.getElementById('programIconFallbackTemplate')?.value || ''
+    };
+}
+
+function resetProgramIconSettingsModal() {
+    fillProgramIconSettingsForm(productIconSettingsCache?.defaults || productIconSettingsCache?.settings || {});
+    setProgramIconSettingsStatus('Повернули безпечні дефолти. Натисніть «Зберегти», щоб застосувати.', 'warning');
+}
+
+function setProgramIconSettingsStatus(message, type = '') {
+    const el = document.getElementById('programIconSettingsStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.dataset.status = type || '';
+}
+
+async function saveProgramIconSettingsFromModal() {
+    if (!guardProductWrite('налаштовувати AI-іконки програм')) return;
+    if (productIconSettingsSaving) return;
+    productIconSettingsSaving = true;
+    const saveBtn = document.getElementById('programIconSettingsSaveBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    setProgramIconSettingsStatus('Зберігаємо…', '');
+    try {
+        const result = await apiUpdateProgramIconSettings(readProgramIconSettingsForm());
+        if (!result?.success) {
+            const errors = Array.isArray(result?.errors) && result.errors.length ? result.errors.join('; ') : result?.error;
+            setProgramIconSettingsStatus(errors || 'Налаштування не збережено', 'error');
+            return;
+        }
+        productIconSettingsCache = { ...(productIconSettingsCache || {}), settings: result.settings };
+        fillProgramIconSettingsForm(result.settings || {});
+        setProgramIconSettingsStatus('Налаштування AI-іконок збережено.', 'success');
+        showNotification('Налаштування AI-іконок збережено', 'success');
+    } finally {
+        productIconSettingsSaving = false;
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
 async function openProductForm(productId = null, options = {}) {
     if (!guardProductWrite(productId ? 'редагувати продукти' : 'створювати продукти')) return;
     const form = placeProductForm();
@@ -2189,6 +2432,7 @@ async function openProductForm(productId = null, options = {}) {
         if (detailedCheckbox) detailedCheckbox.checked = p.techCardMode === 'detailed';
         setKitchenFormVisibility(domain, kitchenType);
         await hydrateTechCardForm(productId, p, domain, kitchenType, options);
+        renderProductFormIconGeneration(p, domain);
     } else {
         const isMaysternya = !isParkProductsContext();
         const isKitchen = !isMaysternya && activeProductTab === 'kitchen';
@@ -2230,6 +2474,7 @@ async function openProductForm(productId = null, options = {}) {
         if (detailedCheckbox) detailedCheckbox.checked = false;
         setKitchenFormVisibility(isKitchen ? 'kitchen' : 'program', kitchenType);
         await hydrateTechCardForm(null, null, isKitchen ? 'kitchen' : 'program', kitchenType);
+        renderProductFormIconGeneration(null, isKitchen ? 'kitchen' : 'program');
     }
 
     form.scrollIntoView({ behavior: 'smooth' });
@@ -2239,6 +2484,7 @@ function closeProductForm() {
     document.getElementById('productForm').style.display = 'none';
     techCardLoadedProductId = null;
     productFormFocusWriteOff = false;
+    renderProductFormIconGeneration(null, 'program');
 }
 
 async function saveProduct(options = {}) {

@@ -22,13 +22,13 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.68.36">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.36">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.36">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.36">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.36">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.36">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.36">
+    <link rel="stylesheet" href="css/base.css?v=0.68.37">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.37">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.37">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.37">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.37">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.37">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.37">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -342,6 +342,125 @@
             flex-wrap: wrap;
             gap: 8px;
         }
+
+        .program-icon-ai-thumb {
+            overflow: hidden;
+            border: 1px solid rgba(20, 184, 166, 0.36);
+            background: #0f172a;
+        }
+
+        .program-icon-ai-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .program-icon-ai-panel,
+        .program-icon-generation-form {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid rgba(20, 184, 166, 0.22);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.04);
+        }
+
+        .program-icon-ai-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .program-icon-status,
+        .program-icon-provider {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 9px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .program-icon-status.idle {
+            background: rgba(148, 163, 184, 0.16);
+            color: var(--gray-600, #475569);
+        }
+
+        .program-icon-status.pending {
+            background: rgba(245, 158, 11, 0.16);
+            color: #b45309;
+        }
+
+        .program-icon-status.success {
+            background: rgba(20, 184, 166, 0.16);
+            color: var(--primary-dark, #0f766e);
+        }
+
+        .program-icon-status.failed {
+            background: rgba(239, 68, 68, 0.14);
+            color: #b91c1c;
+        }
+
+        .program-icon-provider {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: var(--gray-500, #64748b);
+        }
+
+        .program-icon-error {
+            margin: 0;
+            color: #b91c1c;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .program-icon-debug summary {
+            cursor: pointer;
+            color: var(--gray-600, #475569);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .program-icon-debug textarea {
+            width: 100%;
+            min-height: 84px;
+            margin-top: 8px;
+            resize: vertical;
+            font-size: 12px;
+        }
+
+        .program-icon-settings-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .program-icon-settings-grid textarea {
+            min-height: 96px;
+            resize: vertical;
+        }
+
+        .program-icon-settings-meta {
+            margin: 0;
+            color: var(--gray-500, #64748b);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .program-icon-settings-status {
+            margin: 10px 0 0;
+            min-height: 20px;
+            color: var(--gray-500, #64748b);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .program-icon-settings-status[data-status="success"] { color: var(--primary-dark, #0f766e); }
+        .program-icon-settings-status[data-status="warning"] { color: #b45309; }
+        .program-icon-settings-status[data-status="error"] { color: #b91c1c; }
 
         .kitchen-subtabs {
             display: inline-flex;
@@ -1110,6 +1229,8 @@
         }
 
         body.dark-mode .product-doc-panel,
+        body.dark-mode .program-icon-ai-panel,
+        body.dark-mode .program-icon-generation-form,
         body.dark-mode .menu-section-chip,
         body.dark-mode .kitchen-detail-panel,
         body.dark-mode .menu-ai-entry,
@@ -1119,7 +1240,9 @@
         body.dark-mode .tech-card-row,
         body.dark-mode .tech-card-writeoff,
         body.dark-mode .tech-card-empty,
-        [data-theme="dark"] .product-doc-panel {
+        [data-theme="dark"] .product-doc-panel,
+        [data-theme="dark"] .program-icon-ai-panel,
+        [data-theme="dark"] .program-icon-generation-form {
             background: rgba(255, 255, 255, 0.04);
             border-color: rgba(255, 255, 255, 0.10);
         }
@@ -1131,13 +1254,17 @@
         body.dark-mode .menu-ai-field textarea,
         body.dark-mode .menu-ai-field select,
         body.dark-mode .menu-ai-feedback textarea,
+        body.dark-mode .program-icon-settings-grid textarea,
+        body.dark-mode .program-icon-debug textarea,
         body.dark-mode .menu-ai-ingredient-row input,
         body.dark-mode .menu-ai-ingredient-row select,
         body.dark-mode .menu-allergen-chip,
         body.dark-mode .menu-ai-step,
         body.dark-mode .menu-ai-inline-btn,
         body.dark-mode .tech-card-row-actions button,
-        body.dark-mode .tech-card-add-row {
+        body.dark-mode .tech-card-add-row,
+        [data-theme="dark"] .program-icon-settings-grid textarea,
+        [data-theme="dark"] .program-icon-debug textarea {
             background: rgba(15, 23, 42, 0.72);
             border-color: rgba(255, 255, 255, 0.12);
             color: #f8fafc;
@@ -1368,6 +1495,7 @@
                     <p id="productsPageSubtitle" class="products-page-subtitle">Операційний продуктовий блок: послуги, кухня та каталоги парку.</p>
                 </div>
                 <div class="products-header-actions">
+                    <button type="button" id="programIconSettingsBtn" class="btn-page-secondary">AI-іконки програм</button>
                     <button type="button" id="addProductBtn" class="btn-page-primary">+ Додати продукт</button>
                 </div>
             </div>
@@ -1396,6 +1524,7 @@
                         <label>Іконка</label>
                         <input type="text" id="pf-icon" aria-label="🏛" placeholder="🏛" style="width:60px">
                     </div>
+                    <div id="programIconGenerationPanel" class="form-field program-icon-generation-form hidden" aria-live="polite"></div>
                     <div class="form-field">
                         <label>Категорія</label>
                         <select id="pf-category">
@@ -1690,6 +1819,48 @@
         </div>
     </div>
 
+    <div id="programIconSettingsModal" class="modal hidden product-doc-modal" role="dialog" aria-modal="true" aria-labelledby="programIconSettingsTitle" aria-describedby="programIconSettingsStatus">
+        <div class="modal-content modal-medium product-doc-modal-card">
+            <div class="product-doc-modal-head">
+                <div>
+                    <p class="product-doc-modal-eyebrow">Products · AI-іконки</p>
+                    <h3 id="programIconSettingsTitle">Налаштування AI-іконок програм</h3>
+                    <p id="programIconSettingsMeta" class="program-icon-settings-meta">cheap still-image path · без batch</p>
+                </div>
+                <button type="button" id="programIconSettingsCloseBtn" class="product-doc-icon-close" aria-label="Закрити налаштування AI-іконок">×</button>
+            </div>
+
+            <p class="product-doc-mode-note">Це керує тільки prompt-guidance для маленьких іконок програм. Генерація запускається вручну на одній програмі, без масового backfill.</p>
+            <div class="program-icon-settings-grid">
+                <label class="form-field" for="programIconSystemInstructions">
+                    <span>System instructions</span>
+                    <textarea id="programIconSystemInstructions" maxlength="2400"></textarea>
+                </label>
+                <label class="form-field" for="programIconUserTemplate">
+                    <span>User template</span>
+                    <textarea id="programIconUserTemplate" maxlength="2400"></textarea>
+                </label>
+                <label class="form-field" for="programIconStyleRules">
+                    <span>Style rules</span>
+                    <textarea id="programIconStyleRules" maxlength="2400"></textarea>
+                </label>
+                <label class="form-field" for="programIconFallbackTemplate">
+                    <span>Fallback template</span>
+                    <textarea id="programIconFallbackTemplate" maxlength="2400"></textarea>
+                </label>
+            </div>
+            <p id="programIconSettingsStatus" class="program-icon-settings-status" role="status" aria-live="polite"></p>
+
+            <div class="product-doc-modal-actions">
+                <button type="button" id="programIconSettingsResetBtn" class="btn-page-secondary">Дефолти</button>
+                <div class="product-doc-modal-actions-main">
+                    <button type="button" id="programIconSettingsCancelBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="button" id="programIconSettingsSaveBtn" class="btn-page-primary">Зберегти</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- v10.4: Особистий кабінет -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium" role="dialog" aria-modal="true">
@@ -1705,13 +1876,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.68.36"></script>
-    <script src="js/config.js?v=0.68.36"></script>
-    <script src="js/notification.js?v=0.68.36"></script>
-    <script src="js/api.js?v=0.68.36"></script>
-    <script src="js/auth.js?v=0.68.36"></script>
-    <script src="js/components/sidebar.js?v=0.68.36"></script>
+    <script src="js/ui.js?v=0.68.37"></script>
+    <script src="js/config.js?v=0.68.37"></script>
+    <script src="js/notification.js?v=0.68.37"></script>
+    <script src="js/api.js?v=0.68.37"></script>
+    <script src="js/auth.js?v=0.68.37"></script>
+    <script src="js/components/sidebar.js?v=0.68.37"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.68.36"></script><script src="js/alerts.js?v=0.68.36"></script>
+    <script src="js/programs-page.js?v=0.68.37"></script><script src="js/alerts.js?v=0.68.37"></script>
 </body>
 </html>

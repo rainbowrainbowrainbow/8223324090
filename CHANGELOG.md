@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.37 - AI іконки програм
+
+### Products / 31.05.2026 [codex]
+- **Додано керовану генерацію AI-іконок для програм** - у Products зʼявилась ручна дія на картці/формі програми з pending/success/error/retry станами без batch і без автогенерації на деплої.
+- **Збережено серверну правду генерації** - `products` отримав `icon_url`, статус, prompt snapshot, LLM output, final prompt, provider/model, помилку, timestamp і job id.
+- **Cheap-first pipeline зроблено безпечним** - OpenRouter використовується тільки як prompt-refiner, deterministic fallback завжди доступний, Kie.ai still-image job захищений rate limit, advisory lock і client single-flight.
+- **Додано компактні prompt settings** - адміністратор може редагувати guidance для AI-іконок із валідацією, reset-to-default і без перетворення цього в окрему AI-платформу.
+
+---
+
 ## v0.68.36 - стабільне створення подій
 
 ### Timeline booking / 31.05.2026 [codex]

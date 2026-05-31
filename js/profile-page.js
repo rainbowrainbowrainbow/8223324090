@@ -1194,6 +1194,10 @@ function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()
                 <p>${escapeHtml(primary.shortInfo || 'Професійний контекст буде показано після заповнення HR каталогу.')}</p>
             </div>
             <div class="profile-profession-header-stack">
+                <div class="profile-profession-header-stack-title">
+                    <span class="profile-kicker">Додаткові ролі</span>
+                    <strong>${secondary.length ? `${secondary.length} активні` : 'немає'}</strong>
+                </div>
                 ${secondary.length
                     ? secondary.map(item => `
                         <div class="profile-profession-header-chip" style="--profession-color:${escapeHtml(item.color)}">
@@ -1256,7 +1260,14 @@ function renderProfileSecondaryTabs() {
         .join('');
     if (!body) return '';
     return `
-        <nav class="profile-secondary-work-menu" aria-label="Додаткові розділи профілю">
+        <nav class="profile-secondary-work-menu" data-profile-tab-rail="true" aria-label="Додаткові розділи профілю">
+            <div class="profile-secondary-work-menu-head">
+                <div>
+                    <span class="profile-kicker">Розділи профілю</span>
+                    <strong>Робота, акаунт і розвиток</strong>
+                </div>
+                <small>Усі вкладки лишаються в одному компактному маршруті</small>
+            </div>
             <div class="profile-secondary-tabs" role="tablist" aria-label="Додаткові розділи профілю">
                 ${body}
             </div>
@@ -1296,28 +1307,34 @@ function renderProfile() {
             <span>Профіль працівника</span>
         </div>
 
-        <div class="profile-header profile-work-header">
+        <div class="profile-header profile-work-header profile-friendly-shell">
             <div class="profile-identity-block">
                 ${isOwnProfile
                     ? renderProfileAvatarVisual('profile-work-avatar profile-avatar-clickable', p, ' role="button" tabindex="0" title="Змінити аватар" onclick="switchTab(\'settings\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();switchTab(\'settings\');}"')
                     : renderProfileAvatarVisual('profile-work-avatar', p)}
                 <div class="profile-identity-copy">
-                    <div class="profile-kicker">Особистий робочий профіль</div>
-                    <h1>${escapeHtml(name)}</h1>
+                    <div class="profile-identity-title-row">
+                        <div>
+                            <div class="profile-kicker">Особистий робочий профіль</div>
+                            <h1>${escapeHtml(name)}</h1>
+                        </div>
+                        ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
+                    </div>
                     <div class="profile-working-role-wrap">
-                        <div class="profile-role-line">
-                            <span>${escapeHtml(primaryProfession.title)}</span>
-                            ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : ''}
+                        <div class="profile-role-line profile-role-line--primary">
+                            <span class="profile-role-pill profile-role-pill--profession">${escapeHtml(primaryProfession.title)}</span>
                             ${isOwnProfile ? `<button type="button" id="profileWorkingRoleTrigger" class="profile-working-role-trigger" aria-expanded="false" aria-controls="profileWorkingRolePanel">
                                 <small>Робоча роль</small>
                                 <b>${escapeHtml(workingRoleLabel)}</b>
-                            </button>` : `<span>Доступ: ${escapeHtml(roleLabel)}</span>`}
-                            ${username ? `<span>@${escapeHtml(username)}</span>` : ''}
-                            <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                            </button>` : `<span class="profile-role-pill">Доступ: ${escapeHtml(roleLabel)}</span>`}
                         </div>
                         ${isOwnProfile ? renderProfileWorkingRoleControl(workingRoleState) : ''}
                     </div>
-                    ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
+                    <div class="profile-identity-meta-row">
+                        ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : '<span>одна активна професія</span>'}
+                        ${username ? `<span>@${escapeHtml(username)}</span>` : '<span>username не вказано</span>'}
+                        <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                    </div>
                     ${p.user?.bio || p.bio ? `<div class="profile-bio">${escapeHtml(p.user?.bio || p.bio)}</div>` : ''}
                 </div>
             </div>

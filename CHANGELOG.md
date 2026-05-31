@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.36 - стабільне створення подій
+
+### Timeline booking / 31.05.2026 [codex]
+- **Створення event більше не зривається у "Заявку"** - booking drawer бере програму з canonical hidden input або реально selected program card, тому вибрана програма потрапляє в payload.
+- **Після створення timeline примусово підтверджує свіжий зріз** - CRM очищає cache bookings/lines, робить fresh fetch і повторно фокусує створений запис перед будь-яким warning.
+- **Лінії звіряються стабільно** - `lineId` порівнюється як рядок у timeline/UI render paths, щоб number/string mismatch не ховав бронювання.
+- **Pinata-поля повернуто в темну тему** - mode/shared/filler/client service blocks мають dark surface, border і labels.
+
+---
+
 ## v0.68.35 - Мій день і рух задач
 
 ### Profile tasker / 31.05.2026 [codex]

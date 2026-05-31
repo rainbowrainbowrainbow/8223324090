@@ -109,6 +109,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
 
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
+    assert.match(bookingJs, /getSelectedProgramIdFromUi/);
+    assert.match(bookingJs, /findBookingProductById/);
     assert.match(bookingJs, /const hasExplicitProgram = Boolean\(selectedProgramId\)/);
     assert.match(bookingJs, /const hasEvent = maysternyaMode \? true : \(getBookingWorkspaceHasEvent\(\) \|\| hasExplicitProgram\)/);
     assert.match(bookingJs, /booking_workspace_v2/);
@@ -129,6 +131,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /NO_EVENT_TIMELINE_DURATION/);
     assert.match(bookingJs, /getBookingScenarioContentState/);
     assert.match(bookingJs, /revealCreatedBookingBlocks/);
+    assert.match(bookingJs, /refreshCreatedBookingsFromServer/);
+    assert.match(bookingJs, /delete AppState\.cachedLines\[date\]/);
     assert.match(bookingJs, /createdBookingVisibilityMessage/);
     assert.match(bookingJs, /booking-block--just-created/);
     assert.match(bookingJs, /Оберіть програму або додайте зміст заявки/);
@@ -144,6 +148,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
 
     assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));
     assert.match(apiJs, /apiFetchWithAuthRetry/);
+    assert.match(apiJs, /async function apiGetBookings\(date, options = \{\}\)/);
+    assert.match(apiJs, /options\.fresh/);
     assert.match(apiJs, /Array\.isArray\(payload\?\.customers\)/);
     assert.match(customerRoute, /child_birthday/);
     assert.match(customerRoute, /regexp_replace\(COALESCE\(c\.phone/);

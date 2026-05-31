@@ -448,7 +448,7 @@ async function renderTimeline() {
 
     lines.forEach(line => {
         try {
-        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
         const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
@@ -3036,7 +3036,7 @@ async function renderDaySectionHtml(date) {
     `;
 
     for (const line of lines) {
-        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
         html += renderMiniLineHtml(line, lineBookings, start, cellWidth);
     }
 
@@ -3380,13 +3380,13 @@ function updateRoomLoadPanel(bookings, date) {
 }
 
 // v3.9: Cache with TTL
-async function getBookingsForDate(date) {
+async function getBookingsForDate(date, options = {}) {
     const dateStr = formatDate(date);
     const cached = AppState.cachedBookings[dateStr];
-    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+    if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
-    const bookings = await apiGetBookings(dateStr);
+    const bookings = await apiGetBookings(dateStr, { fresh: options.force === true });
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (bookings === null) {
         if (cached) return cached.data;

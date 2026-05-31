@@ -1568,7 +1568,7 @@ async function renderMinimapAsync(container, snapshotDate) {
 
     lines.forEach((line, i) => {
         const y = 2 + i * lh;
-        bookings.filter(b => b.lineId === line.id).forEach(b => {
+        bookings.filter(b => String(b.lineId || '') === String(line.id || '')).forEach(b => {
             const bStart = timeToMinutes(b.time) - start * 60;
             const x = (bStart / totalMin) * canvas.width;
             const w = Math.max((b.duration / totalMin) * canvas.width, 2);
@@ -1709,7 +1709,7 @@ function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, header
         ctx.font = 'bold 16px Arial';
         ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
 
-        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
         lineBookings.forEach(booking => {
             const startMin = timeToMinutes(booking.time) - timeToMinutes(`${start}:00`);
             const bx = padding + timeWidth + (startMin / 15) * cellWidth;
@@ -1947,7 +1947,7 @@ async function exportMultiDayImage() {
             ctx.font = 'bold 14px Arial';
             ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
 
-            const lineBookings = dd.bookings.filter(b => b.lineId === line.id);
+            const lineBookings = dd.bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
             lineBookings.forEach(booking => {
                 const startMin = timeToMinutes(booking.time) - timeToMinutes(`${globalStart}:00`);
                 const bx = padding + timeWidth + (startMin / 15) * cellWidth;

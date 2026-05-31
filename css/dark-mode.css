@@ -1936,7 +1936,11 @@ body.dark-mode .booking-menu-workspace,
 body.dark-mode .booking-package-summary,
 body.dark-mode .booking-menu-position-row,
 body.dark-mode .booking-detail-package,
-body.dark-mode .booking-detail-package-header {
+body.dark-mode .booking-detail-package-header,
+body.dark-mode .pinata-mode-section,
+body.dark-mode .pinata-filler-section,
+body.dark-mode .pinata-shared-section,
+body.dark-mode .pinata-service-section {
     background: rgba(255,255,255,0.03);
     border-color: rgba(255,255,255,0.08);
 }
@@ -1945,7 +1949,11 @@ body.dark-mode .booking-event-toggle-label strong,
 body.dark-mode .maysternya-quick-booking-tools strong,
 body.dark-mode .booking-disclosure-section summary,
 body.dark-mode .booking-menu-position-title,
-body.dark-mode .booking-detail-package-header {
+body.dark-mode .booking-detail-package-header,
+body.dark-mode .pinata-mode-section label,
+body.dark-mode .pinata-filler-section label,
+body.dark-mode .pinata-shared-section label,
+body.dark-mode .pinata-service-section label {
     color: #e2e8f0;
 }
 body.dark-mode .booking-scenario-text,

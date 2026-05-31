@@ -1298,9 +1298,13 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
     }
 }
 
-async function apiGetBookings(date) {
+async function apiGetBookings(date, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${date}`)}`, { headers: getTimelineAuthHeaders(false) });
+        let path = timelineApiUrl(`/bookings/${date}`);
+        if (options.fresh) {
+            path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
+        }
+        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();

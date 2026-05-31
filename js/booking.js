@@ -1409,7 +1409,15 @@ async function openBookingPanel(time, lineId) {
     panelEl?.classList.toggle('booking-panel--minimal-timeline', isMinimalTimelineBookingMode());
     panelEl?.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
     const lines = await getLinesForDate(AppState.selectedDate);
-    const line = lines.find(l => l.id === lineId);
+    const line = lines.find(l => String(l.id) === String(lineId));
+    if (String(lineId || '') === 'afisha') {
+        showNotification('Рядок Афіша не створює звичайні бронювання. Додавайте афішні події через сторінку «Афіша» або оберіть лінію аніматора.', 'warning');
+        return false;
+    }
+    if (!line) {
+        showNotification('Лінію для бронювання не знайдено. Оновіть таймлайн або оберіть активну лінію аніматора.', 'error');
+        return false;
+    }
 
     // C1: Show date in panel
     const dateDisplay = document.getElementById('selectedDateDisplay');
@@ -2049,7 +2057,7 @@ async function renderProgramIcons() {
             const icon = document.createElement('button');
             icon.type = 'button';
             icon.className = `program-icon ${p.category}`;
-            icon.dataset.programId = p.id;
+            icon.dataset.programId = String(p.id);
             icon.dataset.category = p.category || '';
             icon.dataset.search = [
                 p.code,
@@ -2116,7 +2124,7 @@ function filterPrograms() {
 }
 
 function selectProgram(programId) {
-    const program = getProductsSync().find(p => p.id === programId);
+    const program = findBookingProductById(programId);
     if (!program) return;
     if (!getBookingWorkspaceHasEvent()) setBookingWorkspaceHasEvent(true, { markDirty: true });
 
@@ -2124,12 +2132,12 @@ function selectProgram(programId) {
         i.classList.remove('selected');
         i.setAttribute('aria-pressed', 'false');
     });
-    const selectedEl = document.querySelector(`[data-program-id="${programId}"]`);
+    const selectedEl = document.querySelector(`[data-program-id="${bookingBlockSelectorId(programId)}"]`);
     if (selectedEl) {
         selectedEl.classList.add('selected');
         selectedEl.setAttribute('aria-pressed', 'true');
     }
-    document.getElementById('selectedProgram').value = programId;
+    document.getElementById('selectedProgram').value = String(program.id);
 
     const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
     document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
@@ -2470,9 +2478,32 @@ function updateCustomDuration() {
 // СТВОРЕННЯ БРОНЮВАННЯ
 // ==========================================
 
+function normalizeBookingDateKey(value) {
+    if (!value) return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return formatDate(value);
+    const raw = String(value);
+    const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? raw : formatDate(parsed);
+}
+
+function findBookingProductById(programId) {
+    const id = String(programId || '');
+    if (!id) return null;
+    return getProductsSync().find(p => String(p.id) === id) || null;
+}
+
+function getSelectedProgramIdFromUi() {
+    const selectedProgram = document.getElementById('selectedProgram')?.value || '';
+    if (selectedProgram) return String(selectedProgram);
+    const selectedCard = document.querySelector('#programsIcons .program-icon.selected[data-program-id]');
+    return selectedCard?.dataset?.programId ? String(selectedCard.dataset.programId) : '';
+}
+
 function getBookingFormData() {
     const maysternyaMode = isMaysternyaBookingContext();
-    const selectedProgramId = document.getElementById('selectedProgram')?.value || '';
+    const selectedProgramId = getSelectedProgramIdFromUi();
     const hasExplicitProgram = Boolean(selectedProgramId);
     const hasEvent = maysternyaMode ? true : (getBookingWorkspaceHasEvent() || hasExplicitProgram);
     const kitchenEnabled = isBookingKitchenEnabled();
@@ -2480,7 +2511,7 @@ function getBookingFormData() {
     const programId = hasEvent ? selectedProgramId : '';
     const room = document.getElementById('roomSelect')?.value || '';
     const effectiveRoom = maysternyaMode ? (room || MAYSTERNYA_ONLINE_ROOM) : room;
-    const program = programId ? getProductsSync().find(p => p.id === programId) : null;
+    const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
     const lineId = document.getElementById('bookingLine')?.value;
 
@@ -2679,7 +2710,7 @@ function buildBookingObject(formData, program) {
         date: formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
-        programId: hasCatalogProgram ? formData.programId : null,
+        programId: hasCatalogProgram ? String(program.id || formData.programId) : null,
         programCode: hasCatalogProgram ? program.code : (isEducationLessonBooking ? 'LESSON' : (formData.scenario === 'kitchen_only' ? 'KITCHEN' : 'LEAD')),
         label: hasEvent ? formData.label : noEventLabel,
         programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Заняття') : noEventName),
@@ -3150,7 +3181,8 @@ function createdBookingVisibilityMessage(createdBookings = []) {
     const expectedDate = formatDate(AppState.selectedDate);
     const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const actual = [];
-    if (primary.date && primary.date !== expectedDate) actual.push(`дата ${primary.date}`);
+    const primaryDate = normalizeBookingDateKey(primary.date);
+    if (primaryDate && primaryDate !== expectedDate) actual.push(`дата ${primaryDate}`);
     if (primary.businessContext && expectedContext && primary.businessContext !== expectedContext) {
         actual.push(`бізнес ${primary.businessContext}`);
     }
@@ -3158,6 +3190,24 @@ function createdBookingVisibilityMessage(createdBookings = []) {
         return `Сервер створив запис, але не в поточному зрізі таймлайну: ${actual.join(', ')}. Відкрито ${expectedDate}${expectedContext ? ` / ${expectedContext}` : ''}.`;
     }
     return 'Сервер створив запис, але поточний таймлайн його не показав. Перевірте бізнес, дату/лінію або оновіть сторінку.';
+}
+
+async function refreshCreatedBookingsFromServer(createdBookings = []) {
+    const currentDate = formatDate(AppState.selectedDate);
+    const expectedIds = new Set(
+        createdBookings
+            .filter(item => !item?.date || normalizeBookingDateKey(item.date) === currentDate)
+            .map(item => item?.id || item?.bookingId)
+            .filter(Boolean)
+            .map(String)
+    );
+    if (!expectedIds.size) return false;
+
+    delete AppState.cachedBookings[currentDate];
+    delete AppState.cachedLines[currentDate];
+    const fresh = await getBookingsForDate(AppState.selectedDate, { force: true });
+    if (!Array.isArray(fresh)) return false;
+    return fresh.some(item => expectedIds.has(String(item?.id || item?.bookingId || '')));
 }
 
 async function handleBookingSubmit(e) {
@@ -3317,15 +3367,26 @@ async function handleBookingSubmit(e) {
                 : [booking];
             pushUndo('create', createdBookings);
 
-            const changedDates = new Set(createdBookings.map(item => item.date || formatDate(AppState.selectedDate)));
-            changedDates.add(formatDate(AppState.selectedDate));
-            changedDates.forEach(date => { delete AppState.cachedBookings[date]; });
+            const changedDates = new Set(createdBookings.map(item => normalizeBookingDateKey(item.date) || formatDate(AppState.selectedDate)));
+            const selectedDateKey = formatDate(AppState.selectedDate);
+            changedDates.add(selectedDateKey);
+            changedDates.forEach(date => {
+                delete AppState.cachedBookings[date];
+                delete AppState.cachedLines[date];
+            });
             closeBookingPanel(true);
             unlockSubmitBtn();
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
             const seriesCount = createResult?.createdCount || createdBookings.length;
-            const visibility = revealCreatedBookingBlocks(createdBookings);
+            let visibility = revealCreatedBookingBlocks(createdBookings);
+            if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
+                const recovered = await refreshCreatedBookingsFromServer(createdBookings);
+                if (recovered) {
+                    await renderTimeline();
+                    visibility = revealCreatedBookingBlocks(createdBookings);
+                }
+            }
             if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
                 console.error('Created booking is not visible after timeline refresh', { createdBookings, visibility });
                 showNotification(createdBookingVisibilityMessage(createdBookings), 'warning');

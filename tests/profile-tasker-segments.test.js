@@ -81,6 +81,27 @@ test('profile quick task card uses completed-today and today-or-undated remainin
     assert.match(html, /виконано сьогодні/);
 });
 
+test('profile task-count quick segment keeps users in My Day cockpit', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = {
+            stats: {
+                taskQuick: {
+                    completedToday: 2,
+                    remaining: 4
+                }
+            }
+        };
+        cabinetPulseCounts = { alerts: 0, funnel: 0 };
+    `, ctx);
+
+    const html = ctx.renderCabinetPulseCluster();
+
+    assert.match(html, /cabinet-quick-segment--tasks/);
+    assert.match(html, /switchTab\('myday'\)/);
+    assert.doesNotMatch(html, /switchTab\('mytasks'\)/);
+});
+
 test('profile task composer starts collapsed with advanced fields behind an explicit toggle', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext('cabinetTaskComposerExpanded = false;', ctx);
@@ -246,6 +267,25 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /data-cabinet-subtask-done/);
 });
 
+test('profile task cards expose move-to-today drag for typed planned tasks', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetTaskCard({
+        id: 46,
+        title: 'Typed planned task',
+        deadline: '2099-01-01T09:00:00.000Z',
+        ownerUserId: 12,
+        ownerState: 'typed',
+        taskMode: 'work',
+        taskKind: 'action',
+        controlMeta: { canReschedule: true }
+    });
+
+    assert.match(html, /draggable="true"/);
+    assert.match(html, /data-cabinet-task-drag="to-today"/);
+    assert.match(html, /data-cabinet-task-drag-target="today"/);
+    assert.match(html, /data-cabinet-task-action="move-to-today"/);
+});
+
 test('profile my day collapses decomposed cards by default while keeping progress visible', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
@@ -297,6 +337,20 @@ test('profile task cards respect disabled rescheduling control meta', () => {
     assert.match(html, /disabled/);
     assert.doesNotMatch(html, /data-cabinet-task-action="reschedule-overdue"/);
     assert.doesNotMatch(html, /data-cabinet-task-drag="overdue"/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="move-to-today"/);
+});
+
+test('profile planned task cards respect disabled rescheduling control meta', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetTaskCard({
+        id: 47,
+        title: 'Locked planned task',
+        deadline: '2099-01-01T09:00:00.000Z',
+        controlMeta: { canReschedule: false }
+    });
+
+    assert.doesNotMatch(html, /draggable="true"/);
+    assert.doesNotMatch(html, /data-cabinet-task-drag="to-today"/);
     assert.doesNotMatch(html, /data-cabinet-task-action="move-to-today"/);
 });
 
@@ -370,6 +424,46 @@ test('profile overdue to today move resolves the task due value before guarding 
     assert.equal(notices.at(-1)?.type, 'success');
 });
 
+test('profile typed planned task move persists through the same to-today reschedule path', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    vm.runInContext(`
+        myCabinetData = {
+            all: [{
+                id: 88,
+                title: 'Future typed task',
+                deadline: '2099-01-01T09:00:00.000Z',
+                ownerUserId: 12,
+                ownerState: 'typed',
+                controlMeta: { canReschedule: true }
+            }],
+            today: [],
+            overdue: [],
+            next: [{
+                id: 88,
+                title: 'Future typed task',
+                deadline: '2099-01-01T09:00:00.000Z',
+                ownerUserId: 12,
+                ownerState: 'typed',
+                controlMeta: { canReschedule: true }
+            }]
+        };
+    `, ctx);
+    ctx.apiPost = async (url, payload) => {
+        calls.push({ url, payload });
+        return { success: true };
+    };
+    ctx.showNotification = () => {};
+    ctx.refreshMyCabinetTab = async () => {};
+
+    await ctx.moveCabinetTaskToToday(88, 'drag');
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/tasks/88/reschedule');
+    assert.equal(calls[0].payload.sourceSurface, 'profile_my_cabinet_move_to_today_drop');
+    assert.match(calls[0].payload.deadline, /^20\d{2}-\d{2}-\d{2}T18:00:00$/);
+});
+
 test('task reschedule keeps scheduled tasks in the same today projection contract', () => {
     const source = fs.readFileSync(path.join(ROOT, 'services', 'taskExecution.js'), 'utf8');
     const routeSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
@@ -379,7 +473,9 @@ test('task reschedule keeps scheduled tasks in the same today projection contrac
     assert.match(source, /scheduled_end_at - scheduled_start_at/);
     assert.match(source, /schedule_status = CASE/);
     assert.match(source, /profile_my_cabinet_overdue_to_today_drop/);
+    assert.match(source, /profile_my_cabinet_move_to_today_drop/);
     assert.match(routeSource, /profile_my_cabinet_overdue_to_today_drop/);
+    assert.match(routeSource, /profile_my_cabinet_move_to_today_drop/);
 });
 
 test('profile unfinished gamification tabs use soon lockdown by role', () => {

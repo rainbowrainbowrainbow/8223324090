@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.35 - Мій день і рух задач
+
+### Profile tasker / 31.05.2026 [codex]
+- **Task-count у профілі відкриває `Мій день`** - швидкий сегмент задач більше не перекидає користувача у менш зручну вкладку `Мої задачі`, а лишає у денному cockpit.
+- **Typed/planned задачі отримали спільний move-to-today контракт** - задачі з реальним `owner_user_id`, майбутнім дедлайном і дозволеним reschedule тепер мають drag/drop у денний зріз так само стабільно, як overdue-картки.
+- **Protected tasks лишаються захищеними** - `controlMeta.canReschedule=false` і закриті статуси не отримують drag affordance і не проходять move-to-today mutation.
+- **Regression guard розширено** - тести фіксують profile widget navigation, typed planned drag/drop, sourceSurface для нового move route і заборону руху для locked задач.
+
+---
+
 ## v0.68.34 - релізне закріплення бронювання
 
 ### Release / 31.05.2026 [codex]

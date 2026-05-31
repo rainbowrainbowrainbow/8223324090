@@ -156,6 +156,8 @@ function sourceSurface(value) {
         'profile_my_cabinet_overdue_badge',
         'profile_my_cabinet_overdue_to_today_button',
         'profile_my_cabinet_overdue_to_today_drop',
+        'profile_my_cabinet_move_to_today_button',
+        'profile_my_cabinet_move_to_today_drop',
         DEFAULT_TASK_SOURCE_SURFACE
     ].includes(raw)) return raw;
     return DEFAULT_TASK_SOURCE_SURFACE;

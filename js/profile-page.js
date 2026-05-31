@@ -3335,7 +3335,7 @@ function renderCabinetPulseCluster() {
             count: `${formatCabinetPulseCount(taskQuick.completed)} виконано сьогодні, ${formatCabinetPulseCount(taskQuick.remaining)} активні`,
             splitHtml: renderCabinetTaskQuickSplit(taskQuick),
             tone: taskQuick.remaining > 0 ? 'live' : 'zero',
-            action: "switchTab('mytasks')"
+            action: "switchTab('myday')"
         },
         {
             id: 'alerts',
@@ -3527,14 +3527,35 @@ function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}) {
     </span>`;
 }
 
-function cabinetTaskCanMoveToToday(task = {}, dueState = null) {
+function cabinetTaskMoveToTodayState(task = {}, dueState = null) {
+    const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const state = dueState || getCabinetTaskDueState(task, cabinetTaskDueValue(task));
-    return state?.key === 'overdue' && cabinetTaskAllowsReschedule(task);
+    const status = String(task.status || '').toLowerCase();
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+        return { canMove: false, reason: 'Не вдалося визначити задачу', key: state?.key || 'unknown' };
+    }
+    if (['done', 'cancelled', 'archived'].includes(status)) {
+        return { canMove: false, reason: 'Закриті задачі не переносяться', key: state?.key || 'closed' };
+    }
+    if (!cabinetTaskAllowsReschedule(task)) {
+        return { canMove: false, reason: 'Перенесення вимкнено для цієї задачі', key: state?.key || 'locked' };
+    }
+    if (state?.key === 'today') {
+        return { canMove: false, reason: 'Ця задача вже у Мій день', key: 'today' };
+    }
+    if (state?.key === 'none') {
+        return { canMove: false, reason: 'Задача без дати вже входить у денний зріз', key: 'none' };
+    }
+    return { canMove: true, reason: '', key: state?.key || 'unknown' };
+}
+
+function cabinetTaskCanMoveToToday(task = {}, dueState = null) {
+    return cabinetTaskMoveToTodayState(task, dueState).canMove;
 }
 
 function renderCabinetMoveTodayAction(task = {}, taskIdAttr = '', dueState = {}) {
     if (!taskIdAttr || !cabinetTaskCanMoveToToday(task, dueState)) return '';
-    return `<button type="button" class="cabinet-task-move-today" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" title="Перенести прострочену задачу на сьогодні">На сьогодні</button>`;
+    return `<button type="button" class="cabinet-task-move-today" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" title="Перенести задачу у Мій день">На сьогодні</button>`;
 }
 
 function cabinetTaskReportBadge(task = {}) {
@@ -3767,9 +3788,11 @@ function renderCabinetTaskCard(task, compact = false) {
     const priorityLabel = { high: 'Високий', critical: 'Критично', low: 'Низький', normal: 'Звичайний' }[priority] || priority;
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
-    const canMoveToToday = cabinetTaskCanMoveToToday(task, dueState);
+    const moveToTodayState = cabinetTaskMoveToTodayState(task, dueState);
+    const canMoveToToday = moveToTodayState.canMove;
+    const dragKind = dueState.key === 'overdue' ? 'overdue' : 'to-today';
     const dragAttrs = canMoveToToday
-        ? ' draggable="true" data-cabinet-task-drag="overdue" aria-grabbed="false" title="Перетягніть у колонку Сьогодні, щоб перенести задачу на сьогодні"'
+        ? ` draggable="true" data-cabinet-task-drag="${dragKind}" data-cabinet-task-drag-target="today" aria-grabbed="false" title="Перетягніть у колонку Сьогодні, щоб перенести задачу на сьогодні"`
         : '';
     const doneActionLabel = 'Виконати задачу';
     const snoozeActionLabel = 'Відкласти задачу';
@@ -4207,8 +4230,9 @@ function isCabinetTaskDragInteractiveTarget(target) {
 }
 
 function handleCabinetTaskDragStart(event) {
-    const card = event.target?.closest?.('[data-cabinet-task-drag="overdue"]');
+    const card = event.target?.closest?.('[data-cabinet-task-drag]');
     if (!card || !card.closest('.cabinet-shell')) return;
+    if (card.dataset.cabinetTaskDragTarget && card.dataset.cabinetTaskDragTarget !== 'today') return;
     if (isCabinetTaskDragInteractiveTarget(event.target)) {
         event.preventDefault();
         return;
@@ -4486,17 +4510,27 @@ async function moveCabinetTaskToToday(taskId, method = 'button') {
     if (!id) throw new Error('Invalid task id');
     const task = findCabinetTask(id) || {};
     const dueState = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
-    if (dueState.key !== 'overdue') {
-        if (typeof showNotification === 'function') showNotification('Ця задача вже не прострочена', 'info');
-        return;
+    const moveState = cabinetTaskMoveToTodayState(task, dueState);
+    if (!moveState.canMove) {
+        if (dueState.key === 'today' && typeof showNotification === 'function') {
+            showNotification('Ця задача вже у Мій день', 'info');
+            return;
+        }
+        if (dueState.key === 'none' && typeof showNotification === 'function') {
+            showNotification('Задача без дати вже входить у денний зріз', 'info');
+            return;
+        }
+        throw new Error(moveState.reason || 'Цю задачу не можна перенести');
     }
-    if (!cabinetTaskAllowsReschedule(task)) {
-        throw new Error('Перенесення вимкнено для цієї задачі');
-    }
-    await rescheduleCabinetTask(id, 'today', {
-        sourceSurface: method === 'drag'
+    const sourceSurface = method === 'drag'
+        ? (dueState.key === 'overdue'
             ? 'profile_my_cabinet_overdue_to_today_drop'
-            : 'profile_my_cabinet_overdue_to_today_button'
+            : 'profile_my_cabinet_move_to_today_drop')
+        : (dueState.key === 'overdue'
+            ? 'profile_my_cabinet_overdue_to_today_button'
+            : 'profile_my_cabinet_move_to_today_button');
+    await rescheduleCabinetTask(id, 'today', {
+        sourceSurface
     });
 }
 

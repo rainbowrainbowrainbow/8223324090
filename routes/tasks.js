@@ -693,6 +693,8 @@ function sourceSurface(body = {}, fallback = 'task_detail') {
         'profile_my_cabinet_overdue_badge',
         'profile_my_cabinet_overdue_to_today_button',
         'profile_my_cabinet_overdue_to_today_drop',
+        'profile_my_cabinet_move_to_today_button',
+        'profile_my_cabinet_move_to_today_drop',
         'alerts_panel'
     ].includes(raw)) return raw;
     return fallback;

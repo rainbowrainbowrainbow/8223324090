@@ -2092,11 +2092,11 @@ body.dark-mode .cabinet-task-composer-hint {
     transition: opacity 0.18s ease, transform 0.18s ease, filter 0.18s ease;
 }
 
-.cabinet-task-card[data-cabinet-task-drag="overdue"] {
+.cabinet-task-card[data-cabinet-task-drag] {
     cursor: grab;
 }
 
-.cabinet-task-card[data-cabinet-task-drag="overdue"]:active {
+.cabinet-task-card[data-cabinet-task-drag]:active {
     cursor: grabbing;
 }
 

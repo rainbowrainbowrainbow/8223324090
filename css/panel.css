@@ -1047,6 +1047,12 @@ body.timeline-mode-education .booking-block.education-lesson {
     box-shadow: 0 12px 28px rgba(16,185,129,0.3);
 }
 
+.btn-submit.btn-submit--needs-input {
+    cursor: pointer;
+    opacity: 1;
+    filter: none;
+}
+
 .btn-submit:disabled,
 .btn-submit[disabled] {
     cursor: not-allowed;
@@ -1733,6 +1739,38 @@ body.timeline-mode-education .booking-block.education-lesson {
     border-top: 1px solid rgba(59,130,246,0.18);
     font-size: 16px;
     font-weight: 900;
+}
+
+.booking-summary-note {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.08);
+    color: rgba(253, 230, 138, 0.92);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.booking-summary-note--error {
+    border-color: rgba(248, 113, 113, 0.38);
+    background: rgba(127, 29, 29, 0.28);
+    color: #fecaca;
+}
+
+.booking-summary-note strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #fff7ed;
+}
+
+.booking-summary-note ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.booking-summary-note li + li {
+    margin-top: 4px;
 }
 
 .booking-sticky-footer {

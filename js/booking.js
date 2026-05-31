@@ -86,7 +86,8 @@ const BookingPackageState = {
 
 const BookingDrawerState = {
     clientMode: 'search',
-    selectedProgramCategory: 'all'
+    selectedProgramCategory: 'all',
+    validationAttempted: false
 };
 
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
@@ -362,18 +363,36 @@ function getSmartBookingValidationState() {
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
     const programRequired = getBookingWorkspaceHasEvent();
     const warnings = [];
+    const errors = [];
+    const invalidFields = [];
 
-    if (!hasDateTime) {
-        return { valid: false, canSubmit: false, error: 'Не вдалося визначити дату або час для бронювання.', warnings };
-    }
+    if (!hasDateTime) errors.push('Не вдалося визначити дату або час для бронювання.');
     if (!hasRoom && !roomOptional) {
-        return { valid: false, canSubmit: false, error: presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.', warnings };
+        errors.push(presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.');
+        invalidFields.push('roomSelect');
     }
     if (!hasClient) {
-        return { valid: false, canSubmit: false, error: 'Оберіть існуючого клієнта або створіть нового: імʼя + телефон чи Instagram.', warnings };
+        const hasDraftClient = hasAnyNewBookingClientData();
+        const draftName = document.getElementById('customerName')?.value?.trim() || '';
+        const draftPhone = document.getElementById('customerPhone')?.value?.trim() || '';
+        const draftInstagram = document.getElementById('customerInstagram')?.value?.trim() || '';
+        if (hasDraftClient || BookingDrawerState.clientMode === 'new') {
+            if (!draftName) {
+                errors.push('Вкажіть імʼя нового клієнта.');
+                invalidFields.push('customerName');
+            }
+            if (!draftPhone && !draftInstagram) {
+                errors.push('Вкажіть телефон або Instagram нового клієнта.');
+                invalidFields.push('customerPhone', 'customerInstagram');
+            }
+        } else {
+            errors.push('Оберіть існуючого клієнта або створіть нового: імʼя + телефон чи Instagram.');
+            invalidFields.push('customerSearch', 'customerName');
+        }
     }
     if (programRequired && !hasProgram) {
-        return { valid: false, canSubmit: false, error: isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Увімкнено подію, але програму ще не вибрано.', warnings };
+        errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Увімкнено подію, але програму ще не вибрано.');
+        invalidFields.push(isEducation ? 'educationLessonTitle' : 'selectedProgram');
     }
     if (isBookingKitchenEnabled() && !hasBookingKitchenDraft()) {
         warnings.push('Кухня увімкнена, але позиції меню ще не додані.');
@@ -381,7 +400,64 @@ function getSmartBookingValidationState() {
     if (getBookingWorkspaceHasEvent() && !hasProgram) {
         warnings.push('Подія увімкнена, але програму ще не вибрано.');
     }
-    return { valid: true, canSubmit: true, warnings, error: '' };
+    return {
+        valid: errors.length === 0,
+        canSubmit: errors.length === 0,
+        warnings,
+        errors,
+        invalidFields,
+        error: errors[0] || ''
+    };
+}
+
+function formatBookingValidationList(validation) {
+    const errors = Array.isArray(validation?.errors) && validation.errors.length
+        ? validation.errors
+        : (validation?.error ? [validation.error] : []);
+    return errors.map((error, index) => `${index + 1}. ${error}`).join('\n');
+}
+
+function renderBookingValidationIssues(validation) {
+    const errors = Array.isArray(validation?.errors) ? validation.errors : [];
+    if (!errors.length) return '';
+    return `
+        <div class="booking-summary-note booking-summary-note--error">
+            <strong>Ще треба заповнити:</strong>
+            <ul>
+                ${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+}
+
+function applyBookingValidationInvalidFields(validation) {
+    const fieldIds = [
+        'roomSelect',
+        'customerSearch',
+        'customerName',
+        'customerPhone',
+        'customerInstagram',
+        'selectedProgram',
+        'educationLessonTitle'
+    ];
+    const invalid = new Set(validation?.invalidFields || []);
+    fieldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.setAttribute('aria-invalid', invalid.has(id) ? 'true' : 'false');
+    });
+}
+
+function showBookingValidationErrors(validation) {
+    BookingDrawerState.validationAttempted = true;
+    applyBookingValidationInvalidFields(validation);
+    renderBookingPackageSummary();
+    const list = formatBookingValidationList(validation);
+    const message = list
+        ? `Не можна створити бронювання. Заповніть:\n${list}`
+        : 'Перевірте форму бронювання.';
+    showNotification(message, 'error');
+    const hint = document.getElementById('bookingSubmitHint');
+    if (hint) hint.textContent = validation?.error || 'Заповніть обовʼязкові поля.';
 }
 
 function getBookingWorkspaceScenario(options = {}) {
@@ -1026,9 +1102,13 @@ function updateBookingSubmitState() {
     const validation = getSmartBookingValidationState();
     const originalText = submitBtn.dataset.originalText || 'Додати бронювання';
     const isSaving = Boolean(submitBtn.disabled && submitBtn.dataset.originalText && submitBtn.textContent !== originalText);
-    if (!isSaving) submitBtn.disabled = !validation.canSubmit;
+    if (!isSaving) {
+        submitBtn.disabled = false;
+        submitBtn.setAttribute('aria-disabled', validation.canSubmit ? 'false' : 'true');
+        submitBtn.classList.toggle('btn-submit--needs-input', !validation.canSubmit);
+    }
     if (!validation.canSubmit) {
-        hint.textContent = validation.error || 'Оберіть кімнату та клієнта.';
+        hint.textContent = `${validation.error || 'Оберіть кімнату та клієнта.'} Натисніть кнопку — покажу весь список.`;
         return;
     }
     if (validation.warnings?.length) {
@@ -1066,7 +1146,10 @@ function renderBookingPackageSummary() {
         : 'вимкнено';
 
     if (!roomValue && !customerId && !customerName && !hasEvent && !kitchenEnabled) {
-        container.innerHTML = '<div class="booking-summary-empty">Оберіть кімнату і клієнта — підсумок оновиться автоматично.</div>';
+        container.innerHTML = `
+            <div class="booking-summary-empty">Оберіть кімнату і клієнта — підсумок оновиться автоматично.</div>
+            ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
+        `;
         updateBookingSubmitState();
         return;
     }
@@ -1076,6 +1159,7 @@ function renderBookingPackageSummary() {
         <div class="booking-summary-row"><span>Програма</span><strong>${escapeHtml(programLabel)}</strong></div>
         <div class="booking-summary-row"><span>Кухня</span><strong>${escapeHtml(kitchenLabel)}</strong></div>
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
+        ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
     updateBookingSubmitState();
@@ -1323,6 +1407,7 @@ async function openBookingPanel(time, lineId) {
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
     BookingDrawerState.selectedProgramCategory = 'all';
+    BookingDrawerState.validationAttempted = false;
     renderProgramCategoryChips();
     renderSelectedProgramSummary(null);
     document.getElementById('hostsWarning')?.classList.add('hidden');
@@ -2945,27 +3030,48 @@ function unlockSubmitBtn() {
     if (btn) {
         btn.disabled = false;
         btn.textContent = btn.dataset.originalText || 'Додати бронювання';
+        btn.setAttribute('aria-disabled', 'false');
     }
     updateBookingSubmitState();
+}
+
+function collectCreatedBookingRecords(createResult) {
+    const records = [];
+    if (createResult?.booking) records.push(createResult.booking);
+    if (createResult?.mainBooking) records.push(createResult.mainBooking);
+    if (Array.isArray(createResult?.bookings)) records.push(...createResult.bookings);
+    if (Array.isArray(createResult?.linkedBookings)) records.push(...createResult.linkedBookings);
+    if (createResult?.id) records.push({ id: createResult.id });
+    const seen = new Set();
+    return records.filter(record => {
+        const id = record?.id || record?.bookingId;
+        if (!id || seen.has(String(id))) return false;
+        seen.add(String(id));
+        return true;
+    });
+}
+
+function createResultConfirmed(createResult) {
+    if (!createResult || createResult.success === false) return false;
+    return collectCreatedBookingRecords(createResult).length > 0;
 }
 
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
     const submitBtn = document.getElementById('bookingSubmitBtn');
-    if (submitBtn && submitBtn.disabled) return;
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.dataset.originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Збереження...';
-    }
-
     const formData = getBookingFormData();
     const validation = window.BookingForm?.validate ? BookingForm.validate() : { valid: true };
     if (!validation.valid) {
-        showNotification(validation.error || 'Перевірте форму бронювання', 'error');
-        unlockSubmitBtn();
+        showBookingValidationErrors(validation);
         return;
+    }
+    if (submitBtn && submitBtn.disabled) return;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.setAttribute('aria-disabled', 'true');
+        submitBtn.dataset.originalText = submitBtn.dataset.originalText || submitBtn.textContent;
+        submitBtn.textContent = 'Збереження...';
     }
 
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
@@ -3086,6 +3192,11 @@ async function handleBookingSubmit(e) {
                 showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 unlockSubmitBtn(); return;
             }
+            if (!createResultConfirmed(createResult)) {
+                console.error('Booking create returned no durable booking confirmation', createResult);
+                showNotification('Сервер не підтвердив створення бронювання. Таймлайн не оновлено — перевірте поля і спробуйте ще раз.', 'error');
+                unlockSubmitBtn(); return;
+            }
             // v5.27: API now returns { booking: { id, ... } }
             if (createResult && createResult.booking) {
                 booking.id = createResult.booking.id;
@@ -3096,8 +3207,9 @@ async function handleBookingSubmit(e) {
             }
             // History + Telegram handled by server
 
-            const createdBookings = Array.isArray(createResult?.bookings) && createResult.bookings.length
-                ? createResult.bookings
+            const createdRecords = collectCreatedBookingRecords(createResult);
+            const createdBookings = createdRecords.length
+                ? createdRecords.map(item => ({ ...booking, ...item }))
                 : [booking];
             pushUndo('create', createdBookings);
 

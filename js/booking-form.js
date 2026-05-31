@@ -70,7 +70,13 @@ window.BookingForm = {
     validate() {
         if (typeof getSmartBookingValidationState === 'function') {
             const validation = getSmartBookingValidationState();
-            return { valid: validation.valid, error: validation.error };
+            return {
+                valid: validation.valid,
+                error: validation.error,
+                errors: validation.errors || [],
+                invalidFields: validation.invalidFields || [],
+                warnings: validation.warnings || []
+            };
         }
         const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : null;
         const hasEvent = !!formData?.hasEvent;

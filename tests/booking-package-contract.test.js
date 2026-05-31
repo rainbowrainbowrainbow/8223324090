@@ -100,6 +100,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /bookingStickyFooter/);
+    assert.match(html, /id="bookingForm" class="booking-form" novalidate/);
     assert.match(html, /bookingCreateCustomerBtn/);
     assert.match(html, /bookingChangeCustomerBtn/);
     assert.match(html, /programCategoryChips/);
@@ -120,6 +121,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /positionsSubtotal/);
     assert.match(bookingJs, /finalTotal/);
     assert.match(bookingJs, /getSmartBookingValidationState/);
+    assert.match(bookingJs, /formatBookingValidationList/);
+    assert.match(bookingJs, /showBookingValidationErrors/);
+    assert.match(bookingJs, /submitBtn\.disabled = false/);
+    assert.match(bookingJs, /setAttribute\('aria-disabled', validation\.canSubmit \? 'false' : 'true'\)/);
+    assert.match(bookingJs, /collectCreatedBookingRecords/);
+    assert.match(bookingJs, /Сервер не підтвердив створення бронювання/);
     assert.match(bookingJs, /updateBookingSubmitState/);
     assert.match(bookingJs, /renderProgramCategoryChips/);
     assert.match(bookingJs, /renderSelectedProgramSummary/);

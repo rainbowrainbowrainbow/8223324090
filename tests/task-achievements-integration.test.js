@@ -10,6 +10,11 @@ test('task decomposition milestones use the canonical achievements route', () =>
     const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '213_task_decomposition_achievements.sql'), 'utf8');
 
     assert.match(route, /FROM task_subtasks/);
+    assert.match(route, /buildTaskOwnerMatch/);
+    assert.match(route, /completed_parent_tasks/);
+    assert.match(route, /completed_subtasks/);
+    assert.match(route, /tasks_completed:\s*tasksR\.rows\[0\]\?\.cnt/);
+    assert.match(route, /COUNT\(\*\) FILTER \(WHERE is_done = true\)::int AS done/);
     assert.match(route, /decomposed_tasks_completed/);
     assert.match(route, /ai_decomposed_tasks_completed/);
     assert.match(route, /template_decomposed_tasks_completed/);

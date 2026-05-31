@@ -6,6 +6,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { buildTaskOwnerMatch } = require('../services/taskPolicy');
 const log = createLogger('Achievements');
 
 // GET /api/achievements — my achievements with progress
@@ -74,6 +75,8 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const userId = req.user.id;
         const awarded = [];
+        const taskOwnerParams = [];
+        const taskOwnerMatch = buildTaskOwnerMatch(req.user, taskOwnerParams, 't');
 
         // Get all active achievements not yet completed by user
         const uncompleted = await pool.query(`
@@ -92,7 +95,23 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             pool.query("SELECT COUNT(*)::int as cnt FROM boss_rounds WHERE user_id = $1 AND completed = true", [userId]),
             pool.query('SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId]),
             pool.query('SELECT visitor_count, wallpaper_item_id, floor_item_id FROM user_rooms WHERE user_id = $1', [userId]),
-            pool.query("SELECT COUNT(*)::int as cnt FROM tasks WHERE assigned_to = $1 AND status = 'done'", [userId]),
+            pool.query(`
+                SELECT
+                    (
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
+                        + COALESCE(SUM(COALESCE(st.done, 0)), 0)
+                    )::int AS cnt,
+                    COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS parent_cnt,
+                    COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_cnt
+                FROM tasks t
+                LEFT JOIN (
+                    SELECT task_id,
+                           COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                    FROM task_subtasks
+                    GROUP BY task_id
+                ) st ON st.task_id = t.id
+                WHERE ${taskOwnerMatch}
+            `, taskOwnerParams),
             pool.query("SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId]),
             pool.query(`
                 SELECT
@@ -111,8 +130,8 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
                     FROM task_subtasks
                     GROUP BY task_id
                 ) st ON st.task_id = t.id
-                WHERE t.assigned_to = $1
-            `, [userId])
+                WHERE ${taskOwnerMatch}
+            `, taskOwnerParams)
         ]);
         const taskDecomposition = taskDecompositionR.rows[0] || {};
         const criteria = {
@@ -125,6 +144,8 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             room_decorate: (roomR.rows[0]?.wallpaper_item_id || roomR.rows[0]?.floor_item_id) ? 1 : 0,
             room_visitors: roomR.rows[0]?.visitor_count || 0,
             tasks_completed: tasksR.rows[0]?.cnt || 0,
+            completed_parent_tasks: tasksR.rows[0]?.parent_cnt || 0,
+            completed_subtasks: tasksR.rows[0]?.subtask_cnt || 0,
             decomposed_tasks: taskDecomposition.decomposed_tasks || 0,
             decomposed_tasks_completed: taskDecomposition.decomposed_tasks_completed || 0,
             subtasks_completed: taskDecomposition.subtasks_completed || 0,

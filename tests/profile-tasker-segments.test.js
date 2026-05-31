@@ -68,7 +68,7 @@ test('profile quick task card uses completed-today and active My Day workload co
                 activeMyDay: 4,
                 todayRemaining: 3,
                 overdueCarryover: 1,
-                scope: 'completed_today_and_active_my_day_or_undated'
+                scope: 'completed_units_today_and_active_my_day_or_undated'
             }
         }
     });
@@ -77,7 +77,7 @@ test('profile quick task card uses completed-today and active My Day workload co
     assert.equal(counts.remaining, 4);
     assert.equal(counts.todayRemaining, 3);
     assert.equal(counts.overdueCarryover, 1);
-    assert.equal(counts.scope, 'completed_today_and_active_my_day_or_undated');
+    assert.equal(counts.scope, 'completed_units_today_and_active_my_day_or_undated');
     const html = ctx.renderCabinetTaskQuickSplit(counts);
     assert.match(html, /cabinet-quick-half--completed/);
     assert.match(html, /cabinet-quick-half--remaining/);
@@ -103,7 +103,7 @@ test('profile quick task card counts overdue carry-over when activeMyDay is abse
     assert.equal(counts.remaining, 2);
     assert.equal(counts.todayRemaining, 1);
     assert.equal(counts.overdueCarryover, 1);
-    assert.equal(counts.scope, 'completed_today_and_active_my_day_or_undated');
+    assert.equal(counts.scope, 'completed_units_today_and_active_my_day_or_undated');
 });
 
 test('profile task-count quick segment keeps users in My Day cockpit', () => {
@@ -640,6 +640,7 @@ test('profile unfinished gamification tabs use soon lockdown by role', () => {
 
 test('my cabinet task projection counts today, undated and overdue carry-over workload', () => {
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const authSource = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
     assert.match(source, /function taskWorkloadDateSql/);
@@ -647,14 +648,20 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /completed:\s*quickStats\.done_today/);
     assert.match(source, /completedToday:\s*quickStats\.done_today/);
     assert.match(source, /completedTotal:\s*quickStats\.done_total/);
+    assert.match(source, /completedSubtasksToday:\s*quickStats\.subtask_done_today/);
+    assert.match(source, /completedMetricContract:\s*'completed_units = completed_parent_tasks \+ completed_subtasks'/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
     assert.match(source, /active_my_day/);
     assert.match(source, /remaining:\s*activeMyDay/);
-    assert.match(source, /scope:\s*'completed_today_and_active_my_day_or_undated'/);
+    assert.match(source, /scope:\s*'completed_units_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
+    assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
+    assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
+    assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
+    assert.match(authSource, /subtasksDoneToday/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
 });

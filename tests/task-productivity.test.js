@@ -17,7 +17,12 @@ test('derives productivity summary, streak, charts, and source insights from tas
             completed_at: '2026-05-23T08:00:00Z',
             subtask_count: 3,
             subtask_done_count: 3,
-            subtask_ai_count: 3
+            subtask_ai_count: 3,
+            subtask_completed_events: [
+                { id: 11, completed_at: '2026-05-23T08:05:00Z' },
+                { id: 12, completed_at: '2026-05-23T08:10:00Z' },
+                { id: 13, completed_at: '2026-05-23T08:15:00Z' }
+            ]
         },
         {
             id: 2,
@@ -27,7 +32,13 @@ test('derives productivity summary, streak, charts, and source insights from tas
             completed_at: '2026-05-22T08:00:00Z',
             subtask_count: 4,
             subtask_done_count: 4,
-            subtask_template_count: 4
+            subtask_template_count: 4,
+            subtask_completed_events: [
+                { id: 21, completed_at: '2026-05-22T08:05:00Z' },
+                { id: 22, completed_at: '2026-05-22T08:10:00Z' },
+                { id: 23, completed_at: '2026-05-22T08:15:00Z' },
+                { id: 24, completed_at: '2026-05-22T08:20:00Z' }
+            ]
         },
         {
             id: 3,
@@ -47,7 +58,10 @@ test('derives productivity summary, streak, charts, and source insights from tas
             deadline: '2026-05-20T10:00:00Z',
             subtask_count: 2,
             subtask_done_count: 1,
-            subtask_manual_count: 2
+            subtask_manual_count: 2,
+            subtask_completed_events: [
+                { id: 41, completed_at: '2026-05-23T07:30:00Z' }
+            ]
         },
         {
             id: 5,
@@ -63,10 +77,14 @@ test('derives productivity summary, streak, charts, and source insights from tas
     });
 
     assert.equal(data.summary.totalTasks, 4);
-    assert.equal(data.summary.completedTasks, 3);
-    assert.equal(data.summary.completedToday, 1);
-    assert.equal(data.summary.completed7Days, 3);
-    assert.equal(data.summary.completionRate, 75);
+    assert.equal(data.summary.totalWorkUnits, 13);
+    assert.equal(data.summary.completedTasks, 11);
+    assert.equal(data.summary.completedUnits, 11);
+    assert.equal(data.summary.completedParentTasks, 3);
+    assert.equal(data.summary.completedSubtaskUnits, 8);
+    assert.equal(data.summary.completedToday, 5);
+    assert.equal(data.summary.completed7Days, 11);
+    assert.equal(data.summary.completionRate, 85);
     assert.equal(data.summary.overdueCount, 1);
     assert.equal(data.summary.inProgressCount, 1);
     assert.equal(data.summary.parentTasksCompleted, 2);
@@ -80,8 +98,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
     assert.equal(data.streak.current, 3);
     assert.equal(data.streak.longest, 3);
     assert.equal(data.streak.activeToday, true);
-    assert.ok(data.charts.completedByDay.some(item => item.date === '2026-05-23' && item.count === 1));
-    assert.ok(data.charts.createdVsCompleted.some(item => item.date === '2026-05-23' && item.created === 1 && item.completed === 1));
+    assert.ok(data.charts.completedByDay.some(item => item.date === '2026-05-23' && item.count === 5));
+    assert.ok(data.charts.createdVsCompleted.some(item => item.date === '2026-05-23' && item.created === 1 && item.completed === 5));
     assert.ok(data.achievements.some(item => item.id === 'productivity_ai_first_done' && item.unlocked));
     assert.ok(data.achievements.some(item => item.id === 'productivity_template_first_done' && item.unlocked));
 });

@@ -1471,12 +1471,25 @@ router.get('/my-cabinet', async (req, res) => {
         const quickDateSql = taskWorkloadDateSql('t');
         const quickResult = await pool.query(
             `SELECT
-                    COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS done_total,
+                    (
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
+                        + COALESCE(SUM(COALESCE(st.done, 0)), 0)
+                    )::int AS done_total,
+                    (
+                        COUNT(*) FILTER (
+                            WHERE COALESCE(t.status, 'todo') = 'done'
+                              AND t.completed_at IS NOT NULL
+                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
+                        )
+                        + COALESCE(SUM(COALESCE(st.done_today, 0)), 0)
+                    )::int AS done_today,
                     COUNT(*) FILTER (
                         WHERE COALESCE(t.status, 'todo') = 'done'
                           AND t.completed_at IS NOT NULL
                           AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                    )::int AS done_today,
+                    )::int AS parent_done_today,
+                    COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
+                    COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_done_total,
                     COUNT(*) FILTER (
                         WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                           AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
@@ -1490,6 +1503,17 @@ router.get('/my-cabinet', async (req, res) => {
                           AND (${quickDateSql} <= $${quickParams.length}::date OR ${quickDateSql} IS NULL)
                     )::int AS active_my_day
              FROM tasks t
+             LEFT JOIN (
+                SELECT task_id,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done,
+                       COUNT(*) FILTER (
+                           WHERE is_done = true
+                             AND completed_at IS NOT NULL
+                             AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
+                       )::int AS done_today
+                FROM task_subtasks
+                GROUP BY task_id
+             ) st ON st.task_id = t.id
              WHERE ${quickOwnerMatch}
                ${quickBusinessCondition}`,
             quickParams
@@ -1523,13 +1547,17 @@ router.get('/my-cabinet', async (req, res) => {
                     completed: quickStats.done_today || 0,
                     completedToday: quickStats.done_today || 0,
                     completedTotal: quickStats.done_total || 0,
+                    completedParentToday: quickStats.parent_done_today || 0,
+                    completedSubtasksToday: quickStats.subtask_done_today || 0,
+                    completedSubtasksTotal: quickStats.subtask_done_total || 0,
                     completedHistoryShown: completedHistory.length,
                     completedHistoryOverflow: Math.max(0, Number(quickStats.done_total || 0) - completedHistory.length),
                     remaining: activeMyDay,
                     todayRemaining: remainingToday || buckets.today.length,
                     overdueCarryover,
                     activeMyDay,
-                    scope: 'completed_today_and_active_my_day_or_undated'
+                    scope: 'completed_units_today_and_active_my_day_or_undated',
+                    completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks'
                 },
                 waitingCount: buckets.waiting.length,
                 overdueCount: buckets.overdue.length,

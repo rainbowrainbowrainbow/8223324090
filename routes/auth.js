@@ -366,6 +366,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         const teamTaskBusinessCondition = pushBusinessScopeCondition(teamTaskParams, businessScope, 't');
         const pointTaskParams = [username];
         const pointTaskBusinessCondition = pushBusinessScopeCondition(pointTaskParams, businessScope, 't');
+        const completedUnitParams = [...ownerParams];
 
         const now = new Date();
         const today = kyivDateStr(now);
@@ -373,6 +374,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // Previous week range for delta comparison
         const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
         const twoWeeksAgo = new Date(now); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+        const completedUnitTodayRef = `$${completedUnitParams.length + 1}`;
+        const completedUnitWeekAgoRef = `$${completedUnitParams.length + 2}`;
+        const completedUnitTwoWeeksAgoRef = `$${completedUnitParams.length + 3}`;
+        completedUnitParams.push(today, weekAgo.toISOString(), twoWeeksAgo.toISOString());
 
         const results = await Promise.allSettled([
             // 0: Points (current month)
@@ -612,6 +617,56 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  FROM hr_professions
                  WHERE is_active = true
                  ORDER BY sort_order ASC, title ASC`
+            ),
+            // 27: Completed work units (parent tasks + completed subtasks)
+            pool.query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE COALESCE(tasks.status, 'todo') = 'done')::int AS parent_done_total,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                          AND tasks.completed_at IS NOT NULL
+                          AND DATE(tasks.completed_at AT TIME ZONE 'Europe/Kyiv') = ${completedUnitTodayRef}::date
+                    )::int AS parent_done_today,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                          AND tasks.completed_at IS NOT NULL
+                          AND tasks.completed_at >= ${completedUnitWeekAgoRef}
+                    )::int AS parent_done_this_week,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                          AND tasks.completed_at IS NOT NULL
+                          AND tasks.completed_at >= ${completedUnitTwoWeeksAgoRef}
+                          AND tasks.completed_at < ${completedUnitWeekAgoRef}
+                    )::int AS parent_done_last_week,
+                    COALESCE(SUM(COALESCE(st.done_total, 0)), 0)::int AS subtask_done_total,
+                    COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
+                    COALESCE(SUM(COALESCE(st.done_this_week, 0)), 0)::int AS subtask_done_this_week,
+                    COALESCE(SUM(COALESCE(st.done_last_week, 0)), 0)::int AS subtask_done_last_week
+                 FROM tasks
+                 LEFT JOIN (
+                    SELECT task_id,
+                           COUNT(*) FILTER (WHERE is_done = true)::int AS done_total,
+                           COUNT(*) FILTER (
+                               WHERE is_done = true
+                                 AND completed_at IS NOT NULL
+                                 AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = ${completedUnitTodayRef}::date
+                           )::int AS done_today,
+                           COUNT(*) FILTER (
+                               WHERE is_done = true
+                                 AND completed_at IS NOT NULL
+                                 AND completed_at >= ${completedUnitWeekAgoRef}
+                           )::int AS done_this_week,
+                           COUNT(*) FILTER (
+                               WHERE is_done = true
+                                 AND completed_at IS NOT NULL
+                                 AND completed_at >= ${completedUnitTwoWeeksAgoRef}
+                                 AND completed_at < ${completedUnitWeekAgoRef}
+                           )::int AS done_last_week
+                    FROM task_subtasks
+                    GROUP BY task_id
+                 ) st ON st.task_id = tasks.id
+                 WHERE ${ownerWhere}`,
+                completedUnitParams
             )
         ]);
 
@@ -639,8 +694,19 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 else if (r.status === 'in_progress') tasks.in_progress = r.count;
                 else if (r.status === 'todo') tasks.assigned += r.count;
             });
-            tasks.total = tasks.assigned + tasks.in_progress + tasks.done;
         }
+        const completedUnitR = get(27);
+        const completedUnits = completedUnitR?.rows?.[0] || {};
+        const parentDoneTotal = Number(completedUnits.parent_done_total || tasks.done || 0);
+        const subtaskDoneTotal = Number(completedUnits.subtask_done_total || 0);
+        tasks.parentDone = parentDoneTotal;
+        tasks.completedParentTasks = parentDoneTotal;
+        tasks.subtasksDone = subtaskDoneTotal;
+        tasks.completedSubtasks = subtaskDoneTotal;
+        tasks.completedUnits = parentDoneTotal + subtaskDoneTotal;
+        tasks.completedMetricContract = 'completed_units = completed_parent_tasks + completed_subtasks';
+        tasks.done = tasks.completedUnits;
+        tasks.total = tasks.assigned + tasks.in_progress + tasks.done;
 
         // Overdue tasks with details
         const overdueR = get(3);
@@ -789,8 +855,20 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // Deltas
         const deltaTasksR = get(18);
         const deltaBkR = get(19);
+        const parentThisWeek = Number(completedUnits.parent_done_this_week ?? deltaTasksR?.rows?.[0]?.this_week ?? 0);
+        const parentLastWeek = Number(completedUnits.parent_done_last_week ?? deltaTasksR?.rows?.[0]?.last_week ?? 0);
+        const subtaskThisWeek = Number(completedUnits.subtask_done_this_week || 0);
+        const subtaskLastWeek = Number(completedUnits.subtask_done_last_week || 0);
         const deltas = {
-            tasksDone: deltaTasksR ? { thisWeek: deltaTasksR.rows[0].this_week, lastWeek: deltaTasksR.rows[0].last_week } : null,
+            tasksDone: {
+                thisWeek: parentThisWeek + subtaskThisWeek,
+                lastWeek: parentLastWeek + subtaskLastWeek,
+                parentThisWeek,
+                parentLastWeek,
+                subtaskThisWeek,
+                subtaskLastWeek,
+                completedMetricContract: tasks.completedMetricContract
+            },
             bookings: deltaBkR ? { thisWeek: deltaBkR.rows[0].this_week, lastWeek: deltaBkR.rows[0].last_week } : null
         };
 
@@ -804,10 +882,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // Day progress
         const dayBkR = get(21);
         const dayTasksR = get(22);
+        const parentDoneToday = Number(completedUnits.parent_done_today ?? dayTasksR?.rows?.[0]?.done_today ?? 0);
+        const subtaskDoneToday = Number(completedUnits.subtask_done_today || 0);
         const dayProgress = {
             bookingsToday: dayBkR ? dayBkR.rows[0].count : 0,
-            tasksDoneToday: dayTasksR ? dayTasksR.rows[0].done_today : 0,
-            tasksRemaining: dayTasksR ? dayTasksR.rows[0].remaining : 0
+            tasksDoneToday: parentDoneToday + subtaskDoneToday,
+            taskParentsDoneToday: parentDoneToday,
+            subtasksDoneToday: subtaskDoneToday,
+            tasksRemaining: dayTasksR ? dayTasksR.rows[0].remaining : 0,
+            completedMetricContract: tasks.completedMetricContract
         };
 
         // Auto-check achievements

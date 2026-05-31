@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.50 - Subtask completed metrics truth
+
+### Tasks / Profile / 31.05.2026 [codex]
+- **Підзадачі тепер рахуються у виконане** - кожна завершена `task_subtasks.is_done = true` додає один completed unit у персональні метрики поруч із завершеними parent-задачами.
+- **Контракт став явним** - канонічна формула для особистої продуктивності: `completed_units = completed_parent_tasks + completed_subtasks`.
+- **Profile, My Cabinet і achievements читають одну правду** - `/api/auth/profile`, `/api/tasks/my-cabinet`, `/api/tasks/productivity`, dashboard personal tasker і `/api/achievements/check` більше не розходяться між parent-only і subtask-aware числами.
+- **Rollback без накрутки** - зняття галочки з підзадачі прибирає її з метрики, reorder або редагування тексту не змінюють completed units, а parent completion лишається окремим завершеним unit.
+
+---
+
 ## v0.68.49 - Profile snapped layout fix
 
 ### Profile / 31.05.2026 [codex]

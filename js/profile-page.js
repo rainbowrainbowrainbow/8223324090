@@ -3288,7 +3288,7 @@ function cabinetTaskQuickCounts(data = myCabinetData) {
         remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
         todayRemaining: safeToday > 0 ? Math.floor(safeToday) : 0,
         overdueCarryover: safeOverdue > 0 ? Math.floor(safeOverdue) : 0,
-        scope: quick.scope || 'completed_today_and_active_my_day_or_undated'
+        scope: quick.scope || 'completed_units_today_and_active_my_day_or_undated'
     };
 }
 

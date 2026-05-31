@@ -47,6 +47,50 @@ function completionDate(row) {
     return row.completed_at || row.completedAt || null;
 }
 
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function subtaskCompletionEvents(row = {}) {
+    const raw = row.subtask_completed_events ?? row.subtaskCompletedEvents ?? [];
+    return parseJsonArray(raw)
+        .map(item => {
+            const completedAt = item?.completed_at || item?.completedAt || item?.completed_at_ts || null;
+            if (!completedAt) return null;
+            return {
+                type: 'subtask',
+                taskId: row.id || row.task_id || row.taskId || null,
+                subtaskId: item.id || item.subtask_id || item.subtaskId || null,
+                completedAt
+            };
+        })
+        .filter(Boolean);
+}
+
+function completionUnitEvents(rows = []) {
+    const events = [];
+    rows.filter(isCountable).forEach(row => {
+        const parentCompletedAt = completionDate(row);
+        if (isDone(row) && parentCompletedAt) {
+            events.push({
+                type: 'task',
+                taskId: row.id || row.task_id || row.taskId || null,
+                subtaskId: null,
+                completedAt: parentCompletedAt
+            });
+        }
+        events.push(...subtaskCompletionEvents(row));
+    });
+    return events;
+}
+
 function createdDate(row) {
     return row.created_at || row.createdAt || null;
 }
@@ -235,13 +279,11 @@ function buildTaskProductivity(rows = [], options = {}) {
     const activeRows = rows.filter(isActive);
     const doneRows = countableRows.filter(isDone);
     const datedDoneRows = doneRows.filter(row => completionDate(row));
-    const completedDateKeys = datedDoneRows.map(row => dateKey(completionDate(row), timeZone)).filter(Boolean);
+    const completedUnitRows = completionUnitEvents(countableRows);
+    const completedDateKeys = completedUnitRows.map(row => dateKey(row.completedAt, timeZone)).filter(Boolean);
     const day7Start = addDays(today, -6);
     const day30Start = addDays(today, -29);
 
-    const completedToday = completedDateKeys.filter(key => key === today).length;
-    const completed7Days = completedDateKeys.filter(key => key >= day7Start && key <= today).length;
-    const completed30Days = completedDateKeys.filter(key => key >= day30Start && key <= today).length;
     const decomposedRows = countableRows.filter(row => numberValue(row.subtask_count ?? row.subtaskCount) > 0);
     const plainRows = countableRows.filter(row => numberValue(row.subtask_count ?? row.subtaskCount) <= 0);
     const decomposedDoneRows = decomposedRows.filter(isDone);
@@ -249,6 +291,12 @@ function buildTaskProductivity(rows = [], options = {}) {
 
     const totalSubtasks = countableRows.reduce((sum, row) => sum + numberValue(row.subtask_count ?? row.subtaskCount), 0);
     const doneSubtasks = countableRows.reduce((sum, row) => sum + numberValue(row.subtask_done_count ?? row.subtaskDoneCount), 0);
+    const completedParentTasks = doneRows.length;
+    const completedUnits = completedParentTasks + doneSubtasks;
+    const totalWorkUnits = countableRows.length + totalSubtasks;
+    const completedToday = completedDateKeys.filter(key => key === today).length;
+    const completed7Days = completedDateKeys.filter(key => key >= day7Start && key <= today).length;
+    const completed30Days = completedDateKeys.filter(key => key >= day30Start && key <= today).length;
 
     const overdueRows = activeRows.filter(row => {
         const key = dateKey(dueDate(row), timeZone);
@@ -282,12 +330,17 @@ function buildTaskProductivity(rows = [], options = {}) {
 
     const summary = {
         totalTasks: countableRows.length,
+        totalWorkUnits,
         activeTasks: activeRows.length,
-        completedTasks: doneRows.length,
+        completedTasks: completedUnits,
+        completedUnits,
+        completedParentTasks,
+        completedTaskRows: completedParentTasks,
+        completedSubtaskUnits: doneSubtasks,
         completedToday,
         completed7Days,
         completed30Days,
-        completionRate: percent(doneRows.length, countableRows.length),
+        completionRate: percent(completedUnits, totalWorkUnits),
         overdueCount: overdueRows.length,
         inProgressCount: inProgressRows.length,
         parentTasksCompleted: decomposedDoneRows.length,
@@ -297,11 +350,11 @@ function buildTaskProductivity(rows = [], options = {}) {
 
     const streak = calculateCompletionStreak(completedDateKeys, today);
     const charts = {
-        completedByDay: countByDate(datedDoneRows, completionDate, 14, today, timeZone),
+        completedByDay: countByDate(completedUnitRows, row => row.completedAt, 14, today, timeZone),
         createdVsCompleted: buildDayRange(today, 14).map(day => ({
             date: day,
             created: countableRows.filter(row => dateKey(createdDate(row), timeZone) === day).length,
-            completed: datedDoneRows.filter(row => dateKey(completionDate(row), timeZone) === day).length
+            completed: completedUnitRows.filter(row => dateKey(row.completedAt, timeZone) === day).length
         })),
         decompositionSourceSplit: Object.entries(sourceBreakdown)
             .map(([source, count]) => ({ source, count }))
@@ -319,7 +372,8 @@ function buildTaskProductivity(rows = [], options = {}) {
             scope: 'current_user',
             timeZone,
             today,
-            completionDateSource: 'tasks.completed_at',
+            completionDateSource: 'tasks.completed_at + task_subtasks.completed_at',
+            completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks',
             decompositionSourceTruth: 'task_subtasks.source_type',
             templateAiSourceRule: 'derived_when_template_and_ai_subtasks_coexist',
             achievementMode: 'derived_idempotent_not_persisted'
@@ -347,7 +401,8 @@ async function getTaskProductivity(pool, user, options = {}) {
                 COALESCE(st.manual_count, 0)::int AS subtask_manual_count,
                 COALESCE(st.template_count, 0)::int AS subtask_template_count,
                 COALESCE(st.ai_count, 0)::int AS subtask_ai_count,
-                COALESCE(st.system_count, 0)::int AS subtask_system_count
+                COALESCE(st.system_count, 0)::int AS subtask_system_count,
+                COALESCE(st.completed_events, '[]'::json) AS subtask_completed_events
          FROM tasks t
          LEFT JOIN (
             SELECT task_id,
@@ -356,7 +411,12 @@ async function getTaskProductivity(pool, user, options = {}) {
                    COUNT(*) FILTER (WHERE COALESCE(source_type, 'manual') = 'manual')::int AS manual_count,
                    COUNT(*) FILTER (WHERE COALESCE(source_type, 'manual') = 'template')::int AS template_count,
                    COUNT(*) FILTER (WHERE COALESCE(source_type, 'manual') = 'ai')::int AS ai_count,
-                   COUNT(*) FILTER (WHERE COALESCE(source_type, 'manual') = 'system')::int AS system_count
+                   COUNT(*) FILTER (WHERE COALESCE(source_type, 'manual') = 'system')::int AS system_count,
+                   json_agg(json_build_object(
+                       'id', id,
+                       'completed_at', completed_at
+                   ) ORDER BY completed_at ASC, id ASC)
+                       FILTER (WHERE is_done = true AND completed_at IS NOT NULL) AS completed_events
             FROM task_subtasks
             GROUP BY task_id
          ) st ON st.task_id = t.id

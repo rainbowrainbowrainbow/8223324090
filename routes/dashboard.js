@@ -137,6 +137,19 @@ function isTaskerDoneToday(row = {}) {
     return dateOnlyKyiv(completedAt) === getKyivDateStr();
 }
 
+function taskerSubtaskStats(row = {}) {
+    const summary = normalizeSubtaskSummary(row);
+    const doneToday = summary.subtasks.filter(item => {
+        if (!(item.isDone || item.is_done)) return false;
+        return dateOnlyKyiv(item.completedAt || item.completed_at) === getKyivDateStr();
+    }).length;
+    return {
+        total: summary.subtaskCount || 0,
+        done: summary.subtaskDoneCount || 0,
+        doneToday
+    };
+}
+
 function matchesTaskerUserIdentity(row = {}, user, fields = []) {
     const userId = normalizeUserId(user);
     if (userId && fields.some(field => Number(row[field] || 0) === userId)) return true;
@@ -149,12 +162,19 @@ function matchesTaskerUserIdentity(row = {}, user, fields = []) {
 }
 
 function taskerStats(tasks = []) {
-    const total = tasks.length;
-    const done = tasks.filter(task => TASKER_DONE_STATUSES.has(normalizeTaskStatus(task.status))).length;
+    const subtaskStats = tasks.reduce((acc, task) => {
+        const stats = taskerSubtaskStats(task);
+        acc.total += stats.total;
+        acc.done += stats.done;
+        acc.doneToday += stats.doneToday;
+        return acc;
+    }, { total: 0, done: 0, doneToday: 0 });
+    const total = tasks.length + subtaskStats.total;
+    const done = tasks.filter(task => TASKER_DONE_STATUSES.has(normalizeTaskStatus(task.status))).length + subtaskStats.done;
     const active = tasks.filter(task => !isTaskerClosed(task)).length;
     const todo = tasks.filter(task => normalizeTaskStatus(task.status) === 'todo').length;
     const inProgress = tasks.filter(task => normalizeTaskStatus(task.status) === 'in_progress').length;
-    const doneToday = tasks.filter(isTaskerDoneToday).length;
+    const doneToday = tasks.filter(isTaskerDoneToday).length + subtaskStats.doneToday;
     const overdue = tasks.filter(isTaskerOverdue).length;
     return {
         total,
@@ -178,6 +198,11 @@ function normalizeTaskerStatsRow(row = {}) {
         inProgress: Number(row.in_progress || row.inProgress || 0),
         done,
         doneToday: Number(row.done_today || row.doneToday || 0),
+        parentDone: Number(row.parent_done || row.parentDone || 0),
+        subtaskDone: Number(row.subtask_done || row.subtaskDone || 0),
+        parentDoneToday: Number(row.parent_done_today || row.parentDoneToday || 0),
+        subtaskDoneToday: Number(row.subtask_done_today || row.subtaskDoneToday || 0),
+        completedMetricContract: row.completed_metric_contract || 'completed_units = completed_parent_tasks + completed_subtasks',
         overdue: Number(row.overdue || 0),
         completionRate: total ? Math.round((done / total) * 100) : 0
     };
@@ -797,25 +822,53 @@ router.get('/widgets/:type', async (req, res) => {
                 const statsParams = [];
                 const statsVisibility = buildTaskVisibilityScope(req.user, statsParams, 't');
                 statsParams.push(getKyivDateStr());
+                const statsTodayRef = `$${statsParams.length}`;
                 const statsBusinessCondition = appendDashboardBusinessScope(statsParams, businessScope, 't');
                 const statsResult = await pool.query(`
                     SELECT
-                        COUNT(*)::int AS total,
+                        (COUNT(*) + COALESCE(SUM(COALESCE(st.total, 0)), 0))::int AS total,
                         COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived'))::int AS active,
                         COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'todo')::int AS todo,
                         COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'in_progress')::int AS in_progress,
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))::int AS done,
+                        (
+                            COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))
+                            + COALESCE(SUM(COALESCE(st.done, 0)), 0)
+                        )::int AS done,
+                        (
+                            COUNT(*) FILTER (
+                                WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete')
+                                  AND t.completed_at IS NOT NULL
+                                  AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
+                            )
+                            + COALESCE(SUM(COALESCE(st.done_today, 0)), 0)
+                        )::int AS done_today,
+                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))::int AS parent_done,
                         COUNT(*) FILTER (
                             WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete')
                               AND t.completed_at IS NOT NULL
-                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${statsParams.length}::date
-                        )::int AS done_today,
+                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
+                        )::int AS parent_done_today,
+                        COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_done,
+                        COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
+                        'completed_units = completed_parent_tasks + completed_subtasks' AS completed_metric_contract,
                         COUNT(*) FILTER (
                             WHERE t.deadline IS NOT NULL
                               AND t.deadline < NOW()
                               AND COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived')
                         )::int AS overdue
                     FROM tasks t
+                    LEFT JOIN (
+                        SELECT task_id,
+                               COUNT(*)::int AS total,
+                               COUNT(*) FILTER (WHERE is_done = true)::int AS done,
+                               COUNT(*) FILTER (
+                                   WHERE is_done = true
+                                     AND completed_at IS NOT NULL
+                                     AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
+                               )::int AS done_today
+                        FROM task_subtasks
+                        GROUP BY task_id
+                    ) st ON st.task_id = t.id
                     WHERE COALESCE(t.status, 'todo') != 'archived'
                     ${statsVisibility}
                     ${statsBusinessCondition}

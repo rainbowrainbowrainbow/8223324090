@@ -369,7 +369,7 @@ function getNextTimelineAnimatorLine(lines, dateStr) {
 
     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
     return {
-        id: `line${Date.now()}_${dateStr}`,
+        id: `manual_animator_${Date.now()}_${dateStr}`,
         name: `Аніматор ${nextNum}`,
         color: colors[(Array.isArray(lines) ? lines.length : 0) % colors.length],
         fromSheet: false,

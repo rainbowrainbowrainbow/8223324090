@@ -131,7 +131,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /NO_EVENT_TIMELINE_DURATION/);
     assert.match(bookingJs, /getBookingScenarioContentState/);
     assert.match(bookingJs, /revealCreatedBookingBlocks/);
-    assert.match(bookingJs, /refreshCreatedBookingsFromServer/);
+    assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
     assert.match(bookingJs, /invalidateBookingTimelineDateCache\(date\)/);
     assert.match(bookingJs, /createdBookingVisibilityMessage/);
     assert.match(bookingJs, /booking-block--just-created/);

@@ -63,7 +63,8 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingJs, /option\.dataset\.lineId = line\.id/);
     assert.match(bookingJs, /function getBookingLineSnapshot/);
     assert.match(bookingJs, /lineName: formData\.lineName/);
-    assert.match(bookingJs, /primeCreatedBookingsInTimelineCache/);
+    assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
+    assert.doesNotMatch(bookingJs, /primeCreatedBookingsInTimelineCache/);
 
     assert.match(bookingsRoute, /async function ensureParkAnimatorLine/);
     assert.match(bookingsRoute, /async function ensureBookingTimelineLine/);

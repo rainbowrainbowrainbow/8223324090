@@ -3202,24 +3202,36 @@ function createdBookingSuccessMessage(createdBookings = [], seriesCount = 1) {
     return 'Бронювання створено!';
 }
 
-function createdBookingVisibilityDiagnostics(createdBookings = []) {
+function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = null) {
     const expectedDate = formatDate(AppState.selectedDate);
     const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
-    const visibleLineIds = new Set((AppState.lines || []).map(line => String(line?.id || '')).filter(Boolean));
+    const visibleLineIds = snapshot?.lineIds instanceof Set
+        ? snapshot.lineIds
+        : new Set((AppState.lines || []).map(line => String(line?.id || '')).filter(Boolean));
+    const bookingsById = snapshot?.bookingsById instanceof Map ? snapshot.bookingsById : new Map();
+    const missingIds = snapshot?.missingIds instanceof Set ? snapshot.missingIds : new Set();
     return createdBookings.map(booking => {
         const id = booking?.id || booking?.bookingId || '';
+        const serverBooking = id ? bookingsById.get(String(id)) : null;
+        const source = serverBooking ? { ...booking, ...serverBooking } : booking;
         const reasons = [];
-        const date = normalizeBookingDateKey(booking?.date);
-        const lineId = String(booking?.lineId || booking?.line_id || '').trim();
-        const block = findCreatedBookingBlock(booking);
+        const date = normalizeBookingDateKey(source?.date);
+        const lineId = String(source?.lineId || source?.line_id || '').trim();
+        const status = source?.status || booking?.status || '';
+        const block = findCreatedBookingBlock(source);
 
+        if (id && missingIds.has(String(id))) reasons.push(`серверний список дня не повернув запис ${id}`);
         if (date && date !== expectedDate) reasons.push(`дата ${date}`);
-        if (booking?.businessContext && expectedContext && booking.businessContext !== expectedContext) {
-            reasons.push(`бізнес ${booking.businessContext}`);
+        if (source?.businessContext && expectedContext && source.businessContext !== expectedContext) {
+            reasons.push(`бізнес ${source.businessContext}`);
         }
+        if (!lineId) reasons.push('сервер повернув запис без лінії');
         if (lineId && visibleLineIds.size && !visibleLineIds.has(lineId)) {
             reasons.push(`лінія ${lineId} не відкрита в поточному таймлайні`);
         }
+        const filter = AppState.statusFilter || 'all';
+        if (!block && status === 'preliminary' && filter === 'confirmed') reasons.push('попередній запис прихований фільтром "Підтверджені"');
+        if (!block && status && status !== 'preliminary' && filter === 'preliminary') reasons.push('підтверджений запис прихований фільтром "Попередні"');
         if (block?.classList?.contains('status-hidden')) reasons.push('запис прихований фільтром статусу');
         if (!block && !reasons.length) reasons.push('DOM-блок не відрендерився після refresh');
 
@@ -3227,28 +3239,33 @@ function createdBookingVisibilityDiagnostics(createdBookings = []) {
     });
 }
 
-function createdBookingVisibilityMessage(createdBookings = []) {
+function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {
     const primary = createdBookings[0] || {};
+    const primaryId = primary?.id || primary?.bookingId || '';
+    const primaryServer = primaryId && snapshot?.bookingsById instanceof Map
+        ? snapshot.bookingsById.get(String(primaryId))
+        : null;
+    const source = primaryServer ? { ...primary, ...primaryServer } : primary;
     const expectedDate = formatDate(AppState.selectedDate);
     const expectedContext = window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const actual = [];
-    const primaryDate = normalizeBookingDateKey(primary.date);
+    const primaryDate = normalizeBookingDateKey(source.date);
     if (primaryDate && primaryDate !== expectedDate) actual.push(`дата ${primaryDate}`);
-    if (primary.businessContext && expectedContext && primary.businessContext !== expectedContext) {
-        actual.push(`бізнес ${primary.businessContext}`);
+    if (source.businessContext && expectedContext && source.businessContext !== expectedContext) {
+        actual.push(`бізнес ${source.businessContext}`);
     }
     if (actual.length) {
         return `Сервер створив запис, але не в поточному зрізі таймлайну: ${actual.join(', ')}. Відкрито ${expectedDate}${expectedContext ? ` / ${expectedContext}` : ''}.`;
     }
-    const diagnostics = createdBookingVisibilityDiagnostics(createdBookings);
+    const diagnostics = createdBookingVisibilityDiagnostics(createdBookings, snapshot);
     const reason = diagnostics.flatMap(item => item.reasons || [])[0];
     if (reason) {
-        return `Сервер створив запис, але поточний таймлайн його не показав: ${reason}. Оновіть сторінку або оберіть правильну лінію.`;
+        return `Сервер створив запис, але поточний таймлайн його не показав: ${reason}. Перевірте бізнес, дату, фільтр або оберіть правильну лінію.`;
     }
     return 'Сервер створив запис, але поточний таймлайн його не показав. Перевірте бізнес, дату/лінію або оновіть сторінку.';
 }
 
-async function refreshCreatedBookingsFromServer(createdBookings = []) {
+async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     const currentDate = formatDate(AppState.selectedDate);
     const expectedIds = new Set(
         createdBookings
@@ -3257,39 +3274,61 @@ async function refreshCreatedBookingsFromServer(createdBookings = []) {
             .filter(Boolean)
             .map(String)
     );
-    if (!expectedIds.size) return false;
+    const snapshot = {
+        date: currentDate,
+        expectedIds,
+        lines: [],
+        bookings: [],
+        bookingsById: new Map(),
+        foundIds: new Set(),
+        missingIds: new Set(expectedIds),
+        lineIds: new Set()
+    };
+    if (!expectedIds.size) return snapshot;
 
     invalidateBookingTimelineDateCache(currentDate);
-    const fresh = await getBookingsForDate(AppState.selectedDate, { force: true });
-    if (!Array.isArray(fresh)) return false;
-    return fresh.some(item => expectedIds.has(String(item?.id || item?.bookingId || '')));
-}
+    const [freshLines, freshBookings] = await Promise.all([
+        getLinesForDate(AppState.selectedDate, { force: true }).catch(error => {
+            console.error('[Booking] Fresh timeline lines fetch failed after create', error);
+            return null;
+        }),
+        getBookingsForDate(AppState.selectedDate, { force: true }).catch(error => {
+            console.error('[Booking] Fresh timeline bookings fetch failed after create', error);
+            return null;
+        })
+    ]);
 
-function primeCreatedBookingsInTimelineCache(createdBookings = []) {
-    if (!Array.isArray(createdBookings) || !createdBookings.length) return;
-    if (typeof setTimelineCacheEntry !== 'function') return;
-    AppState.cachedBookings = AppState.cachedBookings || {};
-    const byDate = new Map();
-    createdBookings.forEach(booking => {
-        const id = booking?.id || booking?.bookingId;
-        const date = normalizeBookingDateKey(booking?.date) || formatDate(AppState.selectedDate);
-        if (!id || !date) return;
-        if (!byDate.has(date)) byDate.set(date, []);
-        byDate.get(date).push(booking);
-    });
-    byDate.forEach((bookings, date) => {
-        const cached = typeof getTimelineCacheEntry === 'function'
-            ? getTimelineCacheEntry(AppState.cachedBookings, date)
-            : null;
-        const merged = [...(Array.isArray(cached?.data) ? cached.data : [])];
-        bookings.forEach(booking => {
-            const id = String(booking.id || booking.bookingId || '');
-            const index = merged.findIndex(item => String(item?.id || item?.bookingId || '') === id);
-            if (index >= 0) merged[index] = { ...merged[index], ...booking };
-            else merged.push(booking);
+    if (Array.isArray(freshLines)) {
+        snapshot.lines = typeof normalizeTimelineLinesForContext === 'function'
+            ? normalizeTimelineLinesForContext(freshLines)
+            : freshLines;
+        snapshot.lineIds = new Set(snapshot.lines.map(line => String(line?.id || '')).filter(Boolean));
+        AppState.lines = snapshot.lines;
+        AppState.linesByDate = AppState.linesByDate || {};
+        AppState.linesByDate[currentDate] = snapshot.lines;
+        if (typeof setTimelineCacheEntry === 'function') {
+            setTimelineCacheEntry(AppState.cachedLines, currentDate, freshLines);
+        }
+    }
+
+    if (Array.isArray(freshBookings)) {
+        snapshot.bookings = freshBookings;
+        freshBookings.forEach(booking => {
+            const id = booking?.id || booking?.bookingId;
+            if (!id) return;
+            const key = String(id);
+            snapshot.bookingsById.set(key, booking);
+            if (expectedIds.has(key)) {
+                snapshot.foundIds.add(key);
+                snapshot.missingIds.delete(key);
+            }
         });
-        setTimelineCacheEntry(AppState.cachedBookings, date, merged);
-    });
+        if (typeof setTimelineCacheEntry === 'function') {
+            setTimelineCacheEntry(AppState.cachedBookings, currentDate, freshBookings);
+        }
+    }
+
+    return snapshot;
 }
 
 async function handleBookingSubmit(e) {
@@ -3455,7 +3494,7 @@ async function handleBookingSubmit(e) {
             changedDates.forEach(date => {
                 invalidateBookingTimelineDateCache(date);
             });
-            primeCreatedBookingsInTimelineCache(createdBookings);
+            const timelineSnapshot = await refreshCreatedBookingTimelineSnapshot(createdBookings);
             closeBookingPanel(true);
             unlockSubmitBtn();
             clearLeadConversionContextAfterBooking(booking.id);
@@ -3463,19 +3502,25 @@ async function handleBookingSubmit(e) {
             const seriesCount = createResult?.createdCount || createdBookings.length;
             let visibility = revealCreatedBookingBlocks(createdBookings);
             if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
-                const recovered = await refreshCreatedBookingsFromServer(createdBookings);
-                if (recovered) {
+                const recoveredSnapshot = await refreshCreatedBookingTimelineSnapshot(createdBookings);
+                if (recoveredSnapshot.foundIds?.size) {
                     await renderTimeline();
                     visibility = revealCreatedBookingBlocks(createdBookings);
+                    timelineSnapshot.bookings = recoveredSnapshot.bookings;
+                    timelineSnapshot.bookingsById = recoveredSnapshot.bookingsById;
+                    timelineSnapshot.foundIds = recoveredSnapshot.foundIds;
+                    timelineSnapshot.missingIds = recoveredSnapshot.missingIds;
+                    timelineSnapshot.lines = recoveredSnapshot.lines;
+                    timelineSnapshot.lineIds = recoveredSnapshot.lineIds;
                 }
             }
             if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
                 console.error('Created booking is not visible after timeline refresh', {
                     createdBookings,
                     visibility,
-                    diagnostics: createdBookingVisibilityDiagnostics(createdBookings)
+                    diagnostics: createdBookingVisibilityDiagnostics(createdBookings, timelineSnapshot)
                 });
-                showNotification(createdBookingVisibilityMessage(createdBookings), 'warning');
+                showNotification(createdBookingVisibilityMessage(createdBookings, timelineSnapshot), 'warning');
             } else {
                 showNotification(createdBookingSuccessMessage(createdBookings, seriesCount), 'success');
             }

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.1 - Timeline booking truth
+
+### Timeline / Booking / Multi-cabinet / 31.05.2026 [codex]
+- **Success бронювання тепер привʼязаний до server-backed snapshot** - після створення drawer примусово бере fresh лінії та fresh бронювання з API, оновлює cache і тільки тоді дозволяє показати успішний toast.
+- **Прибрано optimistic cache-prime як джерело правди** - новий запис більше не підмішується локально в timeline cache для ілюзії успіху; якщо server list не повернув запис або DOM його не показав, CRM дає warning із конкретною причиною.
+- **Ручні park-лінії більше не чистяться як legacy default** - cleanup старих `Аніматор 1/2` звужено до коротких legacy `line1/line2`, а нові ручні лінії отримують id `manual_animator_*`.
+- **Діагностика стала точнішою** - повідомлення розрізняє missing server row, неправильну дату/бізнес, прихований статусний фільтр, відсутню лінію або DOM-render проблему.
+
+---
+
 ## v0.69.0 - CRM 69: підтягування хвостів
 
 ### Planning / System debt / 31.05.2026 [codex]

@@ -82,13 +82,13 @@ window.invalidateTimelineDateCache = invalidateTimelineDateCache;
 window.getTimelineCacheEntry = getTimelineCacheEntry;
 
 // v3.9: Cache with TTL
-async function getLinesForDate(date) {
+async function getLinesForDate(date, options = {}) {
     const dateStr = timelineDateKey(date);
     const cached = getTimelineCacheEntry(AppState.cachedLines, dateStr);
-    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+    if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
-    const lines = await apiGetLines(dateStr);
+    const lines = await apiGetLines(dateStr, { fresh: options.force === true });
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (lines === null) {
         if (cached) return cached.data;

@@ -1546,9 +1546,13 @@ async function apiDeleteBookingBanquetLink(sourceId, targetId) {
     }
 }
 
-async function apiGetLines(date) {
+async function apiGetLines(date, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, { headers: getTimelineAuthHeaders(false) });
+        let path = timelineApiUrl(`/lines/${date}`);
+        if (options.fresh) {
+            path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
+        }
+        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
         if (!response.ok) throw new Error('API error ' + response.status);
         const data = await response.json();

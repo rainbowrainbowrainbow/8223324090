@@ -272,7 +272,7 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
            AND (
                 l.line_id IN ('line1', 'line2', 'line1_' || $1, 'line2_' || $1)
                 OR (
-                    l.line_id ~ ('^line[0-9]+(_' || $1 || ')?$')
+                    l.line_id ~ ('^line[0-9]{1,3}(_' || $1 || ')?$')
                     AND LOWER(TRIM(l.name)) ~ '^аніматор[[:space:]]+[0-9]+$'
                 )
            )

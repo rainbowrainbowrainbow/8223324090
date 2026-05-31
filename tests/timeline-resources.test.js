@@ -99,6 +99,14 @@ test('park timeline keeps legacy animator lines even if resource model is mis-se
     assert.equal(resourceTypeForDisplayMode('education', { resourceModel: 'cabinet' }), 'cabinet');
 });
 
+test('park manual animator lines are not deleted as legacy default lines', () => {
+    const bookingService = read('services/booking.js');
+    const settings = read('js/settings.js');
+    assert.match(bookingService, /\^line\[0-9\]\{1,3\}\(_/);
+    assert.doesNotMatch(bookingService, /\^line\[0-9\]\+\(_/);
+    assert.match(settings, /id:\s*`manual_animator_\$\{Date\.now\(\)\}_\$\{dateStr\}`/);
+});
+
 test('lines route switches resource-backed modes away from animator sync', () => {
     const route = read('routes/lines.js');
     assert.match(route, /getTimelineDisplaySettings/);

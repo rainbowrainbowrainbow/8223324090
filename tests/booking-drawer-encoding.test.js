@@ -88,6 +88,11 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.doesNotMatch(timelineJs, /AppState\.cachedLines\[dateStr\]/);
     assert.match(bookingJs, /createdBookingVisibilityDiagnostics/);
     assert.match(bookingJs, /лінія \$\{lineId\} не відкрита в поточному таймлайні/);
+    assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
+    assert.match(bookingJs, /getLinesForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /серверний список дня не повернув запис/);
+    assert.match(bookingJs, /createdBookingVisibilityMessage\(createdBookings, timelineSnapshot\)/);
 });
 
 test('booking drawer keeps readable Ukrainian labels for manager-facing controls', () => {

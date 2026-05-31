@@ -248,7 +248,7 @@ test('profile My Day create does not fake success when the created task is missi
     assert.equal(notices.at(-1)?.type, 'warning');
 });
 
-test('profile my day and my tasks keep distinct presentation scopes', () => {
+test('profile routes mytasks compatibility into the single My Day projection', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext(`
         myCabinetData = {
@@ -265,17 +265,17 @@ test('profile my day and my tasks keep distinct presentation scopes', () => {
 
     const myDayHtml = ctx.renderMyDayTab();
     const myTasksHtml = ctx.renderMyTasksTab();
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
     assert.match(myDayHtml, /cabinet-quick-cluster/);
     assert.match(myDayHtml, /cabinet-task-composer/);
     assert.match(myDayHtml, /data-cabinet-task-drop-target="today"/);
-    assert.doesNotMatch(myTasksHtml, /cabinet-quick-cluster/);
-    assert.doesNotMatch(myTasksHtml, /cabinet-task-composer/);
-    assert.match(myTasksHtml, /cabinet-shell--mytasks/);
-    assert.match(myTasksHtml, /cabinet-segments/);
-    assert.match(myTasksHtml, /data-cabinet-active-segment="all"/);
-    assert.match(myTasksHtml, /Повний список задач/);
-    assert.match(myTasksHtml, /Додати в Мій день/);
+    assert.match(myTasksHtml, /cabinet-quick-cluster/);
+    assert.match(myTasksHtml, /cabinet-task-composer/);
+    assert.match(source, /function normalizeProfileTaskTab/);
+    assert.match(source, /return tab === 'mytasks' \? 'myday' : tab;/);
+    assert.doesNotMatch(source, /cabinet-shell--mytasks/);
+    assert.doesNotMatch(source, /href="\/profile\?tab=mytasks"/);
 });
 
 test('profile my day renders compact completed task history with hover/focus details', () => {
@@ -345,7 +345,7 @@ test('profile my tasks no longer forces the daily quick mode when switching tabs
     assert.doesNotMatch(source, /if \(tab === 'mytasks'\)\s*\{\s*setCabinetQuickMode\('tasks'\);\s*\}/);
 });
 
-test('profile keeps My Day and My Tasks in the compact secondary tab row', () => {
+test('profile keeps My Day only and sends full task lists to canonical Tasks', () => {
     const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
     const workHubStart = source.indexOf('function profileWorkHubTabOrder()');
     const secondaryStart = source.indexOf('function profileSecondaryTabOrder()');
@@ -357,8 +357,8 @@ test('profile keeps My Day and My Tasks in the compact secondary tab row', () =>
     assert.doesNotMatch(workHub, /id: 'mytasks'/);
     assert.match(secondary, /profileWorkHubTabOrder\(\)\.map/);
     assert.match(secondary, /id: 'myday'/);
-    assert.match(secondary, /id: 'mytasks'/);
-    assert.ok(secondary.indexOf("id: 'mytasks'") < secondary.indexOf("id: 'quests'"));
+    assert.doesNotMatch(secondary, /id: 'mytasks'/);
+    assert.match(source, /href="\/tasks\?view=my">Повний список задач/);
     assert.doesNotMatch(source, /renderProfileWorkHubTabs\(professionEntries\)/);
 });
 

@@ -4362,4 +4362,18 @@ window.TasksPage = {
     getAssistantSnapshot: getTasksAssistantSnapshot
 };
 
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    let externalTaskRefreshTimer = null;
+    window.addEventListener('crm:tasks-updated', (event) => {
+        const detail = event?.detail || {};
+        if (detail.source === 'tasks_page') return;
+        window.clearTimeout(externalTaskRefreshTimer);
+        externalTaskRefreshTimer = window.setTimeout(() => {
+            loadAllTasks({ fatal: false }).catch(error => {
+                console.warn('Tasks page external refresh failed', error);
+            });
+        }, 300);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initPage);

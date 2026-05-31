@@ -21,6 +21,7 @@ const {
     DEFAULT_TASK_BUSINESS_CONTEXT,
     taskBusinessContextFromPayload
 } = require('./taskBusinessScope');
+const { emitTaskAssignedToOwner } = require('./taskNotifications');
 
 const log = createLogger('Kleshnya');
 
@@ -218,6 +219,10 @@ async function createTask(data) {
     // Notify assigned person (fire-and-forget — never block task creation)
     if (task.assigned_to && task_type === 'human') {
         notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
+        emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
+            assignmentEvent: 'created',
+            source: 'services/kleshnya.createTask'
+        });
     }
 
     log.info(`Task created: #${task.id} "${title}" [${task_type}] assigned=${task.assigned_to || '—'} owner=${task.owner || '—'}`);

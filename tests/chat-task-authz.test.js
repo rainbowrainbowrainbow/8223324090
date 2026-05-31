@@ -235,16 +235,23 @@ describe('operations flow static contracts', () => {
     it('keeps task assignment notifications change-aware and typed-owner aware', () => {
         const tasksRoute = fs.readFileSync(path.join(repoRoot, 'routes/tasks.js'), 'utf8');
         const kleshnya = fs.readFileSync(path.join(repoRoot, 'services/kleshnya.js'), 'utf8');
+        const taskNotifications = fs.readFileSync(path.join(repoRoot, 'services/taskNotifications.js'), 'utf8');
+        const workQueueRoute = fs.readFileSync(path.join(repoRoot, 'routes/work-queue.js'), 'utf8');
         const wsClient = fs.readFileSync(path.join(repoRoot, 'js/ws.js'), 'utf8');
 
         assert.match(tasksRoute, /function taskAssigneeChanged/);
         assert.match(tasksRoute, /function emitTaskAssignedToOwner/);
-        assert.match(tasksRoute, /sendToUser\(String\(ownerUserId\), 'task:assigned'/);
+        assert.match(taskNotifications, /sendToUser\(String\(ownerUserId\), 'task:assigned'/);
+        assert.match(taskNotifications, /canonicalField: 'tasks\.owner_user_id'/);
+        assert.match(kleshnya, /emitTaskAssignedToOwner\(task/);
+        assert.match(workQueueRoute, /emitTaskAssignedToOwner\(result\.task/);
         assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*notifyTaskAssignment\(result\.task/);
         assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*emitTaskAssignedToOwner\(result\.task/);
         assert.match(tasksRoute, /taskAssigneeChanged\(old, updatedTask\)/);
         assert.match(wsClient, /case 'task:assigned'/);
         assert.match(wsClient, /SoundEngine\.play\('task-new'\)/);
+        assert.match(wsClient, /function _shouldSignalTaskArrival/);
+        assert.match(wsClient, /crm:tasks-updated/);
         assert.match(kleshnya, /WHERE id = \$1 AND telegram_chat_id IS NOT NULL/);
     });
 

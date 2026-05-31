@@ -602,6 +602,19 @@ function profileTrainingRoleKey(key = ensureActiveProfessionKey()) {
     return normalized || 'all';
 }
 
+function normalizeProfileTaskTab(tab) {
+    return tab === 'mytasks' ? 'myday' : tab;
+}
+
+function normalizeProfileTab(tab) {
+    const requested = tab === 'profile' ? 'professions' : tab;
+    return normalizeProfileTaskTab(requested);
+}
+
+function isProfileTaskProjectionTab(tab = activeTab) {
+    return normalizeProfileTaskTab(tab) === 'myday';
+}
+
 function profileWorkHubTabOrder() {
     return [
         {
@@ -643,7 +656,6 @@ function profileSecondaryTabOrder() {
         { id: 'inventory', label: 'Інвентар', ownOnly: true },
         { id: 'shop', label: 'Магазин', ownOnly: true },
         { id: 'myday', label: 'Мій день', ownOnly: true },
-        { id: 'mytasks', label: 'Мої задачі', ownOnly: true },
         { id: 'quests', label: 'Щоденні', ownOnly: true },
         { id: 'season', label: 'Сезон' },
         { id: 'teams', label: 'Команди' },
@@ -724,6 +736,7 @@ function renderProfilePrimaryTab(tab, label, options = {}) {
 }
 
 function profileWorkTabMetric(tabId) {
+    tabId = normalizeProfileTaskTab(tabId);
     const active = profileActiveProfessionEntry();
     const entries = profileProfessionEntries();
     const quick = myCabinetData?.stats?.taskQuick || {};
@@ -740,8 +753,6 @@ function profileWorkTabMetric(tabId) {
         }
         case 'myday':
             return `${Number(quick.completedToday || quick.completed || 0)} виконано`;
-        case 'mytasks':
-            return `${cabinetList('all').length || Number(profileData?.tasks?.assigned || 0)} активні`;
         case 'settings':
             return 'безпека';
         default:
@@ -926,8 +937,8 @@ async function initProfilePage() {
     const viewUserId = parseInt(params.get('id')) || currentUserId;
     isOwnProfile = viewUserId === currentUserId;
     const requestedTab = params.get('tab');
-    const normalizedRequestedTab = requestedTab === 'profile' ? 'professions' : requestedTab;
-    const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    const normalizedRequestedTab = normalizeProfileTab(requestedTab);
+    const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
     if (isOwnProfile && normalizedRequestedTab && allowedOwnTabs.includes(normalizedRequestedTab)) {
         activeTab = normalizedRequestedTab;
     }
@@ -1329,12 +1340,13 @@ function renderProfile() {
 }
 
 async function switchTab(tab) {
+    tab = normalizeProfileTab(tab);
     activeTab = tab;
     const locked = profileTabLock(tab);
-    if (!locked && isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
+    if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab) && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
     }
-    if (!locked && isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
+    if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab)) {
         await refreshCabinetPulseCounts();
     }
 
@@ -1383,7 +1395,7 @@ function renderTabContent() {
         case 'checklists': return renderProfileChecklistsTab();
         case 'materials': return renderProfileMaterialsTab();
         case 'myday': return renderMyDayTab();
-        case 'mytasks': return renderMyTasksTab();
+        case 'mytasks': return renderMyDayTab();
         case 'settings': return renderProfileSettingsTab();
         case 'achievements': return renderAchievements();
         case 'inventory': return renderInventory();
@@ -1858,8 +1870,7 @@ function renderProfileProfessionsTab() {
                 </div>
                 <div class="profile-quick-link-stack">
                     <a href="/profile?tab=myday">Мій день <span>особистий зріз</span></a>
-                    <a href="/profile?tab=mytasks">Мої задачі <span>робочий список</span></a>
-                    <a href="/tasks?view=my">Задачі CRM <span>повний модуль</span></a>
+                    <a href="/tasks?view=my">Повний список задач <span>основний модуль Tasks</span></a>
                     <a href="/hr?tab=schedule">Графік <span>зміни й присутність</span></a>
                     <a href="/training">Навчання <span>матеріали ролі</span></a>
                 </div>
@@ -2451,7 +2462,7 @@ function createdCabinetTaskId(result = {}) {
 
 function renderCabinetActiveTab() {
     const tabContent = document.getElementById('tabContent');
-    if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
+    if (tabContent && isProfileTaskProjectionTab(activeTab)) {
         tabContent.innerHTML = renderTabContent();
         attachProfileListeners();
     }
@@ -3335,7 +3346,6 @@ function cabinetAlertQuickState(count = 0) {
 }
 
 function getCabinetQuickMode() {
-    if (activeTab === 'mytasks') return 'tasks';
     const saved = localStorage.getItem('cabinetQuickMode');
     return ['tasks', 'alerts', 'funnel'].includes(saved) ? saved : 'tasks';
 }
@@ -4079,42 +4089,7 @@ function renderMyDayTab() {
 }
 
 function renderMyTasksTab() {
-    const all = cabinetList('all');
-    const counts = cabinetSegmentCounts(all);
-    const activeSegment = cabinetSegmentConfig(myTasksSegment);
-    const filtered = sortCabinetTasksForDisplay(all.filter(task => cabinetTaskMatchesSegment(task, myTasksSegment)));
-    return `
-        <div class="cabinet-shell cabinet-shell--mytasks">
-            <div class="cabinet-toolbar cabinet-toolbar--tasker">
-                <div>
-                    <div class="cabinet-kicker">Особиста проекція</div>
-                    <h2>Мої задачі</h2>
-                    <p>Фільтрований список ваших задач із основного task engine: статуси, підзадачі, дедлайни і переходи без денного cockpit-шуму.</p>
-                </div>
-                <div class="cabinet-toolbar-actions">
-                    <button type="button" class="cabinet-link-btn cabinet-link-btn--secondary" onclick="switchTab('myday')">Додати в Мій день</button>
-                    <a href="/tasks?view=my" class="cabinet-link-btn">Повний список задач</a>
-                </div>
-            </div>
-            <div class="cabinet-segments">
-                ${CABINET_TASK_SEGMENTS.map(segment => `
-                    <button type="button" class="${myTasksSegment === segment.id ? 'active' : ''}" onclick="setMyTasksSegment('${segment.id}')" aria-pressed="${myTasksSegment === segment.id ? 'true' : 'false'}" title="${escapeHtml(segment.hint)}">
-                        <span>${escapeHtml(segment.label)}</span>
-                        <b>${counts[segment.id] || 0}</b>
-                    </button>
-                `).join('')}
-            </div>
-            <div class="cabinet-list" data-cabinet-active-segment="${escapeHtml(myTasksSegment)}">
-                <div class="cabinet-list-head">
-                    <div>
-                        <h3>${escapeHtml(activeSegment.label)}</h3>
-                        <p>${escapeHtml(activeSegment.hint)}</p>
-                    </div>
-                    <span>${filtered.length} / ${all.length}</span>
-                </div>
-                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : `<div class="cabinet-empty">У сегменті "${escapeHtml(activeSegment.label)}" поки немає задач.</div>`}
-            </div>
-        </div>`;
+    return renderMyDayTab();
 }
 
 function setMyTasksSegment(segment) {
@@ -4133,7 +4108,7 @@ function normalizeCabinetTaskId(value) {
 
 function rerenderCabinetTaskTabs() {
     const tabContent = document.getElementById('tabContent');
-    if (!tabContent || !['myday', 'mytasks'].includes(activeTab)) return;
+    if (!tabContent || !isProfileTaskProjectionTab(activeTab)) return;
     tabContent.innerHTML = renderTabContent();
     attachProfileListeners();
 }
@@ -6297,11 +6272,23 @@ function setMonthlyFilter(category) {
 // INIT
 // ==========================================
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    let profileTaskProjectionRefreshTimer = null;
     window.addEventListener('workingRoleChanged', () => {
         if (profileData && isOwnProfile) renderProfile();
     });
     window.addEventListener('rolePreviewChanged', () => {
         if (profileData && isOwnProfile) renderProfile();
+    });
+    window.addEventListener('crm:tasks-updated', (event) => {
+        const detail = event?.detail || {};
+        if (detail.source === 'profile_my_cabinet') return;
+        if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
+        window.clearTimeout(profileTaskProjectionRefreshTimer);
+        profileTaskProjectionRefreshTimer = window.setTimeout(() => {
+            refreshMyCabinetTab({ silent: false }).catch(error => {
+                console.warn('Profile task projection refresh failed', error);
+            });
+        }, 300);
     });
 }
 

@@ -205,8 +205,68 @@ var ParkWS = (function () {
     // MESSAGE HANDLING
     // ==========================================
 
+    var _taskSignalMemory = new Map();
+
+    function _taskSoundMuted() {
+        try {
+            if (window.crmMuteTaskSounds === true) return true;
+            var mutedKeys = ['eg_task_sound_muted', 'crm_task_sound_muted', 'pzp_task_sound_muted', 'pzp_sound_muted'];
+            return mutedKeys.some(function (key) {
+                var value = localStorage.getItem(key);
+                return value === 'true' || value === '1' || value === 'muted';
+            });
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function _taskArrivalSignalKey(payload) {
+        var task = payload && payload.task ? payload.task : {};
+        var id = payload && payload.notificationId
+            ? payload.notificationId
+            : [
+                'task',
+                payload && payload.assignmentEvent ? payload.assignmentEvent : 'assigned',
+                task.id || task.taskId || task.task_id || 'unknown',
+                task.ownerUserId || task.owner_user_id || 'owner'
+            ].join(':');
+        return String(id || '').trim();
+    }
+
+    function _shouldSignalTaskArrival(payload) {
+        var key = _taskArrivalSignalKey(payload);
+        if (!key) return true;
+        var now = Date.now();
+        var windowMs = 8000;
+        var rememberedAt = Number(_taskSignalMemory.get(key) || 0);
+        if (rememberedAt && now - rememberedAt < windowMs) return false;
+        _taskSignalMemory.set(key, now);
+        try {
+            var storageKey = 'eg_task_signal_' + key.replace(/[^a-zA-Z0-9:_-]/g, '_').slice(0, 96);
+            var storedAt = Number(localStorage.getItem(storageKey) || 0);
+            if (storedAt && now - storedAt < windowMs) return false;
+            localStorage.setItem(storageKey, String(now));
+        } catch (err) {}
+        return true;
+    }
+
+    function _dispatchTaskAssignedRefresh(message) {
+        var payload = message && message.payload ? message.payload : {};
+        var task = payload.task || {};
+        window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
+            detail: {
+                source: 'ws_task_assigned',
+                action: 'task_assigned',
+                eventType: message.type,
+                taskId: task.id || task.taskId || task.task_id || null,
+                assignmentEvent: payload.assignmentEvent || 'assigned'
+            }
+        }));
+    }
+
     function _playTaskAssignedSound() {
         try {
+            if (_taskSoundMuted()) return;
             if (typeof SoundEngine !== 'undefined' && SoundEngine.play) {
                 SoundEngine.play('task-new');
                 return;
@@ -349,6 +409,8 @@ var ParkWS = (function () {
                 window.dispatchEvent(new CustomEvent('ws:task', {
                     detail: { eventType: message.type, payload: message.payload }
                 }));
+                _dispatchTaskAssignedRefresh(message);
+                if (!_shouldSignalTaskArrival(message.payload || {})) break;
                 _playTaskAssignedSound();
                 if (typeof showNotification === 'function') {
                     var task = message.payload && message.payload.task;

@@ -33,6 +33,7 @@ const {
     rescheduleTask
 } = require('../services/taskExecution');
 const { hasSchedulePayload, scheduleTask } = require('../services/taskScheduling');
+const { emitTaskAssignedToOwner } = require('../services/taskNotifications');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('WorkQueue');
@@ -553,6 +554,10 @@ router.patch('/tasks/:taskId/owner', async (req, res) => {
         const result = await reassignTaskOwner(taskId, ownerUserId, req.user, {
             sourceSurface: resolveTaskSourceSurface(req.body || {}),
             route: 'work_queue_task_owner'
+        });
+        emitTaskAssignedToOwner(result.task, req.user, {
+            assignmentEvent: 'reassigned',
+            source: 'routes/work-queue.task_owner'
         });
         res.json({ success: true, action: 'task_reassign_owner', task: result.task, owner: result.owner, historyEvent: result.historyEvent });
     } catch (err) {

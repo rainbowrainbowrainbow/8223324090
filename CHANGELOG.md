@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.52 - Уніфікація задач і handoff-сповіщення
+
+### Tasks / Profile / 31.05.2026 [codex]
+- **Tasks став основним повним списком** - дубльована вкладка `Мої задачі` у профілі прибрана з меню, а старі deep-link-и `/profile?tab=mytasks` безпечно відкривають `Мій день`.
+- **Profile лишився персональним cockpit** - `Мій день` показує сьогоднішню проекцію, швидке створення і приватні/прострочені зрізи, а повний фільтрований список веде в `/tasks?view=my`.
+- **Handoff задач отримав один realtime contract** - typed-owner призначення тепер шлють `task:assigned` через спільний `services/taskNotifications.js` для Tasks, Work Queue, Kleshnya і reply-escalation.
+- **Нові задачі не мовчать і не спамлять** - frontend оновлює task widgets через `crm:tasks-updated`, а звук/тост нової задачі має dedupe і mute guard.
+
+---
+
 ## v0.68.51 - Timeline move summary truth
 
 ### Timeline / 31.05.2026 [codex]

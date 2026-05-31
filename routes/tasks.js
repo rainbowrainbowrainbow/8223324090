@@ -96,6 +96,9 @@ const {
     pushTaskBusinessScopeCondition,
     taskBusinessScopeMeta
 } = require('../services/taskBusinessScope');
+const {
+    emitTaskAssignedToOwner: emitCanonicalTaskAssignedToOwner
+} = require('../services/taskNotifications');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -104,30 +107,11 @@ let _triggerAlertBroadcast;
 try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
 function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 
-function emitTaskAssignedToOwner(task, actor) {
-    try {
-        const ownerUserId = task?.owner_user_id || task?.ownerUserId;
-        const actorId = actor?.id || actor?.userId;
-        if (!ownerUserId || String(ownerUserId) === String(actorId || '')) return;
-        const { sendToUser } = require('../services/websocket');
-        sendToUser(String(ownerUserId), 'task:assigned', {
-            task: {
-                id: task.id,
-                title: task.title,
-                priority: task.priority,
-                ownerUserId,
-                workflowState: task.workflow_state || task.workflowState || null,
-                sourceType: task.source_type || task.sourceType || null,
-                sourceId: task.source_id || task.sourceId || null
-            },
-            actor: {
-                id: actorId || null,
-                username: actor?.username || null
-            }
-        });
-    } catch (err) {
-        log.warn(`Task assignment websocket notification failed: ${err.message}`);
-    }
+function emitTaskAssignedToOwner(task, actor, options = {}) {
+    return emitCanonicalTaskAssignedToOwner(task, actor, {
+        source: 'routes/tasks',
+        ...options
+    });
 }
 
 // Lazy require to avoid circular dependency
@@ -2112,7 +2096,7 @@ router.post('/:id/reassign', async (req, res) => {
             businessScope
         });
         notifyTaskAssignment(result.task, req.user?.username || 'system').catch(() => {});
-        emitTaskAssignedToOwner(result.task, req.user);
+        emitTaskAssignedToOwner(result.task, req.user, { assignmentEvent: 'reassigned', source: 'routes/tasks.reassign' });
         res.json({
             success: true,
             task: normalizeTaskPayload(result.task),
@@ -2458,7 +2442,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             task.observer_count = task.observers.length;
         }
         responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks });
-        emitTaskAssignedToOwner(task, req.user);
+        emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'created', source: 'routes/tasks.create' });
 
         res.json({
             success: true,
@@ -2682,7 +2666,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         // v19.10/v0.48.12: Notify only when assignment actually changes.
         if (taskAssigneeChanged(old, updatedTask) && (updatedTask.owner_user_id || updatedTask.assigned_to)) {
             notifyTaskAssignment(updatedTask, actor).catch(() => {});
-            emitTaskAssignedToOwner(updatedTask, req.user);
+            emitTaskAssignedToOwner(updatedTask, req.user, { assignmentEvent: 'updated_assignment', source: 'routes/tasks.update' });
         }
 
         updatedTask = await attachSubtaskSummary(updatedTask, { includeSubtasks: hasManualSubtasks });
@@ -2915,7 +2899,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             );
             for (const task of result.rows || []) {
                 notifyTaskAssignment(task, req.user?.username || 'system').catch(() => {});
-                emitTaskAssignedToOwner(task, req.user);
+                emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'bulk_assign', source: 'routes/tasks.bulk_assign' });
             }
         } else if (action === 'priority' && priority) {
             if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });

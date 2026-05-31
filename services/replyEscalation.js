@@ -8,6 +8,7 @@ const {
     DEFAULT_TASK_BUSINESS_CONTEXT,
     activeTaskBusinessContext
 } = require('./taskBusinessScope');
+const { emitTaskAssignedToOwner } = require('./taskNotifications');
 
 const log = createLogger('ReplyEscalation');
 
@@ -295,6 +296,10 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
     const created = task?.created === true || task?.created === 't' || task?.created === 1;
     if (created) {
         await logTaskAction(db, task.id, 'created', `reply escalation for message ${sourceId}`);
+        emitTaskAssignedToOwner(task, { username: REPLY_ESCALATION_CREATED_BY }, {
+            assignmentEvent: 'created',
+            source: 'services/replyEscalation'
+        });
     }
 
     return { task, created, skipped: false, reason: created ? 'created' : 'reused' };

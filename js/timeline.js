@@ -22,28 +22,50 @@ function timelineCacheScopeKey() {
     return `${context}|${mode}|${resourceType}`;
 }
 
+function timelineDateKey(date) {
+    if (typeof date === 'string') {
+        const trimmed = date.trim();
+        const dateMatch = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+        if (dateMatch) return dateMatch[0];
+    }
+    if (
+        date
+        && typeof date.getTime === 'function'
+        && typeof date.getFullYear === 'function'
+        && !Number.isNaN(date.getTime())
+    ) {
+        return formatDate(date);
+    }
+    const parsed = new Date(date);
+    if (!Number.isNaN(parsed.getTime())) return formatDate(parsed);
+    console.warn('[Timeline] Invalid date passed to timeline cache helpers:', date);
+    return formatDate(new Date());
+}
+
 function timelineCacheKeyForDate(date) {
-    return `${timelineCacheScopeKey()}|${formatDate(date)}`;
+    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}`;
 }
 
 function getTimelineCacheEntry(cache, date) {
     if (!cache) return null;
+    const legacyKey = timelineDateKey(date);
     const key = timelineCacheKeyForDate(date);
-    const entry = cache[key];
+    const entry = cache[key] || cache[legacyKey];
     if (entry?.scopeKey === timelineCacheScopeKey()) return entry;
+    if (entry && !entry.scopeKey) return entry;
     return null;
 }
 
 function setTimelineCacheEntry(cache, date, data) {
     if (!cache) return;
     const key = timelineCacheKeyForDate(date);
-    const legacyKey = formatDate(date);
+    const legacyKey = timelineDateKey(date);
     cache[key] = { data, ts: Date.now(), scopeKey: timelineCacheScopeKey() };
     if (legacyKey !== key) delete cache[legacyKey];
 }
 
 function invalidateTimelineDateCache(date, options = {}) {
-    const dateStr = formatDate(date);
+    const dateStr = timelineDateKey(date);
     const clearBookings = options.bookings !== false;
     const clearLines = options.lines !== false;
     const clearFrom = cache => {
@@ -61,7 +83,7 @@ window.getTimelineCacheEntry = getTimelineCacheEntry;
 
 // v3.9: Cache with TTL
 async function getLinesForDate(date) {
-    const dateStr = formatDate(date);
+    const dateStr = timelineDateKey(date);
     const cached = getTimelineCacheEntry(AppState.cachedLines, dateStr);
     if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
@@ -86,7 +108,7 @@ async function getLinesForDate(date) {
 }
 
 async function saveLinesForDate(date, lines) {
-    const dateStr = formatDate(date);
+    const dateStr = timelineDateKey(date);
     // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
     const result = await apiSaveLines(dateStr, lines);
     if (result && result.success === false) {
@@ -3422,7 +3444,7 @@ function updateRoomLoadPanel(bookings, date) {
 
 // v3.9: Cache with TTL
 async function getBookingsForDate(date, options = {}) {
-    const dateStr = formatDate(date);
+    const dateStr = timelineDateKey(date);
     const cached = getTimelineCacheEntry(AppState.cachedBookings, dateStr);
     if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;

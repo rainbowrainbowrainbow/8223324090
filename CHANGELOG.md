@@ -4,6 +4,16 @@
 
 ---
 
+## v0.68.45 - Timeline date cache guard
+
+### Timeline / 31.05.2026 [codex]
+- **Таймлайн більше не падає на `date.getFullYear is not a function`** - кеш ліній і бронювань тепер має власний `timelineDateKey()`, який безпечно приймає і `Date`, і `YYYY-MM-DD`.
+- **Лінії знову завантажуються після refresh/deploy** - `getLinesForDate()` і `getBookingsForDate()` більше не передають строку в `formatDate()`, який очікує Date-like обʼєкт.
+- **Старий date-cache не ламає новий scoped-cache** - helper читає legacy ключі й чистить їх при записі scoped ключа.
+- **Regression guard додано** - тест таймлайна запускається зі strict `formatDate` і перевіряє ISO date-key сценарій, який зламав production.
+
+---
+
 ## v0.68.44 - Subtasks reorder у профілі
 
 ### Profile tasker / 31.05.2026 [codex]

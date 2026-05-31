@@ -10,8 +10,16 @@ const timelineCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8
 const timelineInteractionModel = require('../js/timeline-interaction-model');
 
 function formatDate(date) {
-    const d = new Date(date);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (
+        !date
+        || typeof date.getFullYear !== 'function'
+        || typeof date.getMonth !== 'function'
+        || typeof date.getDate !== 'function'
+        || Number.isNaN(date.getTime())
+    ) {
+        throw new TypeError('formatDate expects a Date-like object');
+    }
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function timeToMinutes(time) {
@@ -129,6 +137,8 @@ function createHarness() {
             initBookingResize,
             renderTimeline,
             cancelActiveTimelineInteractions,
+            getLinesForDate,
+            getBookingsForDate,
             hasActiveTimelineInteractionState,
             setSaveInFlight(value) { _timelineInteractionSaveInFlight = Boolean(value); },
             getSaveInFlight() { return _timelineInteractionSaveInFlight; },
@@ -142,6 +152,30 @@ function createHarness() {
     vm.runInContext(exposedCode, dom.getInternalVMContext());
     return { dom, window, api: window.__timelineLifecycleTest, consoleErrors };
 }
+
+test('timeline date cache helpers accept ISO date keys without breaking strict formatDate', async () => {
+    const { window, api } = createHarness();
+    let lineDate = null;
+    let bookingDate = null;
+    window.apiGetLines = async (date) => {
+        lineDate = date;
+        return [{ id: 'line-1', name: 'Line 1' }];
+    };
+    window.apiGetBookings = async (date) => {
+        bookingDate = date;
+        return [];
+    };
+
+    const lines = await api.getLinesForDate('2026-05-31');
+    const bookings = await api.getBookingsForDate('2026-05-31');
+
+    assert.equal(lineDate, '2026-05-31');
+    assert.equal(bookingDate, '2026-05-31');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(bookings, []);
+    assert.ok(window.AppState.cachedLines['event_genix|park|line|2026-05-31']);
+    assert.ok(window.AppState.cachedBookings['event_genix|park|line|2026-05-31']);
+});
 
 test('pointercancel during booking drag rolls back visuals and clears transient state', () => {
     const { window, api } = createHarness();

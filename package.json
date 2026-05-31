@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.44",
+  "version": "0.68.45",
   "eventGenix": {
-    "releaseLabel": "Subtasks reorder у профілі"
+    "releaseLabel": "Timeline date cache guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

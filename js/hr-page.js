@@ -2132,6 +2132,16 @@ let companyOrgSaveTimer = null;
 let companyOrgKeyboardBound = false;
 let companyOrgSuppressNextClick = false;
 
+function setCompanyOrgLinkMode(nodeId) {
+    companyOrgLinkingNodeId = nodeId || null;
+    const stage = document.getElementById('companyOrgChart');
+    stage?.classList.toggle('is-linking', Boolean(companyOrgLinkingNodeId));
+    document.querySelectorAll('[data-org-node-shell]').forEach(shell => {
+        shell.classList.toggle('is-link-source', shell.dataset.orgNodeShell === companyOrgLinkingNodeId);
+    });
+    updateCompanyOrgLinkStatus();
+}
+
 function cloneCompanyStructureNodes(nodes) {
     return (nodes || []).map(node => ({ ...node }));
 }
@@ -2341,8 +2351,8 @@ function renderCompanyOrgNode(node) {
                 <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
                 ${description ? `<span class="hr-org-node-description">${escapeHtml(description)}</span>` : ''}
             </button>
-            <button type="button" class="hr-org-port hr-org-port--child" data-org-link-source="${escapeHtml(node.id)}" aria-label="Почати лінію від ${escapeHtml(node.title)}"></button>
-            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити лінію для ${escapeHtml(node.title)}">🔗</button>
+            <span class="hr-org-port hr-org-port--child" aria-hidden="true"></span>
+            <button type="button" class="hr-org-node-link" data-org-link-source="${escapeHtml(node.id)}" aria-label="Змінити керівника для ${escapeHtml(node.title)}" title="Змінити керівника">🔗</button>
             <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
         </span>`;
 }
@@ -2359,7 +2369,10 @@ function bindCompanyOrgChartEvents(stage) {
             if (companyOrgLinkingNodeId) {
                 event.preventDefault();
                 event.stopPropagation();
-                completeCompanyOrgLink(nodeId);
+                selectCompanyOrgNodeById(nodeId);
+                if (typeof showNotification === 'function') {
+                    showNotification('Щоб змінити керівника, натисніть верхню точку потрібної ролі. Esc — скасувати.', 'info');
+                }
                 return;
             }
             selectCompanyOrgNodeById(nodeId);
@@ -2389,6 +2402,11 @@ function bindCompanyOrgChartEvents(stage) {
             startCompanyOrgLinkMode(button.dataset.orgLinkSource);
         });
     });
+    stage.addEventListener('click', event => {
+        if (!companyOrgLinkingNodeId) return;
+        if (event.target.closest?.('[data-org-node-shell], [data-org-link-target], [data-org-link-source], [data-org-edit], [data-org-link-child]')) return;
+        cancelCompanyOrgLinkMode();
+    });
 }
 
 function renderCompanyOrgChart() {
@@ -2415,12 +2433,15 @@ function renderCompanyOrgChart() {
 }
 
 function startCompanyOrgDrag(event, nodeId) {
-    if (companyOrgLinkingNodeId) return;
     if (!nodeId || event.button !== 0 || event.target.closest('[data-org-edit], [data-org-link-source], [data-org-link-target]')) return;
+    if (companyOrgLinkingNodeId) {
+        setCompanyOrgLinkMode(null);
+    }
     const node = companyStructureNodeById(nodeId);
     const shell = event.currentTarget.closest('[data-org-node-shell]');
     if (!node || !shell) return;
     selectCompanyOrgNodeById(nodeId);
+    event.preventDefault();
     companyOrgDragState = {
         nodeId,
         startPointerX: event.clientX,
@@ -2434,6 +2455,7 @@ function startCompanyOrgDrag(event, nodeId) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     window.addEventListener('pointermove', moveCompanyOrgDrag);
     window.addEventListener('pointerup', endCompanyOrgDrag, { once: true });
+    window.addEventListener('pointercancel', cancelCompanyOrgDrag, { once: true });
 }
 
 function moveCompanyOrgDrag(event) {
@@ -2458,6 +2480,7 @@ function endCompanyOrgDrag() {
     companyOrgDragState.shell?.classList.remove('is-dragging');
     companyOrgDragState = null;
     window.removeEventListener('pointermove', moveCompanyOrgDrag);
+    window.removeEventListener('pointercancel', cancelCompanyOrgDrag);
     if (moved) {
         companyOrgSuppressNextClick = true;
         window.setTimeout(() => {
@@ -2466,6 +2489,14 @@ function endCompanyOrgDrag() {
         syncCompanyStructureText();
         scheduleCompanyStructureAutosave();
     }
+}
+
+function cancelCompanyOrgDrag() {
+    if (!companyOrgDragState) return;
+    companyOrgDragState.shell?.classList.remove('is-dragging');
+    companyOrgDragState = null;
+    window.removeEventListener('pointermove', moveCompanyOrgDrag);
+    window.removeEventListener('pointercancel', cancelCompanyOrgDrag);
 }
 
 function scheduleCompanyStructureAutosave() {
@@ -2491,19 +2522,22 @@ function startCompanyOrgLinkMode(nodeId = selectedCompanyStructureNodeId) {
     const node = companyStructureNodeById(nodeId);
     if (!node) return;
     selectedCompanyStructureNodeId = node.id;
-    companyOrgLinkingNodeId = node.id;
     renderCompanyOrgChart();
+    setCompanyOrgLinkMode(node.id);
     selectCompanyOrgNodeById(node.id);
     if (typeof showNotification === 'function') {
-        showNotification(`Оберіть порт або картку керівника для "${node.title}"`, 'info');
+        showNotification(`Оберіть верхню точку керівника для "${node.title}". Esc — скасувати.`, 'info');
     }
 }
 
-function cancelCompanyOrgLinkMode() {
+function cancelCompanyOrgLinkMode(options = {}) {
     if (!companyOrgLinkingNodeId) return;
-    companyOrgLinkingNodeId = null;
-    renderCompanyOrgChart();
-    selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+    const selectedId = selectedCompanyStructureNodeId;
+    setCompanyOrgLinkMode(null);
+    if (options.render !== false) {
+        renderCompanyOrgChart();
+        selectCompanyOrgNodeById(selectedId);
+    }
 }
 
 function completeCompanyOrgLink(parentId) {
@@ -2521,7 +2555,7 @@ function completeCompanyOrgLink(parentId) {
         return;
     }
     child.parentId = parent.id;
-    companyOrgLinkingNodeId = null;
+    setCompanyOrgLinkMode(null);
     companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
     syncCompanyStructureText();
     renderCompanyOrgChart();
@@ -2535,7 +2569,7 @@ function clearSelectedCompanyOrgParent() {
     const node = companyStructureNodeById(selectedCompanyStructureNodeId);
     if (!node || !node.parentId) return;
     node.parentId = null;
-    companyOrgLinkingNodeId = null;
+    setCompanyOrgLinkMode(null);
     syncCompanyStructureText();
     renderCompanyOrgChart();
     selectCompanyOrgNodeById(node.id);
@@ -2553,7 +2587,7 @@ function autoArrangeCompanyOrgChart() {
             y: position.y
         };
     });
-    companyOrgLinkingNodeId = null;
+    setCompanyOrgLinkMode(null);
     syncCompanyStructureText();
     renderCompanyOrgChart();
     selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
@@ -2573,10 +2607,10 @@ function updateCompanyOrgLinkStatus() {
     if (status) {
         if (companyOrgLinkingNodeId) {
             const source = companyStructureNodeById(companyOrgLinkingNodeId);
-            status.textContent = source ? `Оберіть керівника для: ${source.title}` : 'Оберіть керівника';
+            status.textContent = source ? `Змінюємо керівника для "${source.title}": натисніть верхню точку керівника або Esc` : 'Оберіть верхню точку керівника або Esc';
             status.classList.add('is-active');
         } else {
-            status.textContent = 'Перетягуйте вузли або змінюйте лінії підпорядкування';
+            status.textContent = 'Перетягуйте картки. Для звʼязку оберіть роль і натисніть "Зʼєднати".';
             status.classList.remove('is-active');
         }
     }
@@ -2584,6 +2618,7 @@ function updateCompanyOrgLinkStatus() {
         lineTool.disabled = !node;
         lineTool.classList.toggle('is-active', Boolean(companyOrgLinkingNodeId));
         lineTool.setAttribute('aria-pressed', companyOrgLinkingNodeId ? 'true' : 'false');
+        lineTool.textContent = companyOrgLinkingNodeId ? 'Скасувати лінію' : 'Зʼєднати роль';
         lineTool.onclick = () => {
             if (companyOrgLinkingNodeId) cancelCompanyOrgLinkMode();
             else if (node) startCompanyOrgLinkMode(node.id);

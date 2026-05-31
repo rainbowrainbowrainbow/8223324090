@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.68.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.68.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.68.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.68.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.68.45">
+    <link rel="stylesheet" href="css/base.css?v=0.68.46">
+    <link rel="stylesheet" href="css/layout.css?v=0.68.46">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.68.46">
+    <link rel="stylesheet" href="css/pages.css?v=0.68.46">
+    <link rel="stylesheet" href="css/modals.css?v=0.68.46">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.68.46">
+    <link rel="stylesheet" href="css/responsive.css?v=0.68.46">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -308,9 +308,12 @@
             box-shadow: 0 18px 34px rgba(245,158,11,0.16), 0 0 0 4px rgba(245,158,11,0.18);
         }
         .hr-org-stage.is-linking .hr-org-node:not(.is-active) {
-            cursor: crosshair;
+            cursor: grab;
         }
         .hr-org-stage.is-linking .hr-org-port--parent {
+            opacity: 1;
+            pointer-events: auto;
+            cursor: crosshair;
             transform: translateX(-50%) scale(1.24);
             background: #14B8A6;
             border-color: rgba(255,255,255,0.96);
@@ -358,7 +361,9 @@
             background: rgba(20,184,166,0.82);
             color: #032F2B;
             font-size: 0;
-            cursor: crosshair;
+            cursor: default;
+            opacity: 0;
+            pointer-events: none;
             box-shadow: 0 8px 18px rgba(15,23,42,0.20);
             transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
         }
@@ -369,8 +374,8 @@
             border-radius: inherit;
             background: rgba(255,255,255,0.98);
         }
-        .hr-org-port:hover,
-        .hr-org-port:focus-visible {
+        .hr-org-stage.is-linking .hr-org-port--parent:hover,
+        .hr-org-stage.is-linking .hr-org-port--parent:focus-visible {
             outline: none;
             transform: translateX(-50%) scale(1.18);
             box-shadow: 0 0 0 5px rgba(20,184,166,0.18), 0 10px 22px rgba(15,23,42,0.24);
@@ -385,6 +390,11 @@
             bottom: -8px;
             left: 50%;
             transform: translateX(-50%);
+            opacity: 0;
+        }
+        .hr-org-node-shell:hover .hr-org-port--child,
+        .hr-org-node-shell.is-link-source .hr-org-port--child {
+            opacity: .75;
         }
         .hr-org-node-edit {
             position: absolute;
@@ -405,7 +415,7 @@
             position: absolute;
             right: 36px;
             top: 8px;
-            width: 22px;
+            width: 24px;
             height: 22px;
             display: grid;
             place-items: center;
@@ -416,6 +426,13 @@
             font-size: 12px;
             font-weight: 900;
             cursor: pointer;
+        }
+        .hr-org-node-link:hover,
+        .hr-org-node-link:focus-visible {
+            outline: none;
+            border-color: rgba(20,184,166,0.64);
+            background: rgba(20,184,166,0.22);
+            box-shadow: 0 0 0 3px rgba(20,184,166,0.14);
         }
         .hr-org-node--gold {
             min-width: 220px;
@@ -2660,15 +2677,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.68.45"></script>
-    <script src="js/config.js?v=0.68.45"></script>
-    <script src="js/notification.js?v=0.68.45"></script>
-    <script src="js/api.js?v=0.68.45"></script>
-    <script src="js/auth.js?v=0.68.45"></script>
-    <script src="js/components/sidebar.js?v=0.68.45"></script>
+    <script src="js/ui.js?v=0.68.46"></script>
+    <script src="js/config.js?v=0.68.46"></script>
+    <script src="js/notification.js?v=0.68.46"></script>
+    <script src="js/api.js?v=0.68.46"></script>
+    <script src="js/auth.js?v=0.68.46"></script>
+    <script src="js/components/sidebar.js?v=0.68.46"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.68.45"></script>
-    <script src="js/alerts.js?v=0.68.45"></script><script>
+    <script src="js/hr-page.js?v=0.68.46"></script>
+    <script src="js/alerts.js?v=0.68.46"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

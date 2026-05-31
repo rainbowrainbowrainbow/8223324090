@@ -11,6 +11,18 @@ function click(window, target) {
     target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
+function pointer(window, type, init = {}) {
+    const event = new window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: init.button ?? 0,
+        clientX: init.clientX ?? 0,
+        clientY: init.clientY ?? 0
+    });
+    Object.defineProperty(event, 'pointerId', { value: init.pointerId ?? 1 });
+    return event;
+}
+
 async function settle() {
     await new Promise(resolve => setTimeout(resolve, 0));
 }
@@ -160,6 +172,7 @@ test('HR org canvas exposes ports and creates persisted parent links through the
 
     assert.equal(window.document.querySelectorAll('.hr-org-port--child').length, 2);
     assert.equal(window.document.querySelectorAll('.hr-org-port--parent').length, 2);
+    assert.equal(window.document.querySelectorAll('.hr-org-port--child[data-org-link-source]').length, 0);
 
     click(window, window.document.querySelector('[data-org-link-source="child"]'));
     assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
@@ -168,4 +181,43 @@ test('HR org canvas exposes ports and creates persisted parent links through the
 
     assert.equal(api.nodes().find(node => node.id === 'child').parentId, 'parent');
     assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"] .hr-org-link-hit'));
+});
+
+test('HR org canvas does not create links from card clicks while relinking is active', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: null, order: 1, stack: null, meta: 'child', x: 90, y: 120 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 2, stack: null, meta: 'parent', x: 330, y: 30 }
+    ]);
+    api.renderCanvas();
+
+    click(window, window.document.querySelector('[data-org-link-source="child"]'));
+    click(window, window.document.querySelector('[data-org-node-id="parent"]'));
+    await settle();
+
+    assert.equal(api.nodes().find(node => node.id === 'child').parentId, null);
+    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
+});
+
+test('HR org canvas drag cancels sticky relink mode and persists the moved node position', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: null, order: 1, stack: null, meta: 'child', x: 90, y: 120 },
+        { id: 'parent', title: 'Parent', description: 'Parent role.', tone: 'gold', lane: 'root', parentId: null, order: 2, stack: null, meta: 'parent', x: 330, y: 30 }
+    ]);
+    api.renderCanvas();
+
+    click(window, window.document.querySelector('[data-org-link-source="child"]'));
+    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'true');
+
+    const node = window.document.querySelector('[data-org-node-id="parent"]');
+    node.dispatchEvent(pointer(window, 'pointerdown', { pointerId: 8, clientX: 100, clientY: 100 }));
+    window.dispatchEvent(pointer(window, 'pointermove', { pointerId: 8, clientX: 160, clientY: 130 }));
+    window.dispatchEvent(pointer(window, 'pointerup', { pointerId: 8, clientX: 160, clientY: 130 }));
+    await settle();
+
+    const moved = api.nodes().find(item => item.id === 'parent');
+    assert.equal(window.document.getElementById('hrOrgLineToolBtn').getAttribute('aria-pressed'), 'false');
+    assert.equal(moved.x, 390);
+    assert.equal(moved.y, 60);
 });

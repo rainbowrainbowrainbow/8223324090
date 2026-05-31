@@ -4,6 +4,15 @@
 
 ---
 
+## v0.68.29 - гаряче виправлення текстів бронювання
+
+### Booking drawer encoding / 31.05.2026 [codex]
+- **Колонку бронювання очищено від битого кодування** - category chips програм, copy-кнопки, customer block, edit/duplicate, series modal, bulk-дії та повідомлення таймлайну знову показують нормальну українську.
+- **Повернуто коректну JS-логіку після декодування** - nullish fallback `??` у сценаріях бронювання, кухонних позиціях, total-пакеті та pinata service price лишився валідним і не ламає submit.
+- **Додано regression guard** - `booking-drawer-encoding.test.js` перевіряє `js/booking.js`, `js/booking-form.js` і booking panel markup на `Рџ...`, `вњ...`, `В·` та інші mojibake-маркери.
+
+---
+
 ## v0.68.28 - гаряче виправлення тексту меню кухні
 
 ### Kitchen menu / 30.05.2026 [codex]

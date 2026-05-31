@@ -1,5 +1,5 @@
 ﻿/**
- * booking.js - РџР°РЅРµР»СЊ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ, С„РѕСЂРјР°, РґРµС‚Р°Р»С–, РІРёРґР°Р»РµРЅРЅСЏ, РїРµСЂРµРЅРѕСЃ С‡Р°СЃСѓ
+ * booking.js - панель бронювання, форма, деталі, видалення, перенос часу
  */
 
 function _escB(str) {
@@ -90,8 +90,8 @@ const BookingDrawerState = {
 };
 
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
-const MAYSTERNYA_ONLINE_ROOM = 'РћРЅР»Р°Р№РЅ';
-const MAYSTERNYA_CLOSED_ROOM = 'Р—Р°Р№РЅСЏС‚Рѕ';
+const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
+const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
 const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
 
 function isMaysternyaBookingContext() {
@@ -159,7 +159,7 @@ function ensureMaysternyaRoomOption(value = MAYSTERNYA_ONLINE_ROOM) {
 }
 
 function ensureTimelineRoomOption(value) {
-    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'РљР°Р±С–РЅРµС‚');
+    ensureMaysternyaRoomOption(value || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет');
 }
 
 function getSelectedTimelineResourceLine() {
@@ -175,7 +175,7 @@ function timelineResourceCapacityError(formData = getBookingFormData()) {
     const capacity = parseInt(line?.capacity, 10);
     const kidsCount = parseInt(document.getElementById('kidsCountInput')?.value || formData?.kidsCount || 0, 10);
     if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(kidsCount) || kidsCount <= capacity) return null;
-    return `${line.name || getTimelineBookingPresentation().roomOptionLabel} РјР°С” РјС–СЃС‚РєС–СЃС‚СЊ ${capacity}, Р° РІ Р·Р°РїРёСЃС– ${kidsCount}`;
+    return `${line.name || getTimelineBookingPresentation().roomOptionLabel} має місткість ${capacity}, а в записі ${kidsCount}`;
 }
 
 function getMaysternyaContactSnapshot() {
@@ -463,9 +463,9 @@ function prepareMaysternyaBookingPanel(options = {}) {
     setBookingWorkspaceHasEvent(true, { markDirty: false });
 
     const title = document.querySelector('#bookingPanel .panel-header h3');
-    if (title && !AppState.editingBookingId) title.textContent = 'РћРЅР»Р°Р№РЅ Р·Р°РїРёСЃ';
+    if (title && !AppState.editingBookingId) title.textContent = 'Онлайн запис';
     const submit = document.getElementById('bookingSubmitBtn');
-    if (submit && !AppState.editingBookingId) submit.textContent = 'Р—Р°РїРёСЃР°С‚Рё РїСЂРёР№РѕРј';
+    if (submit && !AppState.editingBookingId) submit.textContent = 'Записати прийом';
 
     const groupName = document.getElementById('bookingGroupName');
     if (groupName) groupName.placeholder = 'Тема запиту або коротка примітка';
@@ -495,7 +495,7 @@ function prepareTimelineQuickCloseTools(options = {}) {
     const hint = tools.querySelector('small');
     const durationLabel = tools.querySelector('label span');
     const button = document.getElementById('maysternyaCloseSlotBtn');
-    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Р РµСЃСѓСЂСЃ';
+    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Ресурс';
     if (isMaysternyaBookingContext()) {
         if (title) title.textContent = 'Онлайн прийом';
         if (hint) hint.textContent = 'Мінімальний запис для лінії Олександри';
@@ -560,7 +560,7 @@ function prepareDisplayModeBookingPanel(options = {}) {
 
 const EDUCATION_STAFF_KEYWORDS = [
     'teacher', 'mentor', 'instructor', 'coach', 'tutor',
-    'РІРёРєР»Р°РґР°С‡', 'РІС‡РёС‚РµР»СЊ', 'СѓС‡РёС‚РµР»СЊ', 'РїРµРґР°РіРѕРі', 'С‚СЂРµРЅРµСЂ', 'РЅР°СЃС‚Р°РІРЅРёРє'
+    'викладач', 'вчитель', 'учитель', 'педагог', 'тренер', 'наставник'
 ];
 let _educationLessonTeachersLoaded = false;
 let _educationLessonTeachers = [];
@@ -587,9 +587,9 @@ function normalizeEducationLessonRepeatEvery(value) {
 
 function educationLessonRepeatEveryLabel(value) {
     const normalized = normalizeEducationLessonRepeatEvery(value);
-    if (normalized === 'daily') return 'Р©РѕРґРЅСЏ';
-    if (normalized === 'biweekly') return 'Р Р°Р· РЅР° РґРІР° С‚РёР¶РЅС–';
-    return 'Р©РѕС‚РёР¶РЅСЏ';
+    if (normalized === 'daily') return 'Щодня';
+    if (normalized === 'biweekly') return 'Раз на два тижні';
+    return 'Щотижня';
 }
 
 function resetEducationLessonFields() {
@@ -609,7 +609,7 @@ function setEducationTeacherOptions(teachers = []) {
     const select = document.getElementById('educationLessonTeacher');
     if (!select) return;
     const current = select.value;
-    select.innerHTML = '<option value="">Р‘РµР· РІРёРєР»Р°РґР°С‡Р°</option>';
+    select.innerHTML = '<option value="">Без викладача</option>';
     teachers.forEach(staff => {
         const option = document.createElement('option');
         option.value = String(staff.id || staff.userId || staff.username || staff.name || '');
@@ -664,17 +664,17 @@ function prepareEducationLessonPanel(options = {}) {
     section.setAttribute('aria-hidden', enabled ? 'false' : 'true');
     if (!enabled) return;
 
-    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'РљР°Р±С–РЅРµС‚';
+    const lineName = options.line?.name || getSelectedTimelineResourceLine()?.name || getTimelineBookingPresentation().roomOptionLabel || 'Кабінет';
     const group = document.getElementById('educationLessonGroup');
-    if (group && !group.placeholder) group.placeholder = 'Р“СЂСѓРїР° Р°Р±Рѕ РєР»Р°СЃ';
+    if (group && !group.placeholder) group.placeholder = 'Група або клас';
     const title = document.getElementById('educationLessonTitle');
-    if (title) title.placeholder = `Р—Р°РЅСЏС‚С‚СЏ Сѓ ${lineName}`;
+    if (title) title.placeholder = `Заняття у ${lineName}`;
     const kidsSection = document.getElementById('kidsCountSection');
     if (kidsSection) kidsSection.classList.remove('hidden');
     const kidsLabel = kidsSection?.querySelector('label');
-    if (kidsLabel) kidsLabel.textContent = 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ';
+    if (kidsLabel) kidsLabel.textContent = 'Кількість учнів';
     const kidsInput = document.getElementById('kidsCountInput');
-    if (kidsInput) kidsInput.placeholder = 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ';
+    if (kidsInput) kidsInput.placeholder = 'Кількість учнів';
     loadEducationLessonTeachers();
 }
 
@@ -828,7 +828,7 @@ function renderBookingMenuProductOptions() {
     products.forEach(product => {
         const type = bookingKitchenType(product);
         const sectionPrefix = type === 'cake' ? 'Торти' : 'Меню';
-        const section = `${sectionPrefix}${product.menuSection ? ` В· ${product.menuSection}` : ''}`;
+        const section = `${sectionPrefix}${product.menuSection ? ` · ${product.menuSection}` : ''}`;
         if (!groups.has(section)) groups.set(section, []);
         groups.get(section).push(product);
     });
@@ -864,7 +864,7 @@ function renderBookingMenuPositions() {
             <div class="booking-menu-position-row" data-menu-index="${index}">
                 <div>
                     <div class="booking-menu-position-title"><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}</div>
-                    <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` В· ${escapeHtml(item.note)}` : ''}</div>
+                    <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</div>
                 </div>
                 <div class="booking-menu-position-actions">
                     <button type="button" class="booking-menu-edit-btn" data-menu-edit="${index}" title="Редагувати">✎</button>
@@ -1128,17 +1128,17 @@ function renderBookingPackageDetail(booking) {
     const rows = positions.length
         ? positions.map(item => `
             <div class="booking-detail-package-row">
-                <div><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` В· ${escapeHtml(item.note)}` : ''}</small></div>
+                <div><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}<small>${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice || 0))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></div>
                 <strong>${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
             </div>
         `).join('')
-        : `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu || 'РњРµРЅСЋ РЅРµ РґРµС‚Р°Р»С–Р·РѕРІР°РЅРѕ')}</div><strong>вЂ”</strong></div>`;
+        : `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu || 'Меню не деталізовано')}</div><strong>—</strong></div>`;
     return `
         <div class="booking-detail-package">
-            <div class="booking-detail-package-header">РњРµРЅСЋ / СЃРµСЂРІС–СЃРЅС– РїРѕР·РёС†С–С—</div>
+            <div class="booking-detail-package-header">Меню / сервісні позиції</div>
             ${rows}
             <div class="booking-detail-package-row booking-detail-package-total">
-                <div>Р Р°Р·РѕРј РїР°РєРµС‚</div>
+                <div>Разом пакет</div>
                 <strong>${escapeHtml(formatPrice(bookingPackage?.finalTotal ?? booking.price ?? 0))}</strong>
             </div>
         </div>
@@ -1152,15 +1152,15 @@ function renderBookingWorkspaceDetail(booking) {
     const meta = getBookingWorkspaceScenarioMeta(scenario);
     const lead = workspace?.leadDetails || {};
     const leadRows = [
-        lead.source ? `<div class="booking-detail-row"><span class="label">Р”Р¶РµСЂРµР»Рѕ Р»С–РґР°:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
-        lead.status ? `<div class="booking-detail-row"><span class="label">РЎС‚Р°С‚СѓСЃ Р»С–РґР°:</span><span class="value">${escapeHtml(lead.status)}</span></div>` : '',
-        lead.interestDate ? `<div class="booking-detail-row"><span class="label">Р‘Р°Р¶Р°РЅР° РґР°С‚Р°:</span><span class="value">${escapeHtml(lead.interestDate)}</span></div>` : '',
-        lead.childrenInfo ? `<div class="booking-detail-row"><span class="label">Р”С–С‚Рё / РіРѕСЃС‚С–:</span><span class="value">${escapeHtml(lead.childrenInfo)}</span></div>` : '',
-        lead.budget ? `<div class="booking-detail-row"><span class="label">Р‘СЋРґР¶РµС‚:</span><span class="value">${escapeHtml(lead.budget)}</span></div>` : '',
-        lead.notes ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєРё Р»С–РґР°:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
+        lead.source ? `<div class="booking-detail-row"><span class="label">Джерело ліда:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
+        lead.status ? `<div class="booking-detail-row"><span class="label">Статус ліда:</span><span class="value">${escapeHtml(lead.status)}</span></div>` : '',
+        lead.interestDate ? `<div class="booking-detail-row"><span class="label">Бажана дата:</span><span class="value">${escapeHtml(lead.interestDate)}</span></div>` : '',
+        lead.childrenInfo ? `<div class="booking-detail-row"><span class="label">Діти / гості:</span><span class="value">${escapeHtml(lead.childrenInfo)}</span></div>` : '',
+        lead.budget ? `<div class="booking-detail-row"><span class="label">Бюджет:</span><span class="value">${escapeHtml(lead.budget)}</span></div>` : '',
+        lead.notes ? `<div class="booking-detail-row"><span class="label">Нотатки ліда:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
     ].join('');
     return `
-        <div class="booking-detail-row"><span class="label">РЎС†РµРЅР°СЂС–Р№:</span><span class="value">${escapeHtml(meta.label)}</span></div>
+        <div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>
         ${leadRows}
     `;
 }
@@ -1251,16 +1251,16 @@ function inferBookingPinataMode(booking, program) {
 function renderPinataDetailRows(booking) {
     const numberRows = [
         booking?.pinataNumber
-            ? `<div class="booking-detail-row"><span class="label">РќРѕРјРµСЂ РїС–РЅСЊСЏС‚Рё:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">Номер піньяти:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
             : '',
         booking?.pinataFillerNumber
-            ? `<div class="booking-detail-row"><span class="label">РќРѕРјРµСЂ РЅР°РїРѕРІРЅСЋРІР°С‡Р°:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">Номер наповнювача:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
             : ''
     ].join('');
 
     if (booking?.pinataMode === 'client') {
         const note = booking.clientPinataServiceNote
-            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
             : '';
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
     }
@@ -1271,7 +1271,7 @@ function renderPinataDetailRows(booking) {
 
     if (booking?.pinataMode === 'client') {
         const note = booking.clientPinataServiceNote
-            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
             : '';
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${note}`;
     }
@@ -1282,7 +1282,7 @@ function renderPinataDetailRows(booking) {
 }
 
 // ==========================================
-// РџРђРќР•Р›Р¬ Р‘Р РћРќР®Р’РђРќРќРЇ
+// ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
 
 async function openBookingPanel(time, lineId) {
@@ -1309,7 +1309,7 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('bookingTime').value = time;
     document.getElementById('bookingLine').value = lineId;
 
-    // РЎРєРёРЅСѓС‚Рё С„РѕСЂРјСѓ
+    // Скинути форму
     document.getElementById('roomSelect').value = '';
     document.getElementById('selectedProgram').value = '';
     document.getElementById('bookingNotes').value = '';
@@ -1330,18 +1330,18 @@ async function openBookingPanel(time, lineId) {
     setBookingKitchenEnabled(false, { markDirty: false });
     setBookingLeadDetailsEnabled(Boolean(AppState.leadConversionContext?.leadId), { markDirty: false });
 
-    // РЎРєРёРЅСѓС‚Рё toggle РґРѕРґР°С‚РєРѕРІРѕРіРѕ РІРµРґСѓС‡РѕРіРѕ
+    // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {
         extraHostToggle.checked = false;
         document.getElementById('extraHostAnimatorSection')?.classList.add('hidden');
     }
 
-    // РЎРєРёРЅСѓС‚Рё РєРѕСЃС‚СЋРј
+    // Скинути костюм
     const costumeSelect = document.getElementById('costumeSelect');
     if (costumeSelect) costumeSelect.value = '';
 
-    // РЎРєРёРЅСѓС‚Рё СЃС‚Р°С‚СѓСЃ С‚Р° Рє-РєС–СЃС‚СЊ РґС–С‚РµР№
+    // Скинути статус та к-кість дітей
     const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
     if (statusRadio) statusRadio.checked = true;
     const kidsCountSection = document.getElementById('kidsCountSection');
@@ -1474,7 +1474,7 @@ function applyLeadConversionContextToBookingForm() {
         source: 'lead',
         status: 'warm',
         interestDate: ctx.eventDate || '',
-        notes: ctx.customerName ? `Р›С–Рґ #${ctx.leadId}: ${ctx.customerName}` : `Р›С–Рґ #${ctx.leadId}`
+        notes: ctx.customerName ? `Лід #${ctx.leadId}: ${ctx.customerName}` : `Лід #${ctx.leadId}`
     });
     renderBookingPackageSummary();
 }
@@ -1512,7 +1512,7 @@ function selectCustomerFromSearch(customer) {
         const info = document.getElementById('customerInfo');
         const badge = document.getElementById('customerVisitBadge');
         if (info && badge) {
-            badge.textContent = `${customer.totalBookings} РІС–Р·РёС‚${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'Рё' : 'С–РІ'}`;
+            badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
             info.classList.remove('hidden');
         }
     }
@@ -1558,7 +1558,7 @@ function renderCustomerSearchResults(customers, options = {}) {
             <div class="customer-search-meta">
                 ${c.phone ? escapeHtml(c.phone) : ''}
                 ${c.instagram ? ' @' + escapeHtml(c.instagram) : ''}
-                ${c.totalBookings ? ' В· ' + c.totalBookings + ' РІС–Р·.' : ''}
+                ${c.totalBookings ? ' · ' + c.totalBookings + ' віз.' : ''}
             </div>
         </div>
     `).join('');
@@ -1593,8 +1593,8 @@ function renderBookingCustomerDuplicateHint(customers = []) {
         return;
     }
     hint.innerHTML = `
-        <strong>РњРѕР¶Р»РёРІРёР№ РґСѓР±Р»СЊ РєР»С–С”РЅС‚Р°:</strong>
-        ${matches.map(c => `<button type="button" class="booking-duplicate-customer-btn" data-id="${escapeHtml(String(c.id))}">${escapeHtml(c.name || 'РљР»С–С”РЅС‚')}${c.phone ? ` В· ${escapeHtml(c.phone)}` : ''}${c.instagram ? ` В· @${escapeHtml(c.instagram)}` : ''}</button>`).join('')}
+        <strong>Можливий дубль клієнта:</strong>
+        ${matches.map(c => `<button type="button" class="booking-duplicate-customer-btn" data-id="${escapeHtml(String(c.id))}">${escapeHtml(c.name || 'Клієнт')}${c.phone ? ` · ${escapeHtml(c.phone)}` : ''}${c.instagram ? ` · @${escapeHtml(c.instagram)}` : ''}</button>`).join('')}
     `;
     hint.classList.remove('hidden');
     hint.querySelectorAll('.booking-duplicate-customer-btn').forEach(btn => {
@@ -1709,13 +1709,13 @@ async function showFreeRooms() {
     const duration = program ? program.duration : 60;
 
     if (!time) {
-        showNotification('РЎРїРѕС‡Р°С‚РєСѓ РѕР±РµСЂС–С‚СЊ С‡Р°СЃ', 'error');
+        showNotification('Спочатку оберіть час', 'error');
         return;
     }
 
     const panel = document.getElementById('freeRoomsPanel');
     panel.classList.remove('hidden');
-    panel.innerHTML = '<div class="loading-spinner">Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ...</div>';
+    panel.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
         let freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
@@ -1738,31 +1738,31 @@ async function showFreeRooms() {
             const freeHtml = freeResources.map(resource => {
                 const capacity = parseInt(resource.capacity, 10);
                 const capacityLabel = Number.isFinite(capacity) && capacity > 0
-                    ? `<small>РґРѕ ${capacity} РјС–СЃС†СЊ</small>`
+                    ? `<small>до ${capacity} місць</small>`
                     : '';
                 return `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(resource.name)}"><span>${escapeHtml(resource.name)}</span>${capacityLabel}</button>`;
             }).join('');
             const occupiedHtml = occupiedResources.length > 0
-                ? `<div class="occupied-rooms">Р—Р°Р№РЅСЏС‚С–: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
+                ? `<div class="occupied-rooms">Зайняті: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
                 : '';
             const overCapacityHtml = overCapacityResources.length > 0
-                ? `<div class="occupied-rooms">РњР°Р»Р° РјС–СЃС‚РєС–СЃС‚СЊ: ${overCapacityResources.map(r => {
+                ? `<div class="occupied-rooms">Мала місткість: ${overCapacityResources.map(r => {
                     const capacity = parseInt(r.capacity, 10);
                     return `${escapeHtml(r.name)}${Number.isFinite(capacity) && capacity > 0 ? ` (${capacity})` : ''}`;
                 }).join(', ')}</div>`
                 : '';
-            panel.innerHTML = freeHtml || '<span class="no-free-rooms">РќРµРјР°С” РґРѕСЃС‚СѓРїРЅРёС… СЂРµСЃСѓСЂСЃС–РІ РЅР° С†РµР№ С‡Р°СЃ</span>';
+            panel.innerHTML = freeHtml || '<span class="no-free-rooms">Немає доступних ресурсів на цей час</span>';
             panel.innerHTML += occupiedHtml + overCapacityHtml;
         } else if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
                 `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(room)}"><span>${escapeHtml(room)}</span></button>`
             ).join('') +
-            (data.occupied.length > 0 ? `<div class="occupied-rooms">Р—Р°Р№РЅСЏС‚С–: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
+            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
-            panel.innerHTML = '<span class="no-free-rooms">Р’СЃС– РєС–РјРЅР°С‚Рё Р·Р°Р№РЅСЏС‚С– РІ С†РµР№ С‡Р°СЃ</span>';
+            panel.innerHTML = '<span class="no-free-rooms">Всі кімнати зайняті в цей час</span>';
         }
     } catch (err) {
-        panel.innerHTML = '<span class="no-free-rooms">РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ</span>';
+        panel.innerHTML = '<span class="no-free-rooms">Помилка завантаження</span>';
     }
 }
 
@@ -1773,7 +1773,7 @@ async function validateCertificate() {
     var resultEl = document.getElementById('certValidationResult');
     if (!resultEl) return;
     resultEl.style.display = 'block';
-    resultEl.textContent = 'вЏі РџРµСЂРµРІС–СЂСЏСЋ...';
+    resultEl.textContent = '⏳ Перевіряю...';
     resultEl.style.color = '';
     try {
         var resp = await fetch('/api/certificates/validate/' + encodeURIComponent(code), {
@@ -1781,14 +1781,14 @@ async function validateCertificate() {
         });
         var data = await resp.json();
         if (data.valid) {
-            resultEl.innerHTML = 'вњ… РЎРµСЂС‚РёС„С–РєР°С‚ РґС–Р№СЃРЅРёР№: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
+            resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
             resultEl.style.color = 'var(--success, green)';
         } else {
-            resultEl.textContent = 'вќЊ ' + (data.reason === 'expired' ? 'РџСЂРѕСЃС‚СЂРѕС‡РµРЅРёР№' : data.reason === 'used' ? 'Р’Р¶Рµ РІРёРєРѕСЂРёСЃС‚Р°РЅРёР№' : data.error || 'РќРµРґС–Р№СЃРЅРёР№');
+            resultEl.textContent = '❌ ' + (data.reason === 'expired' ? 'Прострочений' : data.reason === 'used' ? 'Вже використаний' : data.error || 'Недійсний');
             resultEl.style.color = '#ef4444';
         }
     } catch (e) {
-        resultEl.textContent = 'вќЊ РџРѕРјРёР»РєР° РїРµСЂРµРІС–СЂРєРё';
+        resultEl.textContent = '❌ Помилка перевірки';
         resultEl.style.color = '#ef4444';
     }
 }
@@ -1808,7 +1808,7 @@ async function openBookingChat(bookingId) {
             if (typeof openSafeNewTab === 'function') openSafeNewTab(chatUrl);
             else window.open(chatUrl, '_blank', 'noopener,noreferrer');
         } else {
-            if (typeof showToast === 'function') showToast('РќРµ РІРґР°Р»РѕСЃСЊ РІС–РґРєСЂРёС‚Рё С‡Р°С‚', 'error');
+            if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
         }
     } catch (e) { console.error('openBookingChat:', e); }
 }
@@ -1819,9 +1819,9 @@ async function closeBookingPanel(force = false) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(panel, () => closeBookingPanel(true), {
             force,
             isDirty: () => !!window.BookingForm?.isDirty?.(),
-            message: 'Р„ РЅРµР·Р±РµСЂРµР¶РµРЅС– Р·РјС–РЅРё РІ Р±СЂРѕРЅСЋРІР°РЅРЅС–. Р—Р°РєСЂРёС‚Рё Р±РµР· Р·Р±РµСЂРµР¶РµРЅРЅСЏ?',
-            okText: 'Р—Р°РєСЂРёС‚Рё Р±РµР· Р·Р±РµСЂРµР¶РµРЅРЅСЏ',
-            cancelText: 'РџРѕРІРµСЂРЅСѓС‚РёСЃСЊ',
+            message: 'Є незбережені зміни в бронюванні. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись',
             markClean: false
         });
     }
@@ -1834,20 +1834,20 @@ async function closeBookingPanel(force = false) {
     document.getElementById('panelBackdrop')?.classList.add('hidden');
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
 
-    // v5.5: РЎРєРёРЅСѓС‚Рё СЂРµР¶РёРј СЂРµРґР°РіСѓРІР°РЅРЅСЏ
+    // v5.5: Скинути режим редагування
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
-        if (panelH3) panelH3.textContent = 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
-        if (btnSubmit) btnSubmit.textContent = 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+        if (panelH3) panelH3.textContent = 'Нове бронювання';
+        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
     }
     if (!AppState.editingBookingId && !isMaysternyaBookingContext()) {
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
-        if (panelH3) panelH3.textContent = 'РќРѕРІРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
-        if (btnSubmit) btnSubmit.textContent = 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+        if (panelH3) panelH3.textContent = 'Нове бронювання';
+        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
     }
     if (window.BookingForm?.markClean) BookingForm.markClean();
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
@@ -1856,14 +1856,14 @@ async function closeBookingPanel(force = false) {
 
 let _programIconsHash = null;
 const PROGRAM_CATEGORY_FILTERS = [
-    { id: 'all', label: 'РЈСЃС–', categories: [] },
-    { id: 'animation', label: 'РђРЅС–РјР°С†С–СЏ', categories: ['animation'] },
+    { id: 'all', label: 'Усі', categories: [] },
+    { id: 'animation', label: 'Анімація', categories: ['animation'] },
     { id: 'wow', label: 'WOW', categories: ['show'] },
-    { id: 'quests', label: 'РљРІРµСЃС‚Рё', categories: ['quest'] },
-    { id: 'photo', label: 'Р¤РѕС‚Рѕ', categories: ['photo'] },
-    { id: 'workshops', label: 'РњРљ', categories: ['masterclass'] },
-    { id: 'pinata', label: 'РџС–РЅСЊСЏС‚Рё', categories: ['pinata'] },
-    { id: 'other', label: 'Р†РЅС€Рµ', categories: ['custom'] }
+    { id: 'quests', label: 'Квести', categories: ['quest'] },
+    { id: 'photo', label: 'Фото', categories: ['photo'] },
+    { id: 'workshops', label: 'МК', categories: ['masterclass'] },
+    { id: 'pinata', label: 'Піньяти', categories: ['pinata'] },
+    { id: 'other', label: 'Інше', categories: ['custom'] }
 ];
 
 function renderProgramCategoryChips() {
@@ -1891,7 +1891,7 @@ function renderSelectedProgramSummary(program = null) {
         if (empty) empty.classList.remove('hidden');
         ['detailDuration', 'detailHosts', 'detailPrice', 'detailAge', 'detailKids'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.textContent = 'вЂ”';
+            if (el) el.textContent = '—';
         });
         return;
     }
@@ -1902,7 +1902,7 @@ async function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
 
     // v7.0: Load products from API (with fallback to PROGRAMS)
-    // Don't clear DOM until data is ready вЂ” prevents blank flash
+    // Don't clear DOM until data is ready — prevents blank flash
     const allProducts = await getProducts();
 
     // Cache: skip rebuild if products haven't changed
@@ -2005,15 +2005,15 @@ function selectProgram(programId) {
     if (selectedEl) selectedEl.classList.add('selected');
     document.getElementById('selectedProgram').value = programId;
 
-    const priceText = program.perChild ? `${formatPrice(program.price)}/РґРёС‚` : formatPrice(program.price);
-    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} С…РІ` : 'вЂ”';
+    const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
+    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
     document.getElementById('detailHosts').textContent = program.hosts;
     document.getElementById('detailPrice').textContent = priceText;
 
     const ageEl = document.getElementById('detailAge');
     const kidsEl = document.getElementById('detailKids');
-    if (ageEl) ageEl.textContent = program.age || 'вЂ”';
-    if (kidsEl) kidsEl.textContent = program.kids || 'вЂ”';
+    if (ageEl) ageEl.textContent = program.age || '—';
+    if (kidsEl) kidsEl.textContent = program.kids || '—';
 
     renderSelectedProgramSummary(program);
 
@@ -2050,24 +2050,24 @@ function selectProgram(programId) {
     }
     filterPrograms();
 
-    // Рљ-РєС–СЃС‚СЊ РґС–С‚РµР№ РґР»СЏ РњРљ (perChild)
+    // К-кість дітей для МК (perChild)
     const kidsCountSection = document.getElementById('kidsCountSection');
     if (kidsCountSection) {
         const kidsLabel = kidsCountSection.querySelector('label');
-        if (kidsLabel) kidsLabel.textContent = isEducationTimelineBookingMode() ? 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ' : 'РљС–Р»СЊРєС–СЃС‚СЊ РґС–С‚РµР№';
+        if (kidsLabel) kidsLabel.textContent = isEducationTimelineBookingMode() ? 'Кількість учнів' : 'Кількість дітей';
         if (program.perChild || isEducationTimelineBookingMode()) {
             kidsCountSection.classList.remove('hidden');
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
                 kidsInput.value = '';
-                kidsInput.placeholder = isEducationTimelineBookingMode() ? 'РљС–Р»СЊРєС–СЃС‚СЊ СѓС‡РЅС–РІ' : '';
+                kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
                 kidsInput.oninput = () => {
                     const count = parseInt(kidsInput.value) || 0;
                     if (program.perChild) {
                         const total = count * program.price;
                         document.getElementById('detailPrice').textContent = count > 0
                             ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
-                            : `${formatPrice(program.price)}/РґРёС‚`;
+                            : `${formatPrice(program.price)}/дит`;
                     }
                     renderBookingPackageSummary();
                 };
@@ -2100,10 +2100,10 @@ function selectProgram(programId) {
 
 // v20.7.0: Age-based program recommendations
 const AGE_RECOMMENDATIONS = {
-    '3-5':  ['Р•Р»СЊР·Р°', 'РџРѕРЅС–', 'РњС–РЅСЊР№РѕРЅ'],
-    '6-8':  ['Minecraft', 'Monster High', 'РќС–РЅРґР·СЏ'],
-    '9-12': ['Squid Game', 'РњР°СЂРІРµР»', 'Р РѕРє'],
-    '12+':  ['РњР°С„С–СЏ', 'Р РѕРє', 'РњР°СЂРІРµР»'],
+    '3-5':  ['Ельза', 'Поні', 'Міньйон'],
+    '6-8':  ['Minecraft', 'Monster High', 'Ніндзя'],
+    '9-12': ['Squid Game', 'Марвел', 'Рок'],
+    '12+':  ['Мафія', 'Рок', 'Марвел'],
 };
 
 function showAgeRecommendations() {
@@ -2128,11 +2128,11 @@ function showAgeRecommendations() {
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     const matching = products.filter(p => recs.some(r => (p.label || p.name || '').toLowerCase().includes(r.toLowerCase())));
 
-    document.getElementById('ageRecoText').textContent = `Р’С–Рє: ${age} СЂ. в†’ Р РµРєРѕРјРµРЅРґРѕРІР°РЅС–:`;
+    document.getElementById('ageRecoText').textContent = `Вік: ${age} р. → Рекомендовані:`;
     const container = document.getElementById('ageRecoPrograms');
     container.innerHTML = matching.length
         ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
-            ${_escB(p.icon) || 'рџЋЇ'} ${_escB(p.label || p.name)}
+            ${_escB(p.icon) || '🎯'} ${_escB(p.label || p.name)}
           </button>`).join('')
         : recs.map(r => `<span class="age-reco-tag">${r}</span>`).join('');
 
@@ -2187,7 +2187,7 @@ function renderScriptCategory(category) {
         <div style="margin-bottom:8px">
             ${s.trigger_phrase ? `<div class="scripts-trigger">${_escB(s.trigger_phrase)}</div>` : ''}
             <div style="font-size:12px;line-height:1.5">${_escB(s.response_text)}</div>
-            <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='РЎРєРѕРїС–Р№РѕРІР°РЅРѕ вњ“';setTimeout(()=>this.textContent='РљРѕРїС–СЋРІР°С‚Рё',1500)">РљРѕРїС–СЋРІР°С‚Рё</button>
+            <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='Скопійовано ✓';setTimeout(()=>this.textContent='Копіювати',1500)">Копіювати</button>
         </div>
     `).join('<hr style="border:none;border-top:1px solid var(--gray-200);margin:6px 0">');
     content.classList.add('visible');
@@ -2299,11 +2299,11 @@ async function refreshAnimatorSelectsForCurrentSlot() {
 }
 
 async function populateSecondAnimatorSelect() {
-    await populateAnimatorSelectById('secondAnimatorSelect', 'РћР±РµСЂС–С‚СЊ РґСЂСѓРіРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР°');
+    await populateAnimatorSelectById('secondAnimatorSelect', 'Оберіть другого аніматора');
 }
 
 async function populateExtraHostAnimatorSelect() {
-    await populateAnimatorSelectById('extraHostAnimatorSelect', 'РћР±РµСЂС–С‚СЊ Р°РЅС–РјР°С‚РѕСЂР°');
+    await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
 }
 
 // v7.9.3: Resolve secondAnimator name when line was renamed
@@ -2315,7 +2315,7 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
     // If the stored name matches an option, we're done
     if (select.value === storedName) return;
 
-    // Name doesn't match вЂ” try to resolve via linked booking's line_id
+    // Name doesn't match — try to resolve via linked booking's line_id
     if (bookingId) {
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const mainBooking = bookings.find(b => b.id === bookingId);
@@ -2331,17 +2331,17 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
             }
         }
     }
-    // Couldn't resolve вЂ” show warning
-    showNotification(`вљ пёЏ Р”СЂСѓРіРёР№ Р°РЅС–РјР°С‚РѕСЂ "${storedName}" РЅРµ Р·РЅР°Р№РґРµРЅРёР№ (Р»С–РЅС–СЋ РїРµСЂРµР№РјРµРЅРѕРІР°РЅРѕ?)`, 'warning');
+    // Couldn't resolve — show warning
+    showNotification(`⚠️ Другий аніматор "${storedName}" не знайдений (лінію перейменовано?)`, 'warning');
 }
 
 function updateCustomDuration() {
     const duration = parseInt(document.getElementById('customDuration')?.value) || 30;
-    document.getElementById('detailDuration').textContent = `${duration} С…РІ`;
+    document.getElementById('detailDuration').textContent = `${duration} хв`;
 }
 
 // ==========================================
-// РЎРўР’РћР Р•РќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ
+// СТВОРЕННЯ БРОНЮВАННЯ
 // ==========================================
 
 function getBookingFormData() {
@@ -2362,12 +2362,12 @@ function getBookingFormData() {
     let label = program ? program.label : '';
     if (isEducationTimelineBookingMode() && !program) {
         duration = parseInt(document.getElementById('customDuration')?.value, 10) || 60;
-        label = document.getElementById('educationLessonTitle')?.value?.trim() || 'Р—Р°РЅСЏС‚С‚СЏ';
+        label = document.getElementById('educationLessonTitle')?.value?.trim() || 'Заняття';
     }
 
     if (program && program.isCustom) {
         duration = parseInt(document.getElementById('customDuration')?.value) || 30;
-        const customName = document.getElementById('customName')?.value || 'Р†РЅС€Рµ';
+        const customName = document.getElementById('customName')?.value || 'Інше';
         label = `${customName}(${duration})`;
     }
 
@@ -2383,11 +2383,11 @@ function getBookingFormData() {
     let clientPinataServiceNote = null;
     if (program && program.hasFiller && pinataMode === 'park') {
         pinataFiller = document.getElementById('pinataFillerSelect')?.value;
-        if (pinataFiller) label = `РџС–РЅ+${pinataFiller}`;
+        if (pinataFiller) label = `Пін+${pinataFiller}`;
     } else if (program && pinataMode === 'client') {
         clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
         clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
-        label = 'РљР»С–С”РЅС‚СЃСЊРєР° РїС–РЅСЊСЏС‚Р°';
+        label = 'Клієнтська піньята';
     }
 
     const secondAnimator = program && program.hosts > 1
@@ -2420,8 +2420,8 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     if (conflict.overlap) {
         // v43.5.0: Show details + reveal hidden block instead of generic message
         const cw = conflict.conflictWith;
-        const detail = cw ? ` (${cw.label || cw.programCode || 'Р±СЂРѕРЅСЋРІР°РЅРЅСЏ'} Рѕ ${cw.time})` : '';
-        showNotification(`вќЊ Р§Р°СЃ Р·Р°Р№РЅСЏС‚РёР№${detail}`, 'error');
+        const detail = cw ? ` (${cw.label || cw.programCode || 'бронювання'} о ${cw.time})` : '';
+        showNotification(`❌ Час зайнятий${detail}`, 'error');
         if (cw && cw.id) revealHiddenBooking(cw.id);
         return false;
     }
@@ -2433,14 +2433,14 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
             || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
             || secondCandidate;
         if (secondLine) {
-            // v5.5: РџСЂРё СЂРµРґР°РіСѓРІР°РЅРЅС– РІРёРєР»СЋС‡РёС‚Рё linked Р±СЂРѕРЅСЋРІР°РЅРЅСЏ С†СЊРѕРіРѕ Р¶ Р·Р°РїРёСЃСѓ
+            // v5.5: При редагуванні виключити linked бронювання цього ж запису
             const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
             const linkedId = allBookings.find(b => b.linkedTo === excludeId && b.lineId === secondLine.id)?.id || null;
             const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
                 const cw2 = secondConflict.conflictWith;
-                const detail2 = cw2 ? ` (${cw2.label || cw2.programCode || 'Р±СЂРѕРЅСЋРІР°РЅРЅСЏ'} Рѕ ${cw2.time})` : '';
-                showNotification(`вќЊ Р§Р°СЃ Р·Р°Р№РЅСЏС‚РёР№ Сѓ ${secondAnimator}${detail2}`, 'error');
+                const detail2 = cw2 ? ` (${cw2.label || cw2.programCode || 'бронювання'} о ${cw2.time})` : '';
+                showNotification(`❌ Час зайнятий у ${secondAnimator}${detail2}`, 'error');
                 if (cw2 && cw2.id) revealHiddenBooking(cw2.id);
                 return false;
             }
@@ -2448,7 +2448,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     }
 
     if (conflict.noPause && (!program || program.category !== 'pinata')) {
-        showWarning('вљ пёЏ РЈР’РђР“Рђ! РќРµРјР°С” 15-С…РІРёР»РёРЅРЅРѕС— РїР°СѓР·Рё РјС–Р¶ РїСЂРѕРіСЂР°РјР°РјРё. Р¦Рµ Р”РЈР–Р• РќР•Р‘РђР–РђРќРћ!');
+        showWarning('⚠️ УВАГА! Немає 15-хвилинної паузи між програмами. Це ДУЖЕ НЕБАЖАНО!');
     }
 
     return true;
@@ -2456,9 +2456,9 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
 
 async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
     if (!programId || !program) return true;
-    // v43.10.0: skip duplicate check for animation extras AND custom "Р†РЅС€Рµ" programs.
-    // Two custom bookings (e.g. Р°РєРІР°РіСЂРёРј + С„РѕС‚РѕР·РѕРЅР°) share programId='custom' but
-    // are conceptually different вЂ” must not block each other.
+    // v43.10.0: skip duplicate check for animation extras AND custom "Інше" programs.
+    // Two custom bookings (e.g. аквагрим + фотозона) share programId='custom' but
+    // are conceptually different — must not block each other.
     if (program.category === 'animation' || program.category === 'custom' || program.isCustom || programId === 'anim_extra' || programId === 'custom') return true;
 
     const allBookings = await getBookingsForDate(AppState.selectedDate);
@@ -2474,7 +2474,7 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     });
 
     if (duplicate) {
-        showNotification(`вќЊ ${program.name} РІР¶Рµ С” Рѕ ${duplicate.time}`, 'error');
+        showNotification(`❌ ${program.name} вже є о ${duplicate.time}`, 'error');
         if (duplicate.id) revealHiddenBooking(duplicate.id);
         return false;
     }
@@ -2495,16 +2495,16 @@ function getBookingWorkspaceIdentityLabel(formData = {}) {
 }
 
 function getNoEventBookingLabel(formData = {}) {
-    if (formData.scenario === 'kitchen_only') return 'РљСѓС…РЅСЏ';
-    if (formData.scenario === 'event_kitchen') return 'РџРѕРґС–СЏ+РєСѓС…РЅСЏ';
-    return 'Р—Р°СЏРІРєР°';
+    if (formData.scenario === 'kitchen_only') return 'Кухня';
+    if (formData.scenario === 'event_kitchen') return 'Подія+кухня';
+    return 'Заявка';
 }
 
 function getNoEventProgramName(formData = {}) {
     const identity = getBookingWorkspaceIdentityLabel(formData);
     if (identity) return identity.slice(0, 160);
-    if (formData.scenario === 'kitchen_only') return 'РљСѓС…РѕРЅРЅРµ Р·Р°РјРѕРІР»РµРЅРЅСЏ';
-    return 'Р›С–Рґ / Р·Р°СЏРІРєР°';
+    if (formData.scenario === 'kitchen_only') return 'Кухонне замовлення';
+    return 'Лід / заявка';
 }
 
 function buildBookingWorkspaceExtraData(formData = {}) {
@@ -2556,7 +2556,7 @@ function buildBookingObject(formData, program) {
         programId: hasCatalogProgram ? formData.programId : null,
         programCode: hasCatalogProgram ? program.code : (isEducationLessonBooking ? 'LESSON' : (formData.scenario === 'kitchen_only' ? 'KITCHEN' : 'LEAD')),
         label: hasEvent ? formData.label : noEventLabel,
-        programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Р†РЅС€Рµ') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Р—Р°РЅСЏС‚С‚СЏ') : noEventName),
+        programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Заняття') : noEventName),
         category: hasCatalogProgram ? program.category : (isEducationLessonBooking ? 'education' : 'custom'),
         duration: hasEvent ? formData.duration : 0,
         price: finalPrice,
@@ -2612,14 +2612,14 @@ function buildBookingObject(formData, program) {
     if (isEducationTimelineBookingMode() && formData.educationLesson) {
         const lesson = {
             ...formData.educationLesson,
-            title: (formData.educationLesson.title || obj.programName || obj.label || 'Р—Р°РЅСЏС‚С‚СЏ').slice(0, 160),
+            title: (formData.educationLesson.title || obj.programName || obj.label || 'Заняття').slice(0, 160),
             groupName: formData.educationLesson.groupName || obj.groupName || null,
             studentCount: kidsCount || formData.educationLesson.studentCount || null,
             resourceName: formData.educationLesson.resourceName || obj.room || null
         };
         obj.extraData.educationLesson = lesson;
         obj.extraData.bookingWorkspace.lesson = lesson;
-        obj.label = lesson.lessonType === 'exam' ? 'РљРѕРЅС‚СЂРѕР»СЊ' : 'Р—Р°РЅСЏС‚С‚СЏ';
+        obj.label = lesson.lessonType === 'exam' ? 'Контроль' : 'Заняття';
         obj.programName = lesson.title;
         obj.groupName = lesson.groupName || obj.groupName;
         obj.hosts = 1;
@@ -2702,10 +2702,10 @@ function buildMaysternyaClosedSlotBooking() {
     const resourceName = line?.name || presentation.roomOptionLabel || MAYSTERNYA_CLOSED_ROOM;
     const isMaysternya = isMaysternyaBookingContext();
     const room = isMaysternya ? MAYSTERNYA_CLOSED_ROOM : resourceName;
-    const label = isEducationTimelineBookingMode() ? 'РљР°Р±С–РЅРµС‚ Р·Р°РєСЂРёС‚Рѕ' : 'Р—Р°РєСЂРёС‚Рѕ';
+    const label = isEducationTimelineBookingMode() ? 'Кабінет закрито' : 'Закрито';
     const noteText = notes || (isMaysternya
-        ? 'РћР»РµРєСЃР°РЅРґСЂ Р·Р°Р№РЅСЏС‚РёР№ Сѓ С†РµР№ С‡Р°СЃ'
-        : `${resourceName} РЅРµРґРѕСЃС‚СѓРїРЅРёР№ Сѓ С†РµР№ С‡Р°СЃ`);
+        ? 'Олександр зайнятий у цей час'
+        : `${resourceName} недоступний у цей час`);
     const resourceBlock = {
         mode: 'resource_blackout',
         resourceBlocked: true,
@@ -2722,7 +2722,7 @@ function buildMaysternyaClosedSlotBooking() {
         programId: null,
         programCode: 'CLOSED',
         label,
-        programName: isEducationTimelineBookingMode() ? 'РљР°Р±С–РЅРµС‚ РЅРµРґРѕСЃС‚СѓРїРЅРёР№' : 'РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ',
+        programName: isEducationTimelineBookingMode() ? 'Кабінет недоступний' : 'Слот закрито',
         category: 'custom',
         duration,
         price: 0,
@@ -2741,7 +2741,7 @@ function buildMaysternyaClosedSlotBooking() {
         createdAt: new Date().toISOString(),
         status: 'confirmed',
         kidsCount: null,
-        groupName: isEducationTimelineBookingMode() ? resourceName : 'Р—Р°Р№РЅСЏС‚Рѕ',
+        groupName: isEducationTimelineBookingMode() ? resourceName : 'Зайнято',
         programBasePrice: 0,
         menuPositions: [],
         extraData: {
@@ -2777,12 +2777,12 @@ async function closeMaysternyaTimelineSlot() {
     if (btn && btn.disabled) return;
     const booking = buildMaysternyaClosedSlotBooking();
     if (!booking.time || !booking.lineId) {
-        showNotification(isEducationTimelineBookingMode() ? 'РћР±РµСЂС–С‚СЊ С‡Р°СЃ Сѓ РєР°Р±С–РЅРµС‚С–' : 'РћР±РµСЂС–С‚СЊ С‡Р°СЃ РЅР° СЂРµСЃСѓСЂСЃС–', 'error');
+        showNotification(isEducationTimelineBookingMode() ? 'Оберіть час у кабінеті' : 'Оберіть час на ресурсі', 'error');
         return;
     }
     const bookingDateTime = new Date(`${booking.date}T${booking.time}:00`);
     if (bookingDateTime < new Date()) {
-        showNotification('РќРµРјРѕР¶Р»РёРІРѕ Р·Р°РєСЂРёС‚Рё СЃР»РѕС‚ Сѓ РјРёРЅСѓР»РѕРјСѓ.', 'error');
+        showNotification('Неможливо закрити слот у минулому.', 'error');
         return;
     }
     const valid = await validateBookingConflicts(booking.lineId, booking.time, booking.duration, null, null, null);
@@ -2791,13 +2791,13 @@ async function closeMaysternyaTimelineSlot() {
     if (btn) {
         btn.disabled = true;
         btn.dataset.originalText = btn.textContent;
-        btn.textContent = 'Р—Р°РєСЂРёРІР°СЋ...';
+        btn.textContent = 'Закриваю...';
     }
 
     try {
         const result = await apiCreateBooking(booking);
         if (result && result.success === false) {
-            showNotification(result.error || 'РќРµ РІРґР°Р»РѕСЃСЊ Р·Р°РєСЂРёС‚Рё СЃР»РѕС‚', 'error');
+            showNotification(result.error || 'Не вдалось закрити слот', 'error');
             return;
         }
         if (result?.booking?.id) booking.id = result.booking.id;
@@ -2806,13 +2806,13 @@ async function closeMaysternyaTimelineSlot() {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await closeBookingPanel(true);
         await renderTimeline();
-        showNotification('РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ', 'success');
+        showNotification('Слот закрито', 'success');
     } catch (error) {
-        handleError('Р—Р°РєСЂРёС‚С‚СЏ СЃР»РѕС‚Р°', error);
+        handleError('Закриття слота', error);
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = btn.dataset.originalText || (isEducationTimelineBookingMode() ? 'Р—Р°РєСЂРёС‚Рё РєР°Р±С–РЅРµС‚' : 'Р—Р°РєСЂРёС‚Рё СЃР»РѕС‚');
+            btn.textContent = btn.dataset.originalText || (isEducationTimelineBookingMode() ? 'Закрити кабінет' : 'Закрити слот');
         }
     }
 }
@@ -2835,7 +2835,7 @@ async function buildLinkedBookings(booking, program) {
     if (!program || booking.duration <= 0) return linked;
     const lines = await getLinesForDate(AppState.selectedDate);
 
-    // Р”СЂСѓРіРёР№ РІРµРґСѓС‡РёР№
+    // Другий ведучий
     if (program.hosts > 1 && booking.secondAnimator) {
         const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', booking.secondAnimator);
         const secondLine = lines.find(l => l.name === booking.secondAnimator)
@@ -2857,7 +2857,7 @@ async function buildLinkedBookings(booking, program) {
         }
     }
 
-    // Р”РѕРґР°С‚РєРѕРІРёР№ РІРµРґСѓС‡РёР№ (700 в‚ґ/РіРѕРґ)
+    // Додатковий ведучий (700 ₴/год)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect')?.value;
@@ -2870,8 +2870,8 @@ async function buildLinkedBookings(booking, program) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
                 linked.push({
                     date: booking.date, time: booking.time, lineId: extraLine.id,
-                    programId: 'anim_extra', programCode: '+Р’РµРґ',
-                    label: `+Р’РµРґ(${booking.duration})`, programName: 'Р”РѕРґР°С‚РєРѕРІРёР№ РІРµРґСѓС‡РёР№',
+                    programId: 'anim_extra', programCode: '+Вед',
+                    label: `+Вед(${booking.duration})`, programName: 'Додатковий ведучий',
                     category: 'animation', duration: booking.duration, price: extraPrice,
                     hosts: 1, room: booking.room, createdBy: booking.createdBy,
                     status: booking.status
@@ -2906,7 +2906,7 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
         if (primaryName) {
             const off = data.unavailable.find(u => u.name === primaryName);
             if (off) {
-                showNotification(`вљ пёЏ ${primaryName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} РЅР° ${dateStr}`, 'warning');
+                showNotification(`⚠️ ${primaryName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
             }
         }
 
@@ -2914,7 +2914,7 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
         if (secondAnimatorName) {
             const off = data.unavailable.find(u => u.name === secondAnimatorName);
             if (off) {
-                showNotification(`вљ пёЏ ${secondAnimatorName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} РЅР° ${dateStr}`, 'warning');
+                showNotification(`⚠️ ${secondAnimatorName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
             }
         }
     } catch (err) {
@@ -2923,16 +2923,16 @@ async function checkAnimatorAvailability(lineId, secondAnimatorName) {
 }
 
 const STATUS_LABELS_BOOKING = {
-    dayoff: 'РІРёС…С–РґРЅРёР№',
-    vacation: 'РІС–РґРїСѓСЃС‚РєР°',
-    sick: 'Р»С–РєР°СЂРЅСЏРЅРёР№'
+    dayoff: 'вихідний',
+    vacation: 'відпустка',
+    sick: 'лікарняний'
 };
 
 function unlockSubmitBtn() {
     const btn = document.getElementById('bookingSubmitBtn');
     if (btn) {
         btn.disabled = false;
-        btn.textContent = btn.dataset.originalText || 'Р”РѕРґР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
+        btn.textContent = btn.dataset.originalText || 'Додати бронювання';
     }
 }
 
@@ -2944,20 +2944,20 @@ async function handleBookingSubmit(e) {
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.dataset.originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Р—Р±РµСЂРµР¶РµРЅРЅСЏ...';
+        submitBtn.textContent = 'Збереження...';
     }
 
     const formData = getBookingFormData();
     const validation = window.BookingForm?.validate ? BookingForm.validate() : { valid: true };
     if (!validation.valid) {
-        showNotification(validation.error || 'РџРµСЂРµРІС–СЂС‚Рµ С„РѕСЂРјСѓ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
+        showNotification(validation.error || 'Перевірте форму бронювання', 'error');
         unlockSubmitBtn();
         return;
     }
 
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
     if (invalidMenuPosition) {
-        showNotification('РџРµСЂРµРІС–СЂС‚Рµ РїРѕР·РёС†С–С— РјРµРЅСЋ: РЅР°Р·РІР°, РєС–Р»СЊРєС–СЃС‚СЊ С– С†С–РЅР° РјР°СЋС‚СЊ Р±СѓС‚Рё РєРѕСЂРµРєС‚РЅРёРјРё', 'error');
+        showNotification('Перевірте позиції меню: назва, кількість і ціна мають бути коректними', 'error');
         unlockSubmitBtn();
         return;
     }
@@ -2969,18 +2969,18 @@ async function handleBookingSubmit(e) {
     }
     syncLegacyBanquetMenuFromPositions();
     if (formData.hasEvent && formData.program?.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
-        showNotification('РћР±РµСЂС–С‚СЊ РЅР°РїРѕРІРЅСЋРІР°С‡ РґР»СЏ РїС–РЅСЊСЏС‚Рё', 'error'); unlockSubmitBtn(); return;
+        showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
     // v8.7: Require second animator for multi-host programs
     if (formData.hasEvent && formData.program?.hosts > 1 && !formData.secondAnimator) {
-        showNotification('РћР±РµСЂС–С‚СЊ РґСЂСѓРіРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР° вЂ” С†СЏ РїСЂРѕРіСЂР°РјР° РїРѕС‚СЂРµР±СѓС” 2 РІРµРґСѓС‡РёС…', 'error'); unlockSubmitBtn(); return;
+        showNotification('Оберіть другого аніматора — ця програма потребує 2 ведучих', 'error'); unlockSubmitBtn(); return;
     }
 
-    // [FIX] Р—Р°Р±РѕСЂРѕРЅР° Р±СЂРѕРЅСЋРІР°РЅРЅСЏ РІ РјРёРЅСѓР»РѕРјСѓ
+    // [FIX] Заборона бронювання в минулому
     if (!AppState.editingBookingId) {
         const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
         if (bookingDateTime < new Date()) {
-            showNotification('РќРµРјРѕР¶Р»РёРІРѕ СЃС‚РІРѕСЂРёС‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ РІ РјРёРЅСѓР»РѕРјСѓ. РћР±РµСЂС–С‚СЊ РјР°Р№Р±СѓС‚РЅС–Р№ С‡Р°СЃ.', 'error');
+            showNotification('Неможливо створити бронювання в минулому. Оберіть майбутній час.', 'error');
             unlockSubmitBtn();
             return;
         }
@@ -2991,18 +2991,18 @@ async function handleBookingSubmit(e) {
         await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
     }
 
-    // v5.5: excludeId РґР»СЏ СЂРµР¶РёРјСѓ СЂРµРґР°РіСѓРІР°РЅРЅСЏ
+    // v5.5: excludeId для режиму редагування
     const excludeId = AppState.editingBookingId || null;
 
     if (formData.hasEvent && formData.duration > 0) {
-        // Р’Р°Р»С–РґР°С†С–СЏ РєРѕРЅС„Р»С–РєС‚С–РІ
+        // Валідація конфліктів
         const valid = await validateBookingConflicts(
             formData.lineId, formData.time, formData.duration,
             formData.program, formData.secondAnimator, excludeId
         );
         if (!valid) { unlockSubmitBtn(); return; }
 
-        // РџРµСЂРµРІС–СЂРєР° РґСѓР±Р»С–РєР°С‚С–РІ
+        // Перевірка дублікатів
         const noDuplicate = await checkDuplicateProgram(
             formData.programId, formData.program, formData.time, formData.duration, excludeId
         );
@@ -3013,16 +3013,16 @@ async function handleBookingSubmit(e) {
         const booking = buildBookingObject(formData, formData.program);
 
         if (AppState.editingBookingId) {
-            // ===== Р Р•Р–РРњ Р Р•Р”РђР“РЈР’РђРќРќРЇ (v5.5) =====
+            // ===== РЕЖИМ РЕДАГУВАННЯ (v5.5) =====
             booking.id = AppState.editingBookingId;
 
-            // Р—Р±РµСЂРµРіС‚Рё РѕСЂРёРіС–РЅР°Р»СЊРЅРѕРіРѕ Р°РІС‚РѕСЂР°
+            // Зберегти оригінального автора
             const oldBookings = await getBookingsForDate(AppState.selectedDate);
             const oldBooking = oldBookings.find(b => b.id === booking.id);
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
-                // v8.3.2: Don't restore old extraData вЂ” respect user's choice to clear sizes
+                // v8.3.2: Don't restore old extraData — respect user's choice to clear sizes
             }
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
@@ -3033,7 +3033,7 @@ async function handleBookingSubmit(e) {
                     unlockSubmitBtn();
                     return;
                 }
-                showNotification(updateResult.error || 'РџРѕРјРёР»РєР° РѕРЅРѕРІР»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
+                showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
                 if (updateResult.conflictBookingId) revealHiddenBooking(updateResult.conflictBookingId);
                 unlockSubmitBtn(); return;
             }
@@ -3052,9 +3052,9 @@ async function handleBookingSubmit(e) {
             closeBookingPanel(true);
             unlockSubmitBtn();
             await renderTimeline();
-            showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РѕРЅРѕРІР»РµРЅРѕ!', 'success');
+            showNotification('Бронювання оновлено!', 'success');
         } else {
-            // ===== Р Р•Р–РРњ РЎРўР’РћР Р•РќРќРЇ (v5.7: transactional with linked) =====
+            // ===== РЕЖИМ СТВОРЕННЯ (v5.7: transactional with linked) =====
             let createResult;
 
             if (shouldCreateEducationLessonSeries(booking)) {
@@ -3070,7 +3070,7 @@ async function handleBookingSubmit(e) {
 
             if (createResult && createResult.success === false) {
                 if (createResult.conflictBookingId) revealHiddenBooking(createResult.conflictBookingId);
-                showNotification(createResult.error || 'РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
+                showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 unlockSubmitBtn(); return;
             }
             // v5.27: API now returns { booking: { id, ... } }
@@ -3096,10 +3096,10 @@ async function handleBookingSubmit(e) {
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
             const seriesCount = createResult?.createdCount || createdBookings.length;
-            showNotification(seriesCount > 1 ? `РЎС‚РІРѕСЂРµРЅРѕ СЃРµСЂС–СЋ Р·Р°РЅСЏС‚СЊ: ${seriesCount}` : 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ СЃС‚РІРѕСЂРµРЅРѕ!', 'success');
+            showNotification(seriesCount > 1 ? `Створено серію занять: ${seriesCount}` : 'Бронювання створено!', 'success');
         }
     } catch (error) {
-        handleError('Р—Р±РµСЂРµР¶РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', error);
+        handleError('Збереження бронювання', error);
         unlockSubmitBtn();
     }
 }
@@ -3111,31 +3111,31 @@ async function handleBookingSubmit(e) {
 async function handleOptimisticLockConflict(result, localBooking) {
     const serverData = result.currentData;
     if (!serverData) {
-        showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р±СѓР»Рѕ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ СЃС‚РѕСЂС–РЅРєСѓ.', 'error');
+        showNotification('Бронювання було змінено іншим користувачем. Оновіть сторінку.', 'error');
         return;
     }
 
     // Build a summary of what changed
     const changes = [];
-    if (serverData.time !== localBooking.time) changes.push(`Р§Р°СЃ: ${serverData.time}`);
-    if (serverData.room !== localBooking.room) changes.push(`РљС–РјРЅР°С‚Р°: ${serverData.room}`);
-    if (serverData.status !== localBooking.status) changes.push(`РЎС‚Р°С‚СѓСЃ: ${serverData.status}`);
-    if (serverData.lineId !== localBooking.lineId) changes.push('Р›С–РЅС–СЏ Р·РјС–РЅРµРЅР°');
-    if (serverData.notes !== localBooking.notes) changes.push('РџСЂРёРјС–С‚РєРё Р·РјС–РЅРµРЅС–');
-    if (serverData.kidsCount !== localBooking.kidsCount) changes.push(`Рљ-СЃС‚СЊ РґС–С‚РµР№: ${serverData.kidsCount}`);
+    if (serverData.time !== localBooking.time) changes.push(`Час: ${serverData.time}`);
+    if (serverData.room !== localBooking.room) changes.push(`Кімната: ${serverData.room}`);
+    if (serverData.status !== localBooking.status) changes.push(`Статус: ${serverData.status}`);
+    if (serverData.lineId !== localBooking.lineId) changes.push('Лінія змінена');
+    if (serverData.notes !== localBooking.notes) changes.push('Примітки змінені');
+    if (serverData.kidsCount !== localBooking.kidsCount) changes.push(`К-сть дітей: ${serverData.kidsCount}`);
 
     const changesText = changes.length > 0
-        ? `\n\nР—РјС–РЅРё РЅР° СЃРµСЂРІРµСЂС–:\n${changes.map(c => `  - ${c}`).join('\n')}`
+        ? `\n\nЗміни на сервері:\n${changes.map(c => `  - ${c}`).join('\n')}`
         : '';
 
-    const message = `Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р±СѓР»Рѕ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј.${changesText}\n\nР©Рѕ Р·СЂРѕР±РёС‚Рё?`;
+    const message = `Бронювання було змінено іншим користувачем.${changesText}\n\nЩо зробити?`;
 
     // Show custom conflict dialog with two options
     const overwrite = await customConfirm(
         message,
-        'РљРѕРЅС„Р»С–РєС‚ СЂРµРґР°РіСѓРІР°РЅРЅСЏ',
-        'РџРµСЂРµР·Р°РїРёСЃР°С‚Рё',
-        'РћРЅРѕРІРёС‚Рё РґР°РЅС–'
+        'Конфлікт редагування',
+        'Перезаписати',
+        'Оновити дані'
     );
 
     if (overwrite) {
@@ -3146,12 +3146,12 @@ async function handleOptimisticLockConflict(result, localBooking) {
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel(true);
             await renderTimeline();
-            showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РїРµСЂРµР·Р°РїРёСЃР°РЅРѕ!', 'success');
+            showNotification('Бронювання перезаписано!', 'success');
         } else if (retryResult && retryResult.conflict) {
             // Another conflict happened -- extremely unlikely
-            showNotification('РџРѕРІС‚РѕСЂРЅРёР№ РєРѕРЅС„Р»С–РєС‚. РћРЅРѕРІС–С‚СЊ СЃС‚РѕСЂС–РЅРєСѓ.', 'error');
+            showNotification('Повторний конфлікт. Оновіть сторінку.', 'error');
         } else {
-            showNotification(retryResult?.error || 'РџРѕРјРёР»РєР° Р·Р±РµСЂРµР¶РµРЅРЅСЏ', 'error');
+            showNotification(retryResult?.error || 'Помилка збереження', 'error');
         }
     } else {
         // Refresh data: reload bookings and re-open edit form
@@ -3159,7 +3159,7 @@ async function handleOptimisticLockConflict(result, localBooking) {
         await renderTimeline();
         // Re-open editing with fresh data
         await editBooking(localBooking.id);
-        showNotification('Р”Р°РЅС– РѕРЅРѕРІР»РµРЅРѕ Р· СЃРµСЂРІРµСЂР°', 'info');
+        showNotification('Дані оновлено з сервера', 'info');
     }
 }
 
@@ -3216,7 +3216,7 @@ function revealHiddenBooking(bookingId) {
 }
 
 // ==========================================
-// Р”Р•РўРђР›Р† Р‘Р РћРќР®Р’РђРќРќРЇ
+// ДЕТАЛІ БРОНЮВАННЯ
 // ==========================================
 
 // v8.6.1: Generate unique gradient for each booking based on its ID
@@ -3236,10 +3236,10 @@ function generateBookingHeaderGradient(booking) {
 // v8.6.1: Category icon mapping
 function getCategoryIcon(category) {
     const icons = {
-        quest: 'рџ—ќпёЏ', animation: 'рџЋ­', show: 'рџЋЄ',
-        photo: 'рџ“ё', masterclass: 'рџЋЁ', pinata: 'рџЄ…', custom: 'в­ђ'
+        quest: '🗝️', animation: '🎭', show: '🎪',
+        photo: '📸', masterclass: '🎨', pinata: '🪅', custom: '⭐'
     };
-    return icons[category] || 'рџ“‹';
+    return icons[category] || '📋';
 }
 
 function renderBookingBanquetLinksDetail(booking, allBookings = []) {
@@ -3256,7 +3256,7 @@ function renderBookingBanquetLinksDetail(booking, allBookings = []) {
             <button type="button"
                     class="booking-banquet-unlink-btn"
                     onclick="removeBookingBanquetLink('${escapeHtml(String(booking.id))}', '${escapeHtml(targetId)}')">
-                РџСЂРёР±СЂР°С‚Рё
+                Прибрати
             </button>`;
         return `
             <div class="booking-banquet-link-chip">
@@ -3267,7 +3267,7 @@ function renderBookingBanquetLinksDetail(booking, allBookings = []) {
     }).join('');
     return `
         <div class="booking-banquet-links-detail">
-            <div class="booking-banquet-links-title">Р‘Р°РЅРєРµС‚РЅС– Р·РІКјСЏР·РєРё</div>
+            <div class="booking-banquet-links-title">Банкетні звʼязки</div>
             <div class="booking-banquet-links-list">${rows}</div>
         </div>`;
 }
@@ -3276,21 +3276,21 @@ function renderEducationLessonDetail(booking) {
     const lesson = educationLessonDetailsFromBooking(booking);
     if (!lesson || Object.keys(lesson).length === 0) return '';
     const rows = [
-        lesson.title ? ['Р—Р°РЅСЏС‚С‚СЏ', lesson.title] : null,
-        lesson.teacherName ? ['Р’РёРєР»Р°РґР°С‡', lesson.teacherName] : null,
-        lesson.groupName || booking.groupName ? ['Р“СЂСѓРїР° / РєР»Р°СЃ', lesson.groupName || booking.groupName] : null,
-        lesson.courseCode ? ['РљСѓСЂСЃ / СЃРµСЂС–СЏ', lesson.courseCode] : null,
-        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['РЎРµСЂС–СЏ', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
-        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['РџРѕРІС‚РѕСЂРµРЅРЅСЏ', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
-        lesson.resourceName || booking.room ? ['РљР°Р±С–РЅРµС‚', lesson.resourceName || booking.room] : null
+        lesson.title ? ['Заняття', lesson.title] : null,
+        lesson.teacherName ? ['Викладач', lesson.teacherName] : null,
+        lesson.groupName || booking.groupName ? ['Група / клас', lesson.groupName || booking.groupName] : null,
+        lesson.courseCode ? ['Курс / серія', lesson.courseCode] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Серія', `${lesson.seriesIndex || 1}/${lesson.seriesSize}`] : null,
+        lesson.seriesSize && Number(lesson.seriesSize) > 1 ? ['Повторення', educationLessonRepeatEveryLabel(lesson.repeatEvery)] : null,
+        lesson.resourceName || booking.room ? ['Кабінет', lesson.resourceName || booking.room] : null
     ].filter(Boolean);
     if (!rows.length) return '';
     const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && !isViewer()
-        ? `<div class="booking-detail-row"><span class="label">РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Р’С–РґРєСЂРёС‚Рё СЃРµСЂС–СЋ</button></span></div>`
+        ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
         : '';
     return `
         <div class="booking-lesson-detail">
-            <div class="booking-lesson-detail-title">РќР°РІС‡Р°Р»СЊРЅРёР№ Р·Р°РїРёСЃ</div>
+            <div class="booking-lesson-detail-title">Навчальний запис</div>
             ${rows.map(([label, value]) => `<div class="booking-detail-row"><span class="label">${escapeHtml(label)}:</span><span class="value">${escapeHtml(value)}</span></div>`).join('')}
             ${seriesActions}
         </div>`;
@@ -3309,20 +3309,20 @@ async function showBookingDetails(bookingId) {
     if (isMaysternyaClosedSlotBooking(booking)) {
         const actions = isViewer() ? '' : `
             <div class="booking-actions modal-footer-sticky">
-                <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Р’С–РґРєСЂРёС‚Рё СЃР»РѕС‚</button>
+                <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Відкрити слот</button>
             </div>
         `;
         document.getElementById('bookingDetails').innerHTML = `
             <div class="booking-detail-header booking-detail-header--closed-slot">
                 <div>
-                    <h3>РЎР»РѕС‚ Р·Р°РєСЂРёС‚Рѕ</h3>
-                    <p>${escapeHtml(line ? line.name : 'РћР»РµРєСЃР°РЅРґСЂ')} В· ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</p>
+                    <h3>Слот закрито</h3>
+                    <p>${escapeHtml(line ? line.name : 'Олександр')} · ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</p>
                 </div>
             </div>
-            <div class="booking-detail-row"><span class="label">Р”Р°С‚Р°:</span><span class="value">${escapeHtml(booking.date)}</span></div>
-            <div class="booking-detail-row"><span class="label">Р§Р°СЃ:</span><span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span></div>
-            <div class="booking-detail-row"><span class="label">РЎРїРµС†С–Р°Р»С–СЃС‚:</span><span class="value">${escapeHtml(line ? line.name : '-')}</span></div>
-            ${booking.notes ? `<div class="booking-detail-row"><span class="label">РљРѕРјРµРЅС‚Р°СЂ:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+            <div class="booking-detail-row"><span class="label">Дата:</span><span class="value">${escapeHtml(booking.date)}</span></div>
+            <div class="booking-detail-row"><span class="label">Час:</span><span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span></div>
+            <div class="booking-detail-row"><span class="label">Спеціаліст:</span><span class="value">${escapeHtml(line ? line.name : '-')}</span></div>
+            ${booking.notes ? `<div class="booking-detail-row"><span class="label">Коментар:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
             ${actions}
         `;
         document.getElementById('bookingModal')?.classList.remove('hidden');
@@ -3332,9 +3332,9 @@ async function showBookingDetails(bookingId) {
     const program = getProductsSync().find(p => p.id === booking.programId);
     const lesson = educationLessonDetailsFromBooking(booking);
     const isEducationBooking = Boolean(lesson && Object.keys(lesson).length);
-    const lineRoleLabel = isEducationBooking ? 'РљР°Р±С–РЅРµС‚' : 'РђРЅС–РјР°С‚РѕСЂ';
+    const lineRoleLabel = isEducationBooking ? 'Кабінет' : 'Аніматор';
     const descriptionHtml = program && program.description
-        ? `<div class="booking-detail-description"><span class="label">РћРїРёСЃ:</span><p>${escapeHtml(program.description)}</p></div>`
+        ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
         : '';
 
     // B2: Per-event invite URL with booking details
@@ -3347,13 +3347,13 @@ async function showBookingDetails(bookingId) {
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
     const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
-    const inviteShareText = `Р—Р°РїСЂРѕС€СѓС”РјРѕ РЅР° ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ вЂ” РІСѓР». Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ 31/2, 3 РїРѕРІРµСЂС…`;
+    const inviteShareText = `Запрошуємо на ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх`;
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
     const lineSwitchHtml = otherLines.length > 0 ? `
         <div class="booking-line-switch">
-            <span class="label">РџРµСЂРµРјС–СЃС‚РёС‚Рё РЅР° Р»С–РЅС–СЋ:</span>
+            <span class="label">Перемістити на лінію:</span>
             <div class="line-switch-buttons">
                 ${otherLines.map(l => `<button onclick="switchBookingLine('${escapeHtml(booking.id)}', '${escapeHtml(l.id)}')" style="border-color: ${escapeHtml(l.color)}; color: ${escapeHtml(l.color)}">${escapeHtml(l.name)}</button>`).join('')}
             </div>
@@ -3361,7 +3361,7 @@ async function showBookingDetails(bookingId) {
 
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
-            <span class="label">РџРµСЂРµРЅРµСЃС‚Рё С‡Р°СЃ:</span>
+            <span class="label">Перенести час:</span>
             <div class="time-shift-buttons">
                 <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -30)">-30</button>
                 <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -15)">-15</button>
@@ -3373,25 +3373,25 @@ async function showBookingDetails(bookingId) {
         </div>
         ${lineSwitchHtml}
         <div class="invite-section">
-            <div class="invite-section-header">рџЋ‰ Р—Р°РїСЂРѕС€РµРЅРЅСЏ РґР»СЏ РєР»С–С”РЅС‚Р°</div>
+            <div class="invite-section-header">🎉 Запрошення для клієнта</div>
             <div class="invite-preview">
-                <span>рџ“… ${escapeHtml(booking.date)}</span>
-                <span>рџ•ђ ${escapeHtml(booking.time)}</span>
-                <span>рџЋЄ ${escapeHtml(booking.programName || booking.label)}</span>
-                <span>рџЏ  ${escapeHtml(booking.room)}</span>
+                <span>📅 ${escapeHtml(booking.date)}</span>
+                <span>🕐 ${escapeHtml(booking.time)}</span>
+                <span>🎪 ${escapeHtml(booking.programName || booking.label)}</span>
+                <span>🏠 ${escapeHtml(booking.room)}</span>
             </div>
             <div class="invite-actions">
-                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">рџ‘Ѓ Р’С–РґРєСЂРёС‚Рё</a>
-                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">рџ“‹ РљРѕРїС–СЋРІР°С‚Рё</button>
-                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">рџ“¤ РџРѕРґС–Р»РёС‚РёСЃСЏ</button>' : ''}
+                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">📋 Копіювати</button>
+                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
             </div>
         </div>
         <div class="booking-actions modal-footer-sticky">
-            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">вњЏпёЏ Р РµРґР°РіСѓРІР°С‚Рё</button>
-            <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">рџ“‹ РџРѕРІС‚РѕСЂРёС‚Рё</button>
-            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">рџ”„ РџРѕРІС‚РѕСЂСЋРІР°РЅРµ</button>
-            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">рџ’¬ Р§Р°С‚ РєРѕРјР°РЅРґРё</button>
-            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Р’РёРґР°Р»РёС‚Рё</button>
+            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
+            <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
+            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
+            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">💬 Чат команди</button>
+            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
 
@@ -3406,56 +3406,56 @@ async function showBookingDetails(bookingId) {
                 <span style="font-size:28px;">${categoryIcon}</span>
                 <div>
                     <h3 style="margin:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.3);">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.programName)}</h3>
-                    <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' В· ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} В· #${escapeHtml(uniqueCode)}</p>
+                    <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' · ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} · #${escapeHtml(uniqueCode)}</p>
                 </div>
             </div>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.date)}">
-            <span class="label">Р”Р°С‚Р°:</span>
+            <span class="label">Дата:</span>
             <span class="value">${escapeHtml(booking.date)}</span>
-            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.time)} - ${escapeHtml(endTime)}">
-            <span class="label">Р§Р°СЃ:</span>
+            <span class="label">Час:</span>
             <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
-            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
             <span class="label">${lineRoleLabel}:</span>
             <span class="value">${escapeHtml(line ? line.name : '-')}</span>
-            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         <div class="booking-detail-row">
-            <span class="label">Р’РµРґСѓС‡РёС…:</span>
+            <span class="label">Ведучих:</span>
             <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
         </div>
-        ${booking.costume ? `<div class="booking-detail-row"><span class="label">РљРѕСЃС‚СЋРј:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
+        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
         ${renderPinataDetailRows(booking)}
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
-            <span class="label">Р¦С–РЅР°:</span>
+            <span class="label">Ціна:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
-            <button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}
         ${renderBookingPackageDetail(booking)}
-        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'РЈС‡РЅС–РІ' : 'Р”С–С‚РµР№'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
+        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
-            <span class="label">РЎС‚Р°С‚СѓСЃ:</span>
-            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? 'вЏі РџРѕРїРµСЂРµРґРЅС”' : 'вњ… РџС–РґС‚РІРµСЂРґР¶РµРЅРµ'}</span>
+            <span class="label">Статус:</span>
+            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
-        ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">РџСЂРёРјС–С‚РєРё:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё">рџ“‹</button></div>` : ''}
-        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Р“СЂСѓРїР°:</span><span class="value">рџЋЄ ${escapeHtml(booking.groupName)}</span></div>` : ''}
+        ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="Скопіювати">📋</button></div>` : ''}
+        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${renderBookingBanquetLinksDetail(booking, bookings)}
         <div id="bookingCustomerBlock"></div>
-        ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">РћРЅРѕРІР»РµРЅРѕ:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
+        ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         <div class="booking-detail-row booking-detail-row--summary" data-copy="${escapeHtml(booking.date)} ${escapeHtml(booking.time)}-${escapeHtml(endTime)} ${escapeHtml(booking.programName)} ${escapeHtml(booking.room)} ${escapeHtml(line ? line.name : '')} ${escapeHtml(formatPrice(booking.price))}">
-            <button type="button" class="detail-copy-summary-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃСЋ С–РЅС„РѕСЂРјР°С†С–СЋ">рџ“‹ РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃРµ</button>
+            <button type="button" class="detail-copy-summary-btn" title="Скопіювати всю інформацію">📋 Скопіювати все</button>
         </div>
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
-                ${booking.status === 'preliminary' ? 'вњ… РџС–РґС‚РІРµСЂРґРёС‚Рё' : 'вЏі Р—СЂРѕР±РёС‚Рё РїРѕРїРµСЂРµРґРЅС–Рј'}
+                ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
             </button>
         </div>` : ''}
         ${editControls}
@@ -3469,8 +3469,8 @@ async function showBookingDetails(bookingId) {
             const text = this.closest('[data-copy]')?.dataset.copy;
             if (text) {
                 navigator.clipboard.writeText(text);
-                this.textContent = 'вњ“';
-                setTimeout(() => this.textContent = 'рџ“‹', 800);
+                this.textContent = '✓';
+                setTimeout(() => this.textContent = '📋', 800);
             }
         });
     });
@@ -3480,76 +3480,76 @@ async function showBookingDetails(bookingId) {
             const text = this.closest('[data-copy]')?.dataset.copy;
             if (text) {
                 navigator.clipboard.writeText(text);
-                this.textContent = 'вњ“ РЎРєРѕРїС–Р№РѕРІР°РЅРѕ';
-                setTimeout(() => this.textContent = 'рџ“‹ РЎРєРѕРїС–СЋРІР°С‚Рё РІСЃРµ', 800);
+                this.textContent = '✓ Скопійовано';
+                setTimeout(() => this.textContent = '📋 Скопіювати все', 800);
             }
         });
     }
 
-    // v24.3.1: CRM вЂ” smart hyperlinks + contextual actions
+    // v24.3.1: CRM — smart hyperlinks + contextual actions
     if (booking.customerId) {
         apiGetCustomer(booking.customerId).then(customer => {
             const block = document.getElementById('bookingCustomerBlock');
             if (!block || !customer) return;
             const rows = [];
-            // Name вЂ” clickable link to CRM card
+            // Name — clickable link to CRM card
             rows.push(`<div class="customer-row customer-row--name">
-                <span class="customer-row-icon">рџ‘¤</span>
-                <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Р’С–РґРєСЂРёС‚Рё РєР°СЂС‚РєСѓ РєР»С–С”РЅС‚Р°">${escapeHtml(customer.name)}</a>
+                <span class="customer-row-icon">👤</span>
+                <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Відкрити картку клієнта">${escapeHtml(customer.name)}</a>
                 <span class="customer-row-actions">
-                    <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё С–Рј'СЏ" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
+                    <button type="button" class="customer-action-btn" title="Скопіювати імʼя" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
                 </span>
             </div>`);
-            // Phone вЂ” tel: link + copy + TG
+            // Phone — tel: link + copy + TG
             if (customer.phone) {
                 const cleanPhone = customer.phone.replace(/[^+\d]/g, '');
                 rows.push(`<div class="customer-row customer-row--phone">
-                    <span class="customer-row-icon">рџ“ћ</span>
-                    <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Р—Р°С‚РµР»РµС„РѕРЅСѓРІР°С‚Рё">${escapeHtml(customer.phone)}</a>
+                    <span class="customer-row-icon">📞</span>
+                    <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Зателефонувати">${escapeHtml(customer.phone)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
-                        <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="РќР°РїРёСЃР°С‚Рё РІ Telegram">рџ’¬</a>
+                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                        <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="Написати в Telegram">💬</a>
                     </span>
                 </div>`);
             }
-            // Instagram вЂ” link to profile + copy
+            // Instagram — link to profile + copy
             if (customer.instagram) {
                 const igName = customer.instagram.replace(/^@/, '');
                 rows.push(`<div class="customer-row customer-row--ig">
-                    <span class="customer-row-icon">рџ“ё</span>
-                    <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Р’С–РґРєСЂРёС‚Рё Instagram">@${escapeHtml(igName)}</a>
+                    <span class="customer-row-icon">📸</span>
+                    <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Відкрити Instagram">@${escapeHtml(igName)}</a>
                     <span class="customer-row-actions">
-                        <button type="button" class="customer-action-btn" title="РЎРєРѕРїС–СЋРІР°С‚Рё" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='вњ“';setTimeout(()=>this.textContent='рџ“‹',800)">рџ“‹</button>
+                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
                     </span>
                 </div>`);
             }
-            // Child вЂ” birthday + age
+            // Child — birthday + age
             if (customer.childName) {
                 let childText = escapeHtml(customer.childName);
                 if (customer.childBirthday) {
                     const bd = new Date(customer.childBirthday);
                     const age = Math.floor((new Date() - bd) / (365.25 * 24 * 60 * 60 * 1000));
-                    childText += ` <span class="customer-age">${age} СЂ. (${bd.toLocaleDateString('uk-UA')})</span>`;
+                    childText += ` <span class="customer-age">${age} р. (${bd.toLocaleDateString('uk-UA')})</span>`;
                 }
                 rows.push(`<div class="customer-row customer-row--child">
-                    <span class="customer-row-icon">рџЋ‚</span>
+                    <span class="customer-row-icon">🎂</span>
                     <span>${childText}</span>
                 </div>`);
             }
             // Visit stats
             if (customer.totalBookings) {
                 const visits = customer.totalBookings;
-                const suffix = visits === 1 ? '' : visits < 5 ? 'Рё' : 'С–РІ';
+                const suffix = visits === 1 ? '' : visits < 5 ? 'и' : 'ів';
                 rows.push(`<div class="customer-row customer-row--stats">
-                    <span class="customer-row-icon">рџ“Љ</span>
-                    <span>${visits} РІС–Р·РёС‚${suffix} В· ${formatPrice(customer.totalSpent)}</span>
+                    <span class="customer-row-icon">📊</span>
+                    <span>${visits} візит${suffix} · ${formatPrice(customer.totalSpent)}</span>
                 </div>`);
             }
             block.innerHTML = `
                 <div class="booking-customer-info booking-customer-info--smart">
                     <div class="customer-header">
-                        <span>РљР»С–С”РЅС‚</span>
-                        <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-crm-link" title="Р’С–РґРєСЂРёС‚Рё РїРѕРІРЅСѓ РєР°СЂС‚РєСѓ">РљР°СЂС‚РєР° в†’</a>
+                        <span>Клієнт</span>
+                        <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-crm-link" title="Відкрити повну картку">Картка →</a>
                     </div>
                     ${rows.join('')}
                 </div>`;
@@ -3558,7 +3558,7 @@ async function showBookingDetails(bookingId) {
 }
 
 // ==========================================
-// Р Р•Р”РђР“РЈР’РђРќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ (v5.5)
+// РЕДАГУВАННЯ БРОНЮВАННЯ (v5.5)
 // ==========================================
 
 async function editBooking(bookingId) {
@@ -3568,22 +3568,22 @@ async function editBooking(bookingId) {
 
     closeAllModals();
 
-    // Р’СЃС‚Р°РЅРѕРІРёС‚Рё СЂРµР¶РёРј СЂРµРґР°РіСѓРІР°РЅРЅСЏ
+    // Встановити режим редагування
     AppState.editingBookingId = bookingId;
     // Store updatedAt for optimistic locking
     AppState.editingBookingUpdatedAt = booking.updatedAt || null;
 
-    // Р’С–РґРєСЂРёС‚Рё РїР°РЅРµР»СЊ Р· РґР°РЅРёРјРё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ
+    // Відкрити панель з даними бронювання
     await openBookingPanel(booking.time, booking.lineId);
 
-    // Р—РјС–РЅРёС‚Рё Р·Р°РіРѕР»РѕРІРѕРє С– РєРЅРѕРїРєСѓ
+    // Змінити заголовок і кнопку
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
     const editBtn = document.querySelector('#bookingForm .btn-submit');
-    if (editH3) editH3.textContent = 'Р РµРґР°РіСѓРІР°С‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
-    if (editBtn) editBtn.textContent = 'Р—Р±РµСЂРµРіС‚Рё Р·РјС–РЅРё';
+    if (editH3) editH3.textContent = 'Редагувати бронювання';
+    if (editBtn) editBtn.textContent = 'Зберегти зміни';
     hydrateBookingWorkspace(booking);
 
-    // Р—Р°РїРѕРІРЅРёС‚Рё С„РѕСЂРјСѓ
+    // Заповнити форму
     document.getElementById('roomSelect').value = booking.room || '';
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = booking.notes || '';
@@ -3591,11 +3591,11 @@ async function editBooking(bookingId) {
     if (groupEditInput) groupEditInput.value = booking.groupName || '';
     hydrateEducationLessonFields(booking);
 
-    // Р’РёР±СЂР°С‚Рё РїСЂРѕРіСЂР°РјСѓ
+    // Вибрати програму
     if (booking.programId) {
         selectProgram(booking.programId);
 
-        // РљР°СЃС‚РѕРјРЅР° РїСЂРѕРіСЂР°РјР°
+        // Кастомна програма
         const program = getProductsSync().find(p => p.id === booking.programId);
         if (program && program.isCustom) {
             const customName = document.getElementById('customName');
@@ -3624,7 +3624,7 @@ async function editBooking(bookingId) {
             }
         }
 
-        // Рљ-РєС–СЃС‚СЊ РґС–С‚РµР№ (РњРљ)
+        // К-кість дітей (МК)
         if (program && (program.perChild || isEducationTimelineBookingMode()) && booking.kidsCount) {
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
@@ -3643,7 +3643,7 @@ async function editBooking(bookingId) {
         }
     }
 
-    // v15.1: CRM вЂ” populate customer data if linked
+    // v15.1: CRM — populate customer data if linked
     if (booking.customerId) {
         const customerToggle = document.getElementById('customerDataToggle');
         if (customerToggle) {
@@ -3665,7 +3665,7 @@ async function editBooking(bookingId) {
                     const info = document.getElementById('customerInfo');
                     const badge = document.getElementById('customerVisitBadge');
                     if (info && badge) {
-                        badge.textContent = `${customer.totalBookings} РІС–Р·РёС‚${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'Рё' : 'С–РІ'}`;
+                        badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
                         info.classList.remove('hidden');
                     }
                 }
@@ -3674,11 +3674,11 @@ async function editBooking(bookingId) {
     }
     hydrateBookingPackageWorkspace(booking);
 
-    // РЎС‚Р°С‚СѓСЃ
+    // Статус
     const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
     if (statusRadio) statusRadio.checked = true;
 
-    // Р”СЂСѓРіРёР№ Р°РЅС–РјР°С‚РѕСЂ
+    // Другий аніматор
     if (booking.secondAnimator) {
         await populateSecondAnimatorSelect();
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
@@ -3696,18 +3696,18 @@ async function duplicateBooking(bookingId) {
 
     closeAllModals();
 
-    // РќР• РІСЃС‚Р°РЅРѕРІР»СЋС”РјРѕ editingBookingId вЂ” С†Рµ СЃС‚РІРѕСЂРµРЅРЅСЏ РЅРѕРІРѕРіРѕ
+    // НЕ встановлюємо editingBookingId — це створення нового
     AppState.editingBookingId = null;
 
     await openBookingPanel(booking.time, booking.lineId);
 
-    // Р—Р°РіРѕР»РѕРІРѕРє РґР»СЏ РґСѓР±Р»СЋРІР°РЅРЅСЏ
+    // Заголовок для дублювання
     const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
-    if (dupH3) dupH3.textContent = 'РџРѕРІС‚РѕСЂРёС‚Рё Р±СЂРѕРЅСЋРІР°РЅРЅСЏ';
-    document.querySelector('#bookingForm .btn-submit').textContent = 'РЎС‚РІРѕСЂРёС‚Рё РєРѕРїС–СЋ';
+    if (dupH3) dupH3.textContent = 'Повторити бронювання';
+    document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
     hydrateBookingWorkspace(booking);
 
-    // Pre-fill С„РѕСЂРјСѓ (С–РґРµРЅС‚РёС‡РЅРѕ editBooking)
+    // Pre-fill форму (ідентично editBooking)
     document.getElementById('roomSelect').value = booking.room || '';
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = booking.notes || '';
@@ -3787,7 +3787,7 @@ async function duplicateBooking(bookingId) {
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
 
-    showNotification('Р¤РѕСЂРјСѓ Р·Р°РїРѕРІРЅРµРЅРѕ вЂ” РѕР±РµСЂС–С‚СЊ С‡Р°СЃ С‚Р° Р°РЅС–РјР°С‚РѕСЂР°', 'info');
+    showNotification('Форму заповнено — оберіть час та аніматора', 'info');
 }
 
 // ==========================================
@@ -3799,10 +3799,10 @@ function copyInviteLink(btn) {
     navigator.clipboard.writeText(url).then(() => {
         if (btn) {
             const original = btn.innerHTML;
-            btn.innerHTML = 'вњ… РЎРєРѕРїС–Р№РѕРІР°РЅРѕ!';
+            btn.innerHTML = '✅ Скопійовано!';
             setTimeout(() => { btn.innerHTML = original; }, 2000);
         }
-    }).catch(() => showNotification('РќРµ РІРґР°Р»РѕСЃСЏ СЃРєРѕРїС–СЋРІР°С‚Рё', 'error'));
+    }).catch(() => showNotification('Не вдалося скопіювати', 'error'));
 }
 
 function shareInviteLink() {
@@ -3815,20 +3815,20 @@ function shareInviteLink() {
         const url = link.href;
         const spans = preview ? preview.querySelectorAll('span') : [];
         const text = spans.length > 0
-            ? `Р—Р°РїСЂРѕС€СѓС”РјРѕ! ${Array.from(spans).map(s => s.textContent).join(' | ')} вЂ” РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ`
-            : 'Р—Р°РїСЂРѕС€СѓС”РјРѕ РЅР° СЃРІСЏС‚Рѕ! РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ';
+            ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
+            : 'Запрошуємо на свято! Парк Закревського Періоду';
         if (navigator.share) {
-            navigator.share({ title: 'РџР°СЂРє Р—Р°РєСЂРµРІСЃСЊРєРѕРіРѕ РџРµСЂС–РѕРґСѓ', text, url }).catch(() => {});
+            navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
         } else {
             copyInviteLink(url);
         }
     } catch (e) {
-        showNotification('РџРѕРґС–Р»РёС‚РёСЃСЏ РЅРµ РІРґР°Р»РѕСЃСЏ', 'error');
+        showNotification('Поділитися не вдалося', 'error');
     }
 }
 
 // ==========================================
-// Р’РР”РђР›Р•РќРќРЇ Р‘Р РћРќР®Р’РђРќРќРЇ
+// ВИДАЛЕННЯ БРОНЮВАННЯ
 // ==========================================
 
 function ensureEducationSeriesModal() {
@@ -3839,11 +3839,11 @@ function ensureEducationSeriesModal() {
     modal.className = 'modal hidden';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-label', 'РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ Р·Р°РЅСЏС‚СЊ');
+    modal.setAttribute('aria-label', 'Керування серією занять');
     modal.innerHTML = `
         <div class="modal-content modal-wide">
             <span class="modal-close" onclick="closeEducationSeriesManager()">&times;</span>
-            <h3>РЎРµСЂС–СЏ Р·Р°РЅСЏС‚СЊ</h3>
+            <h3>Серія занять</h3>
             <div id="educationSeriesManagerBody" class="education-series-manager"></div>
         </div>`;
     document.body.appendChild(modal);
@@ -3865,7 +3865,7 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
         return `<div class="education-series-row${booking.status === 'cancelled' ? ' is-cancelled' : ''}">
             <div>
                 <strong>${escapeHtml(booking.date)} ${escapeHtml(booking.time)} ${escapeHtml(seriesPosition)}</strong>
-                <small>${escapeHtml(title)}${lesson.teacherName ? ' В· ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' В· ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
+                <small>${escapeHtml(title)}${lesson.teacherName ? ' · ' + escapeHtml(lesson.teacherName) : ''}${lesson.resourceName || booking.room ? ' · ' + escapeHtml(lesson.resourceName || booking.room) : ''}</small>
             </div>
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${escapeHtml(booking.status || 'confirmed')}</span>
         </div>`;
@@ -3874,15 +3874,15 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
         <div class="education-series-manager-head">
             <div>
                 <strong>${escapeHtml(seriesId)}</strong>
-                <p class="digest-hint">Р—РЅР°Р№РґРµРЅРѕ Р·Р°РЅСЏС‚СЊ: ${bookings.length}. РЎРєР°СЃСѓРІР°РЅРЅСЏ РїСЂР°С†СЋС” С‚С–Р»СЊРєРё РІ Р°РєС‚РёРІРЅРѕРјСѓ Р±С–Р·РЅРµСЃ-РєРѕРЅС‚РµРєСЃС‚С–.</p>
+                <p class="digest-hint">Знайдено занять: ${bookings.length}. Скасування працює тільки в активному бізнес-контексті.</p>
             </div>
         </div>
-        <div class="education-series-manager-list">${rows || '<div class="empty-state-text">РЈ СЃРµСЂС–С— РЅРµРјР°С” Р°РєС‚РёРІРЅРёС… Р·Р°РЅСЏС‚СЊ.</div>'}</div>
+        <div class="education-series-manager-list">${rows || '<div class="empty-state-text">У серії немає активних занять.</div>'}</div>
         <div class="education-series-manager-actions">
-            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Р—Р°РєСЂРёС‚Рё</button>
+            <button type="button" class="btn-secondary" onclick="closeEducationSeriesManager()">Закрити</button>
             <span>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">РЎРєР°СЃСѓРІР°С‚Рё РјР°Р№Р±СѓС‚РЅС–</button>
-                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">РЎРєР°СЃСѓРІР°С‚Рё РІСЃСЋ СЃРµСЂС–СЋ</button>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'future', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати майбутні</button>
+                <button type="button" class="btn-delete-booking" onclick="cancelEducationSeriesFromManager('${escapeHtml(seriesId)}', 'all', '${escapeHtml(String(referenceBookingId || ''))}')">Скасувати всю серію</button>
             </span>
         </div>`;
 }
@@ -3890,13 +3890,13 @@ function renderEducationSeriesManager(seriesId, referenceBookingId, payload = {}
 async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
     const modal = ensureEducationSeriesModal();
     const body = document.getElementById('educationSeriesManagerBody');
-    if (body) body.innerHTML = '<div class="loading-spinner">Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ СЃРµСЂС–С—...</div>';
+    if (body) body.innerHTML = '<div class="loading-spinner">Завантаження серії...</div>';
     modal.classList.remove('hidden');
     const payload = typeof apiGetEducationLessonSeries === 'function'
         ? await apiGetEducationLessonSeries(seriesId)
         : { success: false, error: 'API unavailable', bookings: [] };
     if (!payload.success) {
-        if (body) body.innerHTML = `<div class="empty-state-text">${escapeHtml(payload.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё СЃРµСЂС–СЋ')}</div>`;
+        if (body) body.innerHTML = `<div class="empty-state-text">${escapeHtml(payload.error || 'Не вдалося завантажити серію')}</div>`;
         return;
     }
     renderEducationSeriesManager(seriesId, referenceBookingId, payload);
@@ -3904,9 +3904,9 @@ async function openEducationSeriesManager(seriesId, referenceBookingId = '') {
 
 async function cancelEducationSeriesFromManager(seriesId, scope = 'future', referenceBookingId = '') {
     const text = scope === 'all'
-        ? 'РЎРєР°СЃСѓРІР°С‚Рё РІСЃСЋ СЃРµСЂС–СЋ Р·Р°РЅСЏС‚СЊ?'
-        : 'РЎРєР°СЃСѓРІР°С‚Рё РјР°Р№Р±СѓС‚РЅС– Р·Р°РЅСЏС‚С‚СЏ С†С–С”С— СЃРµСЂС–С—?';
-    const confirmed = await customConfirm(text, 'РљРµСЂСѓРІР°РЅРЅСЏ СЃРµСЂС–С”СЋ');
+        ? 'Скасувати всю серію занять?'
+        : 'Скасувати майбутні заняття цієї серії?';
+    const confirmed = await customConfirm(text, 'Керування серією');
     if (!confirmed) return;
     const result = await apiCancelEducationLessonSeries(seriesId, {
         scope,
@@ -3914,7 +3914,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
         fromDate: formatDate(AppState.selectedDate)
     });
     if (!result?.success) {
-        showNotification(result?.error || 'РќРµ РІРґР°Р»РѕСЃСЏ СЃРєР°СЃСѓРІР°С‚Рё СЃРµСЂС–СЋ', 'error');
+        showNotification(result?.error || 'Не вдалося скасувати серію', 'error');
         return;
     }
     (result.bookings || []).forEach(booking => {
@@ -3922,7 +3922,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
     });
     closeEducationSeriesManager();
     await renderTimeline();
-    showNotification(`РЎРєР°СЃРѕРІР°РЅРѕ Р·Р°РЅСЏС‚СЊ: ${result.cancelledCount || 0}`, 'success');
+    showNotification(`Скасовано занять: ${result.cancelledCount || 0}`, 'success');
 }
 
 async function deleteBooking(bookingId) {
@@ -3951,32 +3951,32 @@ async function deleteBooking(bookingId) {
         const othersCount = allToDelete.length - 1;
 
         const confirmMsg = othersCount > 0
-            ? `Р’РёРґР°Р»РёС‚Рё С†Рµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ СЂР°Р·РѕРј Р· ${othersCount} РїРѕРІ'СЏР·Р°РЅРёРј(Рё)?`
-            : 'Р’РёРґР°Р»РёС‚Рё С†Рµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ?';
+            ? `Видалити це бронювання разом з ${othersCount} повʼязаними?`
+            : 'Видалити це бронювання?';
 
-        const confirmed = await customConfirm(confirmMsg, 'Р’РёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ');
+        const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
         if (!confirmed) return;
 
         pushUndo('delete', [...allToDelete]);
 
-        // v5.7: Single server call вЂ” server handles linked deletion, history, Telegram
+        // v5.7: Single server call — server handles linked deletion, history, Telegram
         const delResult = await apiDeleteBooking(mainBookingId);
         if (delResult && delResult.success === false) {
-            showNotification(delResult.error || 'РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
+            showNotification(delResult.error || 'Помилка видалення бронювання', 'error');
             return;
         }
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        showNotification(othersCount > 0 ? `Р’РёРґР°Р»РµРЅРѕ ${allToDelete.length} Р±СЂРѕРЅСЋРІР°РЅСЊ` : 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ РІРёРґР°Р»РµРЅРѕ', 'success');
+        showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
     } catch (error) {
-        handleError('Р’РёРґР°Р»РµРЅРЅСЏ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', error);
+        handleError('Видалення бронювання', error);
     }
 }
 
 // ==========================================
-// РџР•Р Р•РќРћРЎ Р§РђРЎРЈ
+// ПЕРЕНОС ЧАСУ
 // ==========================================
 
 async function shiftBookingTime(bookingId, minutes) {
@@ -3995,7 +3995,7 @@ async function shiftBookingTime(bookingId, minutes) {
         const dayEnd = CONFIG.TIMELINE.WEEKEND_END * 60;
 
         if (newStart < dayStart || newEnd > dayEnd) {
-            showNotification('Р§Р°СЃ РІРёС…РѕРґРёС‚СЊ Р·Р° РјРµР¶С– СЂРѕР±РѕС‡РѕРіРѕ РґРЅСЏ!', 'error');
+            showNotification('Час виходить за межі робочого дня!', 'error');
             return;
         }
 
@@ -4005,14 +4005,14 @@ async function shiftBookingTime(bookingId, minutes) {
             const end = start + other.duration;
 
             if (newStart < end && newEnd > start) {
-                const detail = ` ("${other.label || other.programCode || ''}" Рѕ ${other.time})`;
-                showNotification(`РќРµРјРѕР¶Р»РёРІРѕ РїРµСЂРµРЅРµСЃС‚Рё вЂ” РЅР°РєР»Р°РґРєР°${detail}`, 'error');
+                const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
+                showNotification(`Неможливо перенести — накладка${detail}`, 'error');
                 if (other.id) revealHiddenBooking(other.id);
                 return;
             }
         }
 
-        // РџРѕРІ'СЏР·Р°РЅС– Р±СЂРѕРЅСЋРІР°РЅРЅСЏ
+        // Пов'язані бронювання
         const linkedBookings = bookings.filter(b => b.linkedTo === bookingId);
 
         for (const linked of linkedBookings) {
@@ -4025,8 +4025,8 @@ async function shiftBookingTime(bookingId, minutes) {
                 const start = timeToMinutes(other.time);
                 const end = start + other.duration;
                 if (linkedNewStart < end && linkedNewEnd > start) {
-                    const detail = ` ("${other.label || other.programCode || ''}" Рѕ ${other.time})`;
-                    showNotification(`РќРµРјРѕР¶Р»РёРІРѕ РїРµСЂРµРЅРµСЃС‚Рё вЂ” РЅР°РєР»Р°РґРєР° Сѓ РїРѕРІ'СЏР·Р°РЅРѕРіРѕ Р°РЅС–РјР°С‚РѕСЂР°${detail}`, 'error');
+                    const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
+                    showNotification(`Неможливо перенести — накладка у повʼязаного аніматора${detail}`, 'error');
                     if (other.id) revealHiddenBooking(other.id);
                     return;
                 }
@@ -4048,10 +4048,10 @@ async function shiftBookingTime(bookingId, minutes) {
                 delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
                 closeAllModals();
                 await renderTimeline();
-                showNotification(shiftResult.error || 'Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ С‚Р°Р№РјР»Р°Р№РЅ.', 'error');
+                showNotification(shiftResult.error || 'Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
                 return;
             }
-            showNotification(shiftResult.error || 'РџРѕРјРёР»РєР° РїРµСЂРµРЅРѕСЃСѓ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ', 'error');
+            showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
             if (shiftResult.conflictBookingId) revealHiddenBooking(shiftResult.conflictBookingId);
             return;
         }
@@ -4062,15 +4062,15 @@ async function shiftBookingTime(bookingId, minutes) {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} РїРѕРІ'СЏР·Р°РЅРёС…)` : '';
-        showNotification(`Р§Р°СЃ РїРµСЂРµРЅРµСЃРµРЅРѕ РЅР° ${minutes > 0 ? '+' : ''}${minutes} С…РІ${linkedMsg}`, 'success');
+        const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} повʼязаних)` : '';
+        showNotification(`Час перенесено на ${minutes > 0 ? '+' : ''}${minutes} хв${linkedMsg}`, 'success');
     } catch (error) {
-        handleError('РџРµСЂРµРЅРѕСЃ С‡Р°СЃСѓ', error);
+        handleError('Перенос часу', error);
     }
 }
 
 // ==========================================
-// РџР•Р Р•РљР›Р®Р§Р•РќРќРЇ Р›Р†РќР†Р‡ (v7.6.1)
+// ПЕРЕКЛЮЧЕННЯ ЛІНІЇ (v7.6.1)
 // ==========================================
 
 async function switchBookingLine(bookingId, targetLineId) {
@@ -4081,7 +4081,7 @@ async function switchBookingLine(bookingId, targetLineId) {
 
         if (booking.lineId === targetLineId) return;
 
-        // РџРµСЂРµРІС–СЂРєР° РєРѕРЅС„Р»С–РєС‚С–РІ РЅР° С†С–Р»СЊРѕРІС–Р№ Р»С–РЅС–С—
+        // Перевірка конфліктів на цільовій лінії
         const targetLineBookings = bookings.filter(b => b.lineId === targetLineId && b.id !== bookingId);
         const myStart = timeToMinutes(booking.time);
         const myEnd = myStart + booking.duration;
@@ -4090,7 +4090,7 @@ async function switchBookingLine(bookingId, targetLineId) {
             const start = timeToMinutes(other.time);
             const end = start + other.duration;
             if (myStart < end && myEnd > start) {
-                showNotification(`РќРµРјРѕР¶Р»РёРІРѕ вЂ” РЅР°РєР»Р°РґРєР° Р· "${other.label || other.programCode}" Рѕ ${other.time}`, 'error');
+                showNotification(`Неможливо — накладка з "${other.label || other.programCode}" о ${other.time}`, 'error');
                 if (other.id) revealHiddenBooking(other.id);
                 return;
             }
@@ -4103,10 +4103,10 @@ async function switchBookingLine(bookingId, targetLineId) {
                 delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
                 closeAllModals();
                 await renderTimeline();
-                showNotification('Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р·РјС–РЅРµРЅРѕ С–РЅС€РёРј РєРѕСЂРёСЃС‚СѓРІР°С‡РµРј. РћРЅРѕРІС–С‚СЊ С‚Р°Р№РјР»Р°Р№РЅ.', 'error');
+                showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
                 return;
             }
-            showNotification(result.error || 'РџРѕРјРёР»РєР° РїРµСЂРµРєР»СЋС‡РµРЅРЅСЏ Р»С–РЅС–С—', 'error');
+            showNotification(result.error || 'Помилка переключення лінії', 'error');
             if (result.conflictBookingId) revealHiddenBooking(result.conflictBookingId);
             return;
         }
@@ -4117,9 +4117,9 @@ async function switchBookingLine(bookingId, targetLineId) {
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();
         await renderTimeline();
-        showNotification(`РџРµСЂРµРјС–С‰РµРЅРѕ РЅР°: ${targetLine ? targetLine.name : 'С–РЅС€Сѓ Р»С–РЅС–СЋ'}`, 'success');
+        showNotification(`Переміщено на: ${targetLine ? targetLine.name : 'іншу лінію'}`, 'success');
     } catch (error) {
-        handleError('РџРµСЂРµРєР»СЋС‡РµРЅРЅСЏ Р»С–РЅС–С—', error);
+        handleError('Переключення лінії', error);
     }
 }
 
@@ -4225,10 +4225,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     AppState.cachedBookings = {};
                     await renderTimeline();
                     const count = result.generated || 0;
-                    showNotification(`РЎС‚РІРѕСЂРµРЅРѕ РїРѕРІС‚РѕСЂСЋРІР°РЅРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ (${count} РїРѕРґС–Р№)`, 'success');
+                    showNotification(`Створено повторюване бронювання (${count} подій)`, 'success');
                 } else {
                     const err = await res.json();
-                    showNotification(err.error || 'РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ', 'error');
+                    showNotification(err.error || 'Помилка створення', 'error');
                 }
             } catch (error) {
                 handleError('Recurring creation', error);
@@ -4283,11 +4283,11 @@ const BulkOps = {
                 document.body.appendChild(bar);
             }
             bar.innerHTML = `
-                <span class="bulk-count">${this.selected.size} РѕР±СЂР°РЅРѕ</span>
-                <button onclick="BulkOps.bulkDelete()">рџ—‘ Р’РёРґР°Р»РёС‚Рё</button>
-                <button onclick="BulkOps.bulkStatus('confirmed')">вњ… РџС–РґС‚РІРµСЂРґРёС‚Рё</button>
-                <button onclick="BulkOps.bulkStatus('preliminary')">вЏі РџРѕРїРµСЂРµРґРЅС–</button>
-                <button class="bulk-cancel" onclick="BulkOps.clear()">вњ• РЎРєР°СЃСѓРІР°С‚Рё</button>
+                <span class="bulk-count">${this.selected.size} обрано</span>
+                <button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>
+                <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
+                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
+                <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
             `;
         } else if (bar) {
             bar.remove();
@@ -4296,7 +4296,7 @@ const BulkOps = {
 
     async bulkDelete() {
         if (this._busy) return;
-        if (!await customConfirm(`Р’РёРґР°Р»РёС‚Рё ${this.selected.size} Р±СЂРѕРЅСЋРІР°РЅСЊ?`)) return;
+        if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
         if (this._busy) return;
         this._busy = true;
         try {
@@ -4316,7 +4316,7 @@ const BulkOps = {
             this.clear();
             AppState.cachedBookings = {};
             await renderTimeline();
-            showNotification(`Р’РёРґР°Р»РµРЅРѕ ${ids.length} Р±СЂРѕРЅСЋРІР°РЅСЊ`, 'warning');
+            showNotification(`Видалено ${ids.length} бронювань`, 'warning');
         } finally {
             this._busy = false;
         }
@@ -4342,7 +4342,7 @@ const BulkOps = {
             this.clear();
             AppState.cachedBookings = {};
             await renderTimeline();
-            showNotification(`РЎС‚Р°С‚СѓСЃ Р·РјС–РЅРµРЅРѕ РґР»СЏ ${ids.length} Р±СЂРѕРЅСЋРІР°РЅСЊ`, 'success');
+            showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
         } finally {
             this._busy = false;
         }
@@ -4351,7 +4351,7 @@ const BulkOps = {
 
 window.BulkOps = BulkOps;
 
-// в”Ђв”Ђв”Ђ Pinata Stock Badge (v33.5) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Pinata Stock Badge (v33.5) ──────────
 async function _loadPinataStockBadge() {
     const badge = document.getElementById('pinataStockBadge');
     if (!badge) return;
@@ -4362,9 +4362,9 @@ async function _loadPinataStockBadge() {
         });
         const data = await res.json();
         if (!data.success) return;
-        const osnovy = data.stock.find(s => s.name.includes('РћСЃРЅРѕРІРё'));
+        const osnovy = data.stock.find(s => s.name.includes('Основи'));
         if (osnovy) {
-            badge.textContent = `рџ“¦ РћСЃРЅРѕРІРё: ${osnovy.quantity} С€С‚ ${osnovy.quantity <= 3 ? 'вљ пёЏ' : 'вњ…'}`;
+            badge.textContent = `📦 Основи: ${osnovy.quantity} шт ${osnovy.quantity <= 3 ? '⚠️' : '✅'}`;
             badge.style.display = 'inline-block';
             badge.style.color   = osnovy.quantity <= 3 ? '#ef4444' : 'var(--gray-500)';
         }

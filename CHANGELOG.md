@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.0 - CRM 69: підтягування хвостів
+
+### Planning / System debt / 31.05.2026 [codex]
+- **Відкрито CRM 69 як consolidation-реліз** - версійна лінія переведена з `0.68.x` у `0.69.0`, щоб наступний етап був не набором дрібних hotfix-ів, а керованим добиванням хвостів.
+- **Складено велику executable task** - у `docs/TASK-crm-69-tail-consolidation.md` зафіксовано план по timeline booking, multi-cabinet ресурсах, business context, smart booking drawer, HR canvas, Omni/Telegram, AI-іконках, задачах і release QA.
+- **Пріоритет визначено по production-ризику** - першим блоком має йти timeline + booking truth: прибрати fake success, стабілізувати resource/line mapping і довести створення подій до перевіреного DOM/API результату.
+- **Хвости згруповані у великі delivery-фази** - кожна фаза має definition of done, перевірки, live smoke і межі, щоб не розмазувати роботу по дрібних випадкових правках.
+
+---
+
 ## v0.68.54 - Профіль працівника UX
 
 ### Profile / Visual rebuild / 31.05.2026 [codex]

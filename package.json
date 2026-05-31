@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.68.54",
+  "version": "0.69.0",
   "eventGenix": {
-    "releaseLabel": "Профіль працівника UX"
+    "releaseLabel": "CRM 69: підтягування хвостів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -463,6 +463,27 @@ async function findTimelineResource(db = defaultPool, context = DEFAULT_TIMELINE
     return result.rows[0] ? mapTimelineResourceRow(result.rows[0]) : null;
 }
 
+async function findTimelineResourceByName(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, name, options = {}) {
+    const businessContext = normalizeTimelineContext(context);
+    const safeName = String(name || '').trim();
+    if (!safeName) return null;
+    const params = [businessContext, safeName];
+    const conditions = [
+        'business_context = $1',
+        `(LOWER(BTRIM(name)) = LOWER(BTRIM($2)) OR LOWER(BTRIM(COALESCE(short_name, ''))) = LOWER(BTRIM($2)))`
+    ];
+    if (options.type) {
+        params.push(normalizeResourceType(options.type));
+        conditions.push(`type = $${params.length}`);
+    }
+    if (!options.includeInactive) conditions.push('is_active = TRUE');
+    const result = await db.query(
+        `SELECT * FROM timeline_resources WHERE ${conditions.join(' AND ')} ORDER BY is_active DESC, sort_order ASC, id ASC LIMIT 1`,
+        params
+    );
+    return result.rows[0] ? mapTimelineResourceRow(result.rows[0]) : null;
+}
+
 async function timelineResourceLinesForMode(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, mode, settings = null) {
     const type = resourceTypeForDisplayMode(mode, settings);
     if (!type) return null;
@@ -633,6 +654,7 @@ module.exports = {
     ensureDefaultTimelineResources,
     listTimelineResources,
     findTimelineResource,
+    findTimelineResourceByName,
     timelineResourceLinesForMode,
     syncTimelineResourcesFromLines,
     deleteTimelineResource,

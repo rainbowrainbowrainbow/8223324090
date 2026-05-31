@@ -24,6 +24,7 @@ const {
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
     findTimelineResource,
+    findTimelineResourceByName,
     getTimelineDisplaySettings,
     resourceTypeForDisplayMode
 } = require('../services/timelineResources');
@@ -206,10 +207,15 @@ async function ensureBookingTimelineLine(client, booking, businessContext, { nam
     const resourceType = resourceTypeForDisplayMode(display.mode, display);
 
     if (resourceType) {
-        const resource = await findTimelineResource(client, businessContext, booking.lineId, { type: resourceType });
+        const resource = await resolveBookingTimelineResource(client, {
+            ...booking,
+            lineName: name || booking.lineName || booking.resourceName || booking.room
+        }, businessContext, { type: resourceType });
         if (!resource || resource.type !== resourceType) return null;
+        booking.lineId = resource.resourceId;
         booking.resourceId = resource.resourceId;
         booking.resourceType = resource.type;
+        if (!String(booking.room || '').trim()) booking.room = resource.name;
         return {
             lineId: String(booking.lineId),
             name: resource.name,
@@ -487,11 +493,12 @@ function requireBookingRoom(payload) {
 
 async function hydrateBookingRoomFromTimelineResource(queryable, payload, businessContext) {
     if (!payload || String(payload.room || '').trim() || !payload.lineId) return payload;
-    const resource = await findTimelineResource(queryable, businessContext, payload.lineId, { includeInactive: true });
+    const resource = await resolveBookingTimelineResource(queryable, payload, businessContext, { includeInactive: true });
     if (resource && ['cabinet', 'specialist', 'online'].includes(resource.type)) {
         payload.room = resource.name;
         payload.resourceId = resource.resourceId;
         payload.resourceType = resource.type;
+        payload.lineId = resource.resourceId;
     }
     return payload;
 }
@@ -500,7 +507,7 @@ async function validateBookingTimelineResourceCapacity(queryable, payload, busin
     if (!payload || !payload.lineId) return null;
     const kidsCount = parseInt(payload.kidsCount ?? payload.kids_count, 10);
     if (!Number.isFinite(kidsCount) || kidsCount <= 0) return null;
-    const resource = await findTimelineResource(queryable, businessContext, payload.lineId, { includeInactive: true });
+    const resource = await resolveBookingTimelineResource(queryable, payload, businessContext, { includeInactive: true });
     if (!resource || !['cabinet', 'specialist', 'online'].includes(resource.type)) return null;
     const capacity = parseInt(resource.capacity, 10);
     if (!Number.isFinite(capacity) || capacity <= 0 || kidsCount <= capacity) return null;
@@ -508,6 +515,21 @@ async function validateBookingTimelineResourceCapacity(queryable, payload, busin
         resource,
         error: `${resource.name} має місткість ${capacity}, а в записі ${kidsCount}`
     };
+}
+
+async function resolveBookingTimelineResource(queryable, payload, businessContext, options = {}) {
+    if (!payload) return null;
+    const type = options.type || payload.resourceType || payload.resource_type || null;
+    const queryOptions = { includeInactive: options.includeInactive, ...(type ? { type } : {}) };
+    let resource = null;
+    if (payload.lineId) {
+        resource = await findTimelineResource(queryable, businessContext, payload.lineId, queryOptions);
+    }
+    if (!resource) {
+        const name = payload.lineName || payload.resourceName || payload.resource_name || payload.room || null;
+        resource = await findTimelineResourceByName(queryable, businessContext, name, queryOptions);
+    }
+    return resource;
 }
 
 function educationLessonFromPayload(payload = {}) {

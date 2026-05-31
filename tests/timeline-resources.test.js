@@ -12,7 +12,8 @@ const {
 } = require('../services/businessCabinet');
 const {
     normalizeTimelineDisplaySettings,
-    resourceTypeForDisplayMode
+    resourceTypeForDisplayMode,
+    findTimelineResourceByName
 } = require('../services/timelineResources');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -46,11 +47,44 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /resourceModel/);
     assert.match(service, /function resourceTypeForDisplayMode/);
     assert.match(service, /function timelineResourceAvailability/);
+    assert.match(service, /async function findTimelineResourceByName/);
     assert.match(service, /line_id = ANY\(\$3::text\[\]\) OR room = ANY\(\$4::text\[\]\)/);
     assert.match(service, /requestedCapacity/);
     assert.match(service, /capacityAvailable/);
     assert.match(service, /overCapacity/);
     assert.match(service, /resourceBlock/);
+});
+
+test('timeline resource lookup can recover stale booking line ids by visible resource name', async () => {
+    const queries = [];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            return {
+                rows: [{
+                    id: 12,
+                    business_context: 'event_genix',
+                    resource_id: 'cabinet-a',
+                    type: 'cabinet',
+                    name: 'Кабінет A',
+                    short_name: 'A',
+                    color: '#10B981',
+                    capacity: 8,
+                    equipment: [],
+                    is_active: true,
+                    sort_order: 10,
+                    metadata: {}
+                }]
+            };
+        }
+    };
+
+    const resource = await findTimelineResourceByName(fakeDb, 'event_genix', 'Кабінет A', { type: 'cabinet' });
+
+    assert.equal(resource.resourceId, 'cabinet-a');
+    assert.equal(resource.type, 'cabinet');
+    assert.match(queries[0].sql, /LOWER\(BTRIM\(name\)\)/);
+    assert.deepEqual(queries[0].params, ['event_genix', 'Кабінет A', 'cabinet']);
 });
 
 test('park timeline keeps legacy animator lines even if resource model is mis-set', () => {
@@ -102,6 +136,8 @@ test('education resources support capacity guard and quick slot closure', () => 
     assert.match(timeline, /resourceBlockExtra/);
     assert.match(timeline, /resourceBlocked === true/);
     assert.match(bookingsRoute, /function validateBookingTimelineResourceCapacity/);
+    assert.match(bookingsRoute, /function resolveBookingTimelineResource/);
+    assert.match(bookingsRoute, /findTimelineResourceByName/);
     assert.match(bookingsRoute, /має місткість/);
     assert.doesNotMatch(panelCss, /body\.timeline-mode-education #kidsCountSection/);
     assert.match(featureCss, /\.free-room-chip small/);

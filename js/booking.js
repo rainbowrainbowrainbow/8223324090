@@ -181,6 +181,18 @@ function getSelectedTimelineResourceLine() {
     return lines.find(line => String(line.id) === String(lineId)) || null;
 }
 
+function getBookingLineSnapshot(lineId = document.getElementById('bookingLine')?.value) {
+    const dateStr = normalizeBookingDateKey(AppState.selectedDate);
+    const lines = [
+        ...(AppState.linesByDate?.[dateStr] || []),
+        ...(AppState.lines || [])
+    ];
+    const line = lines.find(item => String(item?.id || '') === String(lineId || ''));
+    if (line) return line;
+    const label = document.getElementById('selectedLineDisplay')?.textContent?.trim();
+    return label ? { id: lineId, name: label } : null;
+}
+
 function timelineResourceCapacityError(formData = getBookingFormData()) {
     if (!isTimelineResourceBackedBookingMode()) return null;
     const line = getSelectedTimelineResourceLine();
@@ -2524,6 +2536,7 @@ function getBookingFormData() {
     const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
     const lineId = document.getElementById('bookingLine')?.value;
+    const line = getBookingLineSnapshot(lineId);
 
     let duration = program ? program.duration : 0;
     let label = program ? program.label : '';
@@ -2566,7 +2579,7 @@ function getBookingFormData() {
     const scenario = getBookingWorkspaceScenario({ hasEvent, positions: menuPositions, hasKitchen: kitchenEnabled });
     const baseFormData = {
         hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
-        programId, room: effectiveRoom, program, time, lineId, duration, label,
+        programId, room: effectiveRoom, program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', duration, label,
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
@@ -2720,6 +2733,7 @@ function buildBookingObject(formData, program) {
         date: formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
+        lineName: formData.lineName || null,
         programId: hasCatalogProgram ? String(program.id || formData.programId) : null,
         programCode: hasCatalogProgram ? program.code : (isEducationLessonBooking ? 'LESSON' : (formData.scenario === 'kitchen_only' ? 'KITCHEN' : 'LEAD')),
         label: hasEvent ? formData.label : noEventLabel,
@@ -3011,6 +3025,7 @@ async function buildLinkedBookings(booking, program) {
         if (secondLine) {
             linked.push({
                 date: booking.date, time: booking.time, lineId: secondLine.id,
+                lineName: secondLine.name || booking.secondAnimator || null,
                 programId: booking.programId, programCode: booking.programCode,
                 label: booking.label, programName: booking.programName,
                 category: booking.category, duration: booking.duration,
@@ -3037,6 +3052,7 @@ async function buildLinkedBookings(booking, program) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
                 linked.push({
                     date: booking.date, time: booking.time, lineId: extraLine.id,
+                    lineName: extraLine.name || extraHostAnimator || null,
                     programId: 'anim_extra', programCode: '+Вед',
                     label: `+Вед(${booking.duration})`, programName: 'Додатковий ведучий',
                     category: 'animation', duration: booking.duration, price: extraPrice,
@@ -3249,6 +3265,33 @@ async function refreshCreatedBookingsFromServer(createdBookings = []) {
     return fresh.some(item => expectedIds.has(String(item?.id || item?.bookingId || '')));
 }
 
+function primeCreatedBookingsInTimelineCache(createdBookings = []) {
+    if (!Array.isArray(createdBookings) || !createdBookings.length) return;
+    if (typeof setTimelineCacheEntry !== 'function') return;
+    AppState.cachedBookings = AppState.cachedBookings || {};
+    const byDate = new Map();
+    createdBookings.forEach(booking => {
+        const id = booking?.id || booking?.bookingId;
+        const date = normalizeBookingDateKey(booking?.date) || formatDate(AppState.selectedDate);
+        if (!id || !date) return;
+        if (!byDate.has(date)) byDate.set(date, []);
+        byDate.get(date).push(booking);
+    });
+    byDate.forEach((bookings, date) => {
+        const cached = typeof getTimelineCacheEntry === 'function'
+            ? getTimelineCacheEntry(AppState.cachedBookings, date)
+            : null;
+        const merged = [...(Array.isArray(cached?.data) ? cached.data : [])];
+        bookings.forEach(booking => {
+            const id = String(booking.id || booking.bookingId || '');
+            const index = merged.findIndex(item => String(item?.id || item?.bookingId || '') === id);
+            if (index >= 0) merged[index] = { ...merged[index], ...booking };
+            else merged.push(booking);
+        });
+        setTimelineCacheEntry(AppState.cachedBookings, date, merged);
+    });
+}
+
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
@@ -3412,6 +3455,7 @@ async function handleBookingSubmit(e) {
             changedDates.forEach(date => {
                 invalidateBookingTimelineDateCache(date);
             });
+            primeCreatedBookingsInTimelineCache(createdBookings);
             closeBookingPanel(true);
             unlockSubmitBtn();
             clearLeadConversionContextAfterBooking(booking.id);

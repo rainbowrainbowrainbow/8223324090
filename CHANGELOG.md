@@ -4,6 +4,15 @@
 
 ---
 
+## v0.69.5 - Timeline server echo recovery
+
+### Timeline / Booking / Hotfix / 01.06.2026 [codex]
+- **Створений сервером запис тепер сам може відновити таймлайн** - якщо `POST /bookings` повернув реальний booking-row з поточною датою, бізнесом і лінією, frontend підкладає цей server echo у кеш навіть тоді, коли повторний денний список ще не повернув рядок.
+- **`timelineProjection.visible=false` більше не губиться в загальній помилці** - warning тепер прямо показує, якщо серверна проекція не бачить запис або сама projection-перевірка впала.
+- **Зменшено залежність від race між create і refresh** - таймлайн не чекає лише на повторний `GET /bookings/:date`, якщо сервер уже повернув створений рядок як частину успішного create-response.
+
+---
+
 ## v0.69.4 - Timeline projection truth
 
 ### Timeline / Booking / Multi-cabinet / 01.06.2026 [codex]

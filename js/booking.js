@@ -3237,7 +3237,10 @@ function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = nu
         const lineId = String(source?.lineId || source?.line_id || '').trim();
         const status = source?.status || booking?.status || '';
         const block = findCreatedBookingBlock(source);
+        const projection = createdBookingTimelineProjection(source);
 
+        if (projection?.visible === false) reasons.push(`серверна проекція не бачить запис ${id}`);
+        if (projection?.error) reasons.push(`помилка projection: ${projection.error}`);
         if (id && missingIds.has(String(id))) reasons.push(`серверний список дня не повернув запис ${id}`);
         if (date && date !== expectedDate) reasons.push(`дата ${date}`);
         if (source?.businessContext && expectedContext && source.businessContext !== expectedContext) {
@@ -3275,14 +3278,20 @@ function createdBookingTimelineProjection(booking = {}) {
 
 function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate = formatDate(AppState.selectedDate)) {
     const projection = createdBookingTimelineProjection(booking);
-    if (!projection || projection.visible !== true) return false;
+    if (projection && projection.visible === false) return false;
     const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
         || window.TimelineBusinessContext?.current?.()?.apiValue || '';
-    const projectedDate = normalizeBookingDateKey(projection.date || booking.date);
-    const projectedContext = projection.businessContext || projection.business_context || booking.businessContext || '';
+    const projectedDate = normalizeBookingDateKey(projection?.date || booking.date);
+    const projectedContext = projection?.businessContext
+        || projection?.business_context
+        || booking.businessContext
+        || booking.business_context
+        || '';
     if (projectedDate && projectedDate !== currentDate) return false;
     if (projectedContext && expectedContext && projectedContext !== expectedContext) return false;
-    return true;
+    const id = booking?.id || booking?.bookingId;
+    const lineId = String(booking?.lineId || booking?.line_id || '').trim();
+    return Boolean(id && (lineId || projection?.visible === true));
 }
 
 function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.69.7 - Timeline create cache preservation
+
+### Timeline / Booking / Hotfix / 01.06.2026 [codex]
+- **Create-flow більше не стирає поточний день неповним refresh-списком** - під час створення бронювання frontend зберігає попередній видимий зріз дня і не дозволяє порожньому або частковому `GET /bookings/:date` перетерти старі блоки.
+- **Денний кеш тепер мерджиться, а не замінюється навмання** - `refreshCreatedBookingTimelineSnapshot` обʼєднує попередній cache, свіжий серверний список і щойно створений server echo в один список перед рендером.
+- **Поточна дата не очищає booking-cache до recovery** - invalidation після create лишає бронювання активного дня доступними для merge, тому старі записи не мають зникати разом із новим записом.
+
+---
+
 ## v0.69.6 - Timeline echo over projection race
 
 ### Timeline / Booking / Hotfix / 01.06.2026 [codex]

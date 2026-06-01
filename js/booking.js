@@ -3322,6 +3322,12 @@ function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) 
 
 async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     const currentDate = formatDate(AppState.selectedDate);
+    const previousCachedBookings = typeof getTimelineCacheEntry === 'function'
+        ? getTimelineCacheEntry(AppState.cachedBookings, currentDate)
+        : null;
+    const preservedBookings = Array.isArray(previousCachedBookings?.data)
+        ? previousCachedBookings.data
+        : [];
     const createdById = new Map(
         createdBookings
             .map(item => [String(item?.id || item?.bookingId || ''), item])
@@ -3347,7 +3353,7 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     };
     if (!expectedIds.size) return snapshot;
 
-    invalidateBookingTimelineDateCache(currentDate);
+    invalidateBookingTimelineDateCache(currentDate, { bookings: false });
     const [freshLines, freshBookings] = await Promise.all([
         getLinesForDate(AppState.selectedDate, { force: true }).catch(error => {
             console.error('[Booking] Fresh timeline lines fetch failed after create', error);
@@ -3372,30 +3378,44 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
         }
     }
 
+    const mergedBookingsById = new Map();
+    preservedBookings.forEach(booking => {
+        const id = booking?.id || booking?.bookingId;
+        if (!id) return;
+        mergedBookingsById.set(String(id), booking);
+    });
+
     if (Array.isArray(freshBookings)) {
-        snapshot.bookings = [...freshBookings];
         freshBookings.forEach(booking => {
             const id = booking?.id || booking?.bookingId;
             if (!id) return;
             const key = String(id);
-            snapshot.bookingsById.set(key, booking);
+            mergedBookingsById.set(key, booking);
             if (expectedIds.has(key)) {
                 snapshot.foundIds.add(key);
                 snapshot.missingIds.delete(key);
             }
         });
-        Array.from(snapshot.missingIds).forEach(key => {
-            const created = createdById.get(key);
-            if (!createdBookingProjectionMatchesCurrentSlice(created, currentDate)) return;
-            snapshot.bookings.push(created);
-            snapshot.bookingsById.set(key, created);
-            snapshot.foundIds.add(key);
-            snapshot.missingIds.delete(key);
-            snapshot.projectionRecoveredIds.add(key);
-        });
-        if (typeof setTimelineCacheEntry === 'function') {
-            setTimelineCacheEntry(AppState.cachedBookings, currentDate, snapshot.bookings);
-        }
+    }
+
+    snapshot.bookings = Array.from(mergedBookingsById.values());
+    snapshot.bookings.forEach(booking => {
+        const id = booking?.id || booking?.bookingId;
+        if (!id) return;
+        snapshot.bookingsById.set(String(id), booking);
+    });
+
+    Array.from(snapshot.missingIds).forEach(key => {
+        const created = createdById.get(key);
+        if (!createdBookingProjectionMatchesCurrentSlice(created, currentDate)) return;
+        snapshot.bookings.push(created);
+        snapshot.bookingsById.set(key, created);
+        snapshot.foundIds.add(key);
+        snapshot.missingIds.delete(key);
+        snapshot.projectionRecoveredIds.add(key);
+    });
+    if (typeof setTimelineCacheEntry === 'function' && snapshot.bookings.length) {
+        setTimelineCacheEntry(AppState.cachedBookings, currentDate, snapshot.bookings);
     }
 
     return snapshot;
@@ -3562,7 +3582,10 @@ async function handleBookingSubmit(e) {
             const selectedDateKey = formatDate(AppState.selectedDate);
             changedDates.add(selectedDateKey);
             changedDates.forEach(date => {
-                invalidateBookingTimelineDateCache(date);
+                const changedDateKey = normalizeBookingDateKey(date);
+                invalidateBookingTimelineDateCache(changedDateKey, {
+                    bookings: changedDateKey !== selectedDateKey
+                });
             });
             const timelineSnapshot = await refreshCreatedBookingTimelineSnapshot(createdBookings);
             closeBookingPanel(true);

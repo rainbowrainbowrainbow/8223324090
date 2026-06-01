@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.69.6",
+  "version": "0.69.7",
   "eventGenix": {
-    "releaseLabel": "Timeline echo over projection race"
+    "releaseLabel": "Timeline create cache preservation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

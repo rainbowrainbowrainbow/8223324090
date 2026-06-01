@@ -92,6 +92,10 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /поза видимим діапазоном/);
     assert.match(bookingJs, /тривалість запису 0 хв/);
     assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
+    assert.match(bookingJs, /previousCachedBookings/);
+    assert.match(bookingJs, /preservedBookings/);
+    assert.match(bookingJs, /mergedBookingsById/);
+    assert.match(bookingJs, /invalidateBookingTimelineDateCache\(currentDate, \{ bookings: false \}\)/);
     assert.match(bookingJs, /getLinesForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /function createdBookingTimelineProjection/);
@@ -101,6 +105,7 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /серверна проекція не бачить запис/);
     assert.match(bookingJs, /projectionRecoveredIds/);
     assert.match(bookingJs, /setTimelineCacheEntry\(AppState\.cachedBookings, currentDate, snapshot\.bookings\)/);
+    assert.match(bookingJs, /bookings: changedDateKey !== selectedDateKey/);
     assert.match(bookingJs, /серверний список дня не повернув запис/);
     assert.match(bookingJs, /createdBookingVisibilityMessage\(createdBookings, timelineSnapshot\)/);
 });

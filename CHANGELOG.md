@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.18 - Timeline control bootstrap hotfix
+
+### Timeline / Controls / Bootstrap / Live UAT / 01.06.2026 [codex]
+- **Кнопки таймлайну знову отримують runtime handlers після кешованого або пізнього завантаження** - `app.js` більше не покладається тільки на `DOMContentLoaded`; якщо DOM уже готовий, `initializeApp()` запускається одразу.
+- **Bootstrap захищено від подвійної ініціалізації** - додано одноразовий guard `bootstrapInitializeApp()`, щоб повторний запуск не дублював listeners і intervals.
+- **Live UAT закрив реальну причину production-хвоста** - після релізу `0.69.17` production показав, що не спрацьовував не лише `Тиждень`, а й `Наступний день`, тобто проблема була в старті control binding, а не в resource identity.
+- **Regression guard посилено** - `tests/ui-check.js` тепер перевіряє і period handler, і fallback bootstrap для готового DOM.
+
+---
+
 ## v0.69.17 - Timeline week toggle hotfix
 
 ### Timeline / Week Toggle / Live UAT / 01.06.2026 [codex]

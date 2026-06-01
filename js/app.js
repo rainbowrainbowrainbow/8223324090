@@ -75,7 +75,18 @@ const ProductSalesState = {
 // ІНІЦІАЛІЗАЦІЯ
 // ==========================================
 
-document.addEventListener('DOMContentLoaded', initializeApp);
+let _appBootstrapInitialized = false;
+function bootstrapInitializeApp() {
+    if (_appBootstrapInitialized) return;
+    _appBootstrapInitialized = true;
+    initializeApp();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrapInitializeApp, { once: true });
+} else {
+    bootstrapInitializeApp();
+}
 
 function timelineStorageKey(name) {
     if (typeof window !== 'undefined' && window.TimelineBusinessContext) {

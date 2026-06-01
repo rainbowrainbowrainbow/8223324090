@@ -3278,7 +3278,6 @@ function createdBookingTimelineProjection(booking = {}) {
 
 function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate = formatDate(AppState.selectedDate)) {
     const projection = createdBookingTimelineProjection(booking);
-    if (projection && projection.visible === false) return false;
     const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
         || window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const projectedDate = normalizeBookingDateKey(projection?.date || booking.date);

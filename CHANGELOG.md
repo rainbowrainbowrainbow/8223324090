@@ -4,6 +4,15 @@
 
 ---
 
+## v0.69.6 - Timeline echo over projection race
+
+### Timeline / Booking / Hotfix / 01.06.2026 [codex]
+- **`timelineProjection.visible=false` більше не блокує server echo recovery** - якщо create-response має реальний booking-row з поточною датою, бізнесом і лінією, frontend усе одно кладе його в кеш таймлайна.
+- **Серверна projection нормалізує дату до `YYYY-MM-DD`** - перевірка денного зрізу більше не залежить від того, у якому форматі `pg` повернув `date` після `INSERT ... RETURNING`.
+- **Жовтий warning лишається тільки для фактично не показаного DOM-блоку** - projection тепер є діагностикою, а не стопером для щойно створеного сервером рядка.
+
+---
+
 ## v0.69.5 - Timeline server echo recovery
 
 ### Timeline / Booking / Hotfix / 01.06.2026 [codex]

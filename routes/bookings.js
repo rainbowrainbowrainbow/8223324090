@@ -66,7 +66,9 @@ function sendBookingDenied(req, res, booking) {
 }
 
 async function bookingDayProjectionStatus(queryable, { id, date, businessContext, user }) {
-    const params = [date, businessContext || DEFAULT_TIMELINE_CONTEXT, id];
+    const projectedDate = String(date || '').slice(0, 10);
+    const projectedContext = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    const params = [projectedDate, projectedContext, id];
     const visibility = buildBookingVisibilityScope(user, params, 'b');
     try {
         const result = await queryable.query(
@@ -81,15 +83,15 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
             params
         );
         return {
-            date,
-            businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+            date: projectedDate,
+            businessContext: projectedContext,
             visible: result.rowCount > 0
         };
     } catch (err) {
         log.warn(`Timeline day projection check failed for booking ${id}: ${err.message}`);
         return {
-            date,
-            businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+            date: projectedDate,
+            businessContext: projectedContext,
             visible: null,
             error: 'projection_check_failed'
         };
@@ -1487,7 +1489,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
         booking.timelineProjection = await bookingDayProjectionStatus(client, {
             id: booking.id || b.id,
-            date: booking.date || b.date,
+            date: b.date || booking.date,
             businessContext,
             user: req.user
         });
@@ -2216,7 +2218,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await Promise.all([mainBooking, ...linkedBookings].map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {
                 id: booking.id,
-                date: booking.date || main.date,
+                date: booking.linkedTo ? (booking.date || main.date) : (main.date || booking.date),
                 businessContext,
                 user: req.user
             });

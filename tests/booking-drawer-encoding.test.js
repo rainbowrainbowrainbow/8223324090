@@ -96,7 +96,7 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /function createdBookingTimelineProjection/);
     assert.match(bookingJs, /function createdBookingProjectionMatchesCurrentSlice/);
-    assert.match(bookingJs, /projection && projection\.visible === false/);
+    assert.doesNotMatch(bookingJs, /if \(projection && projection\.visible === false\) return false/);
     assert.match(bookingJs, /lineId \|\| projection\?\.visible === true/);
     assert.match(bookingJs, /серверна проекція не бачить запис/);
     assert.match(bookingJs, /projectionRecoveredIds/);

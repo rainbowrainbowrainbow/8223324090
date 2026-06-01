@@ -17,6 +17,7 @@
         { key: 'compactToggle', label: 'Компактний режим', selector: '#compactModeToggle', area: 'Верхня панель', targetWrapper: true },
         { key: 'undo', label: 'Скасувати дію', selector: '#undoBtn', area: 'Верхня панель' },
         { key: 'roomLoad', label: 'Кімнати / кабінети', selector: '#roomLoadBtn', area: 'Верхня панель' },
+        { key: 'createBooking', label: 'Створити бронювання', selector: '#newBookingBtn', area: 'Верхня панель' },
         { key: 'productSales', label: 'Продажі', selector: '#productSalesBtn', area: 'Верхня панель' },
         { key: 'export', label: 'Експорт', selector: '#exportTimelineBtn', area: 'Верхня панель' },
         { key: 'actionMenu', label: 'Меню дій', selector: '#adminDropdown', area: 'Верхня панель' },

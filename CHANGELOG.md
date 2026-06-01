@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.9 - Timeline UI unification
+
+### Timeline / UI / Multi-cabinet / 01.06.2026 [codex]
+- **Додано спільну кнопку створення бронювання** - у верхній панелі таймлайну зʼявилась `Створити бронювання`, яка відкриває той самий `openBookingPanel`, що й клік по клітинці.
+- **Майстерня Долі більше не має hardcoded урізаної форми** - CSS перестав силоміць ховати кімнату, пошук клієнта, статус, програмний пошук і summary для `maysternya_doli`/simple mode; видимість секцій тепер іде через timeline constructor/settings.
+- **Кнопка працює в усіх timeline-контекстах** - для Park це `Створити бронювання`, для simple/specialist - `Створити запис`, для education - `Створити заняття`.
+- **Доступи залишились ізольованими** - `newBookingBtn` проходить через `create_booking`, а в Майстерні додатково через `TimelineBusinessContext.canUseAction('create')`.
+- **Додано regression guard** - UI smoke фіксує наявність кнопки, binding на спільну форму, відсутність hardcoded Maysternya-hiding і участь кнопки в timeline visibility constructor.
+
+---
+
 ## v0.69.8 - Timeline durable booking create
 
 ### Timeline / Booking / Hotfix / 01.06.2026 [codex]

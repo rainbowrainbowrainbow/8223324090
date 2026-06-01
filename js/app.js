@@ -314,6 +314,7 @@ function initTimelineListeners() {
     });
 
     document.getElementById('addLineBtn')?.addEventListener('click', addNewLine);
+    document.getElementById('newBookingBtn')?.addEventListener('click', openTimelineCreateBookingFromToolbar);
     document.getElementById('exportTimelineBtn')?.addEventListener('click', exportTimelineImage);
     document.getElementById('productSalesBtn')?.addEventListener('click', showProductSalesModal);
     initProductSalesListeners();

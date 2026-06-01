@@ -1271,12 +1271,14 @@ function showMainApp() {
     });
     // Permission visibility is separate from the visual constructor state.
     setTimelinePermissionHidden('addLineBtn', !canAccess('create_booking'));
+    setTimelinePermissionHidden('newBookingBtn', !canAccess('create_booking'));
     setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'));
     setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'));
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
         const canUse = action => window.TimelineBusinessContext.canUseAction(action, AppState.currentUser);
         setTimelinePermissionHidden('addLineBtn', !canUse('settings'));
+        setTimelinePermissionHidden('newBookingBtn', !canUse('create'));
         setTimelinePermissionHidden('exportTimelineBtn', !canUse('export'));
         setTimelinePermissionHidden('productSalesBtn', true);
     }

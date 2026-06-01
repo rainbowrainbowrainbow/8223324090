@@ -873,6 +873,56 @@ async function selectCell(cell) {
     AppState.selectedLineId = cell.dataset.line;
 }
 
+function getDefaultTimelineBookingTime(date = AppState.selectedDate) {
+    const range = getTimeRange(date);
+    const step = normalizeTimelineZoomLevel(AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 30);
+    const startMin = range.start * 60;
+    const endMin = range.end * 60;
+    let candidate = startMin;
+    const todayKey = formatDate(new Date());
+    if (formatDate(date) === todayKey) {
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        candidate = Math.ceil(nowMin / step) * step;
+    }
+    candidate = Math.max(startMin, Math.min(candidate, Math.max(startMin, endMin - step)));
+    return minutesToTime(candidate);
+}
+
+async function openTimelineCreateBookingFromToolbar() {
+    if (isViewer()) return false;
+    const view = window.TimelineBusinessContext?.presentation?.();
+    if (view?.timelineEnabled === false || view?.enabledModules?.bookings === false) {
+        showNotification('Створення бронювання вимкнено в налаштуваннях цього бізнесу.', 'warning');
+        return false;
+    }
+
+    const selectedCell = document.querySelector('.grid-cell.selected[data-time][data-line]:not([data-line="afisha"])');
+    if (selectedCell) return selectCell(selectedCell);
+
+    const lines = normalizeTimelineLinesForContext(await getLinesForDate(AppState.selectedDate).catch(() => []));
+    const line = lines.find(item => item && String(item.id || '') !== 'afisha');
+    if (!line) {
+        showNotification('Немає активної лінії для створення бронювання. Додайте ресурс або оновіть таймлайн.', 'warning');
+        return false;
+    }
+
+    const time = getDefaultTimelineBookingTime(AppState.selectedDate);
+    const opened = await openBookingPanel(time, line.id);
+    if (!opened) return false;
+
+    const cell = document.querySelector(`.grid-cell[data-line="${bookingBlockSelectorId(line.id)}"][data-time="${bookingBlockSelectorId(time)}"]`);
+    if (cell) {
+        document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+        cell.classList.add('selected');
+        AppState.selectedCell = cell;
+    }
+    AppState.selectedLineId = line.id;
+    return true;
+}
+
+window.openTimelineCreateBookingFromToolbar = openTimelineCreateBookingFromToolbar;
+
 function createBookingBlock(booking, startHour) {
     const block = document.createElement('div');
     const graduationSegments = normalizeGraduationSegments(booking);

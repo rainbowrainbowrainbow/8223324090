@@ -3506,6 +3506,7 @@ body.dark-mode .guardian-stats-summary {
 .timeline-dashboard-page .btn-nav,
 .timeline-dashboard-page .toggle-mini,
 .timeline-dashboard-page .btn-room-load,
+.timeline-dashboard-page .btn-new-booking,
 .timeline-dashboard-page .btn-export,
 .timeline-dashboard-page .btn-history,
 .timeline-dashboard-page .btn-product-sales,
@@ -3531,6 +3532,7 @@ body.dark-mode .guardian-stats-summary {
 .timeline-dashboard-page .btn-nav:hover,
 .timeline-dashboard-page .toggle-mini:hover,
 .timeline-dashboard-page .btn-room-load:hover,
+.timeline-dashboard-page .btn-new-booking:hover,
 .timeline-dashboard-page .btn-export:hover,
 .timeline-dashboard-page .btn-history:hover,
 .timeline-dashboard-page .btn-product-sales:hover,
@@ -3627,7 +3629,7 @@ body.dark-mode .guardian-stats-summary {
 }
 
 .timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn),
-.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-new-booking, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
     min-height: 36px !important;
     border-radius: 11px !important;
     border: 1px solid transparent !important;
@@ -3642,7 +3644,7 @@ body.dark-mode .guardian-stats-summary {
     text-transform: none;
 }
 
-.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-new-booking, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3661,7 +3663,7 @@ body.dark-mode .guardian-stats-summary {
     letter-spacing: 0;
 }
 
-.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo):hover,
+.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-new-booking, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo):hover,
 .timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn):hover:not(.active),
 .timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle:hover,
 .timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle[aria-expanded="true"] {
@@ -4058,7 +4060,7 @@ body.timeline-dashboard-page.timeline-compact-mode .zoom-controls {
 }
 
 body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn),
-body.timeline-dashboard-page.timeline-compact-mode :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
+body.timeline-dashboard-page.timeline-compact-mode :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-new-booking, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo) {
     min-height: 30px !important;
     height: 30px !important;
     padding: 0 9px !important;

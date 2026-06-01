@@ -129,6 +129,7 @@
 
     .zoom-controls .zoom-btn,
     .toggle-mini,
+    .btn-new-booking,
     .btn-export,
     .btn-menu-toggle,
     .btn-product-sales {
@@ -808,6 +809,7 @@
 
     .btn-room-load,
     .btn-menu-toggle,
+    .btn-new-booking,
     .btn-product-sales,
     .btn-export,
     .btn-undo {

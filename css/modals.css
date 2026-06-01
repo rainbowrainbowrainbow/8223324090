@@ -2919,7 +2919,8 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
 }
 
 /* Product sales monthly report */
-.btn-product-sales {
+.btn-product-sales,
+.btn-new-booking {
     background: var(--white, #fff);
     color: var(--gray-800, #1f2937);
     border: 1px solid var(--gray-300, #cbd5e1);
@@ -2931,21 +2932,24 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
-.btn-product-sales:hover {
+.btn-product-sales:hover,
+.btn-new-booking:hover {
     background: rgba(16, 185, 129, 0.12);
     color: var(--gray-900, #0f172a);
     border-color: rgba(16, 185, 129, 0.45);
     transform: translateY(-1px);
 }
 
-body.dark-mode .btn-product-sales {
+body.dark-mode .btn-product-sales,
+body.dark-mode .btn-new-booking {
     background: rgba(255,255,255,0.08);
     color: var(--text-primary, #f8fafc);
     border-color: rgba(255,255,255,0.18);
     box-shadow: none;
 }
 
-body.dark-mode .btn-product-sales:hover {
+body.dark-mode .btn-product-sales:hover,
+body.dark-mode .btn-new-booking:hover {
     background: rgba(16, 185, 129, 0.18);
     color: var(--text-primary, #f8fafc);
     border-color: rgba(16, 185, 129, 0.45);

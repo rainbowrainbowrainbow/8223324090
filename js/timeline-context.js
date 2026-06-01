@@ -74,6 +74,7 @@
             selectedLineLabel: 'Ресурс:',
             lineTypeLabel: 'ресурс',
             bookingTitle: 'Запис',
+            createButtonLabel: 'Створити запис',
             submitLabel: 'Зберегти',
             programLabel: 'Послуга',
             programSearchPlaceholder: 'Пошук послуги...',
@@ -102,6 +103,7 @@
             selectedLineLabel: 'Спеціаліст:',
             lineTypeLabel: 'спеціаліст',
             bookingTitle: 'Новий запис',
+            createButtonLabel: 'Створити запис',
             submitLabel: 'Записати',
             programLabel: 'Послуга',
             programSearchPlaceholder: 'Пошук послуги...',
@@ -133,6 +135,7 @@
             selectedLineLabel: 'Спеціаліст:',
             lineTypeLabel: 'спеціаліст',
             bookingTitle: 'Новий запис',
+            createButtonLabel: 'Створити запис',
             submitLabel: 'Записати',
             programLabel: 'Послуга',
             programSearchPlaceholder: 'Пошук послуги...',
@@ -164,6 +167,7 @@
             selectedLineLabel: 'Лінія:',
             lineTypeLabel: 'аніматор',
             bookingTitle: 'Нове бронювання',
+            createButtonLabel: 'Створити бронювання',
             submitLabel: 'Додати бронювання',
             programLabel: 'Програма',
             programSearchPlaceholder: 'Пошук програми...',
@@ -201,6 +205,7 @@
             selectedLineLabel: 'Кабінет:',
             lineTypeLabel: 'кабінет',
             bookingTitle: 'Нове заняття',
+            createButtonLabel: 'Створити заняття',
             submitLabel: 'Запланувати заняття',
             programLabel: 'Заняття',
             programSearchPlaceholder: 'Пошук заняття...',
@@ -670,6 +675,14 @@
 
         const salesBtn = document.getElementById('productSalesBtn');
         if (salesBtn) salesBtn.classList.toggle('hidden', !view.showProductSales);
+        const createBtn = document.getElementById('newBookingBtn');
+        if (createBtn) {
+            setControlText(createBtn, view.createButtonLabel || view.submitLabel || 'Створити бронювання');
+            const hiddenByMode = view.timelineEnabled === false || view.enabledModules?.bookings === false;
+            createBtn.toggleAttribute('data-timeline-context-hidden', hiddenByMode);
+            if (hiddenByMode) createBtn.classList.add('hidden');
+            else if (!createBtn.classList.contains('timeline-permission-hidden')) createBtn.classList.remove('hidden');
+        }
         const roomBtn = document.getElementById('roomLoadBtn');
         setControlText(roomBtn, view.roomLoadLabel);
         if (roomBtn) {

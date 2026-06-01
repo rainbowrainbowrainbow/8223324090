@@ -923,7 +923,8 @@ const Sidebar = (() => {
             const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
 
             const statusText = _navStatusFor(item);
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+            const itemHref = _sidebarHrefForBusinessItem(item, savedUser);
+            html += `<a href="${_escAttr(itemHref)}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
@@ -1076,6 +1077,16 @@ const Sidebar = (() => {
         }
         if (creatorSurface && current !== 'maysternya_doli') return true;
         return api.hasModule(current, moduleId);
+    }
+
+    function _sidebarHrefForBusinessItem(item = {}, user = _getCurrentSidebarUser()) {
+        const href = String(item.href || '');
+        if (href !== '/') return href;
+        const api = window.CrmBusinessContext;
+        const current = api?.current?.(user);
+        if (!current || current === 'event_genix' || current === 'maysternya_doli') return href;
+        if (!api.hasModule?.(current, 'timeline')) return href;
+        return `/?businessContext=${encodeURIComponent(current)}`;
     }
 
     function _badgeTypeFor(item) {
@@ -1345,7 +1356,8 @@ const Sidebar = (() => {
                     ? ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`
                     : '';
                 const badgeType = _badgeTypeFor(item);
-                return `<a href="${_escAttr(item.href)}" class="sidebar-rail-flyout-link${isActive ? ' active' : ''}" role="menuitem"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+                const itemHref = _sidebarHrefForBusinessItem(item, user);
+                return `<a href="${_escAttr(itemHref)}" class="sidebar-rail-flyout-link${isActive ? ' active' : ''}" role="menuitem"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
                     ${_renderIcon(item.icon, 'sidebar-rail-flyout-icon')}
                     <span class="sidebar-rail-flyout-copy">
                         <span>${_escHtml(item.label)}</span>
@@ -2648,7 +2660,8 @@ const Sidebar = (() => {
         const kind = options.kind || 'route';
         const meta = _railMetaForItem(item);
         const cue = options.cue || _railRouteCue(item);
-        return `<a href="${_escAttr(item.href)}" class="sidebar-mini-link sidebar-mini-link--${_escAttr(kind)}${isActive ? ' active' : ''}" aria-label="${_escAttr(item.label)}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}
+        const itemHref = _sidebarHrefForBusinessItem(item);
+        return `<a href="${_escAttr(itemHref)}" class="sidebar-mini-link sidebar-mini-link--${_escAttr(kind)}${isActive ? ' active' : ''}" aria-label="${_escAttr(item.label)}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}
             data-sidebar-rail-item
             data-sidebar-rail-kind="${_escAttr(kind)}"
             data-sidebar-rail-title="${_escAttr(item.label)}"

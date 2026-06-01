@@ -263,6 +263,31 @@
         }
     }
 
+    function fallbackContextForBusinessKey(key) {
+        if (key !== 'dar') return null;
+        const existing = CONTEXTS[key] || {};
+        CONTEXTS[key] = {
+            ...existing,
+            key: 'dar',
+            path: '/?businessContext=dar',
+            pageAccessPath: '/',
+            title: existing.title || 'Dar | Timeline',
+            navLabel: existing.navLabel || 'Dar',
+            switchLabel: existing.switchLabel || 'Dar',
+            productName: existing.productName || 'Dar',
+            brandName: existing.brandName || 'Dar',
+            subtitle: existing.subtitle || 'CRM',
+            storagePrefix: existing.storagePrefix || storagePrefixForContext(key),
+            apiValue: 'dar',
+            isPrivateSurface: false,
+            showAfisha: false,
+            defaultDisplayMode: 'simple',
+            defaultHiddenElements: Array.isArray(existing.defaultHiddenElements) ? existing.defaultHiddenElements : [],
+            actionRoles: existing.actionRoles || CONTEXTS.event_genix.actionRoles
+        };
+        return CONTEXTS[key];
+    }
+
     function displayModeFromBusinessProfile(profile) {
         const timeline = profile?.timeline || {};
         const rawMode = String(timeline.mode || profile?.shell?.timelineMode || '').trim();
@@ -278,6 +303,8 @@
         if (!key) return null;
         const businessProfile = profile || profileForContext(key);
         if (!businessProfile && !KNOWN_CRM_CONTEXT_KEYS.has(key)) return null;
+        const fallbackContext = !businessProfile ? fallbackContextForBusinessKey(key) : null;
+        if (fallbackContext) return fallbackContext;
         if (CONTEXTS[key] && (STATIC_CONTEXT_KEYS.has(key) || !businessProfile)) return CONTEXTS[key];
 
         const label = businessProfile?.label || businessProfile?.brandName || businessProfile?.name || key;

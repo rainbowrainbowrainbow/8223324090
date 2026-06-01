@@ -20,6 +20,7 @@ const START_PAGE_PATHS = Object.freeze({
 
 const TIMELINE_CONTEXT_ROUTES = Object.freeze({
   event_genix: '/',
+  dar: '/?businessContext=dar',
   maysternya_doli: '/maysternya-doli',
 });
 

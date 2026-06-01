@@ -35,7 +35,8 @@ const RESOURCE_TYPE_BY_DISPLAY_MODE = Object.freeze({
 const RESOURCE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
 
 function defaultTimelineDisplayMode(context) {
-    return normalizeTimelineContext(context) === 'maysternya_doli' ? 'simple' : 'park';
+    const key = normalizeTimelineContext(context);
+    return key === 'maysternya_doli' || key === 'dar' ? 'simple' : 'park';
 }
 
 function timelineDisplaySettingsKey(context) {

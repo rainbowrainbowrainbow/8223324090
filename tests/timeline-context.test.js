@@ -17,6 +17,7 @@ const ROOT = path.join(__dirname, '..');
 test('timeline context defaults invalid or missing values to Event Genix', () => {
     assert.equal(normalizeTimelineContext(), DEFAULT_TIMELINE_CONTEXT);
     assert.equal(normalizeTimelineContext('unknown'), DEFAULT_TIMELINE_CONTEXT);
+    assert.equal(normalizeTimelineContext('dar'), 'dar');
     assert.equal(normalizeTimelineContext('maysternya_doli'), 'maysternya_doli');
 });
 
@@ -25,7 +26,7 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ body: { business_context: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
-    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
+    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
 });
 
 test('timeline API calls do not inherit the global CRM business header', () => {
@@ -257,6 +258,56 @@ test('Maysternya timeline control contract keeps booking actions visible without
     assert.equal(productSalesBtn.classList.contains('hidden'), true);
 });
 
+test('Dar simple timeline opens from URL before the server business profile hydrates', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail || null;
+            }
+        },
+        window: {
+            location: { pathname: '/', search: '?businessContext=dar', href: 'https://crm.test/?businessContext=dar' },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            title: '',
+            readyState: 'complete',
+            body: {
+                classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+                dataset: {},
+                setAttribute() {}
+            },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: () => null,
+            setItem() {},
+            removeItem() {}
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    const ctx = sandbox.window.TimelineBusinessContext.current();
+    const view = sandbox.window.TimelineBusinessContext.presentation();
+    assert.equal(ctx.key, 'dar');
+    assert.equal(ctx.path, '/?businessContext=dar');
+    assert.equal(view.mode, 'simple');
+    assert.equal(view.timelineEnabled, true);
+    assert.equal(view.controls.createBooking, true);
+    assert.equal(view.controls.addLine, true);
+    assert.equal(sandbox.window.TimelineBusinessContext.appendApiContext('/api/bookings'), '/api/bookings?businessContext=dar');
+});
+
 test('global business switch routes to the matching timeline surface', () => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
@@ -266,11 +317,15 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /timeline: \{ id: 'timeline', label: 'Timeline', paths: \['\/', '\/maysternya-doli'\] \}/);
     assert.match(apiCode, /function crmBusinessContextFromRoute/);
     assert.match(apiCode, /path === '\/maysternya-doli'\) return 'maysternya_doli'/);
-    assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return '\/maysternya-doli'/);
+    assert.match(apiCode, /function crmBusinessTimelineRoute/);
+    assert.match(apiCode, /\?businessContext=\$\{encodeURIComponent\(key\)\}/);
+    assert.match(apiCode, /function crmBusinessDestinationForCurrentPage[\s\S]*return crmBusinessTimelineRoute\(key\)/);
     assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
     assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
     assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /function _sidebarHrefForBusinessItem/);
+    assert.match(sidebarCode, /\?businessContext=\$\{encodeURIComponent\(current\)\}/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
     assert.match(contextCode, /brandName: 'Майстерня долі'/);
     assert.match(uiCode, /getTimelineExportBrandName/);
@@ -296,7 +351,7 @@ test('timeline root uses account default instead of stale stored business contex
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 
     assert.match(apiCode, /const accountDefault = policy\.defaultContext \|\| CRM_BUSINESS_DEFAULT_CONTEXT/);
-    assert.match(apiCode, /const timelineEntryDefault = accountDefault === 'maysternya_doli' \? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT/);
+    assert.match(apiCode, /const timelineEntryDefault = crmBusinessContextSupportsTimeline\(accountDefault\) \? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT/);
     assert.match(apiCode, /const preferAccountDefaultOnTimelineRoot = normalizedCrmPath\(\) === '\/' && !fromUrl/);
     assert.match(apiCode, /preferAccountDefaultOnTimelineRoot \? timelineEntryDefault : \(stored \|\| accountDefault\)/);
 
@@ -335,8 +390,8 @@ test('timeline root uses account default instead of stale stored business contex
     assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/');
     sandbox.AppState.currentUser.businessContexts = ['event_genix', 'dar', 'maysternya_doli'];
     sandbox.AppState.currentUser.defaultBusinessContext = 'dar';
-    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'event_genix');
-    assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/');
+    assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'dar');
+    assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/?businessContext=dar');
     sandbox.AppState.currentUser.defaultBusinessContext = 'maysternya_doli';
     assert.equal(sandbox.window.CrmBusinessContext.current(sandbox.AppState.currentUser), 'maysternya_doli');
     assert.equal(sandbox.window.CrmBusinessContext.defaultTimelineRouteForUser(sandbox.AppState.currentUser), '/maysternya-doli');

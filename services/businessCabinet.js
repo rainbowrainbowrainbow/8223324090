@@ -63,7 +63,7 @@ function defaultBusinessTypeForContext(context) {
   const key = normalizeBusinessContext(context);
   const modules = businessModulesForContext(key);
   if (!modules.includes('timeline')) return 'no_timeline';
-  if (key === 'maysternya_doli') return 'simple';
+  if (key === 'maysternya_doli' || key === 'dar') return 'simple';
   return 'children_entertainment_park';
 }
 

@@ -21,7 +21,7 @@ const BUSINESS_CONTEXTS = Object.freeze({
     shortLabel: 'Дар',
     pageAllowlist: null,
     modules: [
-      'dashboard', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
+      'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
       'finance', 'copilot', 'staff', 'hr', 'content', 'art',
       'warehouse', 'kleshnya', 'center', 'settings'
     ]

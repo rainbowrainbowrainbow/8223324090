@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.13 - Timeline simple business routing
+
+### Timeline / Multi-cabinet / Dar / 01.06.2026 [codex]
+- **Dar тепер є повноцінним simple timeline-бізнесом** - серверний і фронтовий каталоги отримали модуль `timeline`, а дефолтний режим Dar став `simple`, щоб API ліній, бронювань і ресурсів не падали назад у Park або `disabled`.
+- **Перемикання бізнесу більше не відправляє Dar timeline на dashboard** - route contract веде на `/?businessContext=dar`, а sidebar підставляє цей контекст у посилання таймлайна.
+- **Старт до гідрації серверного профілю не глушить екран** - `TimelineBusinessContext` має fallback для Dar, тому simple timeline відкривається навіть до відповіді `/api/business/profile`.
+- **Додано data-fix міграцію для live-налаштувань** - якщо у production вже був збережений старий `business_cabinet:dar` або `timeline_display:dar` як `no_timeline`/`disabled`, міграція переводить його в simple timeline.
+- **Regression guards оновлено** - unit-тести перевіряють Dar route, simple presentation, доступ timeline API і новий server business-cabinet default.
+
+---
+
 ## v0.69.12 - Timeline Maysternya create hardening
 
 ### Timeline / Booking / Maysternya / 01.06.2026 [codex]

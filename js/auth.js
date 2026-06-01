@@ -749,11 +749,15 @@ function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
     if (typeof window !== 'undefined' && window.CrmBusinessContext?.defaultTimelineRouteForUser) {
         return window.CrmBusinessContext.defaultTimelineRouteForUser(user);
     }
-    const rawDefault = user?.defaultBusinessContext || user?.default_business_context || '';
-    const business = String(rawDefault).trim().toLowerCase() === 'maysternya_doli' ? 'maysternya_doli' : 'event_genix';
-    const timelineRoute = business === 'maysternya_doli' ? '/maysternya-doli' : '/';
+    const rawDefault = String(user?.defaultBusinessContext || user?.default_business_context || '').trim().toLowerCase();
+    const business = rawDefault === 'maysternya_doli'
+        ? 'maysternya_doli'
+        : (rawDefault === 'dar' ? 'dar' : 'event_genix');
+    const timelineRoute = business === 'maysternya_doli'
+        ? '/maysternya-doli'
+        : (business === 'dar' ? '/?businessContext=dar' : '/');
     try {
-        const prefix = business === 'maysternya_doli' ? 'md' : 'pzp';
+        const prefix = business === 'maysternya_doli' ? 'md' : (business === 'dar' ? 'crm_dar' : 'pzp');
         const raw = localStorage.getItem(`${prefix}_timeline_display_settings`);
         const settings = raw ? JSON.parse(raw) : null;
         const startPage = settings?.timelineEnabled === false || settings?.mode === 'disabled'

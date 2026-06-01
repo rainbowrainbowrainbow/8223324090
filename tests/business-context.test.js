@@ -242,6 +242,7 @@ test('business catalog exposes all four operator contexts and module boundaries'
   assert.deepEqual(catalog.map(item => item.key).sort(), ['crm', 'dar', 'event_genix', 'maysternya_doli'].sort());
   assert.equal(catalog.find(item => item.key === 'crm').modules.includes('leads'), true);
   assert.equal(catalog.find(item => item.key === 'crm').modules.includes('warehouse'), false);
+  assert.equal(catalog.find(item => item.key === 'dar').modules.includes('timeline'), true);
   assert.equal(catalog.find(item => item.key === 'maysternya_doli').modules.includes('omni'), true);
   assert.deepEqual(normalizeBusinessContextList(['park', 'dar', 'дар', 'crm']), ['event_genix', 'dar', 'crm']);
 });

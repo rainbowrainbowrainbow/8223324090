@@ -1073,7 +1073,7 @@ const Sidebar = (() => {
         const creatorSurface = _sidebarUserHasCreator(user) && !window.RolePreview?.getPreviewRole?.();
         if (moduleId === 'timeline') {
             if (item.href === '/' && current === 'maysternya_doli') return false;
-            if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return false;
+            if (item.href === '/maysternya-doli' && current !== 'maysternya_doli') return creatorSurface;
         }
         if (creatorSurface && current !== 'maysternya_doli') return true;
         return api.hasModule(current, moduleId);

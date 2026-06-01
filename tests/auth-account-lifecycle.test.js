@@ -178,9 +178,9 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
-            return { rows: row ? [publicUser(row)] : [] };
+            return { rows: row ? [{ ...publicUser(row), session_revoked_at: row.session_revoked_at || null }] : [] };
         }
 
         if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
@@ -576,6 +576,12 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
         assert.deepEqual(accessUpdate.data.businessContexts, ['dar', 'crm']);
         assert.equal(accessUpdate.data.defaultBusinessContext, 'crm');
+
+        const staleTokenProtected = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, login.data.accessToken);
+        assert.equal(staleTokenProtected.status, 200);
+        assert.deepEqual(staleTokenProtected.data.user.businessContexts, ['dar', 'crm']);
+        assert.equal(staleTokenProtected.data.user.defaultBusinessContext, 'crm');
+        assert.deepEqual(staleTokenProtected.data.user.extraRoles, ['manager']);
 
         const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', {
             userId

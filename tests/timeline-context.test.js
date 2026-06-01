@@ -27,6 +27,7 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
     assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+    assert.equal(canAccessTimelineContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
 });
 
 test('timeline API calls do not inherit the global CRM business header', () => {
@@ -323,7 +324,7 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.match(apiCode, /function crmBusinessDefaultTimelineRouteForUser/);
     assert.match(apiCode, /defaultTimelineRouteForUser: crmBusinessDefaultTimelineRouteForUser/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return creatorSurface/);
     assert.match(sidebarCode, /function _sidebarHrefForBusinessItem/);
     assert.match(sidebarCode, /\?businessContext=\$\{encodeURIComponent\(current\)\}/);
     assert.doesNotMatch(sidebarCode, /href: '\/maysternya-doli'[\s\S]{0,140}quickAccessOnly: true/);
@@ -343,7 +344,7 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     assert.match(sidebarCode, /function _isMaysternyaSidebarContext/);
     assert.match(sidebarCode, /if \(_isMaysternyaSidebarContext\(user\) && !_isMaysternyaSidebarHrefAllowed\(item\)\) return false/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
-    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return false/);
+    assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return creatorSurface/);
     assert.match(sidebarCode, /if \(creatorSurface && current !== 'maysternya_doli'\) return true/);
 });
 
@@ -553,6 +554,8 @@ test('login starts from account timeline instead of role shell page', () => {
 
     assert.match(authCode, /function getAuthenticatedTimelineStartPage/);
     assert.match(authCode, /getAuthenticatedTimelineStartPage\(data\.user \|\| AppState\.currentUser\)/);
+    assert.match(authCode, /const currentRoute = `\$\{currentPath\}\$\{window\.location\.search \|\| ''\}`/);
+    assert.match(authCode, /if \(currentRoute !== startPage\)/);
     assert.doesNotMatch(authCode, /const startPage = getRoleStartPage\(data\.user/);
 });
 

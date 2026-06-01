@@ -195,8 +195,9 @@ async function login(username, password) {
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         // Start every authenticated session from the account's timeline surface.
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        const currentRoute = `${currentPath}${window.location.search || ''}`;
         const startPage = getAuthenticatedTimelineStartPage(data.user || AppState.currentUser);
-        if (currentPath !== startPage) {
+        if (currentRoute !== startPage) {
             window.location.href = startPage;
             return { success: true };
         }

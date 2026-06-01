@@ -182,6 +182,7 @@ async function authenticateToken(req, res, next) {
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
+        let requestUser = user;
         if (user?.id) {
             try {
                 const sessionState = await pool.query(
@@ -198,6 +199,23 @@ async function authenticateToken(req, res, next) {
                 if (revokedUnix && Number(user.iat || 0) < revokedUnix) {
                     return res.status(403).json({ error: 'Session revoked. Please login again.' });
                 }
+                const freshAccessState = await pool.query(
+                    `SELECT id, username, role, extra_roles, page_allowlist, business_contexts,
+                            default_business_context, name, is_active
+                     FROM users WHERE id = $1`,
+                    [user.id]
+                ).catch(() => ({ rows: [] }));
+                const freshUser = freshAccessState.rows[0];
+                if (freshUser) {
+                    requestUser = {
+                        ...user,
+                        ...buildAuthUserPayload(freshUser),
+                        iat: user.iat,
+                        exp: user.exp,
+                        imp: user.imp,
+                        impBy: user.impBy
+                    };
+                }
             } catch (sessionErr) {
                 const message = String(sessionErr?.message || '');
                 const isCompatibilityMiss = /Unexpected .*query/i.test(message)
@@ -206,7 +224,7 @@ async function authenticateToken(req, res, next) {
                 if (!isCompatibilityMiss) throw sessionErr;
             }
         }
-        req.user = user;
+        req.user = requestUser;
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
         if (user.id) {

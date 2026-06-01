@@ -23,6 +23,7 @@ const CONTEXT_ACTION_ROLES = {
         settings: ['creator']
     }
 };
+const PRIVATE_TIMELINE_CONTEXTS = new Set(['maysternya_doli']);
 
 function isKnownBusinessContextInput(value) {
     const raw = String(value || '').trim().toLowerCase();
@@ -85,7 +86,7 @@ function canAccessTimelineContext(user, context) {
     if (context && !isKnownBusinessContextInput(context)) return false;
     if (!VALID_TIMELINE_CONTEXTS.has(normalized)) return false;
     if (!canAccessBusinessContext(user, normalized)) return false;
-    if (normalized === DEFAULT_TIMELINE_CONTEXT) return true;
+    if (!PRIVATE_TIMELINE_CONTEXTS.has(normalized)) return true;
     return userRoles(user).includes('creator');
 }
 

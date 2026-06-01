@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.14 - Timeline business access repair
+
+### Timeline / Auth / Multi-cabinet / 01.06.2026 [codex]
+- **API більше не живе на застарілих правах JWT** - `authenticateToken` підтягує актуальні `extra_roles`, `page_allowlist`, `business_contexts` і `default_business_context` із БД на кожному захищеному запиті, тому старий токен після міграцій не блокує Dar або Майстерню долі.
+- **Dar відкривається як звичайний timeline-бізнес для призначених акаунтів** - приватним creator-only лишається тільки `maysternya_doli`, а `dar` проходить через стандартну перевірку `business_contexts`.
+- **Майстерня долі знову доступна із сайдбару для creator** - пункт `/maysternya-doli` більше не ховається лише тому, що зараз активний Park або Dar.
+- **Стартовий route враховує query string** - `/?businessContext=dar` більше не порівнюється як просто `/`, що прибирає зайві перенаправлення при вході.
+- **Regression guards оновлено** - тести перевіряють stale-token сценарій, доступ Dar для не-creator із призначеним бізнесом, sidebar contract і стартовий route з query.
+
+---
+
 ## v0.69.13 - Timeline simple business routing
 
 ### Timeline / Multi-cabinet / Dar / 01.06.2026 [codex]

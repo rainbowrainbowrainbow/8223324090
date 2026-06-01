@@ -63,9 +63,30 @@
     ];
 
     const VISIBILITY_PRESETS = [
-        { key: 'business_default', label: 'Стандарт бізнесу', hidden: null },
-        { key: 'operator_daily', label: 'Операторський день', hidden: ['assistantWidget', 'minimap', 'roomLoadPanel'] },
-        { key: 'compact_booking', label: 'Компактний запис', hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export'] }
+        {
+            key: 'business_default',
+            label: 'Стандарт бізнесу',
+            description: 'Повертає набір елементів із профілю поточного бізнесу.',
+            hidden: null
+        },
+        {
+            key: 'operator_daily',
+            label: 'Операторський день',
+            description: 'Лишає дату, статуси, сітку, створення бронювання і базові дії.',
+            hidden: ['assistantWidget', 'minimap', 'roomLoadPanel']
+        },
+        {
+            key: 'compact_booking',
+            label: 'Компактний запис',
+            description: 'Ховає статистику й додаткові блоки, щоб drawer і сітка були головними.',
+            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export']
+        },
+        {
+            key: 'clean_phone',
+            label: 'Телефон / швидкий запис',
+            description: 'Мінімальний режим для вузьких екранів і швидкого запису з телефону.',
+            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export', 'roomLoadPanel']
+        }
     ];
 
     const state = {
@@ -405,7 +426,7 @@
             <div class="timeline-constructor-panel-body">
                 <p>Вимикай елементи тут або прямо на сторінці. У звичайному режимі вимкнені елементи зникнуть.</p>
                 <div class="timeline-constructor-presets" aria-label="Preset-и видимості таймлайну">
-                    ${VISIBILITY_PRESETS.map(preset => `<button type="button" class="timeline-constructor-preset" data-visibility-preset="${preset.key}">${preset.label}</button>`).join('')}
+                    ${VISIBILITY_PRESETS.map(preset => `<button type="button" class="timeline-constructor-preset" data-visibility-preset="${preset.key}"><span>${escapeHtml(preset.label)}</span><small>${escapeHtml(preset.description)}</small></button>`).join('')}
                 </div>
                 <div id="timelineConstructorList" class="timeline-constructor-list"></div>
             </div>

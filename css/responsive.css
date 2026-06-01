@@ -1944,9 +1944,84 @@
         font-size: 8.5px !important;
         line-height: 1.05 !important;
     }
+
+    body.timeline-dashboard-page .multi-day-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        gap: 12px !important;
+    }
+
+    body.timeline-dashboard-page .day-section {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .day-section-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 10px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-gutter: auto !important;
+    }
+
+    body.timeline-dashboard-page .mini-time-scale {
+        width: max-content !important;
+        min-width: max-content !important;
+        margin-left: var(--mini-line-header-w, 72px) !important;
+        margin-bottom: 8px !important;
+    }
+
+    body.timeline-dashboard-page .mini-time-mark {
+        width: var(--mini-hour-width, 120px) !important;
+        min-width: var(--mini-hour-width, 120px) !important;
+        font-size: 10px !important;
+        line-height: 1.1 !important;
+        letter-spacing: 0 !important;
+    }
+
+    body.timeline-dashboard-page .mini-time-mark.end {
+        width: auto !important;
+        min-width: auto !important;
+    }
+
+    body.timeline-dashboard-page .mini-timeline-lines,
+    body.timeline-dashboard-page .mini-timeline-line {
+        width: max-content !important;
+        min-width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .mini-timeline-line {
+        min-height: 46px !important;
+    }
+
+    body.timeline-dashboard-page .mini-line-header {
+        width: var(--mini-line-header-w, 72px) !important;
+        min-width: var(--mini-line-header-w, 72px) !important;
+        padding: 6px 7px !important;
+        font-size: 10.5px !important;
+        line-height: 1.1 !important;
+    }
+
+    body.timeline-dashboard-page .mini-line-grid {
+        flex: 1 0 var(--mini-grid-width, 960px) !important;
+        width: var(--mini-grid-width, 960px) !important;
+        min-width: var(--mini-grid-width, 960px) !important;
+        min-height: 46px !important;
+    }
+
+    body.timeline-dashboard-page .mini-booking-block {
+        min-height: 28px !important;
+        padding: 4px 6px !important;
+    }
 }
 
 @media (max-width: 390px) {
+    body.timeline-dashboard-page {
+        --mini-line-header-w: 64px;
+    }
+
     body.timeline-dashboard-page .date-controls {
         grid-template-columns: 40px minmax(0, 1fr) 40px !important;
         gap: 6px !important;

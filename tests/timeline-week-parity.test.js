@@ -22,6 +22,11 @@ test('week timeline uses the same canonical resource identity as day timeline', 
     assert.match(timeline, /const rawBookings = await getBookingsForDate\(date\)/);
     assert.match(timeline, /const lines = normalizeTimelineLinesForContext\(Array\.isArray\(rawLines\) \? rawLines : \[\]\)/);
     assert.match(timeline, /const bookings = normalizeTimelineBookingsForContext\(Array\.isArray\(rawBookings\) \? rawBookings : \[\]\)/);
+    assert.match(timeline, /const hourWidth = cellWidth \* 4/);
+    assert.match(timeline, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
+    assert.match(timeline, /renderMiniLineHtml\(line, lineBookings, start, end, cellWidth\)/);
+    assert.match(timeline, /function renderMiniLineHtml\(line, lineBookings, start, end, cellWidth\)/);
+    assert.match(timeline, /--mini-grid-width: \$\{gridWidth\}px/);
 
     const lineBookingMatches = timeline.match(/timelineBookingsForLine\(bookings, line\)/g) || [];
     assert.ok(lineBookingMatches.length >= 2, 'day and week renderers must both use timelineBookingsForLine');
@@ -62,6 +67,10 @@ test('timeline polish exposes admin presets and visibility presets without chang
     assert.match(html, /data-business-context="dar"/);
     assert.match(settings, /hasContextSpecificTwin/);
     assert.match(visibility, /const VISIBILITY_PRESETS = \[/);
+    assert.match(visibility, /description:/);
+    assert.match(visibility, /key: 'clean_phone'/);
+    assert.match(visibility, /<small>\$\{escapeHtml\(preset\.description\)\}<\/small>/);
     assert.match(visibility, /function applyVisibilityPreset/);
     assert.match(css, /\.timeline-constructor-presets/);
+    assert.match(css, /\.timeline-constructor-preset small/);
 });

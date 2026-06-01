@@ -4525,7 +4525,7 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
 
 async function deleteBooking(bookingId) {
     try {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
 
@@ -4579,7 +4579,7 @@ async function deleteBooking(bookingId) {
 
 async function shiftBookingTime(bookingId, minutes) {
     try {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
 
@@ -4673,7 +4673,7 @@ async function shiftBookingTime(bookingId, minutes) {
 
 async function switchBookingLine(bookingId, targetLineId) {
     try {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
 

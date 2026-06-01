@@ -3283,6 +3283,8 @@ async function renderDaySectionHtml(date) {
     const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
     const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
     const cellWidth = 30;
+    const hourWidth = cellWidth * 4;
+    const gridWidth = Math.max(hourWidth, (end - start) * hourWidth);
 
     const rawLines = await getLinesForDate(date);
     const rawBookings = await getBookingsForDate(date);
@@ -3292,7 +3294,7 @@ async function renderDaySectionHtml(date) {
     AppState.linesByDate = AppState.linesByDate || {};
     AppState.linesByDate[dateStr] = lines;
 
-    let timeScaleHtml = '<div class="mini-time-scale">';
+    let timeScaleHtml = `<div class="mini-time-scale" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;">`;
     for (let h = start; h <= end; h++) {
         timeScaleHtml += `<div class="mini-time-mark${h === end ? ' end' : ''}">${h}:00</div>`;
     }
@@ -3311,7 +3313,7 @@ async function renderDaySectionHtml(date) {
 
     for (const line of lines) {
         const lineBookings = timelineBookingsForLine(bookings, line);
-        html += renderMiniLineHtml(line, lineBookings, start, cellWidth);
+        html += renderMiniLineHtml(line, lineBookings, start, end, cellWidth);
     }
 
     if (lines.length === 0) {
@@ -3322,10 +3324,12 @@ async function renderDaySectionHtml(date) {
     return html;
 }
 
-function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
+function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
     const lineIdentity = timelineLineResourceIdentity(line);
+    const hourWidth = cellWidth * 4;
+    const gridWidth = Math.max(hourWidth, (end - start) * hourWidth);
     let html = `
-        <div class="mini-timeline-line" data-resource-id="${escapeHtml(lineIdentity.resourceId)}" data-resource-type="${escapeHtml(lineIdentity.resourceType)}">
+        <div class="mini-timeline-line" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;" data-resource-id="${escapeHtml(lineIdentity.resourceId)}" data-resource-type="${escapeHtml(lineIdentity.resourceType)}">
             <div class="mini-line-header" style="border-left-color: ${escapeHtml(line.color)}">
                 ${escapeHtml(line.name)}
             </div>
@@ -3334,8 +3338,8 @@ function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
 
     for (const b of lineBookings) {
         const startMin = timeToMinutes(b.time) - timeToMinutes(`${start}:00`);
-        const left = (startMin / 60) * (cellWidth * 4);
-        const width = (b.duration / 60) * (cellWidth * 4) - 2;
+        const left = (startMin / 60) * hourWidth;
+        const width = (b.duration / 60) * hourWidth - 2;
         const isPreliminary = b.status === 'preliminary';
         const isLinked = !!b.linkedTo;
         const filter = AppState.statusFilter || 'all';

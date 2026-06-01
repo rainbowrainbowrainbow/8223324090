@@ -53,13 +53,15 @@
 /* Mini timeline (multi-day mode) */
 .mini-time-scale {
     display: flex;
+    width: max-content;
+    min-width: max-content;
     margin-left: 80px;
     margin-bottom: 6px;
 }
 
 .mini-time-mark {
-    width: 120px;
-    min-width: 120px;
+    width: var(--mini-hour-width, 120px);
+    min-width: var(--mini-hour-width, 120px);
     font-size: 10px;
     font-weight: 700;
     color: var(--gray-400);
@@ -101,7 +103,9 @@
 }
 
 .mini-line-grid {
-    flex: 1;
+    flex: 1 0 var(--mini-grid-width, 960px);
+    width: var(--mini-grid-width, 960px);
+    min-width: var(--mini-grid-width, 960px);
     position: relative;
     background: var(--gray-50);
     border: 1px solid var(--gray-200);
@@ -113,7 +117,7 @@
         var(--gray-200) 0px,
         var(--gray-200) 1px,
         transparent 1px,
-        transparent 120px
+        transparent var(--mini-hour-width, 120px)
     );
 }
 
@@ -1715,14 +1719,30 @@ body.timeline-constructor-active .timeline-constructor-disabled {
 }
 
 .timeline-constructor-preset {
+    display: grid;
+    gap: 3px;
+    flex: 1 1 180px;
+    min-width: 0;
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 8px;
     background: rgba(15, 23, 42, 0.48);
     color: #e2e8f0;
-    font-size: 12px;
-    font-weight: 800;
+    text-align: left;
     padding: 8px 10px;
     cursor: pointer;
+}
+
+.timeline-constructor-preset span {
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.timeline-constructor-preset small {
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
 }
 
 .timeline-constructor-preset:hover,

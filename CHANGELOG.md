@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.21 - Timeline debt closure
+
+### Timeline / Week / Mobile / Drawer / Admin Presets / 01.06.2026 [codex]
+- **Тижневий режим отримав ту саму геометрію часу, що й день** - mini-сітка тепер має явні `--mini-hour-width` і `--mini-grid-width`, тому години, позиції бронювань і горизонтальний свайп не роз'їжджаються на iPhone/Android.
+- **Мобільний week-mode закрито окремим CSS guardrail** - `multi-day-container`, `day-section-content`, `mini-time-scale`, `mini-line-grid` і mini-booking blocks більше не стискають тижневу сітку в одну кашу на вузьких екранах.
+- **Drawer lifecycle бере свіжий day snapshot перед мутаціями** - delete, shift, switch line і зміна статусу більше не працюють зі старим кешем перед записом на сервер.
+- **Конструктор видимості став зрозумілішим для адміна** - preset-и отримали людські описи, додано режим `Телефон / швидкий запис`, а кнопки preset-ів стали читабельними.
+- **Regression tests посилено** - `timeline-week-parity`, `booking-drawer-encoding` і `ui-check` фіксують week/mobile geometry, fresh mutation snapshots і visibility preset descriptions.
+
+---
+
 ## v0.69.20 - Timeline phone layout hotfix
 
 ### Timeline / Mobile / iPhone / Android / 01.06.2026 [codex]

@@ -1612,7 +1612,7 @@ async function renderMinimapAsync(container, snapshotDate) {
 // v5.0: Use PUT for atomic status update instead of DELETE+CREATE
 async function changeBookingStatus(bookingId, newStatus) {
     try {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
 

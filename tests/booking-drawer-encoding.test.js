@@ -110,6 +110,18 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /createdBookingVisibilityMessage\(createdBookings, timelineSnapshot\)/);
 });
 
+test('booking lifecycle actions force fresh day snapshots before mutating the server', () => {
+    const bookingJs = read('js', 'booking.js');
+    const uiJs = read('js', 'ui.js');
+
+    assert.match(bookingJs, /async function deleteBooking\(bookingId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /async function shiftBookingTime\(bookingId, minutes\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /async function switchBookingLine\(bookingId, targetLineId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(uiJs, /async function changeBookingStatus\(bookingId, newStatus\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /invalidateBookingTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
+    assert.match(uiJs, /invalidateTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
+});
+
 test('booking drawer keeps readable Ukrainian labels for manager-facing controls', () => {
     const bookingJs = read('js', 'booking.js');
     const bookingHtml = read('index.html');

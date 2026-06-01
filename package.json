@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.69.16",
+  "version": "0.69.17",
   "eventGenix": {
-    "releaseLabel": "Timeline week parity and drawer QA closure"
+    "releaseLabel": "Timeline week toggle hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

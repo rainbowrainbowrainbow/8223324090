@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.17 - Timeline week toggle hotfix
+
+### Timeline / Week Toggle / Live UAT / 01.06.2026 [codex]
+- **Кнопка `Тиждень` знову реально перемикає режим** - додано єдиний `applyTimelinePeriod()` і delegated capture-listener для `.period-btn[data-period]`, щоб period selector не залежав від крихкого прямого binding після re-render або overlay станів.
+- **Стан day/week тепер оновлюється одним контрактом** - handler синхронізує `AppState.multiDayMode`, `AppState.daysToShow`, активну кнопку segmented control і одразу викликає `renderTimeline()`.
+- **Live UAT знайшов і закрив хвіст релізу `0.69.16`** - Park drawer submit створив тестовий запис і refresh показав його в денному режимі, після чого було виявлено, що сам перемикач тижня не спрацьовує на production.
+- **Regression guard оновлено** - `tests/ui-check.js` тепер перевіряє runtime handler для period selector, а не лише наявність HTML-кнопок `День`/`Тиждень`.
+
+---
+
 ## v0.69.16 - Timeline week parity and drawer QA closure
 
 ### Timeline / Week / Resources / Drawer / 01.06.2026 [codex]

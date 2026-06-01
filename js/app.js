@@ -96,6 +96,16 @@ function syncTimelinePeriodSelector(root = document.getElementById('periodSelect
     });
 }
 
+function applyTimelinePeriod(period, root = document.getElementById('periodSelector')) {
+    const normalizedPeriod = Number.parseInt(period, 10) === TIMELINE_PERIOD_WEEK
+        ? TIMELINE_PERIOD_WEEK
+        : TIMELINE_PERIOD_DAY;
+    AppState.multiDayMode = normalizedPeriod === TIMELINE_PERIOD_WEEK;
+    AppState.daysToShow = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
+    syncTimelinePeriodSelector(root);
+    renderTimeline();
+}
+
 function initializeApp() {
     initializeLocalData();
     initializeCostumes();
@@ -349,18 +359,19 @@ function initTimelineListeners() {
     if (periodSelector) {
         periodSelector.querySelectorAll('.period-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const period = parseInt(btn.dataset.period);
-                if (period === 1) {
-                    AppState.multiDayMode = false;
-                    AppState.daysToShow = TIMELINE_PERIOD_DAY;
-                } else {
-                    AppState.multiDayMode = true;
-                    AppState.daysToShow = TIMELINE_PERIOD_WEEK;
-                }
-                syncTimelinePeriodSelector(periodSelector);
-                renderTimeline();
+                applyTimelinePeriod(btn.dataset.period, periodSelector);
             });
         });
+    }
+    if (!window.__timelinePeriodDelegatedBound) {
+        window.__timelinePeriodDelegatedBound = true;
+        document.addEventListener('click', event => {
+            const button = event.target?.closest?.('.period-btn[data-period]');
+            if (!button) return;
+            const root = button.closest('#periodSelector') || document.getElementById('periodSelector');
+            event.preventDefault();
+            applyTimelinePeriod(button.dataset.period, root);
+        }, true);
     }
 
     const historyBtnEl = document.getElementById('historyBtn');

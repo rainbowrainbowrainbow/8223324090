@@ -9526,6 +9526,19 @@ body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm
     transform: translateY(0) scale(1) !important;
 }
 
+/* v0.69.19: hidden timeline assistant command panels must not steal timeline toolbar clicks. */
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .assistant-command-panel .assistant-rail-subtitles-wrap {
+    pointer-events: none !important;
+}
+
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-live="true"] .assistant-command-panel .assistant-rail-subtitles-wrap,
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-mode="error"] .assistant-command-panel .assistant-rail-subtitles-wrap,
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-mode="streaming"] .assistant-command-panel .assistant-rail-subtitles-wrap,
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-playback-state="text"] .assistant-command-panel .assistant-rail-subtitles-wrap,
+body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="success"] .assistant-command-panel .assistant-rail-subtitles-wrap {
+    pointer-events: auto !important;
+}
+
 @media (max-width: 1280px) {
     body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > #crmAssistantRailHost,
     body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.19 - Timeline assistant hit-target hotfix
+
+### Timeline / Assistant / Hit Targets / Live UAT / 01.06.2026 [codex]
+- **Невидима AI-панель більше не перехоплює кліки по таймлайну** - прихований assistant command panel у timeline header тепер дає `pointer-events: none` для subtitle-layer.
+- **Кнопка `Тиждень` знову доходить до timeline handler** - subtitle-layer лишається клікабельним тільки коли assistant panel реально активна: live/error/streaming/text/success.
+- **Live UAT відділив bootstrap-fix від hit-target проблеми** - `0.69.18` повернув listeners для `Наступний день`, а цей реліз прибирає останній overlay-блокер для `Тиждень`.
+- **Regression guard додано в UI smoke** - `tests/ui-check.js` перевіряє, що hidden assistant command panel не блокує toolbar controls.
+
+---
+
 ## v0.69.18 - Timeline control bootstrap hotfix
 
 ### Timeline / Controls / Bootstrap / Live UAT / 01.06.2026 [codex]

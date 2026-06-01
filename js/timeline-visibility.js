@@ -62,6 +62,12 @@
         { key: 'bookingSubmit', label: 'Кнопка збереження бронювання', selector: '#bookingSubmitBtn', area: 'Форма бронювання' }
     ];
 
+    const VISIBILITY_PRESETS = [
+        { key: 'business_default', label: 'Стандарт бізнесу', hidden: null },
+        { key: 'operator_daily', label: 'Операторський день', hidden: ['assistantWidget', 'minimap', 'roomLoadPanel'] },
+        { key: 'compact_booking', label: 'Компактний запис', hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export'] }
+    ];
+
     const state = {
         initialized: false,
         constructorActive: false,
@@ -222,6 +228,26 @@
         notify('Видимість таймлайну повернено до стандартних налаштувань');
     }
 
+    function applyVisibilityPreset(presetKey) {
+        const preset = VISIBILITY_PRESETS.find(item => item.key === presetKey) || VISIBILITY_PRESETS[0];
+        const hidden = preset.hidden === null ? defaultHiddenKeys() : new Set(preset.hidden || []);
+        const overrides = {};
+        TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
+            overrides[item.key] = hidden.has(item.key);
+        });
+        const payload = {
+            version: 1,
+            overrides,
+            updatedAt: new Date().toISOString()
+        };
+        localStorage.setItem(storageKey(), JSON.stringify(payload));
+        state.serverSettings.set(currentContext().key, payload);
+        scheduleServerSave(payload);
+        applyVisibility();
+        renderPanelList();
+        notify(`Застосовано preset: ${preset.label}`);
+    }
+
     function labelForKey(key) {
         return TIMELINE_VISIBILITY_ELEMENTS.find(item => item.key === key)?.label || key;
     }
@@ -378,6 +404,9 @@
             </div>
             <div class="timeline-constructor-panel-body">
                 <p>Вимикай елементи тут або прямо на сторінці. У звичайному режимі вимкнені елементи зникнуть.</p>
+                <div class="timeline-constructor-presets" aria-label="Preset-и видимості таймлайну">
+                    ${VISIBILITY_PRESETS.map(preset => `<button type="button" class="timeline-constructor-preset" data-visibility-preset="${preset.key}">${preset.label}</button>`).join('')}
+                </div>
                 <div id="timelineConstructorList" class="timeline-constructor-list"></div>
             </div>
             <div class="timeline-constructor-panel-actions">
@@ -389,6 +418,9 @@
         panel.querySelector('#timelineConstructorClose')?.addEventListener('click', () => toggleConstructorMode(false));
         panel.querySelector('#timelineConstructorDone')?.addEventListener('click', () => toggleConstructorMode(false));
         panel.querySelector('#timelineConstructorReset')?.addEventListener('click', resetSettings);
+        panel.querySelectorAll('[data-visibility-preset]').forEach(button => {
+            button.addEventListener('click', event => applyVisibilityPreset(event.currentTarget.dataset.visibilityPreset));
+        });
         state.panel = panel;
     }
 
@@ -507,6 +539,7 @@
         toggleConstructorMode,
         setHidden,
         resetSettings,
+        applyVisibilityPreset,
         isHidden,
         registry: TIMELINE_VISIBILITY_ELEMENTS
     };

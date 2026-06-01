@@ -4,6 +4,18 @@
 
 ---
 
+## v0.69.16 - Timeline week parity and drawer QA closure
+
+### Timeline / Week / Resources / Drawer / 01.06.2026 [codex]
+- **День і Тиждень тепер рендерять одну й ту саму правду** - `renderMultiDayTimeline` використовує ту саму нормалізацію ліній, бронювань, бізнес-контексту, resource identity, статус-фільтра і cache scope, що й денний таймлайн.
+- **Створений запис знаходиться і в day, і в week mode** - після submit інвалідується точна дата, а reveal/focus шукає як звичайний `.booking-block`, так і тижневий `.mini-booking-block` за `data-booking-id`.
+- **Resource/lineId борг закрито surgical-рівнем** - frontend порівнює booking-и з лініями через canonical `resourceId/resourceType/businessContext/source`, а `lineId` лишається сумісним fallback для старого API і БД.
+- **Сервер повертає timeline identity без міграції БД** - `mapBookingRow()` додає `resourceId`, `resourceType` і `timelineIdentity`, не прибираючи legacy `lineId`.
+- **Адмінське полірування timeline preset-ів** - додано явний Dar preset, активний preset тепер враховує поточний business context, а constructor visibility отримав людські preset-кнопки для швидкого reset/налаштування.
+- **Regression guard додано в unit baseline** - `tests/timeline-week-parity.test.js` захищає day/week parity, week reveal, payload identity і admin polishing contract.
+
+---
+
 ## v0.69.15 - Timeline Dar booking constraint repair
 
 ### Timeline / Booking / Dar / 01.06.2026 [codex]

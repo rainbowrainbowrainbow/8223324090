@@ -144,12 +144,37 @@ function mapBookingRow(row) {
     });
 
     const extraData = row.extra_data || null;
+    const timelineIdentity = {
+        ...(extraData?.timelineIdentity || extraData?.timeline_identity || {}),
+        resourceId: extraData?.timelineIdentity?.resourceId
+            || extraData?.timeline_identity?.resource_id
+            || extraData?.timeline_identity?.resourceId
+            || row.resource_id
+            || row.line_id
+            || null,
+        resourceType: extraData?.timelineIdentity?.resourceType
+            || extraData?.timeline_identity?.resource_type
+            || extraData?.timeline_identity?.resourceType
+            || row.resource_type
+            || null,
+        businessContext: extraData?.timelineIdentity?.businessContext
+            || extraData?.timeline_identity?.business_context
+            || extraData?.timeline_identity?.businessContext
+            || row.business_context
+            || DEFAULT_TIMELINE_CONTEXT,
+        source: extraData?.timelineIdentity?.source
+            || extraData?.timeline_identity?.source
+            || 'booking_row'
+    };
     return {
         id: row.id,
         businessContext: row.business_context || DEFAULT_TIMELINE_CONTEXT,
         date: row.date,
         time: row.time,
         lineId: row.line_id,
+        resourceId: timelineIdentity.resourceId,
+        resourceType: timelineIdentity.resourceType,
+        timelineIdentity,
         programId: row.program_id,
         programCode: row.program_code,
         label: row.label,

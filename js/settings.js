@@ -1148,10 +1148,21 @@ function applyTimelineSettingsToControls(settings = {}) {
         : deriveBusinessModuleStateFromTimeline(normalized);
     renderBusinessCabinetModuleButtons(moduleState);
     renderBusinessCabinetGuardrails({ ...settings, ...normalized }, moduleState);
+    const activeBusinessContext = window.CrmBusinessContext?.activeProfile?.()?.key
+        || window.TimelineBusinessContext?.current?.()?.key
+        || window.TimelineBusinessContext?.current?.()?.apiValue
+        || '';
+    const cssEscape = window.CSS?.escape || (value => String(value || '').replace(/"/g, '\\"'));
     document.querySelectorAll('[data-timeline-preset]').forEach(button => {
         const presetResourceModel = button.dataset.resourceModel || defaultTimelineResourceModel(button.dataset.mode);
+        const presetBusinessContext = button.dataset.businessContext || '';
+        const hasContextSpecificTwin = !presetBusinessContext && activeBusinessContext
+            ? Boolean(document.querySelector(`[data-timeline-preset][data-business-context="${cssEscape(activeBusinessContext)}"][data-mode="${cssEscape(normalized.mode)}"][data-resource-model="${cssEscape(normalized.resourceModel)}"]`))
+            : false;
         const active = button.dataset.mode === normalized.mode
-            && presetResourceModel === normalized.resourceModel;
+            && presetResourceModel === normalized.resourceModel
+            && (!presetBusinessContext || presetBusinessContext === activeBusinessContext)
+            && !hasContextSpecificTwin;
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });

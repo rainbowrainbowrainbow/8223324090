@@ -2803,6 +2803,29 @@ function buildBookingObject(formData, program) {
         source: 'booking_workspace'
     };
     obj.extraData.bookingWorkspace = buildBookingWorkspaceExtraData(formData);
+    const timelineLine = getBookingLineSnapshot(formData.lineId) || {
+        id: formData.lineId,
+        resourceId: formData.lineId,
+        name: formData.lineName,
+        source: formData.lineSource
+    };
+    const timelineIdentity = typeof timelineLineResourceIdentity === 'function'
+        ? timelineLineResourceIdentity(timelineLine)
+        : {
+            resourceId: formData.lineId,
+            resourceType: getTimelineBookingPresentation().resourceType || (getTimelineBookingPresentation().mode === 'park' ? 'animator' : 'resource'),
+            businessContext: window.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix',
+            source: formData.lineSource || 'booking_form'
+        };
+    obj.resourceId = timelineIdentity.resourceId || formData.lineId;
+    obj.resourceType = timelineIdentity.resourceType || null;
+    obj.extraData.timelineIdentity = {
+        ...timelineIdentity,
+        resourceId: obj.resourceId,
+        lineId: formData.lineId,
+        lineName: formData.lineName || timelineLine?.name || null,
+        source: timelineIdentity.source || 'booking_form'
+    };
 
     if (isEducationTimelineBookingMode() && formData.educationLesson) {
         const lesson = {
@@ -2901,11 +2924,19 @@ function buildMaysternyaClosedSlotBooking() {
     const noteText = notes || (isMaysternya
         ? 'Олександр зайнятий у цей час'
         : `${resourceName} недоступний у цей час`);
+    const lineIdentity = typeof timelineLineResourceIdentity === 'function'
+        ? timelineLineResourceIdentity(line || { id: document.getElementById('bookingLine')?.value, name: resourceName })
+        : {
+            resourceId: document.getElementById('bookingLine')?.value || null,
+            resourceType: line?.resourceType || presentation.resourceType || null,
+            businessContext: window.TimelineBusinessContext?.current?.()?.apiValue || 'event_genix',
+            source: isMaysternya ? 'maysternya_quick_close' : 'timeline_resource_quick_close'
+        };
     const resourceBlock = {
         mode: 'resource_blackout',
         resourceBlocked: true,
-        resourceId: document.getElementById('bookingLine')?.value || null,
-        resourceType: line?.resourceType || presentation.resourceType || null,
+        resourceId: lineIdentity.resourceId || document.getElementById('bookingLine')?.value || null,
+        resourceType: lineIdentity.resourceType || line?.resourceType || presentation.resourceType || null,
         resourceName,
         closedDuration: duration,
         source: isMaysternya ? 'maysternya_quick_close' : 'timeline_resource_quick_close'
@@ -2937,9 +2968,19 @@ function buildMaysternyaClosedSlotBooking() {
         status: 'confirmed',
         kidsCount: null,
         groupName: isEducationTimelineBookingMode() ? resourceName : 'Зайнято',
+        resourceId: resourceBlock.resourceId,
+        resourceType: resourceBlock.resourceType,
         programBasePrice: 0,
         menuPositions: [],
         extraData: {
+            timelineIdentity: {
+                ...lineIdentity,
+                resourceId: resourceBlock.resourceId,
+                resourceType: resourceBlock.resourceType,
+                lineId: document.getElementById('bookingLine')?.value || null,
+                lineName: resourceName,
+                source: resourceBlock.source
+            },
             timelineResourceBlock: resourceBlock,
             maysternyaBooking: {
                 mode: 'closed_slot',
@@ -3170,7 +3211,7 @@ function findCreatedBookingBlock(booking = {}) {
     const id = booking?.id || booking?.bookingId;
     const selectorId = bookingBlockSelectorId(id);
     if (!selectorId) return null;
-    return document.querySelector(`.booking-block[data-booking-id="${selectorId}"]`);
+    return document.querySelector(`.booking-block[data-booking-id="${selectorId}"], .mini-booking-block[data-booking-id="${selectorId}"]`);
 }
 
 function focusCreatedBookingBlocks(createdBookings = []) {
@@ -3242,7 +3283,12 @@ function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = nu
         || window.TimelineBusinessContext?.current?.()?.apiValue || '';
     const visibleLineIds = snapshot?.lineIds instanceof Set
         ? snapshot.lineIds
-        : new Set((AppState.lines || []).map(line => String(line?.id || '')).filter(Boolean));
+        : new Set((AppState.lines || []).flatMap(line => {
+            const identity = typeof timelineLineResourceIdentity === 'function'
+                ? timelineLineResourceIdentity(line)
+                : null;
+            return [identity?.resourceId, line?.resourceId, line?.id, line?.lineId].filter(Boolean).map(String);
+        }));
     const bookingsById = snapshot?.bookingsById instanceof Map ? snapshot.bookingsById : new Map();
     const missingIds = snapshot?.missingIds instanceof Set ? snapshot.missingIds : new Set();
     return createdBookings.map(booking => {
@@ -3251,7 +3297,10 @@ function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = nu
         const source = serverBooking ? { ...booking, ...serverBooking } : booking;
         const reasons = [];
         const date = normalizeBookingDateKey(source?.date);
-        const lineId = String(source?.lineId || source?.line_id || '').trim();
+        const resourceIdentity = typeof timelineBookingResourceIdentity === 'function'
+            ? timelineBookingResourceIdentity(source)
+            : null;
+        const lineId = String(resourceIdentity?.resourceId || source?.resourceId || source?.resource_id || source?.lineId || source?.line_id || '').trim();
         const status = source?.status || booking?.status || '';
         const block = findCreatedBookingBlock(source);
         const projection = createdBookingTimelineProjection(source);
@@ -3306,7 +3355,10 @@ function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate =
     if (projectedDate && projectedDate !== currentDate) return false;
     if (projectedContext && expectedContext && projectedContext !== expectedContext) return false;
     const id = booking?.id || booking?.bookingId;
-    const lineId = String(booking?.lineId || booking?.line_id || '').trim();
+    const resourceIdentity = typeof timelineBookingResourceIdentity === 'function'
+        ? timelineBookingResourceIdentity(booking)
+        : null;
+    const lineId = String(resourceIdentity?.resourceId || booking?.resourceId || booking?.resource_id || booking?.lineId || booking?.line_id || '').trim();
     return Boolean(id && (lineId || projection?.visible === true));
 }
 
@@ -3386,7 +3438,12 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
         snapshot.lines = typeof normalizeTimelineLinesForContext === 'function'
             ? normalizeTimelineLinesForContext(freshLines)
             : freshLines;
-        snapshot.lineIds = new Set(snapshot.lines.map(line => String(line?.id || '')).filter(Boolean));
+        snapshot.lineIds = new Set(snapshot.lines.flatMap(line => {
+            const identity = typeof timelineLineResourceIdentity === 'function'
+                ? timelineLineResourceIdentity(line)
+                : null;
+            return [identity?.resourceId, line?.resourceId, line?.id, line?.lineId].filter(Boolean).map(String);
+        }));
         AppState.lines = snapshot.lines;
         AppState.linesByDate = AppState.linesByDate || {};
         AppState.linesByDate[currentDate] = snapshot.lines;

@@ -381,18 +381,99 @@ function timelineShouldRenderAfisha() {
     return ctx?.showAfisha !== false;
 }
 
-function normalizeTimelineLinesForContext(lines = []) {
+function timelineExtraData(source = {}) {
+    const extra = source?.extraData || source?.extra_data || {};
+    if (extra && typeof extra === 'object') return extra;
+    if (typeof extra === 'string') {
+        try {
+            return JSON.parse(extra) || {};
+        } catch (_) {
+            return {};
+        }
+    }
+    return {};
+}
+
+function timelineEmbeddedIdentity(source = {}) {
+    const extra = timelineExtraData(source);
+    return source?.timelineIdentity
+        || source?.timeline_identity
+        || extra.timelineIdentity
+        || extra.timeline_identity
+        || {};
+}
+
+function timelineDefaultResourceType() {
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    if (presentation?.resourceType) return presentation.resourceType;
+    return presentation?.mode === 'park' ? 'animator' : 'resource';
+}
+
+function timelineBusinessContextValue() {
     const ctx = window.TimelineBusinessContext?.current?.();
+    return window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || ctx?.apiValue
+        || ctx?.key
+        || 'event_genix';
+}
+
+function timelineLineResourceIdentity(line = {}, index = 0) {
+    const embedded = timelineEmbeddedIdentity(line);
+    const resourceId = String(
+        line?.resourceId
+        || line?.resource_id
+        || embedded.resourceId
+        || embedded.resource_id
+        || line?.id
+        || line?.lineId
+        || line?.line_id
+        || ''
+    ).trim() || String(index + 1);
+    return {
+        resourceId,
+        resourceType: line?.resourceType || line?.resource_type || line?.type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType(),
+        businessContext: line?.businessContext || line?.business_context || embedded.businessContext || embedded.business_context || timelineBusinessContextValue(),
+        source: line?.source || line?.resourceSource || embedded.source || (line?.resourceId || line?.resource_id ? 'timeline_resource' : 'timeline_line')
+    };
+}
+
+function timelineBookingResourceIdentity(booking = {}) {
+    const embedded = timelineEmbeddedIdentity(booking);
+    const resourceId = String(
+        booking?.resourceId
+        || booking?.resource_id
+        || embedded.resourceId
+        || embedded.resource_id
+        || booking?.lineId
+        || booking?.line_id
+        || ''
+    ).trim();
+    return {
+        resourceId,
+        resourceType: booking?.resourceType || booking?.resource_type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType(),
+        businessContext: booking?.businessContext || booking?.business_context || embedded.businessContext || embedded.business_context || timelineBusinessContextValue(),
+        source: embedded.source || booking?.resourceSource || booking?.source || 'booking_line'
+    };
+}
+
+function timelineBookingsForLine(bookings = [], line = {}) {
+    const lineResourceId = timelineLineResourceIdentity(line).resourceId;
+    return bookings.filter(booking => String(timelineBookingResourceIdentity(booking).resourceId || '') === String(lineResourceId || ''));
+}
+
+function normalizeTimelineLinesForContext(lines = []) {
     const presentation = window.TimelineBusinessContext?.presentation?.();
     return lines.map((line, index) => {
-        const normalizedId = String(line?.resourceId || line?.id || line?.lineId || '').trim();
+        const normalized = timelineLineResourceIdentity(line, index);
+        const normalizedId = normalized.resourceId;
         const identity = {
             ...line,
-            id: normalizedId || String(index + 1),
-            resourceId: normalizedId || String(index + 1),
-            resourceType: line?.resourceType || line?.type || presentation?.resourceType || (presentation?.mode === 'park' ? 'animator' : 'resource'),
-            businessContext: line?.businessContext || line?.business_context || ctx?.apiValue || ctx?.key || 'event_genix',
-            source: line?.source || line?.resourceSource || (line?.resourceId ? 'timeline_resource' : 'timeline_line')
+            id: normalizedId,
+            resourceId: normalized.resourceId,
+            resourceType: normalized.resourceType,
+            businessContext: normalized.businessContext,
+            source: normalized.source,
+            timelineIdentity: normalized
         };
         if (line?.id === 'md-consult-room' && ['Майстерня долі', 'Таймлайн МД'].includes(line.name)) {
             return { ...identity, name: 'Олександр' };
@@ -411,6 +492,22 @@ function normalizeTimelineLinesForContext(lines = []) {
             return { ...identity, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
         }
         return identity;
+    });
+}
+
+function normalizeTimelineBookingsForContext(bookings = []) {
+    return bookings.map(booking => {
+        const identity = timelineBookingResourceIdentity(booking);
+        return {
+            ...booking,
+            resourceId: identity.resourceId || booking?.lineId || booking?.line_id || null,
+            resourceType: identity.resourceType,
+            businessContext: booking?.businessContext || booking?.business_context || identity.businessContext,
+            timelineIdentity: {
+                ...identity,
+                resourceId: identity.resourceId || booking?.lineId || booking?.line_id || null
+            }
+        };
     });
 }
 
@@ -477,7 +574,7 @@ async function renderTimeline() {
             showAfisha ? apiGetAfishaByDate(formatDate(selectedDate)).catch(() => []) : Promise.resolve([])
         ]);
         lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
-        bookings = Array.isArray(bookingsResult) ? bookingsResult : [];
+        bookings = normalizeTimelineBookingsForContext(Array.isArray(bookingsResult) ? bookingsResult : []);
         afishaEvents = Array.isArray(afishaResult) ? afishaResult : [];
         AppState.lines = lines;
         AppState.linesByDate = AppState.linesByDate || {};
@@ -550,7 +647,7 @@ async function renderTimeline() {
 
     lines.forEach(line => {
         try {
-        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
+        const lineBookings = timelineBookingsForLine(bookings, line);
         const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
@@ -3187,8 +3284,13 @@ async function renderDaySectionHtml(date) {
     const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
     const cellWidth = 30;
 
-    const lines = await getLinesForDate(date);
-    const bookings = await getBookingsForDate(date);
+    const rawLines = await getLinesForDate(date);
+    const rawBookings = await getBookingsForDate(date);
+    const lines = normalizeTimelineLinesForContext(Array.isArray(rawLines) ? rawLines : []);
+    const bookings = normalizeTimelineBookingsForContext(Array.isArray(rawBookings) ? rawBookings : []);
+    const dateStr = formatDate(date);
+    AppState.linesByDate = AppState.linesByDate || {};
+    AppState.linesByDate[dateStr] = lines;
 
     let timeScaleHtml = '<div class="mini-time-scale">';
     for (let h = start; h <= end; h++) {
@@ -3197,7 +3299,7 @@ async function renderDaySectionHtml(date) {
     timeScaleHtml += '</div>';
 
     let html = `
-        <div class="day-section" data-date="${formatDate(date)}">
+        <div class="day-section" data-date="${dateStr}">
             <div class="day-section-header">
                 <span>${DAYS[dayOfWeek]}</span>
                 <span class="date-label">${date.getDate()} ${MONTHS_SHORT_UKR[date.getMonth()]} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
@@ -3208,7 +3310,7 @@ async function renderDaySectionHtml(date) {
     `;
 
     for (const line of lines) {
-        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
+        const lineBookings = timelineBookingsForLine(bookings, line);
         html += renderMiniLineHtml(line, lineBookings, start, cellWidth);
     }
 
@@ -3221,12 +3323,13 @@ async function renderDaySectionHtml(date) {
 }
 
 function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
+    const lineIdentity = timelineLineResourceIdentity(line);
     let html = `
-        <div class="mini-timeline-line">
+        <div class="mini-timeline-line" data-resource-id="${escapeHtml(lineIdentity.resourceId)}" data-resource-type="${escapeHtml(lineIdentity.resourceType)}">
             <div class="mini-line-header" style="border-left-color: ${escapeHtml(line.color)}">
                 ${escapeHtml(line.name)}
             </div>
-            <div class="mini-line-grid" data-start="${start}">
+            <div class="mini-line-grid" data-start="${start}" data-line-id="${escapeHtml(lineIdentity.resourceId)}" data-resource-id="${escapeHtml(lineIdentity.resourceId)}" data-resource-type="${escapeHtml(lineIdentity.resourceType)}">
     `;
 
     for (const b of lineBookings) {
@@ -3246,10 +3349,13 @@ function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
             b.category === 'banquet' ? 'banquet-block' : ''
         ].filter(Boolean).map(escapeHtml).join(' ');
 
+        const bookingIdentity = timelineBookingResourceIdentity(b);
         html += `
             <div class="${classes}"
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
+                 data-resource-id="${escapeHtml(bookingIdentity.resourceId)}"
+                 data-resource-type="${escapeHtml(bookingIdentity.resourceType)}"
                  title="${escapeHtml((b.label || b.programCode) + ': ' + b.room + ' (' + b.time + ')')}">
                 <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
             </div>

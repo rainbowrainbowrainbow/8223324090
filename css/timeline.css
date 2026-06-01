@@ -365,7 +365,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     box-shadow: var(--shadow-md);
 }
 
-.booking-block.booking-block--just-created {
+.booking-block.booking-block--just-created,
+.mini-booking-block.booking-block--just-created {
     outline: 2px solid rgba(52, 211, 153, 0.95);
     outline-offset: 2px;
     z-index: 60;
@@ -1704,6 +1705,30 @@ body.timeline-constructor-active .timeline-constructor-disabled {
     color: #cbd5e1;
     font-size: 13px;
     line-height: 1.45;
+}
+
+.timeline-constructor-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.timeline-constructor-preset {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.48);
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.timeline-constructor-preset:hover,
+.timeline-constructor-preset:focus-visible {
+    border-color: rgba(45, 212, 191, 0.72);
+    outline: none;
 }
 
 .timeline-constructor-list {

@@ -73,9 +73,21 @@
     const ASSISTANT_LEGACY_VOICE_PREF_KEY = 'eg_dashboard_assistant_voice';
     const ASSISTANT_VOICE_OPT_IN_KEY = 'eg_crm_assistant_voice_opt_in_at';
     const ASSISTANT_PROACTIVE_HELP_PREF_KEY = 'eg_crm_assistant_proactive_help';
+    const ASSISTANT_RAIL_ENABLED_KEY = 'eg_crm_assistant_rail_enabled';
     const ASSISTANT_BROWSER_SPEECH_FALLBACK_ENABLED = false;
     const CLICK_GUIDE_DEFAULT_DURATION_MS = 4200;
     const CLICK_GUIDE_SCROLL_DELAY_MS = 220;
+
+    function isAssistantRailSurfaceEnabled() {
+        if (window.CRM_ASSISTANT_RAIL_DISABLED === true) return false;
+        if (window.CRM_ASSISTANT_RAIL_ENABLED === true) return true;
+        if (document.body?.dataset?.crmAssistantRail === 'on') return true;
+        try {
+            return localStorage.getItem(ASSISTANT_RAIL_ENABLED_KEY) === 'on';
+        } catch {
+            return false;
+        }
+    }
 
     function isAssistantVoiceExplicitlyEnabled() {
         try {
@@ -547,6 +559,9 @@
         document.getElementById('dashboardAssistantRail')?.remove();
         document.getElementById('crmAssistantRail')?.remove();
         document.getElementById('crmAssistantRailHost')?.remove();
+        document.getElementById('crmAssistantPanelOverlay')?.remove();
+        document.querySelectorAll('.crm-assistant-click-guide-overlay, .crm-assistant-magic-burst').forEach(el => el.remove());
+        cleanupClickGuide();
         const headerContent = document.querySelector('.header .header-content');
         headerContent?.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
         headerContent?.closest('.header')?.classList.remove('assistant-rail-timeline-header');
@@ -558,7 +573,7 @@
         const headerContent = document.querySelector('.header .header-content');
         if (!headerContent) return false;
 
-        if (isDashboardAssistantSuppressed()) {
+        if (!isAssistantRailSurfaceEnabled() || isDashboardAssistantSuppressed()) {
             removeMountedAssistantRail();
             return false;
         }
@@ -2336,7 +2351,7 @@
     }
 
     function expand() {
-        if (isDashboardAssistantSuppressed()) return false;
+        if (!isAssistantRailSurfaceEnabled() || isDashboardAssistantSuppressed()) return false;
         const prev = document.getElementById('crmAssistantPanelOverlay');
         if (prev) {
             document.getElementById('crmAssistantRail')?.setAttribute('data-expanded', 'true');
@@ -2848,6 +2863,11 @@
     }
 
     function init(options = {}) {
+        if (!isAssistantRailSurfaceEnabled()) {
+            removeMountedAssistantRail();
+            return false;
+        }
+
         initCount += 1;
         foundation()?.init?.({ pageId: getCurrentPageKey(), ...options });
         getAssistantSessionId();
@@ -2890,10 +2910,12 @@
         cleanupClickGuide,
         pulseAssistantWindowBridge,
         buildPageGuideContext,
+        isEnabled: isAssistantRailSurfaceEnabled,
+        destroy: removeMountedAssistantRail,
         getAssetVersion
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (document.body.classList.contains('authenticated-shell')) init();
+        if (document.body.classList.contains('authenticated-shell') && isAssistantRailSurfaceEnabled()) init();
     });
 })();

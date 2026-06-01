@@ -349,6 +349,35 @@ function clearAuthenticatedPageShell() {
 }
 
 let _crmAssistantRailLoadPromise = null;
+const CRM_ASSISTANT_RAIL_ENABLED_KEY = 'eg_crm_assistant_rail_enabled';
+
+function isCrmAssistantRailEnabled() {
+    if (window.CRM_ASSISTANT_RAIL_DISABLED === true) return false;
+    if (window.CRM_ASSISTANT_RAIL_ENABLED === true) return true;
+    if (document.body?.dataset?.crmAssistantRail === 'on') return true;
+    try {
+        return localStorage.getItem(CRM_ASSISTANT_RAIL_ENABLED_KEY) === 'on';
+    } catch {
+        return false;
+    }
+}
+
+function removeCrmAssistantRailSurface() {
+    document.getElementById('dashboardAssistantRail')?.remove();
+    document.getElementById('crmAssistantRail')?.remove();
+    document.getElementById('crmAssistantRailHost')?.remove();
+    document.getElementById('crmAssistantPanelOverlay')?.remove();
+    document.querySelectorAll('.crm-assistant-click-guide-overlay, .crm-assistant-magic-burst').forEach(el => el.remove());
+    document.querySelectorAll('.crm-assistant-click-guide-targeted').forEach(el => {
+        el.classList.remove('crm-assistant-click-guide-targeted');
+    });
+    const headerContent = document.querySelector('.header .header-content');
+    headerContent?.classList.remove('assistant-rail-mounted', 'assistant-rail-timeline-mounted');
+    headerContent?.closest('.header')?.classList.remove('assistant-rail-timeline-header');
+    document.querySelector('.main-content.timeline-assistant-main-mounted')?.classList.remove('timeline-assistant-main-mounted');
+    document.body?.classList?.remove('timeline-assistant-main-mounted');
+    window.CrmAssistantRail?.cleanupClickGuide?.();
+}
 
 function getCurrentAssetVersion() {
     const authScript = Array.from(document.scripts).find(script => /(^|\/)js\/auth\.js/.test(script.getAttribute('src') || ''));
@@ -361,6 +390,11 @@ function getCurrentAssetVersion() {
 }
 
 function ensureCrmAssistantRailAssets() {
+    if (!isCrmAssistantRailEnabled()) {
+        removeCrmAssistantRailSurface();
+        return Promise.resolve(null);
+    }
+
     if (
         window.CrmAssistantFoundation &&
         window.CrmAssistantOutputFormat &&
@@ -433,6 +467,11 @@ function ensureCrmAssistantRailAssets() {
 }
 
 function initCrmAssistantRail() {
+    if (!isCrmAssistantRailEnabled()) {
+        removeCrmAssistantRailSurface();
+        return Promise.resolve(false);
+    }
+
     ensureCrmAssistantRailAssets()
         .then(rail => {
             if (rail && typeof rail.init === 'function') {

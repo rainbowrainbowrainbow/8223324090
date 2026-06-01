@@ -4,6 +4,15 @@
 
 ---
 
+## v0.69.24 - Assistant rail opt-in hotfix
+
+### Shell / AI Assistant / Header / 01.06.2026 [codex]
+- **AI-помічник більше не монтується на кожній CRM-сторінці автоматично** - shared `CrmAssistantRail` став opt-in через явний прапорець `eg_crm_assistant_rail_enabled`, тому плаваючий режим не ходить за користувачем по всіх вікнах.
+- **Старі surface-и прибираються при завантаженні shell** - `auth.js` чистить `crmAssistantRail`, `crmAssistantRailHost`, відкриту панель, click-guide overlay та timeline/header класи, якщо assistant rail не увімкнено.
+- **Кешований скрипт не може сам себе оживити** - `js/assistant-rail.js` має власний guard для `init`, `expand`, `ensureMounted` і `DOMContentLoaded`, а UI smoke фіксує новий opt-in контракт.
+
+---
+
 ## v0.69.23 - Tasks deferred commitment refresh
 
 ### Profile / My Day / Tasks / Alerts / 01.06.2026 [codex]

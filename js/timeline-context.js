@@ -621,7 +621,7 @@
             hidden.add('bookingPanel');
             hidden.add('bookingPackageSummary');
         }
-        return {
+        const result = {
             ...mode,
             mode: mode.key,
             context: ctx.key,
@@ -638,6 +638,8 @@
             showProductSales: mode.showProductSales === true && enabledModules.products !== false,
             defaultHiddenElements: Array.from(hidden)
         };
+        result.controls = controlVisibilityForView(result);
+        return result;
     }
 
     function resourceTypeForMode(mode, settings = null) {
@@ -683,6 +685,25 @@
         return view.enabledModules?.resources !== false || view.mode === 'park';
     }
 
+    function controlVisibilityForView(view = presentation()) {
+        const timelineEnabled = view?.timelineEnabled !== false && view?.mode !== 'disabled';
+        const bookingsEnabled = view?.enabledModules?.bookings !== false;
+        return {
+            createBooking: timelineEnabled && bookingsEnabled,
+            addLine: canShowAddLineControl(view),
+            roomLoad: timelineEnabled && view?.enabledModules?.resources !== false,
+            productSales: timelineEnabled && view?.showProductSales === true,
+            export: timelineEnabled
+        };
+    }
+
+    function setTimelineControlHidden(el, hidden) {
+        if (!el) return;
+        el.toggleAttribute('data-timeline-context-hidden', hidden);
+        if (hidden) el.classList.add('hidden');
+        else if (!el.classList.contains('timeline-permission-hidden')) el.classList.remove('hidden');
+    }
+
     function applyLabels() {
         const ctx = currentContext();
         const view = presentation(ctx);
@@ -708,20 +729,17 @@
         if (subEl) subEl.textContent = ctx.subtitle;
 
         const salesBtn = document.getElementById('productSalesBtn');
-        if (salesBtn) salesBtn.classList.toggle('hidden', !view.showProductSales);
+        setTimelineControlHidden(salesBtn, !view.controls.productSales);
         const createBtn = document.getElementById('newBookingBtn');
         if (createBtn) {
             setControlText(createBtn, view.createButtonLabel || view.submitLabel || 'Створити бронювання');
-            const hiddenByMode = view.timelineEnabled === false || view.enabledModules?.bookings === false;
-            createBtn.toggleAttribute('data-timeline-context-hidden', hiddenByMode);
-            if (hiddenByMode) createBtn.classList.add('hidden');
-            else if (!createBtn.classList.contains('timeline-permission-hidden')) createBtn.classList.remove('hidden');
+            setTimelineControlHidden(createBtn, !view.controls.createBooking);
         }
         const roomBtn = document.getElementById('roomLoadBtn');
         setControlText(roomBtn, view.roomLoadLabel);
         if (roomBtn) {
             roomBtn.title = view.roomLoadTitle;
-            roomBtn.classList.toggle('hidden', view.timelineEnabled === false || view.enabledModules?.resources === false);
+            setTimelineControlHidden(roomBtn, !view.controls.roomLoad);
         }
         const addLineBtn = document.getElementById('addLineBtn');
         if (addLineBtn) {
@@ -729,10 +747,7 @@
             if (addLabel) addLabel.textContent = view.addLineLabel;
             else addLineBtn.textContent = view.addLineLabel;
             addLineBtn.title = view.addLineTitle;
-            const hiddenByMode = !canShowAddLineControl(view);
-            addLineBtn.toggleAttribute('data-timeline-context-hidden', hiddenByMode);
-            if (hiddenByMode) addLineBtn.classList.add('hidden');
-            else if (!addLineBtn.classList.contains('timeline-permission-hidden')) addLineBtn.classList.remove('hidden');
+            setTimelineControlHidden(addLineBtn, !view.controls.addLine);
         }
         const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
         if (selectedLineLabel) selectedLineLabel.textContent = view.selectedLineLabel;
@@ -784,6 +799,7 @@
         displaySettings: readDisplaySettings,
         saveDisplaySettings,
         presentation,
+        controlVisibility: controlVisibilityForView,
         resourceTypeForMode,
         userRoles,
         userPageAllowlist,

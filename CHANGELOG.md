@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.12 - Timeline Maysternya create hardening
+
+### Timeline / Booking / Maysternya / 01.06.2026 [codex]
+- **Створення запису в Майстерні Долі більше не падає через CRM-side-effect ліда** - автоприв'язка або автосоздання ліда тепер виконується через savepoint і не може відкотити валідне бронювання.
+- **`POST /api/bookings` зберігає Maysternya-запис навіть якщо lead handoff має помилку схеми або даних** - основний рядок у `bookings` комітиться, перечитується і повертається з `serverVerified: true`.
+- **Видимість кнопок таймлайна винесено в явний `view.controls` contract** - `newBookingBtn`, `addLineBtn`, `roomLoadBtn` і `productSalesBtn` тепер керуються одним правилом для Park, Maysternya/simple і майбутніх режимів.
+- **Regression guards розширено** - додано тест, який відтворює падіння автоліда у `maysternya_doli`, і тест, що в Maysternya лишаються видимими кнопки створення запису/спеціаліста без Park-only sales controls.
+
+---
+
 ## v0.69.11 - Timeline animator line control
 
 ### Timeline / Staffing / Park / 01.06.2026 [codex]

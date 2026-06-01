@@ -183,6 +183,32 @@ function hasBookingLeadIdentity(booking, customerId) {
     );
 }
 
+async function syncBookingLeadHandoff(client, booking, customerId, businessContext, label = 'Lead booking handoff') {
+    if (!booking || booking.linkedTo || !sideEffectsAllowedForContext(businessContext)) return null;
+    if (!booking.leadId && (!bookingLeadAutoCreateAllowedForContext(businessContext) || !hasBookingLeadIdentity(booking, customerId))) {
+        return null;
+    }
+    return runOptionalBookingTransactionStep(client, label, async () => {
+        if (booking.leadId) {
+            return attachLeadBookingLink(client, {
+                leadId: booking.leadId,
+                bookingId: booking.id,
+                customerId,
+                businessContext
+            });
+        }
+        const leadLink = await ensureLeadForBooking(client, {
+            booking,
+            customerId,
+            businessContext
+        });
+        if (leadLink?.attached) {
+            booking.leadId = leadLink.leadId;
+        }
+        return leadLink;
+    });
+}
+
 // Resolve animator line name for notifications
 async function getLineName(lineId, date, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     try {
@@ -1473,23 +1499,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.leadId) {
-            await attachLeadBookingLink(client, {
-                leadId: b.leadId,
-                bookingId: b.id,
-                customerId,
-                businessContext
-            });
-        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && !b.linkedTo && hasBookingLeadIdentity(b, customerId)) {
-            const leadLink = await ensureLeadForBooking(client, {
-                booking: b,
-                customerId,
-                businessContext
-            });
-            if (leadLink.attached) {
-                b.leadId = leadLink.leadId;
-            }
-        }
+        await syncBookingLeadHandoff(client, b, customerId, businessContext, 'Lead booking handoff');
 
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
@@ -1919,21 +1929,14 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             );
         }
 
-        if (sideEffectsAllowedForContext(businessContext) && main.leadId) {
-            await attachLeadBookingLink(client, {
-                leadId: main.leadId,
-                bookingId: rootBookingId,
-                customerId,
-                businessContext
-            });
-        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && hasBookingLeadIdentity(main, customerId)) {
-            const leadLink = await ensureLeadForBooking(client, {
-                booking: { ...main, id: rootBookingId },
-                customerId,
-                businessContext
-            });
-            if (leadLink.attached) main.leadId = leadLink.leadId;
-        }
+        const atomicLeadLink = await syncBookingLeadHandoff(
+            client,
+            { ...main, id: rootBookingId },
+            customerId,
+            businessContext,
+            'Lead booking handoff (atomic)'
+        );
+        if (atomicLeadLink?.attached) main.leadId = atomicLeadLink.leadId;
 
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
@@ -2214,23 +2217,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        if (sideEffectsAllowedForContext(businessContext) && main.leadId) {
-            await attachLeadBookingLink(client, {
-                leadId: main.leadId,
-                bookingId: main.id,
-                customerId,
-                businessContext
-            });
-        } else if (bookingLeadAutoCreateAllowedForContext(businessContext) && hasBookingLeadIdentity(main, customerId)) {
-            const leadLink = await ensureLeadForBooking(client, {
-                booking: main,
-                customerId,
-                businessContext
-            });
-            if (leadLink.attached) {
-                main.leadId = leadLink.leadId;
-            }
-        }
+        await syncBookingLeadHandoff(client, main, customerId, businessContext, 'Lead booking handoff (create/full)');
 
         const linkedRows = [];
         if (Array.isArray(linked)) {

@@ -85,6 +85,9 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         rows: [],
         tx: [],
         histories: [],
+        customers: [],
+        nextCustomerId: 701,
+        leadAttempts: 0,
         financeAttempts: 0,
         released: 0
     };
@@ -109,6 +112,35 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         }
         if (/SELECT psr\.stock_id, psr\.quantity, ws\.name, ws\.quantity AS current_qty/i.test(sql)) {
             return { rows: [], rowCount: 0 };
+        }
+        if (/SELECT id FROM customers WHERE phone = \$1/i.test(sql)) {
+            const [phone, businessContext] = params;
+            const row = state.customers.find(item =>
+                item.phone === phone &&
+                (item.business_context || 'event_genix') === businessContext
+            );
+            return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/^INSERT INTO customers \(business_context, name, phone, instagram, child_name, child_birthday, source\)/i.test(sql)) {
+            const row = {
+                id: state.nextCustomerId++,
+                business_context: params[0],
+                name: params[1],
+                phone: params[2] || null
+            };
+            state.customers.push(row);
+            return { rows: [{ id: row.id }], rowCount: 1 };
+        }
+        if (/SELECT id FROM customers WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 LIMIT 1/i.test(sql)) {
+            const [id, businessContext] = params;
+            const row = state.customers.find(item =>
+                Number(item.id) === Number(id) &&
+                (item.business_context || 'event_genix') === businessContext
+            );
+            return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/^UPDATE customers SET first_visit = LEAST/i.test(sql)) {
+            return { rows: [], rowCount: 1 };
         }
         if (/^INSERT INTO bookings /i.test(sql) && /RETURNING \*/i.test(sql)) {
             const row = bookingRowFromInsert(params);
@@ -191,16 +223,35 @@ async function withApp(dbOptions, fn) {
         }
     });
     installMock('../services/timelineResources', {
-        findTimelineResource: async () => null,
+        findTimelineResource: async (_queryable, businessContext, resourceId) => {
+            if (businessContext === 'maysternya_doli' && resourceId === 'md-consult-room') {
+                return {
+                    resourceId: 'md-consult-room',
+                    type: 'specialist',
+                    name: 'Онлайн',
+                    color: '#14b8a6',
+                    capacity: 1
+                };
+            }
+            return null;
+        },
         findTimelineResourceByName: async () => null,
-        getTimelineDisplaySettings: async () => ({ mode: 'park' }),
-        resourceTypeForDisplayMode: () => null
+        getTimelineDisplaySettings: async (_queryable, businessContext) => (
+            businessContext === 'maysternya_doli'
+                ? { mode: 'simple', resourceModel: 'specialist' }
+                : { mode: 'park' }
+        ),
+        resourceTypeForDisplayMode: mode => (mode === 'simple' ? 'specialist' : null)
     });
     installMock('../services/telegram', { notifyTelegram: async () => null });
     installMock('../services/bookingAutomation', { processBookingAutomation: async () => null });
     installMock('../services/leadBookingLink', {
         attachLeadBookingLink: async () => null,
-        ensureLeadForBooking: async () => ({ attached: false })
+        ensureLeadForBooking: async () => {
+            state.leadAttempts += 1;
+            if (dbOptions?.leadHandoffFails) throw new Error('legacy leads schema mismatch');
+            return { attached: false };
+        }
     });
     installMock('../services/bookingPackage', {
         applyBookingPackage: booking => booking,
@@ -222,26 +273,28 @@ async function withApp(dbOptions, fn) {
     }
 }
 
-async function createBooking(baseUrl) {
+async function createBooking(baseUrl, overrides = {}) {
+    const payload = {
+        businessContext: 'event_genix',
+        date: '2099-02-10',
+        time: '15:30',
+        lineId: 'line-1',
+        room: 'Room A',
+        programId: 'anim-60',
+        programCode: 'AN',
+        label: 'AN(60)',
+        programName: 'Animation',
+        category: 'animation',
+        duration: 60,
+        price: 1500,
+        status: 'confirmed',
+        createdBy: 'creator-user',
+        ...overrides
+    };
     const res = await fetch(`${baseUrl}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            businessContext: 'event_genix',
-            date: '2099-02-10',
-            time: '15:30',
-            lineId: 'line-1',
-            room: 'Room A',
-            programId: 'anim-60',
-            programCode: 'AN',
-            label: 'AN(60)',
-            programName: 'Animation',
-            category: 'animation',
-            duration: 60,
-            price: 1500,
-            status: 'confirmed',
-            createdBy: 'creator-user'
-        })
+        body: JSON.stringify(payload)
     });
     const data = await res.json().catch(() => ({}));
     return { status: res.status, data };
@@ -258,6 +311,42 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.equal(res.data.booking.serverVerified, true);
         assert.equal(state.rows.length, 1);
         assert.equal(state.financeAttempts, 1);
+        assert.ok(state.tx.includes('SAVEPOINT booking_optional_step'));
+        assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
+        assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
+        assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings keeps Maysternya booking durable when automatic lead handoff fails', async () => {
+    await withApp({ leadHandoffFails: true }, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            businessContext: 'maysternya_doli',
+            date: '2099-02-11',
+            time: '14:30',
+            lineId: 'md-consult-room',
+            room: 'Онлайн',
+            programId: 'md_full_consult_90',
+            programCode: 'FULL',
+            label: 'Повна консультація',
+            programName: 'Повна консультація',
+            category: 'consultation',
+            duration: 90,
+            price: 0,
+            customer: {
+                name: 'Клієнт Майстерні',
+                phone: '+380991111111'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.serverVerified, true);
+        assert.equal(res.data.booking.businessContext, 'maysternya_doli');
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].business_context, 'maysternya_doli');
+        assert.equal(state.rows[0].customer_id, 701);
+        assert.equal(state.leadAttempts, 1);
         assert.ok(state.tx.includes('SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));

@@ -165,6 +165,96 @@ test('park timeline keeps add animator control when resource manager is disabled
     assert.equal(addLineBtn.classList.contains('hidden'), false);
     assert.equal(addLineBtn.attrs.has('data-timeline-context-hidden'), false);
     assert.equal(roomLoadBtn.classList.contains('hidden'), true);
+    assert.equal(sandbox.window.TimelineBusinessContext.presentation().controls.addLine, true);
+    assert.equal(sandbox.window.TimelineBusinessContext.presentation().controls.roomLoad, false);
+});
+
+test('Maysternya timeline control contract keeps booking actions visible without Park sales controls', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const makeElement = () => {
+        const classes = new Set();
+        return {
+            children: [],
+            attrs: new Map(),
+            title: '',
+            textContent: '',
+            querySelector: () => ({ textContent: '' }),
+            toggleAttribute(name, force) {
+                if (force) this.attrs.set(name, '');
+                else this.attrs.delete(name);
+            },
+            classList: {
+                add: name => classes.add(name),
+                remove: name => classes.delete(name),
+                contains: name => classes.has(name),
+                toggle(name, force) {
+                    const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+                    if (shouldAdd) classes.add(name);
+                    else classes.delete(name);
+                }
+            }
+        };
+    };
+    const productSalesBtn = makeElement();
+    const newBookingBtn = makeElement();
+    const addLineBtn = makeElement();
+    const roomLoadBtn = makeElement();
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail || null;
+            }
+        },
+        window: {
+            location: { pathname: '/maysternya-doli', search: '', href: 'https://crm.test/maysternya-doli' },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            title: '',
+            readyState: 'complete',
+            body: {
+                classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+                dataset: {},
+                setAttribute() {}
+            },
+            getElementById: id => ({
+                productSalesBtn,
+                newBookingBtn,
+                addLineBtn,
+                roomLoadBtn
+            }[id] || null),
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: () => null,
+            setItem() {},
+            removeItem() {}
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    const view = sandbox.window.TimelineBusinessContext.presentation();
+    assert.equal(view.mode, 'simple');
+    assert.deepEqual(JSON.parse(JSON.stringify(view.controls)), {
+        createBooking: true,
+        addLine: true,
+        roomLoad: true,
+        productSales: false,
+        export: true
+    });
+    assert.equal(newBookingBtn.classList.contains('hidden'), false);
+    assert.equal(newBookingBtn.attrs.has('data-timeline-context-hidden'), false);
+    assert.equal(addLineBtn.classList.contains('hidden'), false);
+    assert.equal(roomLoadBtn.classList.contains('hidden'), false);
+    assert.equal(productSalesBtn.classList.contains('hidden'), true);
 });
 
 test('global business switch routes to the matching timeline surface', () => {

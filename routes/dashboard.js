@@ -16,6 +16,7 @@ const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildWorkQueue } = require('../services/workQueue');
 const { getOmniAccountAlertsAsync } = require('../services/omni-accounts');
+const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const {
     resolveBusinessScope,
     requireBusinessScope,
@@ -23,6 +24,19 @@ const {
 } = require('../services/businessContext');
 
 const log = createLogger('Dashboard');
+const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
+    TASK_ACTION_TYPES.COMPLETED,
+    TASK_ACTION_TYPES.STATUS_CHANGED,
+    TASK_ACTION_TYPES.RESCHEDULED,
+    TASK_ACTION_TYPES.SCHEDULED,
+    TASK_ACTION_TYPES.SCHEDULE_MOVED,
+    TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE,
+    TASK_ACTION_TYPES.SCHEDULE_PROPOSAL_CREATED,
+    TASK_ACTION_TYPES.SNOOZED,
+    TASK_ACTION_TYPES.URGENT_COMMITMENT_SET,
+    TASK_ACTION_TYPES.PRIORITY_CHANGED,
+    TASK_ACTION_TYPES.SUBTASK_COMPLETED
+];
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -103,6 +117,7 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
     const params = [];
     const visibility = buildTaskVisibilityScope(user, params, 't');
     const businessCondition = appendDashboardBusinessScope(params, businessScope, 't');
+    const movementParam = params.push(URGENT_TASK_MOVEMENT_ACTION_TYPES);
     const limitParam = params.push(Math.max(1, Math.min(parseInt(limit, 10) || 5, 20)));
     const result = await pool.query(
         `SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
@@ -120,6 +135,18 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
                 t.updated_at + INTERVAL '90 minutes',
                 t.created_at + INTERVAL '90 minutes'
            ) <= NOW()
+           AND NOT EXISTS (
+                SELECT 1
+                FROM task_action_history tah
+                WHERE tah.task_id = t.id
+                  AND tah.action_type = ANY($${movementParam}::text[])
+                  AND tah.created_at >= COALESCE(
+                        t.next_notification_at,
+                        t.escalate_after,
+                        t.updated_at + INTERVAL '90 minutes',
+                        t.created_at + INTERVAL '90 minutes'
+                  )
+           )
            ${visibility}
            ${businessCondition}
          ORDER BY COALESCE(t.next_notification_at, t.escalate_after, t.updated_at, t.created_at) ASC, t.id ASC
@@ -142,7 +169,8 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
             intelligence: task.intelligence || null,
             action: {
                 label: 'Вказати час',
-                prompt: `Коли візьмете термінову задачу "${row.title || row.id}" в роботу?`
+                commitment: true,
+                commitmentQuestion: `Коли візьмете термінову задачу "${row.title || row.id}" в роботу?`
             }
         };
     });

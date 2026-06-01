@@ -93,6 +93,17 @@ const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
 const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
 const KANBAN_STATUSES = ['todo', 'in_progress', 'done'];
 const PRIORITY_ICONS = { urgent: '🔥', high: '', normal: '', low: '' };
+const TASK_PRIORITY_OPTIONS = [
+    { value: 'urgent', label: 'Терміново' },
+    { value: 'high', label: 'Високий' },
+    { value: 'normal', label: 'Звичайний' },
+    { value: 'low', label: 'Низький' }
+];
+const TASK_SOUND_THEME_OPTIONS = [
+    { value: 'subtle', label: 'Мʼякий' },
+    { value: 'classic', label: 'Класичний' },
+    { value: 'rock', label: 'Rock' }
+];
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 const TASK_SCHEDULE_SLOTS = [
     { key: 'morning', icon: '🌅', label: 'Ранок' },
@@ -124,6 +135,7 @@ let taskSavedDecompositionTemplates = [];
 let taskDecompositionSuggestions = [];
 let taskSuggestionTimer = null;
 let lastTaskSuggestionKey = '';
+let taskSoundPreferences = { enabled: true, volume: 0.4, theme: 'subtle' };
 const expandedTaskSubtaskIds = new Set();
 const collapsedTaskSubtaskIds = new Set();
 const taskCardSubtaskCache = new Map();
@@ -137,6 +149,97 @@ function notifyTaskWidgetsChanged(detail = {}) {
             ...detail
         }
     }));
+}
+
+function normalizeTaskSoundPreferences(input = {}) {
+    const volume = Math.max(0, Math.min(1, Number(input.task_sound_volume ?? input.taskSoundVolume ?? input.volume ?? 0.4) || 0));
+    const theme = String(input.task_sound_theme ?? input.taskSoundTheme ?? input.theme ?? 'subtle').trim();
+    return {
+        enabled: input.task_sound_enabled !== undefined ? Boolean(input.task_sound_enabled)
+            : input.taskSoundEnabled !== undefined ? Boolean(input.taskSoundEnabled)
+                : input.enabled !== undefined ? Boolean(input.enabled)
+                    : true,
+        volume,
+        theme: TASK_SOUND_THEME_OPTIONS.some(item => item.value === theme) ? theme : 'subtle'
+    };
+}
+
+function applyTaskSoundPreferences(preferences = {}) {
+    taskSoundPreferences = normalizeTaskSoundPreferences(preferences);
+    window.SoundEngine?.configureTask?.(taskSoundPreferences);
+    renderTaskSoundControls();
+}
+
+function renderTaskSoundControls() {
+    const host = document.getElementById('taskSoundControls');
+    if (!host) return;
+    const prefs = normalizeTaskSoundPreferences(taskSoundPreferences);
+    host.innerHTML = `
+        <label class="task-sound-toggle">
+            <input type="checkbox" data-task-sound-toggle ${prefs.enabled ? 'checked' : ''}>
+            <span>Звук задач</span>
+        </label>
+        <label class="task-sound-field">
+            <span>Гучність</span>
+            <input type="range" min="0" max="1" step="0.05" value="${prefs.volume}" data-task-sound-volume>
+        </label>
+        <label class="task-sound-field">
+            <span>Тема</span>
+            <select data-task-sound-theme>
+                ${TASK_SOUND_THEME_OPTIONS.map(theme => `<option value="${theme.value}" ${theme.value === prefs.theme ? 'selected' : ''}>${escapeHtml(theme.label)}</option>`).join('')}
+            </select>
+        </label>
+        <button type="button" data-task-sound-test>Тест</button>
+    `;
+}
+
+async function saveTaskSoundPreferences(patch = {}) {
+    taskSoundPreferences = normalizeTaskSoundPreferences({ ...taskSoundPreferences, ...patch });
+    window.SoundEngine?.configureTask?.(taskSoundPreferences);
+    renderTaskSoundControls();
+    const result = await apiPatchTaskPreferences({
+        task_sound_enabled: taskSoundPreferences.enabled,
+        task_sound_volume: taskSoundPreferences.volume,
+        task_sound_theme: taskSoundPreferences.theme
+    });
+    if (result?.preferences) {
+        taskSoundPreferences = normalizeTaskSoundPreferences(result.preferences);
+        window.SoundEngine?.configureTask?.(taskSoundPreferences);
+        renderTaskSoundControls();
+    } else if (result && result.success === false) {
+        showNotification(result.error || 'Не вдалося зберегти звук задач', 'error');
+    }
+}
+
+function setupTaskSoundControls() {
+    const host = document.getElementById('taskSoundControls');
+    if (!host || host.dataset.bound === 'true') return;
+    host.dataset.bound = 'true';
+    host.addEventListener('change', event => {
+        if (event.target.matches('[data-task-sound-toggle]')) {
+            saveTaskSoundPreferences({ enabled: event.target.checked });
+        }
+        if (event.target.matches('[data-task-sound-theme]')) {
+            saveTaskSoundPreferences({ theme: event.target.value });
+        }
+    });
+    host.addEventListener('input', event => {
+        if (event.target.matches('[data-task-sound-volume]')) {
+            taskSoundPreferences = normalizeTaskSoundPreferences({ ...taskSoundPreferences, volume: event.target.value });
+            window.SoundEngine?.configureTask?.(taskSoundPreferences);
+        }
+    });
+    host.addEventListener('change', event => {
+        if (event.target.matches('[data-task-sound-volume]')) {
+            saveTaskSoundPreferences({ volume: event.target.value });
+        }
+    });
+    host.addEventListener('click', event => {
+        const button = event.target.closest('[data-task-sound-test]');
+        if (!button) return;
+        event.preventDefault();
+        window.SoundEngine?.playTask?.('task-complete');
+    });
 }
 
 // ==========================================
@@ -762,7 +865,7 @@ async function initPage() {
         const params = new URLSearchParams(window.location.search);
         const requestedView = params.get('view');
         assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
-        const allowedViews = ['inbox', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'done_today', 'archive', 'templates'];
+        const allowedViews = ['inbox', 'today', 'next', 'deferred', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'done_today', 'archive', 'templates'];
         if (requestedView && allowedViews.includes(requestedView)) currentView = requestedView;
         if (assistantTaskFilter === 'overdue' && !requestedView) currentView = 'team';
         if (requestedView === 'focus' || currentView === 'focus') currentView = 'today';
@@ -771,6 +874,7 @@ async function initPage() {
         bootStep('owners:loaded', { count: _assigneeList.length });
         setupTaskComposer();
         setupTaskGovernanceMenu();
+        setupTaskSoundControls();
         setupTaskActionDelegation();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
@@ -854,6 +958,9 @@ async function initPage() {
             userPermissions = permsResult.permissions;
             applyPermissionsUI(userPermissions);
         }
+        const preferencesResult = await apiGetTaskPreferences();
+        if (preferencesResult?.preferences) applyTaskSoundPreferences(preferencesResult.preferences);
+        else renderTaskSoundControls();
         document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === currentView));
         bootStep('permissions:loaded', { hasPermissions: Boolean(userPermissions) });
 
@@ -961,6 +1068,28 @@ async function apiPatchTaskStatus(id, status) {
     }
 }
 
+async function apiPatchTaskPriority(id, priority) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}/priority`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ priority, sourceSurface: 'tasks_page' })
+        });
+        if (handleAuthError(response)) return null;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return {
+                success: false,
+                error: payload.error || payload.message || `priority update failed (${response.status})`
+            };
+        }
+        return payload;
+    } catch (err) {
+        console.error('API patchTaskPriority error:', err);
+        return { success: false, error: err?.message || 'priority update failed' };
+    }
+}
+
 async function apiGetTaskDedupReport() {
     try {
         const response = await fetch(`${API_BASE}/tasks/dedup-report`, { headers: getAuthHeaders(false) });
@@ -1037,6 +1166,27 @@ async function apiGetTaskPermissions() {
         if (!response.ok) return null;
         return await response.json();
     } catch (err) { console.error('API getTaskPermissions error:', err); return null; }
+}
+
+async function apiGetTaskPreferences() {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/preferences`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) { console.error('API getTaskPreferences error:', err); return null; }
+}
+
+async function apiPatchTaskPreferences(data = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/preferences`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API patchTaskPreferences error:', err); return null; }
 }
 
 async function apiGetTaskOwners() {
@@ -1282,6 +1432,7 @@ function getViewLabel(view = currentView) {
         inbox: 'Інбокс',
         today: 'Сьогодні',
         next: 'Наступні',
+        deferred: 'Відкладено',
         waiting: 'Чекаю',
         team: 'Командні',
         week: 'Тиждень',
@@ -1301,10 +1452,17 @@ function taskVisibility(t = {}) { return t.visibility || (taskMode(t) === 'priva
 function taskWorkflow(t = {}) { return t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
 function taskDueDate(t = {}) { return (taskScheduleStart(t) || t.snoozedUntil || t.snoozed_until || t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
 function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.status); }
+function taskSnoozedUntil(t = {}) { return t.snoozedUntil || t.snoozed_until || ''; }
+function isDeferredTask(t = {}) {
+    const raw = taskSnoozedUntil(t);
+    if (!raw) return false;
+    const date = new Date(raw);
+    return !Number.isNaN(date.getTime()) && date > new Date();
+}
 function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
 function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
-function isInboxTask(t) { return isActiveTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && !taskScheduleStart(t))); }
+function isInboxTask(t) { return isActiveTask(t) && !isDeferredTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && !taskScheduleStart(t))); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
 function isIdeaTask(t) { return taskKind(t) === 'idea'; }
 function taskCompletedAt(t = {}) { return t.completedAt || t.completed_at || null; }
@@ -1361,6 +1519,28 @@ function taskKindBadge(t) {
         decision: 'Рішення'
     }[kind] || kind;
     return `<span class="task-os-badge kind-${escapeHtml(kind)}">${escapeHtml(label)}</span>`;
+}
+
+function renderTaskPriorityControl(task = {}) {
+    const current = task.priority || 'normal';
+    return `<select class="task-priority-select" data-task-priority-select data-task-id="${task.id}" aria-label="Пріоритет задачі">
+        ${TASK_PRIORITY_OPTIONS.map(item => `<option value="${item.value}" ${item.value === current ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
+    </select>`;
+}
+
+function renderTaskDeferredBadge(task = {}) {
+    const raw = taskSnoozedUntil(task);
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    const label = date.toLocaleString('uk-UA', {
+        timeZone: 'Europe/Kyiv',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    return `<span class="task-deferred-badge">Відкладено до ${escapeHtml(label)}</span>`;
 }
 
 function getVisibilityNote() {
@@ -1526,11 +1706,19 @@ function updateCounts() {
     const week = getWeekRange();
 
     const active = filterByCategory(allTasks.filter(isActiveTask));
+    const activeNotDeferred = active.filter(t => !isDeferredTask(t));
+    const deferredTasks = active.filter(isDeferredTask);
     const doneToday = filterByCategory(allTasks.filter(isCompletedToday));
-    const todayTasks = active.filter(t => t.date === today || !t.date);
-    const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
+    const todayTasks = activeNotDeferred.filter(t => {
+        const due = taskDueDate(t);
+        return due === today || !due;
+    });
+    const weekTasks = activeNotDeferred.filter(t => {
+        const due = taskDueDate(t);
+        return due >= week.from && due <= week.to;
+    });
     const myTasks = active.filter(isTaskInMyWorkspace);
-    const nextTasks = active.filter(t => {
+    const nextTasks = activeNotDeferred.filter(t => {
         const due = taskDueDate(t);
         return due && due > today && due <= week.to;
     });
@@ -1542,6 +1730,7 @@ function updateCounts() {
     setCount('countToday', todayTasks.length);
     setCount('countWeek', weekTasks.length);
     setCount('countNext', nextTasks.length);
+    setCount('countDeferred', deferredTasks.length);
     setCount('countWaiting', active.filter(isWaitingTask).length);
     setCount('countTeam', active.filter(isTeamTask).length);
     setCount('countMy', myTasks.length);
@@ -1556,20 +1745,29 @@ function getTasksAssistantViewBase(view = currentView) {
     const today = getTodayStr();
     const week = getWeekRange();
     const active = allTasks.filter(isActiveTask);
+    const activeNotDeferred = active.filter(t => !isDeferredTask(t));
     switch (view) {
         case 'today':
-            return active.filter(t => t.date === today || !t.date);
+            return activeNotDeferred.filter(t => {
+                const due = taskDueDate(t);
+                return due === today || !due;
+            });
         case 'next':
-            return active.filter(t => {
+            return activeNotDeferred.filter(t => {
                 const due = taskDueDate(t);
                 return due && due > today && due <= week.to;
             });
+        case 'deferred':
+            return active.filter(isDeferredTask);
         case 'waiting':
             return active.filter(isWaitingTask);
         case 'team':
             return active.filter(isTeamTask);
         case 'week':
-            return active.filter(t => t.date >= week.from && t.date <= week.to);
+            return activeNotDeferred.filter(t => {
+                const due = taskDueDate(t);
+                return due >= week.from && due <= week.to;
+            });
         case 'my':
             return active.filter(isTaskInMyWorkspace);
         case 'board':
@@ -1593,20 +1791,30 @@ function getTasksAssistantCounts() {
     inTwoDays.setDate(inTwoDays.getDate() + 2);
     const nearDeadlineLimit = inTwoDays.toISOString().slice(0, 10);
     const active = filterByCategory(allTasks.filter(isActiveTask));
+    const activeNotDeferred = active.filter(t => !isDeferredTask(t));
+    const deferredTasks = active.filter(isDeferredTask);
     const doneToday = filterByCategory(allTasks.filter(isCompletedToday));
     const currentViewBase = filterByCategory(getTasksAssistantViewBase(currentView));
     const currentViewFiltered = applyAssistantTaskFilter(currentViewBase);
-    const nextTasks = active.filter(t => {
+    const nextTasks = activeNotDeferred.filter(t => {
         const due = taskDueDate(t);
         return due && due > today && due <= week.to;
+    });
+    const todayTasks = activeNotDeferred.filter(t => {
+        const due = taskDueDate(t);
+        return due === today || !due;
     });
     return {
         loaded: allTasks.length,
         active: active.length,
         inbox: active.filter(isInboxTask).length,
-        today: active.filter(t => t.date === today || !t.date).length,
-        week: active.filter(t => t.date >= week.from && t.date <= week.to).length,
+        today: todayTasks.length,
+        week: activeNotDeferred.filter(t => {
+            const due = taskDueDate(t);
+            return due >= week.from && due <= week.to;
+        }).length,
         next: nextTasks.length,
+        deferred: deferredTasks.length,
         waiting: active.filter(isWaitingTask).length,
         team: active.filter(isTeamTask).length,
         my: active.filter(isTaskInMyWorkspace).length,
@@ -1616,7 +1824,7 @@ function getTasksAssistantCounts() {
         currentVisible: currentViewFiltered.length,
         assistantFilteredOut: Math.max(0, currentViewBase.length - currentViewFiltered.length),
         overdue: active.filter(isOverdueTask).length,
-        nearDeadline: active.filter(t => {
+        nearDeadline: activeNotDeferred.filter(t => {
             const due = taskDueDate(t);
             return due && due >= today && due <= nearDeadlineLimit;
         }).length,
@@ -1746,13 +1954,14 @@ function renderBoard() {
             const today = getTodayStr();
             const week = getWeekRange();
             const due = taskDueDate(t);
-            return isActiveTask(t) && due && due > today && due <= week.to;
+            return isActiveTask(t) && !isDeferredTask(t) && due && due > today && due <= week.to;
         }, 'На найближчі дні нічого не заплановано.', t => {
             const today = getTodayStr();
             const week = getWeekRange();
             const due = taskDueDate(t) || (taskCompletedAt(t) || '').slice(0, 10);
             return due && due > today && due <= week.to;
         }); break;
+        case 'deferred': renderSimpleTaskView(container, 'deferred', t => isActiveTask(t) && isDeferredTask(t), 'Відкладених задач немає.', isDeferredTask); break;
         case 'waiting': renderSimpleTaskView(container, 'waiting', t => isActiveTask(t) && isWaitingTask(t), 'Немає задач у стані “чекаю”.', isWaitingTask); break;
         case 'team': renderSimpleTaskView(container, 'team', t => isActiveTask(t) && isTeamTask(t), 'Командних задач у цьому зрізі немає.', isTeamTask); break;
         case 'week': renderWeekView(container); break;
@@ -1783,7 +1992,11 @@ function renderSimpleTaskView(container, view, predicate, emptyText, completedPr
 
 function renderTodayView(container) {
     const today = getTodayStr();
-    const activeBase = allTasks.filter(t => isActiveTask(t) && (t.date === today || !t.date));
+    const activeBase = allTasks.filter(t => {
+        if (!isActiveTask(t) || isDeferredTask(t)) return false;
+        const due = taskDueDate(t);
+        return due === today || !due;
+    });
     const completedBase = allTasks.filter(t => t.status === 'done' && (t.date === today || isCompletedToday(t)));
     const baseTasks = composeSliceTasks(activeBase, completedBase);
     let tasks = baseTasks;
@@ -1820,7 +2033,11 @@ function renderTodayView(container) {
 
 function renderWeekView(container) {
     const week = getWeekRange();
-    const activeBase = allTasks.filter(t => isActiveTask(t) && t.date >= week.from && t.date <= week.to);
+    const activeBase = allTasks.filter(t => {
+        if (!isActiveTask(t) || isDeferredTask(t)) return false;
+        const due = taskDueDate(t);
+        return due >= week.from && due <= week.to;
+    });
     const completedBase = allTasks.filter(t => {
         if (t.status !== 'done') return false;
         const due = taskDueDate(t) || (taskCompletedAt(t) || '').slice(0, 10);
@@ -2176,6 +2393,8 @@ function renderTaskCard(t) {
     const completedHtml = t.status === 'done'
         ? `<span class="task-completed-badge">Виконано${completedTime ? ` · ${escapeHtml(completedTime)}` : ''}</span>`
         : '';
+    const deferred = isDeferredTask(t);
+    const deferredHtml = renderTaskDeferredBadge(t);
     const isKanbanCard = currentView === 'board' && KANBAN_STATUSES.includes(t.status);
     const isKanbanSaving = kanbanSavingTaskIds.has(Number(t.id));
     const kanbanAttrs = isKanbanCard
@@ -2202,6 +2421,7 @@ function renderTaskCard(t) {
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${renderScheduleBadge(t)}
             ${deadlineHtml}
+            ${deferredHtml}
             ${ownerHtml}
             ${completedHtml}
             ${intelHtml}
@@ -2215,6 +2435,8 @@ function renderTaskCard(t) {
             ${!isWaitingTask(t) ? `<button data-task-action="waiting" data-task-id="${t.id}">Чекаю</button>` : ''}
             ${renderCardScheduleActions(t.id)}
             <button data-task-action="snooze" data-task-id="${t.id}" data-minutes="60">+1 год</button>
+            ${deferred ? `<button data-task-action="move-today" data-task-id="${t.id}">На сьогодні</button>` : ''}
+            ${renderTaskPriorityControl(t)}
             ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" data-task-action="delete" data-task-id="${t.id}" aria-label="Видалити задачу">✕</button>` : ''}
         </div>
     </div>`;
@@ -3179,6 +3401,7 @@ async function addTask() {
     }
 
     const createdTasks = [];
+    let postCreateWarningCount = 0;
     for (let i = 0; i < drafts.length; i += 1) {
         const data = buildTaskCreatePayload(drafts[i]);
         const result = await apiCreateTask(data);
@@ -3192,6 +3415,7 @@ async function addTask() {
             }
             return;
         }
+        if (Array.isArray(result.postCreateWarnings)) postCreateWarningCount += result.postCreateWarnings.length;
         createdTasks.push(result.task);
         lastCreatedTaskId = result.task?.id || lastCreatedTaskId;
         keepNewTaskVisible(result.task, data);
@@ -3199,7 +3423,9 @@ async function addTask() {
 
     const createdMode = mainDraft.assigneeMode;
     resetTaskComposerAfterCreate();
-    if (createdTasks.length > 1) {
+    if (postCreateWarningCount > 0) {
+        showNotification('Задачу створено, але частину деталей треба перевірити', 'warning');
+    } else if (createdTasks.length > 1) {
         showNotification(`Створено ${createdTasks.length} окремі задачі`, 'success');
     } else {
         showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
@@ -3298,6 +3524,21 @@ async function rescheduleOverdueTask(taskId, option = 'tomorrow') {
     showNotification(result?.error || 'Не вдалося перенести задачу', 'error');
 }
 
+async function moveDeferredTaskToToday(taskId) {
+    const id = Number(taskId || 0);
+    if (!id) return;
+    const result = await apiRescheduleTask(id, {
+        deadline: deadlineForDate(getTodayStr()),
+        sourceSurface: 'task_page_deferred_return'
+    });
+    if (result?.success) {
+        showNotification('Задачу повернено на сьогодні', 'success');
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося повернути задачу', 'error');
+}
+
 async function handleTaskActionButton(button) {
     const taskId = Number(button.dataset.taskId || 0);
     const action = button.dataset.taskAction || '';
@@ -3312,6 +3553,7 @@ async function handleTaskActionButton(button) {
         if (action === 'waiting') await markTaskWaiting(taskId);
         if (action === 'schedule') await quickScheduleTask(taskId, button.dataset.scheduleSlotAction || quickScheduleSlot);
         if (action === 'snooze') await snoozeTaskQuick(taskId, Number(button.dataset.minutes || 60));
+        if (action === 'move-today') await moveDeferredTaskToToday(taskId);
         if (action === 'reschedule-overdue') await rescheduleOverdueTask(taskId, button.dataset.rescheduleOption || 'tomorrow');
         if (action === 'delete') await deleteTask(taskId);
         if (action === 'restore') await restoreTask(taskId);
@@ -3509,6 +3751,11 @@ function setupTaskActionDelegation() {
     });
 
     board.addEventListener('change', async (event) => {
+        if (event.target.matches('[data-task-priority-select]')) {
+            event.stopPropagation();
+            await updateTaskPriorityQuick(event.target);
+            return;
+        }
         if (event.target.matches('[data-task-subtask-done]')) {
             event.stopPropagation();
             await updateTaskCardSubtaskDone(event.target);
@@ -3541,11 +3788,31 @@ async function cycleStatus(taskId, newStatus) {
         result = await apiCompleteTask(taskId, { reportId });
     }
     if (result && result.success) {
+        if (newStatus === 'done') window.SoundEngine?.playTask?.('task-complete');
         notifyTaskWidgetsChanged({ action: 'task_status', taskId, status: newStatus });
         await loadAllTasks();
     } else {
         showNotification(result?.error || 'Помилка зміни статусу', 'error');
     }
+}
+
+async function updateTaskPriorityQuick(select) {
+    const taskId = Number(select.dataset.taskId || 0);
+    const priority = select.value || 'normal';
+    const task = allTasks.find(t => Number(t.id) === taskId);
+    const previous = task?.priority || 'normal';
+    select.disabled = true;
+    const result = await apiPatchTaskPriority(taskId, priority);
+    select.disabled = false;
+    if (result?.success) {
+        allTasks = allTasks.map(item => Number(item.id) === taskId ? { ...item, ...(result.task || {}), priority } : item);
+        showNotification('Пріоритет оновлено', 'success');
+        notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
+        renderBoard();
+        return;
+    }
+    select.value = previous;
+    showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
 }
 
 async function snoozeTaskQuick(event, taskId, minutes) {
@@ -4231,6 +4498,7 @@ async function taskDetailComplete(taskId) {
         result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail', reportId });
     }
     if (result?.success) {
+        window.SoundEngine?.playTask?.('task-complete');
         showNotification('Задачу виконано', 'success');
         notifyTaskWidgetsChanged({ action: 'task_status', taskId, status: 'done' });
         await closeTaskDetailOverlay(true);

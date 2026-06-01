@@ -784,7 +784,75 @@ test('urgent priority has dashboard alert escalation and alert-panel commitment 
     assert.match(tasksSource, /next_notification_at/);
     assert.match(dashboardSource, /function buildUrgentTaskAlerts/);
     assert.match(dashboardSource, /urgent_task_/);
-    assert.match(tasksSource, /commitment_time/);
+    assert.match(tasksSource, /router\.patch\('\/:id\/priority'/);
+    assert.match(tasksSource, /router\.patch\('\/:id\/commitment'/);
+    assert.match(tasksSource, /commitment:\s*'time_required'/);
+    assert.match(dashboardSource, /TASK_ACTION_TYPES\.URGENT_COMMITMENT_SET/);
+    assert.match(dashboardSource, /NOT EXISTS/);
+    assert.match(dashboardSource, /commitmentQuestion/);
     assert.match(alertsSource, /startsWith\('urgent_task_'\)/);
-    assert.match(alertsSource, /Коли візьмете термінову задачу в роботу/);
+    assert.match(alertsSource, /\/api\/tasks\/\$\{taskId\}\/commitment/);
+    assert.match(alertsSource, /commitmentAt/);
+});
+
+test('task create post steps degrade to warnings after the row is created', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+
+    assert.match(source, /const postCreateWarnings = \[\]/);
+    assert.match(source, /recordPostCreateWarning\('schedule'/);
+    assert.match(source, /recordPostCreateWarning\('subtasks'/);
+    assert.match(source, /postCreateWarnings,/);
+    assert.match(source, /postCreateWarningCount: postCreateWarnings\.length/);
+});
+
+test('my cabinet and tasks expose explicit deferred task bucket', () => {
+    const tasksSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const tasksPageSource = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const tasksHtml = fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8');
+
+    assert.match(tasksSource, /deferred: \[\]/);
+    assert.match(tasksSource, /isTaskDeferred\(task, now\)/);
+    assert.match(tasksSource, /deferred: buckets\.deferred/);
+    assert.match(tasksSource, /deferredCount: buckets\.deferred\.length/);
+    assert.match(profileSource, /const deferred = cabinetList\('deferred'\)/);
+    assert.match(profileSource, /renderCabinetSection\('Відкладено'/);
+    assert.match(tasksPageSource, /function isDeferredTask/);
+    assert.match(tasksPageSource, /case 'deferred'/);
+    assert.match(tasksHtml, /data-view="deferred"/);
+    assert.match(tasksHtml, /id="countDeferred"/);
+});
+
+test('task sounds use task scoped preferences and controls, not chat settings', () => {
+    const soundSource = fs.readFileSync(path.join(ROOT, 'js', 'sound-engine.js'), 'utf8');
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const tasksPageSource = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const tasksRouteSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+
+    assert.match(soundSource, /task_sound_settings/);
+    assert.match(soundSource, /playTask: function/);
+    assert.match(soundSource, /chat_sound_settings/);
+    assert.match(profileSource, /renderCabinetTaskSoundControls/);
+    assert.match(profileSource, /playTask\?\.\('task-complete'\)/);
+    assert.match(profileSource, /data-cabinet-task-sound-theme/);
+    assert.match(tasksPageSource, /renderTaskSoundControls/);
+    assert.match(tasksPageSource, /SoundEngine\?\.playTask\?\.\('task-complete'\)/);
+    assert.match(tasksRouteSource, /task_sound_enabled/);
+    assert.match(tasksRouteSource, /task_sound_volume/);
+    assert.match(tasksRouteSource, /task_sound_theme/);
+});
+
+test('task priority quick controls and migration indexes are present', () => {
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const tasksPageSource = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '243_tasks_urgent_deferred_preferences.sql'), 'utf8');
+
+    assert.match(profileSource, /data-cabinet-task-priority-select/);
+    assert.match(profileSource, /\/tasks\/\$\{taskId\}\/priority/);
+    assert.match(tasksPageSource, /data-task-priority-select/);
+    assert.match(tasksPageSource, /\/tasks\/\$\{id\}\/priority/);
+    assert.match(migration, /MIGRATION_KIND: schema/);
+    assert.match(migration, /idx_tasks_business_urgent_due/);
+    assert.match(migration, /idx_tasks_business_owner_snoozed_active/);
+    assert.match(migration, /idx_tasks_business_owner_workload_active/);
 });

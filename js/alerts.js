@@ -262,6 +262,12 @@ function _renderAlertItem(a, isRead) {
 
 function _esc(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
+function _alertDateTimeLocalValue(date = new Date()) {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    local.setSeconds(0, 0);
+    return local.toISOString().slice(0, 16);
+}
+
 function _isOmniAccountAlert(a) {
     const id = String(a?.id || '').toLowerCase();
     const source = String(a?.source || '').toLowerCase();
@@ -296,13 +302,31 @@ async function _quickAction(alertId, action) {
         _goAlert(alert.link, alertId);
     } else if (action === 'reschedule') {
         const isUrgentTask = alert.id?.startsWith('urgent_task_');
-        const promptText = isUrgentTask ? 'Коли візьмете термінову задачу в роботу?' : 'Нова дата дедлайну:';
-        const newDate = await promptModal(promptText, { inputType: 'date', defaultValue: new Date().toISOString().slice(0, 10) });
+        const promptText = isUrgentTask
+            ? (alert.action?.commitmentQuestion || 'Коли візьмете термінову задачу в роботу?')
+            : 'Нова дата дедлайну:';
+        const newDate = await promptModal(promptText, {
+            inputType: isUrgentTask ? 'datetime-local' : 'date',
+            defaultValue: isUrgentTask ? _alertDateTimeLocalValue(new Date(Date.now() + 60 * 60000)) : new Date().toISOString().slice(0, 10),
+            okText: isUrgentTask ? 'Зберегти час' : 'Перенести'
+        });
         if (!newDate) return;
         const taskId = alert.taskId;
         if (taskId) {
             try {
                 const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+                if (isUrgentTask) {
+                    const commitmentAt = new Date(newDate).toISOString();
+                    const res = await fetchWithAuth(`/api/tasks/${taskId}/commitment`, {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ commitmentAt, sourceSurface: 'alerts_panel' })
+                    });
+                    if (!res.ok) throw new Error('commitment failed');
+                    if (typeof showNotification === 'function') showNotification('Час для термінової задачі збережено', 'success');
+                    _dismissAlert(alertId);
+                    loadAlertBell();
+                    return;
+                }
                 await fetchWithAuth(`/api/tasks/${taskId}/reschedule`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -310,10 +334,12 @@ async function _quickAction(alertId, action) {
                         sourceSurface: 'alerts_panel'
                     })
                 });
-                if (typeof showNotification === 'function') showNotification(isUrgentTask ? 'Час для термінової задачі оновлено' : 'Дедлайн перенесено', 'success');
+                if (typeof showNotification === 'function') showNotification('Дедлайн перенесено', 'success');
                 _dismissAlert(alertId);
                 loadAlertBell();
-            } catch {}
+            } catch {
+                if (typeof showNotification === 'function') showNotification('Не вдалося оновити час задачі', 'error');
+            }
         }
     } else if (action === 'order') {
         const stockName = alert.stockItem || alert.title;

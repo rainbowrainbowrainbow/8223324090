@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.69.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.69.22">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.69.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.69.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.69.22">
+    <link rel="stylesheet" href="css/base.css?v=0.69.23">
+    <link rel="stylesheet" href="css/layout.css?v=0.69.23">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.23">
+    <link rel="stylesheet" href="css/pages.css?v=0.69.23">
+    <link rel="stylesheet" href="css/modals.css?v=0.69.23">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.23">
+    <link rel="stylesheet" href="css/responsive.css?v=0.69.23">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -298,11 +298,95 @@
             color: #5eead4;
         }
         body.dark-mode .done-today-board-note { color: #cbd5e1; background: rgba(16,185,129,0.12); }
-        .task-card-actions { display: flex; gap: 4px; margin-top: 6px; }
+        body.dark-mode .task-priority-select,
+        body.dark-mode .task-sound-field select {
+            background: rgba(15,23,42,0.82);
+            color: #e2e8f0;
+            border-color: rgba(148,163,184,0.18);
+        }
+        body.dark-mode .task-deferred-badge {
+            background: rgba(245,158,11,0.15);
+            color: #fbbf24;
+            border-color: rgba(251,191,36,0.28);
+        }
+        body.dark-mode .task-sound-controls {
+            background: rgba(15,23,42,0.72);
+            border-color: rgba(148,163,184,0.14);
+        }
+        body.dark-mode .task-sound-toggle,
+        body.dark-mode .task-sound-field { color: #cbd5e1; }
+        .task-card-actions { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
         .task-card-actions button {
             padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
             cursor: pointer; font-family: inherit; font-weight: 600;
             background: var(--gray-100); color: var(--gray-600); transition: all 0.1s;
+        }
+        .task-priority-select {
+            min-height: 26px;
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 7px;
+            background: rgba(255,255,255,0.82);
+            color: var(--gray-700);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 6px;
+        }
+        .task-deferred-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(245,158,11,0.12);
+            color: #b45309;
+            border: 1px solid rgba(245,158,11,0.28);
+            font-size: 10px;
+            font-weight: 900;
+        }
+        .task-sound-controls {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 12px;
+            padding: 8px 10px;
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.72);
+        }
+        .task-sound-toggle,
+        .task-sound-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 900;
+        }
+        .task-sound-field input[type="range"] { width: 96px; accent-color: var(--primary); }
+        .task-sound-field select {
+            min-height: 28px;
+            border: 1px solid rgba(148,163,184,0.24);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.88);
+            color: var(--gray-700);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 3px 7px;
+        }
+        .task-sound-controls button {
+            min-height: 28px;
+            border: 1px solid rgba(20,184,166,0.26);
+            border-radius: 8px;
+            background: rgba(20,184,166,0.1);
+            color: #0f766e;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            padding: 4px 9px;
+            cursor: pointer;
         }
         .task-card-actions button:hover { background: var(--gray-200); }
         .task-card-actions .btn-done { background: #E8F5E9; color: #2E7D32; }
@@ -1706,6 +1790,7 @@
                 <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
                 <button type="button" class="board-tab" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
                 <button type="button" class="board-tab" data-view="next">Наступні <span class="tab-count" id="countNext">0</span></button>
+                <button type="button" class="board-tab" data-view="deferred">Відкладено <span class="tab-count" id="countDeferred">0</span></button>
                 <button type="button" class="board-tab" data-view="waiting">Чекаю <span class="tab-count" id="countWaiting">0</span></button>
                 <button type="button" class="board-tab" data-view="team">Командні <span class="tab-count" id="countTeam">0</span></button>
                 <button type="button" class="board-tab" data-view="my" title="Мої: задачі для мене, собі і ті, які я поставив команді">Мої <span class="tab-count" id="countMy">0</span></button>
@@ -1741,6 +1826,7 @@
             </section>
 
             <!-- Quick add task -->
+            <div id="taskSoundControls" class="task-sound-controls" aria-label="Звук задач"></div>
             <div id="taskExplainability" hidden></div>
             <div id="operationsSummary" class="operations-summary hidden"></div>
 
@@ -1986,14 +2072,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.69.22"></script>
-    <script src="js/notification.js?v=0.69.22"></script>
-    <script src="js/api.js?v=0.69.22"></script>
-    <script src="js/auth.js?v=0.69.22"></script>
-    <script src="js/components/sidebar.js?v=0.69.22"></script>
+    <script src="js/config.js?v=0.69.23"></script>
+    <script src="js/notification.js?v=0.69.23"></script>
+    <script src="js/api.js?v=0.69.23"></script>
+    <script src="js/auth.js?v=0.69.23"></script>
+    <script src="js/components/sidebar.js?v=0.69.23"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.69.22"></script>
-    <script src="js/tasks-page.js?v=0.69.22"></script>
-    <script src="js/alerts.js?v=0.69.22"></script><script src="js/ui.js?v=0.69.22"></script>
+    <script src="js/task-create.js?v=0.69.23"></script>
+    <script src="js/tasks-page.js?v=0.69.23"></script>
+    <script src="js/alerts.js?v=0.69.23"></script><script src="js/ui.js?v=0.69.23"></script>
 </body>
 </html>

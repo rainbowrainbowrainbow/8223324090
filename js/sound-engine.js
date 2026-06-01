@@ -11,15 +11,23 @@
         volume: 0.4,
         theme: 'rock'
     };
+    var DEFAULT_TASK_SETTINGS = {
+        enabled: true,
+        volume: 0.4,
+        theme: 'subtle'
+    };
+    var TASK_SOUND_THEMES = ['rock', 'classic', 'subtle'];
 
     var SoundEngine = {
         ctx: null,
         enabled: true,
         volume: 0.4,
         theme: 'rock',
+        taskSettings: Object.assign({}, DEFAULT_TASK_SETTINGS),
 
         init: function () {
             this._loadSettings();
+            this._loadTaskSettings();
             // AudioContext must be created after user gesture
             // We lazily init on first play
         },
@@ -65,7 +73,55 @@
             } catch (e) { /* ignore */ }
         },
 
+        _normalizeSoundSettings: function (settings, defaults) {
+            settings = settings || {};
+            var volume = Number(settings.volume);
+            if (!Number.isFinite(volume)) volume = defaults.volume;
+            volume = Math.max(0, Math.min(1, volume));
+            var theme = String(settings.theme || defaults.theme).trim();
+            if (TASK_SOUND_THEMES.indexOf(theme) === -1) theme = defaults.theme;
+            return {
+                enabled: settings.enabled !== undefined ? Boolean(settings.enabled) : defaults.enabled,
+                volume: volume,
+                theme: theme
+            };
+        },
+
+        _loadTaskSettings: function () {
+            try {
+                var saved = localStorage.getItem('task_sound_settings');
+                this.taskSettings = this._normalizeSoundSettings(saved ? JSON.parse(saved) : {}, DEFAULT_TASK_SETTINGS);
+            } catch (e) {
+                this.taskSettings = Object.assign({}, DEFAULT_TASK_SETTINGS);
+            }
+        },
+
+        saveTaskSettings: function (settings) {
+            if (settings) this.configureTask(settings, { persist: false });
+            try {
+                localStorage.setItem('task_sound_settings', JSON.stringify(this.taskSettings));
+            } catch (e) { /* ignore */ }
+            return this.getTaskSettings();
+        },
+
+        configureTask: function (settings, options) {
+            this.taskSettings = this._normalizeSoundSettings(
+                Object.assign({}, this.taskSettings || DEFAULT_TASK_SETTINGS, settings || {}),
+                DEFAULT_TASK_SETTINGS
+            );
+            if (!options || options.persist !== false) this.saveTaskSettings();
+            return this.getTaskSettings();
+        },
+
+        getTaskSettings: function () {
+            return Object.assign({}, this.taskSettings || DEFAULT_TASK_SETTINGS);
+        },
+
         play: function (name, channelId) {
+            if (String(name || '').indexOf('task-') === 0) {
+                this.playTask(name);
+                return;
+            }
             if (!this.enabled) return;
             var ctx = this._getCtx();
             if (!ctx) return;
@@ -83,6 +139,48 @@
         },
 
         // ─── ROCK THEME ───────────────────────────────────────────────────────────
+
+        playTask: function (name) {
+            var settings = this._normalizeSoundSettings(this.taskSettings || {}, DEFAULT_TASK_SETTINGS);
+            if (!settings.enabled) return;
+            var ctx = this._getCtx();
+            if (!ctx) return;
+            try {
+                this._playTaskScoped(name, settings);
+            } catch (e) {
+                console.warn('[SoundEngine] task play error:', e);
+            }
+        },
+
+        _playTaskScoped: function (name, settings) {
+            if (settings.theme === 'rock') {
+                this._taskTone(1320, 0.11, settings.volume, 'triangle');
+                if (name === 'task-complete') {
+                    setTimeout(this._taskTone.bind(this, 1760, 0.13, settings.volume, 'triangle'), 70);
+                }
+                return;
+            }
+            if (settings.theme === 'classic') {
+                this._taskTone(name === 'task-complete' ? 1050 : 780, 0.16, settings.volume, 'sine');
+                return;
+            }
+            this._taskTone(name === 'task-complete' ? 1050 : 850, 0.07, settings.volume, 'sine');
+        },
+
+        _taskTone: function (freq, duration, volume, type) {
+            var ctx = this.ctx;
+            if (!ctx) return;
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.type = type || 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(Math.max(0, Math.min(1, volume)) * 0.5, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + duration + 0.01);
+        },
 
         _playRock: function (name) {
             switch (name) {

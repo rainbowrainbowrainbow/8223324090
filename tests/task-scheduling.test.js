@@ -56,6 +56,10 @@ test('schedule history action taxonomy includes durable scheduling events', () =
     assert.equal(TASK_ACTION_TYPES.SCHEDULE_PROPOSAL_CREATED, 'task_schedule_proposal_created');
     assert.equal(TASK_ACTION_TYPES.SLOT_MISSED, 'task_slot_missed');
     assert.equal(TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED, 'task_discipline_penalty_applied');
+    assert.equal(TASK_ACTION_TYPES.PRIORITY_CHANGED, 'task_priority_changed');
+    assert.equal(TASK_ACTION_TYPES.SNOOZED, 'task_snoozed');
+    assert.equal(TASK_ACTION_TYPES.URGENT_COMMITMENT_SET, 'task_urgent_commitment_set');
+    assert.equal(TASK_ACTION_TYPES.SUBTASK_COMPLETED, 'task_subtask_completed');
 });
 
 test('rescheduling policy honors explicit canReschedule control metadata', () => {

@@ -6,6 +6,11 @@ const TASK_ACTION_TYPES = Object.freeze({
     COMPLETED: 'task_completed',
     OWNER_REASSIGNED: 'task_owner_reassigned',
     RESCHEDULED: 'task_rescheduled',
+    STATUS_CHANGED: 'task_status_changed',
+    PRIORITY_CHANGED: 'task_priority_changed',
+    SNOOZED: 'task_snoozed',
+    URGENT_COMMITMENT_SET: 'task_urgent_commitment_set',
+    SUBTASK_COMPLETED: 'task_subtask_completed',
     OBSERVERS_UPDATED: 'task_observers_updated',
     SCHEDULED: 'task_scheduled',
     SCHEDULE_MOVED: 'task_schedule_moved',
@@ -37,6 +42,16 @@ function summaryForAction(actionType) {
             return 'Task owner reassigned';
         case TASK_ACTION_TYPES.RESCHEDULED:
             return 'Task rescheduled';
+        case TASK_ACTION_TYPES.STATUS_CHANGED:
+            return 'Task status changed';
+        case TASK_ACTION_TYPES.PRIORITY_CHANGED:
+            return 'Task priority changed';
+        case TASK_ACTION_TYPES.SNOOZED:
+            return 'Task snoozed';
+        case TASK_ACTION_TYPES.URGENT_COMMITMENT_SET:
+            return 'Urgent task commitment set';
+        case TASK_ACTION_TYPES.SUBTASK_COMPLETED:
+            return 'Task subtask completed';
         case TASK_ACTION_TYPES.OBSERVERS_UPDATED:
             return 'Task observers updated';
         case TASK_ACTION_TYPES.SCHEDULED:

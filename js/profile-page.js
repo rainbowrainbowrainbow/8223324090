@@ -35,6 +35,7 @@ let cabinetCreateDuePreset = 'today';
 let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
+let cabinetTaskSoundSettings = { enabled: true, volume: 0.4, theme: 'subtle' };
 let cabinetSnoozeOutsideBound = false;
 let cabinetTaskDragDropBound = false;
 let cabinetTaskDragState = null;
@@ -63,6 +64,24 @@ function notifyTaskWidgetsChanged(detail = {}) {
             ...detail
         }
     }));
+}
+
+function normalizeCabinetTaskSoundSettings(input = {}) {
+    const volume = Math.max(0, Math.min(1, Number(input.task_sound_volume ?? input.taskSoundVolume ?? input.volume ?? 0.4) || 0));
+    const theme = String(input.task_sound_theme ?? input.taskSoundTheme ?? input.theme ?? 'subtle').trim();
+    return {
+        enabled: input.task_sound_enabled !== undefined ? Boolean(input.task_sound_enabled)
+            : input.taskSoundEnabled !== undefined ? Boolean(input.taskSoundEnabled)
+                : input.enabled !== undefined ? Boolean(input.enabled)
+                    : true,
+        volume,
+        theme: CABINET_TASK_SOUND_THEMES.some(item => item.value === theme) ? theme : 'subtle'
+    };
+}
+
+function applyCabinetTaskSoundPreferences(preferences = {}) {
+    cabinetTaskSoundSettings = normalizeCabinetTaskSoundSettings(preferences);
+    window.SoundEngine?.configureTask?.(cabinetTaskSoundSettings);
 }
 
 // v30.8.0 — Gamification v3 state
@@ -104,6 +123,12 @@ const CABINET_TASK_PRIORITIES = [
     { value: 'high', label: 'Високий', hint: 'Вище звичайних задач' },
     { value: 'normal', label: 'Звичайний', hint: 'Стандартний пріоритет' },
     { value: 'low', label: 'Низький', hint: 'Можна виконати пізніше' }
+];
+
+const CABINET_TASK_SOUND_THEMES = [
+    { value: 'subtle', label: 'Мʼякий' },
+    { value: 'classic', label: 'Класичний' },
+    { value: 'rock', label: 'Rock' }
 ];
 
 const CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT = 36;
@@ -1006,6 +1031,7 @@ async function loadProfileData(userId) {
     titlesData = results[6];
     allStreaks = results[7];
     myCabinetData = results[8];
+    applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     syncCabinetPulseCounts(results[9], results[10]);
     profileSecurityData = results[11];
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
@@ -1394,6 +1420,7 @@ async function switchTab(tab, options = {}) {
     const locked = profileTabLock(tab);
     if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab) && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
+        applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     }
     if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab)) {
         await refreshCabinetPulseCounts();
@@ -2489,7 +2516,7 @@ function cabinetList(name) {
 function findCabinetTask(taskId) {
     const id = Number(taskId);
     if (!Number.isInteger(id) || id <= 0) return null;
-    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
+    const buckets = ['all', 'today', 'deferred', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
     for (const bucket of buckets) {
         const found = cabinetList(bucket).find(task => Number(task.id || task.taskId || task.task_id) === id);
         if (found) return found;
@@ -2497,7 +2524,7 @@ function findCabinetTask(taskId) {
     return null;
 }
 
-const CABINET_ACTIVE_TASK_BUCKETS = ['all', 'focus', 'today', 'next', 'waiting', 'private', 'overdue', 'inbox', 'createdByMe'];
+const CABINET_ACTIVE_TASK_BUCKETS = ['all', 'focus', 'today', 'next', 'deferred', 'waiting', 'private', 'overdue', 'inbox', 'createdByMe'];
 
 function cabinetProjectionTaskId(task = {}) {
     return normalizeCabinetTaskId(task?.id || task?.taskId || task?.task_id);
@@ -2547,6 +2574,7 @@ function syncCabinetProjectionCountersFromBuckets() {
     if (!myCabinetData?.stats) return;
     myCabinetData.stats.waitingCount = cabinetList('waiting').length;
     myCabinetData.stats.overdueCount = cabinetList('overdue').length;
+    myCabinetData.stats.deferredCount = cabinetList('deferred').length;
     myCabinetData.stats.privateCount = cabinetList('private').length;
     myCabinetData.stats.inboxCount = cabinetList('inbox').length;
     myCabinetData.stats.focusCount = cabinetList('focus').length;
@@ -2615,7 +2643,7 @@ function scheduleCabinetProjectionRefresh(delay = 900) {
 function cabinetTaskProjectionContainsId(data, taskId) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id || !data || typeof data !== 'object') return false;
-    const buckets = ['all', 'today', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
+    const buckets = ['all', 'today', 'deferred', 'overdue', 'waiting', 'private', 'createdByMe', 'completedHistory'];
     return buckets.some(bucket => Array.isArray(data[bucket])
         && data[bucket].some(task => normalizeCabinetTaskId(task?.id || task?.taskId || task?.task_id) === id));
 }
@@ -3705,6 +3733,35 @@ function renderCabinetSnoozeMenu(taskIdAttr) {
         </div>`;
 }
 
+function renderCabinetTaskPriorityControl(task = {}, taskIdAttr = '') {
+    const selected = normalizeCabinetPriority(task.priority || 'normal');
+    return `<select class="cabinet-task-priority-select" data-cabinet-task-priority-select data-task-id="${taskIdAttr}" aria-label="Пріоритет задачі" ${taskIdAttr ? '' : 'disabled'}>
+        ${CABINET_TASK_PRIORITIES.map(item => `<option value="${item.value}" ${item.value === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
+    </select>`;
+}
+
+function renderCabinetTaskSoundControls() {
+    const prefs = normalizeCabinetTaskSoundSettings(cabinetTaskSoundSettings);
+    return `
+        <div class="cabinet-task-sound-controls" data-cabinet-task-sound-controls aria-label="Звук задач">
+            <label class="cabinet-task-sound-toggle">
+                <input type="checkbox" data-cabinet-task-sound-toggle ${prefs.enabled ? 'checked' : ''}>
+                <span>Звук задач</span>
+            </label>
+            <label class="cabinet-task-sound-field">
+                <span>Гучність</span>
+                <input type="range" min="0" max="1" step="0.05" value="${prefs.volume}" data-cabinet-task-sound-volume>
+            </label>
+            <label class="cabinet-task-sound-field">
+                <span>Тема</span>
+                <select data-cabinet-task-sound-theme>
+                    ${CABINET_TASK_SOUND_THEMES.map(theme => `<option value="${theme.value}" ${theme.value === prefs.theme ? 'selected' : ''}>${escapeHtml(theme.label)}</option>`).join('')}
+                </select>
+            </label>
+            <button type="button" data-cabinet-task-sound-test>Тест</button>
+        </div>`;
+}
+
 function cabinetControlMeta(task = {}) {
     const value = task.controlMeta || task.control_meta || {};
     if (!value) return {};
@@ -4023,7 +4080,6 @@ function renderCabinetTaskCard(task, compact = false) {
     const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
     const priority = normalizeCabinetPriority(task.priority || 'normal');
-    const priorityLabel = cabinetTaskPriorityLabel(priority);
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
     const moveToTodayState = cabinetTaskMoveToTodayState(task, dueState);
@@ -4052,7 +4108,7 @@ function renderCabinetTaskCard(task, compact = false) {
                 <div class="cabinet-task-meta">
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
-                    <span class="cabinet-task-priority cabinet-task-priority--${escapeHtml(priority)}">${escapeHtml(priorityLabel)}</span>
+                    ${renderCabinetTaskPriorityControl(task, taskIdAttr)}
                     ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
                     <span>${taskKindLabel(task)}</span>
@@ -4266,6 +4322,7 @@ function renderCabinetTaskComposer(options = {}) {
 
 function renderMyDayTab() {
     const today = cabinetList('today');
+    const deferred = cabinetList('deferred');
     const overdue = cabinetList('overdue');
     const waiting = cabinetList('waiting');
     const privateTasks = cabinetList('private').slice(0, 4);
@@ -4280,6 +4337,7 @@ function renderMyDayTab() {
             </div>
             ${renderCabinetPulseCluster()}
             ${renderCabinetCompletedHistoryStrip()}
+            ${renderCabinetTaskSoundControls()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             <div class="cabinet-grid">
                 ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.', false, {
@@ -4287,6 +4345,7 @@ function renderMyDayTab() {
                     dropHint: 'Киньте сюди прострочену задачу',
                     dropLabel: 'Сьогодні: перетягніть сюди прострочену задачу, щоб перенести її на сьогодні'
                 })}
+                ${renderCabinetSection('Відкладено', deferred, 'Відкладених задач немає.', true)}
                 ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', true)}
                 ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
                 ${renderCabinetSection('Приватне', privateTasks, 'Приватний шар порожній.', true)}
@@ -4772,8 +4831,46 @@ function unlockCabinetTaskCompletionSound() {
 
 function playCabinetTaskCompletionFeedback() {
     try {
-        window.SoundEngine?.play?.('task-complete');
+        window.SoundEngine?.playTask?.('task-complete');
     } catch {}
+}
+
+async function saveCabinetTaskSoundPreferences(patch = {}) {
+    cabinetTaskSoundSettings = normalizeCabinetTaskSoundSettings({ ...cabinetTaskSoundSettings, ...patch });
+    window.SoundEngine?.configureTask?.(cabinetTaskSoundSettings);
+    const result = await apiPatch('/tasks/preferences', {
+        task_sound_enabled: cabinetTaskSoundSettings.enabled,
+        task_sound_volume: cabinetTaskSoundSettings.volume,
+        task_sound_theme: cabinetTaskSoundSettings.theme
+    });
+    if (result?.preferences) {
+        applyCabinetTaskSoundPreferences(result.preferences);
+        rerenderCabinetTaskTabs();
+    } else if (result && result.success === false && typeof showNotification === 'function') {
+        showNotification(result.error || 'Не вдалося зберегти звук задач', 'error');
+    }
+}
+
+async function updateCabinetTaskPriority(select) {
+    const taskId = normalizeCabinetTaskId(select?.dataset?.taskId);
+    const priority = normalizeCabinetPriority(select?.value);
+    if (!taskId) return;
+    const previous = normalizeCabinetPriority(findCabinetTask(taskId)?.priority || 'normal');
+    select.disabled = true;
+    const result = await apiPatch(`/tasks/${taskId}/priority`, {
+        priority,
+        sourceSurface: 'profile_my_cabinet'
+    });
+    select.disabled = false;
+    if (result?.success) {
+        notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
+        await refreshMyCabinetTab({ silent: true });
+        renderCabinetActiveTab();
+        if (typeof showNotification === 'function') showNotification('Пріоритет оновлено', 'success');
+        return;
+    }
+    select.value = previous;
+    if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
 }
 
 function waitForCabinetCompletionAnimation(card) {
@@ -4884,6 +4981,7 @@ async function handleCabinetTaskActionClick(event) {
 
 async function refreshMyCabinetTab(options = {}) {
     myCabinetData = await apiGet('/tasks/my-cabinet');
+    applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     await refreshCabinetPulseCounts();
     if (!options.silent) renderCabinetActiveTab();
     return myCabinetData;
@@ -5113,6 +5211,7 @@ async function createCabinetTask(event, mode) {
         }
         return;
     }
+    const hasPostCreateWarnings = Array.isArray(result.postCreateWarnings) && result.postCreateWarnings.length > 0;
     const verification = await verifyCabinetCreatedTask(result);
     if (!verification.ok) {
         if (typeof showNotification === 'function') {
@@ -5133,7 +5232,9 @@ async function createCabinetTask(event, mode) {
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
     cabinetTaskComposerExpanded = false;
-    if (typeof showNotification === 'function') showNotification('Задачу створено в основних задачах', 'success');
+    if (typeof showNotification === 'function') {
+        showNotification(hasPostCreateWarnings ? 'Задачу створено, але частину деталей треба перевірити' : 'Задачу створено в основних задачах', hasPostCreateWarnings ? 'warning' : 'success');
+    }
     await refreshMyCabinetTab();
 }
 
@@ -5818,6 +5919,48 @@ function attachProfileListeners() {
         if (button.dataset.cabinetActionBound === 'true') return;
         button.dataset.cabinetActionBound = 'true';
         button.addEventListener('click', handleCabinetTaskActionClick);
+    });
+
+    document.querySelectorAll('[data-cabinet-task-priority-select]').forEach(select => {
+        if (select.dataset.cabinetPriorityQuickBound === 'true') return;
+        select.dataset.cabinetPriorityQuickBound = 'true';
+        select.addEventListener('click', event => event.stopPropagation());
+        select.addEventListener('change', event => {
+            event.stopPropagation();
+            updateCabinetTaskPriority(select);
+        });
+    });
+
+    document.querySelectorAll('[data-cabinet-task-sound-toggle]').forEach(input => {
+        if (input.dataset.cabinetTaskSoundBound === 'true') return;
+        input.dataset.cabinetTaskSoundBound = 'true';
+        input.addEventListener('change', () => saveCabinetTaskSoundPreferences({ enabled: input.checked }));
+    });
+
+    document.querySelectorAll('[data-cabinet-task-sound-volume]').forEach(input => {
+        if (input.dataset.cabinetTaskSoundBound === 'true') return;
+        input.dataset.cabinetTaskSoundBound = 'true';
+        input.addEventListener('input', () => {
+            cabinetTaskSoundSettings = normalizeCabinetTaskSoundSettings({ ...cabinetTaskSoundSettings, volume: input.value });
+            window.SoundEngine?.configureTask?.(cabinetTaskSoundSettings);
+        });
+        input.addEventListener('change', () => saveCabinetTaskSoundPreferences({ volume: input.value }));
+    });
+
+    document.querySelectorAll('[data-cabinet-task-sound-theme]').forEach(select => {
+        if (select.dataset.cabinetTaskSoundBound === 'true') return;
+        select.dataset.cabinetTaskSoundBound = 'true';
+        select.addEventListener('change', () => saveCabinetTaskSoundPreferences({ theme: select.value }));
+    });
+
+    document.querySelectorAll('[data-cabinet-task-sound-test]').forEach(button => {
+        if (button.dataset.cabinetTaskSoundBound === 'true') return;
+        button.dataset.cabinetTaskSoundBound = 'true';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            window.SoundEngine?.playTask?.('task-complete');
+        });
     });
 
     document.querySelectorAll('[data-cabinet-subtask-done]').forEach(input => {

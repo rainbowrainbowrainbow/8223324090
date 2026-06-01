@@ -267,6 +267,10 @@ var ParkWS = (function () {
     function _playTaskAssignedSound() {
         try {
             if (_taskSoundMuted()) return;
+            if (typeof SoundEngine !== 'undefined' && SoundEngine.playTask) {
+                SoundEngine.playTask('task-new');
+                return;
+            }
             if (typeof SoundEngine !== 'undefined' && SoundEngine.play) {
                 SoundEngine.play('task-new');
                 return;

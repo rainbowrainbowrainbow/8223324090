@@ -147,6 +147,20 @@ const FILTERABLE_STATUSES = [...VALID_STATUSES, 'archived', 'cancelled', 'overdu
 const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const URGENT_PRIORITY_ESCALATION_MINUTES = 90;
 const URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES = 60;
+const TASK_SOUND_THEMES = ['rock', 'classic', 'subtle'];
+const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
+    TASK_ACTION_TYPES.COMPLETED,
+    TASK_ACTION_TYPES.STATUS_CHANGED,
+    TASK_ACTION_TYPES.RESCHEDULED,
+    TASK_ACTION_TYPES.SCHEDULED,
+    TASK_ACTION_TYPES.SCHEDULE_MOVED,
+    TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE,
+    TASK_ACTION_TYPES.SCHEDULE_PROPOSAL_CREATED,
+    TASK_ACTION_TYPES.SNOOZED,
+    TASK_ACTION_TYPES.URGENT_COMMITMENT_SET,
+    TASK_ACTION_TYPES.PRIORITY_CHANGED,
+    TASK_ACTION_TYPES.SUBTASK_COMPLETED
+];
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_TYPES = ['human', 'bot'];
 const VALID_TASK_MODES = ['work', 'personal', 'private', 'system'];
@@ -600,7 +614,7 @@ function applyUrgentPriorityDefaults(priority, osFields = {}, opsFields = {}, co
             ...(controlMeta.urgentPriority || {}),
             enabled: true,
             escalation: 'no_movement',
-            prompt: 'commitment_time',
+            commitment: 'time_required',
             escalationMinutes: URGENT_PRIORITY_ESCALATION_MINUTES,
             cooldownMinutes: URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES
         };
@@ -617,6 +631,78 @@ function applyUrgentPriorityDefaults(priority, osFields = {}, opsFields = {}, co
             };
         }
     }
+}
+
+function urgentPriorityControlMeta(base = {}, patch = {}) {
+    const meta = { ...parseJsonObject(base) };
+    meta.urgentPriority = {
+        ...(parseJsonObject(meta.urgentPriority) || {}),
+        ...patch
+    };
+    return meta;
+}
+
+function urgentPriorityActivatedMeta(base = {}, patch = {}) {
+    return urgentPriorityControlMeta(base, {
+        enabled: true,
+        activatedAt: base?.urgentPriority?.activatedAt || new Date().toISOString(),
+        escalation: 'no_movement',
+        commitment: 'time_required',
+        escalationMinutes: URGENT_PRIORITY_ESCALATION_MINUTES,
+        cooldownMinutes: URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES,
+        ...patch
+    });
+}
+
+function urgentPriorityDisabledMeta(base = {}, patch = {}) {
+    return urgentPriorityControlMeta(base, {
+        ...(base?.urgentPriority || {}),
+        enabled: false,
+        disabledAt: new Date().toISOString(),
+        ...patch
+    });
+}
+
+function normalizeRequiredFutureDateTime(value) {
+    const normalized = normalizeOptionalDateTime(value);
+    if (!normalized) return null;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return null;
+    if (parsed.getTime() <= Date.now()) return null;
+    return parsed.toISOString();
+}
+
+function taskSnoozedUntilDate(task = {}) {
+    const raw = task.snoozedUntil || task.snoozed_until || '';
+    const parsed = raw ? new Date(raw) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+}
+
+function isTaskDeferred(task = {}, now = new Date()) {
+    const snoozedUntil = taskSnoozedUntilDate(task);
+    return Boolean(snoozedUntil && snoozedUntil > now);
+}
+
+async function markUrgentTaskMovement(taskId, task = {}, actor = {}, movementType = 'task_movement', options = {}) {
+    if (normalizeTaskPriority(task.priority) !== 'urgent') return null;
+    const now = new Date().toISOString();
+    const nextNotificationAt = options.nextNotificationAt || minutesFromNow(URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES);
+    const controlMeta = urgentPriorityActivatedMeta(taskControlMeta(task), {
+        lastMovementAt: now,
+        lastMovementType: movementType,
+        lastMovementBy: normalizeUserId(actor) || null
+    });
+    const result = await pool.query(
+        `UPDATE tasks
+         SET next_notification_at = $2,
+             control_meta = $3::jsonb,
+             updated_at = NOW(),
+             version = COALESCE(version, 1) + 1
+         WHERE id = $1
+         RETURNING *`,
+        [taskId, nextNotificationAt, JSON.stringify(controlMeta)]
+    );
+    return result.rows[0] || null;
 }
 
 async function resolveTypedTaskOwner(input = {}, actor = null) {
@@ -795,6 +881,10 @@ router.get('/', async (req, res) => {
         if (view === 'done_today') {
             conditions.push(`COALESCE(t.status, 'todo') = 'done'`);
             conditions.push(`DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = CURRENT_DATE`);
+        }
+        if (view === 'deferred') {
+            conditions.push(`COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`);
+            conditions.push(`t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW()`);
         }
         if (assigned_to) {
             if (/^\d+$/.test(String(assigned_to))) {
@@ -1219,7 +1309,10 @@ router.patch('/preferences', async (req, res) => {
             default_privacy: value => VALID_TASK_VISIBILITIES.includes(value) ? value : 'me_only',
             show_private_in_tasks_page: value => isTruthy(value),
             enable_telegram_reminders: value => isTruthy(value),
-            enable_evening_review: value => isTruthy(value)
+            enable_evening_review: value => isTruthy(value),
+            task_sound_enabled: value => isTruthy(value),
+            task_sound_volume: value => Math.max(0, Math.min(1, Number(value) || 0)),
+            task_sound_theme: value => TASK_SOUND_THEMES.includes(String(value || '').trim()) ? String(value).trim() : 'subtle'
         };
         const sets = [];
         const values = [];
@@ -1473,11 +1566,13 @@ router.get('/my-cabinet', async (req, res) => {
             completedHistoryParams
         );
         const completedHistory = completedHistoryResult.rows.map(normalizeTaskPayload);
+        const now = new Date();
 
         const buckets = {
             focus: [],
             today: [],
             next: [],
+            deferred: [],
             waiting: [],
             private: [],
             overdue: [],
@@ -1492,6 +1587,10 @@ router.get('/my-cabinet', async (req, res) => {
             if (workflow === 'waiting' || task.taskKind === 'waiting') buckets.waiting.push(task);
             if (visibility === 'private' || mode === 'private') buckets.private.push(task);
             if (workflow === 'inbox') buckets.inbox.push(task);
+            if (isTaskDeferred(task, now)) {
+                buckets.deferred.push(task);
+                return;
+            }
             if (dueDate && dueDate < today) buckets.overdue.push(task);
             if (dueDate === today || !dueDate) buckets.today.push(task);
             if (dueDate && dueDate >= tomorrow && dueDate <= nextWeek) buckets.next.push(task);
@@ -1561,6 +1660,7 @@ router.get('/my-cabinet', async (req, res) => {
             focus: buckets.focus.slice(0, prefs.focus_limit || 3),
             today: buckets.today,
             next: buckets.next,
+            deferred: buckets.deferred,
             waiting: buckets.waiting,
             private: buckets.private,
             overdue: buckets.overdue,
@@ -1593,6 +1693,7 @@ router.get('/my-cabinet', async (req, res) => {
                     completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks'
                 },
                 waitingCount: buckets.waiting.length,
+                deferredCount: buckets.deferred.length,
                 overdueCount: buckets.overdue.length,
                 privateCount: buckets.private.length,
                 inboxCount: buckets.inbox.length,
@@ -1913,6 +2014,129 @@ async function loadMutableTask(id, user, businessScope = null) {
     return task;
 }
 
+// PATCH /api/tasks/:id/priority — quick priority change with urgent defaults.
+router.patch('/:id/priority', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
+        const rawPriority = String(req.body.priority || '').trim().toLowerCase();
+        if (!VALID_PRIORITIES.includes(rawPriority)) return res.status(400).json({ error: 'Invalid priority' });
+
+        const oldPriority = normalizeTaskPriority(task.priority);
+        const controlMeta = taskControlMeta(task);
+        const changedAt = new Date().toISOString();
+        let escalateAfter = task.escalate_after || null;
+        let nextNotificationAt = task.next_notification_at || null;
+        let nextControlMeta = controlMeta;
+
+        if (rawPriority === 'urgent') {
+            const firstEscalationAt = minutesFromNow(URGENT_PRIORITY_ESCALATION_MINUTES);
+            escalateAfter = escalateAfter || firstEscalationAt;
+            nextNotificationAt = nextNotificationAt || escalateAfter || firstEscalationAt;
+            nextControlMeta = urgentPriorityActivatedMeta(controlMeta, {
+                lastMovementAt: changedAt,
+                lastMovementType: 'priority_changed',
+                lastPriorityChangedAt: changedAt,
+                lastPriorityChangedBy: normalizeUserId(req.user) || null
+            });
+        } else if (oldPriority === 'urgent') {
+            escalateAfter = null;
+            nextNotificationAt = null;
+            nextControlMeta = urgentPriorityDisabledMeta(controlMeta, {
+                lastPriorityChangedAt: changedAt,
+                lastPriorityChangedBy: normalizeUserId(req.user) || null
+            });
+        }
+
+        const result = await pool.query(
+            `UPDATE tasks
+             SET priority = $1,
+                 escalate_after = $2,
+                 next_notification_at = $3,
+                 control_meta = $4::jsonb,
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $5
+             RETURNING *`,
+            [rawPriority, escalateAfter, nextNotificationAt, JSON.stringify(nextControlMeta), req.params.id]
+        );
+        const updated = result.rows[0];
+        const historyEvent = await logTaskActionEvent({
+            taskId: task.id,
+            actionType: TASK_ACTION_TYPES.PRIORITY_CHANGED,
+            actor: req.user,
+            sourceSurface: sourceSurface(req.body, 'task_page'),
+            oldValue: { priority: oldPriority },
+            newValue: { priority: rawPriority, escalateAfter, nextNotificationAt },
+            meta: {
+                urgentMovementActionTypes: URGENT_TASK_MOVEMENT_ACTION_TYPES
+            }
+        });
+        _alertPush();
+        res.json({ success: true, task: normalizeTaskPayload(updated), historyEvent });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// PATCH /api/tasks/:id/commitment — save when an urgent task will move next.
+router.patch('/:id/commitment', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
+        if (normalizeTaskPriority(task.priority) !== 'urgent') {
+            return res.status(400).json({ error: 'Commitment is available only for urgent tasks' });
+        }
+        const commitmentAt = normalizeRequiredFutureDateTime(
+            req.body.commitmentAt || req.body.commitment_at || req.body.snoozedUntil || req.body.snoozed_until
+        );
+        if (!commitmentAt) return res.status(400).json({ error: 'Valid commitmentAt is required' });
+
+        const now = new Date().toISOString();
+        const controlMeta = urgentPriorityActivatedMeta(taskControlMeta(task), {
+            commitmentAt,
+            committedAt: now,
+            committedBy: normalizeUserId(req.user) || null,
+            lastMovementAt: now,
+            lastMovementType: 'urgent_commitment'
+        });
+        const result = await pool.query(
+            `UPDATE tasks
+             SET snoozed_until = $2,
+                 next_notification_at = $2,
+                 control_meta = $3::jsonb,
+                 workflow_state = CASE
+                    WHEN COALESCE(workflow_state, 'todo') IN ('done','archived','waiting') THEN workflow_state
+                    ELSE 'scheduled'
+                 END,
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $1
+             RETURNING *`,
+            [req.params.id, commitmentAt, JSON.stringify(controlMeta)]
+        );
+        const updated = result.rows[0];
+        const historyEvent = await logTaskActionEvent({
+            taskId: task.id,
+            actionType: TASK_ACTION_TYPES.URGENT_COMMITMENT_SET,
+            actor: req.user,
+            sourceSurface: sourceSurface(req.body, 'alerts_panel'),
+            oldValue: {
+                snoozedUntil: task.snoozed_until || null,
+                nextNotificationAt: task.next_notification_at || null
+            },
+            newValue: { commitmentAt, snoozedUntil: commitmentAt, nextNotificationAt: commitmentAt },
+            meta: { priority: 'urgent', commitment: true }
+        });
+        _alertPush();
+        res.json({ success: true, task: normalizeTaskPayload(updated), historyEvent });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
 // GET /api/tasks/:id/subtasks — checklist projection
 router.get('/:id/subtasks', async (req, res) => {
     try {
@@ -1995,9 +2219,10 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
-        await loadMutableTask(req.params.id, req.user, businessScope);
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
         const sets = [];
         const values = [];
+        let nextDoneState = null;
         if (req.body.title !== undefined) {
             const title = String(req.body.title || '').trim();
             if (!title) return res.status(400).json({ error: 'title required' });
@@ -2006,6 +2231,7 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
         }
         if (req.body.is_done !== undefined || req.body.isDone !== undefined) {
             const done = isTruthy(req.body.is_done !== undefined ? req.body.is_done : req.body.isDone);
+            nextDoneState = done;
             values.push(done);
             sets.push(`is_done = $${values.length}`);
             sets.push(`completed_at = CASE WHEN $${values.length} = true THEN NOW() ELSE NULL END`);
@@ -2030,6 +2256,21 @@ router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (re
         );
         if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
         await pool.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+        if (nextDoneState === true) {
+            try {
+                await logTaskActionEvent({
+                    taskId: task.id,
+                    actionType: TASK_ACTION_TYPES.SUBTASK_COMPLETED,
+                    actor: req.user,
+                    sourceSurface: sourceSurface(req.body, 'task_page'),
+                    newValue: { subtaskId: Number(req.params.subtaskId), isDone: true },
+                    meta: { movement: 'subtask_done' }
+                });
+                await markUrgentTaskMovement(task.id, task, req.user, 'subtask_done');
+            } catch (historyErr) {
+                log.warn(`Subtask movement history skipped: ${historyErr.message}`);
+            }
+        }
         res.json({ success: true, subtask: normalizeSubtaskRow(result.rows[0]) });
     } catch (err) {
         return sendTaskActionError(res, err);
@@ -2085,7 +2326,7 @@ router.post('/:id/snooze', requireRole('admin', 'user'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
-        await loadMutableTask(req.params.id, req.user, businessScope);
+        const task = await loadMutableTask(req.params.id, req.user, businessScope);
         let until = normalizeOptionalDateTime(req.body.until || req.body.snoozed_until || req.body.snoozedUntil);
         if (!until) {
             const minutes = parseInt(req.body.minutes ?? req.body.snoozeMinutes ?? 0, 10);
@@ -2103,7 +2344,22 @@ router.post('/:id/snooze', requireRole('admin', 'user'), async (req, res) => {
              RETURNING *`,
             [until, req.params.id]
         );
-        res.json({ success: true, task: normalizeTaskPayload(result.rows[0]) });
+        const updated = result.rows[0];
+        let historyEvent = null;
+        try {
+            historyEvent = await logTaskActionEvent({
+                taskId: task.id,
+                actionType: TASK_ACTION_TYPES.SNOOZED,
+                actor: req.user,
+                sourceSurface: sourceSurface(req.body, 'task_page'),
+                oldValue: { snoozedUntil: task.snoozed_until || null, nextNotificationAt: task.next_notification_at || null },
+                newValue: { snoozedUntil: until, nextNotificationAt: until },
+                meta: { movement: 'snooze' }
+            });
+        } catch (historyErr) {
+            log.warn(`Task snooze history skipped: ${historyErr.message}`);
+        }
+        res.json({ success: true, task: normalizeTaskPayload(updated), historyEvent });
     } catch (err) {
         return sendTaskActionError(res, err);
     }
@@ -2465,39 +2721,78 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         });
         let responseTask = task;
         let scheduleResult = null;
+        const postCreateWarnings = [];
+        const recordPostCreateWarning = (step, err) => {
+            const warning = {
+                step,
+                code: err?.code || err?.statusCode || null,
+                message: err?.message || 'post-create step failed'
+            };
+            postCreateWarnings.push(warning);
+            log.error(`Task create post-step failed after task #${task.id} [${step}]`, err);
+        };
         if (!task.duplicateSkipped && hasSchedulePayload(b)) {
-            scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
-                sourceSurface: sourceSurface(b, 'task_page'),
-                route: 'tasks_create_schedule',
-                businessScope
-            });
-            Object.assign(task, scheduleResult.task);
-            responseTask = scheduleResult.task;
+            try {
+                scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
+                    sourceSurface: sourceSurface(b, 'task_page'),
+                    route: 'tasks_create_schedule',
+                    businessScope
+                });
+                Object.assign(task, scheduleResult.task);
+                responseTask = scheduleResult.task;
+            } catch (err) {
+                recordPostCreateWarning('schedule', err);
+            }
         }
         if (hasManualSubtasks && !task.duplicateSkipped) {
-            const subtasks = await replaceTaskSubtasks(pool, task.id, manualSubtasks, { sourceType: 'manual' });
-            responseTask.subtask_count = subtasks.length;
-            responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
-            responseTask.subtasks = subtasks;
+            try {
+                const subtasks = await replaceTaskSubtasks(pool, task.id, manualSubtasks, { sourceType: 'manual' });
+                responseTask.subtask_count = subtasks.length;
+                responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
+                responseTask.subtasks = subtasks;
+            } catch (err) {
+                recordPostCreateWarning('subtasks', err);
+            }
         } else if (task.task_kind === 'checklist' && task.checklist_template_key) {
-            const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
-            responseTask.subtask_count = subtasks.length;
-            responseTask.subtask_done_count = 0;
+            try {
+                const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
+                responseTask.subtask_count = subtasks.length;
+                responseTask.subtask_done_count = 0;
+            } catch (err) {
+                recordPostCreateWarning('checklist_subtasks', err);
+            }
         } else {
             responseTask.subtask_count = 0;
             responseTask.subtask_done_count = 0;
         }
-        await createTaskDependencyRows(task.id, dependency_ids);
-        if (hasObserverPatch(b)) {
-            task.observers = await replaceTaskObservers(task, observerIdsFromBody(b), req.user);
-            task.observer_count = task.observers.length;
+        try {
+            await createTaskDependencyRows(task.id, dependency_ids);
+        } catch (err) {
+            recordPostCreateWarning('dependencies', err);
         }
-        responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks });
-        emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'created', source: 'routes/tasks.create' });
+        if (hasObserverPatch(b)) {
+            try {
+                task.observers = await replaceTaskObservers(task, observerIdsFromBody(b), req.user);
+                task.observer_count = task.observers.length;
+            } catch (err) {
+                recordPostCreateWarning('observers', err);
+            }
+        }
+        try {
+            responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks });
+        } catch (err) {
+            recordPostCreateWarning('subtask_summary', err);
+        }
+        try {
+            emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'created', source: 'routes/tasks.create' });
+        } catch (err) {
+            recordPostCreateWarning('assignment_event', err);
+        }
 
         res.json({
             success: true,
             task: normalizeTaskPayload(responseTask),
+            postCreateWarnings,
             schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null,
             meta: {
                 canonicalOwnerField: 'tasks.owner_user_id',
@@ -2508,7 +2803,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
                     supportedChatSources: ['chat_message', 'chat_channel', 'chat_command']
                 },
                 notificationTrigger: 'services/kleshnya.notifyTaskAssigned',
-                notificationFailure: 'logged_non_blocking'
+                notificationFailure: 'logged_non_blocking',
+                postCreateWarningCount: postCreateWarnings.length
             }
         });
         _alertPush();
@@ -2765,6 +3061,25 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         }
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
+        let responseTask = task;
+        let historyEvent = null;
+        try {
+            historyEvent = await logTaskActionEvent({
+                taskId: Number(id),
+                actionType: TASK_ACTION_TYPES.STATUS_CHANGED,
+                actor: req.user,
+                sourceSurface: sourceSurface(req.body, 'task_detail'),
+                oldValue: { status: visible.rows[0].status || 'todo' },
+                newValue: { status },
+                meta: { movement: status === 'in_progress' ? 'in_progress' : 'status_changed' }
+            });
+            if (status === 'in_progress') {
+                const urgentMoved = await markUrgentTaskMovement(id, visible.rows[0], req.user, 'in_progress');
+                if (urgentMoved) responseTask = urgentMoved;
+            }
+        } catch (historyErr) {
+            log.warn(`Task status movement history skipped: ${historyErr.message}`);
+        }
 
         // v22.2.0: Gamification — award coins + XP on task completion
         if (status === 'done' && actor !== 'system') {
@@ -2774,7 +3089,8 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             } catch (e) { /* gamification not ready */ }
         }
 
-        res.json({ success: true, task: normalizeTaskPayload(task) });
+        _alertPush();
+        res.json({ success: true, task: normalizeTaskPayload(responseTask), historyEvent });
     } catch (err) {
         if (err.code || err.statusCode) {
             return sendTaskActionError(res, err);
@@ -2966,7 +3282,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
                             jsonb_build_object(
                                 'enabled', true,
                                 'escalation', 'no_movement',
-                                'prompt', 'commitment_time',
+                                'commitment', 'time_required',
                                 'escalationMinutes', ${URGENT_PRIORITY_ESCALATION_MINUTES},
                                 'cooldownMinutes', ${URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES}
                             )

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.69.23 - Tasks deferred commitment refresh
+
+### Profile / My Day / Tasks / Alerts / 01.06.2026 [codex]
+- **Створення задачі стало стійким до post-create помилок** - якщо основний запис уже створено, API повертає `success: true` і `postCreateWarnings`, а UI показує м'яке попередження замість червоної помилки.
+- **Пріоритети можна міняти прямо з картки** - у `Мій день` і на сторінці `Задачі` додано швидкий вибір `Терміново / Високий / Звичайний / Низький`, включно з серверним `PATCH /api/tasks/:id/priority`.
+- **Термінові задачі отримали commitment-сценарій без AI** - дія `Вказати час` тепер зберігає `commitmentAt`, відкладає нагадування через `snoozed_until` і фіксує історію руху задачі.
+- **`Відкладено` стало окремим явним bucket** - My Day і Tasks не підмішують future-snoozed задачі в `Сьогодні`, а показують їх у блоці/вигляді `Відкладено` з дією повернення на сьогодні.
+- **Звуки задач відокремлено від чатів** - task-sound налаштування зберігаються в `task_user_preferences`, мають власні toggle/volume/theme/test controls і більше не читають `chat_sound_settings`.
+- **Серверна база отримала guardrails для urgent/deferred workflow** - додано міграцію `243_*` з індексами для urgent alerts, відкладених задач і My Day workload ordering, а focused/unit/UI тести закривають нові контракти.
+
+---
+
 ## v0.69.22 - My Day priority refresh
 
 ### Profile / My Day / Tasks / Alerts / 01.06.2026 [codex]

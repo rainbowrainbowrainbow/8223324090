@@ -2255,6 +2255,70 @@ body.dark-mode .cabinet-task-composer-hint {
     line-height: 1.2;
 }
 
+.cabinet-task-priority-select {
+    min-height: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.82);
+    color: #475569;
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.cabinet-task-sound-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.72);
+}
+
+.cabinet-task-sound-toggle,
+.cabinet-task-sound-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--gray-600, #4b5563);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.cabinet-task-sound-field input[type="range"] {
+    width: 96px;
+    accent-color: #14b8a6;
+}
+
+.cabinet-task-sound-field select {
+    min-height: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.86);
+    color: var(--gray-700, #374151);
+    padding: 3px 7px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.cabinet-task-sound-controls button {
+    min-height: 28px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 8px;
+    background: rgba(20, 184, 166, 0.10);
+    color: #0f766e;
+    padding: 4px 9px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
 .cabinet-task-due-action {
     font: inherit;
     cursor: pointer;
@@ -2716,6 +2780,23 @@ body.dark-mode .cabinet-task-report-badge,
 body.dark-mode .cabinet-subtask-toggle {
     background: rgba(148, 163, 184, 0.12);
     border-color: rgba(148, 163, 184, 0.18);
+    color: var(--profile-dark-secondary, #cbd5e1);
+}
+
+body.dark-mode .cabinet-task-priority-select,
+body.dark-mode .cabinet-task-sound-field select {
+    border-color: rgba(148, 163, 184, 0.20);
+    background: rgba(15, 23, 42, 0.72);
+    color: var(--profile-dark-text, #f8fafc);
+}
+
+body.dark-mode .cabinet-task-sound-controls {
+    border-color: rgba(148, 163, 184, 0.16);
+    background: rgba(15, 23, 42, 0.62);
+}
+
+body.dark-mode .cabinet-task-sound-toggle,
+body.dark-mode .cabinet-task-sound-field {
     color: var(--profile-dark-secondary, #cbd5e1);
 }
 

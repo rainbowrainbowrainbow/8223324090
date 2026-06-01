@@ -40,6 +40,19 @@ test('timeline resource migration creates durable multi-cabinet resources', () =
     assert.match(sql, /'maysternya_doli', 'md-consult-room', 'specialist', 'Олександр'/);
 });
 
+test('timeline business-context constraints stay dynamic for new cabinets', () => {
+    const oldSql = read('db/migrations/190_maysternya_doli_timeline_context.sql');
+    const repairSql = read('db/migrations/242_timeline_business_context_dynamic_checks.sql');
+
+    assert.match(oldSql, /bookings_business_context_check[\s\S]*event_genix[\s\S]*maysternya_doli/);
+    assert.match(repairSql, /DROP CONSTRAINT IF EXISTS bookings_business_context_check/);
+    assert.match(repairSql, /DROP CONSTRAINT IF EXISTS lines_by_date_business_context_check/);
+    assert.match(repairSql, /bookings_business_context_format_check/);
+    assert.match(repairSql, /lines_by_date_business_context_format_check/);
+    assert.match(repairSql, /business_context ~ '\^\[a-z0-9_:-\]\{1,64\}\$'/);
+    assert.doesNotMatch(repairSql, /CHECK \(business_context IN \('event_genix', 'maysternya_doli'\)\)/);
+});
+
 test('timeline resources service owns mode-to-resource contract and availability', () => {
     const service = read('services/timelineResources.js');
     assert.match(service, /RESOURCE_TYPE_BY_DISPLAY_MODE[\s\S]*simple: 'specialist'/);

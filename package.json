@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.69.14",
+  "version": "0.69.15",
   "eventGenix": {
-    "releaseLabel": "Timeline business access repair"
+    "releaseLabel": "Timeline Dar booking constraint repair"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

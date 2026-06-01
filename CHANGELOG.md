@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.15 - Timeline Dar booking constraint repair
+
+### Timeline / Booking / Dar / 01.06.2026 [codex]
+- **Dar більше не падає на створенні запису через старий DB constraint** - міграція `242_timeline_business_context_dynamic_checks.sql` прибирає жорсткий список `event_genix`/`maysternya_doli` з `bookings` і `lines_by_date` та замінює його на універсальну перевірку формату `business_context`.
+- **Мультикабінети більше не потребують окремого schema-fix для кожного нового бізнесу** - база приймає валідні ключі бізнесів на кшталт `dar`, а не тільки історичні два контексти.
+- **Створення запису в Dar закріплено regression-тестом** - `tests/booking-create-durability.test.js` тепер проходить сценарій `POST /api/bookings` для simple timeline у `dar`.
+- **Контракт міграції захищено тестом** - `tests/timeline-resources.test.js` перевіряє, що старий enum constraint дропнуто і новий constraint не повертає hardcoded список бізнесів.
+
+---
+
 ## v0.69.14 - Timeline business access repair
 
 ### Timeline / Auth / Multi-cabinet / 01.06.2026 [codex]

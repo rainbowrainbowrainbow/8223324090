@@ -233,11 +233,20 @@ async function withApp(dbOptions, fn) {
                     capacity: 1
                 };
             }
+            if (businessContext === 'dar' && resourceId === 'specialist-main') {
+                return {
+                    resourceId: 'specialist-main',
+                    type: 'specialist',
+                    name: 'Specialist',
+                    color: '#0EA586',
+                    capacity: 1
+                };
+            }
             return null;
         },
         findTimelineResourceByName: async () => null,
         getTimelineDisplaySettings: async (_queryable, businessContext) => (
-            businessContext === 'maysternya_doli'
+            businessContext === 'maysternya_doli' || businessContext === 'dar'
                 ? { mode: 'simple', resourceModel: 'specialist' }
                 : { mode: 'park' }
         ),
@@ -351,6 +360,39 @@ test('POST /api/bookings keeps Maysternya booking durable when automatic lead ha
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings creates Dar simple-timeline bookings with scoped context', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            businessContext: 'dar',
+            date: '2099-02-12',
+            time: '15:30',
+            lineId: 'specialist-main',
+            room: 'Cabinet',
+            programId: 'specialist_service_30',
+            programCode: 'SERVICE',
+            label: 'Service(30)',
+            programName: 'Service 30',
+            category: 'custom',
+            duration: 30,
+            price: 0,
+            customer: {
+                name: 'Dar Client',
+                phone: '+380992222222'
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.serverVerified, true);
+        assert.equal(res.data.booking.businessContext, 'dar');
+        assert.equal(state.rows.length, 1);
+        assert.equal(state.rows[0].business_context, 'dar');
+        assert.equal(state.rows[0].line_id, 'specialist-main');
+        assert.equal(state.rows[0].customer_id, 701);
+        assert.equal(state.customers[0].business_context, 'dar');
     });
 });
 

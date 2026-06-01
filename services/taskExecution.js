@@ -479,6 +479,14 @@ async function rescheduleTask(taskId, deadline, actor, options = {}) {
                  workflow_state = CASE WHEN COALESCE(workflow_state, 'todo') = 'overdue' THEN 'todo' ELSE workflow_state END,
                  snoozed_until = NULL,
                  remind_at = NULL,
+                 escalate_after = CASE
+                    WHEN priority = 'urgent' THEN COALESCE($4::timestamptz, $2::timestamp, escalate_after)
+                    ELSE escalate_after
+                 END,
+                 next_notification_at = CASE
+                    WHEN priority = 'urgent' THEN COALESCE($4::timestamptz, $2::timestamp, NOW() + INTERVAL '90 minutes')
+                    ELSE next_notification_at
+                 END,
                  updated_at = NOW(),
              version = COALESCE(version, 1) + 1
          WHERE id = $1

@@ -26,7 +26,7 @@ const log = createLogger('TaskTemplates');
 router.use(authenticateToken);
 
 const VALID_PATTERNS = ['daily', 'weekly', 'weekdays', 'custom'];
-const VALID_PRIORITIES = ['low', 'normal', 'high'];
+const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'checklist', 'routine', 'waiting', 'idea', 'decision'];
 

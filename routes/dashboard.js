@@ -99,6 +99,55 @@ function taskWidgetPayload(rows = []) {
     });
 }
 
+async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
+    const params = [];
+    const visibility = buildTaskVisibilityScope(user, params, 't');
+    const businessCondition = appendDashboardBusinessScope(params, businessScope, 't');
+    const limitParam = params.push(Math.max(1, Math.min(parseInt(limit, 10) || 5, 20)));
+    const result = await pool.query(
+        `SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
+                t.assigned_to, t.owner, t.updated_at, t.created_at, t.snoozed_until,
+                t.next_notification_at, t.escalate_after,
+                u.name AS owner_name, u.username AS owner_username
+         FROM tasks t
+         LEFT JOIN users u ON u.id = t.owner_user_id
+         WHERE t.priority = 'urgent'
+           AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+           AND (t.snoozed_until IS NULL OR t.snoozed_until <= NOW())
+           AND COALESCE(
+                t.next_notification_at,
+                t.escalate_after,
+                t.updated_at + INTERVAL '90 minutes',
+                t.created_at + INTERVAL '90 minutes'
+           ) <= NOW()
+           ${visibility}
+           ${businessCondition}
+         ORDER BY COALESCE(t.next_notification_at, t.escalate_after, t.updated_at, t.created_at) ASC, t.id ASC
+         LIMIT $${limitParam}`,
+        params
+    );
+    return result.rows.map(row => {
+        const task = taskWidgetPayload([row])[0] || row;
+        return {
+            id: `urgent_task_${row.id}`,
+            type: 'urgent_task',
+            level: 'critical',
+            icon: '🔥',
+            title: `Термінова без руху: "${(row.title || '').slice(0, 48)}"`,
+            message: 'Потрібен час виконання або перенесення, щоб задача не висіла без руху.',
+            link: `/tasks?open=${row.id}`,
+            taskId: row.id,
+            owner: task.ownerLabel || null,
+            ownerState: task.ownerState || 'unassigned',
+            intelligence: task.intelligence || null,
+            action: {
+                label: 'Вказати час',
+                prompt: `Коли візьмете термінову задачу "${row.title || row.id}" в роботу?`
+            }
+        };
+    });
+}
+
 const TASKER_DONE_STATUSES = new Set(['done', 'completed', 'complete']);
 const TASKER_CLOSED_STATUSES = new Set(['done', 'completed', 'complete', 'cancelled', 'archived']);
 
@@ -1083,7 +1132,8 @@ router.get('/widgets/:type', async (req, res) => {
                 const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
                 const shiftParams = [alertToday];
                 const shiftVisibility = getVisibleBookingScope(req.user, shiftParams, 'b');
-                const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+                const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+                    buildUrgentTaskAlerts(req.user, businessScope, 5),
                     pool.query(`SELECT t.id, t.title, t.deadline FROM tasks t
                                 WHERE t.deadline < NOW()
                                   AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
@@ -1104,6 +1154,7 @@ router.get('/widgets/:type', async (req, res) => {
                                 shiftParams)
                 ]);
                 const alerts = [];
+                alerts.push(...urgentAlerts);
                 overdue.rows.forEach(t => {
                     alerts.push({ id: `overdue_${t.id}`, type: 'warning', level: 'warning', icon: '⚠️',
                         title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
@@ -1743,7 +1794,8 @@ router.get('/alerts', async (req, res) => {
         const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
         const shiftParams = [today];
         const shiftVisibility = getVisibleBookingScope(req.user, shiftParams, 'b');
-        const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+        const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+            buildUrgentTaskAlerts(req.user, businessScope, 5),
             pool.query(`SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
                                t.assigned_to, t.owner, t.updated_at, t.created_at,
                                u.name AS owner_name, u.username AS owner_username
@@ -1762,6 +1814,7 @@ router.get('/alerts', async (req, res) => {
                                (SELECT COUNT(*) FROM bookings b WHERE b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql}) AS today_bk`, shiftParams)
         ]);
         const alerts = [];
+        alerts.push(...urgentAlerts);
         overdue.rows.forEach(t => {
             const task = taskWidgetPayload([t])[0] || t;
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',

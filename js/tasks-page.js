@@ -92,7 +92,7 @@ const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
 const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
 const KANBAN_STATUSES = ['todo', 'in_progress', 'done'];
-const PRIORITY_ICONS = { high: '', normal: '', low: '' };
+const PRIORITY_ICONS = { urgent: '🔥', high: '', normal: '', low: '' };
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 const TASK_SCHEDULE_SLOTS = [
     { key: 'morning', icon: '🌅', label: 'Ранок' },
@@ -1299,7 +1299,7 @@ function taskMode(t = {}) { return t.taskMode || t.task_mode || 'work'; }
 function taskKind(t = {}) { return t.taskKind || t.task_kind || 'action'; }
 function taskVisibility(t = {}) { return t.visibility || (taskMode(t) === 'private' ? 'private' : 'team'); }
 function taskWorkflow(t = {}) { return t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
-function taskDueDate(t = {}) { return (taskScheduleStart(t) || t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
+function taskDueDate(t = {}) { return (taskScheduleStart(t) || t.snoozedUntil || t.snoozed_until || t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
 function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.status); }
 function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
 function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
@@ -2378,6 +2378,7 @@ function taskBatchDueOptions(selected = 'today') {
 
 function taskPriorityOptions(selected = 'normal') {
     const options = [
+        ['urgent', 'Терміново'],
         ['normal', 'Звичайний'],
         ['high', 'Високий'],
         ['low', 'Низький']
@@ -3925,9 +3926,9 @@ async function openTaskDetail(taskId) {
         if (!t || !t.id) { showNotification('Задачу не знайдено', 'error'); return; }
 
         const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано' };
-        const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий' };
+        const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий', urgent: 'Терміново' };
         const statusColor = t.status === 'done' ? '#10B981' : t.status === 'in_progress' ? '#3B82F6' : '#F59E0B';
-        const prioColor = t.priority === 'high' ? '#EF4444' : t.priority === 'low' ? '#94A3B8' : '#6B7280';
+        const prioColor = t.priority === 'urgent' ? '#E11D48' : t.priority === 'high' ? '#EF4444' : t.priority === 'low' ? '#94A3B8' : '#6B7280';
         const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
         const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done';
 
@@ -3995,6 +3996,7 @@ async function openTaskDetail(taskId) {
                     <div style="flex:1"><label ${_lbl}>Пріоритет</label><select id="_tdPriority" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
                         <option value="low" ${t.priority==='low'?'selected':''}>Низький</option>
                         <option value="normal" ${t.priority==='normal'?'selected':''}>Звичайний</option>
+                        <option value="urgent" ${t.priority==='urgent'?'selected':''}>🔥 Терміново</option>
                         <option value="high" ${t.priority==='high'?'selected':''}>🔴 Високий</option>
                     </select></div>
                 </div>

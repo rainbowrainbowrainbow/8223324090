@@ -144,7 +144,9 @@ function taskAssigneeChanged(oldTask = {}, newTask = {}) {
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const FILTERABLE_STATUSES = [...VALID_STATUSES, 'archived', 'cancelled', 'overdue'];
-const VALID_PRIORITIES = ['low', 'normal', 'high'];
+const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+const URGENT_PRIORITY_ESCALATION_MINUTES = 90;
+const URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES = 60;
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_TYPES = ['human', 'bot'];
 const VALID_TASK_MODES = ['work', 'personal', 'private', 'system'];
@@ -175,6 +177,15 @@ function parseJsonObject(value) {
 
 function hasOwn(body = {}, key) {
     return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function normalizeTaskPriority(value = 'normal') {
+    const priority = String(value || 'normal').trim().toLowerCase();
+    return VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+}
+
+function taskPriorityOrderSql(alias = 't') {
+    return `CASE ${alias}.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 2 END`;
 }
 
 function normalizeTaskControlMeta(body = {}, oldTask = {}) {
@@ -532,6 +543,8 @@ function taskWorkloadDate(task = {}) {
         task.scheduledStartAt ||
         task.scheduled_start_at ||
         task.schedule?.startAt ||
+        task.snoozedUntil ||
+        task.snoozed_until ||
         task.date ||
         task.deadline ||
         task.remindAt ||
@@ -542,6 +555,7 @@ function taskWorkloadDate(task = {}) {
 function taskWorkloadDateSql(alias = 't') {
     return `COALESCE(
         (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
+        (${alias}.snoozed_until AT TIME ZONE 'Europe/Kyiv')::date,
         CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
         (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
         (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
@@ -569,6 +583,40 @@ function minutesFromNow(minutes) {
     const d = new Date();
     d.setMinutes(d.getMinutes() + minutes);
     return d.toISOString();
+}
+
+function applyUrgentPriorityDefaults(priority, osFields = {}, opsFields = {}, controlMeta = {}, oldTask = {}) {
+    const normalized = normalizeTaskPriority(priority);
+    const wasUrgent = normalizeTaskPriority(oldTask.priority) === 'urgent';
+    if (normalized === 'urgent') {
+        const firstEscalationAt = minutesFromNow(URGENT_PRIORITY_ESCALATION_MINUTES);
+        if (!opsFields.escalate_after) {
+            opsFields.escalate_after = oldTask.escalate_after || firstEscalationAt;
+        }
+        if (!osFields.next_notification_at) {
+            osFields.next_notification_at = oldTask.next_notification_at || opsFields.escalate_after || firstEscalationAt;
+        }
+        controlMeta.urgentPriority = {
+            ...(controlMeta.urgentPriority || {}),
+            enabled: true,
+            escalation: 'no_movement',
+            prompt: 'commitment_time',
+            escalationMinutes: URGENT_PRIORITY_ESCALATION_MINUTES,
+            cooldownMinutes: URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES
+        };
+        return;
+    }
+    if (wasUrgent) {
+        opsFields.escalate_after = null;
+        osFields.next_notification_at = null;
+        if (controlMeta.urgentPriority) {
+            controlMeta.urgentPriority = {
+                ...controlMeta.urgentPriority,
+                enabled: false,
+                disabledAt: new Date().toISOString()
+            };
+        }
+    }
 }
 
 async function resolveTypedTaskOwner(input = {}, actor = null) {
@@ -951,8 +999,8 @@ router.get('/', async (req, res) => {
              ORDER BY
                  CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
                  CASE WHEN COALESCE(st.total, 0) > 0 AND COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled') THEN 0 ELSE 1 END,
+                 ${taskPriorityOrderSql('t')},
                  ${canonicalTaskOrderSql('t')},
-                 CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
                  CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
                  t.created_at DESC
             LIMIT $${idx++} OFFSET $${idx++}`,
@@ -1373,11 +1421,12 @@ router.get('/my-cabinet', async (req, res) => {
                ${ownBusinessCondition}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
               ORDER BY
+                 ${taskPriorityOrderSql('t')},
                  CASE WHEN COALESCE(st.total, 0) > 0 THEN 0 ELSE 1 END,
                  CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
                  COALESCE(t.focus_rank, 99),
                  ${canonicalTaskOrderSql('t')},
-                 COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC,
+                 COALESCE(t.snoozed_until, t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC,
                  t.created_at DESC,
                  t.id DESC
              LIMIT 160`,
@@ -2219,7 +2268,7 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
         const sourceEntityType = normalizeSourceEntityType(req.body.source_entity_type || req.body.sourceEntityType);
         const sourceEntityId = normalizeSourceEntityId(req.body.source_entity_id || req.body.sourceEntityId);
         const baseTitle = String(req.body.title || preset.title || 'Операційний пакет').trim();
-        const priority = VALID_PRIORITIES.includes(req.body.priority) ? req.body.priority : 'normal';
+        const priority = normalizeTaskPriority(req.body.priority);
         const username = req.user?.username || 'system';
         const kleshnya = getKleshnya();
         const created = [];
@@ -2326,6 +2375,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const osFields = normalizeTaskOsFields(b, { status: 'todo' });
         const opsFields = normalizeTaskOperations(b, { category: 'admin' });
         const controlMeta = normalizeTaskControlMeta(b);
+        const taskPriority = normalizeTaskPriority(priority);
+        applyUrgentPriorityDefaults(taskPriority, osFields, opsFields, controlMeta);
         const hasManualSubtasks = hasSubtaskPayload(b);
         const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
         if (opsFields.category === 'checklist' && osFields.task_kind === 'action') {
@@ -2381,7 +2432,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const task = await kleshnya.createTask({
             businessContext,
             title, description, date,
-            priority: VALID_PRIORITIES.includes(priority) ? priority : 'normal',
+            priority: taskPriority,
             assigned_to: assigned_to || null,
             owner_user_id,
             owner: owner || null,
@@ -2511,11 +2562,12 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
-        const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+        const taskPriority = normalizeTaskPriority(priority);
         const opsFields = normalizeTaskOperations(b, old);
         const taskCategory = opsFields.category;
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
         const controlMeta = normalizeTaskControlMeta(b, old);
+        if (taskStatus !== 'done') applyUrgentPriorityDefaults(taskPriority, osFields, opsFields, controlMeta, old);
         const hasManualSubtasks = hasSubtaskPayload(b);
         const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
         if (taskCategory === 'checklist' && osFields.task_kind === 'action') osFields.task_kind = 'checklist';
@@ -2903,11 +2955,33 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             }
         } else if (action === 'priority' && priority) {
             if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
-            result = await pool.query(
-                `UPDATE tasks t SET priority = $${params.length + 1}, updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}`,
-                [...params, priority]
-            );
+            if (priority === 'urgent') {
+                result = await pool.query(
+                    `UPDATE tasks t
+                     SET priority = $${params.length + 1},
+                         escalate_after = COALESCE(t.escalate_after, NOW() + INTERVAL '${URGENT_PRIORITY_ESCALATION_MINUTES} minutes'),
+                         next_notification_at = COALESCE(t.next_notification_at, NOW() + INTERVAL '${URGENT_PRIORITY_ESCALATION_MINUTES} minutes'),
+                         control_meta = COALESCE(t.control_meta, '{}'::jsonb) || jsonb_build_object(
+                            'urgentPriority',
+                            jsonb_build_object(
+                                'enabled', true,
+                                'escalation', 'no_movement',
+                                'prompt', 'commitment_time',
+                                'escalationMinutes', ${URGENT_PRIORITY_ESCALATION_MINUTES},
+                                'cooldownMinutes', ${URGENT_PRIORITY_NOTIFICATION_COOLDOWN_MINUTES}
+                            )
+                         ),
+                         updated_at = NOW()
+                     WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}`,
+                    [...params, priority]
+                );
+            } else {
+                result = await pool.query(
+                    `UPDATE tasks t SET priority = $${params.length + 1}, updated_at = NOW()
+                     WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}`,
+                    [...params, priority]
+                );
+            }
         } else {
             return res.status(400).json({ error: `Unknown action: ${action}` });
         }

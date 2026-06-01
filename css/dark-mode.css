@@ -1791,6 +1791,8 @@ html[data-theme="dark"] .task-card:hover {
 }
 body.dark-mode .task-card.priority-high,
 html[data-theme="dark"] .task-card.priority-high { border-left-color: #F87171; }
+body.dark-mode .task-card.priority-urgent,
+html[data-theme="dark"] .task-card.priority-urgent { border-left-color: #FB7185; }
 body.dark-mode .task-card.priority-low,
 html[data-theme="dark"] .task-card.priority-low { border-left-color: #60A5FA; }
 body.dark-mode .task-card.cat-event,

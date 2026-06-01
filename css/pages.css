@@ -305,6 +305,10 @@ body:not(.dark-mode) .card:hover {
     border-left-color: #EF4444;
 }
 
+.task-card[data-priority="urgent"] {
+    border-left-color: #E11D48;
+}
+
 /* ==========================================
    PROGRAM-SPECIFIC STYLES
    ========================================== */
@@ -1481,13 +1485,15 @@ body.dark-mode .cabinet-list-head p {
 
 body.dark-mode .cabinet-task-composer input,
 body.dark-mode .cabinet-task-composer select,
-body.dark-mode .cabinet-due-chip {
+body.dark-mode .cabinet-due-chip,
+body.dark-mode .cabinet-priority-chip {
     border-color: rgba(148, 163, 184, 0.20);
     background: rgba(15, 23, 42, 0.72);
     color: var(--profile-dark-text, #f8fafc);
 }
 
-body.dark-mode .cabinet-due-chip.active {
+body.dark-mode .cabinet-due-chip.active,
+body.dark-mode .cabinet-priority-chip.active {
     border-color: rgba(45, 212, 191, 0.42);
     background: #0f766e;
     color: #ecfeff;
@@ -1802,7 +1808,26 @@ body.dark-mode .cabinet-segments button b {
     align-items: center;
 }
 
+.cabinet-priority-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
 .cabinet-due-chip {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--gray-700, #374151);
+    padding: 8px 11px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.cabinet-priority-chip {
     border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.78);
@@ -1817,6 +1842,30 @@ body.dark-mode .cabinet-segments button b {
 .cabinet-due-chip.active {
     border-color: rgba(20, 184, 166, 0.44);
     background: #14b8a6;
+    color: #fff;
+}
+
+.cabinet-priority-chip.active {
+    border-color: rgba(20, 184, 166, 0.44);
+    background: #14b8a6;
+    color: #fff;
+}
+
+.cabinet-priority-chip--urgent.active {
+    border-color: rgba(244, 63, 94, 0.48);
+    background: #e11d48;
+    color: #fff;
+}
+
+.cabinet-priority-chip--high.active {
+    border-color: rgba(245, 158, 11, 0.50);
+    background: #f59e0b;
+    color: #1f2937;
+}
+
+.cabinet-priority-chip--low.active {
+    border-color: rgba(100, 116, 139, 0.34);
+    background: #64748b;
     color: #fff;
 }
 
@@ -1854,7 +1903,8 @@ body.dark-mode .cabinet-segments button b {
     cursor: pointer;
 }
 
-.cabinet-capture .cabinet-due-chip {
+.cabinet-capture .cabinet-due-chip,
+.cabinet-capture .cabinet-priority-chip {
     border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.78);
@@ -1863,9 +1913,28 @@ body.dark-mode .cabinet-segments button b {
     box-shadow: none;
 }
 
-.cabinet-capture .cabinet-due-chip.active {
+.cabinet-capture .cabinet-due-chip.active,
+.cabinet-capture .cabinet-priority-chip.active {
     border-color: rgba(20, 184, 166, 0.44);
     background: #14b8a6;
+    color: #fff;
+}
+
+.cabinet-capture .cabinet-priority-chip--urgent.active {
+    border-color: rgba(244, 63, 94, 0.48);
+    background: #e11d48;
+    color: #fff;
+}
+
+.cabinet-capture .cabinet-priority-chip--high.active {
+    border-color: rgba(245, 158, 11, 0.50);
+    background: #f59e0b;
+    color: #1f2937;
+}
+
+.cabinet-capture .cabinet-priority-chip--low.active {
+    border-color: rgba(100, 116, 139, 0.34);
+    background: #64748b;
     color: #fff;
 }
 
@@ -2112,6 +2181,29 @@ body.dark-mode .cabinet-task-composer-hint {
     transform: translateX(4px);
 }
 
+.cabinet-task-card.is-completed-feedback {
+    animation: cabinetTaskComplete 0.34s ease-out forwards;
+}
+
+@keyframes cabinetTaskComplete {
+    0% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        filter: saturate(1);
+    }
+    45% {
+        opacity: 1;
+        transform: translateX(2px) scale(0.992);
+        filter: saturate(1.15);
+        background: rgba(16, 185, 129, 0.08);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(18px) scale(0.985);
+        filter: saturate(0.8);
+    }
+}
+
 .cabinet-task-card:first-of-type {
     border-top: 0;
 }
@@ -2214,6 +2306,7 @@ body.dark-mode .cabinet-task-composer-hint {
     color: #1d4ed8;
 }
 
+.cabinet-task-priority--urgent,
 .cabinet-task-priority--high,
 .cabinet-task-priority--critical {
     background: rgba(244, 63, 94, 0.12);
@@ -2736,7 +2829,20 @@ body.dark-mode .cabinet-task-move-today:focus-visible {
     color: #ccfbf1;
 }
 
+body.dark-mode .cabinet-priority-chip--urgent.active {
+    border-color: rgba(251, 113, 133, 0.42);
+    background: #9f1239;
+    color: #ffe4e6;
+}
+
+body.dark-mode .cabinet-priority-chip--high.active {
+    border-color: rgba(251, 191, 36, 0.42);
+    background: #92400e;
+    color: #fef3c7;
+}
+
 body.dark-mode .cabinet-task-priority--high,
+body.dark-mode .cabinet-task-priority--urgent,
 body.dark-mode .cabinet-task-priority--critical {
     background: rgba(127, 29, 29, 0.32);
     border-color: rgba(248, 113, 113, 0.26);

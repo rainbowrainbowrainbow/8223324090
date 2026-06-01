@@ -206,6 +206,12 @@ function _renderAlertItem(a, isRead) {
             <button class="ap-act ap-act-secondary" onclick="event.stopPropagation();_quickAction('${id}','call')">📞 Зателефонувати</button>
             <button class="ap-act ap-act-ghost" onclick="event.stopPropagation();_dismissAlert('${id}')">Сховати</button>
         </div>`;
+    } else if (a.id?.startsWith('urgent_task_')) {
+        actionsHtml = `<div class="ap-actions">
+            <button class="ap-act ap-act-primary" onclick="event.stopPropagation();_goAlert('${link}','${id}')">Відкрити</button>
+            <button class="ap-act ap-act-secondary" onclick="event.stopPropagation();_quickAction('${id}','reschedule')">Вказати час</button>
+            <button class="ap-act ap-act-ghost" onclick="event.stopPropagation();_dismissAlert('${id}')">Сховати</button>
+        </div>`;
     } else if (a.id?.startsWith('overdue_')) {
         actionsHtml = `<div class="ap-actions">
             <button class="ap-act ap-act-primary" onclick="event.stopPropagation();_goAlert('${link}','${id}')">📋 Відкрити</button>
@@ -289,7 +295,9 @@ async function _quickAction(alertId, action) {
         if (typeof showNotification === 'function') showNotification('Відкрийте бронювання для дзвінка', 'info');
         _goAlert(alert.link, alertId);
     } else if (action === 'reschedule') {
-        const newDate = await promptModal('Нова дата дедлайну:', { inputType: 'date', defaultValue: new Date().toISOString().slice(0, 10) });
+        const isUrgentTask = alert.id?.startsWith('urgent_task_');
+        const promptText = isUrgentTask ? 'Коли візьмете термінову задачу в роботу?' : 'Нова дата дедлайну:';
+        const newDate = await promptModal(promptText, { inputType: 'date', defaultValue: new Date().toISOString().slice(0, 10) });
         if (!newDate) return;
         const taskId = alert.taskId;
         if (taskId) {
@@ -302,7 +310,7 @@ async function _quickAction(alertId, action) {
                         sourceSurface: 'alerts_panel'
                     })
                 });
-                if (typeof showNotification === 'function') showNotification('Дедлайн перенесено', 'success');
+                if (typeof showNotification === 'function') showNotification(isUrgentTask ? 'Час для термінової задачі оновлено' : 'Дедлайн перенесено', 'success');
                 _dismissAlert(alertId);
                 loadAlertBell();
             } catch {}

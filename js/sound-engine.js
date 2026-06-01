@@ -94,6 +94,7 @@
                 case 'error':          this._rockError(); break;
                 case 'reaction':       this._rockReaction(); break;
                 case 'task-new':       this._rockTaskNew(); break;
+                case 'task-complete':  this._rockTaskComplete(); break;
                 default:               this._rockMessageNew(); break;
             }
         },
@@ -157,6 +158,15 @@
         // task-new: snare hit simulation
         _rockTaskNew: function () {
             this._rockSnare();
+        },
+
+        // task-complete: short positive two-tone confirmation
+        _rockTaskComplete: function () {
+            var self = this;
+            this._rockBell(1320, 0.12);
+            setTimeout(function () {
+                self._rockBell(1760, 0.16);
+            }, 75);
         },
 
         // Base: guitar harmonic (pinch) with optional distortion
@@ -281,7 +291,8 @@
                 'disconnect':   [500, 0.30],
                 'error':        [400, 0.20],
                 'reaction':     [1200, 0.15],
-                'task-new':     [750, 0.20]
+                'task-new':     [750, 0.20],
+                'task-complete': [1050, 0.18]
             };
             var p = freqMap[name] || freqMap['message-new'];
             this._classicBell(p[0], p[1]);
@@ -313,7 +324,8 @@
                 'disconnect':   [700,  0.08],
                 'error':        [600,  0.06],
                 'reaction':     [1200, 0.05],
-                'task-new':     [850,  0.07]
+                'task-new':     [850,  0.07],
+                'task-complete': [1050, 0.07]
             };
             var p = freqMap[name] || freqMap['message-new'];
             this._classicBell(p[0], p[1]);

@@ -545,6 +545,15 @@ async function scheduleTask(taskId, input = {}, actor = {}, options = {}) {
                  schedule_status = $11,
                  schedule_meta = $12::jsonb,
                  schedule_proposal = $13::jsonb,
+                 snoozed_until = NULL,
+                 escalate_after = CASE
+                     WHEN priority = 'urgent' THEN COALESCE($7, $3, escalate_after)
+                     ELSE escalate_after
+                 END,
+                 next_notification_at = CASE
+                     WHEN priority = 'urgent' THEN COALESCE($7, $3, NOW() + INTERVAL '90 minutes')
+                     ELSE next_notification_at
+                 END,
                  missed_at = NULL,
                  missed_processed_at = NULL,
                  workflow_state = CASE
@@ -708,6 +717,7 @@ function scheduleSortMeta(row = {}, now = new Date()) {
 function canonicalTaskOrderSql(alias = 't') {
     const dayExpr = `COALESCE(
         (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
+        (${alias}.snoozed_until AT TIME ZONE 'Europe/Kyiv')::date,
         CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
         (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date
     )`;
@@ -719,6 +729,7 @@ function canonicalTaskOrderSql(alias = 't') {
             ELSE 2
         END ASC,
         ${alias}.scheduled_start_at ASC NULLS LAST,
+        ${alias}.snoozed_until ASC NULLS LAST,
         ${alias}.deadline ASC NULLS LAST`;
 }
 

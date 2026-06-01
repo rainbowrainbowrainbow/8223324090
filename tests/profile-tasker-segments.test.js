@@ -57,6 +57,18 @@ test('profile my day ordering keeps decomposed groups and sorts newest tasks fir
     assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [4, 3, 2, 1]);
 });
 
+test('profile my day ordering lifts urgent priority above lower-priority work', () => {
+    const ctx = loadProfileTaskerContext();
+    const tasks = [
+        { id: 1, title: 'normal decomposed', priority: 'normal', date: '2026-05-23', subtask_count: 2 },
+        { id: 2, title: 'low task', priority: 'low', date: '2026-05-23' },
+        { id: 3, title: 'urgent task', priority: 'urgent', date: '2026-05-23' },
+        { id: 4, title: 'high task', priority: 'high', date: '2026-05-23' }
+    ];
+
+    assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [3, 4, 1, 2]);
+});
+
 test('profile quick task card uses completed-today and active My Day workload counts', () => {
     const ctx = loadProfileTaskerContext();
     const counts = ctx.cabinetTaskQuickCounts({
@@ -138,6 +150,9 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(collapsedHtml, /Більше параметрів/);
     assert.match(collapsedHtml, /id="cabinetTaskTitle"/);
     assert.match(collapsedHtml, /class="cabinet-due-presets"/);
+    assert.match(collapsedHtml, /class="cabinet-priority-presets"/);
+    assert.match(collapsedHtml, /data-cabinet-priority-preset="urgent"/);
+    assert.match(collapsedHtml, /Терміново/);
     assert.match(collapsedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
 
     vm.runInContext('cabinetTaskComposerExpanded = true;', ctx);
@@ -215,8 +230,48 @@ test('profile My Day create accepts URL-first titles and confirms the refreshed 
 
     assert.equal(createdPayload.title, title);
     assert.equal(createdPayload.ownerUserId, 7);
+    assert.equal(createdPayload.priority, 'normal');
     assert.equal(elements.get('cabinetTaskTitle').value, '');
     assert.equal(notices.at(-1)?.type, 'success');
+});
+
+test('profile My Day create sends urgent priority from the mini priority selector', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'терміново перевірити';
+    const elements = installCabinetCreateDom(ctx, title);
+    elements.get('cabinetTaskPriority').value = 'urgent';
+    let createdPayload = null;
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = () => {};
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim() };
+        },
+        async createTask(payload) {
+            createdPayload = payload;
+            return { success: true, task: { id: 509, title: payload.title } };
+        }
+    };
+    ctx.apiGet = async (url) => {
+        if (url === '/tasks/my-cabinet') {
+            return {
+                all: [{ id: 509, title, priority: 'urgent' }],
+                today: [{ id: 509, title, priority: 'urgent' }],
+                overdue: [],
+                waiting: [],
+                private: [],
+                completedHistory: [],
+                stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+            };
+        }
+        return null;
+    };
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createdPayload.priority, 'urgent');
+    assert.equal(elements.get('cabinetTaskPriority').value, 'normal');
 });
 
 test('profile My Day create does not fake success when the created task is missing from the refreshed projection', async () => {
@@ -248,6 +303,53 @@ test('profile My Day create does not fake success when the created task is missi
     assert.equal(notices.at(-1)?.type, 'warning');
 });
 
+test('profile completion applies local My Day projection before the refresh round-trip', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = {
+            all: [{ id: 61, title: 'Finish me', priority: 'urgent', status: 'todo' }],
+            today: [{ id: 61, title: 'Finish me', priority: 'urgent', status: 'todo' }],
+            overdue: [],
+            waiting: [],
+            private: [],
+            completedHistory: [],
+            stats: {
+                todayDone: 0,
+                todayPlanned: 1,
+                todayWorkloadCount: 1,
+                activeMyDay: 1,
+                activeMyDayCount: 1,
+                taskQuick: {
+                    completed: 0,
+                    completedToday: 0,
+                    completedTotal: 0,
+                    completedParentToday: 0,
+                    remaining: 1,
+                    todayRemaining: 1,
+                    activeMyDay: 1
+                }
+            }
+        };
+    `, ctx);
+
+    const applied = ctx.applyCabinetTaskStatusToProjection(61, 'done', {
+        id: 61,
+        title: 'Finish me',
+        priority: 'urgent',
+        completedAt: '2026-06-01T09:00:00.000Z'
+    });
+    const data = vm.runInContext('myCabinetData', ctx);
+
+    assert.equal(applied, true);
+    assert.equal(data.today.length, 0);
+    assert.equal(data.all.length, 0);
+    assert.equal(data.completedHistory[0].id, 61);
+    assert.equal(data.completedHistory[0].status, 'done');
+    assert.equal(data.stats.taskQuick.completedToday, 1);
+    assert.equal(data.stats.taskQuick.todayRemaining, 0);
+    assert.equal(data.stats.activeMyDay, 0);
+});
+
 test('profile routes mytasks compatibility into the single My Day projection', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext(`
@@ -274,6 +376,9 @@ test('profile routes mytasks compatibility into the single My Day projection', (
     assert.match(myTasksHtml, /cabinet-task-composer/);
     assert.match(source, /function normalizeProfileTaskTab/);
     assert.match(source, /return tab === 'mytasks' \? 'myday' : tab;/);
+    assert.match(source, /function syncProfileTabToUrl/);
+    assert.match(source, /params\.set\('tab', normalized\)/);
+    assert.match(source, /addEventListener\('popstate'/);
     assert.doesNotMatch(source, /cabinet-shell--mytasks/);
     assert.doesNotMatch(source, /href="\/profile\?tab=mytasks"/);
 });
@@ -656,6 +761,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /remaining:\s*activeMyDay/);
     assert.match(source, /scope:\s*'completed_units_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
+    assert.match(source, /snoozed_until/);
+    assert.match(source, /taskPriorityOrderSql/);
+    assert.match(source, /applyUrgentPriorityDefaults/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
@@ -664,4 +772,19 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
     assert.match(authSource, /subtasksDoneToday/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
+});
+
+test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {
+    const tasksSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const dashboardSource = fs.readFileSync(path.join(ROOT, 'routes', 'dashboard.js'), 'utf8');
+    const alertsSource = fs.readFileSync(path.join(ROOT, 'js', 'alerts.js'), 'utf8');
+
+    assert.match(tasksSource, /const VALID_PRIORITIES = \['low', 'normal', 'high', 'urgent'\]/);
+    assert.match(tasksSource, /URGENT_PRIORITY_ESCALATION_MINUTES = 90/);
+    assert.match(tasksSource, /next_notification_at/);
+    assert.match(dashboardSource, /function buildUrgentTaskAlerts/);
+    assert.match(dashboardSource, /urgent_task_/);
+    assert.match(tasksSource, /commitment_time/);
+    assert.match(alertsSource, /startsWith\('urgent_task_'\)/);
+    assert.match(alertsSource, /Коли візьмете термінову задачу в роботу/);
 });

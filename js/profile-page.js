@@ -32,6 +32,7 @@ let profileMaterialsState = {
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetCreateDuePreset = 'today';
+let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 let cabinetSnoozeOutsideBound = false;
@@ -40,6 +41,7 @@ let cabinetTaskDragState = null;
 let cabinetSubtaskDragDropBound = false;
 let cabinetSubtaskDragState = null;
 let cabinetUndoToastTimer = null;
+let cabinetProjectionRefreshTimer = null;
 let profileSecurityData = null;
 let cabinetSavedDecompositionTemplates = [];
 let cabinetDecompositionSuggestions = [];
@@ -95,6 +97,13 @@ const CABINET_TASK_CATEGORIES = [
     ['personal', 'Особисті'],
     ['improvement', 'Покращення'],
     ['checklist', 'Чек-лісти']
+];
+
+const CABINET_TASK_PRIORITIES = [
+    { value: 'urgent', label: 'Терміново', hint: 'Піднімає задачу вгору і створює нагадування без руху' },
+    { value: 'high', label: 'Високий', hint: 'Вище звичайних задач' },
+    { value: 'normal', label: 'Звичайний', hint: 'Стандартний пріоритет' },
+    { value: 'low', label: 'Низький', hint: 'Можна виконати пізніше' }
 ];
 
 const CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT = 36;
@@ -611,6 +620,20 @@ function normalizeProfileTab(tab) {
     return normalizeProfileTaskTab(requested);
 }
 
+function syncProfileTabToUrl(tab = activeTab, options = {}) {
+    if (typeof window === 'undefined' || !window.history || !window.location) return;
+    const normalized = normalizeProfileTab(tab) || 'professions';
+    const params = new URLSearchParams(window.location.search || '');
+    if (normalized === 'professions') params.delete('tab');
+    else params.set('tab', normalized);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+    const currentUrl = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+    if (nextUrl === currentUrl) return;
+    const method = options.replace ? 'replaceState' : 'pushState';
+    window.history[method]?.({ profileTab: normalized }, '', nextUrl);
+}
+
 function isProfileTaskProjectionTab(tab = activeTab) {
     return normalizeProfileTaskTab(tab) === 'myday';
 }
@@ -941,6 +964,14 @@ async function initProfilePage() {
     const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
     if (isOwnProfile && normalizedRequestedTab && allowedOwnTabs.includes(normalizedRequestedTab)) {
         activeTab = normalizedRequestedTab;
+    }
+    syncProfileTabToUrl(activeTab, { replace: true });
+    if (typeof window !== 'undefined' && window.addEventListener && !window.__profileTabPopstateBound) {
+        window.__profileTabPopstateBound = true;
+        window.addEventListener('popstate', async () => {
+            const nextTab = normalizeProfileTab(new URLSearchParams(window.location.search || '').get('tab')) || 'professions';
+            if (nextTab && nextTab !== activeTab) await switchTab(nextTab, { skipUrl: true });
+        });
     }
 
     // Load data
@@ -1356,9 +1387,10 @@ function renderProfile() {
     attachProfileListeners();
 }
 
-async function switchTab(tab) {
+async function switchTab(tab, options = {}) {
     tab = normalizeProfileTab(tab);
     activeTab = tab;
+    if (!options.skipUrl) syncProfileTabToUrl(tab);
     const locked = profileTabLock(tab);
     if (!locked && isOwnProfile && isProfileTaskProjectionTab(tab) && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
@@ -2465,6 +2497,121 @@ function findCabinetTask(taskId) {
     return null;
 }
 
+const CABINET_ACTIVE_TASK_BUCKETS = ['all', 'focus', 'today', 'next', 'waiting', 'private', 'overdue', 'inbox', 'createdByMe'];
+
+function cabinetProjectionTaskId(task = {}) {
+    return normalizeCabinetTaskId(task?.id || task?.taskId || task?.task_id);
+}
+
+function removeCabinetTaskFromProjection(taskId) {
+    const id = normalizeCabinetTaskId(taskId);
+    const removed = { task: null, buckets: [] };
+    if (!id || !myCabinetData || typeof myCabinetData !== 'object') return removed;
+    CABINET_ACTIVE_TASK_BUCKETS.forEach(bucket => {
+        const list = myCabinetData[bucket];
+        if (!Array.isArray(list)) return;
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+            if (cabinetProjectionTaskId(list[index]) !== id) continue;
+            const [task] = list.splice(index, 1);
+            if (!removed.task) removed.task = task;
+            removed.buckets.push(bucket);
+        }
+    });
+    return removed;
+}
+
+function bumpCabinetNumber(target, key, delta, min = 0) {
+    if (!target || typeof target !== 'object') return;
+    const current = Number(target[key] || 0);
+    const next = current + delta;
+    target[key] = min === null ? next : Math.max(min, next);
+}
+
+function normalizeCabinetCompletedTaskForProjection(task = {}, fallback = {}) {
+    const now = new Date().toISOString();
+    const completedAt = task.completedAt || task.completed_at || now;
+    return {
+        ...fallback,
+        ...task,
+        status: 'done',
+        workflowState: 'done',
+        workflow_state: 'done',
+        completedAt,
+        completed_at: completedAt,
+        updatedAt: task.updatedAt || task.updated_at || completedAt,
+        updated_at: task.updated_at || task.updatedAt || completedAt
+    };
+}
+
+function syncCabinetProjectionCountersFromBuckets() {
+    if (!myCabinetData?.stats) return;
+    myCabinetData.stats.waitingCount = cabinetList('waiting').length;
+    myCabinetData.stats.overdueCount = cabinetList('overdue').length;
+    myCabinetData.stats.privateCount = cabinetList('private').length;
+    myCabinetData.stats.inboxCount = cabinetList('inbox').length;
+    myCabinetData.stats.focusCount = cabinetList('focus').length;
+}
+
+function applyCabinetCompletionStats(removedBuckets = []) {
+    if (!myCabinetData || typeof myCabinetData !== 'object') return;
+    myCabinetData.stats = myCabinetData.stats || {};
+    const stats = myCabinetData.stats;
+    stats.taskQuick = stats.taskQuick || {};
+    const quick = stats.taskQuick;
+    bumpCabinetNumber(stats, 'todayDone', 1, 0);
+    bumpCabinetNumber(quick, 'completed', 1, 0);
+    bumpCabinetNumber(quick, 'completedToday', 1, 0);
+    bumpCabinetNumber(quick, 'completedTotal', 1, 0);
+    bumpCabinetNumber(quick, 'completedParentToday', 1, 0);
+
+    const hadToday = removedBuckets.includes('today');
+    const hadOverdue = removedBuckets.includes('overdue');
+    if (hadToday) {
+        bumpCabinetNumber(stats, 'todayPlanned', -1, 0);
+        bumpCabinetNumber(stats, 'todayWorkloadCount', -1, 0);
+        bumpCabinetNumber(quick, 'todayRemaining', -1, 0);
+    }
+    if (hadOverdue) {
+        bumpCabinetNumber(stats, 'overdueCarryover', -1, 0);
+        bumpCabinetNumber(stats, 'overdueCarryoverCount', -1, 0);
+        bumpCabinetNumber(quick, 'overdueCarryover', -1, 0);
+    }
+    if (hadToday || hadOverdue) {
+        bumpCabinetNumber(stats, 'activeMyDay', -1, 0);
+        bumpCabinetNumber(stats, 'activeMyDayCount', -1, 0);
+        bumpCabinetNumber(quick, 'remaining', -1, 0);
+        bumpCabinetNumber(quick, 'activeMyDay', -1, 0);
+    }
+    quick.completedHistoryShown = cabinetCompletedHistoryList().length;
+    quick.completedHistoryOverflow = Math.max(0, Number(quick.completedTotal || 0) - quick.completedHistoryShown);
+    syncCabinetProjectionCountersFromBuckets();
+}
+
+function applyCabinetTaskStatusToProjection(taskId, status, resultTask = {}, fallbackTask = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id || !myCabinetData || typeof myCabinetData !== 'object') return false;
+    if (status !== 'done') return false;
+    const removed = removeCabinetTaskFromProjection(id);
+    const baseTask = resultTask && Object.keys(resultTask).length ? resultTask : (removed.task || fallbackTask || {});
+    const completedTask = normalizeCabinetCompletedTaskForProjection(baseTask, removed.task || fallbackTask || {});
+    completedTask.id = completedTask.id || id;
+    myCabinetData.completedHistory = Array.isArray(myCabinetData.completedHistory) ? myCabinetData.completedHistory : [];
+    myCabinetData.completedHistory = myCabinetData.completedHistory.filter(task => cabinetProjectionTaskId(task) !== id);
+    myCabinetData.completedHistory.unshift(completedTask);
+    myCabinetData.completedHistory = myCabinetData.completedHistory.slice(0, CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT);
+    applyCabinetCompletionStats(removed.buckets);
+    return true;
+}
+
+function scheduleCabinetProjectionRefresh(delay = 900) {
+    if (cabinetProjectionRefreshTimer) clearTimeout(cabinetProjectionRefreshTimer);
+    cabinetProjectionRefreshTimer = setTimeout(() => {
+        cabinetProjectionRefreshTimer = null;
+        if (!isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
+        refreshMyCabinetTab({ silent: true }).catch(error => console.warn('Profile cabinet background refresh failed', error));
+    }, delay);
+}
+
 function cabinetTaskProjectionContainsId(data, taskId) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id || !data || typeof data !== 'object') return false;
@@ -2582,7 +2729,23 @@ function closeCabinetCompletedDayDividers(except = null) {
     });
 }
 
+function normalizeCabinetPriority(priority = '') {
+    const value = String(priority || '').trim().toLowerCase();
+    if (value === 'critical') return 'urgent';
+    if (value === 'medium') return 'normal';
+    return CABINET_TASK_PRIORITIES.some(item => item.value === value) ? value : 'normal';
+}
+
+function cabinetTaskPriorityRank(task = {}) {
+    const priority = normalizeCabinetPriority(task.priority || task.taskPriority || task.priority_level);
+    const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
+    return rank[priority] ?? rank.normal;
+}
+
 function cabinetTaskPriorityLabel(priority = '') {
+    const normalized = normalizeCabinetPriority(priority);
+    const configured = CABINET_TASK_PRIORITIES.find(item => item.value === normalized);
+    if (configured) return configured.label;
     const labels = {
         critical: 'Критично',
         high: 'Високий',
@@ -3674,7 +3837,7 @@ function cabinetTaskCreatedTime(task = {}) {
 }
 
 function cabinetTaskDueKey(task = {}) {
-    const raw = task.scheduledStartAt || task.scheduled_start_at || task.deadline || task.remindAt || task.remind_at || task.date || '';
+    const raw = task.scheduledStartAt || task.scheduled_start_at || task.snoozedUntil || task.snoozed_until || task.deadline || task.remindAt || task.remind_at || task.date || '';
     const key = String(raw || '').slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
 }
@@ -3683,6 +3846,8 @@ function cabinetTaskDueValue(task = {}) {
     return task.scheduledStartAt
         || task.scheduled_start_at
         || task.schedule?.startAt
+        || task.snoozedUntil
+        || task.snoozed_until
         || task.deadline
         || task.remindAt
         || task.remind_at
@@ -3705,6 +3870,9 @@ function compareCabinetTasksForDisplay(a = {}, b = {}) {
     const aIsNew = lastCabinetCreatedTaskId && String(a.id || a.taskId || a.task_id) === String(lastCabinetCreatedTaskId);
     const bIsNew = lastCabinetCreatedTaskId && String(b.id || b.taskId || b.task_id) === String(lastCabinetCreatedTaskId);
     if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+
+    const priorityDiff = cabinetTaskPriorityRank(a) - cabinetTaskPriorityRank(b);
+    if (priorityDiff) return priorityDiff;
 
     const decompositionDiff = Number(cabinetTaskHasSubtasks(b)) - Number(cabinetTaskHasSubtasks(a));
     if (decompositionDiff) return decompositionDiff;
@@ -3854,8 +4022,8 @@ function renderCabinetTaskCard(task, compact = false) {
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
-    const priority = task.priority || 'normal';
-    const priorityLabel = { high: 'Високий', critical: 'Критично', low: 'Низький', normal: 'Звичайний' }[priority] || priority;
+    const priority = normalizeCabinetPriority(task.priority || 'normal');
+    const priorityLabel = cabinetTaskPriorityLabel(priority);
     const dueState = getCabinetTaskDueState(task, due);
     const relationLabel = getCabinetTaskRelationLabel(task);
     const moveToTodayState = cabinetTaskMoveToTodayState(task, dueState);
@@ -3931,6 +4099,33 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
         </section>`;
 }
 
+function renderCabinetPriorityPresets(selected = cabinetCreatePriority) {
+    const activePriority = normalizeCabinetPriority(selected);
+    return CABINET_TASK_PRIORITIES.map(item => `
+        <button type="button"
+                class="cabinet-priority-chip cabinet-priority-chip--${escapeHtml(item.value)} ${activePriority === item.value ? 'active' : ''}"
+                data-cabinet-priority-preset="${escapeHtml(item.value)}"
+                aria-pressed="${activePriority === item.value ? 'true' : 'false'}"
+                title="${escapeHtml(item.hint || item.label)}">${escapeHtml(item.label)}</button>
+    `).join('');
+}
+
+function readCabinetCreatePriority() {
+    const selectValue = document.getElementById('cabinetTaskPriority')?.value;
+    return normalizeCabinetPriority(selectValue || cabinetCreatePriority);
+}
+
+function setCabinetCreatePriority(priority = 'normal') {
+    cabinetCreatePriority = normalizeCabinetPriority(priority);
+    const select = document.getElementById('cabinetTaskPriority');
+    if (select) select.value = cabinetCreatePriority;
+    document.querySelectorAll('[data-cabinet-priority-preset]').forEach(btn => {
+        const active = btn.dataset.cabinetPriorityPreset === cabinetCreatePriority;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
 function renderCabinetTaskComposer(options = {}) {
     const segment = options.segment || myTasksSegment || 'all';
     const defaults = cabinetCreateDefaultsForSegment(segment, options.mode || '');
@@ -3949,6 +4144,11 @@ function renderCabinetTaskComposer(options = {}) {
     ].map(([value, label]) => `
         <button type="button" class="cabinet-due-chip ${cabinetCreateDuePreset === value ? 'active' : ''}" data-cabinet-due-preset="${value}" aria-pressed="${cabinetCreateDuePreset === value ? 'true' : 'false'}">${escapeHtml(label)}</button>
     `).join('');
+    const selectedPriority = normalizeCabinetPriority(cabinetCreatePriority);
+    const priorityPresets = renderCabinetPriorityPresets(selectedPriority);
+    const priorityOptions = CABINET_TASK_PRIORITIES.map(item =>
+        `<option value="${item.value}" ${selectedPriority === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`
+    ).join('');
 
     return `
         <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
@@ -3994,6 +4194,7 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-meta">
                 <div class="cabinet-task-composer-essential">
                     <div class="cabinet-due-presets" role="group" aria-label="Коли виконати">${duePresets}</div>
+                    <div class="cabinet-priority-presets" role="group" aria-label="Пріоритет задачі">${priorityPresets}</div>
                     <span class="cabinet-task-composer-hint">Швидко створіть задачу або відкрийте параметри для підзадач, типу й видимості.</span>
                 </div>
                 <div class="cabinet-task-composer-meta-advanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
@@ -4003,11 +4204,7 @@ function renderCabinetTaskComposer(options = {}) {
                     </label>
                     <label for="cabinetTaskPriority">
                         <span>Пріоритет</span>
-                        <select id="cabinetTaskPriority">
-                            <option value="normal">Звичайний</option>
-                            <option value="high">Високий</option>
-                            <option value="low">Низький</option>
-                        </select>
+                        <select id="cabinetTaskPriority">${priorityOptions}</select>
                     </label>
                     <label for="cabinetTaskVisibility">
                         <span>Видимість</span>
@@ -4567,6 +4764,25 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
     }, 6000);
 }
 
+function unlockCabinetTaskCompletionSound() {
+    try {
+        window.SoundEngine?.unlock?.();
+    } catch {}
+}
+
+function playCabinetTaskCompletionFeedback() {
+    try {
+        window.SoundEngine?.play?.('task-complete');
+    } catch {}
+}
+
+function waitForCabinetCompletionAnimation(card) {
+    if (!card?.isConnected) return Promise.resolve();
+    card.classList.remove('is-updating');
+    card.classList.add('is-completed-feedback');
+    return new Promise(resolve => setTimeout(resolve, 340));
+}
+
 async function handleCabinetTaskActionClick(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -4637,7 +4853,8 @@ async function handleCabinetTaskActionClick(event) {
     card?.classList.add('is-updating');
     try {
         if (action === 'done') {
-            await setCabinetTaskStatus(taskId, 'done', { previousStatus, task: findCabinetTask(taskId) || {} });
+            unlockCabinetTaskCompletionSound();
+            await setCabinetTaskStatus(taskId, 'done', { previousStatus, task: findCabinetTask(taskId) || {}, card });
         } else if (action === 'snooze') {
             closeCabinetSnoozeMenus();
             let minutes = button.dataset.minutes || 60;
@@ -4730,12 +4947,26 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     }
     if (!result?.success) throw new Error(result?.error || 'Task status update failed');
     notifyTaskWidgetsChanged({ action: 'task_status', taskId: id, status });
+    const updatedTask = result.task || result.data?.task || {};
+    const appliedLocal = status === 'done'
+        ? applyCabinetTaskStatusToProjection(id, status, updatedTask, options.task || {})
+        : false;
     if (!options.silent && status === 'done' && options.allowUndo !== false) {
+        playCabinetTaskCompletionFeedback();
+        await waitForCabinetCompletionAnimation(options.card);
         showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
     } else if (!options.silent && typeof showNotification === 'function') {
         showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
     }
-    renderCabinetActiveTab();
+    if (status === 'done') {
+        if (!appliedLocal) await refreshMyCabinetTab({ silent: true });
+        renderCabinetActiveTab();
+        scheduleCabinetProjectionRefresh();
+    } else {
+        await refreshMyCabinetTab({ silent: true });
+        renderCabinetActiveTab();
+    }
+    return { ...result, appliedLocal };
 }
 
 async function snoozeCabinetTask(taskId, minutes) {
@@ -4828,7 +5059,7 @@ async function createCabinetTask(event, mode) {
         title,
         ownerUserId: current.id || current.user_id,
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
-        priority: document.getElementById('cabinetTaskPriority')?.value || 'normal',
+        priority: readCabinetCreatePriority(),
         taskType: 'human',
         mode: selectedMode,
         kind,
@@ -4892,6 +5123,7 @@ async function createCabinetTask(event, mode) {
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
     if (input) input.value = '';
+    setCabinetCreatePriority('normal');
     const subtaskList = document.getElementById('cabinetSubtaskList');
     if (subtaskList) subtaskList.innerHTML = '';
     cabinetDecompositionSuggestions = [];
@@ -5602,6 +5834,16 @@ function attachProfileListeners() {
         button.dataset.cabinetDueBound = 'true';
         button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset));
     });
+    document.querySelectorAll('[data-cabinet-priority-preset]').forEach(button => {
+        if (button.dataset.cabinetPriorityBound === 'true') return;
+        button.dataset.cabinetPriorityBound = 'true';
+        button.addEventListener('click', () => setCabinetCreatePriority(button.dataset.cabinetPriorityPreset));
+    });
+    const cabinetPriority = document.getElementById('cabinetTaskPriority');
+    if (cabinetPriority && cabinetPriority.dataset.cabinetPrioritySelectBound !== 'true') {
+        cabinetPriority.dataset.cabinetPrioritySelectBound = 'true';
+        cabinetPriority.addEventListener('change', () => setCabinetCreatePriority(cabinetPriority.value));
+    }
     const cabinetDate = document.getElementById('cabinetTaskDate');
     if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
         cabinetDate.dataset.cabinetDateBound = 'true';

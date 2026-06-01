@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.8 - Timeline durable booking create
+
+### Timeline / Booking / Hotfix / 01.06.2026 [codex]
+- **Створення бронювання більше не може повернути фальшивий успіх після rollback** - `POST /api/bookings` і `POST /api/bookings/full` після `COMMIT` перечитують створені id з таблиці `bookings` у тому ж `business_context` і повертають `serverVerified: true` тільки для реально збережених записів.
+- **Finance side-effect ізольовано від основної транзакції** - необовʼязковий запис у `finance_transactions` тепер виконується через `SAVEPOINT`, тому помилка категорії/finance-схеми не відкочує саме бронювання.
+- **Коміт перевіряється явно** - якщо PostgreSQL повертає rollback замість commit, сервер відповідає помилкою і frontend не домальовує локальний booking-echo.
+- **Редагування отримало той самий захист** - optional finance-sync при update більше не може непомітно зламати транзакцію редагування.
+- **Додано regression guard** - `tests/booking-create-durability.test.js` відтворює падіння finance insert і перевіряє, що бронювання лишається durable після створення.
+
+---
+
 ## v0.69.7 - Timeline create cache preservation
 
 ### Timeline / Booking / Hotfix / 01.06.2026 [codex]

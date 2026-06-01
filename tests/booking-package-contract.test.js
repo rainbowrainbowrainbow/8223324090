@@ -165,4 +165,18 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /lb\.extraData = null;/);
     assert.match(route, /b\.duration,\s*0,\s*b\.hosts/);
     assert.match(route, /b\.createdBy,\s*id,\s*newStatus,\s*b\.kidsCount \|\| null,\s*b\.groupName \|\| null,\s*null\]/);
+    assert.match(route, /function runOptionalBookingTransactionStep/);
+    assert.match(route, /SAVEPOINT booking_optional_step/);
+    assert.match(route, /ROLLBACK TO SAVEPOINT booking_optional_step/);
+    assert.match(route, /function commitBookingTransaction/);
+    assert.match(route, /booking_commit_not_verified/);
+    assert.match(route, /function assertDurableCreatedBookings/);
+    assert.match(route, /booking_durable_read_missing/);
+    assert.match(route, /serverVerified = true/);
+    assert.match(route, /runOptionalBookingTransactionStep\(client, 'Finance auto-record'/);
+    assert.match(route, /runOptionalBookingTransactionStep\(client, 'Finance auto-record \(create\/full\)'/);
+    assert.match(route, /runOptionalBookingTransactionStep\(client, 'Finance auto-record sync \(update\)'/);
+    assert.match(route, /commitBookingTransaction\(client, 'booking update'\)/);
+    assert.match(bookingJs, /createResult\.serverVerified === false/);
+    assert.match(bookingJs, /record\?\.serverVerified !== false/);
 });

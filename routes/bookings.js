@@ -98,6 +98,65 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
     }
 }
 
+async function runOptionalBookingTransactionStep(client, label, step) {
+    await client.query('SAVEPOINT booking_optional_step');
+    try {
+        const result = await step();
+        await client.query('RELEASE SAVEPOINT booking_optional_step');
+        return result;
+    } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT booking_optional_step')
+            .catch(rbErr => log.error(`Rollback to optional booking savepoint failed (${label})`, rbErr));
+        await client.query('RELEASE SAVEPOINT booking_optional_step')
+            .catch(relErr => log.error(`Release optional booking savepoint failed (${label})`, relErr));
+        log.warn(`${label} failed (non-critical): ${err.message}`);
+        return null;
+    }
+}
+
+async function commitBookingTransaction(client, label) {
+    const result = await client.query('COMMIT');
+    const command = String(result?.command || 'COMMIT').toUpperCase();
+    if (command !== 'COMMIT') {
+        const err = new Error(`${label} transaction was not committed; PostgreSQL returned ${command}`);
+        err.statusCode = 500;
+        err.code = 'booking_commit_not_verified';
+        err.publicMessage = 'Сервер не підтвердив збереження бронювання. Спробуйте ще раз або зверніться до адміністратора.';
+        throw err;
+    }
+    return result;
+}
+
+async function assertDurableCreatedBookings(queryable, ids, businessContext, label) {
+    const orderedIds = Array.from(new Set((ids || []).map(id => String(id || '').trim()).filter(Boolean)));
+    if (!orderedIds.length) {
+        const err = new Error(`${label} did not produce booking ids`);
+        err.statusCode = 500;
+        err.code = 'booking_missing_created_ids';
+        err.publicMessage = 'Сервер не повернув номер створеного бронювання. Таймлайн не оновлено.';
+        throw err;
+    }
+    const result = await queryable.query(
+        `SELECT *
+           FROM bookings b
+          WHERE b.id = ANY($1::text[])
+            AND ${bookingContextSql('b', '$2')}
+            AND b.status != 'cancelled'`,
+        [orderedIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    const rowsById = new Map(result.rows.map(row => [String(row.id), row]));
+    const missingIds = orderedIds.filter(id => !rowsById.has(id));
+    if (missingIds.length) {
+        const err = new Error(`${label} was not durably visible after commit: ${missingIds.join(', ')}`);
+        err.statusCode = 500;
+        err.code = 'booking_durable_read_missing';
+        err.publicMessage = 'Бронювання не підтвердилось у базі після збереження. Таймлайн не оновлено, щоб не показати фальшивий запис.';
+        err.missingBookingIds = missingIds;
+        throw err;
+    }
+    return orderedIds.map(id => rowsById.get(id));
+}
+
 function crmSideEffectsAllowedForContext(context) {
     return Boolean(normalizeBusinessContext(context || DEFAULT_BUSINESS_CONTEXT));
 }
@@ -1384,11 +1443,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
         );
 
+        const linkedInsertedRows = [];
         if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
             const linkedId = await generateBookingNumber(client);
-            await client.query(
+            const linkedInsert = await client.query(
                 `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+                 RETURNING *`,
                 [linkedId, businessContext, b.date, b.time, ensuredSecondAnimatorLine.lineId, b.programId, b.programCode,
                  b.label, b.programName, b.category, b.duration, 0, b.hosts,
                  b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
@@ -1397,6 +1458,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                  b.createdBy, b.id, b.status || 'confirmed', b.kidsCount || null, b.groupName || null,
                  null]
             );
+            if (linkedInsert.rows[0]) linkedInsertedRows.push(linkedInsert.rows[0]);
         }
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -1434,35 +1496,39 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             ['create', b.createdBy || req.user?.username, JSON.stringify(b)]
         );
 
-        // v19.10: Finance auto-record INSIDE transaction for consistency
+        // v19.10: Finance auto-record stays optional without poisoning the booking transaction.
         if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
-            try {
+            await runOptionalBookingTransactionStep(client, 'Finance auto-record', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
                      VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
                              $2, $3, $4, $5, $6, $7)`,
                     [businessContext, b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
                 );
-            } catch (finErr) {
-                log.warn(`Finance auto-record failed (non-critical): ${finErr.message}`);
-            }
+            });
         }
 
         // v33.8.0 Integration 6: Certificate payment finance record
         if (parkSideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
-            try {
+            await runOptionalBookingTransactionStep(client, 'Certificate finance record', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
                      VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
                              $2, $3, $4, 'certificate', $5, $6, 'system')`,
                     [businessContext, b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
                 );
-            } catch (certFinErr) {
-                log.warn(`Certificate finance record failed (non-critical): ${certFinErr.message}`);
-            }
+            });
         }
 
-        await client.query('COMMIT');
+        await commitBookingTransaction(client, 'booking create');
+
+        const durableRows = await assertDurableCreatedBookings(
+            client,
+            [b.id, ...linkedInsertedRows.map(row => row.id)],
+            businessContext,
+            'booking create'
+        );
+        const durableById = new Map(durableRows.map(row => [String(row.id), row]));
 
         // v12.6: skip_notification flag — suppress all notifications
         if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
@@ -1480,13 +1546,21 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
-        const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
+        const booking = durableById.has(String(b.id))
+            ? mapBookingRow(durableById.get(String(b.id)))
+            : (insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id });
+        booking.serverVerified = true;
         if (ensuredPrimaryLine) {
             booking.lineName = ensuredPrimaryLine.name || null;
             booking.resourceId = booking.lineId || ensuredPrimaryLine.lineId || null;
             booking.resourceType = b.resourceType || b.extraData?.timelineIdentity?.resourceType || (businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist');
             booking.timelineIdentity = b.extraData?.timelineIdentity || null;
         }
+        const linkedBookings = linkedInsertedRows.map(row => {
+            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            mapped.serverVerified = true;
+            return mapped;
+        });
         booking.timelineProjection = await bookingDayProjectionStatus(client, {
             id: booking.id || b.id,
             date: b.date || booking.date,
@@ -1689,11 +1763,16 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        res.json({ success: true, booking });
+        res.json({ success: true, booking, linkedBookings, serverVerified: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
         log.error('Error creating booking', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            missingBookingIds: err.missingBookingIds || undefined
+        });
     } finally {
         client.release();
     }
@@ -2184,19 +2263,25 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         );
 
         if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
-            try {
+            await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
                      VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
                              $2, $3, $4, $5, $6, $7)`,
                     [businessContext, main.price, `${main.programName || main.label || main.programCode} (${main.id})`, main.date, main.paymentMethod || null, main.id, main.createdBy || req.user?.username]
                 );
-            } catch (finErr) {
-                log.warn(`Finance auto-record failed (create/full, non-critical): ${finErr.message}`);
-            }
+            });
         }
 
-        await client.query('COMMIT');
+        await commitBookingTransaction(client, 'booking create/full');
+
+        const durableRows = await assertDurableCreatedBookings(
+            client,
+            [main.id, ...linkedRows.map(row => row.id)],
+            businessContext,
+            'booking create/full'
+        );
+        const durableById = new Map(durableRows.map(row => [String(row.id), row]));
 
         // v12.6: skip_notification flag — suppress all notifications
         if (sideEffectsAllowedForContext(businessContext) && main.status !== 'preliminary' && !main.skipNotification) {
@@ -2213,8 +2298,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
-        const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
-        const linkedBookings = linkedRows.map(mapBookingRow);
+        const mainBooking = durableById.has(String(main.id))
+            ? mapBookingRow(durableById.get(String(main.id)))
+            : (mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id });
+        mainBooking.serverVerified = true;
+        const linkedBookings = linkedRows.map(row => {
+            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            mapped.serverVerified = true;
+            return mapped;
+        });
         await Promise.all([mainBooking, ...linkedBookings].map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {
                 id: booking.id,
@@ -2245,11 +2337,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }, `booking_created_${main.id}`);
         }
 
-        res.json({ success: true, mainBooking, linkedBookings });
+        res.json({ success: true, mainBooking, linkedBookings, serverVerified: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
         log.error('Error creating full booking', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Internal server error',
+            code: err.code || 'internal_error',
+            missingBookingIds: err.missingBookingIds || undefined
+        });
     } finally {
         client.release();
     }
@@ -3024,7 +3121,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         );
 
         if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && newStatus !== 'preliminary') {
-            try {
+            await runOptionalBookingTransactionStep(client, 'Finance auto-record sync (update)', async () => {
                 const finUpdate = await client.query(
                     `UPDATE finance_transactions
                      SET amount = $1,
@@ -3045,12 +3142,10 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         [businessContext, b.price, `${b.programName || b.label || b.programCode} (${id})`, b.date, b.paymentMethod || null, id, req.user?.username]
                     );
                 }
-            } catch (finErr) {
-                log.warn(`Finance auto-record sync failed (update, non-critical): ${finErr.message}`);
-            }
+            });
         }
 
-        await client.query('COMMIT');
+        await commitBookingTransaction(client, 'booking update');
 
         const username = req.user?.username;
         const bookingForNotify = {
@@ -3101,7 +3196,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (update)', rbErr));
         log.error('Error updating booking', err);
-        res.status(500).json({ error: 'Failed to update booking' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.publicMessage || 'Failed to update booking',
+            code: err.code || 'internal_error'
+        });
     } finally {
         client.release();
     }

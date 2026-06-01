@@ -3139,7 +3139,10 @@ function collectCreatedBookingRecords(createResult) {
 
 function createResultConfirmed(createResult) {
     if (!createResult || createResult.success === false) return false;
-    return collectCreatedBookingRecords(createResult).length > 0;
+    if (createResult.serverVerified === false) return false;
+    const records = collectCreatedBookingRecords(createResult);
+    if (!records.length) return false;
+    return records.every(record => record?.serverVerified !== false);
 }
 
 function bookingBlockSelectorId(value) {

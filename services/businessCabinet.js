@@ -9,7 +9,7 @@ const {
 } = require('./businessContext');
 const {
   DEFAULT_TIMELINE_CONTEXT,
-  VALID_TIMELINE_CONTEXTS,
+  isTimelineContext: isRegisteredTimelineContext,
 } = require('./timelineContext');
 const {
   TIMELINE_FEATURE_KEYS,
@@ -56,7 +56,7 @@ function businessCabinetSettingsKey(context) {
 }
 
 function isTimelineContext(context) {
-  return VALID_TIMELINE_CONTEXTS.has(normalizeBusinessContext(context));
+  return isRegisteredTimelineContext(context);
 }
 
 function defaultBusinessTypeForContext(context) {

@@ -11,6 +11,11 @@ const {
     timelineDisplayFromBusinessCabinet
 } = require('../services/businessCabinet');
 const {
+    canAccessTimelineContext,
+    isTimelineContext,
+    timelineContextFromRequest
+} = require('../services/timelineContext');
+const {
     normalizeTimelineDisplaySettings,
     resourceTypeForDisplayMode,
     findTimelineResourceByName,
@@ -258,6 +263,19 @@ test('business operating profile owns shell start page and module visibility', (
     assert.equal(disabledModules.enabled.leads, true);
     assert.equal(startPagePathForBusiness('event_genix', { mode: 'disabled', timelineEnabled: false, startPage: 'timeline' }), '/dashboard');
     assert.equal(startPagePathForBusiness('maysternya_doli', { mode: 'simple', timelineEnabled: true, startPage: 'timeline' }), '/maysternya-doli');
+});
+
+test('timeline context keeps explicit non-timeline business requests out of the default timeline', () => {
+    const contextCode = read('js/timeline-context.js');
+
+    assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
+    assert.equal(timelineContextFromRequest({ query: { businessContext: 'unknown' } }), 'event_genix');
+    assert.equal(isTimelineContext('event_genix'), true);
+    assert.equal(isTimelineContext('dar'), false);
+    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
+    assert.match(contextCode, /function contextForBusiness/);
+    assert.doesNotMatch(contextCode, /if \(ctx\.key === 'event_genix'\) return url/);
+    assert.doesNotMatch(contextCode, /if \(ctx\.key === 'event_genix'\) return payload/);
 });
 
 test('business cabinet is the persistent control surface for shell modules and timeline display', () => {

@@ -1,5 +1,17 @@
-const VALID_TIMELINE_CONTEXTS = new Set(['event_genix', 'maysternya_doli']);
-const DEFAULT_TIMELINE_CONTEXT = 'event_genix';
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextCatalog,
+    canAccessBusinessContext,
+    normalizeBusinessContext
+} = require('./businessContext');
+
+const DEFAULT_TIMELINE_CONTEXT = DEFAULT_BUSINESS_CONTEXT;
+const DEFAULT_TIMELINE_ALIASES = new Set([DEFAULT_TIMELINE_CONTEXT, 'park_zakrevsky', 'park', 'pzp']);
+const VALID_TIMELINE_CONTEXTS = new Set(
+    businessContextCatalog()
+        .filter(context => Array.isArray(context.modules) && context.modules.includes('timeline'))
+        .map(context => context.key)
+);
 const MAYSTERNYA_DOLI_PATH = '/maysternya-doli';
 const CONTEXT_ACTION_ROLES = {
     maysternya_doli: {
@@ -12,19 +24,43 @@ const CONTEXT_ACTION_ROLES = {
     }
 };
 
-function normalizeTimelineContext(value) {
+function isKnownBusinessContextInput(value) {
     const raw = String(value || '').trim().toLowerCase();
-    return VALID_TIMELINE_CONTEXTS.has(raw) ? raw : DEFAULT_TIMELINE_CONTEXT;
+    if (!raw) return false;
+    const normalized = normalizeBusinessContext(raw);
+    if (normalized !== DEFAULT_TIMELINE_CONTEXT) return true;
+    return DEFAULT_TIMELINE_ALIASES.has(raw);
 }
 
-function timelineContextFromRequest(req) {
-    return normalizeTimelineContext(
+function isTimelineContext(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return false;
+    if (!isKnownBusinessContextInput(raw)) return false;
+    return VALID_TIMELINE_CONTEXTS.has(normalizeBusinessContext(raw));
+}
+
+function normalizeTimelineContext(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return DEFAULT_TIMELINE_CONTEXT;
+    return isTimelineContext(raw) ? normalizeBusinessContext(raw) : DEFAULT_TIMELINE_CONTEXT;
+}
+
+function rawTimelineContextFromRequest(req) {
+    return (
         req?.body?.businessContext
         || req?.body?.business_context
         || req?.query?.businessContext
         || req?.query?.business_context
         || req?.headers?.['x-business-context']
     );
+}
+
+function timelineContextFromRequest(req) {
+    const raw = rawTimelineContextFromRequest(req);
+    if (!raw) return DEFAULT_TIMELINE_CONTEXT;
+    return isKnownBusinessContextInput(raw)
+        ? normalizeBusinessContext(raw)
+        : DEFAULT_TIMELINE_CONTEXT;
 }
 
 function userRoles(user) {
@@ -44,14 +80,17 @@ function userPageAllowlist(user) {
 }
 
 function canAccessTimelineContext(user, context) {
-    const normalized = normalizeTimelineContext(context);
-    if (normalized === DEFAULT_TIMELINE_CONTEXT) return Boolean(user);
     if (!user) return false;
+    const normalized = context ? normalizeBusinessContext(context) : DEFAULT_TIMELINE_CONTEXT;
+    if (context && !isKnownBusinessContextInput(context)) return false;
+    if (!VALID_TIMELINE_CONTEXTS.has(normalized)) return false;
+    if (!canAccessBusinessContext(user, normalized)) return false;
+    if (normalized === DEFAULT_TIMELINE_CONTEXT) return true;
     return userRoles(user).includes('creator');
 }
 
 function canUseTimelineAction(user, context, action) {
-    const normalized = normalizeTimelineContext(context);
+    const normalized = context ? normalizeBusinessContext(context) : DEFAULT_TIMELINE_CONTEXT;
     if (!canAccessTimelineContext(user, normalized)) return false;
     const allowed = CONTEXT_ACTION_ROLES[normalized]?.[action];
     if (!Array.isArray(allowed)) return true;
@@ -76,6 +115,7 @@ module.exports = {
     VALID_TIMELINE_CONTEXTS,
     DEFAULT_TIMELINE_CONTEXT,
     MAYSTERNYA_DOLI_PATH,
+    isTimelineContext,
     normalizeTimelineContext,
     timelineContextFromRequest,
     canAccessTimelineContext,

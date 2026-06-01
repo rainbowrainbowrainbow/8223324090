@@ -24,6 +24,8 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ body: { business_context: 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
+    assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
+    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
 });
 
 test('timeline API calls do not inherit the global CRM business header', () => {
@@ -293,9 +295,10 @@ test('timeline load routes keep legacy default-context rows visible', () => {
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const linesRoute = fs.readFileSync(path.join(ROOT, 'routes', 'lines.js'), 'utf8');
 
-    assert.match(bookingsRoute, /COALESCE\(b\.business_context, \$2\) = \$2/);
-    assert.match(bookingsRoute, /COALESCE\(business_context, \$3\) = \$3/);
-    assert.match(linesRoute, /COALESCE\(l\.business_context, \$2\) = \$2/);
+    assert.match(bookingsRoute, /function bookingContextSql[\s\S]*DEFAULT_TIMELINE_CONTEXT/);
+    assert.match(bookingsRoute, /bookingContextSql\('b', '\$2'\)/);
+    assert.match(bookingsRoute, /bookingContextSql\('', '\$3'\)/);
+    assert.match(linesRoute, /COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
 });
 
 test('Maysternya Doli access is creator-only', () => {

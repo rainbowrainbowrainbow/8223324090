@@ -3266,6 +3266,25 @@ function createdBookingVisibilityDiagnostics(createdBookings = [], snapshot = nu
     });
 }
 
+function createdBookingTimelineProjection(booking = {}) {
+    return booking.timelineProjection
+        || booking.timeline_projection
+        || booking.timeline_projection_status
+        || null;
+}
+
+function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate = formatDate(AppState.selectedDate)) {
+    const projection = createdBookingTimelineProjection(booking);
+    if (!projection || projection.visible !== true) return false;
+    const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const projectedDate = normalizeBookingDateKey(projection.date || booking.date);
+    const projectedContext = projection.businessContext || projection.business_context || booking.businessContext || '';
+    if (projectedDate && projectedDate !== currentDate) return false;
+    if (projectedContext && expectedContext && projectedContext !== expectedContext) return false;
+    return true;
+}
+
 function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {
     const primary = createdBookings[0] || {};
     const primaryId = primary?.id || primary?.bookingId || '';
@@ -3295,6 +3314,11 @@ function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) 
 
 async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     const currentDate = formatDate(AppState.selectedDate);
+    const createdById = new Map(
+        createdBookings
+            .map(item => [String(item?.id || item?.bookingId || ''), item])
+            .filter(([id]) => Boolean(id))
+    );
     const expectedIds = new Set(
         createdBookings
             .filter(item => !item?.date || normalizeBookingDateKey(item.date) === currentDate)
@@ -3310,6 +3334,7 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
         bookingsById: new Map(),
         foundIds: new Set(),
         missingIds: new Set(expectedIds),
+        projectionRecoveredIds: new Set(),
         lineIds: new Set()
     };
     if (!expectedIds.size) return snapshot;
@@ -3340,7 +3365,7 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     }
 
     if (Array.isArray(freshBookings)) {
-        snapshot.bookings = freshBookings;
+        snapshot.bookings = [...freshBookings];
         freshBookings.forEach(booking => {
             const id = booking?.id || booking?.bookingId;
             if (!id) return;
@@ -3351,8 +3376,17 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
                 snapshot.missingIds.delete(key);
             }
         });
+        Array.from(snapshot.missingIds).forEach(key => {
+            const created = createdById.get(key);
+            if (!createdBookingProjectionMatchesCurrentSlice(created, currentDate)) return;
+            snapshot.bookings.push(created);
+            snapshot.bookingsById.set(key, created);
+            snapshot.foundIds.add(key);
+            snapshot.missingIds.delete(key);
+            snapshot.projectionRecoveredIds.add(key);
+        });
         if (typeof setTimelineCacheEntry === 'function') {
-            setTimelineCacheEntry(AppState.cachedBookings, currentDate, freshBookings);
+            setTimelineCacheEntry(AppState.cachedBookings, currentDate, snapshot.bookings);
         }
     }
 

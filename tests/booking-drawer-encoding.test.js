@@ -94,6 +94,10 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
     assert.match(bookingJs, /getLinesForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /function createdBookingTimelineProjection/);
+    assert.match(bookingJs, /function createdBookingProjectionMatchesCurrentSlice/);
+    assert.match(bookingJs, /projectionRecoveredIds/);
+    assert.match(bookingJs, /setTimelineCacheEntry\(AppState\.cachedBookings, currentDate, snapshot\.bookings\)/);
     assert.match(bookingJs, /серверний список дня не повернув запис/);
     assert.match(bookingJs, /createdBookingVisibilityMessage\(createdBookings, timelineSnapshot\)/);
 });

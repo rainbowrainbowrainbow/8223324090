@@ -227,14 +227,78 @@
     const MODULE_KEYS = ['timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products', 'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'];
     const FEATURE_KEYS = ['quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen', 'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'];
     const POLICY_KEYS = ['allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup', 'enforceTeacherConflict', 'enforceResourceCapacity', 'notifyFirstOccurrenceOnly'];
+    const STATIC_CONTEXT_KEYS = new Set(Object.keys(CONTEXTS));
+    const KNOWN_CRM_CONTEXT_KEYS = new Set([...STATIC_CONTEXT_KEYS, 'dar', 'crm']);
 
     function normalizedPath() {
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
     }
 
+    function rawContextKey(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
     function normalizeContextKey(value) {
-        const key = String(value || '').trim().toLowerCase();
+        const key = rawContextKey(value);
         return CONTEXTS[key] ? key : 'event_genix';
+    }
+
+    function storagePrefixForContext(key) {
+        const safe = rawContextKey(key).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        return `crm_${safe || 'business'}`;
+    }
+
+    function profileForContext(key) {
+        try {
+            return window.CrmBusinessContext?.profileFor?.(key) || null;
+        } catch {
+            return null;
+        }
+    }
+
+    function displayModeFromBusinessProfile(profile) {
+        const timeline = profile?.timeline || {};
+        const rawMode = String(timeline.mode || profile?.shell?.timelineMode || '').trim();
+        if (profile && (timeline.timelineEnabled === false || profile?.shell?.timelineEnabled === false || rawMode === 'disabled')) {
+            return 'disabled';
+        }
+        return VALID_DISPLAY_MODES.has(rawMode) ? rawMode : (profile ? 'park' : 'disabled');
+    }
+
+    function contextForBusiness(profileOrKey) {
+        const profile = profileOrKey && typeof profileOrKey === 'object' ? profileOrKey : null;
+        const key = rawContextKey(profile?.key || profile?.id || profile?.businessContext || profileOrKey);
+        if (!key) return null;
+        const businessProfile = profile || profileForContext(key);
+        if (!businessProfile && !KNOWN_CRM_CONTEXT_KEYS.has(key)) return null;
+        if (CONTEXTS[key] && (STATIC_CONTEXT_KEYS.has(key) || !businessProfile)) return CONTEXTS[key];
+
+        const label = businessProfile?.label || businessProfile?.brandName || businessProfile?.name || key;
+        const shortLabel = businessProfile?.shortLabel || businessProfile?.switchLabel || label;
+        const timeline = businessProfile?.timeline || {};
+        const mode = displayModeFromBusinessProfile(businessProfile);
+        const route = businessProfile?.timelineRoute || businessProfile?.startPagePath || '/dashboard';
+        const existing = CONTEXTS[key] || {};
+        CONTEXTS[key] = {
+            ...existing,
+            key,
+            path: route,
+            pageAccessPath: route,
+            title: businessProfile?.title || `${label} | Timeline`,
+            navLabel: shortLabel,
+            switchLabel: shortLabel,
+            productName: shortLabel,
+            brandName: label,
+            subtitle: businessProfile?.subtitle || 'CRM',
+            storagePrefix: existing.storagePrefix || storagePrefixForContext(key),
+            apiValue: key,
+            isPrivateSurface: false,
+            showAfisha: timeline.timelineFeatures?.afisha === true || businessProfile?.modules?.enabled?.afisha === true,
+            defaultDisplayMode: mode,
+            defaultHiddenElements: Array.isArray(timeline.defaultHiddenElements) ? timeline.defaultHiddenElements : [],
+            actionRoles: existing.actionRoles || CONTEXTS.event_genix.actionRoles
+        };
+        return CONTEXTS[key];
     }
 
     function currentRouteContext() {
@@ -247,8 +311,7 @@
         try {
             const params = new URLSearchParams(window.location.search || '');
             const requested = params.get('businessContext') || params.get('business_context');
-            const key = normalizeContextKey(requested);
-            return CONTEXTS[requested ? key : ''] || null;
+            return requested ? contextForBusiness(requested) : null;
         } catch {
             return null;
         }
@@ -256,8 +319,7 @@
 
     function currentCrmContext() {
         try {
-            const key = normalizeContextKey(window.CrmBusinessContext?.current?.());
-            return CONTEXTS[key] || null;
+            return contextForBusiness(window.CrmBusinessContext?.current?.()) || null;
         } catch {
             return null;
         }
@@ -281,7 +343,17 @@
             crmBusinessId: crmState?.activeBusinessId || null,
             lastExplicitBusinessId: crmState?.lastExplicitBusinessId || null,
             availableBusinesses: Array.isArray(crmState?.availableBusinesses)
-                ? crmState.availableBusinesses.filter(item => CONTEXTS[item?.id || item?.key])
+                ? crmState.availableBusinesses.map(item => {
+                    const business = contextForBusiness(item?.id || item?.key || item);
+                    if (!business) return null;
+                    return {
+                        id: business.key,
+                        key: business.key,
+                        label: business.brandName,
+                        shortLabel: business.switchLabel,
+                        route: business.path
+                    };
+                }).filter(Boolean)
                 : Object.values(CONTEXTS).map(item => ({
                     id: item.key,
                     key: item.key,
@@ -335,6 +407,7 @@
     }
 
     function defaultDisplayMode(ctx = currentContext()) {
+        if (ctx?.defaultDisplayMode && VALID_DISPLAY_MODES.has(ctx.defaultDisplayMode)) return ctx.defaultDisplayMode;
         return ctx.key === 'maysternya_doli' ? 'simple' : 'park';
     }
 
@@ -546,14 +619,13 @@
 
     function appendApiContext(url) {
         const ctx = currentContext();
-        if (ctx.key === 'event_genix') return url;
+        if (/[?&](businessContext|business_context)=/.test(String(url || ''))) return url;
         const joiner = url.includes('?') ? '&' : '?';
         return `${url}${joiner}businessContext=${encodeURIComponent(ctx.apiValue)}`;
     }
 
     function withApiContext(payload) {
         const ctx = currentContext();
-        if (ctx.key === 'event_genix') return payload;
         return { ...(payload || {}), businessContext: ctx.apiValue };
     }
 
@@ -665,6 +737,7 @@
         resourceTypeForMode,
         userRoles,
         userPageAllowlist,
+        contextForBusiness,
         hasAnyRole,
         canAccessContext,
         canUseAction,

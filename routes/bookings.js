@@ -65,6 +65,37 @@ function sendBookingDenied(req, res, booking) {
     return res.status(403).json({ success: false, error: 'Insufficient booking permissions' });
 }
 
+async function bookingDayProjectionStatus(queryable, { id, date, businessContext, user }) {
+    const params = [date, businessContext || DEFAULT_TIMELINE_CONTEXT, id];
+    const visibility = buildBookingVisibilityScope(user, params, 'b');
+    try {
+        const result = await queryable.query(
+            `SELECT b.id
+               FROM bookings b
+              WHERE b.date = $1
+                AND ${bookingContextSql('b', '$2')}
+                AND b.id = $3
+                AND b.status != 'cancelled'
+                ${visibility}
+              LIMIT 1`,
+            params
+        );
+        return {
+            date,
+            businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+            visible: result.rowCount > 0
+        };
+    } catch (err) {
+        log.warn(`Timeline day projection check failed for booking ${id}: ${err.message}`);
+        return {
+            date,
+            businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+            visible: null,
+            error: 'projection_check_failed'
+        };
+    }
+}
+
 function crmSideEffectsAllowedForContext(context) {
     return Boolean(normalizeBusinessContext(context || DEFAULT_BUSINESS_CONTEXT));
 }
@@ -1454,6 +1485,19 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             booking.resourceType = b.resourceType || b.extraData?.timelineIdentity?.resourceType || (businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist');
             booking.timelineIdentity = b.extraData?.timelineIdentity || null;
         }
+        booking.timelineProjection = await bookingDayProjectionStatus(client, {
+            id: booking.id || b.id,
+            date: booking.date || b.date,
+            businessContext,
+            user: req.user
+        });
+        if (booking.timelineProjection.visible === false) {
+            log.warn(`Created booking ${booking.id || b.id} is not visible in same day timeline projection`, {
+                date: booking.timelineProjection.date,
+                businessContext: booking.timelineProjection.businessContext,
+                userId: req.user?.id || null
+            });
+        }
 
         // WebSocket: notify other clients
         broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
@@ -2169,6 +2213,21 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
         const linkedBookings = linkedRows.map(mapBookingRow);
+        await Promise.all([mainBooking, ...linkedBookings].map(async booking => {
+            booking.timelineProjection = await bookingDayProjectionStatus(client, {
+                id: booking.id,
+                date: booking.date || main.date,
+                businessContext,
+                user: req.user
+            });
+            if (booking.timelineProjection.visible === false) {
+                log.warn(`Created linked booking ${booking.id} is not visible in same day timeline projection`, {
+                    date: booking.timelineProjection.date,
+                    businessContext: booking.timelineProjection.businessContext,
+                    userId: req.user?.id || null
+                });
+            }
+        }));
 
         // WebSocket: notify other clients
         broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);

@@ -493,7 +493,8 @@ function applyCrmBusinessProfile(profileInput = {}, options = {}) {
     if (typeof window !== 'undefined' && window.TimelineBusinessContext?.saveDisplaySettings) {
         (profile.businesses || []).forEach(business => {
             if (!business?.timeline) return;
-            const timelineContext = window.TimelineBusinessContext.CONTEXTS?.[business.key];
+            const timelineContext = window.TimelineBusinessContext.contextForBusiness?.(business)
+                || window.TimelineBusinessContext.CONTEXTS?.[business.key];
             if (!timelineContext) return;
             window.TimelineBusinessContext.saveDisplaySettings(business.timeline, { context: timelineContext });
         });

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.4 - Timeline projection truth
+
+### Timeline / Booking / Multi-cabinet / 01.06.2026 [codex]
+- **Таймлайн більше не покладається на прихований дефолтний бізнес** - frontend завжди додає явний `businessContext` у timeline API, а сервер не підміняє явно обраний non-timeline бізнес на `event_genix`.
+- **Створення бронювання отримало серверну проекцію видимості** - `POST /bookings` і `POST /bookings/full` повертають `timelineProjection`, яка перевіряє той самий день, бізнес, статус і booking visibility scope, що й денний список таймлайна.
+- **Хибне жовте попередження прибрано для підтверджених server-visible записів** - якщо сервер довів, що новий запис належить поточному зрізу, frontend підкладає його у кеш після refresh, навіть коли повторний `GET /bookings/:date` ще не повернув рядок.
+- **Повʼязані бронювання захищені тим самим контрактом** - основний запис і linked-блоки з `/bookings/full` отримують однакову діагностику, щоб другий ведучий або повʼязані лінії не губилися після створення.
+- **Додано regression guards** - тести фіксують явний контекст timeline API, відмову від silent fallback для `dar`/`crm`, серверну `timelineProjection` і frontend recovery через `snapshot.bookings`.
+
+---
+
 ## v0.69.3 - Business context and resource truth
 
 ### Timeline / Business context / Multi-cabinet / 31.05.2026 [codex]

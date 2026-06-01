@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.69.19",
+  "version": "0.69.20",
   "eventGenix": {
-    "releaseLabel": "Timeline assistant hit-target hotfix"
+    "releaseLabel": "Timeline phone layout hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

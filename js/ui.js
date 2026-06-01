@@ -1229,7 +1229,14 @@ function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
 function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding) {
     const base = _timelineBaseCellWidth(level, compact);
     const viewportWidth = _timelineViewportWidth();
-    if (compact || viewportWidth <= 768) {
+    if (viewportWidth <= 768) {
+        // v0.69.20: phones must scroll horizontally instead of crushing readable time cells.
+        if (viewportWidth <= 360) return level === 15 ? 36 : level === 30 ? 50 : 76;
+        if (viewportWidth <= 390) return level === 15 ? 38 : level === 30 ? 54 : 80;
+        if (viewportWidth <= 480) return level === 15 ? 42 : level === 30 ? 58 : 84;
+        return level === 15 ? 44 : level === 30 ? 64 : 92;
+    }
+    if (compact) {
         const fitted = _timelineFitCellWidth(level, headerWidth, scrollPadding);
         return Math.max(18, Math.min(base, fitted || base));
     }
@@ -1241,8 +1248,9 @@ function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding
 
 function _timelineResponsiveHeaderWidth() {
     const viewportWidth = _timelineViewportWidth();
-    if (viewportWidth <= 375) return 45;
-    if (viewportWidth <= 480) return 70;
+    if (viewportWidth <= 360) return 56;
+    if (viewportWidth <= 390) return 62;
+    if (viewportWidth <= 480) return 72;
     if (viewportWidth <= 768) return 90;
     if (viewportWidth <= 1180) return 88;
     if (viewportWidth <= 1366) return 96;
@@ -1259,12 +1267,14 @@ function applyTimelineResponsiveDensity() {
     const compact = !!AppState.compactMode;
     const viewportWidth = _timelineViewportWidth();
     const nextHeaderWidth = compact
-        ? viewportWidth <= 375
-            ? 44
+        ? viewportWidth <= 360
+            ? 56
+            : viewportWidth <= 390
+                ? 62
             : viewportWidth <= 480
-                ? 58
+                ? 72
                 : viewportWidth <= 768
-                    ? 72
+                    ? 84
                     : viewportWidth <= 1180
                         ? 74
                         : viewportWidth <= 1366
@@ -1293,7 +1303,7 @@ function applyTimelineResponsiveDensity() {
         container.classList.toggle('compact', compact);
         container.dataset.zoom = level;
         container.dataset.timelineDensity = viewportWidth <= 1536 ? 'tight' : 'regular';
-        container.dataset.fitScreen = compact ? 'true' : 'bounded';
+        container.dataset.fitScreen = compact && viewportWidth > 768 ? 'true' : 'scroll';
     }
 
     return changed;

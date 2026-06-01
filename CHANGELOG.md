@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.20 - Timeline phone layout hotfix
+
+### Timeline / Mobile / iPhone / Android / 01.06.2026 [codex]
+- **Таймлайн більше не стискає години на телефонах до нечитаємого стану** - мобільний `compact` режим тепер лишає клітинки часу читабельними і вмикає горизонтальний scroll замість примусового fit-to-screen.
+- **Toolbar таймлайну отримав окрему phone-layout сітку** - дата, `Зараз`, статуси, `День/Тиждень`, zoom, `Компакт`, `Кімнати` і `Дії` більше не розвалюються в хаотичну колонку на iPhone 11 / Telegram browser.
+- **iPhone/Android touch UX вирівняно** - кнопки лишаються 42-44px, текст обрізається через ellipsis, а timeline rows мають стабільну ширину для горизонтального свайпу.
+- **Regression guard додано в UI smoke** - `tests/ui-check.js` фіксує, що phones використовують readable horizontal grid, а desktop compact fit-screen не ламається.
+
+---
+
 ## v0.69.19 - Timeline assistant hit-target hotfix
 
 ### Timeline / Assistant / Hit Targets / Live UAT / 01.06.2026 [codex]

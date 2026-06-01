@@ -247,6 +247,8 @@ test('business operating profile owns shell start page and module visibility', (
     assert.match(settingsRoute, /router\.get\('\/business\/profile'/);
     assert.match(api, /const crmBusinessProfileState/);
     assert.match(api, /async function hydrateCrmBusinessProfile/);
+    assert.match(api, /source: 'server_business_profile'/);
+    assert.match(api, /merge: false/);
     assert.match(api, /profileFor: getCrmBusinessProfileForContext/);
     assert.match(api, /startPageForUser: crmBusinessStartPageForUser/);
     assert.match(auth, /await hydrateBusinessOperatingProfile\(data\.user \|\| AppState\.currentUser\)/);

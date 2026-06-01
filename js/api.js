@@ -496,7 +496,11 @@ function applyCrmBusinessProfile(profileInput = {}, options = {}) {
             const timelineContext = window.TimelineBusinessContext.contextForBusiness?.(business)
                 || window.TimelineBusinessContext.CONTEXTS?.[business.key];
             if (!timelineContext) return;
-            window.TimelineBusinessContext.saveDisplaySettings(business.timeline, { context: timelineContext });
+            window.TimelineBusinessContext.saveDisplaySettings(business.timeline, {
+                context: timelineContext,
+                source: 'server_business_profile',
+                merge: false
+            });
         });
     }
 

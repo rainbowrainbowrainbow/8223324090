@@ -88,7 +88,12 @@ window.BookingForm = {
         const isMaysternyaSimple = isMaysternya && presentation.mode === 'simple';
         const isEducation = presentation.mode === 'education';
         const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
-        const roomOptional = isMaysternyaSimple || presentation.mode === 'simple' || presentation.mode === 'specialist';
+        const roomOptional = Boolean(presentation.defaultBookingRoom)
+            || isMaysternyaSimple
+            || presentation.mode === 'simple'
+            || presentation.mode === 'specialist'
+            || presentation.resourceModel === 'online'
+            || presentation.resourceType === 'online';
 
         if (!room) {
             if (!roomOptional) {

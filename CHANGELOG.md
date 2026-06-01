@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.10 - Timeline settings persistence
+
+### Timeline / Settings / Multi-cabinet / 01.06.2026 [codex]
+- **Серверний бізнес-профіль тепер сильніший за stale localStorage** - `TimelineBusinessContext` тримає гідровані display settings у runtime-кеші й не дає старим локальним налаштуванням повернути Park/simple після входу, verify або перемикання бізнесу.
+- **Business profile явно позначає джерело timeline settings** - `applyCrmBusinessProfile()` записує `business.timeline` із `source: 'server_business_profile'` та `merge: false`, тому серверний contract не змішується зі старими локальними значеннями.
+- **Default room винесено в presentation/context** - Майстерня Долі лишається з room `Онлайн`, але форма бронювання бере це з `TimelineBusinessContext.presentation()`, а не з окремої UI-гілки.
+- **Simple/specialist/online режими мають спільну room-політику** - валідація форми читає режим таймлайну й `resourceModel`, тому нові кабінети/спеціалісти не потребують окремого hardcoded сценарію.
+- **Додано regression guard** - `tests/timeline-context.test.js` відтворює конфлікт між stale `localStorage` і серверним профілем та перевіряє, що серверно-гідрований режим лишається активним.
+
+---
+
 ## v0.69.9 - Timeline UI unification
 
 ### Timeline / UI / Multi-cabinet / 01.06.2026 [codex]

@@ -143,6 +143,20 @@ function isTimelineResourceBackedBookingMode() {
     return presentation.mode !== 'park' && Boolean(presentation.resourceType);
 }
 
+function defaultTimelineBookingRoom(presentation = getTimelineBookingPresentation()) {
+    if (presentation.defaultBookingRoom) return presentation.defaultBookingRoom;
+    if (presentation.resourceModel === 'online' || presentation.resourceType === 'online') return MAYSTERNYA_ONLINE_ROOM;
+    return '';
+}
+
+function isOptionalTimelineRoomBookingMode(presentation = getTimelineBookingPresentation()) {
+    return Boolean(defaultTimelineBookingRoom(presentation))
+        || presentation.mode === 'simple'
+        || presentation.mode === 'specialist'
+        || presentation.resourceModel === 'online'
+        || presentation.resourceType === 'online';
+}
+
 function timelineKitchenEnabled() {
     const presentation = getTimelineBookingPresentation();
     return presentation.mode === 'park' && presentation.parkKitchenEnabled !== false;
@@ -395,8 +409,7 @@ function renderBookingCustomerSearchState(message = '', options = {}) {
 function getSmartBookingValidationState() {
     const formData = getBookingFormData();
     const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
-    const isMaysternya = typeof isMaysternyaBookingContext === 'function' && isMaysternyaBookingContext();
-    const roomOptional = isMaysternya && presentation.mode === 'simple';
+    const roomOptional = isOptionalTimelineRoomBookingMode(presentation);
     const hasDateTime = Boolean(formData?.time) && Boolean(AppState.selectedDate);
     const hasRoom = Boolean(formData?.room);
     const hasSelectedCustomer = Boolean(document.getElementById('selectedCustomerId')?.value);
@@ -2525,6 +2538,7 @@ function getSelectedProgramIdFromUi() {
 
 function getBookingFormData() {
     const maysternyaMode = isMaysternyaBookingContext();
+    const presentation = getTimelineBookingPresentation();
     const selectedProgramId = getSelectedProgramIdFromUi();
     const hasExplicitProgram = Boolean(selectedProgramId);
     const hasEvent = maysternyaMode ? true : (getBookingWorkspaceHasEvent() || hasExplicitProgram);
@@ -2532,7 +2546,7 @@ function getBookingFormData() {
     const leadDetailsEnabled = isBookingLeadDetailsEnabled();
     const programId = hasEvent ? selectedProgramId : '';
     const room = document.getElementById('roomSelect')?.value || '';
-    const effectiveRoom = maysternyaMode ? (room || MAYSTERNYA_ONLINE_ROOM) : room;
+    const effectiveRoom = room || defaultTimelineBookingRoom(presentation);
     const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
     const lineId = document.getElementById('bookingLine')?.value;
@@ -2811,7 +2825,7 @@ function buildBookingObject(formData, program) {
 
     if (formData.maysternyaMode || isMaysternyaBookingContext()) {
         const contact = getMaysternyaContactSnapshot();
-        obj.room = MAYSTERNYA_ONLINE_ROOM;
+        obj.room = defaultTimelineBookingRoom() || MAYSTERNYA_ONLINE_ROOM;
         obj.hosts = hasEvent ? (program.hosts || 1) : 1;
         obj.kidsCount = null;
         obj.costume = null;

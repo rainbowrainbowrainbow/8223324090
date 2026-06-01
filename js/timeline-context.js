@@ -43,6 +43,7 @@
             subtitle: 'Записи психолога',
             storagePrefix: 'md',
             apiValue: 'maysternya_doli',
+            defaultBookingRoom: '\u041E\u043D\u043B\u0430\u0439\u043D',
             isPrivateSurface: true,
             showAfisha: false,
             defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification'],
@@ -234,6 +235,7 @@
     const POLICY_KEYS = ['allowLessonsWithoutTeacher', 'allowLessonsWithoutGroup', 'enforceTeacherConflict', 'enforceResourceCapacity', 'notifyFirstOccurrenceOnly'];
     const STATIC_CONTEXT_KEYS = new Set(Object.keys(CONTEXTS));
     const KNOWN_CRM_CONTEXT_KEYS = new Set([...STATIC_CONTEXT_KEYS, 'dar', 'crm']);
+    const displaySettingsCache = new Map();
 
     function normalizedPath() {
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
@@ -411,6 +413,10 @@
         return `${ctx.storagePrefix}_${DISPLAY_STORAGE_NAME}`;
     }
 
+    function displayCacheKey(ctx = currentContext()) {
+        return ctx?.key || currentContext().key;
+    }
+
     function defaultDisplayMode(ctx = currentContext()) {
         if (ctx?.defaultDisplayMode && VALID_DISPLAY_MODES.has(ctx.defaultDisplayMode)) return ctx.defaultDisplayMode;
         return ctx.key === 'maysternya_doli' ? 'simple' : 'park';
@@ -554,21 +560,43 @@
         };
     }
 
+    function readStoredDisplaySettings(ctx = currentContext()) {
+        try {
+            return safeJson(localStorage.getItem(displayStorageKey(ctx)));
+        } catch {
+            return null;
+        }
+    }
+
+    function writeStoredDisplaySettings(ctx, settings) {
+        try {
+            localStorage.setItem(displayStorageKey(ctx), JSON.stringify(settings));
+        } catch {}
+    }
+
     function readDisplaySettings(ctx = currentContext()) {
-        const parsed = safeJson(localStorage.getItem(displayStorageKey(ctx)));
-        return normalizeDisplaySettings(parsed, ctx);
+        const key = displayCacheKey(ctx);
+        if (displaySettingsCache.has(key)) {
+            return normalizeDisplaySettings(displaySettingsCache.get(key), ctx);
+        }
+        return normalizeDisplaySettings(readStoredDisplaySettings(ctx), ctx);
     }
 
     function saveDisplaySettings(next, options = {}) {
         const ctx = options.context || currentContext();
+        const incoming = next && typeof next === 'object' ? next : {};
+        const base = options.merge === false ? {} : readDisplaySettings(ctx);
         const normalized = normalizeDisplaySettings({
-            ...readDisplaySettings(ctx),
-            ...(next || {}),
-            updatedAt: new Date().toISOString()
+            ...base,
+            ...incoming,
+            updatedAt: incoming.updatedAt || new Date().toISOString()
         }, ctx);
-        localStorage.setItem(displayStorageKey(ctx), JSON.stringify(normalized));
+        displaySettingsCache.set(displayCacheKey(ctx), normalized);
+        if (options.persistLocal !== false) {
+            writeStoredDisplaySettings(ctx, normalized);
+        }
         window.dispatchEvent(new CustomEvent('timeline:display-settings-changed', {
-            detail: { context: ctx.key, settings: normalized }
+            detail: { context: ctx.key, settings: normalized, source: options.source || 'local' }
         }));
         return normalized;
     }
@@ -602,6 +630,7 @@
             timelineEnabled: settings.timelineEnabled !== false && mode.key !== 'disabled',
             startPage: settings.startPage || 'timeline',
             resourceModel: settings.resourceModel || defaultResourceModelForMode(mode.key),
+            defaultBookingRoom: ctx.defaultBookingRoom || null,
             enabledModules,
             timelineFeatures,
             bookingPolicy: settings.bookingPolicy || defaultBookingPolicyForMode(mode.key),

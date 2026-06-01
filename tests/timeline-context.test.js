@@ -38,6 +38,64 @@ test('timeline API calls do not inherit the global CRM business header', () => {
     assert.match(apiCode, /apiCreateBooking[\s\S]*getTimelineAuthHeaders\(\)/);
 });
 
+test('server-hydrated timeline display settings override stale local storage', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const events = [];
+    const stored = new Map([
+        ['pzp_timeline_display_settings', JSON.stringify({ mode: 'park', parkKitchenMode: 'with_kitchen' })]
+    ]);
+    class CustomEvent {
+        constructor(type, init = {}) {
+            this.type = type;
+            this.detail = init.detail || null;
+        }
+    }
+    const classList = { toggle() {}, add() {}, remove() {}, contains() { return false; } };
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent,
+        window: {
+            location: { pathname: '/', search: '', href: 'https://crm.test/' },
+            addEventListener() {},
+            dispatchEvent(event) { events.push(event); }
+        },
+        document: {
+            readyState: 'complete',
+            body: {
+                classList,
+                dataset: {},
+                setAttribute(name, value) { this[name] = value; }
+            },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: key => stored.get(key) || null,
+            setItem: (key, value) => stored.set(key, value),
+            removeItem: key => stored.delete(key)
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    sandbox.window.CustomEvent = CustomEvent;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    const ctx = sandbox.window.TimelineBusinessContext.CONTEXTS.event_genix;
+    assert.equal(sandbox.window.TimelineBusinessContext.displaySettings(ctx).mode, 'park');
+
+    sandbox.window.TimelineBusinessContext.saveDisplaySettings(
+        { mode: 'simple', resourceModel: 'specialist' },
+        { context: ctx, source: 'server_business_profile', merge: false }
+    );
+    stored.set('pzp_timeline_display_settings', JSON.stringify({ mode: 'park', parkKitchenMode: 'with_kitchen' }));
+
+    assert.equal(sandbox.window.TimelineBusinessContext.displaySettings(ctx).mode, 'simple');
+    assert.equal(events.at(-1).detail.source, 'server_business_profile');
+});
+
 test('global business switch routes to the matching timeline surface', () => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');

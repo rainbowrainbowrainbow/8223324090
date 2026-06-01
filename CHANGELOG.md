@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.11 - Timeline animator line control
+
+### Timeline / Staffing / Park / 01.06.2026 [codex]
+- **Повернуто кнопку `Додати аніматора` у Park timeline** - кнопка більше не ховається через `enabledModules.resources=false`, бо для Park це не resource-manager, а staffing-контроль для реальних ліній дня.
+- **Resource-manager і staffing-кнопку розведено** - `roomLoadBtn` може лишатися прихованим, коли ресурси вимкнені для Park, але `addLineBtn` доступний для сценаріїв із другим ведучим або додатковою лінією.
+- **Permission-hidden більше не затирається context-label refresh-ем** - `applyLabels()` не знімає `hidden`, якщо кнопку приховала роль/доступ, і змінює видимість тільки для context-driven state.
+- **Regression guard додано в unit baseline** - `tests/timeline-context.test.js` тепер входить у `npm run test:unit` і перевіряє, що Park має `resources=false`, але `addLineBtn` не отримує `hidden`.
+
+---
+
 ## v0.69.10 - Timeline settings persistence
 
 ### Timeline / Settings / Multi-cabinet / 01.06.2026 [codex]

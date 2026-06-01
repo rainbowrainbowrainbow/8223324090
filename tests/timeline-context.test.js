@@ -96,6 +96,77 @@ test('server-hydrated timeline display settings override stale local storage', (
     assert.equal(events.at(-1).detail.source, 'server_business_profile');
 });
 
+test('park timeline keeps add animator control when resource manager is disabled', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const makeElement = () => {
+        const classes = new Set();
+        return {
+            children: [],
+            attrs: new Map(),
+            title: '',
+            querySelector: () => ({ textContent: '' }),
+            toggleAttribute(name, force) {
+                if (force) this.attrs.set(name, '');
+                else this.attrs.delete(name);
+            },
+            classList: {
+                add: name => classes.add(name),
+                remove: name => classes.delete(name),
+                contains: name => classes.has(name),
+                toggle(name, force) {
+                    const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+                    if (shouldAdd) classes.add(name);
+                    else classes.delete(name);
+                }
+            }
+        };
+    };
+    const addLineBtn = makeElement();
+    const roomLoadBtn = makeElement();
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail || null;
+            }
+        },
+        window: {
+            location: { pathname: '/', search: '', href: 'https://crm.test/' },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            title: '',
+            readyState: 'complete',
+            body: {
+                classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+                dataset: {},
+                setAttribute() {}
+            },
+            getElementById: id => ({ addLineBtn, roomLoadBtn }[id] || null),
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: () => null,
+            setItem() {},
+            removeItem() {}
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    assert.equal(sandbox.window.TimelineBusinessContext.presentation().mode, 'park');
+    assert.equal(sandbox.window.TimelineBusinessContext.presentation().enabledModules.resources, false);
+    assert.equal(addLineBtn.classList.contains('hidden'), false);
+    assert.equal(addLineBtn.attrs.has('data-timeline-context-hidden'), false);
+    assert.equal(roomLoadBtn.classList.contains('hidden'), true);
+});
+
 test('global business switch routes to the matching timeline surface', () => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');

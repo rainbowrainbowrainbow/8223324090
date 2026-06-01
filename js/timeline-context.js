@@ -678,6 +678,11 @@
         else label.textContent = text;
     }
 
+    function canShowAddLineControl(view) {
+        if (!view || view.timelineEnabled === false || view.enabledModules?.bookings === false) return false;
+        return view.enabledModules?.resources !== false || view.mode === 'park';
+    }
+
     function applyLabels() {
         const ctx = currentContext();
         const view = presentation(ctx);
@@ -724,7 +729,10 @@
             if (addLabel) addLabel.textContent = view.addLineLabel;
             else addLineBtn.textContent = view.addLineLabel;
             addLineBtn.title = view.addLineTitle;
-            addLineBtn.classList.toggle('hidden', view.timelineEnabled === false || view.enabledModules?.resources === false);
+            const hiddenByMode = !canShowAddLineControl(view);
+            addLineBtn.toggleAttribute('data-timeline-context-hidden', hiddenByMode);
+            if (hiddenByMode) addLineBtn.classList.add('hidden');
+            else if (!addLineBtn.classList.contains('timeline-permission-hidden')) addLineBtn.classList.remove('hidden');
         }
         const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
         if (selectedLineLabel) selectedLineLabel.textContent = view.selectedLineLabel;

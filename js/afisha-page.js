@@ -64,6 +64,40 @@
         return new URLSearchParams(window.location.search).get(name) || '';
     }
 
+    function leadPrefillFromUrl() {
+        const leadId = queryParam('leadId') || queryParam('lead');
+        const customerName = queryParam('customerName').trim();
+        const customerPhone = queryParam('customerPhone').trim();
+        const date = (queryParam('eventDate') || queryParam('date')).trim();
+        if (!leadId && !customerName && !customerPhone) return null;
+        return {
+            leadId,
+            customerName,
+            customerPhone,
+            date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
+        };
+    }
+
+    function applyLeadPrefillToAfishaForm(prefill) {
+        if (!prefill) return;
+        const title = $('afishaPageTitle');
+        const description = $('afishaPageDescription');
+        const date = $('afishaPageDate');
+        const filterDate = $('afishaFilterDate');
+        if (prefill.customerName && title && !title.value) title.value = prefill.customerName;
+        if (prefill.date) {
+            if (date) date.value = prefill.date;
+            if (filterDate) filterDate.value = prefill.date;
+            state.filterDate = prefill.date;
+        }
+        if (description && !description.value) {
+            description.value = [
+                prefill.leadId ? `Lead #${prefill.leadId}` : '',
+                prefill.customerPhone ? `Phone: ${prefill.customerPhone}` : ''
+            ].filter(Boolean).join('\n');
+        }
+    }
+
     function getHeaders(withJson = true) {
         if (typeof getAuthHeaders === 'function') return getAuthHeaders(withJson);
         const token = localStorage.getItem('pzp_token');
@@ -759,6 +793,7 @@
         $('afishaPageDate').value = date;
         $('afishaPageTime').value = time;
         $('afishaFilterDate').value = state.filterDate;
+        applyLeadPrefillToAfishaForm(leadPrefillFromUrl());
         syncTypeUi();
         syncMaterialMode();
     }

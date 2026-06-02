@@ -2073,8 +2073,13 @@ async function convertLead(id) {
     const params = new URLSearchParams();
     if (lead.client_name) params.set('customerName', lead.client_name);
     if (lead.phone) params.set('customerPhone', lead.phone);
-    if (lead.event_date) params.set('date', lead.event_date.split('T')[0]);
+    if (lead.event_date) {
+        const eventDate = String(lead.event_date).split('T')[0];
+        params.set('date', eventDate);
+        params.set('eventDate', eventDate);
+    }
     params.set('leadId', id);
+    params.set('convert', 'booking');
     window.location.href = `/?${params.toString()}`;
 }
 

@@ -8,6 +8,7 @@
 
 // v7.0: Render generation counter — prevents stale renders from overwriting fresh ones
 let _renderGen = 0;
+let _leadConversionAutoOpenAttempted = false;
 
 // v7.0.1: Render debug (console only)
 function _debugRender() {}
@@ -332,11 +333,35 @@ function getLeadConversionContextFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const leadId = parseInt(params.get('leadId') || params.get('lead'), 10);
     if (!Number.isInteger(leadId) || leadId <= 0) return null;
+    const eventDate = (params.get('eventDate') || params.get('date') || '').trim();
     return {
         leadId,
         customerName: (params.get('customerName') || '').trim(),
-        customerPhone: (params.get('customerPhone') || '').trim()
+        customerPhone: (params.get('customerPhone') || '').trim(),
+        eventDate: /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : ''
     };
+}
+
+function shouldAutoOpenLeadConversionBooking() {
+    if (!AppState.leadConversionContext?.leadId) return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('convert') === 'booking' || params.get('open') === 'booking';
+}
+
+function clearLeadConversionOpenHint() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('convert');
+    if (url.searchParams.get('open') === 'booking') url.searchParams.delete('open');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
+
+async function maybeAutoOpenLeadConversionBooking() {
+    if (_leadConversionAutoOpenAttempted || !shouldAutoOpenLeadConversionBooking()) return false;
+    _leadConversionAutoOpenAttempted = true;
+    if (typeof openTimelineCreateBookingFromToolbar !== 'function') return false;
+    const opened = await openTimelineCreateBookingFromToolbar();
+    if (opened) clearLeadConversionOpenHint();
+    return opened;
 }
 
 function getTimelineDateFromUrl() {
@@ -351,7 +376,9 @@ function initializeTimeline() {
     AppState.leadConversionContext = getLeadConversionContextFromUrl();
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
-    renderTimeline();
+    Promise.resolve(renderTimeline())
+        .then(() => maybeAutoOpenLeadConversionBooking())
+        .catch(error => console.warn('[Timeline] lead conversion auto-open failed', error));
 }
 
 function renderTimeScale(date) {

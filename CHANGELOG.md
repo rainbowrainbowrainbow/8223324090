@@ -4,6 +4,17 @@
 
 ---
 
+## v0.71.0 - Конвертація лідів у бронювання
+
+### Leads / Booking / Afisha Deep Link / 02.06.2026 [codex]
+- **Конвертація ліда відкриває форму бронювання з клієнтом** - кнопка `Конвертувати` тепер передає явний `convert=booking`, `leadId`, імʼя, телефон і дату події, а timeline після першого render автоматично відкриває create booking panel.
+- **Дані клієнта не губляться при переході** - booking form підтягує `customerName`, `customerPhone`, `source=lead` і lead details з URL-контексту без ручного повторного введення.
+- **Повторний auto-open заблоковано** - після відкриття/збереження бронювання URL очищається від `convert` і `eventDate`, щоб refresh не запускав конвертацію вдруге.
+- **Afisha fallback теж підтримано** - standalone `/afisha` читає lead query і підставляє клієнта в форму події, якщо користувач потрапляє саме на Афішу.
+- **Regression guardrails додано** - UI smoke фіксує Leads → Timeline/Booking deep link, Afisha prefill і cleanup conversion query.
+
+---
+
 ## v0.70.0 - HR модалка та профіль команди
 
 ### HR / Команда / Профіль співробітника / 02.06.2026 [codex]

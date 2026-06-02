@@ -1650,6 +1650,8 @@ function clearLeadConversionContextAfterBooking(bookingId) {
     const url = new URL(window.location.href);
     url.searchParams.delete('leadId');
     url.searchParams.delete('lead');
+    url.searchParams.delete('convert');
+    url.searchParams.delete('eventDate');
     url.searchParams.delete('customerName');
     url.searchParams.delete('customerPhone');
     if (bookingId) url.searchParams.set('highlight', bookingId);

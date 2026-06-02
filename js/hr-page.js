@@ -3354,13 +3354,24 @@ function showHrEditableModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
     modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    modal.scrollTop = 0;
+    const dialog = modal.querySelector('.hr-modal');
+    if (dialog) dialog.scrollTop = 0;
+    const focusTarget = modal.querySelector('input:not([type="hidden"]), select, textarea, button');
+    if (focusTarget && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => focusTarget.focus?.({ preventScroll: true }));
+    }
     if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
 }
 
 async function closeHrEditableModal(id, force = false, message = 'Є незбережені зміни. Закрити без збереження?') {
     const modal = document.getElementById(id);
     if (!modal) return true;
-    const closeNow = () => { modal.style.display = 'none'; };
+    const closeNow = () => {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+    };
     if (force) {
         closeNow();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(modal);

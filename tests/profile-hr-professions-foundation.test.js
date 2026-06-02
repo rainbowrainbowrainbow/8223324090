@@ -69,7 +69,8 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(hrRoute, /role_type = \$\$\{params\.length\} OR COALESCE\(secondary_professions, '\[\]'::jsonb\) \? \$\$\{params\.length\}/);
         assert.match(hrRoute, /validateStaffProfessionInput/);
         assert.match(hrRoute, /SELECT role_type FROM staff WHERE id = \$1/);
-        assert.match(hrRoute, /secondary_professions = CASE[\s\S]*WHEN \$15::boolean THEN \$16::jsonb/);
+        assert.match(hrRoute, /hasSecondaryProfessions/);
+        assert.match(hrRoute, /queueStaffUpdate\('secondary_professions'[\s\S]*'::jsonb'\)/);
 
         assert.match(staffRoute, /secondary_professions, secondaryProfessions/);
         assert.match(staffRoute, /effectivePrimaryRole/);

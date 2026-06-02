@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.69.35">
-    <link rel="stylesheet" href="css/layout.css?v=0.69.35">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.35">
-    <link rel="stylesheet" href="css/pages.css?v=0.69.35">
-    <link rel="stylesheet" href="css/modals.css?v=0.69.35">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.35">
-    <link rel="stylesheet" href="css/responsive.css?v=0.69.35">
+    <link rel="stylesheet" href="css/base.css?v=0.70.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.70.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.70.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.70.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.70.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.70.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.70.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1511,8 +1511,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: var(--z-modal, 30000);
             padding: 16px;
+            overflow: hidden;
         }
         .hr-modal {
             background: var(--white);
@@ -1520,6 +1521,11 @@
             padding: 24px;
             max-width: 440px;
             width: 100%;
+            max-height: calc(100dvh - 32px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            position: relative;
+            z-index: 1;
             box-shadow: var(--shadow-lg);
         }
         .hr-modal h3 {
@@ -2559,7 +2565,7 @@
 
     <!-- Staff edit modal -->
     <div id="staffEditModal" class="hr-modal-overlay" style="display:none;">
-        <div class="hr-modal" style="max-width:520px;">
+        <div class="hr-modal" style="max-width:520px;" role="dialog" aria-modal="true">
             <h3>Редагувати профіль</h3>
             <input type="hidden" id="editStaffId">
             <div class="form-group">
@@ -2709,15 +2715,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.69.35"></script>
-    <script src="js/config.js?v=0.69.35"></script>
-    <script src="js/notification.js?v=0.69.35"></script>
-    <script src="js/api.js?v=0.69.35"></script>
-    <script src="js/auth.js?v=0.69.35"></script>
-    <script src="js/components/sidebar.js?v=0.69.35"></script>
+    <script src="js/ui.js?v=0.70.0"></script>
+    <script src="js/config.js?v=0.70.0"></script>
+    <script src="js/notification.js?v=0.70.0"></script>
+    <script src="js/api.js?v=0.70.0"></script>
+    <script src="js/auth.js?v=0.70.0"></script>
+    <script src="js/components/sidebar.js?v=0.70.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.69.35"></script>
-    <script src="js/alerts.js?v=0.69.35"></script><script>
+    <script src="js/hr-page.js?v=0.70.0"></script>
+    <script src="js/alerts.js?v=0.70.0"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

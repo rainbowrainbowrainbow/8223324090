@@ -551,71 +551,98 @@ router.get('/staff/:id', async (req, res) => {
 router.put('/staff/:id', async (req, res) => {
     try {
         const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason } = req.body;
-        const hasSecondaryProfessions = Object.prototype.hasOwnProperty.call(req.body || {}, 'secondary_professions')
-            || Object.prototype.hasOwnProperty.call(req.body || {}, 'secondaryProfessions');
-        const secondaryInput = Object.prototype.hasOwnProperty.call(req.body || {}, 'secondary_professions')
+        const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
+        const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
+        const secondaryInput = hasBodyField('secondary_professions')
             ? req.body.secondary_professions
             : req.body.secondaryProfessions;
-        let effectiveRoleType = role_type;
+        const fieldPresence = {
+            phone: hasBodyField('phone'),
+            emergency_contact: hasBodyField('emergency_contact'),
+            emergency_phone: hasBodyField('emergency_phone'),
+            role_type: hasBodyField('role_type'),
+            hourly_rate: hasBodyField('hourly_rate'),
+            birth_date: hasBodyField('birth_date'),
+            notes: hasBodyField('notes'),
+            telegram_id: hasBodyField('telegram_id'),
+            telegram_username: hasBodyField('telegram_username'),
+            contract_type: hasBodyField('contract_type'),
+            skills: hasBodyField('skills'),
+            address: hasBodyField('address'),
+            hr_pool_status: hasBodyField('hr_pool_status'),
+            blacklist_reason: hasBodyField('blacklist_reason')
+        };
+        let effectiveRoleType = fieldPresence.role_type ? role_type : null;
         if (hasSecondaryProfessions && !effectiveRoleType) {
             const currentStaff = await pool.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
             if (!currentStaff.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
             effectiveRoleType = currentStaff.rows[0].role_type;
         }
-        const professionValidation = await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : []);
+        const professionValidation = fieldPresence.role_type || hasSecondaryProfessions
+            ? await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : [])
+            : { secondaryProfessions: [] };
         if (professionValidation.error) {
             return res.status(400).json({ success: false, error: professionValidation.error });
         }
-        const result = await pool.query(
-            `UPDATE staff SET
-                phone = COALESCE($1, phone),
-                emergency_contact = COALESCE($2, emergency_contact),
-                emergency_phone = COALESCE($3, emergency_phone),
-                role_type = COALESCE($4, role_type),
-                hourly_rate = COALESCE($5, hourly_rate),
-                birth_date = COALESCE($6, birth_date),
-                notes = COALESCE($7, notes),
-                telegram_id = COALESCE($8, telegram_id),
-                telegram_username = COALESCE($9, telegram_username),
-                contract_type = COALESCE($10, contract_type),
-                skills = COALESCE($11, skills),
-                address = COALESCE($12, address),
-                hr_pool_status = COALESCE($13, hr_pool_status),
-                blacklist_reason = CASE
-                    WHEN $13::text = 'blacklisted' THEN COALESCE($14, blacklist_reason)
-                    WHEN $13::text IS NOT NULL AND $13::text != 'blacklisted' THEN NULL
-                    ELSE COALESCE($14, blacklist_reason)
-                END,
-                blacklisted_at = CASE
-                    WHEN $13::text = 'blacklisted' THEN COALESCE(blacklisted_at, NOW())
-                    WHEN $13::text IS NOT NULL AND $13::text != 'blacklisted' THEN NULL
-                    ELSE blacklisted_at
-                END,
-                secondary_professions = CASE
-                    WHEN $15::boolean THEN $16::jsonb
-                    ELSE secondary_professions
-                END
-             WHERE id = $17 RETURNING *`,
-            [
-                phone,
-                emergency_contact,
-                emergency_phone,
-                role_type,
-                hourly_rate,
-                birth_date,
-                notes,
-                telegram_id,
-                telegram_username,
-                contract_type,
-                skills ? (Array.isArray(skills) ? skills : [skills]) : null,
-                address,
-                hr_pool_status,
-                blacklist_reason,
-                hasSecondaryProfessions,
-                JSON.stringify(professionValidation.secondaryProfessions || []),
-                req.params.id
-            ]
-        );
+        const values = [];
+        const setClauses = [];
+        const queueStaffUpdate = (column, value, cast = '') => {
+            values.push(value);
+            setClauses.push(`${column} = $${values.length}${cast}`);
+        };
+        const textOrNull = value => {
+            if (value === null || value === undefined) return null;
+            const normalized = String(value).trim();
+            return normalized || null;
+        };
+        const arrayOrNull = value => {
+            if (value === null || value === undefined || value === '') return null;
+            if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+            return [String(value).trim()].filter(Boolean);
+        };
+        const numberOrNull = value => {
+            if (value === null || value === undefined || value === '') return null;
+            const normalized = Number(value);
+            return Number.isFinite(normalized) ? normalized : null;
+        };
+
+        if (fieldPresence.phone) queueStaffUpdate('phone', textOrNull(phone));
+        if (fieldPresence.emergency_contact) queueStaffUpdate('emergency_contact', textOrNull(emergency_contact));
+        if (fieldPresence.emergency_phone) queueStaffUpdate('emergency_phone', textOrNull(emergency_phone));
+        if (fieldPresence.role_type) queueStaffUpdate('role_type', textOrNull(role_type));
+        if (fieldPresence.hourly_rate) queueStaffUpdate('hourly_rate', numberOrNull(hourly_rate));
+        if (fieldPresence.birth_date) queueStaffUpdate('birth_date', birth_date || null);
+        if (fieldPresence.notes) queueStaffUpdate('notes', textOrNull(notes));
+        if (fieldPresence.telegram_id) queueStaffUpdate('telegram_id', textOrNull(telegram_id));
+        if (fieldPresence.telegram_username) queueStaffUpdate('telegram_username', textOrNull(telegram_username));
+        if (fieldPresence.contract_type) queueStaffUpdate('contract_type', textOrNull(contract_type));
+        if (fieldPresence.skills) queueStaffUpdate('skills', arrayOrNull(skills), '::text[]');
+        if (fieldPresence.address) queueStaffUpdate('address', textOrNull(address));
+        if (fieldPresence.hr_pool_status) {
+            queueStaffUpdate('hr_pool_status', textOrNull(hr_pool_status));
+            setClauses.push(hr_pool_status === 'blacklisted'
+                ? 'blacklisted_at = COALESCE(blacklisted_at, NOW())'
+                : 'blacklisted_at = NULL');
+        }
+        if (fieldPresence.hr_pool_status && hr_pool_status !== 'blacklisted') {
+            setClauses.push('blacklist_reason = NULL');
+        } else if (fieldPresence.blacklist_reason) {
+            queueStaffUpdate('blacklist_reason', textOrNull(blacklist_reason));
+        }
+        if (hasSecondaryProfessions) {
+            queueStaffUpdate('secondary_professions', JSON.stringify(professionValidation.secondaryProfessions || []), '::jsonb');
+        }
+
+        let result;
+        if (setClauses.length) {
+            values.push(req.params.id);
+            result = await pool.query(
+                `UPDATE staff SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+                values
+            );
+        } else {
+            result = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+        }
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('staff_update', parseInt(req.params.id), req.user?.username, req.body, req.ip);
         res.json({ success: true, data: result.rows[0] });

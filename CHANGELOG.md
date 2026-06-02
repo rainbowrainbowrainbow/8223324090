@@ -4,6 +4,17 @@
 
 ---
 
+## v0.70.0 - HR модалка та профіль команди
+
+### HR / Команда / Профіль співробітника / 02.06.2026 [codex]
+- **Редактор співробітника більше не провалюється під інші шари CRM** - HR-модалка використовує спільний modal-layer, має viewport-safe висоту й власний scroll, тому після переходів між вкладками лишається видимою.
+- **Повторне відкриття форми стабілізовано** - при відкритті overlay і форма повертаються на верх, aria-стан синхронізується, а фокус не прокручує вікно за межі viewport.
+- **HR-поля профілю пишуться в SQL явно** - `/api/hr/staff/:id` оновлює тільки передані whitelist-поля й коректно зберігає очищення телефону, адреси, Telegram, ставки, контракту, HR-статусу, blacklist reason, skills, notes і secondary professions.
+- **База для цих даних підтверджена** - поля форми відповідають колонкам `staff` з наявних міграцій `007_hr_module.sql`, `026_leads_banquet_staff.sql`, `177_backoffice_foundation_v1.sql` і `223_profile_hr_professions_foundation.sql`.
+- **Regression guard додано** - unit-тести фіксують modal-layer/scroll контракт і SQL-update контракт HR-профілю, а professions guard оновлено під явний запис `secondary_professions`.
+
+---
+
 ## v0.69.35 - Фікс сайдбару і задач
 
 ### Shell / Sidebar / Tasks / 02.06.2026 [codex]

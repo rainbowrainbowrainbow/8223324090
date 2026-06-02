@@ -229,6 +229,61 @@ test('HR org canvas lets the same port click cancel pending link mode', async ()
     assert.equal(api.nodes().find(node => node.id === 'child').parentId, null);
 });
 
+test('HR staff edit modal uses the shared modal layer and viewport-safe scrolling', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const overlayCss = html.match(/\.hr-modal-overlay\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
+    const dialogCss = html.match(/\.hr-modal\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
+    const showModalFn = js.slice(js.indexOf('function showHrEditableModal'), js.indexOf('async function closeHrEditableModal'));
+
+    assert.match(overlayCss, /z-index:\s*var\(--z-modal,\s*30000\)/);
+    assert.match(overlayCss, /overflow:\s*hidden/);
+    assert.match(dialogCss, /max-height:\s*calc\(100dvh - 32px\)/);
+    assert.match(dialogCss, /overflow-y:\s*auto/);
+    assert.match(html, /id="staffEditModal"[^>]*class="hr-modal-overlay"[\s\S]*?<div class="hr-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
+    assert.match(showModalFn, /modal\.setAttribute\('aria-hidden', 'false'\)/);
+    assert.match(showModalFn, /modal\.scrollTop = 0/);
+    assert.match(showModalFn, /dialog\.scrollTop = 0/);
+});
+
+test('HR staff update route persists every staff edit form field explicitly', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+    const start = source.indexOf("router.put('/staff/:id'");
+    const end = source.indexOf("// PUT /api/hr/staff/:id/status", start);
+    assert.notEqual(start, -1);
+    assert.notEqual(end, -1);
+    const route = source.slice(start, end);
+    const expectedFields = [
+        'phone',
+        'emergency_contact',
+        'emergency_phone',
+        'role_type',
+        'hourly_rate',
+        'birth_date',
+        'notes',
+        'telegram_id',
+        'telegram_username',
+        'contract_type',
+        'skills',
+        'address',
+        'hr_pool_status',
+        'blacklist_reason'
+    ];
+
+    for (const field of expectedFields) {
+        assert.match(route, new RegExp(`${field}: hasBodyField\\('${field}'\\)`));
+    }
+    for (const field of expectedFields.filter(field => field !== 'blacklist_reason')) {
+        assert.match(route, new RegExp(`queueStaffUpdate\\('${field}'`));
+    }
+    assert.match(route, /queueStaffUpdate\('blacklist_reason'/);
+    assert.match(route, /blacklist_reason = NULL/);
+    assert.match(route, /blacklisted_at = COALESCE\(blacklisted_at, NOW\(\)\)/);
+    assert.match(route, /::text\[\]/);
+    assert.match(route, /::jsonb/);
+    assert.doesNotMatch(route, /COALESCE\(\$\d+,\s*(phone|emergency_contact|emergency_phone|hourly_rate|birth_date|notes|telegram_id|telegram_username|contract_type|skills|address|hr_pool_status)\)/);
+});
+
 test('HR org canvas drag cancels sticky relink mode and persists the moved node position', async () => {
     const { window, api } = createHarness();
     api.setNodes([

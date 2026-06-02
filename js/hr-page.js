@@ -327,6 +327,8 @@ function initNewTabs() {
 
 function initTabs() {
     try {
+    const accountsTab = document.querySelector('.hr-tab[data-tab="accounts"]');
+    if (accountsTab) accountsTab.classList.toggle('hidden', !canManageAccountSecurity());
     document.querySelectorAll('.hr-tab').forEach(tab => {
         tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, { updateHash: true }));
     });
@@ -344,6 +346,7 @@ function getInitialHrTab() {
         window.location.replace('/art?tab=costumes');
         return 'today';
     }
+    if (target === 'accounts' && !canManageAccountSecurity()) return 'today';
     return document.getElementById(`tab-${target}`) ? target : 'today';
 }
 
@@ -358,6 +361,7 @@ async function activateHrTab(target, options = {}) {
     const tab = document.querySelector(`.hr-tab[data-tab="${target}"]`);
     const panel = document.getElementById(`tab-${target}`);
     if (!tab || !panel) return;
+    if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
     document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
@@ -1000,13 +1004,27 @@ let teamStaff = [];
 let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
+let accountActionDefinitions = [];
 let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
 let accountDeepLinkApplied = false;
-const ACCOUNT_SECURITY_ROLES = ['creator', 'director', 'hr'];
-const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
-const HR_ACCOUNT_PROTECTED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+const ACCOUNT_SECURITY_ROLES = ['creator', 'director', 'art_director'];
+const ACCOUNT_PROFILE_ROLES = ['creator', 'director', 'art_director'];
+const ACCOUNT_ACTION_LABELS = {
+    create_booking: 'Створювати бронювання',
+    edit_booking: 'Редагувати бронювання',
+    cancel_booking: 'Скасовувати бронювання',
+    delete_booking: 'Видаляти бронювання',
+    manage_accounts: 'Керувати акаунтами',
+    manage_users: 'Керувати користувачами',
+    view_all: 'Бачити всі записи',
+    view_own: 'Бачити свої записи',
+    view_revenue: 'Бачити виручку',
+    manage_settings: 'Керувати налаштуваннями',
+    export_data: 'Експорт даних',
+    manage_staff: 'Керувати персоналом'
+};
 
 function canManageAccountSecurity() {
     return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
@@ -1021,7 +1039,7 @@ function canManageAccountAccess() {
 }
 
 function canLinkAccounts() {
-    return ['creator', 'director', 'hr'].includes(AppState.currentUser?.role);
+    return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
 }
 
 function normalizeAccountListInput(value) {
@@ -1102,16 +1120,24 @@ function getAccountBusinessSelectOptions(selected = [], current = '') {
 
 function getAccountRoleOptions(defaultRole = 'animator') {
     const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
-    const currentRole = AppState.currentUser?.role;
     return roles
-        .filter(role => {
-            if (currentRole === 'creator') return true;
-            if (currentRole === 'hr') return !HR_ACCOUNT_PROTECTED_ROLES.includes(role);
-            return role !== 'creator';
-        })
         .map(role => ({ value: role, label: ROLE_LABELS[role] || role }))
         .sort((a, b) => a.label.localeCompare(b.label, 'uk'))
         .map(option => ({ ...option, selected: option.value === defaultRole }));
+}
+
+function getAccountActionOptions(selected = []) {
+    const current = new Set(normalizeAccountListInput(Array.isArray(selected) ? selected.join(',') : selected));
+    const actions = accountActionDefinitions.length
+        ? accountActionDefinitions.map(item => item.key || item)
+        : Object.keys(ACCOUNT_ACTION_LABELS);
+    return actions
+        .filter(Boolean)
+        .map(action => ({
+            value: action,
+            label: ACCOUNT_ACTION_LABELS[action] || action,
+            selected: current.has(action)
+        }));
 }
 
 async function loadAccountRoleDefinitions() {
@@ -1122,6 +1148,11 @@ async function loadAccountRoleDefinitions() {
     }
     if (Array.isArray(data?.businessContexts)) {
         accountBusinessContexts = data.businessContexts;
+    }
+    if (Array.isArray(data?.actions)) {
+        accountActionDefinitions = data.actions;
+    } else if (data?.actionPermissions && typeof data.actionPermissions === 'object') {
+        accountActionDefinitions = Object.keys(data.actionPermissions).map(key => ({ key, roles: data.actionPermissions[key] || [] }));
     }
 }
 
@@ -1445,8 +1476,10 @@ function formatAccountAccess(u) {
         .filter(Boolean)
         .map(role => ROLE_LABELS[role] || role);
     const pages = normalizeAccountArray(u.page_allowlist || u.pageAllowlist);
+    const allow = normalizeAccountArray(u.action_allowlist || u.actionAllowlist);
+    const deny = normalizeAccountArray(u.action_denylist || u.actionDenylist);
     const businesses = formatAccountBusinessBadges(u);
-    return `${roles.join(' + ') || 'user'}${businesses ? ' · бізнеси: ' + businesses : ''}${pages.length ? ' · pages: ' + pages.join(', ') : ''}`;
+    return `${roles.join(' + ') || 'user'}${businesses ? ' · бізнеси: ' + businesses : ''}${pages.length ? ' · pages: ' + pages.join(', ') : ''}${allow.length ? ' · allow: ' + allow.join(', ') : ''}${deny.length ? ' · deny: ' + deny.join(', ') : ''}`;
 }
 
 function getAccountCenterFilterState() {
@@ -1484,6 +1517,8 @@ function accountMatchesSearch(user, query) {
         user.name,
         user.role,
         ...(normalizeAccountArray(user.extra_roles || user.extraRoles)),
+        ...(normalizeAccountArray(user.action_allowlist || user.actionAllowlist)),
+        ...(normalizeAccountArray(user.action_denylist || user.actionDenylist)),
         ...(normalizeAccountArray(user.business_contexts || user.businessContexts)),
         formatAccountBusinessBadges(user),
         user.profile_name,
@@ -1607,7 +1642,7 @@ function renderAccountCenter() {
 
 window.openAccountCreateModal = async function(button, context = {}) {
     if (!canManageAccountSecurity()) {
-        showNotification('Створення акаунтів доступне тільки creator/director/hr', 'error');
+        showNotification('Створення акаунтів доступне тільки creator/director/art director', 'error');
         return;
     }
     await loadAccountRoleDefinitions();
@@ -1629,7 +1664,9 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
         { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
-        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
+        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' },
+        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Allow додає дію, навіть якщо базова роль її не має.' },
+        { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Deny має пріоритет над роллю і allow.' }
     ], {
         icon: '👤',
         type: 'info',
@@ -1662,7 +1699,9 @@ window.openAccountCreateModal = async function(button, context = {}) {
             businessContexts: selectedBusinessContexts,
             defaultBusinessContext: selectedDefaultBusinessContext,
             extraRoles: normalizeAccountListInput(result.extraRoles),
-            pageAllowlist: normalizeAccountListInput(result.pageAllowlist)
+            pageAllowlist: normalizeAccountListInput(result.pageAllowlist),
+            actionAllowlist: Array.isArray(result.actionAllowlist) ? result.actionAllowlist : normalizeAccountListInput(result.actionAllowlist),
+            actionDenylist: Array.isArray(result.actionDenylist) ? result.actionDenylist : normalizeAccountListInput(result.actionDenylist)
         }
     });
     if (button) button.disabled = false;
@@ -1692,7 +1731,7 @@ window.openAccountCreateForStaff = async function(staffId, button) {
 
 window.openAccountLinkForStaff = async function(staffId, button) {
     if (!canLinkAccounts()) {
-        showNotification('Привʼязка акаунтів доступна тільки creator/director/hr', 'error');
+        showNotification('Привʼязка акаунтів доступна тільки creator/director/art director', 'error');
         return;
     }
     const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
@@ -1759,7 +1798,7 @@ window.openAccountForStaff = async function(staffId, button) {
 
 async function openAccountProfileModal(userId, button) {
     if (!canManageAccountProfile()) {
-        showNotification('Редагування профілю доступне тільки creator/director', 'error');
+        showNotification('Редагування профілю доступне тільки creator/director/art director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -1803,7 +1842,7 @@ async function openAccountProfileModal(userId, button) {
 
 async function openAccountPasswordModal(userId, button) {
     if (!canManageAccountSecurity()) {
-        showNotification('Зміна пароля доступна тільки creator/director/hr', 'error');
+        showNotification('Зміна пароля доступна тільки creator/director/art director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -1867,13 +1906,15 @@ async function openAccountPasswordModal(userId, button) {
 
 async function openAccountAccessEditor(userId, button) {
     if (!canManageAccountAccess()) {
-        showNotification('Зміна доступу доступна тільки creator/director', 'error');
+        showNotification('Зміна доступу доступна тільки creator/director/art director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
     const currentExtra = normalizeAccountArray(user.extra_roles || user.extraRoles).join(', ');
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
+    const currentActionAllowlist = normalizeAccountArray(user.action_allowlist || user.actionAllowlist);
+    const currentActionDenylist = normalizeAccountArray(user.action_denylist || user.actionDenylist);
     await loadAccountRoleDefinitions();
     const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
     const currentDefaultBusinessContext = getAccountDefaultBusinessValue(user, currentBusinessContexts);
@@ -1882,7 +1923,9 @@ async function openAccountAccessEditor(userId, button) {
         { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
         { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
-        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' }
+        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' },
+        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist), hint: 'Allow додає дію, навіть якщо базова роль її не має.' },
+        { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: currentActionDenylist, options: getAccountActionOptions(currentActionDenylist), hint: 'Deny має пріоритет над роллю і allow.' }
     ], {
         icon: '🛂',
         type: 'info',
@@ -1892,17 +1935,21 @@ async function openAccountAccessEditor(userId, button) {
     if (!formResult) return;
     const extraRoles = normalizeAccountListInput(formResult.extraRoles);
     const pageAllowlist = normalizeAccountListInput(formResult.pageAllowlist);
+    const actionAllowlist = Array.isArray(formResult.actionAllowlist) ? formResult.actionAllowlist : normalizeAccountListInput(formResult.actionAllowlist);
+    const actionDenylist = Array.isArray(formResult.actionDenylist) ? formResult.actionDenylist : normalizeAccountListInput(formResult.actionDenylist);
     const selectedBusinessContexts = normalizeAccountBusinessSelection(formResult.businessContexts);
     const selectedDefaultBusinessContext = getAccountDefaultBusinessValue({ defaultBusinessContext: formResult.defaultBusinessContext }, selectedBusinessContexts);
     if (button) button.disabled = true;
-    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
+    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/access`, {
         method: 'PATCH',
         body: {
             role: formResult.role || user.role,
             businessContexts: selectedBusinessContexts,
             defaultBusinessContext: selectedDefaultBusinessContext,
             extraRoles,
-            pageAllowlist
+            pageAllowlist,
+            actionAllowlist,
+            actionDenylist
         }
     });
     if (button) button.disabled = false;

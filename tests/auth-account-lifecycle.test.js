@@ -41,6 +41,8 @@ function createFakePool() {
             role: 'creator',
             extra_roles: [],
             page_allowlist: [],
+            action_allowlist: [],
+            action_denylist: [],
             business_contexts: ['event_genix', 'dar', 'maysternya_doli', 'crm'],
             default_business_context: 'event_genix',
             name: 'Creator',
@@ -64,6 +66,8 @@ function createFakePool() {
             role: row.role,
             extra_roles: row.extra_roles || [],
             page_allowlist: row.page_allowlist || [],
+            action_allowlist: row.action_allowlist || [],
+            action_denylist: row.action_denylist || [],
             business_contexts: row.business_contexts || ['event_genix'],
             default_business_context: row.default_business_context || 'event_genix',
             is_active: row.is_active !== false,
@@ -111,6 +115,8 @@ function createFakePool() {
                 role: user.role,
                 extra_roles: user.extra_roles || [],
                 page_allowlist: user.page_allowlist || [],
+                action_allowlist: user.action_allowlist || [],
+                action_denylist: user.action_denylist || [],
                 business_contexts: user.business_contexts || ['event_genix'],
                 default_business_context: user.default_business_context || 'event_genix',
                 name: user.name,
@@ -122,8 +128,8 @@ function createFakePool() {
             }] : [] };
         }
 
-        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, password_changed_at\)/i.test(text)) {
-            const [username, passwordHash, name, role, extraRoles, pageAllowlist, businessContexts, defaultBusinessContext] = params;
+        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at\)/i.test(text)) {
+            const [username, passwordHash, name, role, extraRoles, pageAllowlist, actionAllowlist, actionDenylist, businessContexts, defaultBusinessContext] = params;
             const row = {
                 id: state.nextUserId++,
                 username,
@@ -132,6 +138,8 @@ function createFakePool() {
                 role,
                 extra_roles: Array.isArray(extraRoles) ? extraRoles : [],
                 page_allowlist: Array.isArray(pageAllowlist) ? pageAllowlist : [],
+                action_allowlist: Array.isArray(actionAllowlist) ? actionAllowlist : [],
+                action_denylist: Array.isArray(actionDenylist) ? actionDenylist : [],
                 business_contexts: Array.isArray(businessContexts) ? businessContexts : ['event_genix'],
                 default_business_context: defaultBusinessContext || 'event_genix',
                 is_active: true,
@@ -178,12 +186,12 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context, name, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{ ...publicUser(row), session_revoked_at: row.session_revoked_at || null }] : [] };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{
                 id: row.id,
@@ -191,6 +199,8 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
+                action_allowlist: row.action_allowlist || [],
+                action_denylist: row.action_denylist || [],
                 business_contexts: row.business_contexts || ['event_genix'],
                 default_business_context: row.default_business_context || 'event_genix'
             }] : [] };
@@ -245,6 +255,8 @@ function createFakePool() {
                     role: user.role,
                     extra_roles: user.extra_roles || [],
                     page_allowlist: user.page_allowlist || [],
+                    action_allowlist: user.action_allowlist || [],
+                    action_denylist: user.action_denylist || [],
                     business_contexts: user.business_contexts || ['event_genix'],
                     default_business_context: user.default_business_context || 'event_genix',
                     name: user.name
@@ -280,7 +292,7 @@ function createFakePool() {
             return { rows: [], rowCount: count };
         }
 
-        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
+        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.action_allowlist, u\.action_denylist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
             && /WHERE u\.username = \$1 AND u\.is_active = true/i.test(text)) {
             const row = state.users.find(item => item.username === params[0] && item.is_active !== false);
             return { rows: row ? [{ ...publicUser(row), avatar_emoji: null, avatar_color: null, avatar_url: null }] : [] };
@@ -301,14 +313,17 @@ function createFakePool() {
             }
             return { rows: row ? [{ id: row.id, username: row.username }] : [], rowCount: row ? 1 : 0 };
         }
-        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*business_contexts = COALESCE\(\$4::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$5::text, default_business_context\)\s*WHERE id = \$6\s*RETURNING id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context/i.test(text)) {
-            const row = state.users.find(item => Number(item.id) === Number(params[5]));
+        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*action_allowlist = COALESCE\(\$4::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$5::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$6::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$7::text, default_business_context\),\s*session_revoked_at = NOW\(\)\s*WHERE id = \$8\s*RETURNING id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[7]));
             if (row) {
                 row.role = params[0];
                 if (Array.isArray(params[1])) row.extra_roles = params[1];
                 if (Array.isArray(params[2])) row.page_allowlist = params[2];
-                if (Array.isArray(params[3])) row.business_contexts = params[3];
-                if (params[4]) row.default_business_context = params[4];
+                if (Array.isArray(params[3])) row.action_allowlist = params[3];
+                if (Array.isArray(params[4])) row.action_denylist = params[4];
+                if (Array.isArray(params[5])) row.business_contexts = params[5];
+                if (params[6]) row.default_business_context = params[6];
+                row.session_revoked_at = new Date();
             }
             return { rows: row ? [{
                 id: row.id,
@@ -316,6 +331,8 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
+                action_allowlist: row.action_allowlist || [],
+                action_denylist: row.action_denylist || [],
                 business_contexts: row.business_contexts || ['event_genix'],
                 default_business_context: row.default_business_context || 'event_genix'
             }] : [], rowCount: row ? 1 : 0 };
@@ -432,13 +449,19 @@ async function withAuthApp(run) {
     installMock('../db', { pool: fakePool });
     installMock('../routes/streaks', { updateStreak: async () => {} });
 
-    const { authenticateToken } = require('../middleware/auth');
+    const { authenticateToken, requireAction } = require('../middleware/auth');
     const app = express();
     app.use(express.json());
     app.use('/api/auth', require('../routes/auth'));
     app.use('/api/users', require('../routes/users'));
     app.get('/api/protected-smoke', authenticateToken, (req, res) => {
         res.json({ success: true, user: req.user });
+    });
+    app.delete('/api/delete-booking-smoke', authenticateToken, requireAction('delete_booking'), (_req, res) => {
+        res.json({ success: true });
+    });
+    app.get('/api/manage-accounts-smoke', authenticateToken, requireAction('manage_accounts'), (_req, res) => {
+        res.json({ success: true });
     });
 
     const { server, baseUrl } = await listen(app);
@@ -564,24 +587,37 @@ test('account security journal records semantic account, password, role, login, 
         });
         assert.equal(login.status, 200);
 
-        const accessUpdate = await request(baseUrl, 'PATCH', `/api/users/${userId}/role`, {
+        const accessUpdate = await request(baseUrl, 'PATCH', `/api/users/${userId}/access`, {
             role: 'reception',
             extraRoles: ['manager'],
             pageAllowlist: ['/reports', '/tasks'],
+            actionAllowlist: ['delete_booking'],
+            actionDenylist: [],
             businessContexts: ['dar', 'crm'],
             defaultBusinessContext: 'crm'
         }, creatorToken());
         assert.equal(accessUpdate.status, 200);
         assert.deepEqual(accessUpdate.data.extraRoles, ['manager']);
         assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
+        assert.deepEqual(accessUpdate.data.actionAllowlist, ['delete_booking']);
+        assert.deepEqual(accessUpdate.data.actionDenylist, []);
         assert.deepEqual(accessUpdate.data.businessContexts, ['dar', 'crm']);
         assert.equal(accessUpdate.data.defaultBusinessContext, 'crm');
 
-        const staleTokenProtected = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, login.data.accessToken);
-        assert.equal(staleTokenProtected.status, 200);
-        assert.deepEqual(staleTokenProtected.data.user.businessContexts, ['dar', 'crm']);
-        assert.equal(staleTokenProtected.data.user.defaultBusinessContext, 'crm');
-        assert.deepEqual(staleTokenProtected.data.user.extraRoles, ['manager']);
+        const revokedRefresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+        assert.equal(revokedRefresh.status, 401);
+
+        const accessLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'audit.operator',
+            password: 'AuditPass789!'
+        });
+        assert.equal(accessLogin.status, 200);
+
+        const updatedAccessProtected = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, accessLogin.data.accessToken);
+        assert.equal(updatedAccessProtected.status, 200);
+        assert.deepEqual(updatedAccessProtected.data.user.businessContexts, ['dar', 'crm']);
+        assert.equal(updatedAccessProtected.data.user.defaultBusinessContext, 'crm');
+        assert.deepEqual(updatedAccessProtected.data.user.extraRoles, ['manager']);
 
         const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', {
             userId
@@ -592,17 +628,23 @@ test('account security journal records semantic account, password, role, login, 
         const passwordChange = await request(baseUrl, 'PUT', '/api/auth/password', {
             currentPassword: 'AuditPass789!',
             newPassword: 'AuditPass987!'
-        }, login.data.accessToken);
+        }, accessLogin.data.accessToken);
         assert.equal(passwordChange.status, 200);
 
+        const passwordLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'audit.operator',
+            password: 'AuditPass987!'
+        });
+        assert.equal(passwordLogin.status, 200);
+
         const logout = await request(baseUrl, 'POST', '/api/auth/logout', {
-            refreshToken: login.data.refreshToken
+            refreshToken: passwordLogin.data.refreshToken
         });
         assert.equal(logout.status, 200);
 
-        const security = await request(baseUrl, 'GET', '/api/auth/security?limit=50', undefined, login.data.accessToken);
+        const security = await request(baseUrl, 'GET', '/api/auth/security?limit=50', undefined, passwordLogin.data.accessToken);
         assert.equal(security.status, 200);
-        assert.ok(security.data.events.some(event => event.event_type === 'account_roles_updated'));
+        assert.ok(security.data.events.some(event => event.event_type === 'account_access_updated'));
 
         const reset = await request(baseUrl, 'POST', `/api/users/${userId}/reset-password`, {
             newPassword: 'AuditReset789!'
@@ -630,7 +672,7 @@ test('account security journal records semantic account, password, role, login, 
             'account_created',
             'login_failed',
             'login_success',
-            'account_roles_updated',
+            'account_access_updated',
             'account_impersonation_started',
             'password_changed',
             'session_logout',
@@ -639,7 +681,7 @@ test('account security journal records semantic account, password, role, login, 
             'account_activated'
         ].forEach(type => assert.ok(eventTypes.includes(type), `missing account security event ${type}`));
 
-        const roleEvent = fakePool.state.securityEvents.find(event => event.event_type === 'account_roles_updated');
+        const roleEvent = fakePool.state.securityEvents.find(event => event.event_type === 'account_access_updated');
         assert.equal(roleEvent.target_username, 'audit.operator');
         assert.equal(roleEvent.actor_username, 'creator');
         assert.equal(roleEvent.details.oldRole, 'animator');
@@ -648,11 +690,16 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(roleEvent.details.newExtraRoles, ['manager']);
         assert.deepEqual(roleEvent.details.oldPageAllowlist, ['/tasks']);
         assert.deepEqual(roleEvent.details.newPageAllowlist, ['/reports', '/tasks']);
+        assert.deepEqual(roleEvent.details.oldActionAllowlist, []);
+        assert.deepEqual(roleEvent.details.newActionAllowlist, ['delete_booking']);
+        assert.deepEqual(roleEvent.details.oldActionDenylist, []);
+        assert.deepEqual(roleEvent.details.newActionDenylist, []);
         assert.deepEqual(roleEvent.details.oldBusinessContexts, ['event_genix', 'dar']);
         assert.deepEqual(roleEvent.details.newBusinessContexts, ['dar', 'crm']);
         assert.equal(roleEvent.details.oldDefaultBusinessContext, 'dar');
         assert.equal(roleEvent.details.newDefaultBusinessContext, 'crm');
         assert.equal(roleEvent.details.changed.pageAllowlist, true);
+        assert.equal(roleEvent.details.changed.actionAllowlist, true);
         assert.equal(roleEvent.details.changed.businessContexts, true);
         assert.equal(roleEvent.details.changed.defaultBusinessContext, true);
 
@@ -663,6 +710,93 @@ test('account security journal records semantic account, password, role, login, 
 
         const inactiveLoginEvent = fakePool.state.securityEvents.find(event => event.event_type === 'login_failed' && event.reason === 'inactive_account');
         assert.equal(inactiveLoginEvent.target_username, 'audit.operator');
+    });
+});
+
+test('account action overrides drive final permissions and protect against self-lockout', async () => {
+    await withAuthApp(async ({ baseUrl }) => {
+        const createAnimator = await request(baseUrl, 'POST', '/api/users', {
+            username: 'action.operator',
+            password: 'ActionPass789!',
+            name: 'Action Operator',
+            role: 'animator',
+            actionAllowlist: ['delete_booking']
+        }, creatorToken());
+        assert.equal(createAnimator.status, 200);
+
+        const animatorLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'action.operator',
+            password: 'ActionPass789!'
+        });
+        assert.equal(animatorLogin.status, 200);
+
+        const allowedDelete = await request(baseUrl, 'DELETE', '/api/delete-booking-smoke', undefined, animatorLogin.data.accessToken);
+        assert.equal(allowedDelete.status, 200);
+
+        const allowedPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, animatorLogin.data.accessToken);
+        assert.equal(allowedPermissions.status, 200);
+        assert.equal(allowedPermissions.data.actions.delete_booking, true);
+        assert.equal(allowedPermissions.data.actionSources.delete_booking, 'allowlist');
+
+        const denyUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
+            role: 'animator',
+            actionAllowlist: ['delete_booking'],
+            actionDenylist: ['delete_booking']
+        }, creatorToken());
+        assert.equal(denyUpdate.status, 200);
+
+        const deniedLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'action.operator',
+            password: 'ActionPass789!'
+        });
+        assert.equal(deniedLogin.status, 200);
+
+        const deniedDelete = await request(baseUrl, 'DELETE', '/api/delete-booking-smoke', undefined, deniedLogin.data.accessToken);
+        assert.equal(deniedDelete.status, 403);
+
+        const deniedPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, deniedLogin.data.accessToken);
+        assert.equal(deniedPermissions.status, 200);
+        assert.equal(deniedPermissions.data.actions.delete_booking, false);
+        assert.equal(deniedPermissions.data.actionSources.delete_booking, 'denylist');
+
+        const createHr = await request(baseUrl, 'POST', '/api/users', {
+            username: 'hr.operator',
+            password: 'HrPass789!',
+            name: 'HR Operator',
+            role: 'hr'
+        }, creatorToken());
+        assert.equal(createHr.status, 200);
+
+        const hrLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'hr.operator',
+            password: 'HrPass789!'
+        });
+        assert.equal(hrLogin.status, 200);
+        const hrManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, hrLogin.data.accessToken);
+        assert.equal(hrManageAccounts.status, 403);
+
+        const createArtDirector = await request(baseUrl, 'POST', '/api/users', {
+            username: 'art.director',
+            password: 'ArtPass789!',
+            name: 'Art Director',
+            role: 'art_director'
+        }, creatorToken());
+        assert.equal(createArtDirector.status, 200);
+
+        const artLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'art.director',
+            password: 'ArtPass789!'
+        });
+        assert.equal(artLogin.status, 200);
+        const artManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, artLogin.data.accessToken);
+        assert.equal(artManageAccounts.status, 200);
+
+        const selfLockout = await request(baseUrl, 'PATCH', '/api/users/1/access', {
+            role: 'creator',
+            actionDenylist: ['manage_accounts']
+        }, creatorToken());
+        assert.equal(selfLockout.status, 400);
+        assert.match(selfLockout.data.error, /акаунт/i);
     });
 });
 

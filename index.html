@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.69.31">
-    <link rel="stylesheet" href="css/auth.css?v=0.69.31">
-    <link rel="stylesheet" href="css/layout.css?v=0.69.31">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.31">
-    <link rel="stylesheet" href="css/timeline.css?v=0.69.31">
-    <link rel="stylesheet" href="css/panel.css?v=0.69.31">
-    <link rel="stylesheet" href="css/modals.css?v=0.69.31">
-    <link rel="stylesheet" href="css/controls.css?v=0.69.31">
-    <link rel="stylesheet" href="css/features.css?v=0.69.31">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.31">
-    <link rel="stylesheet" href="css/responsive.css?v=0.69.31">
-    <link rel="stylesheet" href="css/pages.css?v=0.69.31">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.69.31">
+    <link rel="stylesheet" href="css/base.css?v=0.69.32">
+    <link rel="stylesheet" href="css/auth.css?v=0.69.32">
+    <link rel="stylesheet" href="css/layout.css?v=0.69.32">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.32">
+    <link rel="stylesheet" href="css/timeline.css?v=0.69.32">
+    <link rel="stylesheet" href="css/panel.css?v=0.69.32">
+    <link rel="stylesheet" href="css/modals.css?v=0.69.32">
+    <link rel="stylesheet" href="css/controls.css?v=0.69.32">
+    <link rel="stylesheet" href="css/features.css?v=0.69.32">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.32">
+    <link rel="stylesheet" href="css/responsive.css?v=0.69.32">
+    <link rel="stylesheet" href="css/pages.css?v=0.69.32">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.69.32">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.69.31">✨ 0.69.31</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.69.32">✨ 0.69.32</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.69.31 — Фікс ліній другого аніматора</p>
+                <p class="tagline">AI First CRM v0.69.32 — Стабілізація бронювань і доступів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.69.31</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.69.32</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,12 +1658,42 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.69.32 — Стабілізація бронювань і доступів</h4>
+                    <ul>
+                        <li><b>Створення бронювань стало перевіреним сервером</b> — API повертає <code>allBookings</code>, <code>serverVerified</code> і <code>projection</code>, щоб інтерфейс не показував успіх до перевірки видимості на таймлайні.</li>
+                        <li><b>Другий аніматор ремонтується системно</b> — audit-скрипт знаходить відсутні linked rows, stale <code>timelineIdentity</code> і неправильний <code>line_id</code>, а <code>--fix</code> лагодить це транзакційно.</li>
+                        <li><b>Доступи акаунтів стали керованими по діях</b> — додано <code>action_allowlist</code>/<code>action_denylist</code>, де deny має пріоритет над роллю та allow.</li>
+                        <li><b>Панель акаунтів тепер для creator/director/art_director</b> — HR більше не керує акаунтами, а self-lockout guard не дає адміну забрати власний доступ.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.69.31 — Фікс ліній другого аніматора</h4>
                     <ul>
-                        <li><b>Старі linked-записи більше не губляться між оглядом і рядками</b> — рендер таймлайну тепер бере <code>lineId/line_id</code> бронювання як головну привʼязку до лінії, навіть якщо старий <code>timelineIdentity.resourceId</code> вказує на першого аніматора.</li>
-                        <li><b>API також повертає правильну лінію</b> — <code>mapBookingRow()</code> віддає <code>resourceId</code> з фактичного <code>bookings.line_id</code>, щоб старе <code>extra_data</code> не перетягувало блок на чужий рядок.</li>
-                        <li><b>Нижня кольорова смуга і основна сітка синхронізовані</b> — якщо бронювання є в денному масиві, воно має матчитися до видимої лінії аніматора, а не лишатися тільки в summary.</li>
-                        <li><b>Regression guard додано</b> — тест фіксує пріоритет <code>lineId</code> над embedded identity для booking rows.</li>
+                        <li><b>Старі linked-записи більше не губляться між оглядом і рядками</b> — таймлайн пріоритезує фактичний <code>lineId/line_id</code> бронювання над stale identity.</li>
+                        <li><b>API-мапінг бронювань став line-first</b> — <code>mapBookingRow()</code> віддає <code>resourceId</code> із реального <code>bookings.line_id</code>.</li>
+                        <li><b>Regression guard додано</b> — day/week parity фіксує пріоритет лінії над embedded <code>resourceId</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.69.30 — Фікс другого аніматора таймлайну</h4>
+                    <ul>
+                        <li><b>Linked booking другого аніматора отримує власний timeline identity</b> — запис не наслідує identity основного бронювання.</li>
+                        <li><b>Repair audit посилено</b> — <code>audit:second-animator-links -- --fix</code> вміє лагодити неправильний <code>extra_data.timelineIdentity</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.69.29 — Стабілізація запуску таймлайну</h4>
+                    <ul>
+                        <li><b>Таймлайн більше не падає через <code>handleBookingSubmit is not defined</code></b> — submit handler експортується явно.</li>
+                        <li><b>Boot таймлайну став стійкішим до кешованих bundle-ів</b> — handler-и підвʼязуються через безпечний resolver.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.69.28 — Деплой таймлайн прав і ведучих</h4>
+                    <ul>
+                        <li><b>Операційні ролі можуть soft-delete бронювання</b> — backend і frontend використовують спільний <code>delete_booking</code> контракт.</li>
+                        <li><b>Permanent delete лишився creator/director-only</b> — фізичне видалення має окремий server-side guard.</li>
+                        <li><b>Другий ведучий відновлюється для старих записів</b> — audit-скрипт знаходить основні бронювання без linked row.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -10836,29 +10866,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.69.31"></script>
-    <script src="js/timeline-visibility.js?v=0.69.31"></script>
-    <script src="js/config.js?v=0.69.31"></script>
-    <script src="js/api.js?v=0.69.31"></script>
-    <script src="js/ui.js?v=0.69.31"></script>
-    <script src="js/auth.js?v=0.69.31"></script>
-    <script src="js/timeline-interaction-model.js?v=0.69.31"></script>
-    <script src="js/timeline.js?v=0.69.31"></script>
-    <script src="js/booking.js?v=0.69.31"></script>
-    <script src="js/settings.js?v=0.69.31"></script>
-    <script src="js/booking-form.js?v=0.69.31"></script>
-    <script src="js/booking-linked.js?v=0.69.31"></script>
-    <script src="js/settings-dashboard.js?v=0.69.31"></script>
-    <script src="js/settings-history.js?v=0.69.31"></script>
-    <script src="js/settings-afisha.js?v=0.69.31"></script>
-    <script src="js/settings-certificates.js?v=0.69.31"></script>
-    <script src="js/offline.js?v=0.69.31"></script>
-    <script src="js/crm-feature-registry.js?v=0.69.31"></script>
-    <script src="js/search.js?v=0.69.31"></script>
-    <script src="js/ws.js?v=0.69.31"></script>
-    <script src="js/app.js?v=0.69.31"></script>
-    <script src="js/kleshnya-widget.js?v=0.69.31"></script>
-    <script src="js/components/sidebar.js?v=0.69.31"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.69.31"></script>
+    <script src="js/timeline-context.js?v=0.69.32"></script>
+    <script src="js/timeline-visibility.js?v=0.69.32"></script>
+    <script src="js/config.js?v=0.69.32"></script>
+    <script src="js/api.js?v=0.69.32"></script>
+    <script src="js/ui.js?v=0.69.32"></script>
+    <script src="js/auth.js?v=0.69.32"></script>
+    <script src="js/timeline-interaction-model.js?v=0.69.32"></script>
+    <script src="js/timeline.js?v=0.69.32"></script>
+    <script src="js/booking.js?v=0.69.32"></script>
+    <script src="js/settings.js?v=0.69.32"></script>
+    <script src="js/booking-form.js?v=0.69.32"></script>
+    <script src="js/booking-linked.js?v=0.69.32"></script>
+    <script src="js/settings-dashboard.js?v=0.69.32"></script>
+    <script src="js/settings-history.js?v=0.69.32"></script>
+    <script src="js/settings-afisha.js?v=0.69.32"></script>
+    <script src="js/settings-certificates.js?v=0.69.32"></script>
+    <script src="js/offline.js?v=0.69.32"></script>
+    <script src="js/crm-feature-registry.js?v=0.69.32"></script>
+    <script src="js/search.js?v=0.69.32"></script>
+    <script src="js/ws.js?v=0.69.32"></script>
+    <script src="js/app.js?v=0.69.32"></script>
+    <script src="js/kleshnya-widget.js?v=0.69.32"></script>
+    <script src="js/components/sidebar.js?v=0.69.32"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.69.32"></script>
 </body>
 </html>

@@ -5,7 +5,15 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS, revokeAllUserTokens } = require('../middleware/auth');
+const {
+    requireAction,
+    authenticateToken,
+    ROLE_HIERARCHY,
+    PAGE_ACCESS,
+    ACTION_PERMISSIONS,
+    revokeAllUserTokens,
+    canUseAction
+} = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { normalizeManualPassword } = require('../services/credentialInput');
@@ -27,9 +35,7 @@ const {
 
 const log = createLogger('Users');
 
-const ACCOUNT_MANAGER_ROLES = ['creator', 'director', 'hr'];
-const HR_PROTECTED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
-
+const ACCOUNT_MANAGER_ROLES = ['creator', 'director', 'art_director'];
 function normalizeRoleSet(...roleLists) {
     const roles = [];
     roleLists.flat().forEach(role => {
@@ -47,27 +53,47 @@ function accountRoles(account = {}) {
 function canToggleAccount(actor, target) {
     if (!actor || !target) return false;
     if (target.id === actor.id) return false;
-    const targetRoles = accountRoles(target);
-    if (actor.role !== 'creator' && targetRoles.includes('creator')) return false;
-    if (actor.role === 'hr' && targetRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
-    return true;
+    return ACCOUNT_MANAGER_ROLES.includes(actor.role);
 }
 
 function canMutateSensitiveAccount(actor, target) {
     if (!actor || !target) return false;
-    const targetRoles = accountRoles(target);
-    if (actor.role !== 'creator' && targetRoles.includes('creator')) return false;
-    if (actor.role === 'hr' && targetRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
-    return true;
+    return ACCOUNT_MANAGER_ROLES.includes(actor.role);
 }
 
 function canCreateAccount(actor, primaryRole, extraRoles = []) {
     if (!actor || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
-    const requestedRoles = normalizeRoleSet([primaryRole], extraRoles);
-    if (actor.role === 'creator') return true;
-    if (requestedRoles.includes('creator')) return false;
-    if (actor.role === 'hr' && requestedRoles.some(role => HR_PROTECTED_ROLES.includes(role))) return false;
     return true;
+}
+
+function normalizeActionOverrideList(value) {
+    const valid = new Set(Object.keys(ACTION_PERMISSIONS));
+    const source = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\s]+/);
+    const result = [];
+    for (const item of source) {
+        const action = String(item || '').trim();
+        if (action && valid.has(action) && !result.includes(action)) result.push(action);
+    }
+    return result;
+}
+
+function accountActionAllowlist(account = {}) {
+    return normalizeActionOverrideList(account.action_allowlist || account.actionAllowlist);
+}
+
+function accountActionDenylist(account = {}) {
+    return normalizeActionOverrideList(account.action_denylist || account.actionDenylist);
+}
+
+function assertSelfAccountAccessSafe(actor, prospectiveAccount) {
+    if (!actor || !prospectiveAccount || Number(actor.id) !== Number(prospectiveAccount.id)) return;
+    if (!canUseAction(prospectiveAccount, 'manage_accounts') || !canUseAction(prospectiveAccount, 'manage_users')) {
+        const err = new Error('Не можна забрати в себе доступ до керування акаунтами');
+        err.statusCode = 400;
+        throw err;
+    }
 }
 
 function normalizeUsername(value) {
@@ -135,13 +161,13 @@ function shouldActivateAfterPasswordReset(body = {}) {
     return truthyResetFlag(body.activateOnReset) || truthyResetFlag(body.activate) || truthyResetFlag(body.reactivate);
 }
 
-// GET /api/users — list all users for account management (creator/director/hr)
+// GET /api/users — list all users for account management (creator/director/art director)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
-router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+router.get('/', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
                     ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
                     s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
              FROM users u
@@ -172,12 +198,16 @@ router.get('/roles', async (req, res) => {
         },
         pageAccess: PAGE_ACCESS,
         actionPermissions: ACTION_PERMISSIONS,
+        actions: Object.keys(ACTION_PERMISSIONS).map(action => ({
+            key: action,
+            roles: ACTION_PERMISSIONS[action] || []
+        })),
         businessContexts: businessContextCatalog()
     });
 });
 
 // GET /api/users/staff-options — staff profiles available for account linking
-router.get('/staff-options', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+router.get('/staff-options', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT s.id, s.name, s.department, s.position,
@@ -197,7 +227,7 @@ router.get('/staff-options', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, 
 });
 
 // GET /api/users/link-conflicts — account/person/staff linkage health summary
-router.get('/link-conflicts', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+router.get('/link-conflicts', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await getAccountLinkConflicts({ limit: req.query.limit || 25 });
         res.json({
@@ -216,7 +246,7 @@ router.get('/link-conflicts', requireRole(...ACCOUNT_MANAGER_ROLES), async (req,
 });
 
 // PATCH /api/users/:id/profile — edit account identity and HR staff binding
-router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res) => {
+router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -263,7 +293,7 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
              SET username = $1,
                  name = $2
              WHERE id = $3
-             RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, is_active`,
+             RETURNING id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active`,
             [username, String(name).trim(), parseInt(id, 10)]
         );
 
@@ -309,10 +339,15 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
 });
 
 // PATCH /api/users/:id/role — change user role (creator + director only)
-router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) => {
+router.patch('/:id/access', requireAction('manage_accounts'), updateAccountAccess);
+router.patch('/:id/role', requireAction('manage_accounts'), updateAccountAccess);
+
+async function updateAccountAccess(req, res) {
     try {
         const { id } = req.params;
         const { role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
+        const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
 
         if (!role || !ROLE_HIERARCHY.includes(role)) {
@@ -325,25 +360,26 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : null;
-        // Cannot change own role (safety)
-        const target = await pool.query('SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE id = $1', [parseInt(id)]);
+        const normalizedActionAllowlist = actionAllowlistInput !== undefined
+            ? normalizeActionOverrideList(actionAllowlistInput)
+            : null;
+        const normalizedActionDenylist = actionDenylistInput !== undefined
+            ? normalizeActionOverrideList(actionDenylistInput)
+            : null;
+        const target = await pool.query(
+            'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE id = $1',
+            [parseInt(id)]
+        );
         if (target.rows.length && !canMutateSensitiveAccount(req.user, target.rows[0])) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
 
-        if (target.rows[0].id === req.user.id) {
-            return res.status(400).json({ error: 'Не можна змінити власну роль' });
-        }
-
-        // Director cannot set creator role
-        if (req.user.role === 'director' && (role === 'creator' || (normalizedExtraRoles || []).includes('creator'))) {
-            return res.status(403).json({ error: 'Тільки creator може призначити creator' });
-        }
-
         const oldRole = target.rows[0].role;
         const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
         const oldPageAllowlist = normalizeStoredArray(target.rows[0].page_allowlist);
+        const oldActionAllowlist = accountActionAllowlist(target.rows[0]);
+        const oldActionDenylist = accountActionDenylist(target.rows[0]);
         const oldBusinessContexts = normalizeStoredArray(target.rows[0].business_contexts);
         const oldDefaultBusinessContext = target.rows[0].default_business_context
             || defaultBusinessContextForSelection(null, oldBusinessContexts, oldRole);
@@ -364,28 +400,45 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
                 role
             )
             : null;
+        const prospectiveAccount = {
+            ...target.rows[0],
+            role,
+            extra_roles: normalizedExtraRoles || oldExtraRoles,
+            page_allowlist: normalizedPageAllowlist || oldPageAllowlist,
+            action_allowlist: normalizedActionAllowlist || oldActionAllowlist,
+            action_denylist: normalizedActionDenylist || oldActionDenylist,
+            business_contexts: normalizedBusinessContexts || oldBusinessContexts,
+            default_business_context: normalizedDefaultBusinessContext || oldDefaultBusinessContext
+        };
+        assertSelfAccountAccessSafe(req.user, prospectiveAccount);
         const updated = await pool.query(
             `UPDATE users
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
                  page_allowlist = COALESCE($3::text[], page_allowlist),
-                 business_contexts = COALESCE($4::text[], business_contexts),
-                 default_business_context = COALESCE($5::text, default_business_context)
-             WHERE id = $6
-             RETURNING id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context`,
-            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
+                 action_allowlist = COALESCE($4::text[], action_allowlist),
+                 action_denylist = COALESCE($5::text[], action_denylist),
+                 business_contexts = COALESCE($6::text[], business_contexts),
+                 default_business_context = COALESCE($7::text, default_business_context),
+                 session_revoked_at = NOW()
+             WHERE id = $8
+             RETURNING id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context`,
+            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
         );
         const updatedUser = updated.rows[0] || target.rows[0];
         const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
         const newPageAllowlist = normalizeStoredArray(updatedUser.page_allowlist);
+        const newActionAllowlist = accountActionAllowlist(updatedUser);
+        const newActionDenylist = accountActionDenylist(updatedUser);
         const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
         const newDefaultBusinessContext = updatedUser.default_business_context
             || defaultBusinessContextForSelection(null, newBusinessContexts, updatedUser.role);
+        await revokeAllUserTokens(parseInt(id));
 
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
-            eventType: 'account_roles_updated',
+            eventType: 'account_access_updated',
             reason: 'account_management',
             details: {
                 oldRole,
@@ -394,14 +447,21 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
                 newExtraRoles,
                 oldPageAllowlist,
                 newPageAllowlist,
+                oldActionAllowlist,
+                newActionAllowlist,
+                oldActionDenylist,
+                newActionDenylist,
                 oldBusinessContexts,
                 newBusinessContexts,
                 oldDefaultBusinessContext,
                 newDefaultBusinessContext,
+                sessionsRevoked: true,
                 changed: {
                     role: oldRole !== updatedUser.role,
                     extraRoles: !sameStringArray(oldExtraRoles, newExtraRoles),
                     pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist),
+                    actionAllowlist: !sameStringArray(oldActionAllowlist, newActionAllowlist),
+                    actionDenylist: !sameStringArray(oldActionDenylist, newActionDenylist),
                     businessContexts: !sameStringArray(oldBusinessContexts, newBusinessContexts),
                     defaultBusinessContext: oldDefaultBusinessContext !== newDefaultBusinessContext
                 }
@@ -410,15 +470,28 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         });
 
         log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${updatedUser.role}`);
-        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: updatedUser.role, extraRoles: newExtraRoles, pageAllowlist: newPageAllowlist, businessContexts: newBusinessContexts, defaultBusinessContext: newDefaultBusinessContext });
+        res.json({
+            success: true,
+            username: target.rows[0].username,
+            oldRole,
+            newRole: updatedUser.role,
+            extraRoles: newExtraRoles,
+            pageAllowlist: newPageAllowlist,
+            actionAllowlist: newActionAllowlist,
+            actionDenylist: newActionDenylist,
+            action_allowlist: newActionAllowlist,
+            action_denylist: newActionDenylist,
+            businessContexts: newBusinessContexts,
+            defaultBusinessContext: newDefaultBusinessContext
+        });
     } catch (err) {
         log.error('Change role error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
     }
-});
+}
 
-// POST /api/users/:id/reset-password — reset password (creator/director/hr, guarded)
-router.post('/:id/reset-password', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+// POST /api/users/:id/reset-password — reset password (account admins, guarded)
+router.post('/:id/reset-password', requireAction('manage_accounts'), async (req, res) => {
     try {
         const { id } = req.params;
         const manualPassword = resetPasswordFromPayload(req.body || {});
@@ -503,8 +576,8 @@ router.post('/:id/reset-password', requireRole(...ACCOUNT_MANAGER_ROLES), async 
     }
 });
 
-// PATCH /api/users/:id/active — activate/deactivate user (creator/director/hr, guarded)
-router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+// PATCH /api/users/:id/active — activate/deactivate user (account admins, guarded)
+router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) => {
     try {
         const { id } = req.params;
         const { isActive } = req.body;
@@ -547,11 +620,13 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
     }
 });
 
-// POST /api/users — create new user (creator/director/hr, guarded)
-router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
+// POST /api/users — create new user (account admins, guarded)
+router.post('/', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { password, name, role, extraRoles, pageAllowlist, businessContexts } = req.body;
+        const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
+        const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true || !password;
         const username = normalizeUsername(req.body.username);
@@ -581,6 +656,12 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
         const normalizedPageAllowlist = Array.isArray(pageAllowlist)
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : [];
+        const normalizedActionAllowlist = actionAllowlistInput !== undefined
+            ? normalizeActionOverrideList(actionAllowlistInput)
+            : [];
+        const normalizedActionDenylist = actionDenylistInput !== undefined
+            ? normalizeActionOverrideList(actionDenylistInput)
+            : [];
         const normalizedDefaultBusinessContext = defaultBusinessContextForSelection(
             requestedDefaultBusinessContext,
             Array.isArray(businessContexts) ? businessContexts : [],
@@ -608,8 +689,8 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             throw new Error('password_hash_verified_after_create_failed');
         }
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, business_contexts, default_business_context, is_active',
-            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedBusinessContexts, normalizedDefaultBusinessContext]
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active',
+            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext]
         );
         const loginCheck = await verifyIssuedCredential({
             client,
@@ -635,7 +716,7 @@ router.post('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
             client
         });

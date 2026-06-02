@@ -2160,6 +2160,7 @@ function accountSecurityEventLabel(type) {
         bulk_account_created_with_staff_link: 'Акаунт створено масово',
         account_impersonation_started: 'Impersonation акаунта запущено',
         account_roles_updated: 'Ролі та доступ змінено',
+        account_access_updated: 'Ролі та доступ змінено',
         account_activated: 'Акаунт активовано',
         account_deactivated: 'Акаунт деактивовано'
     };
@@ -2183,11 +2184,13 @@ function accountSecurityReasonLabel(reason) {
 function accountSecurityEventDetails(event) {
     const details = event.details && typeof event.details === 'object' ? event.details : {};
     const type = event.event_type || event.eventType;
-    if (type === 'account_roles_updated') {
+    if (type === 'account_roles_updated' || type === 'account_access_updated') {
         const parts = [];
         if (details.oldRole || details.newRole) parts.push(`${details.oldRole || '—'} → ${details.newRole || '—'}`);
         if (details.changed?.extraRoles) parts.push('додаткові ролі оновлено');
         if (details.changed?.pageAllowlist) parts.push('сторінки доступу оновлено');
+        if (details.changed?.actionAllowlist) parts.push('дозволи дій оновлено');
+        if (details.changed?.actionDenylist) parts.push('заборони дій оновлено');
         return parts.join(' · ');
     }
     if (type === 'login_failed') return accountSecurityReasonLabel(details.reason || event.reason);

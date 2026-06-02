@@ -4,6 +4,18 @@
 
 ---
 
+## v0.69.32 - Стабілізація бронювань і доступів
+
+### Бронювання / Таймлайн / Доступи / 02.06.2026 [codex]
+- **Другий аніматор створюється як окреме linked-бронювання з власною лінією** - відповіді `POST /api/bookings` і `POST /api/bookings/full` тепер повертають `allBookings`, `serverVerified` і структурований `projection`, щоб UI не показував успіх до серверної перевірки видимості.
+- **Неправильні linked-рядки другого аніматора можна знайти й виправити системно** - `npm run audit:second-animator-links` у dry-run показує відсутні linked rows, stale `timelineIdentity` і неправильний `line_id`; `--fix` ремонтує це транзакційно.
+- **Доступи акаунтів стали action-based** - у `users` додано `action_allowlist/action_denylist`, `deny` має пріоритет, а `GET /api/auth/permissions` повертає фінальні дії та джерело рішення.
+- **Панель акаунтів доступна creator/director/art_director, HR прибрано з керування акаунтами** - account center дозволяє керувати ролями, extraRoles, сторінками, бізнес-контекстами, allow/deny діями, активністю й паролем.
+- **Self-lockout guard захищає адміністраторів акаунтів** - користувач не може сам собі забрати `manage_accounts/manage_users` або вимкнути власний акаунт із панелі керування.
+- **Регресійні тести розширено** - додано перевірки allow/deny для `delete_booking`, HR без access panel, art_director з account admin доступом, canonical `/api/users/:id/access` і projection для linked bookings.
+
+---
+
 ## v0.69.31 - Фікс ліній другого аніматора
 
 ### Timeline / Line matching / 02.06.2026 [codex]

@@ -396,6 +396,8 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.equal(res.data.serverVerified, true);
         assert.equal(res.data.booking.id, 'BK-2099-0001');
         assert.equal(res.data.booking.serverVerified, true);
+        assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
+        assert.equal(res.data.projection.bookings[0].resourceId, 'line-1');
         assert.equal(state.rows.length, 1);
         assert.equal(state.financeAttempts, 1);
         assert.ok(state.tx.includes('SAVEPOINT booking_optional_step'));
@@ -415,6 +417,8 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
         assert.equal(res.data.mainBooking.lineId, 'line-main');
         assert.equal(res.data.linkedBookings.length, 1);
         assert.equal(res.data.linkedBookings[0].lineId, 'line-second');
+        assert.deepEqual(res.data.allBookings.map(item => item.id), [res.data.mainBooking.id, res.data.linkedBookings[0].id]);
+        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['line-main', 'line-second']);
 
         const linkedRow = state.rows.find(row => row.linked_to === res.data.mainBooking.id);
         assert.ok(linkedRow, 'second animator linked row must be inserted');

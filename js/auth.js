@@ -172,6 +172,7 @@ async function checkSession() {
         if (user) {
             AppState.currentUser = user;
             await hydrateBusinessOperatingProfile(user);
+            await hydrateActionPermissions(user);
             window.WorkingRole?.hydrate?.();
             showMainApp();
             if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
@@ -190,6 +191,7 @@ async function login(username, password) {
         AppState.currentUser = data.user;
         rememberAuthSession(data);
         await hydrateBusinessOperatingProfile(data.user || AppState.currentUser);
+        await hydrateActionPermissions(data.user || AppState.currentUser);
         window.WorkingRole?.hydrate?.();
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
@@ -277,6 +279,34 @@ async function hydrateBusinessOperatingProfile(user = AppState.currentUser) {
         } catch {}
     }
     return profile;
+}
+
+async function hydrateActionPermissions(user = AppState.currentUser) {
+    if (!user) return null;
+    try {
+        const headers = typeof getAuthHeaders === 'function'
+            ? getAuthHeaders(false)
+            : { Authorization: `Bearer ${localStorage.getItem(AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token') || ''}` };
+        const response = await fetch('/api/auth/permissions', { headers });
+        if (!response.ok) return null;
+        const permissions = await response.json();
+        AppState.authPermissions = permissions;
+        user.permissions = permissions;
+        if (permissions.actionAllowlist) {
+            user.actionAllowlist = permissions.actionAllowlist;
+            user.action_allowlist = permissions.actionAllowlist;
+        }
+        if (permissions.actionDenylist) {
+            user.actionDenylist = permissions.actionDenylist;
+            user.action_denylist = permissions.actionDenylist;
+        }
+        try {
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+        } catch {}
+        return permissions;
+    } catch {
+        return null;
+    }
 }
 
 function hasStoredRefreshSession() {
@@ -635,7 +665,8 @@ const ACTION_PERMISSIONS = {
     edit_booking:    [..._ADMIN_UP, 'reception'],
     cancel_booking:  _MANAGER_UP,
     delete_booking:  _ADMIN_UP,
-    manage_users:    ['creator', 'director'],
+    manage_accounts: ['creator', 'director', 'art_director'],
+    manage_users:    ['creator', 'director', 'art_director'],
     view_revenue:    [..._MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
     export_data:     _MANAGER_UP,
@@ -1194,6 +1225,28 @@ function hasMinRole(minRole) {
     return getUserRoles().some(role => (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99));
 }
 
+function getCurrentUserActionList(primaryKey, legacyKey) {
+    const user = AppState.currentUser || {};
+    const values = [];
+    if (Array.isArray(user[primaryKey])) values.push(...user[primaryKey]);
+    if (Array.isArray(user[legacyKey])) values.push(...user[legacyKey]);
+    const permissions = AppState.authPermissions || user.permissions || {};
+    if (primaryKey === 'actionAllowlist' && Array.isArray(permissions.actionAllowlist)) values.push(...permissions.actionAllowlist);
+    if (primaryKey === 'actionDenylist' && Array.isArray(permissions.actionDenylist)) values.push(...permissions.actionDenylist);
+    return Array.from(new Set(values.filter(Boolean).map(String)));
+}
+
+if (typeof window !== 'undefined') {
+    window.hydrateActionPermissions = hydrateActionPermissions;
+}
+
+function serverActionPermission(action) {
+    if (getStoredPreviewRole()) return null;
+    const permissions = AppState.authPermissions || AppState.currentUser?.permissions || null;
+    if (!permissions?.actions || !Object.prototype.hasOwnProperty.call(permissions.actions, action)) return null;
+    return Boolean(permissions.actions[action]);
+}
+
 function canAccess(action) {
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
         const aliases = {
@@ -1207,6 +1260,10 @@ function canAccess(action) {
             return window.TimelineBusinessContext.canUseAction(aliases[action], AppState.currentUser);
         }
     }
+    const serverDecision = serverActionPermission(action);
+    if (serverDecision !== null) return serverDecision;
+    if (getCurrentUserActionList('actionDenylist', 'action_denylist').includes(action)) return false;
+    if (getCurrentUserActionList('actionAllowlist', 'action_allowlist').includes(action)) return true;
     const allowed = ACTION_PERMISSIONS[action];
     if (!allowed) return false;
     return getUserRoles().some(role => allowed.includes(role));

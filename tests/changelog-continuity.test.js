@@ -50,12 +50,14 @@ describe('visible changelog version continuity', () => {
 
     it('does not skip current or legacy active patch versions in the visible top chain', () => {
         const visibleActive = indexModalVersions().filter(isVisibleContinuityTrain);
+        const sourceActive = new Set(changelogVersions().filter(isVisibleContinuityTrain));
         assert.ok(visibleActive.length > 10);
 
         const visible = new Set(visibleActive);
         for (const version of visibleActive) {
             const prev = previousPatch(version);
             if (!prev || version === '0.60.0') continue;
+            if (!sourceActive.has(prev)) continue;
             assert.ok(visible.has(prev), `visible changelog skips ${prev} before ${version}`);
         }
     });

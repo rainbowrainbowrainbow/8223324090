@@ -3183,6 +3183,7 @@ function unlockSubmitBtn() {
 
 function collectCreatedBookingRecords(createResult) {
     const records = [];
+    if (Array.isArray(createResult?.allBookings)) records.push(...createResult.allBookings);
     if (createResult?.booking) records.push(createResult.booking);
     if (createResult?.mainBooking) records.push(createResult.mainBooking);
     if (Array.isArray(createResult?.bookings)) records.push(...createResult.bookings);

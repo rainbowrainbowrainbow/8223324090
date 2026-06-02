@@ -265,6 +265,10 @@ async function initDatabase() {
         `);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
+        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS action_allowlist TEXT[] NOT NULL DEFAULT '{}'::text[]`);
+        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS action_denylist TEXT[] NOT NULL DEFAULT '{}'::text[]`);
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_action_allowlist_gin ON users USING GIN (action_allowlist)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_action_denylist_gin ON users USING GIN (action_denylist)');
 
         // v12.3: schema_migrations table
         await safeQuery(`

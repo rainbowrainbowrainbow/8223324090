@@ -15,7 +15,8 @@ const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
-    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole
+    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole,
+    actionPermissionDecision
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
@@ -198,7 +199,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.default_business_context, u.name, u.is_active,
+            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.is_active,
                     u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -268,7 +269,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.business_contexts, u.default_business_context, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
+            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1 AND u.is_active = true`,
@@ -1365,17 +1366,23 @@ router.get('/permissions', authenticateToken, (req, res) => {
 
     // Actions the user can perform
     const actions = {};
-    for (const [action, roles] of Object.entries(ACTION_PERMISSIONS)) {
-        actions[action] = userHasAnyRole(req.user, roles);
+    const actionSources = {};
+    for (const action of Object.keys(ACTION_PERMISSIONS)) {
+        const decision = actionPermissionDecision(req.user, action);
+        actions[action] = decision.allowed;
+        actionSources[action] = decision.source;
     }
 
     res.json({
         role,
         roles: normalizeRoleList(req.user),
         pageAllowlist,
+        actionAllowlist: req.user.actionAllowlist || req.user.action_allowlist || [],
+        actionDenylist: req.user.actionDenylist || req.user.action_denylist || [],
         level,
         pages,
-        actions
+        actions,
+        actionSources
     });
 });
 
@@ -1436,7 +1443,7 @@ router.get('/users-list', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Only creator can list users' });
         }
         const result = await pool.query(
-            'SELECT id, username, name, role, extra_roles, page_allowlist, business_contexts, default_business_context FROM users WHERE is_active = true ORDER BY name'
+            'SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE is_active = true ORDER BY name'
         );
         res.json(result.rows);
     } catch (err) {

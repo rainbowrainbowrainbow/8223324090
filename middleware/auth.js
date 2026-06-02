@@ -117,14 +117,28 @@ const ACTION_PERMISSIONS = {
     edit_booking:    [...ADMIN_UP, 'reception'],
     cancel_booking:  MANAGER_UP,
     delete_booking:  ADMIN_UP,
+    manage_accounts: ['creator', 'director', 'art_director'],
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
-    manage_users:    ['creator', 'director'],
+    manage_users:    ['creator', 'director', 'art_director'],
     view_revenue:    [...MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
     export_data:     MANAGER_UP,
     manage_staff:    [...MANAGER_UP, 'hr'],
 };
+
+function normalizeActionOverrideList(value) {
+    const source = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\s]+/);
+    const valid = new Set(Object.keys(ACTION_PERMISSIONS));
+    const result = [];
+    for (const item of source) {
+        const action = String(item || '').trim();
+        if (action && valid.has(action) && !result.includes(action)) result.push(action);
+    }
+    return result;
+}
 
 function normalizeRoleList(user) {
     const roles = [];
@@ -152,9 +166,32 @@ function userMaxRoleLevel(user) {
     return normalizeRoleList(user).reduce((max, role) => Math.max(max, ROLE_LEVEL[role] ?? -1), -1);
 }
 
+function actionPermissionDecision(user, action) {
+    if (!user || !action || !Object.prototype.hasOwnProperty.call(ACTION_PERMISSIONS, action)) {
+        return { allowed: false, source: 'unknown', action };
+    }
+    const denylist = normalizeActionOverrideList(user.action_denylist || user.actionDenylist);
+    if (denylist.includes(action)) {
+        return { allowed: false, source: 'denylist', action };
+    }
+    const allowlist = normalizeActionOverrideList(user.action_allowlist || user.actionAllowlist);
+    if (allowlist.includes(action)) {
+        return { allowed: true, source: 'allowlist', action };
+    }
+    const allowedRoles = ACTION_PERMISSIONS[action];
+    const allowed = userHasAnyRole(user, allowedRoles);
+    return { allowed, source: allowed ? 'role' : 'none', action };
+}
+
+function canUseAction(user, action) {
+    return actionPermissionDecision(user, action).allowed;
+}
+
 function buildAuthUserPayload(user) {
     const extraRoles = Array.isArray(user?.extra_roles) ? user.extra_roles : (Array.isArray(user?.extraRoles) ? user.extraRoles : []);
     const pageAllowlist = normalizePageAllowlist(user);
+    const actionAllowlist = normalizeActionOverrideList(user?.action_allowlist || user?.actionAllowlist);
+    const actionDenylist = normalizeActionOverrideList(user?.action_denylist || user?.actionDenylist);
     const roles = normalizeRoleList({ ...user, extraRoles });
     const businessContexts = allowedBusinessContextsForUser(user);
     const businessContextPolicy = resolveBusinessContextPolicy(user);
@@ -166,6 +203,10 @@ function buildAuthUserPayload(user) {
         roles,
         extraRoles: roles.filter(role => role !== user.role),
         pageAllowlist,
+        actionAllowlist,
+        actionDenylist,
+        action_allowlist: actionAllowlist,
+        action_denylist: actionDenylist,
         businessContexts,
         business_contexts: businessContexts,
         defaultBusinessContext,
@@ -200,7 +241,7 @@ async function authenticateToken(req, res, next) {
                     return res.status(403).json({ error: 'Session revoked. Please login again.' });
                 }
                 const freshAccessState = await pool.query(
-                    `SELECT id, username, role, extra_roles, page_allowlist, business_contexts,
+                    `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts,
                             default_business_context, name, is_active
                      FROM users WHERE id = $1`,
                     [user.id]
@@ -304,8 +345,7 @@ function requireMinRole(minRole) {
 function requireAction(action) {
     return (req, res, next) => {
         if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-        const allowed = ACTION_PERMISSIONS[action];
-        if (!allowed || !userHasAnyRole(req.user, allowed)) {
+        if (!canUseAction(req.user, action)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
         next();
@@ -393,7 +433,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, business_contexts, default_business_context, name, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 
@@ -431,7 +471,7 @@ async function revokeRefreshToken(refreshToken) {
          WHERE rt.token_hash = $1
            AND rt.user_id = u.id
            AND rt.revoked_at IS NULL
-         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.name`,
+         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.name`,
         [tokenHash]
     );
     return result.rows[0] || null;
@@ -478,8 +518,11 @@ module.exports = {
     ACTION_PERMISSIONS,
     normalizeRoleList,
     normalizePageAllowlist,
+    normalizeActionOverrideList,
     userHasAnyRole,
     userMaxRoleLevel,
+    canUseAction,
+    actionPermissionDecision,
     buildAuthUserPayload,
     ANY_ROLE
 };

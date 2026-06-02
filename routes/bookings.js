@@ -10,7 +10,7 @@ const { processBookingAutomation } = require('../services/bookingAutomation');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
 const { broadcast } = require('../services/websocket');
-const { publish: publishEvent } = require('../services/eventBus');
+const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
@@ -104,6 +104,21 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
     }
 }
 
+function bookingTimelineProjectionContract(booking = {}) {
+    const identity = booking.timelineIdentity || {};
+    return {
+        id: booking.id || null,
+        resourceId: booking.resourceId || booking.lineId || identity.resourceId || identity.lineId || null,
+        resourceType: booking.resourceType || identity.resourceType || null,
+        displayName: booking.displayName || booking.lineName || identity.displayName || identity.resourceName || null,
+        businessContext: booking.businessContext || identity.businessContext || DEFAULT_TIMELINE_CONTEXT,
+        date: booking.date || null,
+        source: identity.source || booking.source || 'booking_row',
+        capacity: booking.capacity || identity.capacity || null,
+        visibility: booking.timelineProjection || null
+    };
+}
+
 async function runOptionalBookingTransactionStep(client, label, step) {
     await client.query('SAVEPOINT booking_optional_step');
     try {
@@ -118,6 +133,21 @@ async function runOptionalBookingTransactionStep(client, label, step) {
         log.warn(`${label} failed (non-critical): ${err.message}`);
         return null;
     }
+}
+
+async function queueBookingEventInTransaction(client, eventType, payload, aggregateId, idempotencyKey) {
+    if (typeof publishInTransaction !== 'function') {
+        publishEvent(eventType, payload, idempotencyKey);
+        return;
+    }
+    await publishInTransaction(
+        client,
+        eventType,
+        payload,
+        'booking',
+        aggregateId,
+        idempotencyKey
+    );
 }
 
 async function commitBookingTransaction(client, label) {
@@ -1566,6 +1596,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
+            await queueBookingEventInTransaction(client, 'booking.created', {
+                booking_id: b.id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
+                program_code: b.programCode, program_name: b.programName,
+                status: b.status || 'confirmed', price: b.price || 0,
+                kids_count: b.kidsCount, created_by: b.createdBy
+            }, b.id, `booking_created_${b.id}`);
+        }
+
         await commitBookingTransaction(client, 'booking create');
 
         const durableRows = await assertDurableCreatedBookings(
@@ -1624,16 +1663,6 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         // WebSocket: notify other clients
         broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
         _alertPush();
-
-        // v19.1: Publish to event queue
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
-            publishEvent('booking.created', {
-                booking_id: b.id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
-                program_code: b.programCode, program_name: b.programName,
-                status: b.status || 'confirmed', price: b.price || 0,
-                kids_count: b.kidsCount, created_by: b.createdBy
-            }, `booking_created_${b.id}`);
-        }
 
         // ==========================================
         // v33.8.0: Post-commit integrations (all fire-and-forget)
@@ -1809,7 +1838,18 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        res.json({ success: true, booking, linkedBookings, serverVerified: true });
+        const allBookings = [booking, ...linkedBookings];
+        res.json({
+            success: true,
+            booking,
+            linkedBookings,
+            allBookings,
+            projection: {
+                main: booking.timelineProjection || null,
+                bookings: allBookings.map(item => bookingTimelineProjectionContract(item))
+            },
+            serverVerified: true
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
         log.error('Error creating booking', err);
@@ -2307,6 +2347,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             });
         }
 
+        if (sideEffectsAllowedForContext(businessContext)) {
+            await queueBookingEventInTransaction(client, 'booking.created', {
+                booking_id: main.id, business_context: businessContext, date: main.date, time: main.time, room: main.room,
+                program_code: main.programCode, program_name: main.programName,
+                status: main.status || 'confirmed', price: main.price || 0,
+                kids_count: main.kidsCount, created_by: main.createdBy,
+                linked_count: linkedRows.length
+            }, main.id, `booking_created_${main.id}`);
+        }
+
         await commitBookingTransaction(client, 'booking create/full');
 
         const durableRows = await assertDurableCreatedBookings(
@@ -2360,18 +2410,18 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         // WebSocket: notify other clients
         broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);
 
-        // v19.1: Publish to event queue
-        if (sideEffectsAllowedForContext(businessContext)) {
-            publishEvent('booking.created', {
-                booking_id: main.id, business_context: businessContext, date: main.date, time: main.time, room: main.room,
-                program_code: main.programCode, program_name: main.programName,
-                status: main.status || 'confirmed', price: main.price || 0,
-                kids_count: main.kidsCount, created_by: main.createdBy,
-                linked_count: linkedRows.length
-            }, `booking_created_${main.id}`);
-        }
-
-        res.json({ success: true, mainBooking, linkedBookings, serverVerified: true });
+        const allBookings = [mainBooking, ...linkedBookings];
+        res.json({
+            success: true,
+            mainBooking,
+            linkedBookings,
+            allBookings,
+            projection: {
+                main: mainBooking.timelineProjection || null,
+                bookings: allBookings.map(item => bookingTimelineProjectionContract(item))
+            },
+            serverVerified: true
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
         log.error('Error creating full booking', err);

@@ -178,11 +178,12 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(accountSecurityService, /delete clone\.manualPassword/);
 
         assert.match(usersRoute, /router\.get\('\/link-conflicts'/);
-        assert.match(usersRoute, /router\.get\('\/staff-options', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
-        assert.match(usersRoute, /router\.post\('\/:id\/reset-password', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
-        assert.match(usersRoute, /router\.post\('\/', requireRole\(\.\.\.ACCOUNT_MANAGER_ROLES\)/);
+        assert.match(usersRoute, /router\.get\('\/staff-options', requireAction\('manage_accounts'\)/);
+        assert.match(usersRoute, /router\.post\('\/:id\/reset-password', requireAction\('manage_accounts'\)/);
+        assert.match(usersRoute, /router\.post\('\/', requireAction\('manage_accounts'\)/);
         assert.match(usersRoute, /function canCreateAccount/);
-        assert.match(usersRoute, /HR_PROTECTED_ROLES/);
+        assert.match(usersRoute, /const ACCOUNT_MANAGER_ROLES = \['creator', 'director', 'art_director'\]/);
+        assert.match(usersRoute, /assertSelfAccountAccessSafe/);
         assert.match(usersRoute, /linkUserToStaffProfile/);
         assert.match(usersRoute, /unlinkUserFromStaffProfiles/);
         assert.match(usersRoute, /password_one_time_reissued/);
@@ -211,9 +212,9 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(employeesRoute, /employee_profile_account_unlinked/);
 
         assert.match(hrPage, /function renderAccountConflictSummary/);
-        assert.match(hrPage, /ACCOUNT_SECURITY_ROLES = \['creator', 'director', 'hr'\]/);
+        assert.match(hrPage, /ACCOUNT_SECURITY_ROLES = \['creator', 'director', 'art_director'\]/);
         assert.match(hrPage, /function canManageAccountProfile/);
-        assert.match(hrPage, /HR_ACCOUNT_PROTECTED_ROLES/);
+        assert.match(hrPage, /ACCOUNT_ACTION_LABELS/);
         assert.match(hrPage, /openAccountCreateForStaff/);
         assert.match(hrPage, /openAccountLinkForStaff/);
         assert.match(hrPage, /showOneTimeCredentialModal/);

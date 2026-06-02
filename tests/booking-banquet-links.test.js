@@ -153,7 +153,13 @@ function makeDb(rows, links = []) {
             };
         }
         if (/^INSERT INTO history/i.test(sql)) {
-            state.histories.push({ action: params[0], username: params[1], data: JSON.parse(params[2]) });
+            const scoped = params.length === 4;
+            state.histories.push({
+                businessContext: scoped ? params[0] : 'event_genix',
+                action: scoped ? params[1] : params[0],
+                username: scoped ? params[2] : params[1],
+                data: JSON.parse(scoped ? params[3] : params[2])
+            });
             return { rows: [], rowCount: 1 };
         }
         throw new Error(`Unexpected banquet-link query: ${sql}`);

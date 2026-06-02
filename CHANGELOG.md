@@ -4,6 +4,19 @@
 
 ---
 
+## v0.69.33 - Харденінг бронювань і timeline
+
+### Backend / Bookings / Timeline / History / 02.06.2026 [codex]
+- **Бронювання отримали transaction-scoped anti-overlap locks** - create, full-create, education-series, PUT і linked-atomic paths серіалізують записи на той самий `business_context/date/line` або `business_context/date/room` через `pg_advisory_xact_lock`, зберігаючи чинні conflict checks і rollback semantics.
+- **History API став business-scoped** - `GET /api/history` читає тільки дозволені бізнес-контексти, `POST /api/history` пише лише в active writable context, а actor береться з authenticated `req.user`, не з client payload.
+- **History schema підготовлена для довших audit actions** - migration `245_backend_booking_timeline_hardening.sql` розширює `history.action`, додає `history.business_context`, backfill з JSON payload і scoped індекси для history/booking reads.
+- **Create lifecycle валідовує status fail-closed** - `POST /api/bookings`, `/api/bookings/full` і `/api/bookings/education-series` приймають тільки `confirmed`, `preliminary`, `cancelled`; invalid explicit status більше не потрапляє в БД.
+- **Timeline context більше не misfile-иться на default** - explicit unknown `businessContext` тепер проходить через existing guards як unavailable context замість silent fallback у `event_genix`.
+- **Linked cascade і глобальні side effects звужено** - confirm/update не оживляють `cancelled` linked rows, а birthday announcements лишаються park-only, бо таблиця announcement не має durable business scope.
+- **Regression coverage додано** - оновлено focused тести для advisory locks, scoped history contract, invalid create status, timeline fail-closed context і cancelled linked confirmation.
+
+---
+
 ## v0.69.32 - Стабілізація бронювань і доступів
 
 ### Бронювання / Таймлайн / Доступи / 02.06.2026 [codex]

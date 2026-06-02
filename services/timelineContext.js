@@ -61,7 +61,7 @@ function timelineContextFromRequest(req) {
     if (!raw) return DEFAULT_TIMELINE_CONTEXT;
     return isKnownBusinessContextInput(raw)
         ? normalizeBusinessContext(raw)
-        : DEFAULT_TIMELINE_CONTEXT;
+        : String(raw).trim().toLowerCase();
 }
 
 function userRoles(user) {

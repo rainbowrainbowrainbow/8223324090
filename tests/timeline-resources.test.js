@@ -285,11 +285,12 @@ test('timeline context keeps explicit non-timeline CRM requests out of the defau
     const contextCode = read('js/timeline-context.js');
 
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
-    assert.equal(timelineContextFromRequest({ query: { businessContext: 'unknown' } }), 'event_genix');
+    assert.equal(timelineContextFromRequest({ query: { businessContext: 'unknown' } }), 'unknown');
     assert.equal(isTimelineContext('event_genix'), true);
     assert.equal(isTimelineContext('dar'), true);
     assert.equal(isTimelineContext('crm'), false);
     assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'unknown'), false);
     assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'crm'] }, 'crm'), false);
     assert.match(contextCode, /function contextForBusiness/);
     assert.doesNotMatch(contextCode, /if \(ctx\.key === 'event_genix'\) return url/);

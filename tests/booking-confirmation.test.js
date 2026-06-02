@@ -87,10 +87,12 @@ function makeDb(initialRows) {
         }
         if (/UPDATE bookings SET status = 'confirmed'/i.test(sql)) {
             const [confirmedBy, note, source, id, businessContext] = params;
+            const preliminaryOnly = /status = 'preliminary'/i.test(sql);
             const updated = [];
             for (const row of state.rows) {
                 if ((row.id === id || row.linked_to === id) &&
-                    (!businessContext || (row.business_context || 'event_genix') === businessContext)) {
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext) &&
+                    (!preliminaryOnly || row.status === 'preliminary')) {
                     row.status = 'confirmed';
                     row.confirmed_at = '2099-05-14T13:20:00.000Z';
                     row.confirmed_by = confirmedBy;
@@ -103,7 +105,13 @@ function makeDb(initialRows) {
             return { rows: updated, rowCount: updated.length };
         }
         if (/^INSERT INTO history/i.test(sql)) {
-            state.histories.push({ action: params[0], username: params[1], data: JSON.parse(params[2]) });
+            const scoped = params.length === 4;
+            state.histories.push({
+                businessContext: scoped ? params[0] : 'event_genix',
+                action: scoped ? params[1] : params[0],
+                username: scoped ? params[2] : params[1],
+                data: JSON.parse(scoped ? params[3] : params[2])
+            });
             return { rows: [], rowCount: 1 };
         }
         if (/SELECT name FROM lines_by_date/i.test(sql)) return { rows: [{ name: 'Line One' }] };
@@ -203,6 +211,21 @@ test('POST /api/bookings/:id/confirm confirms preliminary booking with accountab
         assert.equal(sideEffects.broadcasts.length, 2);
         assert.equal(sideEffects.events[0][0], 'booking.confirmed');
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    });
+});
+
+test('POST /api/bookings/:id/confirm does not revive cancelled linked bookings', async () => {
+    await withApp([
+        bookingRow(),
+        bookingRow({ id: 'BK-2099-0002', linked_to: 'BK-2099-0001', status: 'cancelled' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, 'BK-2099-0001', 'manager', { source: 'queue' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(state.rows[0].status, 'confirmed');
+        assert.equal(state.rows[1].status, 'cancelled');
+        assert.equal(res.data.cascade.confirmedCount, 1);
+        assert.equal(state.histories[0].businessContext, 'event_genix');
     });
 });
 

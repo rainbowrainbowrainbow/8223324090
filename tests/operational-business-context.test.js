@@ -322,6 +322,21 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(ws, /Ignoring line event for another business context/);
 });
 
+test('legacy history API is business-scoped and uses server-side actor identity', () => {
+    const history = read('routes/history.js');
+    const migration = read('db/migrations/245_backend_booking_timeline_hardening.sql');
+
+    assert.match(history, /resolveBusinessScope/);
+    assert.match(history, /requireBusinessScope/);
+    assert.match(history, /requireWritableBusinessScope/);
+    assert.match(history, /pushBusinessScopeCondition\(params, scope, 'h'\)/);
+    assert.match(history, /INSERT INTO history \(business_context, action, username, data\)/);
+    assert.match(history, /historyActor\(req\)/);
+    assert.doesNotMatch(history, /const \{ action, user, data \} = req\.body/);
+    assert.match(migration, /ALTER TABLE history[\s\S]*ADD COLUMN IF NOT EXISTS business_context/);
+    assert.match(migration, /ALTER COLUMN action TYPE VARCHAR\(64\)/);
+});
+
 test('background booking notifications and legacy bot reads stay inside a timeline business context', () => {
     const scopeHelper = read('services/timelineBusinessScope.js');
     const telegram = read('services/telegram.js');

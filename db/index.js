@@ -139,7 +139,8 @@ async function initDatabase() {
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS history (
                 id SERIAL PRIMARY KEY,
-                action VARCHAR(20) NOT NULL,
+                business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
+                action VARCHAR(64) NOT NULL,
                 username VARCHAR(50),
                 data JSONB,
                 created_at TIMESTAMP DEFAULT NOW()

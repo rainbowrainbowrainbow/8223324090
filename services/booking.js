@@ -42,12 +42,54 @@ function minutesToTime(minutes) {
 }
 
 const MIN_PAUSE = 15;
+const VALID_BOOKING_STATUSES = Object.freeze(['confirmed', 'preliminary', 'cancelled']);
+const BOOKING_CONFLICT_LOCK_NAMESPACE = 'booking_conflict_v1';
 
 const ALL_ROOMS = [
     'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
     'Растішка', 'Рок', 'Міньйон', 'Поні', 'Фудкорт', 'Жовтий стіл',
     'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
 ];
+
+function normalizeBookingStatus(value, fallback = 'confirmed') {
+    if (value === undefined || value === null || value === '') return fallback;
+    const status = String(value).trim().toLowerCase();
+    return VALID_BOOKING_STATUSES.includes(status) ? status : null;
+}
+
+function bookingConflictLockPart(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
+    const date = bookingConflictLockPart(booking.date);
+    if (!date) return keys;
+
+    const lineId = bookingConflictLockPart(booking.lineId || booking.line_id || booking.resourceId || booking.resource_id);
+    if (lineId) keys.add(`line:${context}:${date}:${lineId}`);
+
+    const room = bookingConflictLockPart(booking.room);
+    if (room && room !== 'інше' && room !== 'other') keys.add(`room:${context}:${date}:${room}`);
+
+    return keys;
+}
+
+async function lockBookingConflictResources(client, bookings, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const keys = new Set();
+    for (const booking of Array.isArray(bookings) ? bookings : [bookings]) {
+        addBookingConflictLockKeys(keys, booking, businessContext);
+    }
+
+    const orderedKeys = Array.from(keys).sort();
+    for (const key of orderedKeys) {
+        await client.query(
+            'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+            [BOOKING_CONFLICT_LOCK_NAMESPACE, key]
+        );
+    }
+    return orderedKeys;
+}
 
 // --- Conflict checks ---
 
@@ -361,7 +403,8 @@ function getKyivTimeStr() {
 
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
-    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS,
+    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
+    normalizeBookingStatus, lockBookingConflictResources,
     checkRoomConflict, checkServerConflicts, checkServerDuplicate,
     mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr

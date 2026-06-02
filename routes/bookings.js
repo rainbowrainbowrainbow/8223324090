@@ -3,7 +3,18 @@
  */
 const router = require('express').Router();
 const { pool, generateBookingNumber } = require('../db');
-const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict, timeToMinutes } = require('../services/booking');
+const {
+    validateDate,
+    validateTime,
+    validateId,
+    mapBookingRow,
+    checkServerConflicts,
+    checkServerDuplicate,
+    checkRoomConflict,
+    timeToMinutes,
+    normalizeBookingStatus,
+    lockBookingConflictResources
+} = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
@@ -44,6 +55,23 @@ const log = createLogger('Bookings');
 
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
+
+function applyBookingStatusForCreate(booking, fallback = 'confirmed') {
+    const status = normalizeBookingStatus(booking?.status, fallback);
+    if (!status) return 'invalid';
+    if (booking) booking.status = status;
+    return null;
+}
+
+async function insertScopedHistory(queryable, action, username, data, businessContext) {
+    const payload = data && typeof data === 'object' && !Array.isArray(data)
+        ? { ...data, business_context: businessContext || DEFAULT_TIMELINE_CONTEXT }
+        : data;
+    await queryable.query(
+        'INSERT INTO history (business_context, action, username, data) VALUES ($1, $2, $3, $4)',
+        [businessContext || DEFAULT_TIMELINE_CONTEXT, action, username, JSON.stringify(payload)]
+    );
+}
 
 function bookingContextSql(alias = '', placeholder = '$1') {
     const column = alias ? `${alias}.business_context` : 'business_context';
@@ -533,9 +561,7 @@ function applyPinataNormalization(booking) {
 }
 
 async function insertBookingConfirmationHistory(client, { booking, actor, source, note, confirmedAt }) {
-    await client.query(
-        'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-        ['booking_confirmed', actor?.username, JSON.stringify({
+    await insertScopedHistory(client, 'booking_confirmed', actor?.username, {
             entity_type: 'booking',
             entity_id: booking.id,
             business_context: booking.business_context || DEFAULT_TIMELINE_CONTEXT,
@@ -548,7 +574,8 @@ async function insertBookingConfirmationHistory(client, { booking, actor, source
                 note,
                 confirmed_at: confirmedAt || booking.confirmed_at || null
             }
-        })]
+        },
+        booking.business_context || DEFAULT_TIMELINE_CONTEXT
     );
 }
 
@@ -1139,15 +1166,14 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
             params
         );
         const cancelled = result.rows.map(mapBookingRow);
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['education_series_cancel', req.user?.username, JSON.stringify({
+        await insertScopedHistory(client, 'education_series_cancel', req.user?.username, {
                 seriesId,
                 businessContext,
                 scope,
                 fromDate,
                 count: cancelled.length
-            })]
+            },
+            businessContext
         );
         await client.query('COMMIT');
 
@@ -1254,14 +1280,13 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
              RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
             [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE, label, actorUserId(req.user), req.user?.username || null]
         );
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['booking_banquet_link_created', req.user?.username, JSON.stringify({
+        await insertScopedHistory(client, 'booking_banquet_link_created', req.user?.username, {
                 booking_id: id,
                 target_booking_id: targetId,
                 business_context: businessContext,
                 relation_type: BANQUET_LINK_RELATION_TYPE
-            })]
+            },
+            businessContext
         );
         await client.query('COMMIT');
         const link = mapBanquetLinkRow(insert.rows[0], id);
@@ -1323,15 +1348,14 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
               RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
             [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE]
         );
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['booking_banquet_link_deleted', req.user?.username, JSON.stringify({
+        await insertScopedHistory(client, 'booking_banquet_link_deleted', req.user?.username, {
                 booking_id: id,
                 target_booking_id: targetId,
                 business_context: businessContext,
                 relation_type: BANQUET_LINK_RELATION_TYPE,
                 deleted: deleted.rowCount > 0
-            })]
+            },
+            businessContext
         );
         await client.query('COMMIT');
         const link = deleted.rows[0] ? mapBanquetLinkRow(deleted.rows[0], id) : null;
@@ -1393,6 +1417,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         applyBookingPackage(b);
+        if (applyBookingStatusForCreate(b) === 'invalid') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Invalid booking status' });
+        }
 
         const ensuredPrimaryLine = await ensureBookingTimelineLine(client, b, businessContext, {
             name: b.lineName || b.animatorName || null
@@ -1418,6 +1446,12 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         if (!b.linkedTo) {
+            const lockTargets = [b];
+            if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
+                lockTargets.push({ ...b, lineId: ensuredSecondAnimatorLine.lineId });
+            }
+            await lockBookingConflictResources(client, lockTargets, businessContext);
+
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, null, businessContext);
             if (conflict.overlap) {
                 await client.query('ROLLBACK');
@@ -1532,7 +1566,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
         );
 
         const linkedInsertedRows = [];
@@ -1547,7 +1581,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                  b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                  b.pinataFillerNumber, b.clientPinataServicePrice,
                  b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
-                 b.createdBy, b.id, b.status || 'confirmed', b.kidsCount || null, b.groupName || null,
+                 b.createdBy, b.id, b.status, b.kidsCount || null, b.groupName || null,
                  null]
             );
             if (linkedInsert.rows[0]) linkedInsertedRows.push(linkedInsert.rows[0]);
@@ -1567,10 +1601,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         await syncBookingLeadHandoff(client, b, customerId, businessContext, 'Lead booking handoff');
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['create', b.createdBy || req.user?.username, JSON.stringify(b)]
-        );
+        await insertScopedHistory(client, 'create', b.createdBy || req.user?.username, b, businessContext);
 
         // v19.10: Finance auto-record stays optional without poisoning the booking transaction.
         if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
@@ -1600,7 +1631,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await queueBookingEventInTransaction(client, 'booking.created', {
                 booking_id: b.id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
                 program_code: b.programCode, program_name: b.programName,
-                status: b.status || 'confirmed', price: b.price || 0,
+                status: b.status, price: b.price || 0,
                 kids_count: b.kidsCount, created_by: b.createdBy
             }, b.id, `booking_created_${b.id}`);
         }
@@ -1821,7 +1852,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v33.15.0: Auto birthday announcement
-        if ((b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
+        if (parkSideEffectsAllowedForContext(businessContext) && (b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
             setImmediate(async () => {
                 try {
                     const eventTime = new Date(`${b.date}T${b.time}`);
@@ -1891,6 +1922,9 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
     const { seriesId, candidates } = buildEducationLessonSeriesCandidates(main, lesson);
     for (const candidate of candidates) {
         candidate.businessContext = businessContext;
+        if (applyBookingStatusForCreate(candidate) === 'invalid') {
+            return res.status(400).json({ success: false, error: 'Invalid booking status' });
+        }
         if (!validateDate(candidate.date)) return res.status(400).json({ success: false, error: 'Invalid date format' });
         if (!validateTime(candidate.time)) return res.status(400).json({ success: false, error: 'Invalid time format' });
         const duration = parseInt(candidate.duration, 10) || 0;
@@ -1924,6 +1958,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             generatedIds.push(candidate.id);
         }
         const rootBookingId = generatedIds[0];
+        await lockBookingConflictResources(client, candidates, businessContext);
 
         for (let index = 0; index < candidates.length; index += 1) {
             const candidate = candidates[index];
@@ -1990,7 +2025,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
                  RETURNING *`,
-                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status || 'confirmed', candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetTables || null, candidate.banquetMenu || null]
+                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetTables || null, candidate.banquetMenu || null]
             );
             if (insertResult.rows[0]) insertedRows.push(insertResult.rows[0]);
         }
@@ -2014,9 +2049,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
         );
         if (atomicLeadLink?.attached) main.leadId = atomicLeadLink.leadId;
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['education_series_create', main.createdBy || req.user?.username, JSON.stringify({
+        await insertScopedHistory(client, 'education_series_create', main.createdBy || req.user?.username, {
                 seriesId,
                 rootBookingId,
                 count: insertedRows.length,
@@ -2026,7 +2059,8 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 title: lesson.title,
                 teacherId: lesson.teacherId || null,
                 teacherName: lesson.teacherName || null
-            })]
+            },
+            businessContext
         );
 
         await client.query('COMMIT');
@@ -2063,7 +2097,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 room: main.room,
                 program_code: main.programCode,
                 program_name: main.programName,
-                status: main.status || 'confirmed',
+                status: bookings[0]?.status || 'confirmed',
                 price: main.price || 0,
                 kids_count: main.kidsCount,
                 created_by: main.createdBy || req.user?.username,
@@ -2111,6 +2145,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         applyBookingPackage(main);
+        if (applyBookingStatusForCreate(main) === 'invalid') {
+            return res.status(400).json({ success: false, error: 'Invalid booking status' });
+        }
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 if (!String(lb.room || '').trim()) lb.room = main.room;
@@ -2121,6 +2158,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 if (linkedCapacityError) return res.status(409).json({ success: false, error: linkedCapacityError.error, resource: linkedCapacityError.resource });
                 const linkedPinataFields = applyPinataNormalization(lb);
                 if (linkedPinataFields.error) return res.status(400).json({ success: false, error: linkedPinataFields.error });
+                if (applyBookingStatusForCreate(lb, main.status) === 'invalid') {
+                    return res.status(400).json({ success: false, error: 'Invalid linked booking status' });
+                }
             }
         }
 
@@ -2209,13 +2249,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     room: main.room,
                     notes: main.notes,
                     createdBy: main.createdBy,
-                    status: main.status || 'confirmed',
+                    status: main.status,
                     kidsCount: main.kidsCount || null,
                     groupName: main.groupName || null,
                     extraData: {}
                 });
             }
         }
+
+        await lockBookingConflictResources(client, [main, ...linked], businessContext);
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0, null, businessContext);
         if (conflict.overlap) {
@@ -2286,7 +2328,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetTables || null, main.banquetMenu || null]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetTables || null, main.banquetMenu || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger
@@ -2325,16 +2367,13 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
                      RETURNING *`,
-                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status, lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
         }
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['create', main.createdBy || req.user?.username, JSON.stringify(main)]
-        );
+        await insertScopedHistory(client, 'create', main.createdBy || req.user?.username, main, businessContext);
 
         if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
             await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
@@ -2351,7 +2390,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             await queueBookingEventInTransaction(client, 'booking.created', {
                 booking_id: main.id, business_context: businessContext, date: main.date, time: main.time, room: main.room,
                 program_code: main.programCode, program_name: main.programName,
-                status: main.status || 'confirmed', price: main.price || 0,
+                status: main.status, price: main.price || 0,
                 kids_count: main.kidsCount, created_by: main.createdBy,
                 linked_count: linkedRows.length
             }, main.id, `booking_created_${main.id}`);
@@ -2461,10 +2500,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
 
         const action = permanent ? 'permanent_delete' : 'delete';
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            [action, req.user?.username, JSON.stringify(mapBookingRow(booking))]
-        );
+        await insertScopedHistory(client, action, req.user?.username, mapBookingRow(booking), businessContext);
 
         if (permanent) {
             await client.query(
@@ -2669,6 +2705,12 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             if (Object.keys(patch).length > 0) linkedCandidates.push(candidate);
         }
 
+        await lockBookingConflictResources(
+            client,
+            [oldMain, mainCandidate, ...linkedRows, ...linkedCandidates],
+            businessContext
+        );
+
         const mainLineConflict = await findAtomicLineConflict(client, mainCandidate, groupIds);
         if (mainLineConflict) {
             await client.query('ROLLBACK');
@@ -2712,13 +2754,12 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
 
         if (body.historyAction) {
-            await client.query(
-                'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-                [body.historyAction, req.user?.username, JSON.stringify(body.historyData || {
+            await insertScopedHistory(client, body.historyAction, req.user?.username, body.historyData || {
                     bookingId: id,
                     main: body.main || {},
                     linked: linkedInput
-                })]
+                },
+                businessContext
             );
         }
 
@@ -2812,6 +2853,7 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
                  updated_at = NOW()
              WHERE (id = $4 OR linked_to = $4)
                AND ${bookingContextSql('', '$5')}
+               AND status = 'preliminary'
              RETURNING *`,
             [userId, note, source, id, businessContext]
         );
@@ -2847,7 +2889,8 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
         success: true,
         ok: true,
         booking: mapBookingRow(confirmedRow),
-        action: { type: 'booking_confirmed', source, durableMutation: true }
+        action: { type: 'booking_confirmed', source, durableMutation: true },
+        cascade: { confirmedCount: confirmedRows.length }
     });
 });
 
@@ -2920,11 +2963,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         await client.query('BEGIN');
 
-        const oldBooking = await getScopedBookingById(client, id, businessContext);
+        const oldBooking = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
         if (!oldBooking) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Бронювання не знайдено' });
         }
+        await lockBookingConflictResources(client, [oldBooking, b], businessContext);
         if (!b.linkedTo) {
             // v19.13: Skip conflict checks if date/time/line/duration unchanged
             const timeSlotChanged = oldBooking.date !== b.date || oldBooking.time !== b.time
@@ -3117,7 +3161,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
             const linkedResult = await client.query(
-                `SELECT id, line_id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')}`,
+                `SELECT id, line_id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')} AND status != 'cancelled'`,
                 [id, businessContext]
             );
             const oldSecond = oldBooking.second_animator;
@@ -3164,7 +3208,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5,
                          pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
                          client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
-                          updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')}`,
+                           updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')} AND status != 'cancelled'`,
                         [b.date, b.time, b.duration, newStatus, b.room, b.pinataFiller, b.pinataMode,
                          b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber,
                          b.pinataFillerNumber, linked.id, businessContext]
@@ -3197,12 +3241,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['edit', req.user?.username, JSON.stringify({
+        await insertScopedHistory(client, 'edit', req.user?.username, {
                 ...b,
                 audit: bookingPackageAudit(oldBooking, b)
-            })]
+            },
+            businessContext
         );
 
         if (parkSideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && newStatus !== 'preliminary') {

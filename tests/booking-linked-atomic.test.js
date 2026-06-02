@@ -75,6 +75,10 @@ function makeDb(initialRows) {
             return { rows: [], rowCount: 0 };
         }
 
+        if (/pg_advisory_xact_lock/i.test(sql)) {
+            return { rows: [{ pg_advisory_xact_lock: true }], rowCount: 1 };
+        }
+
         if (/SELECT name FROM lines_by_date/i.test(sql)) {
             return { rows: [] };
         }
@@ -169,7 +173,13 @@ function makeDb(initialRows) {
         }
 
         if (/^INSERT INTO history/i.test(sql)) {
-            state.histories.push({ action: params[0], username: params[1], data: JSON.parse(params[2]) });
+            const scoped = params.length === 4;
+            state.histories.push({
+                businessContext: scoped ? params[0] : 'event_genix',
+                action: scoped ? params[1] : params[0],
+                username: scoped ? params[2] : params[1],
+                data: JSON.parse(scoped ? params[3] : params[2])
+            });
             return { rows: [], rowCount: 1 };
         }
 

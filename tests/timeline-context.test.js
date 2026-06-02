@@ -15,11 +15,13 @@ const { ACTION_PERMISSIONS } = require('../middleware/auth');
 
 const ROOT = path.join(__dirname, '..');
 
-test('timeline context defaults invalid or missing values to Event Genix', () => {
+test('timeline context defaults internal invalid normalization but fails closed for explicit bad request context', () => {
     assert.equal(normalizeTimelineContext(), DEFAULT_TIMELINE_CONTEXT);
     assert.equal(normalizeTimelineContext('unknown'), DEFAULT_TIMELINE_CONTEXT);
     assert.equal(normalizeTimelineContext('dar'), 'dar');
     assert.equal(normalizeTimelineContext('maysternya_doli'), 'maysternya_doli');
+    assert.equal(timelineContextFromRequest({ query: { businessContext: 'unknown' } }), 'unknown');
+    assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix'] }, 'unknown'), false);
 });
 
 test('timeline context can be resolved from request query, body, or header', () => {

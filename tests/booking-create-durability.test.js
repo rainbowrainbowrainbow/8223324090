@@ -165,7 +165,13 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             return { rows: [{ ...row }], rowCount: 1 };
         }
         if (/^INSERT INTO history/i.test(sql)) {
-            state.histories.push({ action: params[0], username: params[1], data: JSON.parse(params[2]) });
+            const scoped = params.length === 4;
+            state.histories.push({
+                businessContext: scoped ? params[0] : 'event_genix',
+                action: scoped ? params[1] : params[0],
+                username: scoped ? params[2] : params[1],
+                data: JSON.parse(scoped ? params[3] : params[2])
+            });
             return { rows: [], rowCount: 1 };
         }
         if (/^INSERT INTO finance_transactions/i.test(sql)) {
@@ -234,6 +240,13 @@ async function withApp(dbOptions, fn) {
         validateTime: value => /^\d{2}:\d{2}$/.test(String(value || '')),
         validateId: value => Boolean(value),
         mapBookingRow,
+        normalizeBookingStatus: (value, fallback = 'confirmed') => {
+            if (value === undefined || value === null || value === '') return fallback;
+            return ['confirmed', 'preliminary', 'cancelled'].includes(String(value).trim().toLowerCase())
+                ? String(value).trim().toLowerCase()
+                : null;
+        },
+        lockBookingConflictResources: async () => [],
         checkServerConflicts: async () => ({ overlap: false }),
         checkServerDuplicate: async () => null,
         checkRoomConflict: async () => null,
@@ -501,6 +514,21 @@ test('POST /api/bookings creates Dar simple-timeline bookings with scoped contex
         assert.equal(state.rows[0].line_id, 'specialist-main');
         assert.equal(state.rows[0].customer_id, 701);
         assert.equal(state.customers[0].business_context, 'dar');
+        assert.equal(state.histories[0].businessContext, 'dar');
+    });
+});
+
+test('POST /api/bookings rejects explicit invalid create status before persistence', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            status: 'hacked_status'
+        });
+
+        assert.equal(res.status, 400);
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.error, 'Invalid booking status');
+        assert.equal(state.rows.length, 0);
+        assert.equal(state.histories.length, 0);
     });
 });
 
@@ -514,4 +542,29 @@ test('POST /api/bookings fails closed when PostgreSQL reports rollback on commit
         assert.match(res.data.error, /не підтвердив збереження/);
         assert.ok(state.tx.includes('COMMIT'));
     });
+});
+
+test('booking conflict locks serialize line and room resources in deterministic order', async () => {
+    clearModules();
+    const { lockBookingConflictResources } = require('../services/booking');
+    const calls = [];
+    const client = {
+        query: async (sql, params) => {
+            calls.push({ sql, params });
+            return { rows: [], rowCount: 1 };
+        }
+    };
+
+    const keys = await lockBookingConflictResources(client, [
+        { businessContext: 'dar', date: '2099-02-12', lineId: 'specialist-main', room: 'Cabinet' },
+        { businessContext: 'dar', date: '2099-02-12', lineId: 'specialist-main', room: 'Cabinet' }
+    ], 'dar');
+
+    assert.deepEqual(keys, [
+        'line:dar:2099-02-12:specialist-main',
+        'room:dar:2099-02-12:cabinet'
+    ]);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(call => /pg_advisory_xact_lock/i.test(call.sql)));
+    assert.deepEqual(calls.map(call => call.params[0]), ['booking_conflict_v1', 'booking_conflict_v1']);
 });

@@ -93,6 +93,8 @@ const STARTUP_SCHEMA_COLUMNS = [
     'tasks.time_window_start',
     'tasks.type',
     'tasks.version',
+    'users.action_allowlist',
+    'users.action_denylist',
     'users.telegram_chat_id',
     'users.telegram_username'
 ];
@@ -178,6 +180,8 @@ const STARTUP_SCHEMA_INDEXES = [
     'idx_user_action_log_created_at',
     'idx_user_action_log_username',
     'idx_user_points_username',
+    'idx_users_action_allowlist_gin',
+    'idx_users_action_denylist_gin',
     'idx_users_is_active',
     'idx_users_role'
 ];

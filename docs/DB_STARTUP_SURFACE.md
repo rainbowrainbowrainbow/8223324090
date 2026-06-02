@@ -60,12 +60,12 @@ check:migrations`.
 `tasks.escalation_level`, `tasks.last_reminded_at`, `tasks.owner`,
 `tasks.source_id`, `tasks.source_type`, `tasks.task_type`,
 `tasks.template_id`, `tasks.time_window_end`, `tasks.time_window_start`,
-`tasks.type`, `tasks.version`, `users.telegram_chat_id`,
-`users.telegram_username`.
+`tasks.type`, `tasks.version`, `users.action_allowlist`,
+`users.action_denylist`, `users.telegram_chat_id`, `users.telegram_username`.
 
 ## Startup Indexes And Triggers
 
-The guard tracks 82 startup indexes in `config/dbStartupSurface.js`. The current
+The guard tracks 84 startup indexes in `config/dbStartupSurface.js`. The current
 startup trigger/function pair is `update_updated_at_column` and
 `trg_bookings_updated_at`.
 
@@ -80,6 +80,10 @@ Multi-business compatibility keeps `idx_customers_business_phone`,
 `idx_products_business_code`, and `idx_products_business_domain_category` while
 older production databases catch up to the durable `business_context`
 migrations.
+
+Account action override compatibility keeps `idx_users_action_allowlist_gin`
+and `idx_users_action_denylist_gin` while older production databases catch up
+to migration `244_user_action_permission_overrides.sql`.
 
 Do not add a new startup index as a convenience shortcut. New durable indexes
 belong in SQL migrations.

@@ -25,7 +25,7 @@
             actionRoles: {
                 create: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
                 edit: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
-                delete: ['creator', 'director'],
+                delete: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'],
                 export: ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
                 sales: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant'],
                 settings: ['creator', 'director']

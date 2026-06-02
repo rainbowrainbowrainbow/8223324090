@@ -79,4 +79,32 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingsRoute, /booking_line_not_visible/);
     assert.match(bookingsRoute, /ensureParkAnimatorLine\(client, \{\s*businessContext,\s*date: lb\.date \|\| main\.date/s);
     assert.match(bookingsRoute, /Number\(main\.hosts \|\| 0\) > 1 && main\.secondAnimator/);
+    assert.match(bookingsRoute, /Number\(b\.hosts \|\| 0\) > 1 && newSecond && linkedResult\.rows\.length === 0/);
+});
+
+test('timeline delete controls use the shared delete permission contract', () => {
+    const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const authJs = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+
+    assert.match(authJs, /delete_booking:\s+_ADMIN_UP/);
+    assert.match(bookingJs, /function canDeleteTimelineBooking/);
+    assert.match(bookingJs, /canAccess\('delete_booking'\)/);
+    assert.match(bookingJs, /if \(!canDeleteTimelineBooking\(\)\) \{\s*showNotification\('Недостатньо прав для видалення бронювання'/s);
+    assert.match(bookingJs, /const deleteButton = canDeleteTimelineBooking\(\)/);
+});
+
+test('second animator repair audit is dry-run by default and inserts only missing linked rows with --fix', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-second-animator-links.js'), 'utf8');
+    const pkg = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+
+    assert.match(pkg, /"audit:second-animator-links": "node scripts\/audit-second-animator-links\.js"/);
+    assert.match(script, /const FIX = flags\.has\('--fix'\)/);
+    assert.match(script, /COALESCE\(b\.hosts, 0\) > 1/);
+    assert.match(script, /NULLIF\(BTRIM\(b\.second_animator\), ''\) IS NOT NULL/);
+    assert.match(script, /async function existingLinkedSecondAnimator/);
+    assert.match(script, /linked_to = \$1/);
+    assert.match(script, /generateBookingNumber\(client\)/);
+    assert.match(script, /repair_second_animator_link/);
+    assert.match(script, /if \(!FIX\) continue/);
+    assert.match(script, /Database connection unavailable/);
 });

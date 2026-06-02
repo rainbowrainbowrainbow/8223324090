@@ -4,6 +4,19 @@
 
 ---
 
+## v0.69.28 - Деплой таймлайн прав і ведучих
+
+### Timeline / Бронювання / Права / 02.06.2026 [codex]
+- **Операційні ролі можуть прибирати бронювання з таймлайну парку** - backend `delete_booking`, frontend `canAccess('delete_booking')` і контекст таймлайну тепер мають однаковий admin-up контракт: manager, senior_manager, vice_director, director, accountant, HR і admin проходять звичайне скасування без `Insufficient permissions`.
+- **Permanent delete лишився creator/director-only** - `DELETE /api/bookings/:id?permanent=true` отримав окремий server-side guard, щоб операційне право менеджера не відкривало фізичне видалення запису.
+- **Другий ведучий для паперового шоу відновлюється системно** - якщо основне бронювання має `hosts > 1` і `secondAnimator`, але linked-запис другого ведучого відсутній, PUT-синхронізація створює його повторно під час збереження.
+- **Кнопки видалення синхронізовано з правами** - деталі бронювання, закриті слоти, керування серіями занять і bulk delete читають спільний helper замість локального `!isViewer()`.
+- **Audit доступів додано** - `npm run audit:timeline-access` перевіряє static role policy і, за наявності `DATABASE_URL`, фактичні акаунти Даші/Віталіни та інші операційні ролі без виводу секретів.
+- **Repair audit для старих записів додано** - `npm run audit:second-animator-links` знаходить головні бронювання `hosts > 1 + second_animator` без linked-запису; `--fix` створює відсутній linked другого ведучого контрольовано і пише history.
+- **Regression guards додано** - тести фіксують admin-up soft-delete контракт, окремий permanent-delete guard, booking visibility для операційних ролей, audit scripts і відновлення відсутнього linked-запису другого ведучого.
+
+---
+
 ## v0.69.25 - AI context and Kie media routing
 
 ### AI Assistant / Sound / Products / Provider Config / 01.06.2026 [codex]

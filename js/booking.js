@@ -129,6 +129,11 @@ function isParkTimelineBookingMode() {
     return getTimelineBookingPresentation().mode === 'park';
 }
 
+function canDeleteTimelineBooking() {
+    if (typeof canAccess === 'function') return canAccess('delete_booking');
+    return !isViewer();
+}
+
 function isMinimalTimelineBookingMode() {
     const mode = getTimelineBookingPresentation().mode;
     return mode === 'simple' || mode === 'specialist';
@@ -3883,7 +3888,7 @@ function renderEducationLessonDetail(booking) {
         lesson.resourceName || booking.room ? ['Кабінет', lesson.resourceName || booking.room] : null
     ].filter(Boolean);
     if (!rows.length) return '';
-    const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && !isViewer()
+    const seriesActions = lesson.seriesId && Number(lesson.seriesSize || 0) > 1 && canDeleteTimelineBooking()
         ? `<div class="booking-detail-row"><span class="label">Керування серією:</span><span class="value"><button type="button" class="btn-secondary btn-sm" onclick="openEducationSeriesManager('${escapeHtml(String(lesson.seriesId))}', '${escapeHtml(String(booking.id))}')">Відкрити серію</button></span></div>`
         : '';
     return `
@@ -3905,7 +3910,7 @@ async function showBookingDetails(bookingId) {
     const line = lines.find(l => l.id === booking.lineId);
 
     if (isMaysternyaClosedSlotBooking(booking)) {
-        const actions = isViewer() ? '' : `
+        const actions = canDeleteTimelineBooking() ? `
             <div class="booking-actions modal-footer-sticky">
                 <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Відкрити слот</button>
             </div>
@@ -3957,6 +3962,9 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>` : '';
 
+    const deleteActionHtml = canDeleteTimelineBooking()
+        ? `<button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>`
+        : '';
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -3989,7 +3997,7 @@ async function showBookingDetails(bookingId) {
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
             <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">💬 Чат команди</button>
-            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
+            ${deleteActionHtml}
         </div>
     `;
 
@@ -4525,6 +4533,10 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
 
 async function deleteBooking(bookingId) {
     try {
+        if (!canDeleteTimelineBooking()) {
+            showNotification('Недостатньо прав для видалення бронювання', 'error');
+            return;
+        }
         const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
@@ -4880,9 +4892,12 @@ const BulkOps = {
                 bar.className = 'bulk-action-bar';
                 document.body.appendChild(bar);
             }
+            const deleteButton = canDeleteTimelineBooking()
+                ? '<button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>'
+                : '';
             bar.innerHTML = `
                 <span class="bulk-count">${this.selected.size} обрано</span>
-                <button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>
+                ${deleteButton}
                 <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
                 <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
                 <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
@@ -4894,6 +4909,10 @@ const BulkOps = {
 
     async bulkDelete() {
         if (this._busy) return;
+        if (!canDeleteTimelineBooking()) {
+            showNotification('Недостатньо прав для видалення бронювань', 'error');
+            return;
+        }
         if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
         if (this._busy) return;
         this._busy = true;

@@ -39,7 +39,7 @@ try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } c
 function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 const { createLogger } = require('../utils/logger');
 
-const { requireAction, authenticateToken } = require('../middleware/auth');
+const { requireAction, authenticateToken, userHasAnyRole } = require('../middleware/auth');
 const log = createLogger('Bookings');
 
 // v39.8: Security — require authentication for all booking endpoints
@@ -63,6 +63,12 @@ function sendBookingDenied(req, res, booking) {
         return res.status(404).json(bookingAccessDeniedPayload());
     }
     return res.status(403).json({ success: false, error: 'Insufficient booking permissions' });
+}
+
+function requirePermanentBookingDelete(req, res) {
+    if (userHasAnyRole(req.user, ['creator', 'director'])) return true;
+    res.status(403).json({ success: false, error: 'Insufficient permissions' });
+    return false;
 }
 
 async function bookingDayProjectionStatus(queryable, { id, date, businessContext, user }) {
@@ -2346,6 +2352,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         const { id } = req.params;
         const permanent = req.query.permanent === 'true';
         if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
+        if (permanent && !requirePermanentBookingDelete(req, res)) return;
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
@@ -3035,7 +3042,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                     );
                 }
                 // Create new linked booking if secondAnimator is set
-                if (newSecond) {
+                if (Number(b.hosts || 0) > 1 && newSecond) {
                     const ensuredLine = await ensureParkAnimatorLine(client, {
                         businessContext,
                         date: b.date,
@@ -3059,7 +3066,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
                     }
                 }
-            } else if (!secondChanged) {
+            } else if (!secondChanged && linkedResult.rows.length > 0) {
                 // No change in secondAnimator — cascade basic fields to existing linked
                 for (const linked of linkedResult.rows) {
                     await client.query(
@@ -3072,7 +3079,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                          b.pinataFillerNumber, linked.id, businessContext]
                     );
                 }
-            } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
+            } else if (Number(b.hosts || 0) > 1 && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
                 const ensuredLine = await ensureParkAnimatorLine(client, {
                     businessContext,

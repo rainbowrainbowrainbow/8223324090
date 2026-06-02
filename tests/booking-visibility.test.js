@@ -76,6 +76,20 @@ test('current booking operational roles use compatible fallback and can be query
     assert.deepEqual(params, []);
 });
 
+test('admin-up booking operators can edit and soft-delete through the shared visibility contract', () => {
+    const booking = { id: 'BK-OPS', created_by: 'someone-else', linked_to: null };
+    const roles = ['manager', 'senior_manager', 'vice_director', 'director', 'accountant', 'hr', 'admin'];
+
+    for (const role of roles) {
+        const actor = { id: 100, username: `${role}-user`, name: role, role };
+        const decision = classifyBookingVisibility(actor, booking);
+        assert.equal(decision.canView, true, `${role} can view bookings`);
+        assert.equal(decision.canEdit, true, `${role} can edit/delete bookings`);
+        assert.equal(canEditBooking(actor, booking), true, `${role} passes canEditBooking guard`);
+        assert.equal(buildBookingVisibilityScope(actor, [], 'b'), '', `${role} gets operational query scope`);
+    }
+});
+
 test('legacy created_by and second_animator matches are exact compatible fallbacks only', () => {
     const actor = { id: 44, username: 'animator-one', name: 'Animator One', role: 'animator' };
 

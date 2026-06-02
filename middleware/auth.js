@@ -116,7 +116,7 @@ const ACTION_PERMISSIONS = {
     create_booking:  [...ADMIN_UP, 'reception'],
     edit_booking:    [...ADMIN_UP, 'reception'],
     cancel_booking:  MANAGER_UP,
-    delete_booking:  ['creator', 'director'],
+    delete_booking:  ADMIN_UP,
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     manage_users:    ['creator', 'director'],

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.69.25 - AI context and Kie media routing
+
+### AI Assistant / Sound / Products / Provider Config / 01.06.2026 [codex]
+- **AI-помічник отримав runtime product context** - `services/aiProductContext.js` підтягує короткі excerpt-и з `docs/ai-context` за поточною сторінкою, сутністю та workflow; перший покритий сценарій `/customers` + дзвінок веде до client/call/call-flow контексту.
+- **AI-музика у Sound більше не dead-end** - кнопка відкриває Suno форму, backend створює Kie task через `/api/v1/generate`, polling читає Suno `record-info`, а готовий файл зберігається у CRM uploads.
+- **Generated audio стало durable** - TTS/Suno результати більше не записуються як тимчасовий provider URL без metadata: API зберігає файл і пише `storage_provider`, `storage_key`, `storage_url`.
+- **Media routing вирівняно** - зображення програм за замовчуванням ідуть як Kie.ai media jobs, OpenRouter лишається token/prompt rail та explicit image fallback.
+- **Provider contract винесено в одне місце** - `docs/AI_PROVIDER_CONTRACT.md` описує OpenRouter, Kie, direct OpenAI assistant rail, callback secrets і правило “секрети тільки server-side”.
+- **Shared token rails зафіксовано на OpenRouter** - Chat AI, Guardian, summary/Copilot, translate, Kleshnya, agent summary, catalog trends і Omni lead assistant більше не вибирають direct OpenAI/Anthropic; старі provider-значення нормалізуються в `openrouter`, а CRM assistant rail лишається на direct OpenAI.
+- **Provider diagnostics додано в `/chat-settings`** - новий `/api/settings/ai/providers` показує карту OpenRouter/Kie/OpenAI assistant/legacy exceptions без секретів і підсвічує missing key/callback стани.
+- **Sound cleanup зафіксовано тестами** - `/api/music` позначено primary Sound API, `/api/sound-library` лишився legacy compatibility, а focused tests не дадуть повернути старий disabled Suno стан.
+
+---
+
 ## v0.69.24 - Assistant rail opt-in hotfix
 
 ### Shell / AI Assistant / Header / 01.06.2026 [codex]

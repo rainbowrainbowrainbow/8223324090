@@ -2,7 +2,9 @@
  * routes/music.js — Music Center API v33.15.0
  * Announcements CRUD, real delivery, TTS, scheduling, playlists.
  */
-const router = require('express').Router();
+const express = require('express');
+const https = require('https');
+const router = express.Router();
 const { pool } = require('../db');
 const path = require('path');
 const fs = require('fs');
@@ -11,7 +13,7 @@ const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const {
-    uploadAudioFromUrl,
+    uploadAudioFromUrlWithMetadata,
     uploadAudioBufferWithMetadata,
     removeAudioObject,
     makeAudioFilename
@@ -60,6 +62,173 @@ async function _cleanupStoredSound(stored) {
         log.warn('Sound upload cleanup failed', err.message);
     }
 }
+
+function _getKieApiKey() {
+    return process.env.KIE_API_KEY || '';
+}
+
+function _kieJsonRequest(requestPath, { method = 'GET', body = null, timeoutMs = 120000 } = {}) {
+    const key = _getKieApiKey();
+    if (!key) {
+        const err = new Error('KIE_API_KEY not configured');
+        err.status = 503;
+        throw err;
+    }
+
+    const payload = body ? JSON.stringify(body) : null;
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.kie.ai',
+            path: requestPath,
+            method,
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                ...(payload ? {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
+                } : {})
+            },
+            timeout: timeoutMs
+        }, resp => {
+            let data = '';
+            resp.on('data', chunk => { data += chunk; });
+            resp.on('end', () => {
+                let parsed = {};
+                try { parsed = data ? JSON.parse(data) : {}; } catch { parsed = { raw: data }; }
+                if (resp.statusCode >= 400) {
+                    const err = new Error(parsed?.message || parsed?.error || `Kie API error ${resp.statusCode}`);
+                    err.status = resp.statusCode >= 500 ? 502 : resp.statusCode;
+                    err.detail = parsed;
+                    reject(err);
+                    return;
+                }
+                resolve(parsed);
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('Kie API timeout')));
+        req.on('error', reject);
+        if (payload) req.write(payload);
+        req.end();
+    });
+}
+
+function _publicBaseUrl(req) {
+    const configured = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (configured) return configured;
+    if (!process.env.KIE_ALLOW_REQUEST_HOST_CALLBACK) return '';
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    return host ? `${proto}://${host}` : '';
+}
+
+function _resolveKieSunoCallbackUrl(req) {
+    const explicit = String(process.env.KIE_SUNO_CALLBACK_URL || '').trim();
+    if (explicit) return explicit;
+    const secret = String(process.env.KIE_CALLBACK_SECRET || '').trim();
+    const baseUrl = _publicBaseUrl(req);
+    if (!baseUrl || !secret) return '';
+    return `${baseUrl}/api/music/library/generate-music/callback?secret=${encodeURIComponent(secret)}`;
+}
+
+function _safeJson(value, fallback = {}) {
+    if (!value) return fallback;
+    if (typeof value === 'object') return value;
+    try { return JSON.parse(String(value)); } catch { return fallback; }
+}
+
+function _firstSunoTrack(record = {}) {
+    const data = record.data || record;
+    const response = _safeJson(data.response || data.result || data.resultJson, data.response || {});
+    const candidates = [
+        data.sunoData,
+        response.sunoData,
+        response.data,
+        data.tracks,
+        response.tracks
+    ].find(Array.isArray) || [];
+    return candidates.find(track => track?.audioUrl || track?.sourceAudioUrl || track?.streamAudioUrl || track?.sourceStreamAudioUrl) || null;
+}
+
+function _parseSunoRecord(record = {}) {
+    const data = record.data || record;
+    const status = String(data.status || data.state || data.taskStatus || data.statusCode || '').toUpperCase();
+    const track = _firstSunoTrack(record);
+    const audioUrl = track?.sourceAudioUrl || track?.audioUrl || track?.sourceStreamAudioUrl || track?.streamAudioUrl || '';
+    const failed = status.includes('FAILED') || status.includes('ERROR') || status === 'SENSITIVE_WORD_ERROR';
+    const done = status === 'SUCCESS' && Boolean(audioUrl);
+    return {
+        state: status ? status.toLowerCase() : 'unknown',
+        done,
+        failed,
+        audioUrl,
+        track
+    };
+}
+
+async function _storeGeneratedAudio({ audioUrl, filename, name, category, uploadedBy, provider }) {
+    const stored = await uploadAudioFromUrlWithMetadata(audioUrl, filename, { folder: 'sounds/generated' });
+    if (!stored?.publicUrl) {
+        const err = new Error('Generated audio could not be saved to CRM uploads');
+        err.status = 502;
+        throw err;
+    }
+
+    const finalUrl = stored.publicUrl;
+    const result = await pool.query(
+        `INSERT INTO sounds (
+            name, filename, file_path, url, category, uploaded_by,
+            storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+         RETURNING id`,
+        [
+            name || 'AI Generated',
+            stored.filename || filename,
+            finalUrl,
+            finalUrl,
+            category || 'music',
+            uploadedBy || null,
+            stored.provider || 'local',
+            stored.bucket || null,
+            stored.path || stored.key || null,
+            stored.publicUrl || null
+        ]
+    );
+    await pool.query(`INSERT INTO music_log (action, details) VALUES ($1, $2)`,
+        [provider === 'elevenlabs' ? 'tts' : 'upload', JSON.stringify({
+            sound_id: result.rows[0].id,
+            provider: provider || 'ai',
+            stored: true
+        })]);
+    return { id: result.rows[0].id, url: finalUrl, storage: stored };
+}
+
+router.post('/library/generate-music/callback', express.json({ limit: '256kb' }), async (req, res) => {
+    const expected = String(process.env.KIE_CALLBACK_SECRET || '').trim();
+    const received = String(req.query.secret || req.headers['x-kie-callback-secret'] || '').trim();
+    if (!expected || received !== expected) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    try {
+        const taskId = req.body?.taskId || req.body?.data?.taskId || req.body?.id || null;
+        const status = req.body?.status || req.body?.data?.status || req.body?.state || null;
+        await pool.query(
+            `INSERT INTO music_log (action, details)
+             VALUES ('generation_callback', $1)`,
+            [JSON.stringify({
+                provider: 'suno',
+                taskId,
+                status,
+                payload: JSON.stringify(req.body || {}).slice(0, 4000)
+            })]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Suno callback error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // All music routes require authentication and sound-page-level access.
 router.use(authenticateToken);
@@ -305,7 +474,7 @@ router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 
         const ann = await pool.query('SELECT * FROM announcements WHERE id = $1', [id]);
         if (!ann.rows.length) return res.status(404).json({ error: 'Не знайдено' });
         const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+        if (!KIE_KEY) return res.status(503).json({ error: 'KIE_API_KEY не налаштовано' });
 
         const payload = JSON.stringify({
             model: 'elevenlabs/text-to-speech-multilingual-v2',
@@ -402,6 +571,7 @@ router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
             ]
         );
         res.json({
+            success: true,
             ok: true,
             id: r.rows[0].id,
             filename: stored.filename,
@@ -478,7 +648,7 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
     if (!text) return res.status(400).json({ error: 'Потрібен text' });
     try {
         const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+        if (!KIE_KEY) return res.status(503).json({ error: 'KIE_API_KEY не налаштовано' });
 
         const payload = JSON.stringify({
             model: 'elevenlabs/text-to-speech-multilingual-v2',
@@ -505,18 +675,16 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
         if (kieRes.url || kieRes.data?.url) {
             const audioUrl = kieRes.url || kieRes.data.url;
             const filename = makeAudioFilename(category || 'tts', name || 'voice');
-            const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
-            const finalUrl = permanentUrl || audioUrl;
+            const stored = await _storeGeneratedAudio({
+                audioUrl,
+                filename,
+                name: name || `TTS: ${text.substring(0, 50)}`,
+                category: category || 'effects',
+                uploadedBy: req.user?.username,
+                provider: 'elevenlabs'
+            });
 
-            const r = await pool.query(
-                `INSERT INTO sounds (name, filename, file_path, category, uploaded_by)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                [name || `TTS: ${text.substring(0, 50)}`, filename, finalUrl, category || 'effects', req.user?.username]
-            );
-            await pool.query(`INSERT INTO music_log (action, details) VALUES ('tts', $1)`,
-                [JSON.stringify({ sound_id: r.rows[0].id, text: text.substring(0, 200), voice, provider: 'elevenlabs' })]);
-
-            return res.json({ success: true, id: r.rows[0].id, url: finalUrl, status: 'ready' });
+            return res.json({ success: true, id: stored.id, url: stored.url, status: 'ready' });
         }
         if (kieRes.taskId || kieRes.data?.taskId) {
             return res.json({ success: true, taskId: kieRes.taskId || kieRes.data.taskId, status: 'generating' });
@@ -528,29 +696,71 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
     }
 });
 
-// v40: Music Generation — Suno not available via Kie.ai, use TTS for voice content
-router.post('/library/generate-music', requireRole('admin', 'creator', 'director', 'art_director'), async (req, res) => {
-    const { prompt, name, category, duration } = req.body;
+// Suno music generation via Kie.ai. Kie returns temporary provider URLs; final
+// assets are saved through /library/apply-generated into CRM uploads.
+router.post('/library/generate-music', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    const { prompt, name, category, instrumental, model, style } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Потрібен prompt' });
-    // Kie.ai only supports image (nano-banana-2) and TTS (elevenlabs) models
-    // v40: Suno not available through Kie.ai — return clear message
-    res.status(501).json({
-        error: 'Генерація музики через Suno тимчасово недоступна. Kie.ai підтримує тільки TTS (голос). Використовуйте «Створити голос» або завантажте музику вручну.',
-        suggestion: 'upload'
-    });
+    try {
+        const callBackUrl = _resolveKieSunoCallbackUrl(req);
+        if (!callBackUrl) {
+            return res.status(503).json({
+                error: 'Kie Suno callback is not configured',
+                requiredEnv: ['KIE_API_KEY', 'KIE_CALLBACK_SECRET', 'PUBLIC_BASE_URL or KIE_SUNO_CALLBACK_URL']
+            });
+        }
+
+        const cleanPrompt = [
+            String(prompt).trim().slice(0, 3000),
+            style ? `Style: ${String(style).trim().slice(0, 300)}` : ''
+        ].filter(Boolean).join('\n');
+        const payload = {
+            prompt: cleanPrompt,
+            customMode: false,
+            instrumental: instrumental !== false && instrumental !== 'false',
+            model: String(model || process.env.KIE_SUNO_MODEL || 'V4_5'),
+            callBackUrl
+        };
+        const kieRes = await _kieJsonRequest('/api/v1/generate', { method: 'POST', body: payload });
+        const taskId = kieRes.data?.taskId || kieRes.taskId || kieRes.id;
+        if (!taskId) {
+            return res.status(502).json({ error: 'Suno task was not created', detail: kieRes });
+        }
+        await pool.query(`INSERT INTO music_log (action, details) VALUES ('create', $1)`,
+            [JSON.stringify({
+                provider: 'suno',
+                taskId,
+                name: name || null,
+                category: category || 'music',
+                model: payload.model,
+                instrumental: payload.instrumental
+            })]);
+        res.json({ success: true, taskId, status: 'generating', provider: 'suno', name: name || 'AI Music', category: category || 'music' });
+    } catch (err) {
+        log.error('generate-music error', err);
+        res.status(err.status || 500).json({ error: err.message || 'Internal server error', detail: err.detail });
+    }
 });
 
 // v39.8: Poll generation status + save to CRM uploads
 router.get('/library/generate-status/:taskId', async (req, res) => {
     try {
-        const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY not configured' });
+        const provider = String(req.query.provider || '').toLowerCase();
+        if (provider === 'suno') {
+            const kieRes = await _kieJsonRequest(`/api/v1/generate/record-info?taskId=${encodeURIComponent(req.params.taskId)}`);
+            const parsed = _parseSunoRecord(kieRes);
+            return res.json({
+                success: true,
+                provider: 'suno',
+                state: parsed.state,
+                done: parsed.done,
+                audioUrl: parsed.audioUrl || null,
+                track: parsed.track || null,
+                error: parsed.failed ? 'Генерація музики не вдалася' : null
+            });
+        }
 
-        const kieRes = await new Promise((resolve, reject) => {
-            require('https').get(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${req.params.taskId}`, {
-                headers: { 'Authorization': `Bearer ${KIE_KEY}` }
-            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } }); }).on('error', reject);
-        });
+        const kieRes = await _kieJsonRequest(`/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(req.params.taskId)}`);
 
         const data = kieRes.data || {};
         const state = data.state;
@@ -561,8 +771,8 @@ router.get('/library/generate-status/:taskId', async (req, res) => {
             else if (result?.resultUrls) audioUrl = result.resultUrls[0];
             else if (result?.url) audioUrl = result.url;
         }
-        res.json({ success: true, state, done: state === 'success' && !!audioUrl, audioUrl, error: state === 'failed' ? 'Генерація не вдалась' : null });
-    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+        res.json({ success: true, provider: provider || 'kie-job', state, done: state === 'success' && !!audioUrl, audioUrl, error: state === 'failed' ? 'Генерація не вдалась' : null });
+    } catch (err) { res.status(err.status || 500).json({ error: err.message || 'Internal server error' }); }
 });
 
 // v39.8: Apply generated audio — save to CRM uploads + DB
@@ -571,19 +781,17 @@ router.post('/library/apply-generated', requireRole('admin', 'creator', 'directo
     if (!audioUrl) return res.status(400).json({ error: 'audioUrl required' });
     try {
         const filename = makeAudioFilename(category || 'music', name || 'generated');
-        const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
-        const finalUrl = permanentUrl || audioUrl;
+        const stored = await _storeGeneratedAudio({
+            audioUrl,
+            filename,
+            name: name || 'AI Generated',
+            category: category || 'music',
+            uploadedBy: req.user?.username,
+            provider: provider || 'ai'
+        });
 
-        const r = await pool.query(
-            `INSERT INTO sounds (name, filename, file_path, category, uploaded_by)
-             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [name || 'AI Generated', filename, finalUrl, category || 'music', req.user?.username]
-        );
-        await pool.query(`INSERT INTO music_log (action, details) VALUES ('upload', $1)`,
-            [JSON.stringify({ sound_id: r.rows[0].id, provider: provider || 'ai', source: audioUrl.substring(0, 100) })]);
-
-        res.json({ success: true, id: r.rows[0].id, url: finalUrl });
-    } catch (err) { log.error('apply-generated error', err); res.status(500).json({ error: 'Internal server error' }); }
+        res.json({ success: true, id: stored.id, url: stored.url, storageProvider: stored.storage.provider, storageKey: stored.storage.path || stored.storage.key || null });
+    } catch (err) { log.error('apply-generated error', err); res.status(err.status || 500).json({ error: err.message || 'Internal server error' }); }
 });
 
 module.exports = router;

@@ -16,11 +16,11 @@ Source evidence:
 
 ## Minimal Safe Integration
 
-Recommended first production step after confirmation:
+Implemented first production step:
 
-1. Add a read-only server helper such as `services/aiProductContext.js`.
-2. It should load selected markdown files from `docs/ai-context/` by route/entity key.
-3. In `services/dashboardAssistant.js`, after context compaction, attach only a small relevant excerpt:
+1. Added read-only server helper `services/aiProductContext.js`.
+2. It loads selected markdown files from `docs/ai-context/` by route/entity key.
+3. In `services/dashboardAssistant.js`, after context compaction, it attaches only a small relevant excerpt:
    - current page doc summary;
    - selected entity doc summary when provided;
    - one workflow doc when the user intent matches a workflow;
@@ -60,6 +60,8 @@ The highest-impact first target is Client/Call context:
   - `entities/call.md`
   - `workflows/client-call-flow.md`
 
+Implemented coverage lives in `tests/dashboard-assistant.test.js`.
+
 ## Open Risk
 
-The docs are source-derived but not yet wired into runtime. Until integration is approved, assistants can only use them if their retrieval/prompt layer explicitly loads this directory.
+The docs are source-derived and now wired into the CRM assistant rail only as compact excerpts. Wider assistant surfaces still need explicit integration before they can rely on this directory.

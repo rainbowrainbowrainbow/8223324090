@@ -236,6 +236,12 @@ Deepen assistant capability in:
 
 Goal: make the assistant better at multi-step operational reasoning.
 
+2026-06-01 update:
+
+- Runtime AI product context started through `services/aiProductContext.js`.
+- CRM assistant rail now receives compact `docs/ai-context` excerpts for current page/entity/workflow grounding.
+- First covered slice: `/customers` + call intent selects `pages/client.md`, `entities/call.md`, and `workflows/client-call-flow.md`.
+
 ### Post-Release D — Provider / Config Unification
 
 Clean up the broader AI provider landscape:
@@ -246,6 +252,13 @@ Clean up the broader AI provider landscape:
 - unrelated AI workflows.
 
 Goal: less provider sprawl, clearer ownership, safer operational behavior.
+
+2026-06-01 update:
+
+- Added `docs/AI_PROVIDER_CONTRACT.md` as the provider ownership map.
+- OpenRouter is documented as the shared text/token and prompt-refinement rail.
+- Kie.ai is documented as the media rail for program images plus Sound TTS and Suno music.
+- Direct OpenAI usage remains explicitly scoped to CRM assistant rail replies, transcription, and speech until a later migration.
 
 ## Recommended Execution Order
 

@@ -6,7 +6,8 @@
 - Hash surfaces: `#projects`, `#library`, `#announcements`
 - Static file: `sound.html`
 - Page controller: `js/sound-page.js`
-- Backend route: `routes/sound-library.js`
+- Primary backend route: `routes/music.js` mounted at `/api/music`
+- Legacy compatibility route: `routes/sound-library.js` mounted at `/api/sound-library`
 - Related navigation items: Product group -> `Звук`, `Бібліотека звуку`, `Оголошення`
 
 ## Purpose
@@ -33,7 +34,8 @@ Sound is the sound production/library workspace for sound projects, uploaded aud
 
 ## Data Sources
 
-- `routes/sound-library.js`
+- `routes/music.js`
+- `routes/sound-library.js` (legacy compatibility CRUD)
 - `services/audioStorage.js`
 - `services/music-delivery.js`
 - `db/migrations/114_sound_upgrade.sql`
@@ -44,8 +46,9 @@ Sound is the sound production/library workspace for sound projects, uploaded aud
 
 - `sound.html`
 - `js/sound-page.js`
-- `routes/sound-library.js`
+- `routes/music.js`
+- `routes/sound-library.js` (legacy compatibility CRUD)
 
 ## Assistant Context
 
-On Sound, interpret questions by active hash: projects, library, or announcements.
+On Sound, interpret questions by active hash: projects, library, or announcements. Prefer `/api/music` behavior for generated TTS/music, uploads, projects, announcements, and storage metadata. Treat `/api/sound-library` as legacy compatibility unless the user explicitly asks about that old route.

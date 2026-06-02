@@ -370,14 +370,15 @@ checkPage('chat-settings.html', (doc) => {
     check('Chat settings page exposes test connection', !!doc.getElementById('chatAiTestBtn'));
     check('Chat settings page exposes integrations controls', !!doc.getElementById('chatIntegrationSummary') && !!doc.getElementById('chatIntegrationGuardian'));
     check('Chat settings page exposes Guardian controls', !!doc.getElementById('guardianEnabled') && !!doc.getElementById('guardianProvider') && !!doc.getElementById('guardianModel'));
+    check('Chat settings page exposes AI provider diagnostics', !!doc.getElementById('aiProviderDiagnostics') && !!doc.getElementById('aiProviderRefreshBtn'));
 });
 
 checkPage('sound.html', (doc, html) => {
     const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
     const soundCss = fs.readFileSync(path.join(ROOT, 'css', 'sound.css'), 'utf8');
     check('Sound library exposes upload as the real music fallback action', html.includes('onclick="_openUploadModal()"') && html.includes('Завантажити аудіо') && soundCode.includes('window._openUploadModal') && soundCode.includes('/music/library/upload') && soundCode.includes('new FormData()'));
-    check('Sound page does not expose active soon-only Suno generation button', html.includes('AI-музика недоступна') && html.includes('disabled aria-disabled="true"') && !html.includes('Створити музику (скоро)'));
-    check('Sound upload and disabled music states have explicit styling', soundCss.includes('.sound-create-btn.upload') && soundCss.includes('.sound-create-btn.is-disabled') && soundCss.includes('body.dark-mode .sound-create-btn.upload'));
+    check('Sound page exposes Kie/Suno music generation instead of soon-only disabled state', html.includes('onclick="_openMusicModal()"') && html.includes('Створити музику') && !html.includes('AI-музика недоступна') && soundCode.includes('/music/library/generate-music') && soundCode.includes('?provider=${encodeURIComponent(provider)}') && soundCode.includes("'suno'"));
+    check('Sound upload and music action states have explicit styling', soundCss.includes('.sound-create-btn.upload') && soundCss.includes('.sound-create-btn.music') && soundCss.includes('body.dark-mode .sound-create-btn.upload'));
 });
 
 checkPage('tasks.html', (doc, html) => {
@@ -801,7 +802,7 @@ check('Chat date divider has dark readable badge', chatCss.includes('body.dark-m
 const chatSettingsCode = fs.readFileSync(path.join(ROOT, 'js', 'chat-settings-page.js'), 'utf8');
 const aiConfigCode = fs.readFileSync(path.join(ROOT, 'services', 'ai-config.js'), 'utf8');
 check('Chat settings page has dedicated script and shared key source UI', chatCss.includes('.chat-settings-page') && chatSettingsCode.includes('/api/settings/chat/ai/test') && fs.readFileSync(path.join(ROOT, 'chat-settings.html'), 'utf8').includes('crm_ai_default'));
-check('Chat settings page exposes current OpenAI model selector defaults', chatSettingsCode.includes('gpt-5.4-mini') && chatSettingsCode.includes('gpt-5.5') && chatSettingsCode.includes('function _fillModelSelect') && aiConfigCode.includes("openai: process.env.OPENAI_MODEL || 'gpt-5.4-mini'"));
+check('Chat settings page exposes OpenRouter token rail defaults', chatSettingsCode.includes('openai/gpt-5.4-mini') && chatSettingsCode.includes('openai/gpt-5.5') && chatSettingsCode.includes('function _fillModelSelect') && chatSettingsCode.includes('/api/settings/ai/providers') && aiConfigCode.includes("openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini'"));
 check('Chat settings page gates shell reveal behind auth/API load', chatSettingsCode.includes('function _handleAuthRequired') && chatSettingsCode.includes('if (!_authToken())') && chatSettingsCode.includes('handleAuthError(resp)') && chatSettingsCode.includes('_render(data);') && chatSettingsCode.includes('_revealShell();'));
 check('Match-3 game-over CTAs use semantic visible action group', minigameCode.includes('function renderGameOverActions') && minigameCode.includes('class="go-actions"') && minigameCode.includes('game-btn-overlay-secondary') && !minigameCode.includes('style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px"'));
 check('Match-3 overlay secondary CTAs have mobile-visible styling', minigameCss.includes('.game-btn-overlay-secondary') && minigameCss.includes('.go-actions') && minigameCss.includes('grid-template-columns: 1fr 1fr') && minigameCss.includes('.go-action-primary'));

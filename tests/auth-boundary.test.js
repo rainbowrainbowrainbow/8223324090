@@ -75,6 +75,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/landing' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/universal' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/bookings' }), false);
     });

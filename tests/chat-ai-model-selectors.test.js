@@ -7,19 +7,20 @@ const {
     normalizeModelForProvider
 } = require('../services/ai-config');
 
-test('chat AI model options expose current OpenAI mini default', () => {
+test('chat AI model options expose current OpenRouter token rail defaults', () => {
     const options = getAIModelOptions();
 
-    assert.equal(DEFAULT_MODELS.openai, process.env.OPENAI_MODEL || 'gpt-5.4-mini');
-    assert.equal(options.openai[0].value, 'gpt-5.4-mini');
-    assert.ok(options.openai.some(option => option.value === 'gpt-5.5'));
-    assert.ok(options.openai.some(option => option.value === 'gpt-5.4'));
-    assert.ok(options.openai.some(option => option.value === 'gpt-5.4-nano'));
+    assert.equal(DEFAULT_MODELS.openrouter, process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini');
+    assert.deepEqual(Object.keys(options).sort(), ['auto', 'openrouter']);
+    assert.equal(options.openrouter[0].value, 'openai/gpt-5.4-mini');
+    assert.ok(options.openrouter.some(option => option.value === 'openai/gpt-5.5'));
+    assert.ok(options.openrouter.some(option => option.value === 'openai/gpt-5.4-nano'));
 });
 
 test('chat AI model sanitizer blocks provider/model mismatch', () => {
-    assert.equal(normalizeModelForProvider('claude-haiku-4-5-20251001', 'openai'), DEFAULT_MODELS.openai);
-    assert.equal(normalizeModelForProvider('', 'openai'), DEFAULT_MODELS.openai);
-    assert.equal(normalizeModelForProvider('gpt-5.4-mini', 'openai'), 'gpt-5.4-mini');
+    assert.equal(normalizeModelForProvider('claude-haiku-4-5-20251001', 'openai'), DEFAULT_MODELS.openrouter);
+    assert.equal(normalizeModelForProvider('', 'openai'), DEFAULT_MODELS.openrouter);
+    assert.equal(normalizeModelForProvider('gpt-5.4-mini', 'openai'), DEFAULT_MODELS.openrouter);
+    assert.equal(normalizeModelForProvider('openai/gpt-5.4-mini', 'openrouter'), 'openai/gpt-5.4-mini');
     assert.equal(normalizeModelForProvider('gpt-5.4-mini', 'auto'), '');
 });

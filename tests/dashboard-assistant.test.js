@@ -144,6 +144,31 @@ describe('dashboard assistant service contract', () => {
         assert.match(context.pagePriority, /bottlenecks|пріоритети/);
     });
 
+    it('loads compact AI product context for client call questions', () => {
+        clearAssistantModules();
+        const { buildAssistantContext, selectAIProductContext } = require('../services/dashboardAssistant');
+
+        const productContext = selectAIProductContext({
+            pageContext: { pathname: '/customers', pageTitle: 'Клієнти' },
+            userMessage: 'треба подзвонити клієнту і записати дзвінок'
+        });
+        const paths = productContext.documents.map(doc => doc.path);
+
+        assert.equal(productContext.pageKey, 'customers');
+        assert.ok(paths.includes('pages/client.md'), paths.join(', '));
+        assert.ok(paths.includes('entities/call.md'), paths.join(', '));
+        assert.ok(paths.includes('workflows/client-call-flow.md'), paths.join(', '));
+
+        const context = buildAssistantContext({
+            pageContext: { pathname: '/customers', pageTitle: 'Клієнти' },
+            userMessage: 'треба подзвонити клієнту'
+        });
+        assert.match(context.aiProductContextPrompt, /AI PRODUCT CONTEXT/);
+        assert.match(context.aiProductContextPrompt, /pages\/client\.md/);
+        assert.match(context.aiProductContextPrompt, /entities\/call\.md/);
+        assert.ok(context.aiProductContextPrompt.length < 4200);
+    });
+
     it('answers page-knowledge concept questions without OpenAI when live data is not available', async () => {
         delete process.env.OPENAI_API_KEY;
         clearAssistantModules();
@@ -229,6 +254,7 @@ describe('dashboard assistant service contract', () => {
         assert.match(request.options.body, /funnel/);
         assert.match(request.options.body, /Що головне\?/);
         assert.match(request.options.body, /КОНТЕКСТ ПОТОЧНОЇ СТОРІНКИ/);
+        assert.match(request.options.body, /AI PRODUCT CONTEXT/);
     });
 
     it('builds sharper strategic recommendations from signals and actions', () => {

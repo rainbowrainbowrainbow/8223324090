@@ -24,9 +24,9 @@ const MAX_PROMPT_LENGTH = 1800;
 const OPENROUTER_IMAGE_TIMEOUT_MS = Number(process.env.PROGRAM_ICON_OPENROUTER_TIMEOUT_MS || 120000);
 
 const PROGRAM_ICON_PROVIDER_OPTIONS = [
-    { value: AUTO_PROVIDER, label: 'Auto', description: 'Use OpenRouter when OPENROUTER_API_KEY is configured; otherwise keep Kie.ai.' },
-    { value: OPENROUTER_PROVIDER, label: 'OpenRouter', description: 'Immediate image generation through OpenRouter chat/completions image models.' },
-    { value: KIE_PROVIDER, label: 'Kie.ai', description: 'Legacy async nano-banana-2 image job provider.' }
+    { value: AUTO_PROVIDER, label: 'Auto', description: 'Use Kie.ai for image media when KIE_API_KEY is configured; OpenRouter remains an explicit fallback.' },
+    { value: KIE_PROVIDER, label: 'Kie.ai', description: 'Primary async nano-banana-2 image job provider.' },
+    { value: OPENROUTER_PROVIDER, label: 'OpenRouter', description: 'Explicit fallback image generation through OpenRouter chat/completions image models.' }
 ];
 
 const PROGRAM_ICON_IMAGE_MODEL_OPTIONS = [
@@ -60,6 +60,7 @@ function normalizeImageProvider(value) {
 function resolveDefaultImageProvider(provider = AUTO_PROVIDER) {
     const normalized = normalizeImageProvider(provider);
     if (normalized !== AUTO_PROVIDER) return normalized;
+    if (getKieKey()) return KIE_PROVIDER;
     return getOpenRouterKey() ? OPENROUTER_PROVIDER : KIE_PROVIDER;
 }
 

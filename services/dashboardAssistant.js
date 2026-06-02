@@ -13,6 +13,10 @@ const {
     buildPageKnowledgeDebug,
     buildPageKnowledgeAnswer
 } = require('../config/assistant-page-knowledge');
+const {
+    selectAIProductContext,
+    buildAIProductContextPrompt
+} = require('./aiProductContext');
 
 const log = createLogger('DashboardAssistant');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
@@ -589,6 +593,11 @@ function buildAssistantContext(input = {}) {
         relatedPageHints: input.pageContext?.relatedPageHints || input.relatedPageHints
     });
     const pageKnowledgeDebug = buildPageKnowledgeDebug(pageContext);
+    const aiProductContext = selectAIProductContext({
+        ...input,
+        page: pageContext.pageKey,
+        pageContext
+    });
     const context = {
         role: compactString(input.role, 80) || 'unknown',
         displayRole: compactString(input.displayRole, 120),
@@ -596,6 +605,8 @@ function buildAssistantContext(input = {}) {
         pageContext,
         pageKnowledge: pageKnowledgeDebug.knowledge,
         pageKnowledgePrompt: buildPageKnowledgePrompt(pageContext),
+        aiProductContext,
+        aiProductContextPrompt: buildAIProductContextPrompt(aiProductContext),
         title: compactString(input.title || pageContext.pageTitle, 160),
         view: compactString(input.view, 120),
         intent: compactString(input.intent, 700),
@@ -757,6 +768,7 @@ async function getDashboardAssistantReply(input = {}) {
                         'Мова відповіді: відповідай українською або мовою користувача. Не показуй технічні id, enum, actionId чи widget keys на кшталт team_online, staff_today, dashboard.focus-work-queue, FILTER. Перекладай їх у людські назви: «Команда онлайн», «Хто на зміні», «робоча черга», «фільтр».',
                         `Поточне повідомлення користувача: ${context.userMessage}`,
                         context.pageKnowledgePrompt,
+                        context.aiProductContextPrompt,
                         'Відповідай саме на це повідомлення. Якщо користувач просить конкретику або список, не повторюй загальний briefing: використовуй taskDetails, chatHistory, contextSummary та evidence з JSON нижче.',
                         JSON.stringify(context, null, 2)
                     ].join('\n\n')
@@ -789,5 +801,7 @@ module.exports = {
     buildDirectFeatureLocatorReply,
     normalizeAssistantReply,
     getAssistantProviderBoundary,
+    selectAIProductContext,
+    buildAIProductContextPrompt,
     dashboardAssistantError
 };

@@ -38,6 +38,7 @@ const {
 } = require('../services/businessCabinet');
 const {
     getChatSettingsBundle,
+    getAIProviderDiagnostics,
     getUnifiedAIConfig,
     publicAIConfig,
     testUnifiedAIConfig,
@@ -96,6 +97,15 @@ router.get('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, re
         res.json(await getChatSettingsBundle());
     } catch (err) {
         log.error('GET /settings/chat error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/settings/ai/providers', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        res.json(await getAIProviderDiagnostics());
+    } catch (err) {
+        log.error('GET /settings/ai/providers error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

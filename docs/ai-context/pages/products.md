@@ -40,9 +40,10 @@ Products is the product hub for park products, programs, kitchen/menu/cakes surf
 
 ## AI Icon Configuration
 
-- `OPENROUTER_API_KEY` enables OpenRouter image generation.
-- `PROGRAM_ICON_IMAGE_PROVIDER=auto` uses OpenRouter when `OPENROUTER_API_KEY` is configured and otherwise keeps the legacy Kie.ai provider.
-- Default cheap OpenRouter image model: `openai/gpt-5-image-mini`.
+- `OPENROUTER_API_KEY` enables prompt refinement through OpenRouter token models.
+- `KIE_API_KEY` enables primary Kie.ai image media generation.
+- `PROGRAM_ICON_IMAGE_PROVIDER=auto` uses Kie.ai when `KIE_API_KEY` is configured; OpenRouter image generation remains an explicit fallback provider.
+- Default Kie image model: `nano-banana-2`.
 - Prompt refinement model can be changed with `PROGRAM_ICON_PROMPT_MODEL` or from the Products AI-icon settings modal.
 - Do not store provider keys in repo files or product settings JSON; keys must stay in production env variables only.
 

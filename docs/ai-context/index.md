@@ -2,7 +2,7 @@
 
 This directory is the internal product map for Event Genix AI assistants. It documents routes, pages, entities, workflows, terms, permissions, and data dependencies so assistants can answer in the context of the user's current CRM page.
 
-Status: first-pass knowledge base from current source code. It is intentionally documentation-only and does not change production assistant behavior.
+Status: first-pass knowledge base from current source code. A small read-only runtime slice is exposed through `services/aiProductContext.js` and attached to the CRM assistant rail as compact excerpts; this directory is not dumped wholesale into prompts.
 
 ## How Assistants Should Use This
 
@@ -100,7 +100,7 @@ Status: first-pass knowledge base from current source code. It is intentionally 
 
 ## Integration Recommendation
 
-See [integration-proposal.md](./integration-proposal.md) for the minimal safe path to expose this knowledge to assistants. Do not wire this into production assistant behavior without confirmation.
+See [integration-proposal.md](./integration-proposal.md) for the minimal safe path that is now implemented for the CRM assistant rail. Keep future expansion constrained to small excerpts and focused tests.
 
 ## Unresolved Areas
 

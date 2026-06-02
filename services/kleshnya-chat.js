@@ -2,10 +2,10 @@
  * services/kleshnya-chat.js — Kleshnya Smart Chat Engine (v12.8)
  *
  * Hybrid chat system:
- *  1. Claude AI (Haiku) — understands natural language, uses DB context
+ *  1. OpenRouter AI — understands natural language, uses DB context
  *  2. Skill engine fallback — keyword matching when AI unavailable
  *
- * AI mode requires ANTHROPIC_API_KEY env var.
+ * AI mode uses the shared OpenRouter rail from services/ai-config.js.
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -21,21 +21,17 @@ const {
     buildPageKnowledgeDebug,
     buildPageKnowledgeAnswer
 } = require('../config/assistant-page-knowledge');
-const Anthropic = require('@anthropic-ai/sdk');
+const { callUnifiedChatCompletion, hasAnySharedAIKey } = require('./ai-config');
 
 const log = createLogger('KleshnyaChat');
 
-// --- AI Engine (Claude Haiku) ---
+// --- AI Engine (OpenRouter shared rail) ---
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const AI_ENABLED = !!ANTHROPIC_API_KEY;
-
-let anthropic = null;
+const AI_ENABLED = hasAnySharedAIKey();
 if (AI_ENABLED) {
-    anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    log.info('Claude AI enabled for Kleshnya chat');
+    log.info('OpenRouter AI enabled for Kleshnya chat');
 } else {
-    log.info('Claude AI disabled (no ANTHROPIC_API_KEY). Using skill engine fallback.');
+    log.info('OpenRouter AI disabled (no shared key). Using skill engine fallback.');
 }
 
 function actorForBookingScope(username, actor) {
@@ -230,10 +226,10 @@ function extractSuggestions(responseText) {
 }
 
 /**
- * Generate AI response via Claude Haiku
+ * Generate AI response via the shared OpenRouter rail.
  */
 async function generateAIResponse(userMessage, username, chatHistory, actor = null, options = {}) {
-    if (!AI_ENABLED || !anthropic) return null;
+    if (!AI_ENABLED) return null;
 
     try {
         const dateStr = getKyivDate(0);
@@ -254,23 +250,27 @@ async function generateAIResponse(userMessage, username, chatHistory, actor = nu
         // Add current user message
         messages.push({ role: 'user', content: userMessage });
 
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 800,
-            system: systemPrompt,
-            messages
+        const conversationText = messages.map(msg =>
+            `${msg.role === 'assistant' ? 'Assistant' : 'User'}: ${msg.content || ''}`
+        ).join('\n');
+        const result = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Kleshnya Chat',
+            systemPrompt,
+            userMessage: conversationText,
+            maxTokens: 800
         });
 
-        const text = response.content[0]?.text;
+        const text = result.ok ? result.text : '';
         if (!text) return null;
 
         const suggestions = extractSuggestions(text);
 
-        log.info(`AI response for ${username}: ${text.length} chars, ${response.usage?.input_tokens || '?'}+${response.usage?.output_tokens || '?'} tokens`);
+        log.info(`AI response for ${username}: ${text.length} chars via ${result.provider || 'openrouter'} ${result.model || ''}`);
 
         return { message: text, suggestions, source: 'ai' };
     } catch (err) {
-        log.error('Claude AI error, falling back to skills', err.message || err);
+        log.error('OpenRouter AI error, falling back to skills', err.message || err);
         return null;
     }
 }

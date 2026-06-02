@@ -128,6 +128,12 @@ const PUBLIC_API_ROUTES = [
     },
     {
         method: 'POST',
+        path: '/music/library/generate-music/callback',
+        owner: 'music',
+        reason: 'Kie.ai Suno callback is guarded by KIE_CALLBACK_SECRET before any payload is accepted.'
+    },
+    {
+        method: 'POST',
         path: '/demo/login',
         owner: 'demo',
         reason: 'Demo login is intentionally public and issues its own demo session.'

@@ -6,24 +6,12 @@
         guardian: null,
         integrations: null,
         modelOptions: null,
-        defaultModels: null
+        defaultModels: null,
+        providerDiagnostics: null
     };
 
     var FALLBACK_MODEL_OPTIONS = {
         auto: [{ value: '', label: 'Автоматично за provider' }],
-        openai: [
-            { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
-            { value: 'gpt-5.5', label: 'GPT-5.5' },
-            { value: 'gpt-5.4', label: 'GPT-5.4' },
-            { value: 'gpt-5.4-nano', label: 'GPT-5.4 nano' },
-            { value: 'gpt-5-mini', label: 'GPT-5 mini' },
-            { value: 'gpt-5-nano', label: 'GPT-5 nano' },
-            { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' }
-        ],
-        anthropic: [
-            { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-            { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' }
-        ],
         openrouter: [
             { value: 'openai/gpt-5.4-mini', label: 'OpenAI GPT-5.4 mini' },
             { value: 'openai/gpt-5.5', label: 'OpenAI GPT-5.5' },
@@ -131,7 +119,9 @@
     }
 
     function _providerFor(id, fallback) {
-        return $(id)?.value || fallback || 'openai';
+        var value = $(id)?.value || fallback || 'openrouter';
+        if (value === 'openai' || value === 'anthropic') return 'openrouter';
+        return value || 'openrouter';
     }
 
     function _modelOptions(provider) {
@@ -148,7 +138,8 @@
     function _fillModelSelect(id, provider, value) {
         var el = $(id);
         if (!el) return;
-        var normalizedProvider = provider || 'openai';
+        var normalizedProvider = provider || 'openrouter';
+        if (normalizedProvider === 'openai' || normalizedProvider === 'anthropic') normalizedProvider = 'openrouter';
         var options = _modelOptions(normalizedProvider);
         var selected = value || _defaultModel(normalizedProvider);
         el.innerHTML = options.map(function (item) {
@@ -177,12 +168,89 @@
         return _escapeHtml(value).replace(/'/g, '&#39;');
     }
 
+    function _surfaceLabel(id) {
+        var labels = {
+            crm_assistant_rail: 'CRM assistant rail',
+            chat_ai: 'Chat AI',
+            guardian_ai: 'Guardian AI',
+            chat_translate: 'Chat translate',
+            manager_copilot: 'Manager Copilot',
+            kleshnya_chat: 'Kleshnya chat',
+            agent_tracker_summary: 'Agent tracker summary',
+            catalog_trend_analysis: 'Catalog trend analysis',
+            program_icon_prompt: 'Program icon prompt',
+            program_icon_image: 'Program icon image',
+            sound_tts: 'Sound TTS',
+            sound_music: 'Sound music',
+            warehouse_photo_intake: 'Warehouse photo intake',
+            omni_lead_assistant: 'Omni lead assistant'
+        };
+        return labels[id] || id || 'AI surface';
+    }
+
+    function _statusLabel(status) {
+        var labels = {
+            ok: 'Готово',
+            ready: 'Готово',
+            disabled: 'Вимкнено',
+            missing_key: 'Немає ключа',
+            missing_callback: 'Немає callback',
+            legacy_direct_exception: 'Legacy direct'
+        };
+        return labels[status] || status || 'Невідомо';
+    }
+
+    function _statusTone(status) {
+        if (status === 'ok' || status === 'ready') return 'ok';
+        if (status === 'disabled') return 'muted';
+        if (status === 'legacy_direct_exception') return 'warning';
+        if (String(status || '').indexOf('missing') !== -1) return 'warning';
+        return 'neutral';
+    }
+
+    function _renderProviderDiagnostics(diagnostics) {
+        var el = $('aiProviderDiagnostics');
+        if (!el) return;
+        var surfaces = Array.isArray(diagnostics?.surfaces) ? diagnostics.surfaces : [];
+        if (!surfaces.length) {
+            el.innerHTML = '<div class="ai-provider-empty">Дані provider diagnostics ще не завантажені.</div>';
+            return;
+        }
+        var policy = diagnostics.policy || {};
+        var policyHtml = '<div class="ai-provider-policy">'
+            + '<strong>Contract</strong>'
+            + '<span>Tokens: ' + _escapeHtml(policy.sharedTextRails || 'openrouter') + '</span>'
+            + '<span>Media: ' + _escapeHtml(policy.mediaGeneration || 'kie') + '</span>'
+            + '<span>Assistant: ' + _escapeHtml(policy.crmAssistantRail || 'openai_direct') + '</span>'
+            + '</div>';
+        var cards = surfaces.map(function (surface) {
+            var tone = _statusTone(surface.status);
+            var details = [
+                surface.provider ? 'Provider: ' + surface.provider : '',
+                surface.model ? 'Model: ' + surface.model : '',
+                surface.keyEnv ? 'Key: ' + surface.keyEnv : '',
+                surface.migration ? 'Next: ' + surface.migration : ''
+            ].filter(Boolean);
+            return '<div class="ai-provider-card" data-tone="' + _escapeAttr(tone) + '">'
+                + '<div class="ai-provider-card-head">'
+                + '<strong>' + _escapeHtml(_surfaceLabel(surface.id)) + '</strong>'
+                + '<span class="ai-provider-status" data-tone="' + _escapeAttr(tone) + '">' + _escapeHtml(_statusLabel(surface.status)) + '</span>'
+                + '</div>'
+                + '<div class="ai-provider-meta">' + details.map(function (item) {
+                    return '<span>' + _escapeHtml(item) + '</span>';
+                }).join('') + '</div>'
+                + '</div>';
+        }).join('');
+        el.innerHTML = policyHtml + cards;
+    }
+
     function _render(data) {
         _state.chatAi = data.chatAi || {};
         _state.guardian = data.guardian || {};
         _state.integrations = data.integrations || {};
         _state.modelOptions = data.modelOptions || FALLBACK_MODEL_OPTIONS;
         _state.defaultModels = data.defaultModels || {};
+        _state.providerDiagnostics = data.providerDiagnostics || null;
 
         _fillCheckbox('chatAiEnabled', _state.chatAi.enabled);
         _fillValue('chatAiProvider', _state.chatAi.requestedProvider || _state.chatAi.provider || 'auto');
@@ -202,6 +270,7 @@
         _fillValue('guardianProvider', _state.guardian.provider || 'auto');
         _fillModelSelect('guardianModel', _providerFor('guardianProvider'), _state.guardian.model || _state.guardian.ai?.model || '');
         _setStatus($('guardianAiStatus'), _state.guardian.ai || {});
+        _renderProviderDiagnostics(_state.providerDiagnostics);
     }
 
     async function _load() {
@@ -292,11 +361,28 @@
         }
     }
 
+    async function _refreshProviderDiagnostics() {
+        var btn = $('aiProviderRefreshBtn');
+        if (btn) btn.disabled = true;
+        try {
+            _state.providerDiagnostics = await _request('GET', '/api/settings/ai/providers');
+            _renderProviderDiagnostics(_state.providerDiagnostics);
+            _notify('AI provider diagnostics оновлено', 'success');
+        } catch (err) {
+            if (_isAuthError(err)) return;
+            console.error('[ChatSettings] provider diagnostics failed', err);
+            _notify('Не вдалося оновити AI provider diagnostics', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     function _bind() {
         $('chatAiSaveBtn')?.addEventListener('click', _saveChatAi);
         $('chatAiTestBtn')?.addEventListener('click', _testChatAi);
         $('chatIntegrationsSaveBtn')?.addEventListener('click', _saveIntegrations);
         $('guardianSaveBtn')?.addEventListener('click', _saveGuardian);
+        $('aiProviderRefreshBtn')?.addEventListener('click', _refreshProviderDiagnostics);
         $('chatAiProvider')?.addEventListener('change', function () {
             _syncModelSelect('chatAiProvider', 'chatAiModel');
         });

@@ -4,47 +4,36 @@
  * v27.0.0 | 2026-03-13 | Помічник 🤖
  */
 const { createLogger } = require('../utils/logger');
+const { callUnifiedChatCompletion } = require('./ai-config');
 const log = createLogger('CopilotService');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const COPILOT_MODEL = 'anthropic/claude-haiku-3';
+const COPILOT_MODEL = process.env.COPILOT_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini';
+
+function compactMessagesForPrompt(messages = []) {
+    return (Array.isArray(messages) ? messages : [])
+        .map(message => `${message?.role === 'assistant' ? 'Assistant' : 'User'}: ${message?.content || ''}`)
+        .join('\n');
+}
 
 /**
  * Call OpenRouter chat completion
  */
 async function openRouterChat({ model = COPILOT_MODEL, system, messages, temperature = 0.7, max_tokens = 1000 }) {
-    if (!OPENROUTER_API_KEY) {
-        throw new Error('OPENROUTER_API_KEY not configured');
-    }
-
-    const body = {
+    const result = await callUnifiedChatCompletion({
+        scope: 'chat_ai',
+        title: 'Event Genix Manager Copilot',
         model,
         temperature,
-        max_tokens,
-        messages: system
-            ? [{ role: 'system', content: system }, ...messages]
-            : messages
-    };
-
-    const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://8223324090-production.up.railway.app',
-            'X-Title': 'Event Genix CRM — Manager Copilot'
-        },
-        body: JSON.stringify(body)
+        maxTokens: max_tokens,
+        systemPrompt: system || 'Ти — AI copilot Event Genix CRM. Відповідай українською.',
+        userMessage: compactMessagesForPrompt(messages)
     });
 
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenRouter error ${response.status}: ${errText}`);
+    if (!result.ok) {
+        throw new Error(result.error || result.reason || 'OPENROUTER_API_KEY not configured');
     }
 
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+    return result.text || '';
 }
 
 /**

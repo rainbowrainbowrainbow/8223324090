@@ -128,6 +128,16 @@ Status: inventory command added; auth classification remains a later pack.
   `npm run check:access` so static pages, page aliases, sidebar links,
   hash-modal bridges, and public/embedded access exceptions stay aligned.
 
+2026-06-01 update:
+
+- Clarified Sound ownership: `/api/music` (`routes/music.js`) is the primary
+  Sound API for uploads, generated TTS/music, projects, announcements, and
+  storage metadata.
+- Kept `/api/sound-library` (`routes/sound-library.js`) mounted as legacy
+  compatibility CRUD instead of deleting it in a broad cleanup.
+- Updated `docs/ai-context` Sound references and added focused Sound generation
+  tests so the old disabled Suno state does not drift back.
+
 ### 3. Safety Net Before Deletion
 
 Goal: make dead-code removal measurable before deleting files.

@@ -7,15 +7,15 @@ const {
   DEFAULT_BUSINESS_CONTEXT,
   normalizeBusinessContext,
 } = require('./businessContext');
+const { DEFAULT_MODELS, callUnifiedChatCompletion } = require('./ai-config');
 
 const log = createLogger('OmniLeadAssistant');
 
-const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 const SETTINGS_KEY = 'omni_lead_assistant_config';
 const DEFAULT_MODEL = process.env.OMNI_LEAD_AI_MODEL
-  || process.env.OPENAI_OMNI_LEAD_MODEL
-  || process.env.OPENAI_ASSISTANT_MODEL
-  || 'gpt-4.1-mini';
+  || process.env.OPENROUTER_MODEL
+  || process.env.SUMMARY_MODEL
+  || DEFAULT_MODELS.openrouter;
 
 const FIELD_DEFINITIONS = {
   client_name: {
@@ -1398,7 +1398,7 @@ function compactMaterialsForPrompt(materials = []) {
   }));
 }
 
-function buildOpenAIInput(bundle, config, salesContext) {
+function buildLeadAnalysisInput(bundle, config, salesContext) {
   return {
     conversation: {
       id: bundle.conversation.id,
@@ -1421,19 +1421,10 @@ function buildOpenAIInput(bundle, config, salesContext) {
   };
 }
 
-async function callOpenAIForAnalysis(bundle, config, salesContext = null) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    return normalizeAnalysis(null, bundle, config, {
-      name: 'openai',
-      model: config.model,
-      status: 'missing_key',
-      reason: 'OPENAI_API_KEY is not configured',
-    }, salesContext);
-  }
+async function callOpenRouterForAnalysis(bundle, config, salesContext = null) {
   if (config.enabled === false) {
     return normalizeAnalysis(null, bundle, config, {
-      name: 'openai',
+      name: 'openrouter',
       model: config.model,
       status: 'disabled',
       reason: 'Omni lead assistant is disabled',
@@ -1453,59 +1444,45 @@ async function callOpenAIForAnalysis(bundle, config, salesContext = null) {
     'Не підтверджуй доступність дати/залу і не обіцяй знижки без явного факту в даних CRM.',
   ].join('\n');
 
-  const response = await fetch(`${OPENAI_API_BASE}/responses`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      input: [
-        { role: 'system', content: instructions },
-        { role: 'user', content: JSON.stringify(buildOpenAIInput(bundle, config, salesContext)) },
-      ],
-      store: false,
-      temperature: 0.15,
-      max_output_tokens: 2200,
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'omni_lead_intake',
-          strict: true,
-          schema: buildAnalysisSchema(),
-        },
-      },
-    }),
+  const result = await callUnifiedChatCompletion({
+    scope: 'chat_ai',
+    title: 'Event Genix Omni Lead Assistant',
+    model: config.model,
+    systemPrompt: [
+      instructions,
+      'Return ONLY valid compact JSON. Do not wrap it in markdown.',
+      `JSON schema: ${JSON.stringify(buildAnalysisSchema())}`,
+    ].join('\n'),
+    userMessage: JSON.stringify(buildLeadAnalysisInput(bundle, config, salesContext)),
+    maxTokens: 2200,
   });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    log.warn('OpenAI lead analysis failed', {
-      status: response.status,
-      message: payload?.error?.message || payload?.error || 'unknown',
+  if (!result.ok) {
+    log.warn('OpenRouter lead analysis failed', {
+      status: result.status,
+      message: result.reason || result.error || 'unknown',
     });
     return normalizeAnalysis(null, bundle, config, {
-      name: 'openai',
-      model: config.model,
-      status: 'provider_error',
-      reason: compactString(payload?.error?.message || payload?.error || `openai_http_${response.status}`, 240),
+      name: 'openrouter',
+      model: result.model || config.model,
+      status: result.reason === 'missing_key' ? 'missing_key' : 'provider_error',
+      reason: compactString(result.error || result.reason || 'openrouter_error', 240),
     }, salesContext);
   }
 
-  const parsed = parseJsonObject(extractResponseText(payload));
+  const parsed = parseJsonObject(result.text);
   if (!parsed) {
     return normalizeAnalysis(null, bundle, config, {
-      name: 'openai',
-      model: config.model,
+      name: 'openrouter',
+      model: result.model || config.model,
       status: 'unparseable',
-      reason: 'OpenAI response was not valid JSON',
+      reason: 'OpenRouter response was not valid JSON',
     }, salesContext);
   }
 
   return normalizeAnalysis(parsed, bundle, config, {
-    name: 'openai',
-    model: config.model,
+    name: 'openrouter',
+    model: result.model || config.model,
     status: 'ok',
     reason: null,
   }, salesContext);
@@ -1558,7 +1535,7 @@ async function analyzeConversationLead(conversationId, options = {}) {
   const salesContext = await getLeadAssistantSalesContext(config, bundle, {
     businessContext: options.businessContext || bundle.conversation.business_context || DEFAULT_BUSINESS_CONTEXT,
   });
-  const analysis = await callOpenAIForAnalysis(bundle, config, salesContext);
+  const analysis = await callOpenRouterForAnalysis(bundle, config, salesContext);
   await recordConversationLeadAssistantAnalysis(bundle.conversation.id, analysis).catch(err => {
     log.warn('Conversation lead assistant analysis meta skipped', {
       conversationId: bundle.conversation.id,
@@ -1603,7 +1580,7 @@ async function testLeadAssistantScript(input = {}) {
       : transcriptToMessages(input.transcript || ''),
   };
   const salesContext = await getLeadAssistantSalesContext(config, bundle);
-  return callOpenAIForAnalysis(bundle, config, salesContext);
+  return callOpenRouterForAnalysis(bundle, config, salesContext);
 }
 
 function linkedLeadIdFromMeta(meta) {

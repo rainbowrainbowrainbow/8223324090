@@ -40,6 +40,7 @@ focused tests.
 | `POST /kleshnya/webhook` | kleshnya | Kleshnya webhook is provider/bridge controlled rather than user JWT controlled. |
 | `GET /kleshnya/pending-messages` | kleshnya | Kleshnya bridge polling endpoint is controlled by bridge route policy. |
 | `POST /kleshnya/sync-chat` | kleshnya | Kleshnya bridge sync endpoint is controlled by bridge route policy. |
+| `POST /music/library/generate-music/callback` | music | Kie.ai Suno callback is guarded by `KIE_CALLBACK_SECRET` before any payload is accepted. |
 | `POST /demo/login` | demo | Demo login is intentionally public and issues its own demo session. |
 | `GET /demo/scenarios` | demo | Demo scenarios are public read-only demo metadata. |
 | `GET /packages` | packages | Public landing/package materials need unauthenticated package reads. |

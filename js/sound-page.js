@@ -734,11 +734,39 @@
     };
 
     window._openMusicModal = async function() {
-        // v40: Suno не доступний через Kie.ai — показуємо повідомлення
-        if (typeof showNotification === 'function') {
-            showNotification('Генерація музики через Suno тимчасово недоступна. Використовуйте «Створити голос» для TTS або завантажте музику вручну.', 'info');
+        if (typeof formModal !== 'function') return;
+        const result = await formModal('🎶 Створити музику (Suno)', [
+            { key: 'prompt', label: 'Опис музики', type: 'textarea', required: true, placeholder: 'Весела фонова музика для дитячого квесту, 90 секунд, без вокалу' },
+            { key: 'name', label: 'Назва файлу', placeholder: 'Квестова фонова музика' },
+            { key: 'style', label: 'Стиль / настрій', placeholder: 'pop, cinematic, upbeat, kids party' },
+            { key: 'instrumental', label: 'Вокал', type: 'select', defaultValue: 'true', options: [
+                { value: 'true', label: 'Без вокалу' },
+                { value: 'false', label: 'Можна з вокалом' }
+            ]},
+            { key: 'category', label: 'Категорія', type: 'select', defaultValue: 'music', options: [
+                { value: 'music', label: '🎶 Музика' },
+                { value: 'atmosphere', label: '🌿 Атмосфера' },
+                { value: 'quest', label: '🧩 Квести' },
+                { value: 'effects', label: '💥 Ефекти' }
+            ]}
+        ], { icon: '🎶', okText: 'Згенерувати' });
+        if (!result) return;
+
+        if (typeof showNotification === 'function') showNotification('⏳ Генерація музики через Suno...', 'info');
+        try {
+            const data = await apiCall('POST', '/music/library/generate-music', {
+                ...result,
+                instrumental: result.instrumental !== 'false'
+            });
+            if (data?.success && data?.taskId) {
+                if (typeof showNotification === 'function') showNotification('⏳ Музика генерується. Я додам її в бібліотеку після готовності.', 'info');
+                _pollGeneration(data.taskId, result.name || data.name || 'AI Music', result.category || data.category || 'music', 'suno');
+            } else {
+                if (typeof showNotification === 'function') showNotification(data?.error || 'Помилка генерації музики', 'error');
+            }
+        } catch (err) {
+            if (typeof showNotification === 'function') showNotification(err.message || 'Помилка генерації музики', 'error');
         }
-        return;
     };
 
     function _pollGeneration(taskId, name, category, provider) {
@@ -747,7 +775,8 @@
             attempts++;
             if (attempts > 60) { clearInterval(poll); if (typeof showNotification === 'function') showNotification('Генерація зайняла надто багато часу', 'error'); return; }
             try {
-                const data = await apiCall('GET', `/music/library/generate-status/${taskId}`);
+                const statusUrl = `/music/library/generate-status/${encodeURIComponent(taskId)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`;
+                const data = await apiCall('GET', statusUrl);
                 if (data?.done && data.audioUrl) {
                     clearInterval(poll);
                     const apply = await apiCall('POST', '/music/library/apply-generated', { audioUrl: data.audioUrl, name, category, provider });

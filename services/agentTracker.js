@@ -7,6 +7,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getCached } = require('./contextCache');
+const { callUnifiedChatCompletion, hasAnySharedAIKey } = require('./ai-config');
 const { execSync } = require('child_process');
 
 const log = createLogger('AgentTracker');
@@ -193,8 +194,7 @@ async function getAgentStatus() {
  * Generate AI summary of agent activities for a period.
  */
 async function generateSummary(period = 'today', agentTag = null) {
-    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    if (!ANTHROPIC_API_KEY) return null;
+    if (!hasAnySharedAIKey()) return null;
 
     // Determine time range
     let since;
@@ -240,21 +240,21 @@ async function generateSummary(period = 'today', agentTag = null) {
 
     // Generate AI summary
     try {
-        const Anthropic = require('@anthropic-ai/sdk');
-        const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-
         const activitiesText = activities.map(a =>
             `[${a.agentTag}] ${a.actionType}: ${a.summary} (${new Date(a.createdAt).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' })})`
         ).join('\n');
 
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 500,
-            system: 'Ти — координатор розробки. Напиши короткий саммарі (2-5 речень) українською. Вкажи хто що зробив, ключові зміни, і загальний прогрес.',
-            messages: [{ role: 'user', content: `Активність за ${period}:\n${activitiesText}` }]
+        const result = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Agent Tracker Summary',
+            systemPrompt: 'Ти — координатор розробки. Напиши короткий саммарі (2-5 речень) українською. Вкажи хто що зробив, ключові зміни і загальний прогрес.',
+            userMessage: `Активність за ${period}:\n${activitiesText}`,
+            maxTokens: 500
         });
 
-        const summaryText = response.content[0]?.text?.trim() || 'Не вдалось згенерувати саммарі.';
+        const summaryText = result.ok && result.text
+            ? result.text.trim()
+            : 'Не вдалось згенерувати саммарі.';
 
         // Save summary
         await pool.query(

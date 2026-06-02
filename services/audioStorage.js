@@ -94,15 +94,19 @@ async function _uploadAudioBufferToStorage(buffer, filename, options = {}) {
     }
 }
 
-async function uploadAudioFromUrl(sourceUrl, filename) {
+async function uploadAudioFromUrlWithMetadata(sourceUrl, filename, options = {}) {
     try {
         const buffer = await _download(sourceUrl);
         if (!buffer || buffer.length === 0) { log.error('Empty audio download'); return null; }
         log.info(`Downloaded audio: ${Math.round(buffer.length / 1024)}KB`);
 
-        const uploaded = await _uploadAudioBufferToStorage(buffer, filename);
-        return uploaded?.publicUrl || null;
-    } catch (err) { log.error('uploadAudioFromUrl error:', err.message); return null; }
+        return _uploadAudioBufferToStorage(buffer, filename, options);
+    } catch (err) { log.error('uploadAudioFromUrlWithMetadata error:', err.message); return null; }
+}
+
+async function uploadAudioFromUrl(sourceUrl, filename, options = {}) {
+    const uploaded = await uploadAudioFromUrlWithMetadata(sourceUrl, filename, options);
+    return uploaded?.publicUrl || null;
 }
 
 async function uploadAudioBuffer(buffer, filename) {
@@ -147,6 +151,7 @@ function _download(url) {
 
 module.exports = {
     uploadAudioFromUrl,
+    uploadAudioFromUrlWithMetadata,
     uploadAudioBuffer,
     uploadAudioBufferWithMetadata,
     removeAudioObject,

@@ -1,9 +1,9 @@
 /**
  * services/ai-config.js — shared AI provider/key resolver.
  *
- * Chat summary and Guardian use the same CRM AI key source. Per-scope settings
- * may choose provider/model/enabled state, but secrets stay server-side env
- * values and are never returned to the frontend.
+ * Chat summary and Guardian use the same CRM AI key source. Shared text/token
+ * rails are intentionally OpenRouter-only; the CRM assistant rail keeps its
+ * separate direct OpenAI boundary in services/dashboardAssistant*.js.
  */
 
 const { pool } = require('../db');
@@ -19,18 +19,16 @@ const SETTINGS_KEYS = {
     chat_integrations: 'chat_integrations_config'
 };
 
-const PROVIDERS = ['auto', 'openrouter', 'anthropic', 'openai'];
+const PROVIDERS = ['auto', 'openrouter'];
 
 const DEFAULT_MODELS = {
-    openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini',
-    anthropic: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-    openai: process.env.OPENAI_MODEL || 'gpt-5.4-mini'
+    openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'openai/gpt-5.4-mini'
 };
 
 const DEFAULT_AI_SETTINGS = {
     enabled: true,
-    provider: 'openai',
-    model: DEFAULT_MODELS.openai,
+    provider: 'openrouter',
+    model: DEFAULT_MODELS.openrouter,
     keySource: KEY_SOURCE
 };
 
@@ -46,27 +44,14 @@ const DEFAULT_GUARDIAN_SETTINGS = {
     digestEnabled: true,
     securityLogEnabled: true,
     analyticsEnabled: true,
-    provider: 'openai',
-    model: DEFAULT_MODELS.openai,
+    provider: 'openrouter',
+    model: DEFAULT_MODELS.openrouter,
     keySource: KEY_SOURCE
 };
 
 const BASE_MODEL_OPTIONS = {
     auto: [
         { value: '', label: 'Автоматично за provider', description: 'CRM сама вибере дефолтну модель для доступного provider.' }
-    ],
-    openai: [
-        { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini', description: 'Рекомендовано: швидка і дешевша mini-модель для чату, summary та Guardian.' },
-        { value: 'gpt-5.5', label: 'GPT-5.5', description: 'Flagship-модель для складного reasoning і coding, дорожча за mini.' },
-        { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Сильніша модель для складних відповідей, дорожча за mini.' },
-        { value: 'gpt-5.4-nano', label: 'GPT-5.4 nano', description: 'Найшвидший і найдешевший варіант для простих задач.' },
-        { value: 'gpt-5-mini', label: 'GPT-5 mini', description: 'Попередня mini-модель для сумісності.' },
-        { value: 'gpt-5-nano', label: 'GPT-5 nano', description: 'Попередня nano-модель для простих сценаріїв.' },
-        { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini', description: 'Сумісний нерозмірковий fallback.' }
-    ],
-    anthropic: [
-        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', description: 'Швидкий Anthropic fallback для коротких задач.' },
-        { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', description: 'Сильніший Anthropic fallback для складніших задач.' }
     ],
     openrouter: [
         { value: 'openai/gpt-5.4-mini', label: 'OpenAI GPT-5.4 mini', description: 'Рекомендований OpenAI mini через OpenRouter.' },
@@ -84,6 +69,7 @@ function normalizeScope(scope) {
 
 function normalizeProvider(provider) {
     const value = String(provider || 'auto').toLowerCase();
+    if (value === 'openai' || value === 'anthropic') return 'openrouter';
     return PROVIDERS.includes(value) ? value : 'auto';
 }
 
@@ -123,13 +109,11 @@ function normalizeModelForProvider(model, provider) {
 
 function getProviderKey(provider) {
     if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '';
-    if (provider === 'anthropic') return process.env.ANTHROPIC_API_KEY || '';
-    if (provider === 'openai') return process.env.OPENAI_API_KEY || '';
     return '';
 }
 
 function getAvailableProviders() {
-    return ['openrouter', 'anthropic', 'openai'].filter(provider => Boolean(getProviderKey(provider)));
+    return ['openrouter'].filter(provider => Boolean(getProviderKey(provider)));
 }
 
 function hasAnySharedAIKey() {
@@ -140,7 +124,7 @@ function pickProvider(requestedProvider) {
     const requested = normalizeProvider(requestedProvider);
     if (requested !== 'auto' && getProviderKey(requested)) return requested;
     const available = getAvailableProviders();
-    return available[0] || (requested === 'auto' ? 'openrouter' : requested);
+    return available[0] || 'openrouter';
 }
 
 function safeParseJson(value, fallback) {
@@ -232,7 +216,7 @@ async function saveGuardianSettings(input) {
         securityLogEnabled: settings.securityLogEnabled !== false,
         analyticsEnabled: settings.analyticsEnabled !== false,
         provider: normalizeProvider(settings.provider),
-        model: normalizeModel(settings.model),
+        model: normalizeModelForProvider(settings.model, settings.provider),
         keySource: KEY_SOURCE
     };
     await writeSettingJson(SETTINGS_KEYS.guardian_ai, normalized);
@@ -290,6 +274,168 @@ function publicAIConfig(config) {
     };
 }
 
+function providerStatus(configured, extraStatus) {
+    if (extraStatus) return extraStatus;
+    return configured ? 'ready' : 'missing_key';
+}
+
+function secretState(envNames, configured, extra = {}) {
+    return {
+        env: envNames,
+        configured: Boolean(configured),
+        status: providerStatus(Boolean(configured), extra.status),
+        ...extra
+    };
+}
+
+function hasKieSunoCallback() {
+    if (process.env.KIE_SUNO_CALLBACK_URL) return true;
+    return Boolean((process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL) && process.env.KIE_CALLBACK_SECRET);
+}
+
+async function getAIProviderDiagnostics() {
+    const [chatConfig, guardianConfig] = await Promise.all([
+        getUnifiedAIConfig({ scope: 'chat_ai' }),
+        getUnifiedAIConfig({ scope: 'guardian_ai' })
+    ]);
+    const openRouterConfigured = Boolean(getProviderKey('openrouter'));
+    const openAIConfigured = Boolean(process.env.OPENAI_API_KEY);
+    const kieConfigured = Boolean(process.env.KIE_API_KEY);
+    const kieSunoCallbackConfigured = hasKieSunoCallback();
+
+    return {
+        generatedAt: new Date().toISOString(),
+        policy: {
+            crmAssistantRail: 'openai_direct',
+            sharedTextRails: 'openrouter',
+            mediaGeneration: 'kie',
+            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant rail remains direct OpenAI by product decision.'
+        },
+        providers: {
+            openrouter: secretState(['OPENROUTER_API_KEY', 'OPENROUTER_KEY'], openRouterConfigured, {
+                role: 'shared_text_tokens',
+                defaultModel: DEFAULT_MODELS.openrouter
+            }),
+            openaiAssistant: secretState(['OPENAI_API_KEY'], openAIConfigured, {
+                role: 'crm_assistant_rail_only',
+                model: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini'
+            }),
+            kie: secretState(['KIE_API_KEY'], kieConfigured, {
+                role: 'media_generation',
+                imageModel: process.env.PROGRAM_ICON_IMAGE_MODEL || 'nano-banana-2',
+                soundModel: process.env.KIE_SUNO_MODEL || 'V4_5'
+            }),
+            kieSunoCallback: secretState(['KIE_SUNO_CALLBACK_URL', 'PUBLIC_BASE_URL', 'APP_BASE_URL', 'KIE_CALLBACK_SECRET'], kieSunoCallbackConfigured, {
+                role: 'suno_callback',
+                status: kieSunoCallbackConfigured ? 'ready' : 'missing_callback'
+            })
+        },
+        surfaces: [
+            {
+                id: 'crm_assistant_rail',
+                provider: 'openai',
+                status: openAIConfigured ? 'ready' : 'missing_key',
+                model: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
+                keyEnv: 'OPENAI_API_KEY',
+                boundary: 'kept_direct_openai'
+            },
+            {
+                id: 'chat_ai',
+                provider: chatConfig.provider,
+                status: chatConfig.status,
+                model: chatConfig.model,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'guardian_ai',
+                provider: guardianConfig.provider,
+                status: guardianConfig.status,
+                model: guardianConfig.model,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'chat_translate',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: chatConfig.model || DEFAULT_MODELS.openrouter,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'manager_copilot',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: process.env.COPILOT_MODEL || chatConfig.model || DEFAULT_MODELS.openrouter,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'kleshnya_chat',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: chatConfig.model || DEFAULT_MODELS.openrouter,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'agent_tracker_summary',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: chatConfig.model || DEFAULT_MODELS.openrouter,
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'catalog_trend_analysis',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: process.env.CATALOG_TREND_MODEL || 'google/gemini-flash-1.5',
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'omni_lead_assistant',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: process.env.OMNI_LEAD_AI_MODEL || DEFAULT_MODELS.openrouter,
+                keyEnv: 'OPENROUTER_API_KEY',
+                boundary: 'shared_text_rail'
+            },
+            {
+                id: 'program_icon_prompt',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: process.env.PROGRAM_ICON_PROMPT_MODEL || 'openai/gpt-5.4-nano',
+                keyEnv: 'OPENROUTER_API_KEY'
+            },
+            {
+                id: 'program_icon_image',
+                provider: 'kie.ai',
+                status: kieConfigured ? 'ready' : 'missing_key',
+                model: process.env.PROGRAM_ICON_IMAGE_MODEL || 'nano-banana-2',
+                keyEnv: 'KIE_API_KEY'
+            },
+            {
+                id: 'sound_tts',
+                provider: 'kie.ai',
+                status: kieConfigured ? 'ready' : 'missing_key',
+                model: 'elevenlabs/text-to-speech-multilingual-v2',
+                keyEnv: 'KIE_API_KEY'
+            },
+            {
+                id: 'sound_music',
+                provider: 'kie.ai',
+                status: kieConfigured && kieSunoCallbackConfigured ? 'ready' : (kieConfigured ? 'missing_callback' : 'missing_key'),
+                model: process.env.KIE_SUNO_MODEL || 'V4_5',
+                keyEnv: 'KIE_API_KEY'
+            },
+            {
+                id: 'warehouse_photo_intake',
+                provider: 'openai',
+                status: openAIConfigured ? 'legacy_direct_exception' : 'missing_key',
+                model: process.env.WAREHOUSE_VISION_MODEL || process.env.OPENAI_VISION_MODEL || process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
+                keyEnv: 'OPENAI_API_KEY',
+                migration: 'openrouter_vision_followup'
+            }
+        ]
+    };
+}
+
 async function fetchWithTimeout(url, options, timeoutMs = 12000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -300,7 +446,8 @@ async function fetchWithTimeout(url, options, timeoutMs = 12000) {
     }
 }
 
-async function callOpenRouter(config, systemPrompt, userMessage, maxTokens, title) {
+async function callOpenRouter(config, systemPrompt, userMessage, maxTokens, title, temperature) {
+    const numericTemperature = Number(temperature);
     const resp = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -312,6 +459,7 @@ async function callOpenRouter(config, systemPrompt, userMessage, maxTokens, titl
         body: JSON.stringify({
             model: config.model,
             max_tokens: maxTokens,
+            ...(Number.isFinite(numericTemperature) ? { temperature: numericTemperature } : {}),
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userMessage }
@@ -333,71 +481,12 @@ async function callOpenRouter(config, systemPrompt, userMessage, maxTokens, titl
     };
 }
 
-async function callAnthropic(config, systemPrompt, userMessage, maxTokens) {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const anthropic = new Anthropic({ apiKey: getProviderKey('anthropic') });
-    const response = await anthropic.messages.create({
-        model: config.model,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-    });
-    return {
-        text: response.content?.[0]?.text?.trim() || '',
-        usage: {
-            prompt_tokens: response.usage?.input_tokens || 0,
-            completion_tokens: response.usage?.output_tokens || 0
-        }
-    };
-}
-
-function extractOpenAIResponseText(payload) {
-    if (payload && typeof payload.output_text === 'string' && payload.output_text.trim()) {
-        return payload.output_text.trim();
-    }
-
-    const chunks = [];
-    for (const item of payload?.output || []) {
-        for (const content of item?.content || []) {
-            if (typeof content?.text === 'string') chunks.push(content.text);
-            if (typeof content?.output_text === 'string') chunks.push(content.output_text);
-        }
-    }
-    return chunks.join('\n').trim();
-}
-
-async function callOpenAI(config, systemPrompt, userMessage, maxTokens) {
-    const resp = await fetchWithTimeout('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-            'Authorization': 'Bearer ' + getProviderKey('openai'),
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: config.model,
-            instructions: systemPrompt || '',
-            input: userMessage || '',
-            store: false,
-            max_output_tokens: maxTokens
-        })
-    });
-
-    if (!resp.ok) {
-        const body = await resp.text();
-        const err = new Error('OpenAI API error');
-        err.status = resp.status;
-        err.body = body.slice(0, 500);
-        throw err;
-    }
-    const data = await resp.json();
-    return {
-        text: extractOpenAIResponseText(data),
-        usage: data.usage || {}
-    };
-}
-
 async function callUnifiedChatCompletion(options = {}) {
     const config = await getUnifiedAIConfig({ scope: options.scope });
+    if (options.model) {
+        const overrideModel = normalizeModelForProvider(options.model, config.provider);
+        if (overrideModel) config.model = overrideModel;
+    }
     if (!config.enabled) {
         return { ok: false, reason: 'disabled', ...publicAIConfig(config) };
     }
@@ -407,14 +496,7 @@ async function callUnifiedChatCompletion(options = {}) {
 
     const maxTokens = options.maxTokens || 800;
     try {
-        let result;
-        if (config.provider === 'anthropic') {
-            result = await callAnthropic(config, options.systemPrompt, options.userMessage, maxTokens);
-        } else if (config.provider === 'openai') {
-            result = await callOpenAI(config, options.systemPrompt, options.userMessage, maxTokens);
-        } else {
-            result = await callOpenRouter(config, options.systemPrompt, options.userMessage, maxTokens, options.title);
-        }
+        const result = await callOpenRouter(config, options.systemPrompt, options.userMessage, maxTokens, options.title, options.temperature);
         return {
             ok: true,
             text: result.text,
@@ -466,10 +548,11 @@ async function testUnifiedAIConfig(options = {}) {
 }
 
 async function getChatSettingsBundle() {
-    const [chatConfig, guardianConfig, integrations] = await Promise.all([
+    const [chatConfig, guardianConfig, integrations, providerDiagnostics] = await Promise.all([
         getUnifiedAIConfig({ scope: 'chat_ai' }),
         getUnifiedAIConfig({ scope: 'guardian_ai' }),
-        getStoredIntegrationsSettings()
+        getStoredIntegrationsSettings(),
+        getAIProviderDiagnostics()
     ]);
     const guardianStored = await getStoredGuardianSettings();
     return {
@@ -481,7 +564,8 @@ async function getChatSettingsBundle() {
         integrations,
         keySource: KEY_SOURCE,
         modelOptions: getAIModelOptions(),
-        defaultModels: DEFAULT_MODELS
+        defaultModels: DEFAULT_MODELS,
+        providerDiagnostics
     };
 }
 
@@ -496,6 +580,7 @@ module.exports = {
     hasAnySharedAIKey,
     getUnifiedAIConfig,
     publicAIConfig,
+    getAIProviderDiagnostics,
     callUnifiedChatCompletion,
     testUnifiedAIConfig,
     getChatSettingsBundle,

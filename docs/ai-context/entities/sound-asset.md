@@ -6,7 +6,7 @@ A Sound Asset is an audio/project/announcement item used by the Sound module.
 
 ## Fields / Properties
 
-Source evidence: `routes/sound-library.js`, `services/audioStorage.js`.
+Source evidence: primary Sound API `routes/music.js`, legacy compatibility CRUD `routes/sound-library.js`, and `services/audioStorage.js`.
 
 - id
 - title/name
@@ -26,3 +26,4 @@ Source evidence: `routes/sound-library.js`, `services/audioStorage.js`.
 ## Assistant Interpretation
 
 Use active Sound hash/context to know whether the user means project, library asset, or announcement.
+For new behavior, prefer `/api/music` because it owns uploads, generated TTS/music, storage metadata, announcements, projects, and music delivery.

@@ -46,6 +46,8 @@ npm run dev
 
 The server uses `PORT` or defaults to `3000`. It expects PostgreSQL through `DATABASE_URL` or standard `PGHOST`/`PGUSER`/`PGDATABASE` variables. In production, `JWT_SECRET` is required by startup validation. Telegram, report-bot, Supabase, and AI integrations are optional unless you are working on those areas.
 
+AI provider ownership is documented in `docs/AI_PROVIDER_CONTRACT.md`. In short: OpenRouter owns shared text/token rails and prompt refinement, Kie owns media generation for program images plus Sound TTS/Suno music, and the CRM assistant rail still has a separate direct OpenAI boundary for replies, transcription, and speech. `/chat-settings` exposes `/api/settings/ai/providers` diagnostics so operators can see the active provider map without exposing secrets.
+
 Dashboard assistant AI/voice runs only through backend secrets:
 
 ```bash

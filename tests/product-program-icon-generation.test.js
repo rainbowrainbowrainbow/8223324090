@@ -28,7 +28,7 @@ test('program icon generation schema persists icon state and prompt/debug trail'
     assert.match(migration, /program_icon_generation/);
 });
 
-test('program icon service keeps prompt fallback, OpenRouter image provider, and no batch path', () => {
+test('program icon service keeps prompt fallback, Kie media default, OpenRouter prompt rail, and no batch path', () => {
     const service = read('services/programIconGeneration.js');
     const storage = read('services/imageStorage.js');
     const impl = require('../services/programIconGeneration');
@@ -36,6 +36,8 @@ test('program icon service keeps prompt fallback, OpenRouter image provider, and
     assert.ok(['kie.ai', 'openrouter'].includes(impl.PROGRAM_ICON_PROVIDER));
     assert.ok(impl.PROGRAM_ICON_IMAGE_MODEL);
     assert.match(service, /openai\/gpt-5-image-mini/);
+    assert.match(service, /Use Kie\.ai for image media/);
+    assert.match(service, /Primary async nano-banana-2 image job provider/);
     assert.match(service, /OPENROUTER_API_KEY not configured/);
     assert.match(service, /modalities:\s*\['image', 'text'\]/);
     assert.match(service, /parseOpenRouterImageUrl/);
@@ -68,6 +70,17 @@ test('program icon service keeps prompt fallback, OpenRouter image provider, and
     const runtime = impl.resolveProgramIconRuntime({ imageProvider: 'openrouter', imageModel: '', promptModel: 'openai/gpt-5.4-nano' });
     assert.equal(runtime.provider, 'openrouter');
     assert.equal(runtime.imageModel, 'openai/gpt-5-image-mini');
+
+    const originalKieKey = process.env.KIE_API_KEY;
+    process.env.KIE_API_KEY = 'unit-kie-key';
+    try {
+        const autoRuntime = impl.resolveProgramIconRuntime({ imageProvider: 'auto', imageModel: '', promptModel: 'openai/gpt-5.4-nano' });
+        assert.equal(autoRuntime.provider, 'kie.ai');
+        assert.equal(autoRuntime.imageModel, 'nano-banana-2');
+    } finally {
+        if (originalKieKey === undefined) delete process.env.KIE_API_KEY;
+        else process.env.KIE_API_KEY = originalKieKey;
+    }
 
     const { errors } = impl.sanitizeProgramIconSettings({ systemInstructions: '', userTemplate: '', styleRules: '', fallbackTemplate: '' });
     assert.ok(errors.length >= 3);

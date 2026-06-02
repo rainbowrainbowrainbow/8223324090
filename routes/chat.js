@@ -16,6 +16,7 @@ const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const dashboardAssistant = require('../services/dashboardAssistant');
+const { callUnifiedChatCompletion } = require('../services/ai-config');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 
@@ -1621,50 +1622,19 @@ router.post('/translate', async (req, res) => {
         if (!text) return res.status(400).json({ error: 'Missing text' });
 
         const lang = targetLang || 'en';
-        const apiKey = process.env.ANTHROPIC_API_KEY;
+        const result = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Chat Translate',
+            systemPrompt: `Translate the user text to ${lang === 'uk' ? 'Ukrainian' : 'English'}. Return only the translation, without explanations.`,
+            userMessage: text,
+            maxTokens: 500
+        });
 
-        if (!apiKey) {
-            return res.json({ translated: text, note: 'API ключ не налаштовано' });
+        if (!result.ok || !result.text) {
+            return res.json({ translated: text, note: result.reason || 'AI provider unavailable' });
         }
 
-        const https = require('https');
-        const body = JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 500,
-            messages: [{
-                role: 'user',
-                content: `Translate the following text to ${lang === 'uk' ? 'Ukrainian' : 'English'}. Return ONLY the translation, no explanations:\n\n${text}`
-            }]
-        });
-
-        const translated = await new Promise((resolve, reject) => {
-            const options = {
-                hostname: 'api.anthropic.com',
-                path: '/v1/messages',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01'
-                },
-                timeout: 10000
-            };
-            const req2 = https.request(options, (resp) => {
-                let data = '';
-                resp.on('data', chunk => data += chunk);
-                resp.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(data);
-                        resolve(parsed.content?.[0]?.text || text);
-                    } catch (e) { resolve(text); }
-                });
-            });
-            req2.on('error', () => resolve(text));
-            req2.write(body);
-            req2.end();
-        });
-
-        res.json({ translated });
+        res.json({ translated: result.text, provider: result.provider, model: result.model });
     } catch (err) {
         log.error('Error translating', err);
         res.json({ translated: req.body.text });

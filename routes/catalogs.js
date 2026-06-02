@@ -9,6 +9,7 @@ const router  = require('express').Router();
 const https   = require('https');
 const { pool }  = require('../db');
 const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
+const { callUnifiedChatCompletion } = require('../services/ai-config');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
@@ -624,17 +625,16 @@ router.post('/analyze-trends', requireRole('admin', 'creator', 'director', 'art_
 Категорія для дитячого парку розваг: ${catName}.
 ТІЛЬКИ JSON без пояснень:
 [{"name":"Назва","reason":"чому популярно","suggestedPrice":600,"imagePrompt":"short english prompt"}]`;
-        const orKey = process.env.OPENROUTER_KEY;
-        if (!orKey) return res.status(503).json({ error: 'OpenRouter API key not configured' });
-        const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${orKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'google/gemini-flash-1.5',
-                                   messages: [{ role: 'user', content: prompt }],
-                                   max_tokens: 600 })
+        const aiResult = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Catalog Trend Analysis',
+            model: process.env.CATALOG_TREND_MODEL || 'google/gemini-flash-1.5',
+            systemPrompt: 'Return only valid compact JSON for catalog trend proposals. Do not wrap the response in markdown.',
+            userMessage: prompt,
+            maxTokens: 600
         });
-        const aiData = await aiRes.json();
-        const content = aiData.choices?.[0]?.message?.content || '[]';
+        if (!aiResult.ok) return res.status(503).json({ error: 'OpenRouter API key not configured' });
+        const content = aiResult.text || '[]';
         let trends = [];
         try { trends = JSON.parse(content.replace(/```json|```/g, '').trim()); } catch { trends = []; }
         if (!Array.isArray(trends)) trends = [];

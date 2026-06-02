@@ -9,7 +9,7 @@
  * - Mood system: emoji changes periodically based on channel health
  * - Memory: stores context for AI analysis
  *
- * Uses Claude Haiku for conflict detection + daily reports.
+ * Uses the shared OpenRouter rail for conflict detection + daily reports.
  * Sensitive data masking works without AI (regex-based).
  */
 
@@ -121,7 +121,7 @@ if (AI_ENABLED) {
 }
 
 /**
- * Unified LLM call — tries OpenRouter first, Anthropic fallback.
+ * Unified LLM call through the shared OpenRouter rail.
  * Returns text response or null on error.
  */
 async function callLLM(systemPrompt, userMessage, maxTokens) {

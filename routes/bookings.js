@@ -345,11 +345,41 @@ function attachTimelineIdentityToBooking(booking, identity = {}) {
     extra.timelineIdentity = {
         businessContext: identity.businessContext || booking.businessContext || DEFAULT_TIMELINE_CONTEXT,
         resourceId: identity.resourceId || identity.lineId || booking.lineId || null,
+        lineId: identity.lineId || identity.resourceId || booking.lineId || null,
         resourceType: identity.resourceType || identity.type || null,
         resourceName: identity.resourceName || identity.name || booking.lineName || booking.room || null,
+        lineName: identity.lineName || identity.resourceName || identity.name || booking.lineName || null,
         source: identity.source || null
     };
     return extra.timelineIdentity;
+}
+
+function timelineResourceTypeForBooking(businessContext, booking = {}) {
+    return booking.resourceType
+        || booking.resource_type
+        || (businessContext === DEFAULT_TIMELINE_CONTEXT ? 'animator' : 'specialist');
+}
+
+function attachLinkedBookingTimelineIdentity(booking, businessContext, identity = {}) {
+    if (!booking || !booking.lineId) return null;
+    return attachTimelineIdentityToBooking(booking, {
+        businessContext,
+        resourceId: identity.resourceId || identity.lineId || booking.resourceId || booking.lineId,
+        lineId: identity.lineId || booking.lineId,
+        resourceType: identity.resourceType || identity.type || timelineResourceTypeForBooking(businessContext, booking),
+        resourceName: identity.resourceName || identity.name || booking.lineName || booking.secondAnimator || booking.room || null,
+        source: identity.source || booking.resourceSource || 'linked_booking_line'
+    });
+}
+
+function bookingExtraDataSqlValue(booking = {}) {
+    const extra = booking.extraData;
+    if (!extra) return null;
+    if (typeof extra === 'string') return extra.trim() ? extra : null;
+    if (typeof extra === 'object' && !Array.isArray(extra) && Object.keys(extra).length > 0) {
+        return JSON.stringify(extra);
+    }
+    return null;
 }
 
 async function ensureBookingTimelineLine(client, booking, businessContext, { name = null } = {}) {
@@ -2075,6 +2105,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 return res.status(400).json(bookingLineUnavailablePayload());
             }
             if (lb.secondAnimator) lb.secondAnimator = ensuredLinkedLine.name || lb.secondAnimator;
+            attachLinkedBookingTimelineIdentity(lb, businessContext, ensuredLinkedLine);
         }
 
         for (const lb of linked) {
@@ -2087,13 +2118,18 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             if (ensuredLinkedLine) {
                 lb.lineId = ensuredLinkedLine.lineId;
                 if (lb.secondAnimator) lb.secondAnimator = ensuredLinkedLine.name;
+                attachLinkedBookingTimelineIdentity(lb, businessContext, {
+                    ...ensuredLinkedLine,
+                    source: 'staff_animator'
+                });
             }
         }
 
         if (Number(main.hosts || 0) > 1 && main.secondAnimator) {
             const hasSecondLinked = linked.some(lb => lb.secondAnimator === main.secondAnimator
                 || (
-                    lb.programId === main.programId
+                    lb.secondAnimator
+                    && lb.programId === main.programId
                     && String(lb.date || main.date) === String(main.date)
                     && String(lb.time || main.time) === String(main.time)
                     && Number(lb.price || 0) === 0
@@ -2113,6 +2149,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     date: main.date,
                     time: main.time,
                     lineId: ensuredSecondLine.lineId,
+                    lineName: ensuredSecondLine.name,
                     programId: main.programId,
                     programCode: main.programCode,
                     label: main.label,
@@ -2135,7 +2172,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     status: main.status || 'confirmed',
                     kidsCount: main.kidsCount || null,
                     groupName: main.groupName || null,
-                    extraData: null
+                    extraData: {}
                 });
             }
         }
@@ -2229,7 +2266,11 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 lb.price = 0;
-                lb.extraData = null;
+                attachLinkedBookingTimelineIdentity(lb, businessContext, {
+                    lineId: lb.lineId,
+                    name: lb.lineName || lb.secondAnimator || null,
+                    source: 'linked_booking_line'
+                });
                 const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0, null, businessContext);
                 if (lConflict.overlap) {
                     await client.query('ROLLBACK');
@@ -2244,7 +2285,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
                      RETURNING *`,
-                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null, lb.extraData ? JSON.stringify(lb.extraData) : (main.extraData ? JSON.stringify(main.extraData) : null)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }

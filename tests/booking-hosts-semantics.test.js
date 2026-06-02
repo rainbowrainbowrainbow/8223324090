@@ -78,6 +78,9 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingsRoute, /booking\.timelineProjection = await bookingDayProjectionStatus/);
     assert.match(bookingsRoute, /booking_line_not_visible/);
     assert.match(bookingsRoute, /ensureParkAnimatorLine\(client, \{\s*businessContext,\s*date: lb\.date \|\| main\.date/s);
+    assert.match(bookingsRoute, /function attachLinkedBookingTimelineIdentity/);
+    assert.match(bookingsRoute, /bookingExtraDataSqlValue\(lb\)/);
+    assert.doesNotMatch(bookingsRoute, /lb\.extraData\s*\?\s*JSON\.stringify\(lb\.extraData\)\s*:\s*\(main\.extraData/);
     assert.match(bookingsRoute, /Number\(main\.hosts \|\| 0\) > 1 && main\.secondAnimator/);
     assert.match(bookingsRoute, /Number\(b\.hosts \|\| 0\) > 1 && newSecond && linkedResult\.rows\.length === 0/);
 });
@@ -113,9 +116,14 @@ test('second animator repair audit is dry-run by default and inserts only missin
     assert.match(script, /COALESCE\(b\.hosts, 0\) > 1/);
     assert.match(script, /NULLIF\(BTRIM\(b\.second_animator\), ''\) IS NOT NULL/);
     assert.match(script, /async function existingLinkedSecondAnimator/);
+    assert.match(script, /linkedTimelineIdentityMismatch/);
+    assert.match(script, /repairLinkedTimelineIdentity/);
+    assert.match(script, /timelineIdentity/);
+    assert.match(script, /extra_data/);
     assert.match(script, /linked_to = \$1/);
     assert.match(script, /generateBookingNumber\(client\)/);
     assert.match(script, /repair_second_animator_link/);
+    assert.match(script, /repair_second_animator_identity/);
     assert.match(script, /if \(!FIX\) continue/);
     assert.match(script, /Database connection unavailable/);
 });

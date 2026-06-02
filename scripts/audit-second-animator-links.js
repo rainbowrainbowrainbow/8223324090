@@ -62,6 +62,40 @@ function staffAnimatorWhere(alias = 's') {
     )`;
 }
 
+function parseExtraData(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object' && !Array.isArray(raw)) return { ...raw };
+    if (typeof raw !== 'string' || !raw.trim()) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function linkedTimelineIdentityMismatch(existing, line) {
+    const extra = parseExtraData(existing.extra_data);
+    const identity = extra.timelineIdentity || extra.timeline_identity || {};
+    const resourceId = identity.resourceId || identity.resource_id || null;
+    if (!resourceId) return false;
+    return String(resourceId) !== String(existing.line_id || line.lineId || '');
+}
+
+function linkedTimelineIdentityExtra(existing, booking, line, source) {
+    const extra = parseExtraData(existing.extra_data);
+    extra.timelineIdentity = {
+        ...(extra.timelineIdentity || {}),
+        businessContext: CONTEXT,
+        resourceId: String(existing.line_id || line.lineId),
+        lineId: String(existing.line_id || line.lineId),
+        resourceType: 'animator',
+        resourceName: line.name || booking.second_animator || existing.second_animator || null,
+        source
+    };
+    return extra;
+}
+
 async function resolveSecondAnimatorLine(client, booking, { createLine = false } = {}) {
     const date = String(booking.date || '').trim();
     const name = String(booking.second_animator || '').trim();
@@ -159,7 +193,7 @@ async function loadCandidateBookings(client) {
 
 async function existingLinkedSecondAnimator(client, booking, line) {
     const result = await client.query(
-        `SELECT id, line_id, second_animator
+        `SELECT id, line_id, second_animator, extra_data
            FROM bookings
           WHERE linked_to = $1
             AND COALESCE(business_context, $2) = $2
@@ -219,6 +253,14 @@ async function insertLinkedSecondAnimator(client, booking, line) {
             booking.kids_count || null,
             booking.group_name || null,
             JSON.stringify({
+                timelineIdentity: {
+                    businessContext: CONTEXT,
+                    resourceId: line.lineId,
+                    lineId: line.lineId,
+                    resourceType: 'animator',
+                    resourceName: line.name,
+                    source: 'second_animator_repair'
+                },
                 secondAnimatorRepair: {
                     source: 'scripts/audit-second-animator-links',
                     repairedAt: new Date().toISOString(),
@@ -234,10 +276,31 @@ async function insertLinkedSecondAnimator(client, booking, line) {
     return linkedId;
 }
 
+async function repairLinkedTimelineIdentity(client, booking, existing, line) {
+    const extra = linkedTimelineIdentityExtra(existing, booking, line, 'second_animator_identity_repair');
+    await client.query(
+        `UPDATE bookings
+            SET extra_data = $1
+          WHERE id = $2
+            AND COALESCE(business_context, $3) = $3`,
+        [JSON.stringify(extra), existing.id, CONTEXT]
+    );
+    await client.query(
+        'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+        ['repair_second_animator_identity', 'system', JSON.stringify({
+            mainBookingId: booking.id,
+            linkedBookingId: existing.id,
+            secondAnimator: line.name,
+            lineId: existing.line_id || line.lineId
+        })]
+    );
+}
+
 async function main() {
     const client = await pool.connect();
     const missing = [];
     const unresolved = [];
+    const identityMismatches = [];
     const repaired = [];
     const alreadyLinked = [];
 
@@ -251,7 +314,22 @@ async function main() {
             }
             const existing = await existingLinkedSecondAnimator(client, booking, line);
             if (existing) {
-                alreadyLinked.push({ booking, existing });
+                if (!linkedTimelineIdentityMismatch(existing, line)) {
+                    alreadyLinked.push({ booking, existing });
+                    continue;
+                }
+                identityMismatches.push({ booking, existing, line });
+                if (!FIX) continue;
+
+                await client.query('BEGIN');
+                try {
+                    await repairLinkedTimelineIdentity(client, booking, existing, line);
+                    await client.query('COMMIT');
+                    repaired.push({ booking, line, linkedId: existing.id, identityOnly: true });
+                } catch (err) {
+                    await client.query('ROLLBACK').catch(() => {});
+                    throw err;
+                }
                 continue;
             }
             missing.push({ booking, line });
@@ -263,6 +341,13 @@ async function main() {
                 line = await resolveSecondAnimatorLine(client, booking, { createLine: true });
                 const duplicateCheck = await existingLinkedSecondAnimator(client, booking, line);
                 if (duplicateCheck) {
+                    if (linkedTimelineIdentityMismatch(duplicateCheck, line)) {
+                        await repairLinkedTimelineIdentity(client, booking, duplicateCheck, line);
+                        await client.query('COMMIT');
+                        identityMismatches.push({ booking, existing: duplicateCheck, line });
+                        repaired.push({ booking, line, linkedId: duplicateCheck.id, identityOnly: true });
+                        continue;
+                    }
                     await client.query('ROLLBACK');
                     alreadyLinked.push({ booking, existing: duplicateCheck });
                     continue;
@@ -281,8 +366,8 @@ async function main() {
     }
 
     console.log(`Second animator link audit (${FIX ? 'fix' : 'dry-run'})`);
-    console.log(`context=${CONTEXT} from=${FROM || '*'} to=${TO || '*'} candidates=${missing.length + alreadyLinked.length + unresolved.length}`);
-    console.log(`ok=${alreadyLinked.length} missing=${missing.length} unresolved=${unresolved.length} repaired=${repaired.length}`);
+    console.log(`context=${CONTEXT} from=${FROM || '*'} to=${TO || '*'} candidates=${missing.length + alreadyLinked.length + unresolved.length + identityMismatches.length}`);
+    console.log(`ok=${alreadyLinked.length} missing=${missing.length} identity_mismatch=${identityMismatches.length} unresolved=${unresolved.length} repaired=${repaired.length}`);
 
     const sample = missing.slice(0, 50);
     for (const item of sample) {
@@ -292,12 +377,16 @@ async function main() {
     for (const booking of unresolved.slice(0, 50)) {
         console.log(`UNRESOLVED ${booking.id} ${booking.date} ${booking.time} second="${booking.second_animator}"`);
     }
+    for (const item of identityMismatches.slice(0, 50)) {
+        console.log(`MISMATCH ${item.booking.id} -> ${item.existing.id} ${item.booking.date} ${item.booking.time} second="${item.booking.second_animator}" line=${item.existing.line_id}`);
+    }
     for (const item of repaired) {
-        console.log(`REPAIRED ${item.booking.id} -> ${item.linkedId} second="${item.line.name}" line=${item.line.lineId}`);
+        const mode = item.identityOnly ? 'identity' : 'linked';
+        console.log(`REPAIRED ${mode} ${item.booking.id} -> ${item.linkedId} second="${item.line.name}" line=${item.line.lineId}`);
     }
 
     if ((STRICT || FIX) && unresolved.length > 0) process.exitCode = 1;
-    if (STRICT && missing.length > repaired.length) process.exitCode = 1;
+    if (STRICT && (missing.length + identityMismatches.length) > repaired.length) process.exitCode = 1;
 }
 
 function friendlyDbError(err) {

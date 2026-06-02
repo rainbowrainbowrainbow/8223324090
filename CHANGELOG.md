@@ -4,6 +4,17 @@
 
 ---
 
+## v0.69.30 - Фікс другого аніматора таймлайну
+
+### Timeline / Другий аніматор / 02.06.2026 [codex]
+- **Другий аніматор у `/bookings/full` більше не губиться після створення** - linked-записи більше не наслідують `extra_data.timelineIdentity` основного бронювання, тому рендер таймлайну прив'язує їх до власного `line_id`, а не до лінії першого аніматора.
+- **Сервер нормалізує timeline identity для кожного linked-рядка** - перед INSERT linked-блок отримує власні `resourceId`, `lineId`, `resourceName` і `source`, що закриває кейс, коли запис фізично є в БД, але в UI ховається під основним бронюванням.
+- **Страхування другого аніматора стало точнішим** - технічна linked-позиція з тим самим часом і нульовою ціною більше не зараховується як другий ведучий без `secondAnimator`.
+- **Repair audit посилено для старих записів** - `npm run audit:second-animator-links -- --fix` тепер не тільки створює відсутній linked-запис, а й переписує неправильний `extra_data.timelineIdentity` у вже наявного linked-запису другого аніматора.
+- **Regression guard додано** - `tests/booking-create-durability.test.js` відтворює створення паперового шоу через `/api/bookings/full` і перевіряє, що linked-запис другого аніматора має власний `lineId`, а `tests/booking-hosts-semantics.test.js` блокує повернення fallback на `main.extraData`.
+
+---
+
 ## v0.69.29 - Стабілізація запуску таймлайну
 
 ### Timeline / Booking boot / 02.06.2026 [codex]

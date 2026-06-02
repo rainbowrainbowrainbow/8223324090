@@ -83,10 +83,17 @@ function bookingRowFromInsert(params) {
 function makeDb({ commitCommand = 'COMMIT' } = {}) {
     const state = {
         rows: [],
+        lines: [
+            { business_context: 'event_genix', date: '2099-02-10', line_id: 'line-1', name: 'Line One', color: '#123456' },
+            { business_context: 'event_genix', date: '2099-02-13', line_id: 'line-main', name: 'Anna', color: '#123456' },
+            { business_context: 'event_genix', date: '2099-02-13', line_id: 'line-second', name: 'Second Animator', color: '#3B82F6' },
+            { business_context: 'dar', date: '2099-02-12', line_id: 'specialist-main', name: 'Specialist', color: '#0EA586' }
+        ],
         tx: [],
         histories: [],
         customers: [],
         nextCustomerId: 701,
+        nextBookingSeq: 1,
         leadAttempts: 0,
         financeAttempts: 0,
         released: 0
@@ -105,7 +112,17 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             return { rows: [], rowCount: 0, command: commitCommand };
         }
         if (/SELECT line_id, name, color FROM lines_by_date/i.test(sql)) {
-            return { rows: [{ line_id: params[2], name: 'Line One', color: '#123456' }], rowCount: 1 };
+            const [date, businessContext, lineId, name] = params;
+            const normalizedName = String(name || '').trim().toLowerCase();
+            const rows = state.lines.filter(line =>
+                line.date === date &&
+                (line.business_context || 'event_genix') === businessContext &&
+                (
+                    (lineId && String(line.line_id) === String(lineId)) ||
+                    (normalizedName && String(line.name || '').trim().toLowerCase() === normalizedName)
+                )
+            );
+            return { rows: rows.map(row => ({ line_id: row.line_id, name: row.name, color: row.color })), rowCount: rows.length };
         }
         if (/SELECT name FROM lines_by_date WHERE line_id = \$1 AND date = \$2/i.test(sql)) {
             return { rows: [{ name: 'Line One' }], rowCount: 1 };
@@ -201,7 +218,10 @@ async function listen(app) {
 async function withApp(dbOptions, fn) {
     clearModules();
     const { pool, state } = makeDb(dbOptions);
-    installMock('../db', { pool, generateBookingNumber: async () => 'BK-2099-0001' });
+    installMock('../db', {
+        pool,
+        generateBookingNumber: async () => `BK-2099-${String(state.nextBookingSeq++).padStart(4, '0')}`
+    });
     installMock('../middleware/auth', {
         authenticateToken: (req, _res, next) => {
             req.user = { id: 1, username: 'creator-user', role: 'creator' };
@@ -309,6 +329,64 @@ async function createBooking(baseUrl, overrides = {}) {
     return { status: res.status, data };
 }
 
+async function createFullBooking(baseUrl, overrides = {}) {
+    const main = {
+        businessContext: 'event_genix',
+        date: '2099-02-13',
+        time: '13:00',
+        lineId: 'line-main',
+        lineName: 'Anna',
+        room: 'Room A',
+        programId: 'paper-show',
+        programCode: 'PAPER',
+        label: 'Paper(30)',
+        programName: 'Paper Show',
+        category: 'show',
+        duration: 30,
+        price: 1600,
+        hosts: 2,
+        secondAnimator: 'Second Animator',
+        status: 'confirmed',
+        createdBy: 'creator-user',
+        extraData: {
+            timelineIdentity: {
+                businessContext: 'event_genix',
+                resourceId: 'line-main',
+                lineId: 'line-main',
+                resourceType: 'animator',
+                resourceName: 'Anna',
+                source: 'booking_form'
+            }
+        },
+        ...overrides.main
+    };
+    const linked = overrides.linked ?? [{
+        date: main.date,
+        time: main.time,
+        lineId: 'line-second',
+        lineName: 'Second Animator',
+        programId: main.programId,
+        programCode: main.programCode,
+        label: main.label,
+        programName: main.programName,
+        category: main.category,
+        duration: main.duration,
+        price: 0,
+        hosts: main.hosts,
+        secondAnimator: 'Second Animator',
+        room: main.room,
+        status: main.status,
+        createdBy: main.createdBy
+    }];
+    const res = await fetch(`${baseUrl}/api/bookings/full`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ main, linked })
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, data };
+}
+
 test('POST /api/bookings keeps booking durable when optional finance write fails', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         const res = await createBooking(baseUrl);
@@ -324,6 +402,32 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings/full keeps second animator linked booking on its own timeline line', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl);
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.serverVerified, true);
+        assert.equal(res.data.mainBooking.lineId, 'line-main');
+        assert.equal(res.data.linkedBookings.length, 1);
+        assert.equal(res.data.linkedBookings[0].lineId, 'line-second');
+
+        const linkedRow = state.rows.find(row => row.linked_to === res.data.mainBooking.id);
+        assert.ok(linkedRow, 'second animator linked row must be inserted');
+        assert.equal(linkedRow.line_id, 'line-second');
+        assert.notEqual(linkedRow.line_id, res.data.mainBooking.lineId);
+        assert.ok(linkedRow.extra_data, 'linked row keeps its own timeline identity metadata');
+
+        const linkedExtra = typeof linkedRow.extra_data === 'string'
+            ? JSON.parse(linkedRow.extra_data)
+            : linkedRow.extra_data;
+        assert.equal(linkedExtra.timelineIdentity.resourceId, 'line-second');
+        assert.equal(linkedExtra.timelineIdentity.lineId, 'line-second');
+        assert.notEqual(linkedExtra.timelineIdentity.resourceId, 'line-main');
     });
 });
 

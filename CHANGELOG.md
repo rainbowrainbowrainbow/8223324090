@@ -4,6 +4,29 @@
 
 ---
 
+## v0.69.35 - Фікс сайдбару і задач
+
+### Shell / Sidebar / Tasks / 02.06.2026 [codex]
+- **Сайдбар став читабельним у compact shell** - USD, час, день і профільні сигнали більше не стискаються в обрізані chips, а identity-блок отримав stacked layout без втрати бізнес-контексту.
+- **Бізнес-перемикач лишається явним і tappable** - selector/chip займає повну ширину свого блоку, показує поточний бізнес читабельно й не ламає наявну shared sidebar-архітектуру.
+- **Лічильник задач показує truthful open workload** - sidebar читає всі відкриті задачі користувача в поточному business scope через `/api/tasks/my-cabinet`, а не тільки задачі сьогодні/без дати.
+- **Fallback task source вирівняно з тим самим контрактом** - резервний `/api/tasks` шлях рахує відкриті задачі та прострочені з однієї open-множини без прихованого today-only фільтра.
+- **Regression guardrails оновлено** - UI smoke фіксує open workload contract для sidebar widget, а release references синхронізовано на `v0.69.35`.
+
+---
+
+## v0.69.34 - UX редизайн задач
+
+### UX / Tasks / My Day / 02.06.2026 [codex]
+- **"Мій день" став компактним command center** - головна робоча зона дня з `Сьогодні`, `Прострочено` і `Чекаю` піднята вище, а KPI, історія, сигнали й звук більше не домінують над задачами.
+- **Перенесення задач отримало безпечний fallback без drag-and-drop** - task cards мають меню `Перенести в...`, mobile відкриває action sheet, а desktop показує popover і DropDock під час перетягування.
+- **"Прострочено" лишається робочим блоком без навмисного backdating** - секція не є drop-зоною для прострочення, але дає швидку дію `На сьогодні` та перенесення у підтримані стани.
+- **"Задачі" ущільнено як operational work queue** - фільтри стали компактнішими, task rows читаються щільніше, а другорядні дії переїхали в overflow-меню з окремою destructive дією видалення.
+- **Shared TaskUI layer додано для обох екранів** - українські labels, popover/bottom sheet, DropDock, focus/scroll-lock helpers і спільні compact CSS primitives живуть у shared шарі без зміни backend API.
+- **Створення задач уніфіковано навколо `TaskCreate`** - expanded форма згрупована в `Основне`, `Планування`, `Видимість і правила`, `Підзадачі / шаблони`, з context-specific defaults для "Мій день" і "Задачі".
+
+---
+
 ## v0.69.33 - Харденінг бронювань і timeline
 
 ### Backend / Bookings / Timeline / History / 02.06.2026 [codex]

@@ -102,7 +102,7 @@ const TASK_PRIORITY_OPTIONS = [
 const TASK_SOUND_THEME_OPTIONS = [
     { value: 'subtle', label: 'Мʼякий' },
     { value: 'classic', label: 'Класичний' },
-    { value: 'rock', label: 'Rock' }
+    { value: 'rock', label: 'Рок' }
 ];
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 const TASK_SCHEDULE_SLOTS = [
@@ -801,6 +801,22 @@ function openTaskDeepLink() {
     if (taskId) openTaskDetail(taskId);
 }
 
+function setupTaskFilterToggle() {
+    const shell = document.getElementById('tasksFilterShell');
+    const toggle = document.getElementById('tasksFilterToggle');
+    if (!shell || !toggle || toggle.dataset.taskFilterToggleBound === 'true') return;
+    toggle.dataset.taskFilterToggleBound = 'true';
+    const sync = expanded => {
+        shell.classList.toggle('is-secondary-collapsed', !expanded);
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggle.textContent = expanded ? 'Згорнути фільтри' : 'Фільтри';
+    };
+    sync(!shell.classList.contains('is-secondary-collapsed'));
+    toggle.addEventListener('click', () => {
+        sync(shell.classList.contains('is-secondary-collapsed'));
+    });
+}
+
 function bootStep(label, extra) {
     if (extra !== undefined) console.info(`[tasks:boot] ${label}`, extra);
     else console.info(`[tasks:boot] ${label}`);
@@ -876,6 +892,7 @@ async function initPage() {
         setupTaskGovernanceMenu();
         setupTaskSoundControls();
         setupTaskActionDelegation();
+        setupTaskFilterToggle();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -2111,7 +2128,7 @@ function renderDoneTodayView(container) {
     }
     const html = `
         <div class="done-today-board-note">
-            <b>${tasks.length}</b> виконано сьогодні · newest first · історія лишається в системі
+            <b>${tasks.length}</b> виконано сьогодні · новіші першими · історія лишається в системі
         </div>
         ${tasks.map(t => renderTaskCard(t)).join('')}
     `;
@@ -2338,6 +2355,120 @@ function renderTaskDeadlineBadge(task = {}) {
     return `<span class="task-card-deadline ${dlClass}">${dlDate} ${dlTime}</span>`;
 }
 
+function renderTaskRowMoreAction(taskId = 0) {
+    const id = Number(taskId || 0);
+    if (!id) return '';
+    return `<button type="button" class="task-row-more" data-task-action="more" data-task-id="${id}" aria-haspopup="dialog" aria-label="Більше дій">...</button>`;
+}
+
+function taskHasFixedSchedule(task = {}) {
+    return Boolean(taskScheduleStart(task) || task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt);
+}
+
+async function apiPutTaskPartial(taskId, patch = {}) {
+    const id = Number(taskId || 0);
+    if (!id) return { success: false, error: 'Invalid task id' };
+    const task = allTasks.find(item => Number(item.id) === id) || {};
+    const body = {
+        title: task.title || 'Без назви',
+        ...(task.version !== undefined ? { version: task.version } : {}),
+        ...patch
+    };
+    const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+    const response = await fetchWithAuth(`/api/tasks/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+    }).catch(() => null);
+    if (!response) return { success: false, error: 'Task update failed' };
+    if (handleAuthError(response)) return null;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: payload.error || payload.message || `Task update failed (${response.status})` };
+    return payload;
+}
+
+function taskRowMoveTargets(task = {}) {
+    const taskId = Number(task.id || 0);
+    const canReschedule = taskAllowsReschedule(task) && taskId > 0;
+    const hasFixedSchedule = taskHasFixedSchedule(task);
+    const today = getTodayStr();
+    const taskDate = taskScheduleDate(task);
+    return [
+        { id: 'today', label: 'Сьогодні', detail: 'перенести в поточний день', enabled: canReschedule && taskDate !== today },
+        { id: 'tomorrow', label: 'Завтра', detail: 'перепланувати дедлайн', enabled: canReschedule },
+        { id: 'snooze_hour', label: 'Відкласти... +1 год', detail: 'через наявний snooze', enabled: canReschedule },
+        { id: 'snooze_custom', label: 'Відкласти... інша дата', detail: 'обрати дату вручну', enabled: canReschedule },
+        { id: 'no_date', label: 'Без дати', detail: hasFixedSchedule ? 'недоступно для задачі зі слотом' : 'прибрати дату і дедлайн', enabled: canReschedule && !hasFixedSchedule },
+        { id: 'waiting', label: 'Чекаю', detail: 'перевести в очікування', enabled: !isWaitingTask(task) },
+        { id: 'open', label: 'Відкрити деталі', detail: 'повна форма задачі', enabled: true }
+    ];
+}
+
+function renderTaskRowMenuItems(task = {}) {
+    const taskId = Number(task.id || 0);
+    const moveItems = taskRowMoveTargets(task).map(target => ({
+        label: target.label,
+        detail: target.detail,
+        disabled: target.enabled === false,
+        tone: target.id === 'today' ? 'primary' : '',
+        attrs: {
+            'data-task-action': target.id === 'open' ? 'open-detail' : 'move-target',
+            'data-task-move-target': target.id,
+            'data-task-id': taskId
+        }
+    }));
+    const scheduleItems = TASK_SCHEDULE_SLOTS.map(slot => ({
+        label: `Запланувати: ${slot.label}`,
+        detail: 'швидкий слот дня',
+        attrs: {
+            'data-task-action': 'schedule',
+            'data-task-id': taskId,
+            'data-schedule-slot-action': slot.key
+        }
+    }));
+    const priorityItems = TASK_PRIORITY_OPTIONS.map(item => ({
+        label: `Пріоритет: ${item.label}`,
+        detail: 'оновити без відкриття деталей',
+        attrs: {
+            'data-task-action': 'priority-menu',
+            'data-task-id': taskId,
+            'data-priority': item.value
+        }
+    }));
+    const destructiveItems = (!userPermissions || userPermissions.canDeleteTasks)
+        ? [{
+            label: 'Видалити задачу',
+            detail: 'незворотна дія',
+            tone: 'danger',
+            attrs: { 'data-task-action': 'delete', 'data-task-id': taskId }
+        }]
+        : [];
+    return window.TaskUI?.renderMenuItems([
+        ...moveItems,
+        ...scheduleItems,
+        ...priorityItems,
+        ...destructiveItems
+    ]) || '';
+}
+
+function openTaskRowActionMenu(button) {
+    const taskId = Number(button?.dataset?.taskId || 0);
+    const task = allTasks.find(item => Number(item.id) === taskId) || {};
+    if (!taskId || !window.TaskUI?.openActionMenu) {
+        if (taskId) openTaskDetail(taskId);
+        return;
+    }
+    const root = window.TaskUI.openActionMenu(button, renderTaskRowMenuItems(task), { title: 'Дії задачі' });
+    root?.querySelectorAll('[data-task-action]').forEach(actionButton => {
+        actionButton.addEventListener('click', async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            window.TaskUI?.closeActionMenu?.();
+            await handleTaskActionButton(actionButton);
+        });
+    });
+}
+
 function renderTaskCard(t) {
     const cat = t.category || 'admin';
     const catInfo = getCategoryConfig(cat);
@@ -2402,7 +2533,7 @@ function renderTaskCard(t) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
@@ -2430,14 +2561,9 @@ function renderTaskCard(t) {
         </div>
         ${renderTaskSubtaskProgress(t)}
         ${renderTaskCardSubtasksPanel(t)}
-        <div class="task-card-actions">
-            <button class="${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `disabled aria-disabled="true" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
-            ${!isWaitingTask(t) ? `<button data-task-action="waiting" data-task-id="${t.id}">Чекаю</button>` : ''}
-            ${renderCardScheduleActions(t.id)}
-            <button data-task-action="snooze" data-task-id="${t.id}" data-minutes="60">+1 год</button>
-            ${deferred ? `<button data-task-action="move-today" data-task-id="${t.id}">На сьогодні</button>` : ''}
-            ${renderTaskPriorityControl(t)}
-            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" data-task-action="delete" data-task-id="${t.id}" aria-label="Видалити задачу">✕</button>` : ''}
+        <div class="task-card-actions task-row-actions">
+            <button class="task-row-primary ${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `disabled aria-disabled="true" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            ${renderTaskRowMoreAction(t.id)}
         </div>
     </div>`;
 }
@@ -3539,10 +3665,59 @@ async function moveDeferredTaskToToday(taskId) {
     showNotification(result?.error || 'Не вдалося повернути задачу', 'error');
 }
 
+async function executeTaskMoveTarget(taskId, target) {
+    const id = Number(taskId || 0);
+    if (!id) return;
+    if (target === 'today') {
+        await moveDeferredTaskToToday(id);
+        return;
+    }
+    if (target === 'tomorrow') {
+        await rescheduleOverdueTask(id, 'tomorrow');
+        return;
+    }
+    if (target === 'snooze_hour') {
+        await snoozeTaskQuick(id, 60);
+        return;
+    }
+    if (target === 'snooze_custom') {
+        await rescheduleOverdueTask(id, 'custom');
+        return;
+    }
+    if (target === 'waiting') {
+        await markTaskWaiting(id);
+        return;
+    }
+    if (target === 'no_date') {
+        const result = await apiPutTaskPartial(id, {
+            date: null,
+            deadline: null,
+            remind_at: null,
+            snoozed_until: null,
+            workflow_state: 'inbox'
+        });
+        if (result?.success) {
+            notifyTaskWidgetsChanged({ action: 'task_no_date', taskId: id });
+            showNotification('Дату задачі прибрано', 'success');
+            await loadAllTasks();
+            return;
+        }
+        showNotification(result?.error || 'Не вдалося прибрати дату задачі', 'error');
+    }
+}
+
 async function handleTaskActionButton(button) {
     const taskId = Number(button.dataset.taskId || 0);
     const action = button.dataset.taskAction || '';
     if (!taskId || !action) return;
+    if (action === 'more') {
+        openTaskRowActionMenu(button);
+        return;
+    }
+    if (action === 'open-detail') {
+        openTaskDetail(taskId);
+        return;
+    }
     if (action === 'reschedule-overdue-menu') {
         toggleTaskRescheduleMenu(button);
         return;
@@ -3550,11 +3725,23 @@ async function handleTaskActionButton(button) {
     await runTaskAction(button, async () => {
         if (action === 'subtasks-toggle') await toggleTaskCardSubtasks(taskId);
         if (action === 'status') await cycleStatus(taskId, button.dataset.nextStatus || 'done');
+        if (action === 'move-target') await executeTaskMoveTarget(taskId, button.dataset.taskMoveTarget || '');
         if (action === 'waiting') await markTaskWaiting(taskId);
         if (action === 'schedule') await quickScheduleTask(taskId, button.dataset.scheduleSlotAction || quickScheduleSlot);
         if (action === 'snooze') await snoozeTaskQuick(taskId, Number(button.dataset.minutes || 60));
         if (action === 'move-today') await moveDeferredTaskToToday(taskId);
         if (action === 'reschedule-overdue') await rescheduleOverdueTask(taskId, button.dataset.rescheduleOption || 'tomorrow');
+        if (action === 'priority-menu') {
+            const priority = button.dataset.priority || 'normal';
+            const result = await apiPatchTaskPriority(taskId, priority);
+            if (result?.success) {
+                notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
+                showNotification('Пріоритет оновлено', 'success');
+                await loadAllTasks();
+            } else {
+                showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
+            }
+        }
         if (action === 'delete') await deleteTask(taskId);
         if (action === 'restore') await restoreTask(taskId);
     });

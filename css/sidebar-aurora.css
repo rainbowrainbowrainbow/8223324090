@@ -9610,3 +9610,141 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
     grid-template-columns: 46px minmax(0, 1fr) !important;
   }
 }
+
+/* Sidebar shell readability and truthful task workload.
+   Keep critical identity, business and task controls legible in the shared 220px shell. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  align-items: start !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-areas:
+    "identity"
+    "identity-summary"
+    "identity-meta"
+    "business" !important;
+  row-gap: 7px !important;
+  min-width: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-area: identity !important;
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  max-width: 74px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  grid-area: identity-summary !important;
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  min-height: 24px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-area: identity-meta !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 5px !important;
+  width: 100% !important;
+}
+
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  min-height: 38px !important;
+  padding: 6px !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k {
+  font-size: 7.5px !important;
+  letter-spacing: 0.04em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  font-size: 10px !important;
+  line-height: 1.08 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-business-context {
+  grid-area: business !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 5px !important;
+  margin-top: 0 !important;
+  padding-top: 8px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-business-label {
+  font-size: 8px !important;
+  line-height: 1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-business-select,
+.sidebar-nav:not(.collapsed) .sidebar-business-chip {
+  min-width: 0 !important;
+  min-height: 38px !important;
+  height: auto !important;
+  padding-block: 7px !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-focus-deck {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks {
+  grid-column: 1 / -1 !important;
+  min-height: 52px !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks .focus-chip-task-split {
+  grid-column: 1 / -1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks .focus-chip-meta {
+  display: block !important;
+  color: var(--sb-enterprise-faint) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-number {
+  font-size: 16px !important;
+}
+
+@media (max-width: 1080px) and (min-width: 769px) {
+  .sidebar-nav:not(.collapsed) .sidebar-identity-main {
+    row-gap: 6px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-business-context {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

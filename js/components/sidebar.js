@@ -1186,6 +1186,10 @@ const Sidebar = (() => {
         return !date || date === today;
     }
 
+    function _isSidebarTaskOpen(task = {}) {
+        return !['done', 'cancelled', 'archived'].includes(String(task.status || 'todo').toLowerCase());
+    }
+
     function _isSidebarTaskCompletedToday(task = {}, today = _sidebarKyivToday()) {
         if (task.status !== 'done') return false;
         const completedDate = _sidebarTaskDateOnly(task.completedAt || task.completed_at);
@@ -1196,11 +1200,26 @@ const Sidebar = (() => {
         const stats = cabinet?.stats || {};
         const quick = stats.taskQuick || stats.tasksQuick || {};
         const completed = Number(quick.completedToday ?? stats.todayDone ?? quick.completed ?? stats.completedCount ?? stats.doneCount ?? 0);
-        const remaining = Number(quick.remaining ?? stats.todayWorkloadCount ?? stats.todayPlanned ?? 0);
+        const allOpen = Array.isArray(cabinet?.all) ? cabinet.all.filter(_isSidebarTaskOpen).length : null;
+        const open = Number(
+            quick.sidebarOpenWorkload ??
+            quick.openTotal ??
+            quick.open ??
+            stats.openTaskCount ??
+            stats.activeOpenCount ??
+            allOpen ??
+            quick.remaining ??
+            stats.todayWorkloadCount ??
+            stats.todayPlanned ??
+            0
+        );
+        const overdue = Number(stats.overdueCount ?? quick.overdueCarryover ?? 0)
+            || (Array.isArray(cabinet?.overdue) ? cabinet.overdue.filter(_isSidebarTaskOpen).length : 0);
         return {
             completed: Number.isFinite(completed) && completed > 0 ? Math.floor(completed) : 0,
-            remaining: Number.isFinite(remaining) && remaining > 0 ? Math.floor(remaining) : 0,
-            overdue: Number(stats.overdueCount || 0) || 0
+            open: Number.isFinite(open) && open > 0 ? Math.floor(open) : 0,
+            remaining: Number.isFinite(open) && open > 0 ? Math.floor(open) : 0,
+            overdue: Number.isFinite(overdue) && overdue > 0 ? Math.floor(overdue) : 0
         };
     }
 
@@ -2371,6 +2390,15 @@ const Sidebar = (() => {
         }
         const widget = document.getElementById('focusChipTasks');
         if (!widget) return;
+        if (!_canSeeSidebarTaskSurface()) {
+            widget.hidden = true;
+            _commandState.tasksActive = 0;
+            _commandState.tasksCompleted = 0;
+            _commandState.tasksOverdue = 0;
+            _syncFocusDeckAccess();
+            return;
+        }
+        widget.hidden = false;
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
@@ -2387,10 +2415,10 @@ const Sidebar = (() => {
             if (cabinet?.success) {
                 const quick = _sidebarTaskQuickCountsFromCabinet(cabinet);
                 completedCount = quick.completed;
-                activeCount = quick.remaining;
+                activeCount = quick.open;
                 overdueCount = quick.overdue;
             } else {
-                const rows = await fetch(scopedApiUrl('/api/tasks?limit=80'), {
+                const rows = await fetch(scopedApiUrl('/api/tasks?limit=200'), {
                     headers: authHeaders
                 }).then(r => r.ok ? r.json() : []).catch(() => []);
                 const user = _getCurrentSidebarUser();
@@ -2403,9 +2431,10 @@ const Sidebar = (() => {
                     return tokens.has(String(task.assigned_to || task.assignedTo || '').trim()) || tokens.has(String(task.owner || '').trim());
                 }) : [];
                 const today = _sidebarKyivToday();
+                const openMine = mine.filter(_isSidebarTaskOpen);
                 completedCount = mine.filter(task => _isSidebarTaskCompletedToday(task, today)).length;
-                activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status) && _isSidebarTaskTodayOrUndated(task, today)).length;
-                overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
+                activeCount = openMine.length;
+                overdueCount = openMine.filter(task => task.deadline && new Date(task.deadline) < new Date()).length;
             }
             const doneEl = document.getElementById('focusChipTasksDoneValue');
             const countEl = document.getElementById('focusChipTasksValue');
@@ -2413,13 +2442,13 @@ const Sidebar = (() => {
             if (doneEl) doneEl.textContent = _formatTaskWidgetCount(completedCount);
             if (countEl) countEl.textContent = _formatTaskWidgetCount(activeCount);
             if (metaEl) {
-                const parts = ['сьогодні/без дати'];
+                const parts = ['відкриті'];
                 if (overdueCount > 0) parts.push(`${overdueCount} простр.`);
                 metaEl.textContent = parts.join(' · ');
             }
             const taskTitle = overdueCount > 0
-                ? `Задачі: ${completedCount} виконано сьогодні, ${activeCount} активні на сьогодні або без дати, ${overdueCount} прострочені. Натисніть, щоб відкрити всі задачі.`
-                : `Задачі: ${completedCount} виконано сьогодні, ${activeCount} активні на сьогодні або без дати. Натисніть, щоб відкрити всі задачі.`;
+                ? `Задачі: ${completedCount} виконано сьогодні, ${activeCount} відкритих задач у поточному бізнес-контексті, ${overdueCount} прострочені. Натисніть, щоб відкрити всі задачі.`
+                : `Задачі: ${completedCount} виконано сьогодні, ${activeCount} відкритих задач у поточному бізнес-контексті. Натисніть, щоб відкрити всі задачі.`;
             _commandState.tasksActive = activeCount;
             _commandState.tasksCompleted = completedCount;
             _commandState.tasksOverdue = overdueCount;
@@ -2512,19 +2541,29 @@ const Sidebar = (() => {
         }
     }
 
+    function _canSeeSidebarTaskSurface(user = _getCurrentSidebarUser()) {
+        const role = _getSidebarActiveRole(user);
+        const taskItem = { href: '/tasks', access: 'tasks' };
+        return (role ? hasAccess(taskItem, role) : true) && _businessAllowsSidebarItem(taskItem, user);
+    }
+
     function _syncFocusDeckAccess(forceFunnelAccess = null) {
         const deck = document.getElementById('sidebarFocusDeck');
+        const tasks = document.getElementById('focusChipTasks');
         const funnel = document.getElementById('focusChipFunnel');
-        if (!deck || !funnel) return;
+        if (!deck || !tasks || !funnel) return;
         const user = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(user);
         const leadItem = { href: '/sales-funnel', access: 'leads' };
+        const canSeeTasks = _canSeeSidebarTaskSurface(user);
         const canSeeFunnel = forceFunnelAccess === null
             ? ((role ? hasAccess(leadItem, role) : true) && _businessAllowsSidebarItem(leadItem, user))
             : !!forceFunnelAccess;
+        tasks.hidden = !canSeeTasks;
         funnel.hidden = !canSeeFunnel;
+        deck.classList.toggle('has-tasks', canSeeTasks);
         deck.classList.toggle('has-funnel', canSeeFunnel);
-        deck.dataset.visibleCount = canSeeFunnel ? '3' : '2';
+        deck.dataset.visibleCount = String(1 + (canSeeTasks ? 1 : 0) + (canSeeFunnel ? 1 : 0));
     }
 
     function initUserCard() {

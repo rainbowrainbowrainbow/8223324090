@@ -759,6 +759,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /overdue_carryover/);
     assert.match(source, /active_my_day/);
     assert.match(source, /remaining:\s*activeMyDay/);
+    assert.match(source, /SELECT COUNT\(\*\)::int AS open_count/);
+    assert.match(source, /const openTaskCount = Number\(openCountResult\.rows\[0\]\?\.open_count \|\| rows\.length\);/);
+    assert.match(source, /sidebarOpenWorkload:\s*openTaskCount/);
     assert.match(source, /scope:\s*'completed_units_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
     assert.match(source, /snoozed_until/);
@@ -771,6 +774,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
     assert.match(authSource, /subtasksDoneToday/);
+    assert.doesNotMatch(source, /const openTaskCount = rows\.length;/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
 });
 

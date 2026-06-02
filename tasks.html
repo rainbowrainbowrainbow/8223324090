@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.69.33">
-    <link rel="stylesheet" href="css/layout.css?v=0.69.33">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.33">
-    <link rel="stylesheet" href="css/pages.css?v=0.69.33">
-    <link rel="stylesheet" href="css/modals.css?v=0.69.33">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.33">
-    <link rel="stylesheet" href="css/responsive.css?v=0.69.33">
+    <link rel="stylesheet" href="css/base.css?v=0.69.35">
+    <link rel="stylesheet" href="css/layout.css?v=0.69.35">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.69.35">
+    <link rel="stylesheet" href="css/pages.css?v=0.69.35">
+    <link rel="stylesheet" href="css/modals.css?v=0.69.35">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.69.35">
+    <link rel="stylesheet" href="css/responsive.css?v=0.69.35">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1784,7 +1784,14 @@
                 </button>
             </div>
 
-            <section class="tasks-filter-shell" aria-label="Фільтри задач">
+            <section class="tasks-filter-shell is-secondary-collapsed" id="tasksFilterShell" aria-label="Фільтри задач">
+            <div class="tasks-toolbar-row">
+                <div class="tasks-filter-summary">
+                    <strong>Задачі</strong>
+                    <span>поширені зрізи завжди зверху, детальні фільтри згортаються</span>
+                </div>
+                <button type="button" class="tasks-filter-toggle" id="tasksFilterToggle" aria-expanded="false" aria-controls="taskScopeFilters catFilters subcatFilters">Фільтри</button>
+            </div>
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
                 <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
@@ -1848,7 +1855,7 @@
                     <section class="tasks-governance-group" aria-label="Сервіс задач">
                         <h3>Сервіс</h3>
                         <button type="button" id="taskDedupReportBtn">Перевірити дублікати</button>
-                        <button type="button" id="taskDedupCleanupBtn">Cleanup дублів</button>
+                        <button type="button" id="taskDedupCleanupBtn">Очищення дублів</button>
                     </section>
                 </div>
             </div>
@@ -1893,7 +1900,7 @@
                 </div>
                 <div class="task-composer-details" id="taskComposerDetails" hidden>
                     <div class="task-composer-group">
-                        <span class="task-composer-label">Підкатегорія</span>
+                        <span class="task-composer-label">Основне</span>
                         <select id="taskSubcategory" class="hidden" aria-label="Підкатегорія"></select>
                     </div>
                     <div class="task-composer-group">
@@ -1909,7 +1916,7 @@
                         <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" aria-label="Дедлайн">
                     </div>
                     <div class="task-composer-group">
-                        <span class="task-composer-label">Режим і намір</span>
+                        <span class="task-composer-label">Видимість і правила</span>
                         <select id="taskType" title="Тип задачі" aria-label="Тип задачі">
                             <option value="human">Людина</option>
                             <option value="bot">Бот</option>
@@ -1923,11 +1930,11 @@
                         <select id="taskKind" title="Тип наміру" aria-label="Тип наміру">
                             <option value="action">Дія</option>
                             <option value="reminder">Нагадування</option>
-                            <option value="followup">Follow-up</option>
-                            <option value="deep_work">Deep work</option>
+                            <option value="followup">Дотиск</option>
+                            <option value="deep_work">Глибока робота</option>
                             <option value="waiting">Чекаю</option>
                             <option value="idea">Ідея</option>
-                            <option value="checklist">Checklist</option>
+                            <option value="checklist">Чеклист</option>
                             <option value="routine">Рутина</option>
                         </select>
                         <select id="taskVisibility" title="Видимість" aria-label="Видимість">
@@ -1945,7 +1952,7 @@
                         <button class="task-chip" type="button" data-capture-chip="idea">Ідея</button>
                     </div>
                     <div class="task-composer-group task-subtasks-group">
-                        <span class="task-composer-label">Підзадачі</span>
+                        <span class="task-composer-label">Підзадачі / шаблони</span>
                         <div class="task-decomposition-controls">
                             <select id="taskDecompositionMode" aria-label="Режим декомпозиції">
                                 <option value="none">Без декомпозиції</option>
@@ -2072,14 +2079,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.69.33"></script>
-    <script src="js/notification.js?v=0.69.33"></script>
-    <script src="js/api.js?v=0.69.33"></script>
-    <script src="js/auth.js?v=0.69.33"></script>
-    <script src="js/components/sidebar.js?v=0.69.33"></script>
+    <script src="js/config.js?v=0.69.35"></script>
+    <script src="js/notification.js?v=0.69.35"></script>
+    <script src="js/api.js?v=0.69.35"></script>
+    <script src="js/auth.js?v=0.69.35"></script>
+    <script src="js/components/sidebar.js?v=0.69.35"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/task-create.js?v=0.69.33"></script>
-    <script src="js/tasks-page.js?v=0.69.33"></script>
-    <script src="js/alerts.js?v=0.69.33"></script><script src="js/ui.js?v=0.69.33"></script>
+    <script src="js/task-create.js?v=0.69.35"></script>
+    <script src="js/task-ui.js?v=0.69.35"></script>
+    <script src="js/tasks-page.js?v=0.69.35"></script>
+    <script src="js/alerts.js?v=0.69.35"></script><script src="js/ui.js?v=0.69.35"></script>
 </body>
 </html>

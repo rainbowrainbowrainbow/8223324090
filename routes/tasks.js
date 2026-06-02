@@ -1526,6 +1526,15 @@ router.get('/my-cabinet', async (req, res) => {
             ownParams
         );
         const rows = result.rows.map(normalizeTaskPayload);
+        const openCountResult = await pool.query(
+            `SELECT COUNT(*)::int AS open_count
+             FROM tasks t
+             WHERE ${ownMatch}
+               ${ownBusinessCondition}
+               AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
+            ownParams
+        );
+        const openTaskCount = Number(openCountResult.rows[0]?.open_count || rows.length);
 
         const completedHistoryParams = [...ownParams, completedHistoryLimit];
         const completedHistoryResult = await pool.query(
@@ -1676,6 +1685,8 @@ router.get('/my-cabinet', async (req, res) => {
                 overdueCarryoverCount: overdueCarryover,
                 activeMyDay,
                 activeMyDayCount: activeMyDay,
+                openTaskCount,
+                activeOpenCount: openTaskCount,
                 taskQuick: {
                     completed: quickStats.done_today || 0,
                     completedToday: quickStats.done_today || 0,
@@ -1689,6 +1700,10 @@ router.get('/my-cabinet', async (req, res) => {
                     todayRemaining: remainingToday || buckets.today.length,
                     overdueCarryover,
                     activeMyDay,
+                    open: openTaskCount,
+                    openTotal: openTaskCount,
+                    sidebarOpenWorkload: openTaskCount,
+                    sidebarScope: 'all_open_owned_tasks_in_business_scope',
                     scope: 'completed_units_today_and_active_my_day_or_undated',
                     completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks'
                 },

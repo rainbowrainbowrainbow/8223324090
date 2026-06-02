@@ -128,7 +128,7 @@ const CABINET_TASK_PRIORITIES = [
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
     { value: 'classic', label: 'Класичний' },
-    { value: 'rock', label: 'Rock' }
+    { value: 'rock', label: 'Рок' }
 ];
 
 const CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT = 36;
@@ -3844,6 +3844,97 @@ function renderCabinetMoveTodayAction(task = {}, taskIdAttr = '', dueState = {})
     return `<button type="button" class="cabinet-task-move-today" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" title="Перенести задачу у Мій день">На сьогодні</button>`;
 }
 
+function renderCabinetTaskMoreAction(taskIdAttr = '') {
+    if (!taskIdAttr) return '';
+    return `<button type="button" class="cabinet-task-more" data-cabinet-task-action="more" data-task-id="${taskIdAttr}" aria-haspopup="dialog" aria-label="Більше дій">...</button>`;
+}
+
+function cabinetTaskUpdatePayload(task = {}, patch = {}) {
+    return {
+        title: task.title || 'Без назви',
+        description: task.description || '',
+        date: task.date || null,
+        status: task.status || 'todo',
+        priority: task.priority || 'normal',
+        assigned_to: task.assigned_to || task.assignedTo || null,
+        owner: task.owner || task.assigned_to || task.assignedTo || null,
+        owner_user_id: task.ownerUserId || task.owner_user_id || task.assignedUserId || task.assigned_user_id || null,
+        category: cabinetTaskCategory(task) || 'personal',
+        subcategory: task.subcategory || null,
+        task_type: task.taskType || task.task_type || 'human',
+        task_mode: cabinetTaskMode(task),
+        task_kind: cabinetTaskKind(task),
+        visibility: cabinetTaskVisibility(task),
+        workflow_state: cabinetTaskWorkflow(task),
+        deadline: task.deadline || null,
+        remind_at: task.remindAt || task.remind_at || null,
+        pack_status: task.packStatus || task.pack_status || null,
+        sourceSurface: 'profile_my_cabinet',
+        ...patch
+    };
+}
+
+async function updateCabinetTaskFields(taskId, patch = {}, options = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    const task = findCabinetTask(id) || {};
+    const result = await apiPut(`/tasks/${id}`, cabinetTaskUpdatePayload(task, patch));
+    if (!result?.success) throw new Error(result?.error || 'Task update failed');
+    notifyTaskWidgetsChanged({ action: options.action || 'task_update', taskId: id });
+    if (typeof showNotification === 'function' && options.notify !== false) {
+        showNotification(options.message || 'Задачу оновлено', 'success');
+    }
+    await refreshMyCabinetTab();
+    return result.task || result;
+}
+
+function cabinetTaskMoveTargets(task = {}) {
+    const taskId = Number(task.id || task.taskId || task.task_id || 0);
+    const dueState = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
+    const canMove = cabinetTaskMoveToTodayState(task, dueState).canMove;
+    const canReschedule = cabinetTaskAllowsReschedule(task) && taskId > 0;
+    const hasFixedSchedule = Boolean(task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt);
+    return [
+        { id: 'today', label: 'Сьогодні', detail: 'перенести у головну зону дня', enabled: canMove },
+        { id: 'tomorrow', label: 'Завтра', detail: 'перепланувати на завтра', enabled: canReschedule },
+        { id: 'snooze_hour', label: 'Відкласти... +1 год', detail: 'через наявний snooze', enabled: canReschedule },
+        { id: 'snooze_custom', label: 'Відкласти... інша дата', detail: 'обрати дату вручну', enabled: canReschedule },
+        { id: 'no_date', label: 'Без дати', detail: hasFixedSchedule ? 'недоступно для задачі зі слотом' : 'прибрати дату і дедлайн', enabled: canReschedule && !hasFixedSchedule },
+        { id: 'waiting', label: 'Чекаю', detail: 'перевести в очікування', enabled: true },
+        { id: 'private', label: 'Приватне', detail: 'видимість тільки для себе', enabled: cabinetTaskVisibility(task) !== 'private' }
+    ];
+}
+
+function renderCabinetMoveMenuItems(task = {}) {
+    const taskId = Number(task.id || task.taskId || task.task_id || 0);
+    const attrs = target => ({
+        'data-cabinet-task-action': 'move-target',
+        'data-cabinet-move-target': target.id,
+        'data-task-id': taskId
+    });
+    return window.TaskUI?.renderMenuItems(cabinetTaskMoveTargets(task).map(target => ({
+        label: target.label,
+        detail: target.detail,
+        disabled: target.enabled === false,
+        tone: target.id === 'today' ? 'primary' : '',
+        attrs: attrs(target)
+    }))) || '';
+}
+
+function openCabinetTaskActionMenu(button) {
+    const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
+    const task = findCabinetTask(taskId) || {};
+    const menuHtml = `
+        ${renderCabinetMoveMenuItems(task)}
+        ${window.TaskUI?.renderMenuItems([
+            { label: 'Відкрити у повному списку', detail: 'деталі, історія, спостерігачі', attrs: { 'data-cabinet-task-action': 'open', 'data-task-id': taskId } }
+        ]) || ''}`;
+    const root = window.TaskUI?.openActionMenu(button, menuHtml, { title: 'Перенести в...' });
+    root?.querySelectorAll('[data-cabinet-task-action]').forEach(actionButton => {
+        actionButton.addEventListener('click', handleCabinetTaskActionClick);
+    });
+}
+
 function cabinetTaskReportBadge(task = {}) {
     const gate = window.TaskReportGate;
     const required = gate?.taskRequiresReport ? gate.taskRequiresReport(task) : Boolean(task.reportRequired || task.requiresReport);
@@ -4100,6 +4191,7 @@ function renderCabinetTaskCard(task, compact = false) {
     const subtasksExpanded = isDecomposed && taskIdAttr ? isCabinetSubtasksExpanded(taskId, task) : false;
     const cardClass = [
         'cabinet-task-card',
+        'is-personal-day-card',
         isDecomposed ? 'is-decomposed' : '',
         isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
         isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
@@ -4127,8 +4219,7 @@ function renderCabinetTaskCard(task, compact = false) {
             </div>
             <div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
-                ${compact ? '' : `<span class="cabinet-snooze-wrap"><button type="button" class="cabinet-task-action-btn" title="${escapeHtml(snoozeActionLabel)}" aria-label="${escapeHtml(snoozeActionLabel)}" data-tooltip="${escapeHtml(snoozeActionLabel)}" data-cabinet-task-action="snooze-menu" data-task-id="${taskIdAttr}" aria-haspopup="menu" aria-expanded="false" ${taskIdAttr ? '' : 'disabled'}>⏰</button>${renderCabinetSnoozeMenu(taskIdAttr)}</span>`}
-                <button type="button" class="cabinet-task-action-btn" title="${escapeHtml(openActionLabel)}" aria-label="${escapeHtml(openActionLabel)}" data-tooltip="${escapeHtml(openActionLabel)}" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
+                ${renderCabinetTaskMoreAction(taskIdAttr)}
             </div>
         </div>`;
 }
@@ -4139,7 +4230,13 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
     const dropAttrs = dropTarget
         ? ` data-cabinet-task-drop-target="${escapeHtml(dropTarget)}" aria-label="${escapeHtml(options.dropLabel || 'Перетягніть задачу сюди')}"`
         : '';
-    const sectionClass = `cabinet-task-section${dropTarget ? ' cabinet-task-section--drop-target' : ''}`;
+    const sectionClass = [
+        'cabinet-task-section',
+        dropTarget ? 'cabinet-task-section--drop-target' : '',
+        compact ? 'is-secondary-section' : '',
+        options.tone ? `is-${options.tone}` : '',
+        visibleList.length ? '' : 'is-compact-empty'
+    ].filter(Boolean).join(' ');
     const dropHint = dropTarget
         ? `<span class="cabinet-section-drop-hint">${escapeHtml(options.dropHint || 'Можна перетягнути задачу сюди')}</span>`
         : '';
@@ -4323,7 +4420,7 @@ function renderCabinetTaskComposer(options = {}) {
         </form>`;
 }
 
-function renderMyDayTab() {
+function renderLegacyMyDayTab() {
     const today = cabinetList('today');
     const deferred = cabinetList('deferred');
     const overdue = cabinetList('overdue');
@@ -4366,6 +4463,71 @@ function renderMyDayTab() {
 
 function renderMyTasksTab() {
     return renderMyDayTab();
+}
+
+function renderMyDayCommandCenterTab() {
+    const today = cabinetList('today');
+    const deferred = cabinetList('deferred');
+    const overdue = cabinetList('overdue');
+    const waiting = cabinetList('waiting');
+    const privateTasks = cabinetList('private').slice(0, 4);
+    const taskQuick = cabinetTaskQuickCounts();
+    const activeToday = taskQuick.remaining || today.length + overdue.length;
+    return `
+        <div class="cabinet-shell cabinet-command-center">
+            <div class="cabinet-day-command-bar" aria-label="Командний центр дня">
+                <div class="cabinet-day-command-stats">
+                    <span class="cabinet-day-stat"><b>${today.length}</b> Сьогодні</span>
+                    <span class="cabinet-day-stat ${overdue.length ? 'is-hot' : ''}"><b>${overdue.length}</b> Прострочено</span>
+                    <span class="cabinet-day-stat"><b>${waiting.length}</b> Чекаю</span>
+                    <span class="cabinet-day-stat"><b>${taskQuick.completed}</b> Готово</span>
+                </div>
+                <div class="cabinet-day-actions">
+                    <button type="button" class="cabinet-day-action" data-cabinet-composer-toggle aria-expanded="${cabinetTaskComposerExpanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposer">+ Задача</button>
+                    <a class="cabinet-day-action" href="/tasks?view=today">Усі сьогодні</a>
+                    <a class="cabinet-day-action" href="/tasks?view=waiting">Очікування</a>
+                </div>
+            </div>
+            ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
+            <div class="cabinet-day-workspace" data-active-today="${activeToday}">
+                <div class="cabinet-day-primary">
+                    ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.', false, {
+                        dropTarget: 'today',
+                        dropHint: 'Киньте сюди задачу, щоб поставити на сьогодні',
+                        dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
+                    })}
+                    ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', false, {
+                        tone: 'overdue-priority'
+                    })}
+                </div>
+                <aside class="cabinet-day-secondary" aria-label="Додаткові зрізи дня">
+                    ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
+                    ${renderCabinetSection('Відкладено', deferred, 'Відкладених задач немає.', true)}
+                    ${renderCabinetSection('Приватне', privateTasks, 'Приватний шар порожній.', true)}
+                    <section class="cabinet-task-section is-secondary-section is-compact-empty">
+                        <div class="cabinet-section-head"><h3>Вечірній огляд</h3><span>5 хв</span></div>
+                        <div class="cabinet-review">
+                            <p>Що завершено, що перенести, що зависло, що краще делегувати?</p>
+                            <a href="/tasks?view=waiting">Відкрити очікування</a>
+                            <a href="/tasks?view=today">Відкрити сьогодні</a>
+                        </div>
+                    </section>
+                    <section class="cabinet-task-section cabinet-support-panel is-secondary-section">
+                        <div class="cabinet-section-head"><h3>Сигнали</h3><span>CRM</span></div>
+                        ${renderCabinetPulseCluster()}
+                    </section>
+                    ${renderCabinetCompletedHistoryStrip()}
+                    <section class="cabinet-task-section cabinet-support-panel is-secondary-section">
+                        <div class="cabinet-section-head"><h3>Звук</h3><span>налаштування</span></div>
+                        ${renderCabinetTaskSoundControls()}
+                    </section>
+                </aside>
+            </div>
+        </div>`;
+}
+
+function renderMyDayTab() {
+    return renderMyDayCommandCenterTab();
 }
 
 function setMyTasksSegment(segment) {
@@ -4722,6 +4884,7 @@ function clearCabinetTaskDragState() {
         section.classList.remove('is-drag-over');
     });
     document.body?.classList.remove('cabinet-task-dragging');
+    window.TaskUI?.closeDropDock?.();
     cabinetTaskDragState = null;
 }
 
@@ -4751,6 +4914,23 @@ function handleCabinetTaskDragStart(event) {
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', String(taskId));
     }
+    const task = findCabinetTask(taskId) || {};
+    window.TaskUI?.showDropDock?.({
+        title: 'Перенести в',
+        targets: cabinetTaskMoveTargets(task),
+        onSelect: async target => {
+            const currentTaskId = cabinetTaskDragState?.taskId || taskId;
+            clearCabinetTaskDragState();
+            try {
+                await executeCabinetMoveTarget(currentTaskId, target, { method: 'drag' });
+            } catch (error) {
+                console.error('Profile cabinet DropDock move failed', error);
+                if (typeof showNotification === 'function') {
+                    showNotification(error?.message || 'Не вдалося перенести задачу', 'error');
+                }
+            }
+        }
+    });
 }
 
 function handleCabinetTaskDragOver(event) {
@@ -4891,6 +5071,32 @@ async function handleCabinetTaskActionClick(event) {
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
     if (!taskId) {
         if (typeof showNotification === 'function') showNotification('Не вдалося визначити задачу', 'error');
+        return;
+    }
+
+    if (action === 'more') {
+        openCabinetTaskActionMenu(button);
+        return;
+    }
+
+    if (action === 'move-target') {
+        const target = button.dataset.cabinetMoveTarget || '';
+        button.disabled = true;
+        button.classList.add('is-busy');
+        window.TaskUI?.closeActionMenu?.();
+        try {
+            await executeCabinetMoveTarget(taskId, target, { method: 'menu' });
+        } catch (error) {
+            console.error('Profile cabinet move menu failed', error);
+            if (typeof showNotification === 'function') {
+                showNotification(error?.message || 'Не вдалося перенести задачу', 'error');
+            }
+        } finally {
+            if (button.isConnected) {
+                button.disabled = false;
+                button.classList.remove('is-busy');
+            }
+        }
         return;
     }
 
@@ -5141,6 +5347,63 @@ async function moveCabinetTaskToToday(taskId, method = 'button') {
     await rescheduleCabinetTask(id, 'today', {
         sourceSurface
     });
+}
+
+async function executeCabinetMoveTarget(taskId, target, options = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    if (target === 'today') {
+        await moveCabinetTaskToToday(id, options.method || 'button');
+        return;
+    }
+    if (target === 'tomorrow') {
+        await rescheduleCabinetTask(id, 'tomorrow', { sourceSurface: 'profile_my_cabinet' });
+        return;
+    }
+    if (target === 'snooze_hour') {
+        await snoozeCabinetTask(id, 60);
+        return;
+    }
+    if (target === 'snooze_custom') {
+        await rescheduleCabinetTask(id, 'custom', { sourceSurface: 'profile_my_cabinet' });
+        return;
+    }
+    if (target === 'waiting') {
+        await updateCabinetTaskFields(id, {
+            workflow_state: 'waiting',
+            task_kind: 'waiting'
+        }, {
+            action: 'task_waiting',
+            message: 'Задачу перенесено в очікування'
+        });
+        return;
+    }
+    if (target === 'private') {
+        await updateCabinetTaskFields(id, {
+            task_mode: 'private',
+            visibility: 'private'
+        }, {
+            action: 'task_visibility',
+            message: 'Задачу зроблено приватною'
+        });
+        return;
+    }
+    if (target === 'no_date') {
+        await updateCabinetTaskFields(id, {
+            date: null,
+            deadline: null,
+            remind_at: null,
+            scheduled_start_at: null,
+            scheduled_end_at: null,
+            snoozed_until: null,
+            workflow_state: 'inbox'
+        }, {
+            action: 'task_no_date',
+            message: 'Дату задачі прибрано'
+        });
+        return;
+    }
+    throw new Error('Невідома дія перенесення');
 }
 
 async function createCabinetTask(event, mode) {

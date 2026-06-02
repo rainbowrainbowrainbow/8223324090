@@ -4,6 +4,16 @@
 
 ---
 
+## v0.69.29 - Стабілізація запуску таймлайну
+
+### Timeline / Booking boot / 02.06.2026 [codex]
+- **Таймлайн більше не падає через `handleBookingSubmit is not defined`** - виправлено синтаксичний збій у `js/booking.js`, який зупиняв виконання всього booking bundle до реєстрації submit handler-а.
+- **Submit handler бронювання експортується явно** - `js/booking.js` реєструє `window.handleBookingSubmit`, щоб старт CRM не залежав від неявної поведінки classic script globals.
+- **Boot таймлайну став стійкішим до кешованих bundle-ів** - `js/app.js` привʼязує booking handlers через безпечний resolver і показує кероване повідомлення замість чорного екрана, якщо handler недоступний.
+- **Regression guard додано** - `tests/booking-hosts-semantics.test.js` перевіряє явний export submit handler-а і забороняє повернення прямої привʼязки `addEventListener('submit', handleBookingSubmit)`.
+
+---
+
 ## v0.69.28 - Деплой таймлайн прав і ведучих
 
 ### Timeline / Бронювання / Права / 02.06.2026 [codex]

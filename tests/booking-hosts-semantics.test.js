@@ -93,6 +93,17 @@ test('timeline delete controls use the shared delete permission contract', () =>
     assert.match(bookingJs, /const deleteButton = canDeleteTimelineBooking\(\)/);
 });
 
+test('timeline boot binds booking handlers through explicit window exports', () => {
+    const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+
+    assert.match(bookingJs, /async function handleBookingSubmit\(e\)/);
+    assert.match(bookingJs, /window\.handleBookingSubmit = handleBookingSubmit/);
+    assert.match(appJs, /function resolveTimelineBootHandler\(name, fallbackMessage\)/);
+    assert.match(appJs, /resolveTimelineBootHandler\(\s*'handleBookingSubmit'/);
+    assert.doesNotMatch(appJs, /addEventListener\('submit',\s*handleBookingSubmit\)/);
+});
+
 test('second animator repair audit is dry-run by default and inserts only missing linked rows with --fix', () => {
     const script = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-second-animator-links.js'), 'utf8');
     const pkg = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');

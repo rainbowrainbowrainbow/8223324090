@@ -671,14 +671,35 @@ async function downloadProductSalesExport(format) {
     }
 }
 
+function resolveTimelineBootHandler(name, fallbackMessage) {
+    const handler = window[name];
+    if (typeof handler === 'function') return handler;
+    console.error(`[TimelineBoot] ${name} is not available`);
+    return function missingTimelineHandler(event) {
+        if (event?.preventDefault) event.preventDefault();
+        if (typeof showNotification === 'function') {
+            showNotification(fallbackMessage || 'Дія таймлайну тимчасово недоступна. Оновіть сторінку.', 'error');
+        }
+    };
+}
+
 function initBookingFormListeners() {
     document.getElementById('closePanel')?.addEventListener('click', () => closeBookingPanel(false));
     // v5.35: Close panel when clicking the backdrop overlay
     document.getElementById('panelBackdrop')?.addEventListener('click', () => closeBookingPanel(false));
-    document.getElementById('bookingForm')?.addEventListener('submit', handleBookingSubmit);
+    document.getElementById('bookingForm')?.addEventListener('submit', resolveTimelineBootHandler(
+        'handleBookingSubmit',
+        'Форма бронювання ще не завантажилась. Оновіть сторінку й повторіть дію.'
+    ));
 
-    document.getElementById('editLineForm')?.addEventListener('submit', handleEditLine);
-    document.getElementById('deleteLineBtn')?.addEventListener('click', deleteLine);
+    document.getElementById('editLineForm')?.addEventListener('submit', resolveTimelineBootHandler(
+        'handleEditLine',
+        'Редагування лінії ще не завантажилось. Оновіть сторінку й повторіть дію.'
+    ));
+    document.getElementById('deleteLineBtn')?.addEventListener('click', resolveTimelineBootHandler(
+        'deleteLine',
+        'Видалення лінії ще не завантажилось. Оновіть сторінку й повторіть дію.'
+    ));
 
     const editLineNameSelect = document.getElementById('editLineNameSelect');
     if (editLineNameSelect) {
@@ -719,7 +740,10 @@ function initBookingFormListeners() {
     // v5.18: Free rooms button
     const freeRoomsBtn = document.getElementById('freeRoomsBtn');
     if (freeRoomsBtn) {
-        freeRoomsBtn.addEventListener('click', showFreeRooms);
+        freeRoomsBtn.addEventListener('click', resolveTimelineBootHandler(
+            'showFreeRooms',
+            'Пошук вільних кімнат ще не завантажився. Оновіть сторінку й повторіть дію.'
+        ));
     }
 
     // v20.7.0: Age recommendations listener

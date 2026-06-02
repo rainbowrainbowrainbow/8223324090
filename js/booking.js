@@ -3707,6 +3707,8 @@ async function handleBookingSubmit(e) {
     }
 }
 
+if (typeof window !== 'undefined') window.handleBookingSubmit = handleBookingSubmit;
+
 // ==========================================
 // OPTIMISTIC LOCKING CONFLICT HANDLER
 // ==========================================
@@ -3914,7 +3916,7 @@ async function showBookingDetails(bookingId) {
             <div class="booking-actions modal-footer-sticky">
                 <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Відкрити слот</button>
             </div>
-        `;
+        ` : '';
         document.getElementById('bookingDetails').innerHTML = `
             <div class="booking-detail-header booking-detail-header--closed-slot">
                 <div>

@@ -18,6 +18,7 @@ const {
 const { normalizePinataFields } = require('../services/pinataMode');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
+const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
 const { broadcast } = require('../services/websocket');
@@ -64,13 +65,12 @@ function applyBookingStatusForCreate(booking, fallback = 'confirmed') {
 }
 
 async function insertScopedHistory(queryable, action, username, data, businessContext) {
-    const payload = data && typeof data === 'object' && !Array.isArray(data)
-        ? { ...data, business_context: businessContext || DEFAULT_TIMELINE_CONTEXT }
-        : data;
-    await queryable.query(
-        'INSERT INTO history (business_context, action, username, data) VALUES ($1, $2, $3, $4)',
-        [businessContext || DEFAULT_TIMELINE_CONTEXT, action, username, JSON.stringify(payload)]
-    );
+    await insertHistory(queryable, {
+        businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+        action,
+        username,
+        data
+    });
 }
 
 function bookingContextSql(alias = '', placeholder = '$1') {

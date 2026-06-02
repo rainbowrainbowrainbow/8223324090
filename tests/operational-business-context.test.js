@@ -324,14 +324,27 @@ test('timeline booking and line mutations stay inside the active timeline busine
 
 test('legacy history API is business-scoped and uses server-side actor identity', () => {
     const history = read('routes/history.js');
+    const historyLog = read('services/historyLog.js');
+    const routeAndServiceHistoryWriters = [
+        'routes/bookings.js',
+        'routes/history.js',
+        'routes/afisha.js',
+        'routes/certificates.js',
+        'routes/recurring.js',
+        'services/bookingAutomation.js',
+        'services/recurring.js',
+        'scripts/audit-second-animator-links.js'
+    ].map(file => read(file)).join('\n');
     const migration = read('db/migrations/245_backend_booking_timeline_hardening.sql');
 
     assert.match(history, /resolveBusinessScope/);
     assert.match(history, /requireBusinessScope/);
     assert.match(history, /requireWritableBusinessScope/);
     assert.match(history, /pushBusinessScopeCondition\(params, scope, 'h'\)/);
-    assert.match(history, /INSERT INTO history \(business_context, action, username, data\)/);
-    assert.match(history, /historyActor\(req\)/);
+    assert.match(history, /historyActorFromRequest\(req\)/);
+    assert.match(historyLog, /INSERT INTO history \(business_context, action, username, data\)/);
+    assert.match(historyLog, /function insertHistory/);
+    assert.doesNotMatch(routeAndServiceHistoryWriters, /INSERT INTO history \(action, username, data\)/);
     assert.doesNotMatch(history, /const \{ action, user, data \} = req\.body/);
     assert.match(migration, /ALTER TABLE history[\s\S]*ADD COLUMN IF NOT EXISTS business_context/);
     assert.match(migration, /ALTER COLUMN action TYPE VARCHAR\(64\)/);

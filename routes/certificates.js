@@ -18,6 +18,7 @@ const {
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { publish: publishEvent } = require('../services/eventBus');
+const { insertHistory } = require('../services/historyLog');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -242,15 +243,16 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             ]
         );
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['certificate_create', req.user.username, JSON.stringify({
+        await insertHistory(client, {
+            action: 'certificate_create',
+            username: req.user.username,
+            data: {
                 certCode,
                 displayMode: finalDisplayMode,
                 displayValue: finalDisplayValue,
                 typeText: finalTypeText
-            })]
-        );
+            }
+        });
 
         await client.query('COMMIT');
 
@@ -331,16 +333,17 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
             created.push(mapCertificateRow(result.rows[0]));
         }
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['certificate_batch', req.user.username, JSON.stringify({
+        await insertHistory(client, {
+            action: 'certificate_batch',
+            username: req.user.username,
+            data: {
                 quantity,
                 typeText,
                 batchGroupId,
                 eventName: eventName || undefined,
                 codes: created.map(c => c.certCode)
-            })]
-        );
+            }
+        });
 
         await client.query('COMMIT');
         log.info(`Batch certificates created: ${quantity} by ${req.user.username}`);
@@ -427,15 +430,16 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             params
         );
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            [`certificate_${status}`, req.user.username, JSON.stringify({
+        await insertHistory(client, {
+            action: `certificate_${status}`,
+            username: req.user.username,
+            data: {
                 certCode: cert.cert_code,
                 oldStatus: cert.status,
                 newStatus: status,
                 reason: reason || null
-            })]
-        );
+            }
+        });
 
         await client.query('COMMIT');
 
@@ -523,10 +527,11 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             ]
         );
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['certificate_edit', req.user.username, JSON.stringify({ certCode: cert.cert_code })]
-        );
+        await insertHistory(client, {
+            action: 'certificate_edit',
+            username: req.user.username,
+            data: { certCode: cert.cert_code }
+        });
 
         const updated = await client.query('SELECT * FROM certificates WHERE id = $1', [id]);
         await client.query('COMMIT');
@@ -556,10 +561,11 @@ router.delete('/:id', requireRole('admin', 'user'), async (req, res) => {
 
         await client.query('BEGIN');
 
-        await client.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['certificate_delete', req.user.username, JSON.stringify(mapCertificateRow(existing.rows[0]))]
-        );
+        await insertHistory(client, {
+            action: 'certificate_delete',
+            username: req.user.username,
+            data: mapCertificateRow(existing.rows[0])
+        });
 
         await client.query('DELETE FROM certificates WHERE id = $1', [id]);
         await client.query('COMMIT');

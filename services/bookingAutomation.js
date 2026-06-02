@@ -11,12 +11,30 @@
  */
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, telegramRequest } = require('./telegram');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
+const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Automation');
 
 function getKleshnya() {
     return require('./kleshnya');
+}
+
+function bookingBusinessContext(booking) {
+    return booking?.businessContext || booking?.business_context || DEFAULT_BUSINESS_CONTEXT;
+}
+
+async function businessContextForBookingId(bookingId) {
+    try {
+        const result = await pool.query(
+            "SELECT COALESCE(business_context, 'event_genix') AS business_context FROM bookings WHERE id = $1 LIMIT 1",
+            [bookingId]
+        );
+        return result.rows[0]?.business_context || DEFAULT_BUSINESS_CONTEXT;
+    } catch {
+        return DEFAULT_BUSINESS_CONTEXT;
+    }
 }
 
 async function clearContractorInlineKeyboard(chatId, messageId) {
@@ -263,11 +281,12 @@ async function handleContractorCallback(action, bookingId, contractorId, callbac
         }
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['contractor_response', contractorName,
-             JSON.stringify({ contractor_id: contractorId, booking_id: bookingId, status })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            businessContext: await businessContextForBookingId(bookingId),
+            action: 'contractor_response',
+            username: contractorName,
+            data: { contractor_id: contractorId, booking_id: bookingId, status }
+        }).catch(err => log.error('History log error', err));
 
         log.info(`Contractor ${contractorName} ${status} booking ${bookingId}`);
     } catch (err) {
@@ -317,11 +336,12 @@ async function processBookingAutomation(booking) {
                 triggered++;
 
                 // Log to history
-                await pool.query(
-                    'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-                    ['automation_triggered', booking.createdBy || booking.created_by || 'system',
-                     JSON.stringify({ rule_id: rule.id, rule_name: rule.name, booking_id: booking.id })]
-                ).catch(err => log.error('History log error', err));
+                await insertHistory(pool, {
+                    businessContext: bookingBusinessContext(booking),
+                    action: 'automation_triggered',
+                    username: booking.createdBy || booking.created_by || 'system',
+                    data: { rule_id: rule.id, rule_name: rule.name, booking_id: booking.id }
+                }).catch(err => log.error('History log error', err));
             }
         }
 

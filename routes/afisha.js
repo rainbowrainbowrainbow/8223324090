@@ -11,6 +11,7 @@ const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
+const { insertHistory } = require('../services/historyLog');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
@@ -497,10 +498,11 @@ router.post('/:id/materials', async (req, res) => {
             [event.id, kind, title, description || null, kind === 'link' ? url : null, req.user?.username || null]
         );
 
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_material_create', req.user?.username || 'system', JSON.stringify({ afisha_id: event.id, material_id: inserted.rows[0].id, kind, title })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_material_create',
+            username: req.user?.username || 'system',
+            data: { afisha_id: event.id, material_id: inserted.rows[0].id, kind, title }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, material: materialMeta(inserted.rows[0]) });
     } catch (err) {
@@ -538,10 +540,11 @@ router.post('/:id/materials/upload', handleMaterialUpload, async (req, res) => {
             ]
         );
 
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_material_upload', req.user?.username || 'system', JSON.stringify({ afisha_id: event.id, material_id: inserted.rows[0].id, title, file: req.file.originalname })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_material_upload',
+            username: req.user?.username || 'system',
+            data: { afisha_id: event.id, material_id: inserted.rows[0].id, title, file: req.file.originalname }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, material: materialMeta(inserted.rows[0]) });
     } catch (err) {
@@ -591,10 +594,11 @@ router.delete('/:id/materials/:materialId', async (req, res) => {
         );
         if (!deleted.rows.length) return res.status(404).json({ error: 'Not found' });
 
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_material_delete', req.user?.username || 'system', JSON.stringify(deleted.rows[0])]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_material_delete',
+            username: req.user?.username || 'system',
+            data: deleted.rows[0]
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true });
     } catch (err) {
@@ -633,10 +637,11 @@ router.post('/', async (req, res) => {
         const item = result.rows[0];
         // v8.1: Log to history
         const username = req.user?.username || 'system';
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_create', username, JSON.stringify({ id: item.id, title, date, time, type: eventType, duration: eventDuration })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_create',
+            username,
+            data: { id: item.id, title, date, time, type: eventType, duration: eventDuration }
+        }).catch(err => log.error('History log error', err));
         res.json({ success: true, item });
     } catch (err) {
         log.error('Create error', err);
@@ -664,10 +669,11 @@ router.put('/:id', async (req, res) => {
         }
         // v8.1: Log to history
         const username = req.user?.username || 'system';
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_edit', username, JSON.stringify({ id, title, date, time, type: eventType, duration: duration || 60 })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_edit',
+            username,
+            data: { id, title, date, time, type: eventType, duration: duration || 60 }
+        }).catch(err => log.error('History log error', err));
         res.json({ success: true });
     } catch (err) {
         log.error('Update error', err);
@@ -709,10 +715,11 @@ router.post('/:id/generate-tasks', async (req, res) => {
 
         log.info(`Generated ${created.length} tasks for afisha #${id}`);
         // v8.3: Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['tasks_generated', username, JSON.stringify({ afisha_id: id, title: event.rows[0].title, count: created.length })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'tasks_generated',
+            username,
+            data: { afisha_id: id, title: event.rows[0].title, count: created.length }
+        }).catch(err => log.error('History log error', err));
         res.json({ success: true, tasks: created, count: created.length });
     } catch (err) {
         log.error('Generate tasks error', err);
@@ -743,10 +750,11 @@ router.patch('/:id/time', async (req, res) => {
         await pool.query('UPDATE afisha SET time = $1 WHERE id = $2', [time, id]);
 
         const username = req.user?.username || 'system';
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_move', username, JSON.stringify({ id: ev.id, title: ev.title, from: ev.time, to: time })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_move',
+            username,
+            data: { id: ev.id, title: ev.title, from: ev.time, to: time }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, time, originalTime });
     } catch (err) {
@@ -772,10 +780,11 @@ router.patch('/:id/line', async (req, res) => {
         await pool.query('UPDATE afisha SET line_id = $1 WHERE id = $2', [newLineId, id]);
 
         const username = req.user?.username || 'system';
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['afisha_move_line', username, JSON.stringify({ id: ev.id, title: ev.title, from_line: ev.line_id, to_line: newLineId })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'afisha_move_line',
+            username,
+            data: { id: ev.id, title: ev.title, from_line: ev.line_id, to_line: newLineId }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, lineId: newLineId });
     } catch (err) {
@@ -801,10 +810,11 @@ router.delete('/:id', async (req, res) => {
         if (original.rows.length > 0) {
             const username = req.user?.username || 'system';
             const ev = original.rows[0];
-            await pool.query(
-                'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-                ['afisha_delete', username, JSON.stringify({ id: ev.id, title: ev.title, date: ev.date, time: ev.time, type: ev.type })]
-            ).catch(err => log.error('History log error', err));
+            await insertHistory(pool, {
+                action: 'afisha_delete',
+                username,
+                data: { id: ev.id, title: ev.title, date: ev.date, time: ev.time, type: ev.type }
+            }).catch(err => log.error('History log error', err));
         }
         res.json({ success: true, deletedTasks: deleted.rows.length });
     } catch (err) {

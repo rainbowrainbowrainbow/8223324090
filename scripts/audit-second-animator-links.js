@@ -27,6 +27,7 @@ loadEnvFile();
 
 const { pool, generateBookingNumber } = require('../db');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
+const { insertHistory } = require('../services/historyLog');
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter(arg => arg.startsWith('--') && !arg.includes('=')));
@@ -273,10 +274,12 @@ async function insertLinkedSecondAnimator(client, booking, line) {
             })
         ]
     );
-    await client.query(
-        'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-        ['repair_second_animator_link', 'system', JSON.stringify({ mainBookingId: booking.id, linkedBookingId: linkedId, secondAnimator: line.name })]
-    );
+    await insertHistory(client, {
+        businessContext: CONTEXT,
+        action: 'repair_second_animator_link',
+        username: 'system',
+        data: { mainBookingId: booking.id, linkedBookingId: linkedId, secondAnimator: line.name }
+    });
     return linkedId;
 }
 
@@ -289,15 +292,17 @@ async function repairLinkedTimelineIdentity(client, booking, existing, line) {
             AND COALESCE(business_context, $3) = $3`,
         [JSON.stringify(extra), existing.id, CONTEXT]
     );
-    await client.query(
-        'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-        ['repair_second_animator_identity', 'system', JSON.stringify({
+    await insertHistory(client, {
+        businessContext: CONTEXT,
+        action: 'repair_second_animator_identity',
+        username: 'system',
+        data: {
             mainBookingId: booking.id,
             linkedBookingId: existing.id,
             secondAnimator: line.name,
             lineId: existing.line_id || line.lineId
-        })]
-    );
+        }
+    });
 }
 
 async function repairLinkedTimelineLine(client, booking, existing, line) {
@@ -311,16 +316,18 @@ async function repairLinkedTimelineLine(client, booking, existing, line) {
             AND COALESCE(business_context, $5) = $5`,
         [line.lineId, line.name || booking.second_animator || existing.second_animator || null, JSON.stringify(extra), existing.id, CONTEXT]
     );
-    await client.query(
-        'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-        ['repair_second_animator_line', 'system', JSON.stringify({
+    await insertHistory(client, {
+        businessContext: CONTEXT,
+        action: 'repair_second_animator_line',
+        username: 'system',
+        data: {
             mainBookingId: booking.id,
             linkedBookingId: existing.id,
             secondAnimator: line.name,
             oldLineId: existing.line_id || null,
             newLineId: line.lineId
-        })]
-    );
+        }
+    });
 }
 
 async function main() {

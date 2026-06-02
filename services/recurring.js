@@ -12,6 +12,7 @@
 const { pool, generateBookingNumber } = require('../db');
 const { checkServerConflicts, checkRoomConflict, ensureDefaultLines, getKyivDateStr } = require('./booking');
 const { processBookingAutomation } = require('./bookingAutomation');
+const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 
@@ -378,20 +379,23 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             }
 
             // Log to history
-            await client.query(
-                'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-                ['recurring_create', template.created_by || 'system', JSON.stringify({
+            await insertHistory(client, {
+                businessContext: DEFAULT_TIMELINE_CONTEXT,
+                action: 'recurring_create',
+                username: template.created_by || 'system',
+                data: {
                     bookingId: mainId, templateId: template.id, date: dateStr,
                     program: template.product_label || template.product_name
-                })]
-            );
+                }
+            });
 
             await client.query('COMMIT');
             result.created++;
 
             // Fire-and-forget: automation rules for the generated booking
             const bookingData = {
-                id: mainId, date: dateStr, time: timeStart, lineId: primaryLineId,
+                id: mainId, businessContext: DEFAULT_TIMELINE_CONTEXT, business_context: DEFAULT_TIMELINE_CONTEXT,
+                date: dateStr, time: timeStart, lineId: primaryLineId,
                 programId: template.product_id, programCode: template.product_code,
                 label: template.product_label, programName: template.product_name,
                 category: template.category, duration, price: template.price,

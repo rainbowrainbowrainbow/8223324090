@@ -28,6 +28,7 @@ const {
 } = require('../services/recurring');
 const { mapBookingRow, getKyivDateStr } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
+const { insertHistory } = require('../services/historyLog');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -216,15 +217,16 @@ router.post('/', async (req, res) => {
         }
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['recurring_template_create', req.user?.username || 'system', JSON.stringify({
+        await insertHistory(pool, {
+            action: 'recurring_template_create',
+            username: req.user?.username || 'system',
+            data: {
                 templateId: template.id,
                 pattern: template.pattern,
                 program: b.productLabel || b.productName,
                 generated: generation.created
-            })]
-        ).catch(err => log.error('History log error', err));
+            }
+        }).catch(err => log.error('History log error', err));
 
         res.json({
             success: true,
@@ -351,10 +353,11 @@ router.put('/:id', async (req, res) => {
         );
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['recurring_template_edit', req.user?.username || 'system', JSON.stringify({ templateId: parseInt(id), changes: Object.keys(b) })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: 'recurring_template_edit',
+            username: req.user?.username || 'system',
+            data: { templateId: parseInt(id), changes: Object.keys(b) }
+        }).catch(err => log.error('History log error', err));
 
         // Fetch updated template
         const updated = await pool.query('SELECT * FROM recurring_templates WHERE id = $1', [id]);
@@ -395,14 +398,15 @@ router.delete('/:id', async (req, res) => {
         }
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['recurring_template_delete', req.user?.username || 'system', JSON.stringify({
+        await insertHistory(pool, {
+            action: 'recurring_template_delete',
+            username: req.user?.username || 'system',
+            data: {
                 templateId: parseInt(id),
                 program: existing.rows[0].product_name || existing.rows[0].product_label,
                 cancelledFuture: cancelledCount
-            })]
-        ).catch(err => log.error('History log error', err));
+            }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, cancelledBookings: cancelledCount });
     } catch (err) {
@@ -429,12 +433,11 @@ router.post('/:id/pause', async (req, res) => {
         );
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            [newState ? 'recurring_template_resume' : 'recurring_template_pause',
-             req.user?.username || 'system',
-             JSON.stringify({ templateId: parseInt(id) })]
-        ).catch(err => log.error('History log error', err));
+        await insertHistory(pool, {
+            action: newState ? 'recurring_template_resume' : 'recurring_template_pause',
+            username: req.user?.username || 'system',
+            data: { templateId: parseInt(id) }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, isActive: newState });
     } catch (err) {
@@ -546,12 +549,13 @@ router.delete('/:id/series/future', async (req, res) => {
         }
 
         // Log to history
-        await pool.query(
-            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['recurring_series_cancel', req.user?.username || 'system', JSON.stringify({
+        await insertHistory(pool, {
+            action: 'recurring_series_cancel',
+            username: req.user?.username || 'system',
+            data: {
                 templateId: parseInt(id), fromDate, cancelledCount
-            })]
-        ).catch(err => log.error('History log error', err));
+            }
+        }).catch(err => log.error('History log error', err));
 
         res.json({ success: true, cancelledCount });
     } catch (err) {

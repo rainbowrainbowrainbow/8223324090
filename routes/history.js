@@ -12,29 +12,16 @@ const {
     resolveBusinessScope,
     pushBusinessScopeCondition
 } = require('../services/businessContext');
+const {
+    historyActorFromRequest,
+    insertHistory,
+    normalizeHistoryAction
+} = require('../services/historyLog');
 
 const log = createLogger('History');
 
 // All history routes require authentication
 router.use(authenticateToken);
-
-function normalizeHistoryAction(action) {
-    const value = String(action || '').trim();
-    if (!value || value.length > 64) return null;
-    return value;
-}
-
-function historyActor(req) {
-    return req.user?.username || req.user?.name || `user:${req.user?.id || 'unknown'}`;
-}
-
-function normalizeHistoryData(data, businessContext) {
-    const base = data && typeof data === 'object' && !Array.isArray(data)
-        ? { ...data }
-        : { value: data ?? null };
-    base.business_context = businessContext || DEFAULT_BUSINESS_CONTEXT;
-    return base;
-}
 
 router.get('/', async (req, res) => {
     try {
@@ -103,10 +90,12 @@ router.post('/', async (req, res) => {
         const action = normalizeHistoryAction(req.body?.action);
         if (!action) return res.status(400).json({ success: false, error: 'Invalid history action' });
         const businessContext = scope.activeContext || DEFAULT_BUSINESS_CONTEXT;
-        await pool.query(
-            'INSERT INTO history (business_context, action, username, data) VALUES ($1, $2, $3, $4)',
-            [businessContext, action, historyActor(req), JSON.stringify(normalizeHistoryData(req.body?.data, businessContext))]
-        );
+        await insertHistory(pool, {
+            businessContext,
+            action,
+            username: historyActorFromRequest(req),
+            data: req.body?.data
+        });
         res.json({ success: true });
     } catch (err) {
         log.error('Error adding history', err);

@@ -1662,6 +1662,7 @@
                     <ul>
                         <li><b>Паралельні бронювання серіалізуються на backend</b> — create, full-create, education-series, PUT і linked-atomic беруть transaction locks на той самий бізнес-контекст, дату, лінію або кімнату.</li>
                         <li><b>History API більше не глобальний</b> — історія читається й пишеться в межах дозволеного <code>business_context</code>, а користувач аудиту береться з серверної сесії.</li>
+                        <li><b>Legacy history writers мають явний scope</b> — Afisha, сертифікати, recurring, automation і repair scripts пишуть <code>history.business_context</code> через спільний helper.</li>
                         <li><b>Статуси бронювань fail-closed</b> — нові записи приймають тільки <code>confirmed</code>, <code>preliminary</code> або <code>cancelled</code>; довільні статуси більше не зберігаються.</li>
                         <li><b>Timeline context не підміняється мовчки</b> — явний невідомий <code>businessContext</code> блокується guard-ами замість fallback у <code>event_genix</code>.</li>
                     </ul>

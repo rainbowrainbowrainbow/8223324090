@@ -440,12 +440,12 @@ function timelineLineResourceIdentity(line = {}, index = 0) {
 function timelineBookingResourceIdentity(booking = {}) {
     const embedded = timelineEmbeddedIdentity(booking);
     const resourceId = String(
-        booking?.resourceId
+        booking?.lineId
+        || booking?.line_id
+        || booking?.resourceId
         || booking?.resource_id
         || embedded.resourceId
         || embedded.resource_id
-        || booking?.lineId
-        || booking?.line_id
         || ''
     ).trim();
     return {

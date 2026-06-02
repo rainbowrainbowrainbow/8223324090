@@ -146,11 +146,11 @@ function mapBookingRow(row) {
     const extraData = row.extra_data || null;
     const timelineIdentity = {
         ...(extraData?.timelineIdentity || extraData?.timeline_identity || {}),
-        resourceId: extraData?.timelineIdentity?.resourceId
+        resourceId: row.resource_id
+            || row.line_id
+            || extraData?.timelineIdentity?.resourceId
             || extraData?.timeline_identity?.resource_id
             || extraData?.timeline_identity?.resourceId
-            || row.resource_id
-            || row.line_id
             || null,
         resourceType: extraData?.timelineIdentity?.resourceType
             || extraData?.timeline_identity?.resource_type

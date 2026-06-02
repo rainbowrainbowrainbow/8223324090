@@ -47,11 +47,14 @@ test('created booking reveal can find day blocks and week mini-blocks', () => {
 test('booking rows and frontend payloads carry resource identity while keeping lineId compatibility', () => {
     const service = read('services/booking.js');
     const booking = read('js/booking.js');
+    const timeline = read('js/timeline.js');
 
     assert.match(service, /const timelineIdentity = \{/);
+    assert.match(service, /resourceId:\s*row\.resource_id\s*\|\|\s*row\.line_id\s*\|\|\s*extraData\?\.timelineIdentity\?\.resourceId/s);
     assert.match(service, /resourceId: timelineIdentity\.resourceId/);
     assert.match(service, /resourceType: timelineIdentity\.resourceType/);
     assert.match(service, /timelineIdentity,/);
+    assert.match(timeline, /booking\?\.lineId\s*\|\|\s*booking\?\.line_id\s*\|\|\s*booking\?\.resourceId/s);
     assert.match(booking, /obj\.extraData\.timelineIdentity = \{/);
     assert.match(booking, /obj\.resourceId = timelineIdentity\.resourceId/);
     assert.match(booking, /lineId: formData\.lineId/);

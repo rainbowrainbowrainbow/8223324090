@@ -12,20 +12,21 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.2">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.2">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.2">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.2">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.2">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.2">
+    <link rel="stylesheet" href="css/base.css?v=0.73.3">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.3">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.3">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.3">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.3">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         /* ==========================================
-           HR TABS
+           HR NAVIGATION
            ========================================== */
-        .hr-tabs {
+        .hr-tabs,
+        .hr-nav {
             display: flex;
             gap: 4px;
             margin-bottom: 24px;
@@ -34,6 +35,42 @@
             padding: 4px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+        }
+        .hr-nav {
+            align-items: stretch;
+            gap: 10px;
+            padding: 8px;
+        }
+        .hr-nav-group {
+            display: flex;
+            align-items: stretch;
+            gap: 4px;
+            flex: 1 1 180px;
+            min-width: 180px;
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.42);
+        }
+        .hr-nav-group-title {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            min-width: 98px;
+            max-width: 150px;
+            font-size: 11px;
+            font-weight: 900;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            line-height: 1.25;
+            white-space: normal;
+        }
+        .hr-nav-items {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
         }
         .hr-tab {
             flex: 1;
@@ -57,7 +94,18 @@
             color: var(--primary);
             box-shadow: var(--shadow-xs);
         }
-        body.dark-mode .hr-tabs { background: #1E1E38; }
+        .hr-tab.hidden { display: none; }
+        .hr-nav-empty {
+            color: var(--gray-400);
+            font-size: var(--font-xs);
+            padding: 10px;
+        }
+        body.dark-mode .hr-tabs,
+        body.dark-mode .hr-nav { background: #1E1E38; }
+        body.dark-mode .hr-nav-group {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .hr-nav-group-title { color: #94A3B8; }
         body.dark-mode .hr-tab { color: #9CA3AF; }
         body.dark-mode .hr-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
         body.dark-mode .hr-tab.active { background: #2A2A4A; color: var(--primary-light); }
@@ -1120,6 +1168,74 @@
         .hr-team-card:hover { box-shadow: var(--shadow-sm); }
         .hr-team-card.inactive { opacity: 0.5; }
 
+        .hr-people-accordion {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .hr-people-bucket {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xs);
+            overflow: hidden;
+        }
+        .hr-people-bucket-toggle {
+            width: 100%;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border: 0;
+            background: transparent;
+            color: var(--gray-800);
+            font-family: inherit;
+            cursor: pointer;
+            text-align: left;
+        }
+        .hr-people-bucket-toggle:hover { background: var(--gray-50); }
+        .hr-people-bucket-title {
+            font-size: var(--font-base);
+            font-weight: 900;
+        }
+        .hr-people-bucket-note {
+            margin-top: 2px;
+            font-size: var(--font-xs);
+            color: var(--gray-500);
+        }
+        .hr-people-bucket-count {
+            min-width: 34px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 900;
+            text-align: center;
+        }
+        .hr-people-bucket-icon {
+            font-size: 14px;
+            color: var(--gray-400);
+        }
+        .hr-people-bucket-body {
+            display: none;
+            padding: 0 16px 16px;
+        }
+        .hr-people-bucket.is-open .hr-people-bucket-body { display: block; }
+        .hr-people-bucket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+        .hr-people-empty {
+            padding: 24px;
+            color: var(--gray-400);
+            text-align: center;
+            border: 1px dashed var(--gray-200);
+            border-radius: var(--radius-sm);
+        }
+
         .hr-team-avatar {
             width: 64px;
             height: 64px;
@@ -1208,6 +1324,81 @@
             color: var(--gray-600);
         }
         .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+
+        .hr-kpi-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .hr-kpi-title {
+            margin: 0;
+            font-size: 22px;
+            color: var(--gray-900);
+        }
+        .hr-kpi-subtitle {
+            margin: 3px 0 0;
+            color: var(--gray-500);
+            font-size: var(--font-sm);
+        }
+        .hr-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .hr-kpi-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow-xs);
+            min-height: 118px;
+        }
+        .hr-kpi-card.is-placeholder {
+            border-style: dashed;
+            background: var(--gray-50);
+        }
+        .hr-kpi-card-label {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            line-height: 1.25;
+        }
+        .hr-kpi-card-value {
+            margin-top: 8px;
+            color: var(--gray-900);
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1.1;
+        }
+        .hr-kpi-card-note {
+            margin-top: 7px;
+            color: var(--gray-500);
+            font-size: var(--font-xs);
+            line-height: 1.35;
+        }
+        .hr-kpi-table .kpi-muted {
+            color: var(--gray-400);
+            font-size: 12px;
+        }
+        .hr-kpi-signal {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 900;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            white-space: nowrap;
+        }
+        .hr-kpi-signal.good { background: rgba(16,185,129,0.14); color: #047857; }
+        .hr-kpi-signal.warn { background: rgba(245,158,11,0.16); color: #B45309; }
+        .hr-kpi-signal.bad { background: rgba(239,68,68,0.14); color: #B91C1C; }
 
         .hr-account-head,
         .hr-account-toolbar {
@@ -1737,6 +1928,8 @@
         body.dark-mode .hr-summary-card,
         body.dark-mode .hr-staff-row,
         body.dark-mode .hr-team-card,
+        body.dark-mode .hr-people-bucket,
+        body.dark-mode .hr-kpi-card,
         body.dark-mode .hr-profession-card,
         body.dark-mode .hr-checklist-card,
         body.dark-mode .hr-account-row,
@@ -1750,6 +1943,10 @@
         body.dark-mode .hr-summary-card .hr-summary-label { color: #9CA3AF; }
         body.dark-mode .hr-staff-name,
         body.dark-mode .hr-team-name,
+        body.dark-mode .hr-people-bucket-title,
+        body.dark-mode .hr-people-bucket-toggle,
+        body.dark-mode .hr-kpi-title,
+        body.dark-mode .hr-kpi-card-value,
         body.dark-mode .hr-professions-head h3,
         body.dark-mode .hr-profession-card h4,
         body.dark-mode .hr-checklist-card h4,
@@ -1762,10 +1959,27 @@
         }
         body.dark-mode .hr-staff-role,
         body.dark-mode .hr-staff-dept,
+        body.dark-mode .hr-people-bucket-note,
+        body.dark-mode .hr-kpi-subtitle,
+        body.dark-mode .hr-kpi-card-label,
+        body.dark-mode .hr-kpi-card-note,
         body.dark-mode .hr-professions-head p,
         body.dark-mode .hr-profession-card p,
         body.dark-mode .hr-checklist-card p,
         body.dark-mode .hr-modal .form-hint { color: #9CA3AF; }
+        body.dark-mode .hr-people-bucket-toggle:hover,
+        body.dark-mode .hr-kpi-card.is-placeholder {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .hr-people-bucket-count,
+        body.dark-mode .hr-kpi-signal {
+            background: rgba(255,255,255,0.08);
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-people-empty {
+            border-color: rgba(148,163,184,0.22);
+            color: #9CA3AF;
+        }
         body.dark-mode .hr-profession-list span,
         body.dark-mode .hr-checklist-list span {
             background: rgba(15,23,42,0.38);
@@ -1897,11 +2111,33 @@
            RESPONSIVE
            ========================================== */
         @media (max-width: 768px) {
-            .hr-tabs { gap: 2px; }
+            .hr-tabs,
+            .hr-nav { gap: 6px; }
+            .hr-nav {
+                align-items: flex-start;
+                padding: 6px;
+            }
+            .hr-nav-group {
+                flex: 0 0 82vw;
+                min-width: 260px;
+                flex-direction: column;
+            }
+            .hr-nav-group-title {
+                min-width: 0;
+                max-width: none;
+                padding: 6px 8px 2px;
+            }
             .hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }
             .hr-schedule-controls { flex-direction: column; align-items: stretch; }
             .hr-schedule-actions { margin-left: 0; }
             .hr-team-grid { grid-template-columns: 1fr; }
+            .hr-people-bucket-toggle { grid-template-columns: minmax(0, 1fr) auto auto; padding: 12px; }
+            .hr-people-bucket-body { padding: 0 12px 12px; }
+            .hr-people-bucket-grid { grid-template-columns: 1fr; }
+            .hr-kpi-toolbar { align-items: stretch; }
+            .hr-kpi-toolbar > div,
+            .hr-kpi-toolbar select,
+            .hr-kpi-toolbar button { width: 100%; }
             .hr-team-card { padding: 14px; }
             .hr-team-avatar { width: 48px; height: 48px; font-size: 18px; }
             .hr-team-badges { gap: 4px; }
@@ -2222,24 +2458,7 @@
                 <h2>HR</h2>
             </div>
 
-            <div class="hr-tabs">
-                <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
-                <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
-                <button type="button" class="hr-tab" data-tab="team">Команда</button>
-                <button type="button" class="hr-tab" data-tab="professions">Професії</button>
-                <button type="button" class="hr-tab" data-tab="checklists">Чеклісти</button>
-                <button type="button" class="hr-tab" data-tab="accounts">Акаунти</button>
-                <button type="button" class="hr-tab" data-tab="structure">Структура</button>
-                <button type="button" class="hr-tab" data-tab="reserve">Резерв</button>
-                <button type="button" class="hr-tab" data-tab="blacklist">Чорний список</button>
-                <button type="button" class="hr-tab" data-tab="reports">Звіти</button>
-                <button type="button" class="hr-tab" data-tab="ai-team">AI Команда</button>
-                <button type="button" class="hr-tab" data-tab="leaves">Відпустки</button>
-                <button type="button" class="hr-tab" data-tab="salary">Зарплата</button>
-                <button type="button" class="hr-tab" data-tab="ratings">Рейтинг</button>
-                <button type="button" class="hr-tab" data-tab="onboarding">Онбординг</button>
-                <button type="button" class="hr-tab" data-tab="vacancies">💼 Вакансії</button>
-            </div>
+            <div id="hrNav" class="hr-nav" aria-label="HR navigation"></div>
 
             <!-- TAB 1: TODAY -->
             <div id="tab-today" class="hr-tab-content active">
@@ -2273,6 +2492,23 @@
                         <tbody id="schedBody"></tbody>
                     </table>
                 </div>
+                <div class="hr-professions-head" style="margin-top:24px;">
+                    <div>
+                        <h3>Заявки на відпустки та вихідні</h3>
+                        <p>Кадрові заявки лишаються у контексті графіка: після затвердження вони потрапляють у записи присутності як відпустка, лікарняний або вихідний.</p>
+                    </div>
+                    <button type="button" id="btnNewLeave" class="btn-add">+ Нова заявка</button>
+                </div>
+                <div class="hr-team-filters">
+                    <select id="leaveStatusFilter" class="hr-team-select" style="min-width:140px;">
+                        <option value="">Всі статуси</option>
+                        <option value="pending" selected>Очікують</option>
+                        <option value="approved">Затверджені</option>
+                        <option value="rejected">Відхилені</option>
+                    </select>
+                    <button type="button" class="btn-secondary" onclick="loadLeaves()">Оновити заявки</button>
+                </div>
+                <div id="leavesList"></div>
             </div>
 
             <!-- TAB 3: TEAM -->
@@ -2409,24 +2645,6 @@
                 </div>
             </div>
 
-            <!-- TAB 3B: RESERVE POOL -->
-            <div id="tab-reserve" class="hr-tab-content">
-                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
-                    <h3 style="margin:0;">Резервний пул</h3>
-                    <button type="button" class="btn-secondary" onclick="loadReservePool()">Оновити</button>
-                </div>
-                <div id="reservePoolList" class="hr-team-grid"></div>
-            </div>
-
-            <!-- TAB 3C: BLACKLIST -->
-            <div id="tab-blacklist" class="hr-tab-content">
-                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
-                    <h3 style="margin:0;">Чорний список</h3>
-                    <button type="button" class="btn-secondary" onclick="loadBlacklist()">Оновити</button>
-                </div>
-                <div id="blacklistList" class="hr-team-grid"></div>
-            </div>
-
             <!-- TAB 4: REPORTS -->
             <div id="tab-reports" class="hr-tab-content">
                 <div class="hr-report-controls">
@@ -2440,30 +2658,6 @@
                         <tbody id="reportBody"></tbody>
                     </table>
                 </div>
-            </div>
-
-            <!-- TAB 5: AI TEAM -->
-            <div id="tab-ai-team" class="hr-tab-content">
-                <div style="margin-bottom:20px;padding:14px 18px;background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border-radius:var(--radius);border-left:4px solid #6366F1;">
-                    <p style="font-size:var(--font-sm);color:#4338CA;line-height:1.6;margin:0;font-weight:600;">
-                        Електронні працівники — AI-помічники парку. Кожен має свою зону відповідальності.
-                    </p>
-                </div>
-                <div id="aiTeamList"></div>
-            </div>
-
-            <!-- TAB 6: LEAVES -->
-            <div id="tab-leaves" class="hr-tab-content">
-                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
-                    <select id="leaveStatusFilter" class="hr-team-select" style="min-width:140px;">
-                        <option value="">Всі статуси</option>
-                        <option value="pending" selected>Очікують</option>
-                        <option value="approved">Затверджені</option>
-                        <option value="rejected">Відхилені</option>
-                    </select>
-                    <button type="button" id="btnNewLeave" class="btn-add" style="margin-left:auto;">+ Нова заявка</button>
-                </div>
-                <div id="leavesList"></div>
             </div>
 
             <!-- TAB 7: SALARY -->
@@ -2482,9 +2676,25 @@
                 </div>
             </div>
 
-            <!-- TAB 8: RATINGS -->
-            <div id="tab-ratings" class="hr-tab-content">
-                <div id="ratingsBoard"></div>
+            <!-- TAB 8: KPI -->
+            <div id="tab-kpi" class="hr-tab-content">
+                <div class="hr-kpi-toolbar">
+                    <div>
+                        <h3 class="hr-kpi-title">KPI команди</h3>
+                        <p class="hr-kpi-subtitle">Перший зріз продуктивності без штучного рейтингу: присутність, надійність, задачі, внесок і розвиток.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <select id="kpiMonth" class="hr-team-select" style="min-width:160px;"></select>
+                        <button type="button" class="btn-secondary" onclick="loadKpi()">Оновити KPI</button>
+                    </div>
+                </div>
+                <div id="kpiSummary" class="hr-kpi-grid"></div>
+                <div class="hr-report-table-wrap">
+                    <table class="hr-report-table hr-kpi-table">
+                        <thead id="kpiHead"></thead>
+                        <tbody id="kpiBody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- TAB 9: ONBOARDING -->
@@ -2715,15 +2925,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.2"></script>
-    <script src="js/config.js?v=0.73.2"></script>
-    <script src="js/notification.js?v=0.73.2"></script>
-    <script src="js/api.js?v=0.73.2"></script>
-    <script src="js/auth.js?v=0.73.2"></script>
-    <script src="js/components/sidebar.js?v=0.73.2"></script>
+    <script src="js/ui.js?v=0.73.3"></script>
+    <script src="js/config.js?v=0.73.3"></script>
+    <script src="js/notification.js?v=0.73.3"></script>
+    <script src="js/api.js?v=0.73.3"></script>
+    <script src="js/auth.js?v=0.73.3"></script>
+    <script src="js/components/sidebar.js?v=0.73.3"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.2"></script>
-    <script src="js/alerts.js?v=0.73.2"></script><script>
+    <script src="js/hr-page.js?v=0.73.3"></script>
+    <script src="js/alerts.js?v=0.73.3"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

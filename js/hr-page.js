@@ -1,7 +1,7 @@
 /**
  * hr-page.js — HR module frontend (v30.7)
  *
- * 10 tabs: Today, Schedule, Team, Reports, AI Team, Leaves, Salary, Ratings, Onboarding, Costumes
+ * Grouped sections: company pulse, people, structure, salary/KPI, temporary leftovers.
  * API: /api/hr/*
  */
 
@@ -43,6 +43,85 @@ const HR_POOL_LABELS = {
     blacklisted: 'Чорний список'
 };
 
+const HR_NAV_GROUPS = [
+    {
+        id: 'pulse',
+        label: 'Пульс компанії',
+        items: [
+            { id: 'today', label: 'Сьогодні' },
+            { id: 'schedule', label: 'Графік' },
+            { id: 'reports', label: 'Звіти' }
+        ]
+    },
+    {
+        id: 'people',
+        label: 'Команда',
+        items: [
+            { id: 'team', label: 'Команда' }
+        ]
+    },
+    {
+        id: 'structure',
+        label: 'Структура компанії',
+        items: [
+            { id: 'structure', label: 'Структура' },
+            { id: 'professions', label: 'Професії' },
+            { id: 'checklists', label: 'Чек-листи' },
+            { id: 'accounts', label: 'Акаунти', visible: () => canManageAccountSecurity() }
+        ]
+    },
+    {
+        id: 'payroll',
+        label: 'ЗП та KPI',
+        items: [
+            { id: 'salary', label: 'Зарплата' },
+            { id: 'kpi', label: 'KPI' }
+        ]
+    },
+    {
+        id: 'other',
+        label: 'Інше',
+        items: [
+            { id: 'onboarding', label: 'Onboarding' },
+            { id: 'vacancies', label: 'Вакансії' },
+            { id: 'costumes', label: 'Костюми', href: '/art?tab=costumes' }
+        ]
+    }
+];
+
+const HR_TAB_ALIASES = {
+    rating: { tab: 'kpi' },
+    ratings: { tab: 'kpi' },
+    leaves: { tab: 'schedule' },
+    reserve: { tab: 'team', bucket: 'reserve' },
+    blacklist: { tab: 'team', bucket: 'blacklist' },
+    interns: { tab: 'team', bucket: 'interns' },
+    'ai-team': { tab: 'today' }
+};
+
+const PEOPLE_BUCKETS = [
+    {
+        id: 'workers',
+        title: 'Робітники',
+        note: 'Основна команда без стажерів'
+    },
+    {
+        id: 'interns',
+        title: 'Стажери',
+        note: 'Активні стажери та працівники у навчальному статусі'
+    },
+    {
+        id: 'blacklist',
+        title: 'Чорний список',
+        note: 'Сервісний список із причинами та діями повернення'
+    },
+    {
+        id: 'reserve',
+        title: 'Резерв',
+        note: 'Кандидати та працівники резервного пулу'
+    }
+];
+
 // ==========================================
 // STATE
 // ==========================================
@@ -58,6 +137,8 @@ let editingShift = null; // { staffId, date, existing? }
 let contextStaffId = null;
 let pollTimer = null;
 let hrProfessions = [];
+let activePeopleBucket = 'workers';
+let pendingPeopleBucket = null;
 
 // ==========================================
 // HELPERS
@@ -117,6 +198,25 @@ function staffHasProfession(staff = {}, key = '') {
     const normalized = normalizeProfessionKey(key);
     if (!normalized) return true;
     return normalizeProfessionKey(staff.role_type) === normalized || staffSecondaryProfessions(staff).includes(normalized);
+}
+
+function staffPoolStatus(staff = {}) {
+    return staff.hr_pool_status || 'core';
+}
+
+function isInternStaff(staff = {}) {
+    return normalizeProfessionKey(staff.role_type) === 'intern' || staffSecondaryProfessions(staff).includes('intern');
+}
+
+function bucketForStaff(staff = {}) {
+    const pool = staffPoolStatus(staff);
+    if (pool === 'blacklisted') return 'blacklist';
+    if (pool === 'reserve') return 'reserve';
+    return isInternStaff(staff) ? 'interns' : 'workers';
+}
+
+function monthOptionLabel(date) {
+    return `${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 function professionOptionsFromCatalog(current = '') {
@@ -308,6 +408,7 @@ function initNewTabs() {
     document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
     document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
     document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
+    document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
@@ -327,9 +428,14 @@ function initNewTabs() {
 
 function initTabs() {
     try {
-    const accountsTab = document.querySelector('.hr-tab[data-tab="accounts"]');
-    if (accountsTab) accountsTab.classList.toggle('hidden', !canManageAccountSecurity());
+    renderHrNav();
     document.querySelectorAll('.hr-tab').forEach(tab => {
+        if (tab.dataset.href) {
+            tab.addEventListener('click', () => {
+                window.location.href = tab.dataset.href;
+            });
+            return;
+        }
         tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, { updateHash: true }));
     });
     } catch (err) {
@@ -338,16 +444,66 @@ function initTabs() {
     }
 }
 
-function getInitialHrTab() {
+function isHrNavItemVisible(item) {
+    return typeof item.visible === 'function' ? item.visible(AppState.currentUser) : true;
+}
+
+function renderHrNav() {
+    const nav = document.getElementById('hrNav');
+    if (!nav) return;
+    const groups = HR_NAV_GROUPS
+        .map(group => ({
+            ...group,
+            items: group.items.filter(isHrNavItemVisible)
+        }))
+        .filter(group => group.items.length > 0);
+    nav.innerHTML = groups.length ? groups.map(group => `
+        <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
+            <div class="hr-nav-group-title">${escapeHtml(group.label)}</div>
+            <div class="hr-nav-items">
+                ${group.items.map(item => `
+                    <button type="button" class="hr-tab" data-tab="${escapeHtml(item.id)}"${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}</button>
+                `).join('')}
+            </div>
+        </section>
+    `).join('') : '<div class="hr-nav-empty">Немає доступних HR-розділів</div>';
+}
+
+function requestedHrTarget() {
     const hashTab = window.location.hash ? window.location.hash.slice(1) : '';
     const queryTab = new URLSearchParams(window.location.search).get('tab') || '';
-    const target = queryTab || hashTab || 'today';
+    return queryTab || hashTab || 'today';
+}
+
+function resolveHrTabTarget(rawTarget) {
+    const requested = String(rawTarget || 'today').trim() || 'today';
+    if (requested === 'costumes') {
+        return { tab: 'today', href: '/art?tab=costumes', alias: true };
+    }
+    const mapped = HR_TAB_ALIASES[requested] || { tab: requested };
+    const target = mapped.tab || 'today';
+    if (target === 'accounts' && !canManageAccountSecurity()) {
+        return { tab: 'today', alias: requested !== 'today' };
+    }
+    if (!document.getElementById(`tab-${target}`)) {
+        return { tab: 'today', alias: requested !== 'today' };
+    }
+    return {
+        tab: target,
+        bucket: mapped.bucket || null,
+        alias: target !== requested || !!mapped.bucket
+    };
+}
+
+function getInitialHrTab() {
+    const target = requestedHrTarget();
     if (target === 'costumes') {
         window.location.replace('/art?tab=costumes');
         return 'today';
     }
-    if (target === 'accounts' && !canManageAccountSecurity()) return 'today';
-    return document.getElementById(`tab-${target}`) ? target : 'today';
+    const resolved = resolveHrTabTarget(target);
+    if (resolved.bucket) pendingPeopleBucket = resolved.bucket;
+    return resolved.tab;
 }
 
 function removeLegacyAnimatorShiftSummary() {
@@ -358,6 +514,13 @@ function removeLegacyAnimatorShiftSummary() {
 
 async function activateHrTab(target, options = {}) {
     removeLegacyAnimatorShiftSummary();
+    const resolved = resolveHrTabTarget(target);
+    if (resolved.href) {
+        window.location.href = resolved.href;
+        return;
+    }
+    target = resolved.tab;
+    if (resolved.bucket) pendingPeopleBucket = resolved.bucket;
     const tab = document.querySelector(`.hr-tab[data-tab="${target}"]`);
     const panel = document.getElementById(`tab-${target}`);
     if (!tab || !panel) return;
@@ -366,17 +529,15 @@ async function activateHrTab(target, options = {}) {
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
     panel.classList.add('active');
-    if (options.updateHash) {
+    if (options.updateHash || resolved.alias) {
         const next = target === 'today' ? window.location.pathname : `${window.location.pathname}#${target}`;
         history.replaceState(null, '', next);
     }
     const loaders = {
         today: loadToday, schedule: loadSchedule, team: loadTeam, structure: loadCompanyStructure,
         professions: loadProfessions, checklists: loadProfessionChecklists,
-        reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
-        salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
-        vacancies: loadVacancies, reserve: loadReservePool,
-        blacklist: loadBlacklist, accounts: loadAccountCenter
+        reports: loadReports, salary: loadSalary, kpi: loadKpi, onboarding: loadOnboarding,
+        vacancies: loadVacancies, accounts: loadAccountCenter
     };
     await loaders[target]?.();
     removeLegacyAnimatorShiftSummary();
@@ -655,6 +816,7 @@ async function loadSchedule() {
     if (shiftsData && shiftsData.success) scheduleShifts = shiftsData.data;
 
     renderSchedule(dates);
+    await loadLeaves();
 }
 
 function renderTemplateSelect() {
@@ -1395,12 +1557,48 @@ function filterAndRenderTeam() {
 
 function renderTeam(staff) {
     const grid = document.getElementById('teamGrid');
-    if (staff.length === 0) {
+    if (!grid) return;
+    grid.className = 'hr-people-accordion';
+    if (pendingPeopleBucket) {
+        activePeopleBucket = pendingPeopleBucket;
+        pendingPeopleBucket = null;
+    }
+    const grouped = PEOPLE_BUCKETS.map(bucket => ({
+        ...bucket,
+        staff: staff.filter(item => bucketForStaff(item) === bucket.id)
+    }));
+    if (!grouped.some(bucket => bucket.staff.length) && staff.length === 0) {
         grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Нікого не знайдено</div>';
         return;
     }
+    if (!grouped.some(bucket => bucket.id === activePeopleBucket && bucket.staff.length)) {
+        activePeopleBucket = grouped.find(bucket => bucket.staff.length)?.id || 'workers';
+    }
+    grid.innerHTML = grouped.map(bucket => {
+        const isOpen = bucket.id === activePeopleBucket;
+        return `<section class="hr-people-bucket ${isOpen ? 'is-open' : ''}" data-people-bucket="${escapeHtml(bucket.id)}">
+            <button type="button" class="hr-people-bucket-toggle" aria-expanded="${isOpen ? 'true' : 'false'}" onclick="setPeopleBucket('${escapeHtml(bucket.id)}')">
+                <span>
+                    <span class="hr-people-bucket-title">${escapeHtml(bucket.title)}</span>
+                    <span class="hr-people-bucket-note">${escapeHtml(bucket.note)}</span>
+                </span>
+                <span class="hr-people-bucket-count">${bucket.staff.length}</span>
+                <span class="hr-people-bucket-icon">${isOpen ? '▲' : '▼'}</span>
+            </button>
+            <div class="hr-people-bucket-body">
+                ${bucket.staff.length ? `<div class="hr-people-bucket-grid">${renderTeamCards(bucket.staff)}</div>` : '<div class="hr-people-empty">Список порожній</div>'}
+            </div>
+        </section>`;
+    }).join('');
+}
 
-    grid.innerHTML = staff.map(s => {
+window.setPeopleBucket = function(bucketId) {
+    activePeopleBucket = PEOPLE_BUCKETS.some(bucket => bucket.id === bucketId) ? bucketId : 'workers';
+    filterAndRenderTeam();
+};
+
+function renderTeamCards(staff) {
+    return staff.map(s => {
         const initials = s.name.split(' ').map(w => w[0]).join('').substring(0, 2);
         const avatar = s.photo_url
             ? `<img src="${escapeHtml(s.photo_url)}" alt="${escapeHtml(s.name)}">`
@@ -3239,11 +3437,7 @@ async function setPoolStatus(staffId, status) {
     });
     if (data?.success) {
         showNotification('HR-статус оновлено', 'success');
-        await Promise.all([
-            loadTeam().catch(() => {}),
-            loadReservePool().catch(() => {}),
-            loadBlacklist().catch(() => {})
-        ]);
+        await loadTeam().catch(() => {});
     } else {
         showNotification(data?.error || 'Не вдалося оновити статус', 'error');
     }
@@ -3988,48 +4182,180 @@ async function showDepremiumPicker(staffId, initialAmount, initialReason, month)
 };
 
 // ==========================================
-// TAB 8: RATINGS (#3)
+// TAB 8: KPI
 // ==========================================
 
-async function loadRatings() {
-    const data = await hrFetch('/ratings');
-    if (!data || !data.success) return;
-    renderRatings(data.data);
+function ensureKpiMonthOptions() {
+    const sel = document.getElementById('kpiMonth');
+    if (!sel) return null;
+    if (!sel.options.length) {
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            sel.add(new Option(monthOptionLabel(d), val));
+        }
+    }
+    return sel;
 }
 
-function renderRatings(staff) {
-    const el = document.getElementById('ratingsBoard');
-    if (!staff.length) {
-        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає даних</div>';
+function num(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function kpiPercent(done, total) {
+    return total > 0 ? Math.round(done / total * 100) : null;
+}
+
+function renderKpiCard(label, value, note, options = {}) {
+    return `<div class="hr-kpi-card ${options.placeholder ? 'is-placeholder' : ''}">
+        <div class="hr-kpi-card-label">${escapeHtml(label)}</div>
+        <div class="hr-kpi-card-value">${escapeHtml(value)}</div>
+        <div class="hr-kpi-card-note">${escapeHtml(note)}</div>
+    </div>`;
+}
+
+function kpiSignal(text, tone = '') {
+    return `<span class="hr-kpi-signal ${tone}">${escapeHtml(text)}</span>`;
+}
+
+function toneForPercent(value, good = 90, warn = 75) {
+    if (value === null || value === undefined) return '';
+    if (value >= good) return 'good';
+    if (value >= warn) return 'warn';
+    return 'bad';
+}
+
+function buildOnboardingKpiMap(list = []) {
+    const map = {};
+    for (const item of list) {
+        const staffId = Number(item.staff_id);
+        if (!staffId) continue;
+        if (!map[staffId]) {
+            map[staffId] = { total: 0, active: 0, completed: 0, completedItems: 0, totalItems: 0 };
+        }
+        const entry = map[staffId];
+        entry.total++;
+        if (item.status === 'completed') entry.completed++;
+        else entry.active++;
+        entry.completedItems += num(item.completed_items);
+        entry.totalItems += num(item.total_items);
+    }
+    Object.values(map).forEach(entry => {
+        entry.percent = kpiPercent(entry.completedItems, entry.totalItems);
+    });
+    return map;
+}
+
+async function loadKpi() {
+    const sel = ensureKpiMonthOptions();
+    const month = sel?.value || '';
+    const [monthly, onboarding, ratings] = await Promise.all([
+        hrFetch(`/report/monthly?month=${month}`),
+        hrFetch('/onboarding'),
+        hrFetch('/ratings')
+    ]);
+    if (!monthly?.success) {
+        const body = document.getElementById('kpiBody');
+        if (body) body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Не вдалося завантажити KPI-зріз</td></tr>';
+        return;
+    }
+    renderKpi({
+        month,
+        rows: monthly.data || [],
+        onboarding: onboarding?.success ? onboarding.data || [] : [],
+        ratings: ratings?.success ? ratings.data || [] : []
+    });
+}
+
+async function loadRatings() {
+    return loadKpi();
+}
+
+function renderKpi({ rows, onboarding, ratings }) {
+    const summary = document.getElementById('kpiSummary');
+    const head = document.getElementById('kpiHead');
+    const body = document.getElementById('kpiBody');
+    if (!summary || !head || !body) return;
+
+    const totals = rows.reduce((acc, row) => {
+        acc.scheduled += num(row.days_scheduled);
+        acc.worked += num(row.days_worked);
+        acc.late += num(row.late_count);
+        acc.absent += num(row.days_absent);
+        acc.overtime += num(row.total_overtime_hours);
+        acc.tasksAssigned += num(row.task_kpi?.tasks_assigned);
+        acc.tasksDone += num(row.task_kpi?.tasks_done);
+        acc.tasksOverdue += num(row.task_kpi?.tasks_overdue);
+        return acc;
+    }, { scheduled: 0, worked: 0, late: 0, absent: 0, overtime: 0, tasksAssigned: 0, tasksDone: 0, tasksOverdue: 0 });
+    const attendance = kpiPercent(totals.worked, totals.scheduled);
+    const taskRate = kpiPercent(totals.tasksDone, totals.tasksAssigned);
+    const events30d = ratings.reduce((acc, row) => acc + num(row.events_30d), 0);
+    const onboardingActive = onboarding.filter(item => item.status !== 'completed').length;
+    const onboardingTotalItems = onboarding.reduce((acc, item) => acc + num(item.total_items), 0);
+    const onboardingDoneItems = onboarding.reduce((acc, item) => acc + num(item.completed_items), 0);
+    const onboardingRate = kpiPercent(onboardingDoneItems, onboardingTotalItems);
+
+    summary.innerHTML = [
+        attendance !== null
+            ? renderKpiCard('Зміни / присутність', `${attendance}%`, `${totals.worked}/${totals.scheduled} відпрацьованих змін`)
+            : renderKpiCard('Зміни / присутність', 'даних ще немає', 'Немає запланованих змін у вибраному місяці', { placeholder: true }),
+        rows.length
+            ? renderKpiCard('Надійність', `${totals.late + totals.absent}`, `${totals.late} запізнень · ${totals.absent} відсутностей`)
+            : renderKpiCard('Надійність', 'даних ще немає', 'Потрібні записи присутності за період', { placeholder: true }),
+        taskRate !== null
+            ? renderKpiCard('Активність / виконання', `${taskRate}%`, `${totals.tasksDone}/${totals.tasksAssigned} задач виконано · ${totals.tasksOverdue} прострочено`)
+            : renderKpiCard('Активність / виконання', 'даних ще немає', 'Немає привʼязаних задач за період', { placeholder: true }),
+        ratings.length
+            ? renderKpiCard('Звіти / внесок', String(events30d), 'Події за 30 днів з існуючого event-контексту')
+            : renderKpiCard('Звіти / внесок', 'даних ще немає', 'Потрібен джерельний сигнал внеску або звітів', { placeholder: true }),
+        onboarding.length
+            ? renderKpiCard('Статус розвитку', onboardingRate !== null ? `${onboardingRate}%` : `${onboardingActive} активн.`, `${onboardingActive} активних onboarding-процесів`)
+            : renderKpiCard('Статус розвитку', 'даних ще немає', 'Немає активних або завершених onboarding-процесів', { placeholder: true })
+    ].join('');
+
+    const ratingMap = {};
+    ratings.forEach(row => { ratingMap[Number(row.id)] = row; });
+    const onboardingMap = buildOnboardingKpiMap(onboarding);
+
+    head.innerHTML = `<tr>
+        <th>Працівник</th>
+        <th>Зміни / присутність</th>
+        <th>Надійність</th>
+        <th>Активність</th>
+        <th>Внесок</th>
+        <th>Розвиток</th>
+    </tr>`;
+
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Немає staff KPI-даних за вибраний період</td></tr>';
         return;
     }
 
-    el.innerHTML = staff.map((s, i) => {
-        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-        const stars = '★'.repeat(Math.round(parseFloat(s.avg_rating))) + '☆'.repeat(5 - Math.round(parseFloat(s.avg_rating)));
-        return `
-        <div style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-xs);">
-            <span style="font-size:20px;min-width:36px;text-align:center;">${medal}</span>
-            <div style="width:36px;height:36px;border-radius:50%;background:${s.color || '#6366F1'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">
-                ${escapeHtml(s.name?.charAt(0) || '?')}
-            </div>
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:700;">${escapeHtml(s.name)}</div>
-                <div style="font-size:12px;color:var(--gray-500);">${ROLE_LABELS[s.role_type] || s.role_type || ''}</div>
-            </div>
-            <div style="text-align:center;">
-                <div style="color:#F59E0B;font-size:14px;letter-spacing:1px;">${stars}</div>
-                <div style="font-size:12px;color:var(--gray-500);">${parseFloat(s.avg_rating).toFixed(1)} (${s.total_ratings} відгуків)</div>
-            </div>
-            <div style="text-align:center;min-width:60px;">
-                <div style="font-weight:800;font-size:18px;color:var(--gray-800);">${s.total_events}</div>
-                <div style="font-size:11px;color:var(--gray-500);">подій</div>
-            </div>
-            <div style="text-align:center;min-width:50px;">
-                <div style="font-weight:700;font-size:14px;color:#6366F1;">${s.events_30d}</div>
-                <div style="font-size:10px;color:var(--gray-400);">за 30 дн</div>
-            </div>
-        </div>`;
+    body.innerHTML = rows.map(row => {
+        const staffId = Number(row.staff_id);
+        const attendanceRate = num(row.days_scheduled) > 0 ? num(row.attendance_rate) : null;
+        const taskAssigned = num(row.task_kpi?.tasks_assigned);
+        const taskDone = num(row.task_kpi?.tasks_done);
+        const taskDoneRate = taskAssigned > 0 ? num(row.task_completion_rate) : null;
+        const reliabilityIssues = num(row.late_count) + num(row.days_absent);
+        const contribution = ratingMap[staffId];
+        const development = onboardingMap[staffId];
+        const roleLabel = ROLE_LABELS[row.role_type] || row.role_type || '';
+
+        return `<tr>
+            <td>
+                <strong>${escapeHtml(row.staff_name)}</strong>
+                <div class="kpi-muted">${escapeHtml(roleLabel)}</div>
+            </td>
+            <td>${attendanceRate !== null ? `${kpiSignal(`${attendanceRate}%`, toneForPercent(attendanceRate))}<div class="kpi-muted">${num(row.days_worked)}/${num(row.days_scheduled)} змін</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${rows.length ? `${kpiSignal(reliabilityIssues ? `${reliabilityIssues} сигналів` : 'без сигналів', reliabilityIssues === 0 ? 'good' : reliabilityIssues <= 2 ? 'warn' : 'bad')}<div class="kpi-muted">${num(row.late_count)} запізн. · ${num(row.days_absent)} відсутн.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${taskDoneRate !== null ? `${kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65))}<div class="kpi-muted">${taskDone}/${taskAssigned} задач · ${num(row.task_kpi?.tasks_overdue)} простр.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${contribution ? `${kpiSignal(`${num(contribution.events_30d)} за 30 дн`, num(contribution.events_30d) > 0 ? 'good' : '')}<div class="kpi-muted">${num(contribution.total_events)} подій всього</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${development ? `${kpiSignal(development.percent !== null ? `${development.percent}%` : `${development.active} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${development.completed}/${development.total} onboarding завершено</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+        </tr>`;
     }).join('');
 }
 

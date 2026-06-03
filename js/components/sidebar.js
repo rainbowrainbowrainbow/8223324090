@@ -132,10 +132,9 @@ const Sidebar = (() => {
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
-        { type: 'group', key: 'team', label: 'Команда', icon: '🤝', priority: 3, defaultOpen: false },
+        { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
         { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'team', staffView: 'schedule' },
-        { href: '/hr',           icon: '🤝', label: 'Кадри',         access: 'hr_page',        group: 'team' },
-        { href: '/hr#team',      icon: '📋', label: 'Команда HR',    access: 'hr_page',        group: 'team' },
+        { href: '/hr',           icon: '🤝', label: 'HR',           access: 'hr_page',        group: 'team' },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
 

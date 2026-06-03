@@ -57,14 +57,16 @@ describe('backoffice foundation v1 contracts', () => {
     });
 
     it('wires HR navigation and profile deep-links to existing HR page semantics', () => {
-        assert.match(sidebar, /href: '\/hr#team'[\s\S]*access: 'hr_page'/);
+        assert.match(sidebar, /href: '\/hr'[\s\S]*label: 'HR'[\s\S]*access: 'hr_page'/);
+        assert.doesNotMatch(sidebar, /href: '\/hr#team'/);
         assert.doesNotMatch(sidebar, /staffView: 'team'/);
         assert.match(hrPage, /function getInitialHrTab/);
+        assert.match(hrPage, /const HR_TAB_ALIASES[\s\S]*reserve: \{ tab: 'team', bucket: 'reserve' \}/);
         assert.match(hrPage, /new URLSearchParams\(window\.location\.search\)\.get\('employee'\)/);
         assert.match(hrPage, /activateHrTab\('team'/);
-        assert.match(hrHtml, /data-tab="structure"/);
-        assert.match(hrHtml, /data-tab="reserve"/);
-        assert.match(hrHtml, /data-tab="blacklist"/);
+        assert.match(hrHtml, /id="tab-structure"/);
+        assert.match(hrPage, /id: 'reserve'/);
+        assert.match(hrPage, /id: 'blacklist'/);
     });
 
     it('keeps employee and candidate profile data durable in existing routes and forms', () => {

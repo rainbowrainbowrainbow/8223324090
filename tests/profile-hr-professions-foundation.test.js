@@ -128,8 +128,10 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
     });
 
     it('adds HR professions and checklist surfaces plus safe edit controls', () => {
-        assert.match(hrHtml, /data-tab="professions"/);
-        assert.match(hrHtml, /data-tab="checklists"/);
+        assert.match(hrHtml, /id="tab-professions"/);
+        assert.match(hrHtml, /id="tab-checklists"/);
+        assert.match(hrPage, /id: 'professions', label: 'Професії'/);
+        assert.match(hrPage, /id: 'checklists', label: 'Чек-листи'/);
         assert.match(hrHtml, /id="professionCatalogList"/);
         assert.match(hrHtml, /id="professionChecklistList"/);
         assert.match(hrHtml, /id="editSecondaryProfessions"/);

@@ -1923,7 +1923,6 @@ const Sidebar = (() => {
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span class="sidebar-design-extras-copy">
                         <span class="sidebar-design-extras-title">Обране</span>
-                        <span class="sidebar-design-extras-subtitle">обране меню</span>
                     </span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraListHidden ? '⌄' : '⌃'}</span>
                 </button>

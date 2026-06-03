@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.71.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.71.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.71.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.71.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.71.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.71.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.71.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.71.0">
-    <link rel="stylesheet" href="css/features.css?v=0.71.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.71.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.71.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.71.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.71.0">
+    <link rel="stylesheet" href="css/base.css?v=0.72.0">
+    <link rel="stylesheet" href="css/auth.css?v=0.72.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.72.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.72.0">
+    <link rel="stylesheet" href="css/timeline.css?v=0.72.0">
+    <link rel="stylesheet" href="css/panel.css?v=0.72.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.72.0">
+    <link rel="stylesheet" href="css/controls.css?v=0.72.0">
+    <link rel="stylesheet" href="css/features.css?v=0.72.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.72.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.72.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.72.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.72.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.71.0">✨ 0.71.0</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.72.0">✨ 0.72.0</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.71.0 — Конвертація лідів у бронювання</p>
+                <p class="tagline">AI First CRM v0.72.0 — Сайдбар і швидкий доступ</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.71.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.72.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1657,6 +1657,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.72.0 — Сайдбар і швидкий доступ</h4>
+                    <ul>
+                        <li><b>Мобільний сайдбар більше не обрізає блоки</b> — overlay отримав viewport-safe ширину, щоб шапка, профільна картка і нижній блок швидкого доступу не зникали за правим краєм.</li>
+                        <li><b>«Швидкий доступ» читається повністю</b> — заголовок більше не стискається в <code>Швидкий д...</code>, а кнопка редагування і chevron мають стабільну геометрію.</li>
+                        <li><b>Чекліст меню лишається повним</b> — у редагуванні доступні CRM-сторінки для ролі, список має власний scroll і коректно застосовує вибрані пункти після збереження.</li>
+                        <li><b>Профільні чипи стабілізовано</b> — USD, час і день лишаються в одному рядку, а дата показується коротко через <code>Europe/Kyiv</code>.</li>
+                        <li><b>Regression guard додано</b> — UI smoke фіксує фінальний no-cut контракт для Quick Access, мобільної ширини sidebar і короткого формату дати.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.71.0 — Конвертація лідів у бронювання</h4>
                     <ul>
@@ -10915,29 +10925,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.71.0"></script>
-    <script src="js/timeline-visibility.js?v=0.71.0"></script>
-    <script src="js/config.js?v=0.71.0"></script>
-    <script src="js/api.js?v=0.71.0"></script>
-    <script src="js/ui.js?v=0.71.0"></script>
-    <script src="js/auth.js?v=0.71.0"></script>
-    <script src="js/timeline-interaction-model.js?v=0.71.0"></script>
-    <script src="js/timeline.js?v=0.71.0"></script>
-    <script src="js/booking.js?v=0.71.0"></script>
-    <script src="js/settings.js?v=0.71.0"></script>
-    <script src="js/booking-form.js?v=0.71.0"></script>
-    <script src="js/booking-linked.js?v=0.71.0"></script>
-    <script src="js/settings-dashboard.js?v=0.71.0"></script>
-    <script src="js/settings-history.js?v=0.71.0"></script>
-    <script src="js/settings-afisha.js?v=0.71.0"></script>
-    <script src="js/settings-certificates.js?v=0.71.0"></script>
-    <script src="js/offline.js?v=0.71.0"></script>
-    <script src="js/crm-feature-registry.js?v=0.71.0"></script>
-    <script src="js/search.js?v=0.71.0"></script>
-    <script src="js/ws.js?v=0.71.0"></script>
-    <script src="js/app.js?v=0.71.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.71.0"></script>
-    <script src="js/components/sidebar.js?v=0.71.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.71.0"></script>
+    <script src="js/timeline-context.js?v=0.72.0"></script>
+    <script src="js/timeline-visibility.js?v=0.72.0"></script>
+    <script src="js/config.js?v=0.72.0"></script>
+    <script src="js/api.js?v=0.72.0"></script>
+    <script src="js/ui.js?v=0.72.0"></script>
+    <script src="js/auth.js?v=0.72.0"></script>
+    <script src="js/timeline-interaction-model.js?v=0.72.0"></script>
+    <script src="js/timeline.js?v=0.72.0"></script>
+    <script src="js/booking.js?v=0.72.0"></script>
+    <script src="js/settings.js?v=0.72.0"></script>
+    <script src="js/booking-form.js?v=0.72.0"></script>
+    <script src="js/booking-linked.js?v=0.72.0"></script>
+    <script src="js/settings-dashboard.js?v=0.72.0"></script>
+    <script src="js/settings-history.js?v=0.72.0"></script>
+    <script src="js/settings-afisha.js?v=0.72.0"></script>
+    <script src="js/settings-certificates.js?v=0.72.0"></script>
+    <script src="js/offline.js?v=0.72.0"></script>
+    <script src="js/crm-feature-registry.js?v=0.72.0"></script>
+    <script src="js/search.js?v=0.72.0"></script>
+    <script src="js/ws.js?v=0.72.0"></script>
+    <script src="js/app.js?v=0.72.0"></script>
+    <script src="js/kleshnya-widget.js?v=0.72.0"></script>
+    <script src="js/components/sidebar.js?v=0.72.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.72.0"></script>
 </body>
 </html>

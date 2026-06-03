@@ -9748,3 +9748,153 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* v0.72.0: mobile sidebar quick access fit.
+   Final override for narrow phones so the profile chips and Quick Access header
+   stay readable instead of being cut by the historical compact layers above. */
+@media (max-width: 768px) {
+  :root {
+    --eg-sidebar-mobile-w: min(100vw, 336px);
+  }
+
+  .sidebar-nav,
+  .sidebar-nav:not(.collapsed),
+  body.shell-ready .sidebar-nav:not(.collapsed),
+  body[data-page-group] .sidebar-nav:not(.collapsed) {
+    width: var(--eg-sidebar-mobile-w) !important;
+    min-width: var(--eg-sidebar-mobile-w) !important;
+    max-width: var(--eg-sidebar-mobile-w) !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-brand {
+    grid-template-columns: 38px minmax(0, 1fr) 34px !important;
+    gap: 10px !important;
+    padding-inline: 10px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+  .sidebar-nav:not(.collapsed) .sidebar-identity-card {
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+    gap: 9px !important;
+    padding: 10px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-main {
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+  .sidebar-nav:not(.collapsed) .sidebar-identity-role {
+    max-width: 76px !important;
+    font-size: 8px !important;
+    letter-spacing: 0.08em !important;
+  }
+
+  .sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+    min-width: 0 !important;
+    min-height: 36px !important;
+    padding: 5px 4px !important;
+    overflow: hidden !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-k,
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-k {
+    font-size: 7px !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+    font-size: 9.6px !important;
+    line-height: 1.05 !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-v {
+    font-size: 9.2px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-business-context {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras {
+    margin-inline: 10px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-head-row {
+    grid-template-columns: minmax(0, 1fr) 44px !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-head {
+    min-height: 50px !important;
+    grid-template-columns: 40px minmax(0, 1fr) 22px !important;
+    gap: 8px !important;
+    padding: 6px 8px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-dot {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-copy {
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-title {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    font-size: 13px !important;
+    line-height: 1.05 !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-subtitle {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-chevron {
+    width: 22px !important;
+    min-width: 22px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) .sidebar-design-extras-manage {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 50px !important;
+    min-height: 50px !important;
+  }
+
+  .sidebar-extra-editor {
+    max-height: calc(100dvh - 92px) !important;
+    overflow: auto !important;
+  }
+
+  .sidebar-extra-picker {
+    max-height: min(42dvh, 360px) !important;
+    overflow: auto !important;
+  }
+}

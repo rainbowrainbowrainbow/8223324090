@@ -2008,12 +2008,14 @@ const Sidebar = (() => {
 
     function _formatSidebarKyivDate(date = new Date()) {
         try {
-            return new Intl.DateTimeFormat('uk-UA', {
+            const parts = new Intl.DateTimeFormat('uk-UA', {
                 timeZone: 'Europe/Kyiv',
                 weekday: 'short',
-                day: '2-digit',
-                month: '2-digit'
-            }).format(date).replace(/\.$/, '');
+                day: '2-digit'
+            }).formatToParts(date);
+            const weekday = (parts.find(part => part.type === 'weekday')?.value || '').replace(/\.$/, '');
+            const day = parts.find(part => part.type === 'day')?.value || '';
+            return [weekday, day].filter(Boolean).join(', ');
         } catch (err) {
             return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
         }

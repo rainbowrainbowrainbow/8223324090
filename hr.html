@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.13">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.13">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.13">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.13">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.13">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.13">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.13">
+    <link rel="stylesheet" href="css/base.css?v=0.73.14">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.14">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.14">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.14">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.14">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.14">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -76,6 +76,15 @@
             text-transform: none;
             color: var(--gray-400);
         }
+        .hr-nav--structure-only {
+            flex-direction: row;
+        }
+        .hr-nav--structure-only .hr-nav-group {
+            padding: 4px;
+        }
+        .hr-nav--structure-only .hr-nav-group-title {
+            display: none;
+        }
         .hr-nav-items {
             display: flex;
             flex-wrap: wrap;
@@ -83,6 +92,12 @@
             gap: 6px;
             flex: 1;
             min-width: 0;
+        }
+        .hr-nav--structure-only .hr-nav-items {
+            width: 100%;
+        }
+        .hr-nav--structure-only .hr-tab {
+            flex: 1 1 150px;
         }
         .hr-tab {
             flex: 0 1 150px;
@@ -2224,6 +2239,9 @@
                 min-width: 0;
                 flex-direction: column;
             }
+            .hr-nav--structure-only .hr-nav-group {
+                flex-direction: row;
+            }
             .hr-nav-group-title {
                 min-width: 0;
                 max-width: none;
@@ -2561,7 +2579,7 @@
 
         <main id="main-content" class="page-container">
             <div class="page-header">
-                <h2>HR</h2>
+                <h2 id="hrPageTitle">HR</h2>
             </div>
 
             <div id="hrNav" class="hr-nav" aria-label="HR navigation"></div>
@@ -3035,15 +3053,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.13"></script>
-    <script src="js/config.js?v=0.73.13"></script>
-    <script src="js/notification.js?v=0.73.13"></script>
-    <script src="js/api.js?v=0.73.13"></script>
-    <script src="js/auth.js?v=0.73.13"></script>
-    <script src="js/components/sidebar.js?v=0.73.13"></script>
+    <script src="js/ui.js?v=0.73.14"></script>
+    <script src="js/config.js?v=0.73.14"></script>
+    <script src="js/notification.js?v=0.73.14"></script>
+    <script src="js/api.js?v=0.73.14"></script>
+    <script src="js/auth.js?v=0.73.14"></script>
+    <script src="js/components/sidebar.js?v=0.73.14"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.13"></script>
-    <script src="js/alerts.js?v=0.73.13"></script><script>
+    <script src="js/hr-page.js?v=0.73.14"></script>
+    <script src="js/alerts.js?v=0.73.14"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

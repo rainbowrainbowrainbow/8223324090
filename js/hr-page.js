@@ -66,7 +66,7 @@ const HR_NAV_GROUPS = [
         items: [
             { id: 'structure', label: 'Структура' },
             { id: 'professions', label: 'Професії' },
-            { id: 'checklists', label: 'Чек-листи' },
+            { id: 'checklists', label: 'Чеклисти' },
             { id: 'accounts', label: 'Акаунти', visible: () => canManageAccountSecurity() }
         ]
     },
@@ -89,6 +89,8 @@ const HR_NAV_GROUPS = [
         ]
     }
 ];
+
+const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
 
 const HR_TAB_ALIASES = {
     workers: { tab: 'team', bucket: 'workers' },
@@ -469,19 +471,8 @@ function initNewTabs() {
 
 function initTabs() {
     try {
-    renderHrNav();
-    document.querySelectorAll('.hr-tab').forEach(tab => {
-        if (tab.dataset.href) {
-            tab.addEventListener('click', () => {
-                window.location.href = tab.dataset.href;
-            });
-            return;
-        }
-        tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, {
-            updateHash: true,
-            bucket: tab.dataset.bucket || null
-        }));
-    });
+    renderHrNav(resolveHrTabTarget(requestedHrTarget()).tab);
+    bindHrNavClicks();
     } catch (err) {
         console.error('HR init failed:', err);
         throw err;
@@ -492,10 +483,44 @@ function isHrNavItemVisible(item) {
     return typeof item.visible === 'function' ? item.visible(getHrCurrentUser()) : true;
 }
 
-function renderHrNav() {
+function isHrStructureWorkspaceTab(target) {
+    return HR_STRUCTURE_WORKSPACE_TABS.has(target);
+}
+
+function updateHrPageTitle(target) {
+    const title = document.getElementById('hrPageTitle');
+    if (!title) return;
+    title.textContent = isHrStructureWorkspaceTab(target) ? 'Структура' : 'HR';
+}
+
+function bindHrNavClicks() {
+    const nav = document.getElementById('hrNav');
+    if (!nav || nav.dataset.bound === 'true') return;
+    nav.dataset.bound = 'true';
+    nav.addEventListener('click', (event) => {
+        const tab = event.target.closest('.hr-tab');
+        if (!tab || !nav.contains(tab)) return;
+        if (tab.dataset.href) {
+            window.location.href = tab.dataset.href;
+            return;
+        }
+        activateHrTab(tab.dataset.tab, {
+            updateHash: true,
+            bucket: tab.dataset.bucket || null
+        });
+    });
+}
+
+function renderHrNav(activeTarget = requestedHrTarget()) {
     const nav = document.getElementById('hrNav');
     if (!nav) return;
+    const resolved = resolveHrTabTarget(activeTarget);
+    const target = resolved.tab || activeTarget;
+    const structureMode = isHrStructureWorkspaceTab(target);
+    nav.classList.toggle('hr-nav--structure-only', structureMode);
+    nav.setAttribute('aria-label', structureMode ? 'Навігація структури' : 'HR navigation');
     const groups = HR_NAV_GROUPS
+        .filter(group => !structureMode || group.id === 'structure')
         .map(group => ({
             ...group,
             items: group.items.filter(isHrNavItemVisible)
@@ -503,7 +528,7 @@ function renderHrNav() {
         .filter(group => group.items.length > 0);
     nav.innerHTML = groups.length ? groups.map(group => `
         <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
-            <div class="hr-nav-group-title">
+            <div class="hr-nav-group-title"${structureMode ? ' hidden' : ''}>
                 <span>${escapeHtml(group.label)}</span>
                 ${group.note ? `<small>${escapeHtml(group.note)}</small>` : ''}
             </div>
@@ -629,6 +654,8 @@ async function activateHrTab(target, options = {}) {
     if (!panel) return;
     if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
+    renderHrNav(target);
+    updateHrPageTitle(target);
     setHrNavTeamMode(target);
     syncHrNavActive(target, requestedBucket);
     panel.classList.add('active');

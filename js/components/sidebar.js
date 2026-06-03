@@ -47,6 +47,10 @@ const Sidebar = (() => {
         ['/staff', 'Графік'],
         ['/hr', 'Пульс'],
         ['/hr#team', 'Команда'],
+        ['/hr#structure', 'Структ'],
+        ['/hr#professions', 'Проф'],
+        ['/hr#checklists', 'Чек'],
+        ['/hr#accounts', 'Акаунти'],
         ['/training', 'Навч'],
         ['/checkin', 'Check'],
         ['/programs', 'Прод'],
@@ -135,9 +139,14 @@ const Sidebar = (() => {
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
         { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
         { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist'] },
-        { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
+        { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
+        { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
+        { href: '/hr#professions', icon: 'management', label: 'Професії', access: 'hr_page',   group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
+        { href: '/hr#checklists', icon: 'task', label: 'Чек-листи',  access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
+        { href: '/hr#accounts',  icon: 'guardian', label: 'Акаунти', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure', visible: _canSeeHrAccountsSidebar },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
         { href: '/hr#team',      icon: '🤝', label: 'HR',            access: 'hr_page',        group: 'team', pageAccess: '/hr', navLegacy: true, noActive: true, description: 'службовий розділ' },
+        { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
         { href: '/programs',     icon: '🧩', label: 'Продукти',       access: 'programs',       group: 'product' },
@@ -273,6 +282,10 @@ const Sidebar = (() => {
 
     function _canManageHrTeamBucketVisibility(user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
         return _hrTeamBucketRoles(user, role).some(value => HR_TEAM_BUCKET_VISIBILITY_MANAGERS.includes(value));
+    }
+
+    function _canSeeHrAccountsSidebar(user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
+        return _hrTeamBucketRoles(user, role).some(value => ['creator', 'director', 'art_director'].includes(value));
     }
 
     function _isNavItemVisible(item, user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
@@ -881,11 +894,11 @@ const Sidebar = (() => {
         }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних CRM-сторінок.</div>';
         return `<div class="sidebar-extra-editor" data-sidebar-extra-editor>
             <div class="sidebar-extra-editor-title">
-                <span>Сторінки швидкого доступу</span>
+                <span>Сторінки обраного</span>
                 <small data-sidebar-extra-count>${selectedCount} вибрано</small>
             </div>
             <div class="sidebar-extra-editor-tools">
-                <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку швидкого доступу">
+                <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку обраного">
             </div>
             <div class="sidebar-widget-settings" data-sidebar-widget-settings>
                 <div class="sidebar-widget-settings-head">
@@ -1513,7 +1526,7 @@ const Sidebar = (() => {
         const title = anchor.dataset.sidebarRailTitle || anchor.getAttribute('aria-label') || 'CRM';
         const meta = anchor.dataset.sidebarRailMeta || '';
         const cue = anchor.dataset.sidebarRailCue || '';
-        const kind = anchor.dataset.sidebarRailKind === 'favorite' ? 'Швидкий доступ' : 'Маршрут';
+        const kind = anchor.dataset.sidebarRailKind === 'favorite' ? 'Обране' : 'Маршрут';
         return `
             <div class="sidebar-rail-preview-head">
                 <span>${_escHtml(kind)}</span>
@@ -1922,12 +1935,12 @@ const Sidebar = (() => {
                 <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraListHidden ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span class="sidebar-design-extras-copy">
-                        <span class="sidebar-design-extras-title">Швидкий доступ</span>
+                        <span class="sidebar-design-extras-title">Обране</span>
                         <span class="sidebar-design-extras-subtitle">обране меню</span>
                     </span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraListHidden ? '⌄' : '⌃'}</span>
                 </button>
-                    <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}" aria-label="${extraEditorOpen ? 'Завершити редагування швидкого доступу' : 'Редагувати швидкий доступ'}" title="${extraEditorOpen ? 'Готово' : 'Редагувати швидкий доступ'}">
+                    <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}" aria-label="${extraEditorOpen ? 'Завершити редагування обраного' : 'Редагувати обране'}" title="${extraEditorOpen ? 'Готово' : 'Редагувати обране'}">
                         <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
                         <span class="sidebar-design-extras-manage-text">${extraEditorOpen ? 'Готово' : 'Редагувати'}</span>
                     </button>
@@ -2913,11 +2926,11 @@ const Sidebar = (() => {
             rail.setAttribute('aria-label', 'Згорнуте меню сторінок');
         }
         const model = _buildUtilityRailModel(role, currentPath, currentHash);
-        const favorites = model.favorites.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'favorite', cue: 'Швидкий доступ' })).join('');
+        const favorites = model.favorites.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'favorite', cue: 'Обране' })).join('');
         const primary = model.primary.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'primary' })).join('');
         const utility = _renderSidebarRailFlyoutButton(model.groups);
         rail.innerHTML = [
-            _renderSidebarRailSection('favorites', 'Швидкий доступ', favorites),
+            _renderSidebarRailSection('favorites', 'Обране', favorites),
             _renderSidebarRailSection('primary', 'Основні маршрути', primary),
             _renderSidebarRailSection('utility', 'Контекстні розділи', utility)
         ].join('');

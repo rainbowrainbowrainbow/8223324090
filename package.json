@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.8",
+  "version": "0.73.10",
   "eventGenix": {
-    "releaseLabel": "HR: команда accordion без зайвих вкладок"
+    "releaseLabel": "Sidebar: обране в меню"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

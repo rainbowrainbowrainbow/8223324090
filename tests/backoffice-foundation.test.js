@@ -57,8 +57,14 @@ describe('backoffice foundation v1 contracts', () => {
     });
 
     it('wires HR navigation and profile deep-links to existing HR page semantics', () => {
-        assert.match(sidebar, /href: '\/hr'[\s\S]*label: 'HR'[\s\S]*access: 'hr_page'/);
-        assert.doesNotMatch(sidebar, /href: '\/hr#team'/);
+        assert.match(sidebar, /href: '\/hr'[\s\S]*label: 'Пульс компанії'[\s\S]*access: 'hr_page'/);
+        assert.match(sidebar, /href: '\/hr#team',\s+icon: '👥', label: 'Команда'/);
+        assert.match(sidebar, /href: '\/hr#workers'[\s\S]*hrTeamBucket: 'workers'/);
+        assert.match(sidebar, /href: '\/hr#interns'[\s\S]*hrTeamBucket: 'interns'/);
+        assert.match(sidebar, /href: '\/hr#reserve'[\s\S]*hrTeamBucket: 'reserve'/);
+        assert.match(sidebar, /href: '\/hr#blacklist'[\s\S]*hrTeamBucket: 'blacklist'/);
+        assert.match(sidebar, /HR_TEAM_BUCKET_VISIBILITY[\s\S]*admin: \['workers', 'interns'\]/);
+        assert.match(sidebar, /href: '\/hr#team',\s+icon: '🤝', label: 'HR'[\s\S]*navLegacy: true/);
         assert.doesNotMatch(sidebar, /staffView: 'team'/);
         assert.match(hrPage, /function getInitialHrTab/);
         assert.match(hrPage, /const HR_TAB_ALIASES[\s\S]*reserve: \{ tab: 'team', bucket: 'reserve' \}/);

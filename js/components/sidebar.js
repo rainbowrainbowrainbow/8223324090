@@ -45,8 +45,15 @@ const Sidebar = (() => {
         ['/finance', 'Фін'],
         ['/copilot', 'AI'],
         ['/staff', 'Графік'],
-        ['/hr', 'HR'],
-        ['/hr#team', 'HR'],
+        ['/hr', 'Пульс'],
+        ['/hr#today', 'Сьогодні'],
+        ['/hr#schedule', 'Графік'],
+        ['/hr#reports', 'Звіти'],
+        ['/hr#team', 'Команда'],
+        ['/hr#workers', 'Роб.'],
+        ['/hr#interns', 'Стаж.'],
+        ['/hr#reserve', 'Рез.'],
+        ['/hr#blacklist', 'ЧС'],
         ['/training', 'Навч'],
         ['/checkin', 'Check'],
         ['/programs', 'Прод'],
@@ -133,10 +140,18 @@ const Sidebar = (() => {
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
-        { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'team', staffView: 'schedule' },
-        { href: '/hr',           icon: '🤝', label: 'HR',           access: 'hr_page',        group: 'team' },
+        { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти' },
+        { href: '/hr#today',     icon: '☀️', label: 'Сьогодні',      access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
+        { href: '/hr#schedule',  icon: '🗓️', label: 'Графік',        access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
+        { href: '/hr#reports',   icon: '📋', label: 'Звіти',         access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
+        { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список' },
+        { href: '/hr#workers',   icon: '👥', label: 'Робітники',     access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'workers', visible: (user, role) => _canSeeHrTeamBucket('workers', user, role) },
+        { href: '/hr#interns',   icon: '🎓', label: 'Стажери',       access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'interns', visible: (user, role) => _canSeeHrTeamBucket('interns', user, role) },
+        { href: '/hr#reserve',   icon: '📌', label: 'Резерв',        access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'reserve', visible: (user, role) => _canSeeHrTeamBucket('reserve', user, role) },
+        { href: '/hr#blacklist', icon: '⚠️', label: 'Чорний список', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'blacklist', visible: (user, role) => _canSeeHrTeamBucket('blacklist', user, role) },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
+        { href: '/hr#team',      icon: '🤝', label: 'HR',            access: 'hr_page',        group: 'team', pageAccess: '/hr', navLegacy: true, noActive: true, description: 'службовий розділ' },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
         { href: '/programs',     icon: '🧩', label: 'Продукти',       access: 'programs',       group: 'product' },
@@ -208,6 +223,92 @@ const Sidebar = (() => {
         training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
     };
 
+    const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist'];
+    const HR_TEAM_BUCKET_VISIBILITY_MANAGERS = ['creator', 'director', 'vice_director'];
+    const HR_TEAM_BUCKET_VISIBILITY = {
+        creator: HR_TEAM_BUCKET_IDS,
+        director: HR_TEAM_BUCKET_IDS,
+        vice_director: HR_TEAM_BUCKET_IDS,
+        senior_manager: ['workers', 'interns', 'reserve'],
+        manager: ['workers', 'interns', 'reserve'],
+        hr: HR_TEAM_BUCKET_IDS,
+        hr_manager: HR_TEAM_BUCKET_IDS,
+        admin: ['workers', 'interns'],
+        security: ['workers', 'blacklist'],
+        it_specialist: ['workers', 'interns'],
+        senior_instructor: ['workers', 'interns'],
+        instructor: ['workers', 'interns'],
+        accountant: ['workers'],
+        marketer: ['workers'],
+        art_director: ['workers'],
+        reception: ['workers'],
+        animator: ['workers'],
+        pastry_chef: ['workers'],
+        head_pastry: ['workers'],
+        cook: ['workers'],
+        head_chef: ['workers'],
+        waiter: ['workers'],
+        dishwasher: ['workers'],
+        maintenance: ['workers'],
+        cleaning: ['workers'],
+        wardrobe: ['workers'],
+        barista: ['workers'],
+        default: ['workers']
+    };
+
+    // Template-only until HR gets a persistent settings screen for these rules.
+    function _hrTeamBucketRoles(user, role) {
+        const previewRole = typeof window !== 'undefined'
+            ? (window.RolePreview?.getPreviewRole?.() || window.RolePreview?.getEffectiveRole?.())
+            : '';
+        if (previewRole) return [String(previewRole).trim()].filter(Boolean);
+        const values = [role, user?.role, user?.account_role, user?.accountRole];
+        if (Array.isArray(user?.roles)) values.push(...user.roles);
+        if (Array.isArray(user?.extraRoles)) values.push(...user.extraRoles);
+        if (Array.isArray(user?.extra_roles)) values.push(...user.extra_roles);
+        return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+    }
+
+    function _hrVisibleBucketsForRole(role) {
+        const key = String(role || '').trim();
+        const configured = HR_TEAM_BUCKET_VISIBILITY[key] || HR_TEAM_BUCKET_VISIBILITY.default;
+        return new Set((Array.isArray(configured) ? configured : []).filter(id => HR_TEAM_BUCKET_IDS.includes(id)));
+    }
+
+    function _canSeeHrTeamBucket(bucketId, user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
+        if (!HR_TEAM_BUCKET_IDS.includes(bucketId)) return false;
+        const roles = _hrTeamBucketRoles(user, role);
+        if (!roles.length) return _hrVisibleBucketsForRole('default').has(bucketId);
+        if (roles.some(value => value === 'creator')) return true;
+        const visible = new Set();
+        roles.forEach(value => _hrVisibleBucketsForRole(value).forEach(id => visible.add(id)));
+        return visible.has(bucketId);
+    }
+
+    function _canManageHrTeamBucketVisibility(user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
+        return _hrTeamBucketRoles(user, role).some(value => HR_TEAM_BUCKET_VISIBILITY_MANAGERS.includes(value));
+    }
+
+    function _isNavItemVisible(item, user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
+        if (!item || typeof item.visible !== 'function') return true;
+        try {
+            return item.visible(user, role) !== false;
+        } catch {
+            return false;
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        window.HrTeamBucketAccess = {
+            buckets: HR_TEAM_BUCKET_IDS.slice(),
+            visibility: HR_TEAM_BUCKET_VISIBILITY,
+            managers: HR_TEAM_BUCKET_VISIBILITY_MANAGERS.slice(),
+            visibleBucketsForRole: (role) => Array.from(_hrVisibleBucketsForRole(role)),
+            canSeeBucket: _canSeeHrTeamBucket,
+            canManage: _canManageHrTeamBucketVisibility
+        };
+    }
+
     const ICON_ALIASES = {
         '📋': 'crm',
         '🏠': 'dashboard',
@@ -245,6 +346,7 @@ const Sidebar = (() => {
         '🛡️': 'guardian',
         '🎮': 'game',
         '⚠️': 'alert',
+        '📌': 'folder',
         '☀️': 'sun',
         '🌙': 'moon',
         task: 'task',
@@ -388,7 +490,9 @@ const Sidebar = (() => {
 
     // Get the first hash for a given base path (e.g. '/sound' → 'library')
     function _getDefaultHash(basePath) {
-        const first = NAV_ITEMS.find(i => i.href && i.href.includes('#') && i.href.split('#')[0] === basePath);
+        const user = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(user);
+        const first = NAV_ITEMS.find(i => i.href && i.href.includes('#') && i.href.split('#')[0] === basePath && _isNavItemVisible(i, user, role));
         return first ? first.href.split('#')[1] : '';
     }
 
@@ -475,7 +579,7 @@ const Sidebar = (() => {
 
     function _getDefaultExtraMenuItems(role) {
         const user = _getCurrentSidebarUser();
-        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user));
+        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user) && _isNavItemVisible(item, user, role));
         const byHref = new Map(available.map(item => [item.href, item]));
         return _getRoleQuickAccessHrefs(role, user)
             .map(href => byHref.get(href))
@@ -493,6 +597,7 @@ const Sidebar = (() => {
     }
 
     function _getSelectableExtraMenuItems(role) {
+        const user = _getCurrentSidebarUser();
         const seen = new Set();
         return NAV_ITEMS
             .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/'))
@@ -501,7 +606,8 @@ const Sidebar = (() => {
                 if (!href || seen.has(href)) return false;
                 seen.add(href);
                 if (role && !hasAccess(item, role)) return false;
-                if (!_businessAllowsSidebarItem(item)) return false;
+                if (!_businessAllowsSidebarItem(item, user)) return false;
+                if (!_isNavItemVisible(item, user, role)) return false;
                 return true;
             })
             .map(item => ({
@@ -603,7 +709,7 @@ const Sidebar = (() => {
         return UTILITY_RAIL_PRIMARY_HREFS
             .map(_findNavItemByHref)
             .filter(Boolean)
-            .filter(item => (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user));
+            .filter(item => (!role || hasAccess(item, role)) && _businessAllowsSidebarItem(item, user) && _isNavItemVisible(item, user, role));
     }
 
     function _railFavoriteItems(role, usedKeys = new Set()) {
@@ -629,6 +735,7 @@ const Sidebar = (() => {
                 .filter(item => {
                     if (role && !hasAccess(item, role)) return false;
                     if (!_businessAllowsSidebarItem(item, user)) return false;
+                    if (!_isNavItemVisible(item, user, role)) return false;
                     const href = String(item.href || '');
                     if (!href.startsWith('/') && !href.startsWith('#')) return false;
                     return !usedKeys.has(_railKeyForItem(item));
@@ -928,13 +1035,13 @@ const Sidebar = (() => {
 
                 // Check if group has accessible children
                 const hasChildren = NAV_ITEMS.some(c =>
-                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role)) && _businessAllowsSidebarItem(c, savedUser)
+                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role)) && _businessAllowsSidebarItem(c, savedUser) && _isNavItemVisible(c, savedUser, role)
                 );
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
                 // Mark group that contains the current page without forcing it open.
                 const hasActive = NAV_ITEMS.some(c => {
-                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly || !_businessAllowsSidebarItem(c, savedUser)) return false;
+                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly || !_businessAllowsSidebarItem(c, savedUser) || !_isNavItemVisible(c, savedUser, role)) return false;
                     const cBase = c.href.split('#')[0];
                     return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
                 });
@@ -961,6 +1068,7 @@ const Sidebar = (() => {
             if (currentGroupKey === '__skip__' || currentGroupKey === '__skip_today__') continue;
             if (item.quickAccessOnly) continue;
             if (!_businessAllowsSidebarItem(item, savedUser)) continue;
+            if (!_isNavItemVisible(item, savedUser, role)) continue;
 
             // ── Skip no access ────────────────────────────────────
             if (role && !hasAccess(item, role)) continue;
@@ -980,7 +1088,12 @@ const Sidebar = (() => {
 
             const statusText = _navStatusFor(item);
             const itemHref = _sidebarHrefForBusinessItem(item, savedUser);
-            html += `<a href="${_escAttr(itemHref)}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+            const subitemClass = item.navSubitem ? ' nav-link--subitem' : '';
+            const subitemAttr = item.navSubitem ? ` data-sidebar-subitem="${_escAttr(item.navSubitem)}"` : '';
+            const legacyClass = item.navLegacy ? ' nav-link--legacy' : '';
+            const legacyAttr = item.navLegacy ? ' data-sidebar-legacy="hr"' : '';
+            const bucketAttr = item.hrTeamBucket ? ` data-hr-team-bucket="${_escAttr(item.hrTeamBucket)}"` : '';
+            html += `<a href="${_escAttr(itemHref)}" class="nav-link${subitemClass}${legacyClass}${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${subitemAttr}${legacyAttr}${bucketAttr}${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
@@ -3128,7 +3241,11 @@ const Sidebar = (() => {
         clearShellReady: _clearShellReady,
         NAV_ITEMS,
         SIDEBAR_ACCESS,
+        HR_TEAM_BUCKET_VISIBILITY,
+        HR_TEAM_BUCKET_VISIBILITY_MANAGERS,
         hasAccess,
+        canSeeHrTeamBucket: _canSeeHrTeamBucket,
+        canManageHrTeamBucketVisibility: _canManageHrTeamBucketVisibility,
         getMetricTone,
         SIDEBAR_COMPONENTS
     };

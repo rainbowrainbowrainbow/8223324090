@@ -45,22 +45,13 @@ const HR_POOL_LABELS = {
 
 const HR_NAV_GROUPS = [
     {
-        id: 'pulse',
-        label: 'Пульс компанії',
-        items: [
-            { id: 'today', label: 'Сьогодні' },
-            { id: 'schedule', label: 'Графік' },
-            { id: 'reports', label: 'Звіти' }
-        ]
-    },
-    {
         id: 'people',
         label: 'Команда',
         items: [
-            { id: 'team', label: 'Робітники', tab: 'team', bucket: 'workers' },
-            { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns' },
-            { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist' },
-            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve' }
+            { id: 'team', label: 'Робітники', tab: 'team', bucket: 'workers', visible: user => canSeeHrTeamBucket('workers', user) },
+            { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: user => canSeeHrTeamBucket('interns', user) },
+            { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: user => canSeeHrTeamBucket('blacklist', user) },
+            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: user => canSeeHrTeamBucket('reserve', user) }
         ]
     },
     {
@@ -126,6 +117,45 @@ const PEOPLE_BUCKETS = [
         note: 'Кандидати та працівники резервного пулу'
     }
 ];
+
+function getHrCurrentUser() {
+    try {
+        return typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    } catch {
+        return null;
+    }
+}
+
+function getHrTeamBucketAccess() {
+    return typeof window !== 'undefined' ? window.HrTeamBucketAccess : null;
+}
+
+function canSeeHrTeamBucket(bucketId, user = getHrCurrentUser()) {
+    const access = getHrTeamBucketAccess();
+    if (access && typeof access.canSeeBucket === 'function') {
+        return access.canSeeBucket(bucketId, user) !== false;
+    }
+    return PEOPLE_BUCKETS.some(bucket => bucket.id === bucketId);
+}
+
+function canManageHrTeamBucketVisibility(user = getHrCurrentUser()) {
+    const access = getHrTeamBucketAccess();
+    return Boolean(access && typeof access.canManage === 'function' && access.canManage(user));
+}
+
+function visiblePeopleBuckets(user = getHrCurrentUser()) {
+    return PEOPLE_BUCKETS.filter(bucket => canSeeHrTeamBucket(bucket.id, user));
+}
+
+function firstVisiblePeopleBucketId(user = getHrCurrentUser()) {
+    return visiblePeopleBuckets(user)[0]?.id || 'workers';
+}
+
+function normalizeVisiblePeopleBucket(bucketId, user = getHrCurrentUser()) {
+    const requested = String(bucketId || '').trim();
+    if (requested && canSeeHrTeamBucket(requested, user)) return requested;
+    return firstVisiblePeopleBucketId(user);
+}
 
 // ==========================================
 // STATE
@@ -453,7 +483,7 @@ function initTabs() {
 }
 
 function isHrNavItemVisible(item) {
-    return typeof item.visible === 'function' ? item.visible(AppState.currentUser) : true;
+    return typeof item.visible === 'function' ? item.visible(getHrCurrentUser()) : true;
 }
 
 function renderHrNav() {
@@ -486,6 +516,7 @@ function renderHrNav() {
 
 function hashForHrTarget(target, bucket = null) {
     if (target === 'team') {
+        if (bucket === 'workers') return 'workers';
         if (bucket === 'interns') return 'interns';
         if (bucket === 'blacklist') return 'blacklist';
         if (bucket === 'reserve') return 'reserve';
@@ -549,7 +580,13 @@ function getInitialHrTab() {
         return 'today';
     }
     const resolved = resolveHrTabTarget(target);
-    if (resolved.bucket) pendingPeopleBucket = resolved.bucket;
+    if (resolved.bucket) {
+        pendingPeopleBucket = normalizeVisiblePeopleBucket(resolved.bucket);
+        if (pendingPeopleBucket !== resolved.bucket) {
+            const hashTarget = hashForHrTarget('team', pendingPeopleBucket);
+            history.replaceState(null, '', `${window.location.pathname}#${hashTarget}`);
+        }
+    }
     return resolved.tab;
 }
 
@@ -567,7 +604,10 @@ async function activateHrTab(target, options = {}) {
         return;
     }
     target = resolved.tab;
-    const requestedBucket = options.bucket || resolved.bucket || null;
+    let requestedBucket = options.bucket || resolved.bucket || null;
+    if (target === 'team') {
+        requestedBucket = normalizeVisiblePeopleBucket(requestedBucket);
+    }
     if (requestedBucket) pendingPeopleBucket = requestedBucket;
     const panel = document.getElementById(`tab-${target}`);
     if (!panel) return;
@@ -1606,18 +1646,25 @@ function renderTeam(staff) {
     const grid = document.getElementById('teamGrid');
     if (!grid) return;
     grid.className = 'hr-people-accordion';
-    const forcedBucket = pendingPeopleBucket;
+    const buckets = visiblePeopleBuckets();
+    if (!buckets.length) {
+        updatePeopleNavCounts([]);
+        grid.innerHTML = '<div class="hr-people-empty">Немає доступних списків команди для цієї ролі</div>';
+        syncHrNavActive('team', null);
+        return;
+    }
+    const forcedBucket = pendingPeopleBucket ? normalizeVisiblePeopleBucket(pendingPeopleBucket) : null;
     if (pendingPeopleBucket) {
-        activePeopleBucket = pendingPeopleBucket;
+        activePeopleBucket = forcedBucket;
         pendingPeopleBucket = null;
     }
-    const grouped = PEOPLE_BUCKETS.map(bucket => ({
+    const grouped = buckets.map(bucket => ({
         ...bucket,
         staff: staff.filter(item => bucketForStaff(item) === bucket.id)
     }));
     updatePeopleNavCounts(grouped);
-    if (!forcedBucket && !PEOPLE_BUCKETS.some(bucket => bucket.id === activePeopleBucket)) {
-        activePeopleBucket = 'workers';
+    if (!forcedBucket && !buckets.some(bucket => bucket.id === activePeopleBucket)) {
+        activePeopleBucket = firstVisiblePeopleBucketId();
     }
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
@@ -1642,10 +1689,17 @@ function renderPeopleBucketState(message, state = 'empty') {
     const grid = document.getElementById('teamGrid');
     if (!grid) return;
     grid.className = 'hr-people-accordion';
-    const grouped = PEOPLE_BUCKETS.map(bucket => ({ ...bucket, staff: [] }));
+    const buckets = visiblePeopleBuckets();
+    if (!buckets.length) {
+        updatePeopleNavCounts([]);
+        grid.innerHTML = '<div class="hr-people-empty">Немає доступних списків команди для цієї ролі</div>';
+        syncHrNavActive('team', null);
+        return;
+    }
+    const grouped = buckets.map(bucket => ({ ...bucket, staff: [] }));
     updatePeopleNavCounts(grouped);
-    if (!PEOPLE_BUCKETS.some(bucket => bucket.id === activePeopleBucket)) {
-        activePeopleBucket = 'workers';
+    if (!buckets.some(bucket => bucket.id === activePeopleBucket)) {
+        activePeopleBucket = firstVisiblePeopleBucketId();
     }
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
@@ -1667,7 +1721,7 @@ function renderPeopleBucketState(message, state = 'empty') {
 }
 
 window.setPeopleBucket = function(bucketId) {
-    activePeopleBucket = PEOPLE_BUCKETS.some(bucket => bucket.id === bucketId) ? bucketId : 'workers';
+    activePeopleBucket = normalizeVisiblePeopleBucket(bucketId);
     const hashTarget = hashForHrTarget('team', activePeopleBucket);
     history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
     filterAndRenderTeam();

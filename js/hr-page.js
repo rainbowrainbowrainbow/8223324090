@@ -57,10 +57,7 @@ const HR_NAV_GROUPS = [
         id: 'people',
         label: 'Команда',
         items: [
-            { id: 'team', label: 'Робітники', tab: 'team', bucket: 'workers', visible: user => canSeeHrTeamBucket('workers', user) },
-            { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: user => canSeeHrTeamBucket('interns', user) },
-            { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: user => canSeeHrTeamBucket('blacklist', user) },
-            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: user => canSeeHrTeamBucket('reserve', user) }
+            { id: 'team', label: 'Команда', tab: 'team' }
         ]
     },
     {
@@ -181,7 +178,7 @@ let editingShift = null; // { staffId, date, existing? }
 let contextStaffId = null;
 let pollTimer = null;
 let hrProfessions = [];
-let activePeopleBucket = 'workers';
+let activePeopleBucket = null;
 let pendingPeopleBucket = null;
 
 // ==========================================
@@ -540,6 +537,7 @@ function cssEscapeValue(value) {
 
 function syncHrNavActive(target, bucket = null) {
     document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
+    if (target === 'team') return;
     const tabSelector = cssEscapeValue(target);
     const bucketSelector = bucket ? `[data-bucket="${cssEscapeValue(bucket)}"]` : ':not([data-bucket])';
     const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
@@ -547,8 +545,17 @@ function syncHrNavActive(target, bucket = null) {
     tab?.classList.add('active');
 }
 
+function setHrNavTeamMode(target) {
+    const nav = document.getElementById('hrNav');
+    if (!nav) return;
+    const isTeam = target === 'team';
+    nav.hidden = isTeam;
+    nav.setAttribute('aria-hidden', isTeam ? 'true' : 'false');
+    nav.classList.toggle('hr-nav--team-hidden', isTeam);
+}
+
 function updatePeopleNavCounts(grouped = []) {
-    const counts = new Map(grouped.map(bucket => [bucket.id, bucket.staff.length]));
+    const counts = new Map(grouped.map(bucket => [bucket.id, Number(bucket.totalCount ?? bucket.staff?.length ?? 0)]));
     document.querySelectorAll('[data-nav-count]').forEach(badge => {
         const value = counts.has(badge.dataset.navCount) ? counts.get(badge.dataset.navCount) : null;
         badge.textContent = value === null ? '0' : String(value);
@@ -614,7 +621,7 @@ async function activateHrTab(target, options = {}) {
     }
     target = resolved.tab;
     let requestedBucket = options.bucket || resolved.bucket || null;
-    if (target === 'team') {
+    if (target === 'team' && requestedBucket) {
         requestedBucket = normalizeVisiblePeopleBucket(requestedBucket);
     }
     if (requestedBucket) pendingPeopleBucket = requestedBucket;
@@ -622,6 +629,7 @@ async function activateHrTab(target, options = {}) {
     if (!panel) return;
     if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
+    setHrNavTeamMode(target);
     syncHrNavActive(target, requestedBucket);
     panel.classList.add('active');
     if (options.updateHash || resolved.alias) {
@@ -1667,14 +1675,19 @@ function renderTeam(staff) {
         activePeopleBucket = forcedBucket;
         pendingPeopleBucket = null;
     }
+    if (!forcedBucket && !buckets.some(bucket => bucket.id === activePeopleBucket)) {
+        activePeopleBucket = null;
+    }
+    const totalCounts = new Map(buckets.map(bucket => [
+        bucket.id,
+        teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
+    ]));
     const grouped = buckets.map(bucket => ({
         ...bucket,
+        totalCount: totalCounts.get(bucket.id) || 0,
         staff: staff.filter(item => bucketForStaff(item) === bucket.id)
     }));
     updatePeopleNavCounts(grouped);
-    if (!forcedBucket && !buckets.some(bucket => bucket.id === activePeopleBucket)) {
-        activePeopleBucket = firstVisiblePeopleBucketId();
-    }
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
         return `<section class="hr-people-bucket ${isOpen ? 'is-open' : ''}" data-people-bucket="${escapeHtml(bucket.id)}">
@@ -1683,7 +1696,7 @@ function renderTeam(staff) {
                     <span class="hr-people-bucket-title">${escapeHtml(bucket.title)}</span>
                     <span class="hr-people-bucket-note">${escapeHtml(bucket.note)}</span>
                 </span>
-                <span class="hr-people-bucket-count">${bucket.staff.length}</span>
+                <span class="hr-people-bucket-count">${bucket.totalCount}</span>
                 <span class="hr-people-bucket-icon">${isOpen ? '▲' : '▼'}</span>
             </button>
             <div class="hr-people-bucket-body">
@@ -1707,9 +1720,7 @@ function renderPeopleBucketState(message, state = 'empty') {
     }
     const grouped = buckets.map(bucket => ({ ...bucket, staff: [] }));
     updatePeopleNavCounts(grouped);
-    if (!buckets.some(bucket => bucket.id === activePeopleBucket)) {
-        activePeopleBucket = firstVisiblePeopleBucketId();
-    }
+    if (!buckets.some(bucket => bucket.id === activePeopleBucket)) activePeopleBucket = null;
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
         return `<section class="hr-people-bucket ${isOpen ? 'is-open' : ''}" data-people-bucket="${escapeHtml(bucket.id)}">
@@ -1730,8 +1741,9 @@ function renderPeopleBucketState(message, state = 'empty') {
 }
 
 window.setPeopleBucket = function(bucketId) {
-    activePeopleBucket = normalizeVisiblePeopleBucket(bucketId);
-    const hashTarget = hashForHrTarget('team', activePeopleBucket);
+    const nextBucket = normalizeVisiblePeopleBucket(bucketId);
+    activePeopleBucket = activePeopleBucket === nextBucket ? null : nextBucket;
+    const hashTarget = activePeopleBucket ? hashForHrTarget('team', activePeopleBucket) : 'team';
     history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
     filterAndRenderTeam();
 };

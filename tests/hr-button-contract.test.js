@@ -31,17 +31,18 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         'const HR_NAV_GROUPS',
         "id: 'pulse'",
         "label: 'Пульс компанії'",
+        "{ id: 'team', label: 'Команда', tab: 'team' }",
         'visible: () => canManageAccountSecurity()',
         'data-nav-id=',
         'data-tab=',
-        'data-bucket=',
         'data-href=',
-        'data-nav-count=',
-        'hr-nav-count',
-        'syncHrNavActive'
+        'syncHrNavActive',
+        'setHrNavTeamMode'
     ]) {
         assert.ok(HR_JS.includes(token), `missing ${token}`);
     }
+    assert.equal(HR_JS.includes("label: 'Робітники', tab: 'team', bucket: 'workers'"), false, 'people buckets must not render as top HR nav buttons');
+    assert.equal(HR_JS.includes("label: 'Стажери', tab: 'team', bucket: 'interns'"), false, 'people buckets must not render as top HR nav buttons');
 });
 
 test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
@@ -66,6 +67,10 @@ test('HR people accordion keeps aria, bucket, count, and state contracts', () =>
     for (const token of [
         'data-people-bucket=',
         'aria-expanded=',
+        'hr-people-bucket-count',
+        'totalCount',
+        'let activePeopleBucket = null',
+        'activePeopleBucket === nextBucket ? null : nextBucket',
         'updatePeopleNavCounts(grouped)',
         'renderPeopleBucketState',
         'hr-people-empty--loading',

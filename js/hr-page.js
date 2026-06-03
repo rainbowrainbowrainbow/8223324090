@@ -57,7 +57,10 @@ const HR_NAV_GROUPS = [
         id: 'people',
         label: 'Команда',
         items: [
-            { id: 'team', label: 'Команда' }
+            { id: 'team', label: 'Робітники', tab: 'team', bucket: 'workers' },
+            { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns' },
+            { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist' },
+            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve' }
         ]
     },
     {
@@ -81,6 +84,7 @@ const HR_NAV_GROUPS = [
     {
         id: 'other',
         label: 'Інше',
+        note: 'тимчасово',
         items: [
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'vacancies', label: 'Вакансії' },
@@ -90,6 +94,7 @@ const HR_NAV_GROUPS = [
 ];
 
 const HR_TAB_ALIASES = {
+    workers: { tab: 'team', bucket: 'workers' },
     rating: { tab: 'kpi' },
     ratings: { tab: 'kpi' },
     leaves: { tab: 'schedule' },
@@ -436,7 +441,10 @@ function initTabs() {
             });
             return;
         }
-        tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, { updateHash: true }));
+        tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, {
+            updateHash: true,
+            bucket: tab.dataset.bucket || null
+        }));
     });
     } catch (err) {
         console.error('HR init failed:', err);
@@ -459,14 +467,43 @@ function renderHrNav() {
         .filter(group => group.items.length > 0);
     nav.innerHTML = groups.length ? groups.map(group => `
         <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
-            <div class="hr-nav-group-title">${escapeHtml(group.label)}</div>
+            <div class="hr-nav-group-title">
+                <span>${escapeHtml(group.label)}</span>
+                ${group.note ? `<small>${escapeHtml(group.note)}</small>` : ''}
+            </div>
             <div class="hr-nav-items">
-                ${group.items.map(item => `
-                    <button type="button" class="hr-tab" data-tab="${escapeHtml(item.id)}"${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}</button>
-                `).join('')}
+                ${group.items.map(item => {
+                    const tabId = item.tab || item.id;
+                    return `
+                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}</button>
+                `;
+                }).join('')}
             </div>
         </section>
     `).join('') : '<div class="hr-nav-empty">Немає доступних HR-розділів</div>';
+}
+
+function hashForHrTarget(target, bucket = null) {
+    if (target === 'team') {
+        if (bucket === 'interns') return 'interns';
+        if (bucket === 'blacklist') return 'blacklist';
+        if (bucket === 'reserve') return 'reserve';
+    }
+    return target;
+}
+
+function cssEscapeValue(value) {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(String(value));
+    return String(value).replace(/["\\]/g, '\\$&');
+}
+
+function syncHrNavActive(target, bucket = null) {
+    document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
+    const tabSelector = cssEscapeValue(target);
+    const bucketSelector = bucket ? `[data-bucket="${cssEscapeValue(bucket)}"]` : ':not([data-bucket])';
+    const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
+        || document.querySelector(`.hr-tab[data-tab="${tabSelector}"]`);
+    tab?.classList.add('active');
 }
 
 function requestedHrTarget() {
@@ -520,17 +557,17 @@ async function activateHrTab(target, options = {}) {
         return;
     }
     target = resolved.tab;
-    if (resolved.bucket) pendingPeopleBucket = resolved.bucket;
-    const tab = document.querySelector(`.hr-tab[data-tab="${target}"]`);
+    const requestedBucket = options.bucket || resolved.bucket || null;
+    if (requestedBucket) pendingPeopleBucket = requestedBucket;
     const panel = document.getElementById(`tab-${target}`);
-    if (!tab || !panel) return;
+    if (!panel) return;
     if (target === 'accounts' && !canManageAccountSecurity()) return activateHrTab('today', { updateHash: true });
-    document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
-    tab.classList.add('active');
+    syncHrNavActive(target, requestedBucket);
     panel.classList.add('active');
     if (options.updateHash || resolved.alias) {
-        const next = target === 'today' ? window.location.pathname : `${window.location.pathname}#${target}`;
+        const hashTarget = hashForHrTarget(target, requestedBucket);
+        const next = hashTarget === 'today' ? window.location.pathname : `${window.location.pathname}#${hashTarget}`;
         history.replaceState(null, '', next);
     }
     const loaders = {
@@ -1559,6 +1596,7 @@ function renderTeam(staff) {
     const grid = document.getElementById('teamGrid');
     if (!grid) return;
     grid.className = 'hr-people-accordion';
+    const forcedBucket = pendingPeopleBucket;
     if (pendingPeopleBucket) {
         activePeopleBucket = pendingPeopleBucket;
         pendingPeopleBucket = null;
@@ -1571,7 +1609,7 @@ function renderTeam(staff) {
         grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Нікого не знайдено</div>';
         return;
     }
-    if (!grouped.some(bucket => bucket.id === activePeopleBucket && bucket.staff.length)) {
+    if (!forcedBucket && !grouped.some(bucket => bucket.id === activePeopleBucket && bucket.staff.length)) {
         activePeopleBucket = grouped.find(bucket => bucket.staff.length)?.id || 'workers';
     }
     grid.innerHTML = grouped.map(bucket => {
@@ -1590,10 +1628,13 @@ function renderTeam(staff) {
             </div>
         </section>`;
     }).join('');
+    syncHrNavActive('team', activePeopleBucket);
 }
 
 window.setPeopleBucket = function(bucketId) {
     activePeopleBucket = PEOPLE_BUCKETS.some(bucket => bucket.id === bucketId) ? bucketId : 'workers';
+    const hashTarget = hashForHrTarget('team', activePeopleBucket);
+    history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
     filterAndRenderTeam();
 };
 
@@ -3374,54 +3415,6 @@ async function saveCompanyStructure(options = {}) {
     return false;
 }
 
-async function loadReservePool() {
-    await loadPoolList('reserve', 'reservePoolList');
-}
-
-async function loadBlacklist() {
-    await loadPoolList('blacklisted', 'blacklistList');
-}
-
-async function loadPoolList(status, targetId) {
-    const target = document.getElementById(targetId);
-    if (target) target.innerHTML = '<div style="padding:24px;color:var(--gray-400)">Завантаження...</div>';
-    const data = await hrFetch(`/pool?status=${status}`);
-    if (!data?.success) {
-        if (target) target.innerHTML = `<div style="padding:24px;color:var(--danger)">${escapeHtml(data?.error || 'Помилка завантаження')}</div>`;
-        return;
-    }
-    renderPoolList(targetId, data.data || [], status);
-}
-
-function renderPoolList(targetId, staff, status) {
-    const target = document.getElementById(targetId);
-    if (!target) return;
-    if (staff.length === 0) {
-        target.innerHTML = '<div style="padding:24px;color:var(--gray-400)">Список порожній</div>';
-        return;
-    }
-    target.innerHTML = staff.map(s => {
-        const reason = s.blacklist_reason ? `<div class="hr-team-stats">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : '';
-        const phone = s.phone ? `<div class="hr-team-contact">📞 ${escapeHtml(s.phone)}</div>` : '';
-        const actions = canManage ? `
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-                ${status !== 'reserve' ? `<button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'reserve')">У резерв</button>` : ''}
-                ${status !== 'blacklisted' ? `<button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'blacklisted')">У blacklist</button>` : ''}
-                <button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'core')">В основну команду</button>
-            </div>` : '';
-        return `<div class="hr-team-card">
-            <div class="hr-team-avatar">${escapeHtml(s.name || '?').slice(0, 2).toUpperCase()}</div>
-            <div class="hr-team-details">
-                <div class="hr-team-name">${escapeHtml(s.name)}</div>
-                <div class="hr-team-role">${escapeHtml(ROLE_LABELS[s.role_type] || s.role_type || '')} ${s.department ? ' · ' + escapeHtml(s.department) : ''}</div>
-                ${phone}
-                ${reason}
-                ${actions}
-            </div>
-        </div>`;
-    }).join('');
-}
-
 async function setPoolStatus(staffId, status) {
     let reason = null;
     if (status === 'blacklisted') {
@@ -3635,276 +3628,7 @@ async function saveCorrection() {
 }
 
 // ==========================================
-// TAB 5: AI TEAM (Electronic Workers)
-// ==========================================
-
-const AI_WORKERS = [
-    {
-        id: 'leo',
-        name: 'Лєо',
-        avatar: '🦁',
-        role: 'Взаємодія з підрядниками',
-        department: 'Зовнішні комунікації',
-        status: 'active',
-        statusLabel: 'Готовий до роботи',
-        description: 'Відповідає за комунікацію з постачальниками, підрядниками та партнерами. ' +
-            'Формує запити, відстежує статуси замовлень, нагадує про дедлайни та веде архів контрактів.',
-        capabilities: [
-            'Автоматичні запити постачальникам',
-            'Відстеження статусів замовлень',
-            'Нагадування про дедлайни контрактів',
-            'Архів комунікацій з партнерами'
-        ],
-        integration: 'Telegram-бот @LeoParkBot. Автоматично отримує задачі на друк піньят, рейтинги контракторів та ескалації.'
-    },
-    {
-        id: 'svitlana',
-        name: 'Світлана',
-        avatar: '📋',
-        role: 'Ранкові задачі аніматорів',
-        department: 'Операційний контроль',
-        status: 'active',
-        statusLabel: 'Готова до роботи',
-        description: 'Щоранку надсилає список задач аніматорам в групу. ' +
-            'Відстежує виконання через inline-кнопки, ввечері звітує директору про невиконані задачі.',
-        capabilities: [
-            'Ранкова розсилка задач по графіку змін',
-            'Inline-кнопки "✅ Виконав" → автооновлення CRM',
-            'Вечірній звіт: виконано/невиконано',
-            'Ескалація невиконаних задач директору',
-            'Ручне додавання задач: /add_task'
-        ],
-        integration: 'Telegram-бот @SvitlanaParkBot. Група "Аніматорська". Синхронізація з CRM /api/svitlana.'
-    },
-    {
-        id: 'taras',
-        name: 'Тарас',
-        avatar: '📊',
-        role: 'Звіти та аналітика',
-        department: 'Аналітичний відділ',
-        status: 'planned',
-        statusLabel: 'В розробці',
-        description: 'Приймає звіти від працівників, обробляє та структурує дані, ' +
-            'публікує результати на сайті. Автоматично генерує зведені звіти за період.',
-        capabilities: [
-            'Прийом та валідація звітів',
-            'Автоматична обробка даних',
-            'Генерація зведених звітів',
-            'Публікація результатів на сайт'
-        ],
-        integration: 'Буде інтегрований з модулями Фінанси, Аналітика та HR-звітами.'
-    },
-    {
-        id: 'sklad',
-        name: 'Склад',
-        avatar: '🏪',
-        role: 'Складський облік та Vision-аналіз',
-        department: 'Матеріально-технічне забезпечення',
-        status: 'active',
-        statusLabel: 'Готовий до роботи',
-        description: 'Веде облік матеріалів та реквізиту. Розпізнає товари на фото через Gemini Vision AI, ' +
-            'приймає прибуткові накладні, фіксує витрати та залишки. Сповіщає про критично низькі запаси.',
-        capabilities: [
-            'Vision-розпізнавання товарів через Gemini AI',
-            'Прийом та облік прибуткових накладних',
-            'Фіксація витрат матеріалів по заходах',
-            'Алерти про критично низькі залишки',
-            'Журнал складських операцій'
-        ],
-        integration: 'Telegram-бот на warehouse-bot-production-932b.up.railway.app. Gemini 2.5-flash Vision + GPT-4o-mini fallback.'
-    }
-];
-
-// AI worker task journal (in-memory, per session)
-const aiJournal = { leo: [], svitlana: [], taras: [], sklad: [] };
-
-function renderAITeam() {
-    const list = document.getElementById('aiTeamList');
-    if (!list) return;
-
-    list.innerHTML = AI_WORKERS.map(w => {
-        const badgeCls = w.status === 'active' ? 'active' : 'planned';
-        const statusIcon = w.status === 'active' ? '●' : '◐';
-        const capsList = w.capabilities.map(c => `<li>${escapeHtml(c)}</li>`).join('');
-        const isLeo = w.id === 'leo';
-        const journal = aiJournal[w.id] || [];
-        const journalHTML = journal.length > 0
-            ? journal.map(j => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
-                <span>${escapeHtml(j.task)}</span>
-                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
-              </div>`).join('')
-            : `<div class="ai-journal-empty">Ще немає записів</div>`;
-
-        return `
-        <div class="ai-worker" id="ai-worker-${w.id}">
-            <div class="ai-worker-header">
-                <div class="ai-worker-avatar">${w.avatar}</div>
-                <div class="ai-worker-info">
-                    <div class="ai-worker-name">${escapeHtml(w.name)}</div>
-                    <div class="ai-worker-dept">${escapeHtml(w.department)}</div>
-                </div>
-                <div class="ai-worker-badge ${badgeCls}">${statusIcon} ${escapeHtml(w.statusLabel)}</div>
-            </div>
-
-            <div class="ai-worker-role">${escapeHtml(w.role)}</div>
-            <div class="ai-worker-desc">${escapeHtml(w.description)}</div>
-
-            <div class="ai-worker-actions">
-                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','caps')">
-                    Можливості
-                </button>
-                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','integration')">
-                    Інтеграція
-                </button>
-                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','journal')">
-                    Журнал
-                </button>
-                ${isLeo ? `<button class="ai-worker-toggle" onclick="toggleAIPanel('leo','leaderboard'); loadLeaderboard()">
-                    🏆 Рейтинг
-                </button>` : ''}
-                <button class="ai-worker-send-btn" onclick="toggleAIPanel('${w.id}','send')">
-                    Відправити на завдання
-                </button>
-            </div>
-
-            <div class="ai-worker-panel" id="ai-panel-${w.id}-caps">
-                <h5>Можливості</h5>
-                <ul>${capsList}</ul>
-            </div>
-
-            <div class="ai-worker-panel" id="ai-panel-${w.id}-integration">
-                <h5>Інтеграція</h5>
-                <p style="margin:0;">${escapeHtml(w.integration)}</p>
-            </div>
-
-            <div class="ai-worker-panel" id="ai-panel-${w.id}-journal">
-                <h5>Журнал виконання</h5>
-                <div id="ai-journal-${w.id}">${journalHTML}</div>
-            </div>
-
-            <div class="ai-worker-panel" id="ai-panel-${w.id}-send">
-                <h5>Відправити на завдання</h5>
-                <div class="ai-task-form">
-                    <input type="text" id="ai-task-input-${w.id}" placeholder="Опишіть завдання..." maxlength="200">
-                    <button onclick="sendAITask('${w.id}')">Відправити</button>
-                </div>
-            </div>
-
-            ${isLeo ? `
-            <div class="ai-worker-panel" id="ai-panel-leo-leaderboard">
-                <h5>🏆 Рейтинг підрядників</h5>
-                <div id="leo-leaderboard-content">
-                    <div style="color:var(--gray-400);font-size:13px;padding:8px 0;">Завантаження...</div>
-                </div>
-            </div>` : ''}
-        </div>`;
-    }).join('');
-}
-
-function toggleAIPanel(workerId, panel) {
-    const panelEl = document.getElementById(`ai-panel-${workerId}-${panel}`);
-    if (!panelEl) return;
-    const isOpen = panelEl.classList.contains('open');
-
-    // Close all panels for this worker
-    document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-panel`).forEach(p => p.classList.remove('open'));
-    document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-toggle`).forEach(b => b.classList.remove('open'));
-
-    // Toggle the clicked one
-    if (!isOpen) {
-        panelEl.classList.add('open');
-        // Find the matching toggle button
-        const btns = document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-toggle`);
-        const panels = workerId === 'leo'
-            ? ['caps', 'integration', 'journal', 'leaderboard']
-            : ['caps', 'integration', 'journal'];
-        const idx = panels.indexOf(panel);
-        if (idx >= 0 && btns[idx]) btns[idx].classList.add('open');
-    }
-}
-
-async function loadLeaderboard() {
-    const container = document.getElementById('leo-leaderboard-content');
-    if (!container) return;
-    container.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px 0;">Завантаження...</div>';
-    try {
-        const res = await fetch('https://tymur-bot-production.up.railway.app/vendors/leaderboard');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const vendors = data.leaderboard || [];
-        if (!vendors.length) {
-            container.innerHTML = '<div class="ai-journal-empty">Підрядників ще немає</div>';
-            return;
-        }
-        const stars = (r) => {
-            const full = Math.round(r);
-            return '★'.repeat(full) + '☆'.repeat(5 - full);
-        };
-        const rows = vendors.map(v => {
-            const resp = v.avg_response_min ? `${Math.round(v.avg_response_min)} хв` : '—';
-            const ontime = v.on_time_pct != null ? `${Math.round(v.on_time_pct)}%` : '—';
-            const badgeStyle = v.active
-                ? 'background:#d1fae5;color:#065f46;'
-                : 'background:#fee2e2;color:#991b1b;';
-            return `
-            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--gray-100);">
-                <div style="font-size:18px;font-weight:700;color:var(--gray-300);width:20px;">${v.rank}</div>
-                <div style="flex:1;">
-                    <div style="font-weight:600;font-size:13px;">${escapeHtml(v.name)}</div>
-                    <div style="font-size:11px;color:#f59e0b;">${stars(v.rating)} ${v.rating.toFixed(1)}</div>
-                </div>
-                <div style="text-align:right;font-size:11px;color:var(--gray-400);line-height:1.6;">
-                    <div>Виконано: <b>${v.completed_orders}</b></div>
-                    <div>Відповідь: <b>${resp}</b></div>
-                    <div>Вчасно: <b>${ontime}</b></div>
-                </div>
-                <span style="font-size:10px;padding:2px 6px;border-radius:4px;${badgeStyle}">${v.active ? 'Активний' : 'Вимкнений'}</span>
-            </div>`;
-        }).join('');
-        const updated = new Date(data.last_updated).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' });
-        container.innerHTML = rows + `<div style="font-size:10px;color:var(--gray-300);margin-top:8px;">Оновлено: ${updated}</div>`;
-    } catch (e) {
-        container.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:8px 0;">⚠️ Не вдалося завантажити рейтинг</div>`;
-    }
-}
-
-function sendAITask(workerId) {
-    const input = document.getElementById(`ai-task-input-${workerId}`);
-    if (!input) return;
-    const task = input.value.trim();
-    if (!task) {
-        showNotification('Введіть опис завдання', 'error');
-        return;
-    }
-
-    const now = new Date();
-    const time = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
-    const date = now.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Kyiv' });
-
-    aiJournal[workerId].unshift({ task, time: `${date} ${time}`, status: 'sent' });
-    input.value = '';
-
-    // Refresh journal panel
-    const journalEl = document.getElementById(`ai-journal-${workerId}`);
-    if (journalEl) {
-        const journal = aiJournal[workerId];
-        journalEl.innerHTML = journal.map(j =>
-            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
-                <span>${escapeHtml(j.task)}</span>
-                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
-            </div>`
-        ).join('');
-    }
-
-    // Open journal panel to show the result
-    toggleAIPanel(workerId, 'journal');
-
-    const worker = AI_WORKERS.find(w => w.id === workerId);
-    showNotification(`Завдання відправлено ${worker ? worker.name : 'працівнику'}`, 'success');
-}
-
-// ==========================================
-// TAB 6: LEAVES (#2)
+// LEAVES (inside schedule)
 // ==========================================
 
 async function loadLeaves() {

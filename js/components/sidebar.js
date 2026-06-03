@@ -31,6 +31,49 @@ const Sidebar = (() => {
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
     const UTILITY_RAIL_MAX_FAVORITES = 2;
     const UTILITY_RAIL_MAX_GROUP_LINKS = 5;
+    const RAIL_SHORT_LABEL_BY_HREF = new Map([
+        ['/dashboard', 'Даш'],
+        ['/', 'ТЛ'],
+        ['/maysternya-doli', 'МД'],
+        ['/tasks', 'Задачі'],
+        ['/chat', 'Чат'],
+        ['/customers', 'Клієнт'],
+        ['/sales-funnel', 'Ліди'],
+        ['/omni', 'Omni'],
+        ['/omni#accounts', 'Чати'],
+        ['/reports', 'Звіти'],
+        ['/finance', 'Фін'],
+        ['/copilot', 'AI'],
+        ['/staff', 'Графік'],
+        ['/hr', 'HR'],
+        ['/hr#team', 'HR'],
+        ['/training', 'Навч'],
+        ['/checkin', 'Check'],
+        ['/programs', 'Прод'],
+        ['/programs#animation', 'Анім'],
+        ['/programs#kitchen-cakes', 'Торти'],
+        ['/programs#kitchen-menu', 'Меню'],
+        ['/programs#catalogs', 'Каталог'],
+        ['/content', 'Контент'],
+        ['/art', 'Арт'],
+        ['/graduation', 'Випуск'],
+        ['/designs', 'Дизайн'],
+        ['/designer', 'Стиль'],
+        ['/sound#projects', 'Звук'],
+        ['/sound#library', 'Аудіо'],
+        ['/sound#announcements', 'Огол'],
+        ['/afisha', 'Афіша'],
+        ['/certificates', 'Серти'],
+        ['/certificates/new', 'Видати'],
+        ['/certificates/batch', 'Пакет'],
+        ['/kleshnya', 'AI'],
+        ['/guardian-ops', 'Ops'],
+        ['/center', 'Центр'],
+        ['/warehouse', 'Склад'],
+        ['/game', 'Гра'],
+        ['/demo', 'Demo'],
+        ['#settings', 'Налашт']
+    ]);
     const MAYSTERNYA_QUICK_ACCESS_HREFS = ['/maysternya-doli', '/sales-funnel', '/customers', '/omni#accounts', '/tasks', '/chat'];
     const MAYSTERNYA_SIDEBAR_HREFS = new Set([
         '/maysternya-doli',
@@ -541,6 +584,20 @@ const Sidebar = (() => {
         if (href === '/staff') return 'графік команди';
         if (href === '/warehouse') return 'складські операції';
         return item?.description || _getExtraGroupLabel(item?.group) || 'CRM сторінка';
+    }
+
+    function _railShortLabel(item) {
+        const href = String(item?.href || '');
+        if (RAIL_SHORT_LABEL_BY_HREF.has(href)) return RAIL_SHORT_LABEL_BY_HREF.get(href);
+        const raw = String(item?.label || item?.description || href || 'CRM').trim();
+        const firstWord = raw.split(/\s+/)[0] || 'CRM';
+        return firstWord.length > 7 ? `${firstWord.slice(0, 7)}.` : firstWord;
+    }
+
+    function _railKindLabel(kind) {
+        if (kind === 'favorite') return 'обране';
+        if (kind === 'primary') return 'маршрут';
+        return 'розділ';
     }
 
     function _railPrimaryItems(role, user = _getCurrentSidebarUser()) {
@@ -2702,6 +2759,8 @@ const Sidebar = (() => {
         const meta = _railMetaForItem(item);
         const cue = options.cue || _railRouteCue(item);
         const itemHref = _sidebarHrefForBusinessItem(item);
+        const shortLabel = _railShortLabel(item);
+        const kindLabel = _railKindLabel(kind);
         return `<a href="${_escAttr(itemHref)}" class="sidebar-mini-link sidebar-mini-link--${_escAttr(kind)}${isActive ? ' active' : ''}" aria-label="${_escAttr(item.label)}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}
             data-sidebar-rail-item
             data-sidebar-rail-kind="${_escAttr(kind)}"
@@ -2710,13 +2769,18 @@ const Sidebar = (() => {
             data-sidebar-rail-cue="${_escAttr(cue)}">
             <span class="sidebar-mini-current" aria-hidden="true"></span>
             ${_renderIcon(item.icon, 'sidebar-mini-icon')}
+            <span class="sidebar-mini-label">${_escHtml(shortLabel)}</span>
+            <span class="sidebar-mini-hint" aria-hidden="true">${_escHtml(kindLabel)}</span>
             ${badgeType ? `<span class="sidebar-mini-badge" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
         </a>`;
     }
 
     function _renderSidebarRailSection(kind, label, body) {
         if (!body) return '';
-        return `<div class="sidebar-rail-section sidebar-rail-section--${_escAttr(kind)}" role="group" aria-label="${_escAttr(label)}">${body}</div>`;
+        return `<div class="sidebar-rail-section sidebar-rail-section--${_escAttr(kind)}" role="group" aria-label="${_escAttr(label)}">
+            <span class="sidebar-rail-section-title" aria-hidden="true">${_escHtml(label)}</span>
+            ${body}
+        </div>`;
     }
 
     function _renderSidebarRailFlyoutButton(groups) {
@@ -2730,6 +2794,8 @@ const Sidebar = (() => {
             data-sidebar-rail-cue="Продажі / продукт / команда / система">
             <span class="sidebar-mini-current" aria-hidden="true"></span>
             ${_renderIcon('system', 'sidebar-mini-icon')}
+            <span class="sidebar-mini-label">Меню</span>
+            <span class="sidebar-mini-count" aria-hidden="true">${_escHtml(String(total))}</span>
         </button>`;
     }
 
@@ -2769,6 +2835,18 @@ const Sidebar = (() => {
         if (sidebar) {
             _setSidebarCollapsed(localStorage.getItem('pzp_sidebar_collapsed') === 'true', false);
         }
+        const isMobileSidebar = () => window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : window.innerWidth <= 768;
+        const setMobileSidebarOpen = (open) => {
+            if (!sidebar) return;
+            const nextOpen = Boolean(open);
+            sidebar.classList.toggle('open', nextOpen);
+            if (overlay) {
+                overlay.classList.toggle('hidden', !nextOpen);
+                overlay.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+            }
+            if (toggle) toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+            document.body.classList.toggle('sidebar-mobile-open', nextOpen);
+        };
         if (collapseBtn && sidebar && collapseBtn.dataset.sidebarCollapseBound !== 'true') {
             collapseBtn.dataset.sidebarCollapseOwner = 'aurora';
             collapseBtn.dataset.sidebarCollapseBound = 'true';
@@ -2778,26 +2856,69 @@ const Sidebar = (() => {
         } else if (collapseBtn) {
             collapseBtn.dataset.sidebarCollapseOwner = 'aurora';
         }
+        if (toggle && sidebar) {
+            toggle.dataset.sidebarToggleOwner = 'aurora';
+            toggle.setAttribute('aria-controls', 'sidebarNav');
+            toggle.setAttribute('aria-expanded', sidebar.classList.contains('open') ? 'true' : 'false');
+        }
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';
-            toggle.addEventListener('click', () => {
-                sidebar.classList.toggle('open');
-                if (overlay) overlay.classList.toggle('hidden', !sidebar.classList.contains('open'));
-            });
+            let lastPointerToggleAt = 0;
+            const toggleMobileSidebar = (event) => {
+                const isPointerOpen = event?.type === 'pointerup';
+                if (isPointerOpen && !isMobileSidebar()) return;
+                if (isPointerOpen) lastPointerToggleAt = Date.now();
+                else if (Date.now() - lastPointerToggleAt < 360) {
+                    event?.preventDefault?.();
+                    event?.stopPropagation?.();
+                    return;
+                }
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                setMobileSidebarOpen(!sidebar.classList.contains('open'));
+            };
+            toggle.addEventListener('pointerup', toggleMobileSidebar);
+            toggle.addEventListener('click', toggleMobileSidebar);
         }
         if (overlay && sidebar && overlay.dataset.sidebarOverlayBound !== 'true') {
             overlay.dataset.sidebarOverlayBound = 'true';
-            overlay.addEventListener('click', () => {
-                sidebar.classList.remove('open');
-                overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', overlay.classList.contains('hidden') ? 'true' : 'false');
+            let lastOverlayPointerAt = 0;
+            const closeMobileSidebar = (event) => {
+                const isPointerClose = event?.type === 'pointerup';
+                if (isPointerClose) lastOverlayPointerAt = Date.now();
+                else if (Date.now() - lastOverlayPointerAt < 360) {
+                    event?.preventDefault?.();
+                    event?.stopPropagation?.();
+                    return;
+                }
+                if (!sidebar.classList.contains('open')) return;
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                setMobileSidebarOpen(false);
+            };
+            overlay.addEventListener('pointerup', closeMobileSidebar);
+            overlay.addEventListener('click', closeMobileSidebar);
+        }
+        if (sidebar && sidebar.dataset.sidebarMobileStateBound !== 'true') {
+            sidebar.dataset.sidebarMobileStateBound = 'true';
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+                    setMobileSidebarOpen(false);
+                }
+            });
+            window.addEventListener('resize', () => {
+                if (!isMobileSidebar() && sidebar.classList.contains('open')) {
+                    setMobileSidebarOpen(false);
+                }
             });
         }
         if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
             sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .focus-chip, .sidebar-primary-action');
+                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .focus-chip, .sidebar-primary-action, .sidebar-design-extra-link, .sidebar-mini-link, [data-sidebar-rail-item]');
                 if (!link) return;
-                if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
+                if (isMobileSidebar()) setMobileSidebarOpen(false);
             });
         }
         // Desktop collapsed state remains owned by the shared shell controls.

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.0 - Мобільний сайдбар і корисний rail
+
+### Shell / Sidebar / Mobile / Tablet / 03.06.2026 [codex]
+- **Кнопка меню на телефоні працює стабільно** - мобільний toggle тепер має одного власника стану, підтримує touch/pointer tap, синхронізує `aria-expanded` і не закриває sidebar другим обробником того самого кліку.
+- **Phone portrait отримав правильний off-canvas шар** - sidebar стартує за межами viewport, відкривається поверх сторінки, показує overlay, блокує фон через `sidebar-mobile-open` і закривається тапом поза меню.
+- **Згорнуте меню стало корисним** - collapsed rail отримав короткі підписи маршрутів, назви секцій, лічильник у кнопці контекстного меню та зберіг flyout для доступних CRM-розділів.
+- **Планшетний sidebar більше не стискається до 56px** - tablet portrait використовує 88px rail і стабільні offsets для header/content, щоб іконки, підписи й flyout лишались tappable.
+- **Regression guardrails додано** - UI smoke фіксує єдиного власника mobile opener, final phone/tablet geometry і корисний collapsed rail; browser QA перевірено на 390x844 та 820x1180.
+
+---
+
 ## v0.72.0 - Сайдбар і швидкий доступ
 
 ### Shell / Sidebar / Quick Access / 03.06.2026 [codex]

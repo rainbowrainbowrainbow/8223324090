@@ -941,13 +941,24 @@ function initUIControlListeners() {
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.getElementById('sidebarNav');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
-    if (sidebarToggle && sidebar) {
+    const sharedSidebarOwnsMobileToggle = Boolean(
+        sidebarToggle &&
+        sidebar &&
+        (
+            sidebarToggle.dataset.sidebarToggleOwner === 'aurora' ||
+            sidebar.dataset.sidebarStateOwner === 'aurora' ||
+            (typeof Sidebar !== 'undefined' && typeof Sidebar.initToggle === 'function')
+        )
+    );
+    if (sidebarToggle && sidebar && !sharedSidebarOwnsMobileToggle && sidebarToggle.dataset.sidebarLegacyToggleBound !== 'true') {
+        sidebarToggle.dataset.sidebarLegacyToggleBound = 'true';
         sidebarToggle.addEventListener('click', () => {
             sidebar.classList.toggle('open');
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         });
     }
-    if (sidebarOverlay && sidebar) {
+    if (sidebarOverlay && sidebar && !sharedSidebarOwnsMobileToggle && sidebarOverlay.dataset.sidebarLegacyOverlayBound !== 'true') {
+        sidebarOverlay.dataset.sidebarLegacyOverlayBound = 'true';
         sidebarOverlay.addEventListener('click', () => {
             sidebar.classList.remove('open');
             sidebarOverlay.classList.add('hidden');

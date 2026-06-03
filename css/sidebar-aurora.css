@@ -9898,3 +9898,237 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
     overflow: auto !important;
   }
 }
+
+/* v0.73.0: phone and tablet sidebar entry reliability.
+   The mobile shell has one tap target owner, an inert background, and a fixed
+   off-canvas layer that is not clipped by older layout offsets. */
+@media (max-width: 768px) {
+  .sidebar-toggle {
+    display: inline-flex !important;
+    position: relative !important;
+    z-index: calc(var(--z-sidebar-overlay, 950) + 3) !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+
+  .sidebar-nav,
+  .sidebar-nav.collapsed,
+  .sidebar-nav:not(.collapsed),
+  body.shell-ready .sidebar-nav,
+  body.shell-ready .sidebar-nav.collapsed,
+  body.shell-ready .sidebar-nav:not(.collapsed),
+  body[data-page-group] .sidebar-nav,
+  body[data-page-group] .sidebar-nav.collapsed,
+  body[data-page-group] .sidebar-nav:not(.collapsed) {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    width: var(--eg-sidebar-mobile-w) !important;
+    min-width: var(--eg-sidebar-mobile-w) !important;
+    max-width: var(--eg-sidebar-mobile-w) !important;
+    transform: translate3d(-105%, 0, 0) !important;
+    transition: transform 0.22s ease, box-shadow 0.22s ease !important;
+    pointer-events: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    z-index: calc(var(--z-sidebar-overlay, 950) + 2) !important;
+    will-change: transform !important;
+  }
+
+  .sidebar-nav.open,
+  .sidebar-nav.collapsed.open,
+  .sidebar-nav:not(.collapsed).open,
+  body.shell-ready .sidebar-nav.open,
+  body[data-page-group] .sidebar-nav.open {
+    transform: translate3d(0, 0, 0) !important;
+    pointer-events: auto !important;
+    box-shadow: 18px 0 38px rgba(0, 0, 0, 0.36) !important;
+  }
+
+  .sidebar-overlay:not(.hidden) {
+    display: block !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: calc(var(--z-sidebar-overlay, 950) + 1) !important;
+  }
+
+  body.sidebar-mobile-open {
+    overflow: hidden !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-rail {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1023px) {
+  :root {
+    --eg-tablet-sidebar-w: clamp(220px, 28vw, 260px);
+    --eg-tablet-sidebar-rail-w: 88px;
+  }
+
+  .sidebar-nav:not(.collapsed),
+  body.shell-ready .sidebar-nav:not(.collapsed),
+  body[data-page-group] .sidebar-nav:not(.collapsed) {
+    width: var(--eg-tablet-sidebar-w) !important;
+    min-width: var(--eg-tablet-sidebar-w) !important;
+    max-width: var(--eg-tablet-sidebar-w) !important;
+  }
+
+  .sidebar-nav.collapsed,
+  body.shell-ready .sidebar-nav.collapsed,
+  body[data-page-group] .sidebar-nav.collapsed {
+    width: var(--eg-tablet-sidebar-rail-w) !important;
+    min-width: var(--eg-tablet-sidebar-rail-w) !important;
+    max-width: var(--eg-tablet-sidebar-rail-w) !important;
+  }
+
+  .sidebar-nav:not(.collapsed) ~ .header,
+  .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header,
+  .sidebar-nav:not(.collapsed) ~ .header ~ .main-content,
+  .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .main-content,
+  .sidebar-nav:not(.collapsed) ~ .header ~ .page-container,
+  .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .header,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .header,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header ~ .page-container {
+    margin-left: var(--eg-tablet-sidebar-w) !important;
+    width: calc(100vw - var(--eg-tablet-sidebar-w)) !important;
+    max-width: calc(100vw - var(--eg-tablet-sidebar-w)) !important;
+  }
+
+  .sidebar-nav.collapsed ~ .header,
+  .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+  .sidebar-nav.collapsed ~ .header ~ .main-content,
+  .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content,
+  .sidebar-nav.collapsed ~ .header ~ .page-container,
+  .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .header,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container {
+    margin-left: var(--eg-tablet-sidebar-rail-w) !important;
+    width: calc(100vw - var(--eg-tablet-sidebar-rail-w)) !important;
+    max-width: calc(100vw - var(--eg-tablet-sidebar-rail-w)) !important;
+  }
+}
+
+/* v0.73.0: useful collapsed sidebar rail. */
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed .sidebar-mini-rail,
+  .sidebar-nav.collapsed:hover .sidebar-mini-rail {
+    gap: 6px !important;
+    padding: 6px 8px 14px !important;
+  }
+
+  .sidebar-rail-section {
+    gap: 6px !important;
+  }
+
+  .sidebar-rail-section-title {
+    display: block !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    color: color-mix(in srgb, var(--sb-enterprise-faint) 84%, var(--sb-enterprise-text)) !important;
+    font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: uppercase !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-link,
+  .sidebar-nav.collapsed:hover .sidebar-mini-link {
+    width: 58px !important;
+    height: 58px !important;
+    min-width: 58px !important;
+    min-height: 58px !important;
+    display: grid !important;
+    grid-template-rows: 30px auto !important;
+    place-items: center !important;
+    gap: 2px !important;
+    padding: 4px 3px 5px !important;
+    border-radius: 13px !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-icon {
+    width: 28px !important;
+    height: 28px !important;
+    grid-row: 1 !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-label {
+    display: block !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    color: var(--sb-enterprise-text) !important;
+    font-size: 9px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-align: center !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-hint {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    border: 0 !important;
+  }
+
+  .sidebar-mini-link--flyout .sidebar-mini-count {
+    position: absolute !important;
+    top: 3px !important;
+    right: 3px !important;
+    min-width: 16px !important;
+    height: 16px !important;
+    padding: 0 4px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    border-radius: 999px !important;
+    color: #0f172a !important;
+    background: color-mix(in srgb, var(--sb-enterprise-warning) 88%, #ffffff) !important;
+    font-size: 9px !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-badge {
+    top: 1px !important;
+    right: 1px !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-mini-link--favorite::after {
+    right: 6px !important;
+    top: 6px !important;
+  }
+}

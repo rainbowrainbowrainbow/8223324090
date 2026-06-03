@@ -48,9 +48,6 @@ const Sidebar = (() => {
         ['/hr', 'Пульс'],
         ['/hr#team', 'Команда'],
         ['/hr#structure', 'Структ'],
-        ['/hr#professions', 'Проф'],
-        ['/hr#checklists', 'Чек'],
-        ['/hr#accounts', 'Акаунти'],
         ['/training', 'Навч'],
         ['/checkin', 'Check'],
         ['/programs', 'Прод'],
@@ -140,10 +137,6 @@ const Sidebar = (() => {
         { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
         { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist'] },
         { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
-        { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
-        { href: '/hr#professions', icon: 'management', label: 'Професії', access: 'hr_page',   group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
-        { href: '/hr#checklists', icon: 'task', label: 'Чек-листи',  access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure' },
-        { href: '/hr#accounts',  icon: 'guardian', label: 'Акаунти', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'structure', visible: _canSeeHrAccountsSidebar },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
         { href: '/hr#team',      icon: '🤝', label: 'HR',            access: 'hr_page',        group: 'team', pageAccess: '/hr', navLegacy: true, noActive: true, description: 'службовий розділ' },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
@@ -282,10 +275,6 @@ const Sidebar = (() => {
 
     function _canManageHrTeamBucketVisibility(user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
         return _hrTeamBucketRoles(user, role).some(value => HR_TEAM_BUCKET_VISIBILITY_MANAGERS.includes(value));
-    }
-
-    function _canSeeHrAccountsSidebar(user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
-        return _hrTeamBucketRoles(user, role).some(value => ['creator', 'director', 'art_director'].includes(value));
     }
 
     function _isNavItemVisible(item, user = _getCurrentSidebarUser(), role = _getSidebarActiveRole(user)) {
@@ -1092,12 +1081,10 @@ const Sidebar = (() => {
 
             const statusText = _navStatusFor(item);
             const itemHref = _sidebarHrefForBusinessItem(item, savedUser);
-            const subitemClass = item.navSubitem ? ' nav-link--subitem' : '';
-            const subitemAttr = item.navSubitem ? ` data-sidebar-subitem="${_escAttr(item.navSubitem)}"` : '';
             const legacyClass = item.navLegacy ? ' nav-link--legacy' : '';
             const legacyAttr = item.navLegacy ? ' data-sidebar-legacy="hr"' : '';
             const bucketAttr = item.hrTeamBucket ? ` data-hr-team-bucket="${_escAttr(item.hrTeamBucket)}"` : '';
-            html += `<a href="${_escAttr(itemHref)}" class="nav-link${subitemClass}${legacyClass}${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${subitemAttr}${legacyAttr}${bucketAttr}${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+            html += `<a href="${_escAttr(itemHref)}" class="nav-link${legacyClass}${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${legacyAttr}${bucketAttr}${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>

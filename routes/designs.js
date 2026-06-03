@@ -10,6 +10,13 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { sendTelegramPhoto, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
+const {
+    designStorageKey,
+    deleteDesignBlob,
+    markDesignStored,
+    readDesignBlob,
+    storeDesignBlob
+} = require('../services/designStorage');
 
 const log = createLogger('Designs');
 
@@ -51,6 +58,34 @@ const upload = multer({
 });
 
 // --- Helpers ---
+async function removeTempUpload(file) {
+    if (!file?.path) return;
+    try {
+        await fs.promises.unlink(file.path);
+    } catch (err) {
+        if (err.code !== 'ENOENT') log.warn(`Design temp cleanup skipped: ${err.message}`);
+    }
+}
+
+async function readDesignBuffer(design) {
+    const blob = await readDesignBlob(pool, design);
+    if (blob?.data) {
+        return {
+            buffer: Buffer.isBuffer(blob.data) ? blob.data : Buffer.from(blob.data),
+            source: 'postgres',
+            storageKey: blob.storage_key || design.storage_key || null
+        };
+    }
+
+    const filePath = path.join(UPLOADS_DIR, design.filename);
+    if (!fs.existsSync(filePath)) return null;
+    return {
+        buffer: await fs.promises.readFile(filePath),
+        source: 'local',
+        filePath
+    };
+}
+
 function mapDesignRow(row) {
     return {
         id: row.id,
@@ -263,6 +298,7 @@ router.delete('/collections/:id', async (req, res) => {
 
 // --- POST /api/designs/upload — Upload single or batch ---
 router.post('/upload', upload.array('files', 20), async (req, res) => {
+    let client;
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'Файли не завантажено' });
@@ -274,10 +310,14 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
 
         const created = [];
 
+        client = await pool.connect();
+        await client.query('BEGIN');
+
         for (const file of req.files) {
             let width = null, height = null;
+            const fileBuffer = await fs.promises.readFile(file.path);
 
-            const result = await pool.query(
+            const result = await client.query(
                 `INSERT INTO designs (filename, original_name, mime_type, file_size, width, height, title, collection_id, created_by)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
                 [file.filename, file.originalname, file.mimetype, file.size, width, height,
@@ -285,13 +325,16 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
                  colId, req.user?.username]
             );
 
-            const design = result.rows[0];
+            let design = result.rows[0];
+            const storageKey = designStorageKey(design.id, file.filename);
+            await storeDesignBlob(client, design.id, storageKey, fileBuffer);
+            design = await markDesignStored(client, design.id, storageKey) || design;
 
             // Insert tags
             for (const tag of parsedTags) {
                 const cleanTag = tag.trim().toLowerCase().replace(/^#/, '');
                 if (cleanTag) {
-                    await pool.query(
+                    await client.query(
                         'INSERT INTO design_tags (design_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                         [design.id, cleanTag]
                     );
@@ -299,7 +342,7 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
             }
 
             // Fetch back with tags
-            const full = await pool.query(
+            const full = await client.query(
                 `SELECT d.*, dc.name AS collection_name, dc.color AS collection_color,
                         (SELECT string_agg(tag, ',') FROM design_tags WHERE design_id = d.id) AS tags
                  FROM designs d LEFT JOIN design_collections dc ON d.collection_id = dc.id
@@ -309,10 +352,20 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
             created.push(mapDesignRow(full.rows[0]));
         }
 
+        await client.query('COMMIT');
+        await Promise.all(req.files.map(removeTempUpload));
         res.json({ items: created, count: created.length });
     } catch (err) {
+        if (client) {
+            await client.query('ROLLBACK').catch(rollbackErr => {
+                log.error('Design upload rollback failed', rollbackErr);
+            });
+        }
+        await Promise.all((req.files || []).map(removeTempUpload));
         log.error('Error uploading designs', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -324,20 +377,19 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
 router.get('/:id/download', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query('SELECT filename, original_name, mime_type FROM designs WHERE id = $1', [id]);
+        const result = await pool.query('SELECT id, filename, original_name, mime_type, storage_key FROM designs WHERE id = $1', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }
-        const { filename, original_name, mime_type } = result.rows[0];
-        const filePath = path.join(UPLOADS_DIR, filename);
-        if (!fs.existsSync(filePath)) {
+        const design = result.rows[0];
+        const { filename, original_name, mime_type } = design;
+        const stored = await readDesignBuffer(design);
+        if (!stored?.buffer) {
             return res.status(404).json({ error: 'Файл не знайдено на диску' });
         }
         res.setHeader('Content-Type', mime_type || 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(original_name || filename)}"`);
-        const stream = fs.createReadStream(filePath);
-        stream.on('error', (err) => { log.error('Stream error', err); if (!res.headersSent) res.status(500).json({ error: 'File read error' }); });
-        stream.pipe(res);
+        res.send(stored.buffer);
     } catch (err) {
         log.error('Error downloading design', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -401,10 +453,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const existing = await pool.query('SELECT filename FROM designs WHERE id = $1', [id]);
+        const existing = await pool.query('SELECT id, filename FROM designs WHERE id = $1', [id]);
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Дизайн не знайдено' });
         }
+
+        await deleteDesignBlob(pool, id);
 
         // Delete file from disk
         const filePath = path.join(UPLOADS_DIR, existing.rows[0].filename);
@@ -432,8 +486,8 @@ router.post('/:id/telegram', async (req, res) => {
         }
 
         const design = existing.rows[0];
-        const filePath = path.join(UPLOADS_DIR, design.filename);
-        if (!fs.existsSync(filePath)) {
+        const stored = await readDesignBuffer(design);
+        if (!stored?.buffer) {
             return res.status(404).json({ error: 'Файл не знайдено на диску' });
         }
 
@@ -442,10 +496,9 @@ router.post('/:id/telegram', async (req, res) => {
             return res.status(400).json({ error: 'Telegram чат не налаштовано' });
         }
 
-        const photoBuffer = await fs.promises.readFile(filePath);
         const finalCaption = caption || design.title || design.original_name;
 
-        await sendTelegramPhoto(chatId, photoBuffer, `🎨 ${finalCaption}`);
+        await sendTelegramPhoto(chatId, stored.buffer, `🎨 ${finalCaption}`);
         res.json({ success: true });
     } catch (err) {
         log.error('Error sending design to Telegram', err);

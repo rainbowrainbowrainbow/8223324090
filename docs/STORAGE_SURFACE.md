@@ -29,7 +29,7 @@ product behavior, add focused route or service tests in the same pack.
 | `/uploads/sounds` | `uploads/sounds` | sound | `local-postgres-metadata` | `tests/audio-storage.test.js` | Manual and generated sound uploads are stored under `/uploads/sounds`; `sounds.storage_*` metadata lives in Postgres. |
 | `/uploads/profile-avatars` | `uploads/profile-avatars` | profile | `local-postgres-metadata` | `tests/profile-avatar-storage.test.js` | User profile photos are stored under `/uploads/profile-avatars`; `user_profiles_ext.avatar_url` lives in Postgres. |
 | `/uploads/catalog-images` | `uploads/catalog-images` | catalogs | `local-postgres-metadata` | `tests/image-storage.test.js` | Generated catalog images are stored under `/uploads/catalog-images`; catalog item URLs live in Postgres-backed catalogs. |
-| `/uploads/designs` | `uploads/designs` | designs | `local-only-legacy` | `tests/designs.test.js` | Design board assets still use local disk through `routes/designs.js` and are the main storage migration candidate. |
+| `/uploads/designs` | `uploads/designs` | designs | `local-postgres-metadata` | `tests/designs.test.js`, `tests/design-storage.test.js` | New design board assets are stored in Postgres `design_file_blobs`; the public path remains for previews and legacy disk fallback. |
 
 All local upload directories must stay ignored in `.gitignore`, including
 `uploads/chat`, `uploads/sounds`, `uploads/profile-avatars`,
@@ -39,20 +39,21 @@ All local upload directories must stay ignored in `.gitignore`, including
 
 There are currently no active remote storage buckets in the CRM runtime. Legacy
 rows may still contain external URLs from older deployments; new writes should
-use the local upload surface plus Postgres metadata unless a new storage
-provider is explicitly introduced and documented here.
+use the local upload surface plus Postgres metadata or Postgres-backed binary
+storage unless a new storage provider is explicitly introduced and documented
+here.
 
 ## Current Risk
 
-`/uploads/designs` is intentionally documented as `local-only-legacy`. Those
-files are not durable across Railway redeploys unless the runtime has a
-persistent volume. Do not delete this path during cleanup without a migration
-plan for existing design files and database rows.
+`/uploads/designs` is no longer new-write local-only storage. New uploads write
+binary content to `design_file_blobs`, while old local files remain readable as
+a fallback. Do not delete `uploads/designs` during cleanup until old design rows
+have been migrated or confirmed obsolete.
 
-Chat, sound, profile avatar, and catalog image uploads now follow the same
-local upload + Postgres metadata pattern. They still should not be treated as
-durable across Railway redeploys unless the runtime has a persistent volume or
-the next phase moves binary content into a Postgres-backed file table.
+Chat, sound, profile avatar, and catalog image uploads follow the local upload +
+Postgres metadata pattern. They still should not be treated as durable across
+Railway redeploys unless the runtime has a persistent volume or the next phase
+moves binary content into a Postgres-backed file table.
 
 ## What This Gives
 
@@ -60,7 +61,7 @@ the next phase moves binary content into a Postgres-backed file table.
 - Makes hidden local disk growth visible before cleanup or deployment.
 - Prevents new `/uploads/<segment>` paths from appearing without ownership,
   docs, ignore rules, and focused tests.
-- Identifies `/uploads/designs` as the next high-value storage migration pack.
+- Keeps `/uploads/designs` visible as a legacy public preview/fallback path.
 
 ## Done Marker
 

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.2 - CRM техборги: storage, задачі, фінанси, Sound
+
+### Storage / Tasks / Finance / Sound / 03.06.2026 [codex]
+- **Дизайни отримали durable SQL storage** - нові файли `/uploads/designs` записуються в `design_file_blobs`, а старі локальні файли лишаються fallback для безпечної міграції.
+- **Задачі рахуються від канонічного власника** - гейміфікація, квести, leaderboard і overdue-штрафи використовують `owner_user_id` через `users.username`, а `assigned_to` лишається fallback тільки для unmapped legacy rows.
+- **Історія задач стала durable у старих entrypoints** - quick status із профілю та full update `/api/tasks/:id` пишуть `task_action_history` для статусу, власника, пріоритету й прямого перенесення строків.
+- **Report bot більше не дублює corporate записи в legacy `reports`** - новий канонічний шлях пише в `finance_transactions`, а `report_bot_submissions.report_id` лишається `NULL` для нових finance-записів.
+- **Sound API boundary зафіксовано** - `/api/music` лишається primary API, а `/api/sound-library` явно позначено як legacy compatibility CRUD з regression guard.
+
+---
+
 ## v0.73.1 - Timeline без ghost action-блоків
 
 ### Timeline / Toolbar / Booking Lifecycle / 03.06.2026 [codex]

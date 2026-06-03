@@ -79,3 +79,20 @@ test('deadline reschedule updates stale due date and clears snooze state', () =>
     assert.match(source, /snoozed_until = NULL/);
     assert.match(source, /remind_at = NULL/);
 });
+
+test('task ownership debt uses typed owner for rewards, penalties, and durable status history', () => {
+    const gamification = fs.readFileSync(path.join(__dirname, '..', 'services', 'gamification.js'), 'utf8');
+    const scheduler = fs.readFileSync(path.join(__dirname, '..', 'services', 'scheduler.js'), 'utf8');
+    const authRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'auth.js'), 'utf8');
+    const tasksRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tasks.js'), 'utf8');
+
+    assert.match(gamification, /function taskOwnerJoinSql/);
+    assert.match(gamification, /owner_user_id/);
+    assert.doesNotMatch(gamification, /WHERE assigned_to = \$1 AND status = 'done'/);
+    assert.match(scheduler, /u\.username AS owner_username/);
+    assert.match(scheduler, /const canonicalOwner = task\.owner_username/);
+    assert.match(authRoute, /TASK_ACTION_TYPES\.STATUS_CHANGED/);
+    assert.match(authRoute, /auth_tasks_quick_status/);
+    assert.match(tasksRoute, /function logDirectTaskUpdateHistory/);
+    assert.match(tasksRoute, /TASK_ACTION_TYPES\.OWNER_REASSIGNED/);
+});

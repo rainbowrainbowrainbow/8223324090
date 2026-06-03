@@ -64,14 +64,14 @@ const LOCAL_UPLOAD_SURFACE = [
         urlPrefix: '/uploads/designs',
         localDir: 'uploads/designs',
         owner: 'designs',
-        persistence: 'local-only-legacy',
+        persistence: 'local-postgres-metadata',
         routeFile: 'routes/designs.js',
-        serviceFile: null,
+        serviceFile: 'services/designStorage.js',
         frontendFiles: ['designs.html', 'js/designs-page.js'],
-        tests: ['tests/designs.test.js'],
+        tests: ['tests/designs.test.js', 'tests/design-storage.test.js'],
         remoteBucket: null,
         envBucket: null,
-        reason: 'Design board assets still use local disk storage and are a migration candidate before relying on Railway redeploy persistence.'
+        reason: 'Design board assets are stored in Postgres design_file_blobs; /uploads/designs remains a legacy public preview path and local disk fallback.'
     }
 ];
 

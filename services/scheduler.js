@@ -1435,9 +1435,15 @@ async function checkTaskOverdue() {
 
         // 1. Mark overdue tasks
         const result = await pool.query(
-            `UPDATE tasks SET status = 'overdue'
-             WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
-             RETURNING id, title, date, priority, assigned_to, business_context`,
+            `WITH updated AS (
+                UPDATE tasks
+                   SET status = 'overdue'
+                 WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
+                 RETURNING id, title, date, priority, assigned_to, owner_user_id, business_context
+             )
+             SELECT updated.*, u.username AS owner_username
+             FROM updated
+             LEFT JOIN users u ON u.id = updated.owner_user_id`,
             [todayStr]
         );
 
@@ -1446,10 +1452,12 @@ async function checkTaskOverdue() {
             try {
                 const { publish } = require('./eventBus');
                 for (const task of result.rows) {
+                    const canonicalOwner = task.owner_username || (!task.owner_user_id ? task.assigned_to : null);
                     await publish('task.overdue', {
                         task_id: task.id, title: task.title,
                         date: task.date, priority: task.priority,
-                        assigned_to: task.assigned_to,
+                        assigned_to: canonicalOwner,
+                        owner_user_id: task.owner_user_id || null,
                         business_context: task.business_context || DEFAULT_TASK_BUSINESS_CONTEXT
                     }, `task_overdue_${task.id}_${todayStr}`);
                 }
@@ -1459,9 +1467,10 @@ async function checkTaskOverdue() {
             try {
                 const { spendCoins } = require('./gamification');
                 for (const task of result.rows) {
-                    if (task.assigned_to) {
+                    const canonicalOwner = task.owner_username || (!task.owner_user_id ? task.assigned_to : null);
+                    if (canonicalOwner) {
                         const penalty = task.priority === 'high' ? 10 : task.priority === 'normal' ? 5 : 2;
-                        await spendCoins(task.assigned_to, penalty,
+                        await spendCoins(canonicalOwner, penalty,
                             `Протерміноване завдання: ${(task.title || '').slice(0, 50)}`,
                             'penalty', task.id
                         ).catch(() => {});

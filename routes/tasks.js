@@ -142,6 +142,94 @@ function taskAssigneeChanged(oldTask = {}, newTask = {}) {
     return oldOwner !== newOwner || oldLabel !== newLabel;
 }
 
+function normalizedComparable(value) {
+    if (value === undefined || value === null) return null;
+    return String(value);
+}
+
+async function logDirectTaskUpdateHistory(oldTask = {}, updatedTask = {}, actor = {}, body = {}) {
+    const historyEvents = [];
+    const taskId = Number(updatedTask.id || oldTask.id);
+    if (!Number.isInteger(taskId) || taskId <= 0) return historyEvents;
+
+    async function record(event) {
+        try {
+            const historyEvent = await logTaskActionEvent({
+                taskId,
+                actor,
+                sourceSurface: sourceSurface(body, 'task_detail'),
+                ...event
+            });
+            historyEvents.push(historyEvent);
+        } catch (historyErr) {
+            log.warn(`Direct task update history skipped: ${historyErr.message}`);
+        }
+    }
+
+    if (normalizedComparable(oldTask.status) !== normalizedComparable(updatedTask.status)) {
+        await record({
+            actionType: TASK_ACTION_TYPES.STATUS_CHANGED,
+            oldValue: { status: oldTask.status || null },
+            newValue: { status: updatedTask.status || null },
+            meta: { route: 'tasks_put_update', canonicalField: 'tasks.status' }
+        });
+    }
+
+    if (taskAssigneeChanged(oldTask, updatedTask)) {
+        await record({
+            actionType: TASK_ACTION_TYPES.OWNER_REASSIGNED,
+            oldValue: {
+                ownerUserId: oldTask.owner_user_id || null,
+                assignedTo: oldTask.assigned_to || null,
+                owner: oldTask.owner || null
+            },
+            newValue: {
+                ownerUserId: updatedTask.owner_user_id || null,
+                assignedTo: updatedTask.assigned_to || null,
+                owner: updatedTask.owner || null
+            },
+            meta: {
+                route: 'tasks_put_update',
+                canonicalField: 'tasks.owner_user_id',
+                legacyDisplayFields: ['assigned_to', 'owner']
+            }
+        });
+    }
+
+    const timingChanged = ['date', 'deadline', 'time_window_start', 'time_window_end'].some(field =>
+        normalizedComparable(oldTask[field]) !== normalizedComparable(updatedTask[field])
+    );
+    if (timingChanged && !hasSchedulePayload(body)) {
+        await record({
+            actionType: TASK_ACTION_TYPES.RESCHEDULED,
+            oldValue: {
+                date: oldTask.date || null,
+                deadline: oldTask.deadline || null,
+                timeWindowStart: oldTask.time_window_start || null,
+                timeWindowEnd: oldTask.time_window_end || null
+            },
+            newValue: {
+                date: updatedTask.date || null,
+                deadline: updatedTask.deadline || null,
+                timeWindowStart: updatedTask.time_window_start || null,
+                timeWindowEnd: updatedTask.time_window_end || null
+            },
+            meta: { route: 'tasks_put_update', canonicalField: 'tasks.deadline' }
+        });
+    }
+
+    if (normalizedComparable(oldTask.priority) !== normalizedComparable(updatedTask.priority)) {
+        await record({
+            actionType: TASK_ACTION_TYPES.PRIORITY_CHANGED,
+            oldValue: { priority: oldTask.priority || null },
+            newValue: { priority: updatedTask.priority || null },
+            meta: { route: 'tasks_put_update', canonicalField: 'tasks.priority' }
+        });
+    }
+
+    return historyEvents;
+}
+
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const FILTERABLE_STATUSES = [...VALID_STATUSES, 'archived', 'cancelled', 'overdue'];
 const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -2981,6 +3069,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             });
         }
 
+        const directHistoryEvents = await logDirectTaskUpdateHistory(old, result.rows[0], req.user, b);
+
         // Log update via Kleshnya
         const kleshnya = getKleshnya();
         const actor = req.user?.username || 'system';
@@ -3033,7 +3123,12 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         updatedTask = await attachSubtaskSummary(updatedTask, { includeSubtasks: hasManualSubtasks });
-        res.json({ success: true, task: normalizeTaskPayload(updatedTask), schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null });
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(updatedTask),
+            historyEvents: directHistoryEvents,
+            schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null
+        });
         _alertPush();
     } catch (err) {
         log.error('Update error', err);

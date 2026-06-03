@@ -27,6 +27,7 @@ const {
 } = require('../services/credentialInput');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
+const { logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const {
     uploadProfileAvatarWithFallback,
     validateProfileAvatarFile,
@@ -1212,6 +1213,23 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
             'INSERT INTO task_logs (task_id, action, old_value, new_value, actor) VALUES ($1, $2, $3, $4, $5)',
             [parseInt(id), 'status_change', oldStatus, status, req.user.username]
         );
+        try {
+            await logTaskActionEvent({
+                taskId: parseInt(id, 10),
+                actionType: TASK_ACTION_TYPES.STATUS_CHANGED,
+                actor: req.user,
+                sourceSurface: 'profile_my_cabinet',
+                oldValue: { status: oldStatus },
+                newValue: { status },
+                meta: {
+                    route: 'auth_tasks_quick_status',
+                    canonicalField: 'tasks.status',
+                    legacyLog: 'task_logs'
+                }
+            });
+        } catch (historyErr) {
+            log.warn(`Quick task status history skipped: ${historyErr.message}`);
+        }
         log.info(`Task #${id} status: ${oldStatus} → ${status} by ${req.user.username}`);
         res.json({ success: true, oldStatus, newStatus: status });
     } catch (err) {

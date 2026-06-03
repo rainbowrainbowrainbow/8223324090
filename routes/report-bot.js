@@ -249,7 +249,7 @@ router.post('/webhook', async (req, res) => {
 // ==========================================
 // POST /api/report-bot/submit — Bot sends report to CRM (snake_case)
 // Routes: object_name === 'Особисте' → personal_account_transactions
-//         otherwise → finance_transactions + reports (legacy)
+//         otherwise → finance_transactions (canonical)
 // ==========================================
 router.post('/submit', requireBotApiKey, async (req, res) => {
     let client;
@@ -386,40 +386,17 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
         `, [type, categoryId, amountInt, description || null, reportDate, payMethod,
             object_name || null, account_name || null, submitted_by || null]);
 
-        // Also save to reports table (legacy compatibility)
-        const parsedAccountId = account_id ? parseInt(account_id, 10) : null;
-        const accountIdInt = Number.isFinite(parsedAccountId) ? parsedAccountId : null;
-        const botRawData = {
-            ...rawPayload,
-            report_bot_submission_id: subId,
-            report_bot_idempotency_key: idempotencyKey,
-            report_bot_date: reportDate
-        };
-        if (submitted_by_id) botRawData.telegram_chat_id = submitted_by_id;
-
-        const reportResult = await client.query(`
-            INSERT INTO reports (type, amount, description, category, submitted_by,
-                submitted_via, photo_url, ocr_text, voice_transcript, raw_data, status,
-                account_id, account_name)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id
-        `, [type, numericAmount, description || null, category || null,
-            submitted_by || 'Bot', submitted_via,
-            photo_url || null, ocr_text || null, voice_transcript || null,
-            JSON.stringify(botRawData), status,
-            accountIdInt, account_name || null]);
-
         log.info(`Bot report #${subId} → finance_transactions #${ft.rows[0].id}`);
         await client.query(
-            `UPDATE report_bot_submissions SET status='processed', finance_transaction_id=$1, report_id=$2 WHERE id=$3`,
-            [ft.rows[0].id, reportResult.rows[0].id, subId]
+            `UPDATE report_bot_submissions SET status='processed', finance_transaction_id=$1, report_id=NULL WHERE id=$2`,
+            [ft.rows[0].id, subId]
         );
 
         await client.query('COMMIT');
         res.status(201).json({
             ok: true, id: subId,
             transactionId: ft.rows[0].id,
-            reportId: reportResult.rows[0].id,
+            reportId: null,
             routed: 'finance'
         });
     } catch (err) {

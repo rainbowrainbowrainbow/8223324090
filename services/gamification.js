@@ -9,6 +9,14 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Gamification');
 
+function taskOwnerUsernameSql(taskAlias = 't', userAlias = 'owner_u') {
+    return `COALESCE(${userAlias}.username, CASE WHEN ${taskAlias}.owner_user_id IS NULL THEN NULLIF(${taskAlias}.assigned_to, '') END)`;
+}
+
+function taskOwnerJoinSql(taskAlias = 't', userAlias = 'owner_u') {
+    return `LEFT JOIN users ${userAlias} ON ${userAlias}.id = ${taskAlias}.owner_user_id`;
+}
+
 // XP rewards for various actions
 const XP_REWARDS = {
     task_complete: 10,
@@ -269,8 +277,12 @@ async function checkAchievements(username, context = {}) {
 
         switch (ach.condition_type) {
             case 'task_count': {
+                const ownerUsername = taskOwnerUsernameSql('t', 'owner_u');
                 const { rows } = await pool.query(
-                    "SELECT COUNT(*) FROM tasks WHERE assigned_to = $1 AND status = 'done'",
+                    `SELECT COUNT(*)
+                     FROM tasks t
+                     ${taskOwnerJoinSql('t', 'owner_u')}
+                     WHERE ${ownerUsername} = $1 AND t.status = 'done'`,
                     [username]
                 );
                 shouldUnlock = parseInt(rows[0].count) >= ach.condition_value;
@@ -739,17 +751,33 @@ async function recalculateMonthlyLeaderboard(year, month) {
         ? `${year + 1}-01-01`
         : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 
+    const taskOwnerUsername = taskOwnerUsernameSql('t', 'owner_u');
+    const taskOwnerJoin = taskOwnerJoinSql('t', 'owner_u');
     const categories = {
         bookings: `SELECT created_by as username, COUNT(*) as score FROM bookings
                    WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by`,
-        tasks: `SELECT assigned_to as username, COUNT(*) as score FROM tasks
-                WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assigned_to`,
+        tasks: `SELECT username, COUNT(*) as score
+                FROM (
+                    SELECT ${taskOwnerUsername} AS username
+                    FROM tasks t
+                    ${taskOwnerJoin}
+                    WHERE t.status = 'done' AND t.updated_at >= $1 AND t.updated_at < $2
+                ) task_owners
+                WHERE username IS NOT NULL
+                GROUP BY username`,
         xp: `SELECT username, SUM(xp_earned) as score FROM (
                   SELECT created_by as username, COUNT(*) * 10 as xp_earned FROM bookings
                   WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by
                   UNION ALL
-                  SELECT assigned_to as username, COUNT(*) * 5 as xp_earned FROM tasks
-                  WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assigned_to
+                  SELECT username, COUNT(*) * 5 as xp_earned
+                  FROM (
+                      SELECT ${taskOwnerUsername} AS username
+                      FROM tasks t
+                      ${taskOwnerJoin}
+                      WHERE t.status = 'done' AND t.updated_at >= $1 AND t.updated_at < $2
+                  ) task_xp_owners
+                  WHERE username IS NOT NULL
+                  GROUP BY username
              ) xp_sources GROUP BY username`,
         coins: `SELECT username, SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as score
                 FROM coin_transactions
@@ -868,10 +896,13 @@ async function checkSeasonalProgress(username) {
                 break;
             }
             case 'task_count': {
+                const ownerUsername = taskOwnerUsernameSql('t', 'owner_u');
                 const { rows } = await pool.query(
-                    `SELECT COUNT(*) FROM tasks
-                     WHERE assigned_to = $1 AND status = 'done'
-                     AND updated_at >= $2 AND updated_at <= $3`,
+                    `SELECT COUNT(*)
+                     FROM tasks t
+                     ${taskOwnerJoinSql('t', 'owner_u')}
+                     WHERE ${ownerUsername} = $1 AND t.status = 'done'
+                     AND t.updated_at >= $2 AND t.updated_at <= $3`,
                     [username, quest.start_date, quest.end_date]
                 );
                 progress = parseInt(rows[0].count);
@@ -1113,10 +1144,13 @@ async function recalculateTeamChallenges() {
                     break;
                 }
                 case 'tasks': {
+                    const ownerUsername = taskOwnerUsernameSql('t', 'owner_u');
                     const { rows } = await pool.query(
-                        `SELECT COUNT(*) FROM tasks
-                         WHERE assigned_to = ANY($1) AND status = 'done'
-                         AND updated_at >= $2 AND updated_at <= $3`,
+                        `SELECT COUNT(*)
+                         FROM tasks t
+                         ${taskOwnerJoinSql('t', 'owner_u')}
+                         WHERE ${ownerUsername} = ANY($1) AND t.status = 'done'
+                         AND t.updated_at >= $2 AND t.updated_at <= $3`,
                         [usernames, ch.start_date, ch.end_date]
                     );
                     score = parseInt(rows[0].count);

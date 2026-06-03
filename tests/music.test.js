@@ -6,10 +6,18 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { authRequest } = require('./helpers');
+const { SOUND_API_SURFACE } = require('../config/soundApiSurface');
 
 describe('Music', () => {
     let announcementId;
     let playlistId;
+
+    it('Sound API contract keeps /api/music primary and /api/sound-library legacy-only', () => {
+        assert.equal(SOUND_API_SURFACE.primary.mount, '/api/music');
+        assert.equal(SOUND_API_SURFACE.primary.compatibilityOnly, false);
+        assert.equal(SOUND_API_SURFACE.legacy.mount, '/api/sound-library');
+        assert.equal(SOUND_API_SURFACE.legacy.compatibilityOnly, true);
+    });
 
     // ==========================================
     // ANNOUNCEMENTS

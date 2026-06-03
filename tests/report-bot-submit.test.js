@@ -152,10 +152,10 @@ function makeDb(options = {}) {
         }
 
         if (/UPDATE report_bot_submissions SET status='processed'/i.test(sql)) {
-            const row = data.submissions.find(item => item.id === params[2]);
+            const row = data.submissions.find(item => item.id === params[1]);
             row.status = 'processed';
             row.finance_transaction_id = params[0];
-            row.report_id = params[1];
+            row.report_id = null;
             return { rows: [], rowCount: 1 };
         }
 
@@ -271,7 +271,7 @@ async function withApp(db, fn) {
     }
 }
 
-test('report-bot submit commits submission, finance transaction, report, and back-reference together', async () => {
+test('report-bot submit commits submission and canonical finance transaction without legacy report write', async () => {
     const db = makeDb();
     await withApp(db, async ({ baseUrl, state }) => {
         const res = await request(baseUrl, submitBody());
@@ -279,18 +279,16 @@ test('report-bot submit commits submission, finance transaction, report, and bac
         assert.equal(res.status, 201, JSON.stringify(res.data));
         assert.equal(res.data.id, 1);
         assert.equal(res.data.transactionId, 100);
-        assert.equal(res.data.reportId, 200);
+        assert.equal(res.data.reportId, null);
         assert.equal(res.data.routed, 'finance');
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
         assert.equal(state.committed.submissions.length, 1);
         assert.equal(state.committed.financeTransactions.length, 1);
-        assert.equal(state.committed.reports.length, 1);
+        assert.equal(state.committed.reports.length, 0);
         assert.equal(state.committed.submissions[0].status, 'processed');
         assert.equal(state.committed.submissions[0].finance_transaction_id, 100);
-        assert.equal(state.committed.submissions[0].report_id, 200);
+        assert.equal(state.committed.submissions[0].report_id, null);
         assert.equal(state.committed.financeTransactions[0].date, '2026-05-11');
-        assert.equal(state.committed.reports[0].raw_data.report_bot_submission_id, 1);
-        assert.equal(state.committed.reports[0].raw_data.report_bot_idempotency_key, 'explicit:unit-update-1');
     });
 });
 
@@ -310,20 +308,22 @@ test('report-bot submit returns existing result for duplicate idempotency key wi
         assert.equal(second.data.reportId, first.data.reportId);
         assert.equal(state.committed.submissions.length, 1);
         assert.equal(state.committed.financeTransactions.length, 1);
-        assert.equal(state.committed.reports.length, 1);
+        assert.equal(state.committed.reports.length, 0);
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);
     });
 });
 
-test('report-bot submit rolls back all writes when the legacy report write fails', async () => {
+test('report-bot submit does not depend on legacy reports insert for canonical finance flow', async () => {
     const db = makeDb({ failReportsInsert: true });
     await withApp(db, async ({ baseUrl, state }) => {
-        const res = await request(baseUrl, submitBody({ raw_data: { update_id: 'fail-submit' } }));
+        const res = await request(baseUrl, submitBody({ raw_data: { update_id: 'finance-canonical-submit' } }));
 
-        assert.equal(res.status, 500, JSON.stringify(res.data));
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
-        assert.equal(state.committed.submissions.length, 0);
-        assert.equal(state.committed.financeTransactions.length, 0);
+        assert.equal(res.status, 201, JSON.stringify(res.data));
+        assert.equal(res.data.transactionId, 100);
+        assert.equal(res.data.reportId, null);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.committed.submissions.length, 1);
+        assert.equal(state.committed.financeTransactions.length, 1);
         assert.equal(state.committed.reports.length, 0);
         assert.equal(state.released, 1);
     });

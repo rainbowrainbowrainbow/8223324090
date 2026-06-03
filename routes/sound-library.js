@@ -8,6 +8,8 @@ const logger = createLogger('SoundLibrary');
 
 router.use(authenticateToken);
 
+// Legacy compatibility CRUD only. New Sound behavior must use /api/music.
+
 // GET /api/sound-library — all sounds
 router.get('/', async (req, res) => {
     try {

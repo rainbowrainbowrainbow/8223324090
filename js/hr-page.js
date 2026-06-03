@@ -45,6 +45,15 @@ const HR_POOL_LABELS = {
 
 const HR_NAV_GROUPS = [
     {
+        id: 'pulse',
+        label: 'Пульс компанії',
+        items: [
+            { id: 'today', label: 'Сьогодні' },
+            { id: 'schedule', label: 'Графік' },
+            { id: 'reports', label: 'Звіти' }
+        ]
+    },
+    {
         id: 'people',
         label: 'Команда',
         items: [

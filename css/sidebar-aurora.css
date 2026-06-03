@@ -10133,34 +10133,6 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   }
 }
 
-/* HR pulse submenu lives in the sidebar; the HR page keeps only operational sections. */
-.sidebar-nav:not(.collapsed) .sidebar-links .nav-link.nav-link--subitem {
-  min-height: 32px !important;
-  margin-left: 18px !important;
-  padding-left: 9px !important;
-  width: calc(100% - 18px) !important;
-  border-left: 2px solid color-mix(in srgb, var(--sb-primary) 28%, transparent) !important;
-  border-radius: 8px !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-links .nav-link.nav-link--subitem .nav-icon {
-  width: 26px !important;
-  height: 26px !important;
-  border-radius: 8px !important;
-  opacity: 0.9;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-links .nav-link.nav-link--subitem .nav-text {
-  font-size: 11.5px !important;
-  font-weight: 850 !important;
-}
-
-.sidebar-nav.collapsed .sidebar-links .nav-link.nav-link--subitem {
-  margin-left: 0 !important;
-  width: 100% !important;
-  border-left: 0 !important;
-}
-
 .sidebar-nav:not(.collapsed) .sidebar-links .nav-link.nav-link--legacy {
   opacity: 0.72;
   border-style: dashed !important;

@@ -29,6 +29,8 @@ test('HR static and rendered button tags declare an explicit type', () => {
 test('HR grouped nav buttons expose routing and future visibility contract', () => {
     for (const token of [
         'const HR_NAV_GROUPS',
+        "id: 'pulse'",
+        "label: 'Пульс компанії'",
         'visible: () => canManageAccountSecurity()',
         'data-nav-id=',
         'data-tab=',

@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.6">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.6">
+    <link rel="stylesheet" href="css/base.css?v=0.73.7">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.7">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.7">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.7">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.7">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.7">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -38,16 +38,18 @@
         }
         .hr-nav {
             align-items: stretch;
-            gap: 10px;
+            flex-direction: column;
+            gap: 8px;
             padding: 8px;
         }
         .hr-nav-group {
             display: flex;
             align-items: stretch;
-            gap: 4px;
-            flex: 1 1 180px;
-            min-width: 180px;
-            padding: 4px;
+            gap: 8px;
+            flex: 0 0 auto;
+            width: 100%;
+            min-width: 0;
+            padding: 6px;
             border-radius: var(--radius-sm);
             background: rgba(255,255,255,0.42);
         }
@@ -55,10 +57,10 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: center;
-            padding: 0 10px;
-            min-width: 98px;
-            max-width: 150px;
+            align-items: flex-start;
+            padding: 0 12px;
+            min-width: 148px;
+            max-width: 190px;
             font-size: 11px;
             font-weight: 900;
             color: var(--gray-500);
@@ -78,13 +80,13 @@
             display: flex;
             flex-wrap: wrap;
             align-items: stretch;
-            gap: 4px;
+            gap: 6px;
             flex: 1;
             min-width: 0;
         }
         .hr-tab {
-            flex: 1;
-            min-width: 120px;
+            flex: 0 1 150px;
+            min-width: 116px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1185,17 +1187,17 @@
         }
         .hr-team-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 10px;
         }
         .hr-team-card {
             background: var(--white);
             border: 1px solid var(--gray-100);
-            border-radius: var(--radius);
-            padding: 20px;
+            border-radius: var(--radius-sm);
+            padding: 12px;
             box-shadow: var(--shadow-xs);
             display: flex;
-            gap: 16px;
+            gap: 10px;
             transition: box-shadow var(--speed-fast);
         }
         .hr-team-card:hover { box-shadow: var(--shadow-sm); }
@@ -1253,13 +1255,13 @@
         }
         .hr-people-bucket-body {
             display: none;
-            padding: 0 16px 16px;
+            padding: 0 12px 12px;
         }
         .hr-people-bucket.is-open .hr-people-bucket-body { display: block; }
         .hr-people-bucket-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 10px;
         }
         .hr-people-empty {
             padding: 24px;
@@ -1279,14 +1281,14 @@
         }
 
         .hr-team-avatar {
-            width: 64px;
-            height: 64px;
+            width: 46px;
+            height: 46px;
             border-radius: 50%;
             background: var(--gray-100);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 17px;
             font-weight: 900;
             color: var(--gray-400);
             flex-shrink: 0;
@@ -1301,27 +1303,27 @@
         .hr-team-details { flex: 1; min-width: 0; }
         .hr-team-name {
             font-weight: 800;
-            font-size: var(--font-base);
+            font-size: var(--font-sm);
             color: var(--gray-800);
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
         .hr-team-role {
             font-size: var(--font-xs);
             color: var(--gray-500);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         .hr-team-badges {
             display: flex;
-            gap: 6px;
-            margin-bottom: 6px;
+            gap: 4px;
+            margin-bottom: 5px;
             font-size: 12px;
         }
         .hr-badge {
             display: inline-flex;
             align-items: center;
-            padding: 2px 6px;
-            border-radius: 8px;
-            font-size: 11px;
+            padding: 1px 5px;
+            border-radius: 7px;
+            font-size: 10px;
             cursor: help;
         }
         .hr-badge--ok {
@@ -1344,18 +1346,18 @@
         .hr-team-contact {
             font-size: var(--font-xs);
             color: var(--gray-600);
-            line-height: 1.6;
+            line-height: 1.35;
         }
         .hr-team-stats {
             font-size: 11px;
             color: var(--gray-500);
-            margin-top: 8px;
-            padding-top: 8px;
+            margin-top: 6px;
+            padding-top: 6px;
             border-top: 1px solid var(--gray-100);
         }
         .hr-team-edit {
-            margin-top: 10px;
-            padding: 6px 14px;
+            margin-top: 8px;
+            padding: 5px 10px;
             border: 1px solid var(--gray-200);
             background: var(--white);
             border-radius: var(--radius-xs);
@@ -1366,6 +1368,17 @@
             color: var(--gray-600);
         }
         .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+        .hr-team-card .hr-account-toggle {
+            padding: 5px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+        }
+        .hr-team-card .hr-team-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
 
         .hr-kpi-toolbar {
             display: flex;
@@ -2188,8 +2201,9 @@
                 padding: 6px;
             }
             .hr-nav-group {
-                flex: 0 0 82vw;
-                min-width: 260px;
+                flex: 0 0 auto;
+                width: 100%;
+                min-width: 0;
                 flex-direction: column;
             }
             .hr-nav-group-title {
@@ -2208,8 +2222,8 @@
             .hr-kpi-toolbar > div,
             .hr-kpi-toolbar select,
             .hr-kpi-toolbar button { width: 100%; }
-            .hr-team-card { padding: 14px; }
-            .hr-team-avatar { width: 48px; height: 48px; font-size: 18px; }
+            .hr-team-card { padding: 10px; }
+            .hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }
             .hr-team-badges { gap: 4px; }
             .hr-account-row { grid-template-columns: 40px 1fr; }
             .hr-account-actions { grid-column: 1 / -1; justify-content: flex-start; }
@@ -2996,15 +3010,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.6"></script>
-    <script src="js/config.js?v=0.73.6"></script>
-    <script src="js/notification.js?v=0.73.6"></script>
-    <script src="js/api.js?v=0.73.6"></script>
-    <script src="js/auth.js?v=0.73.6"></script>
-    <script src="js/components/sidebar.js?v=0.73.6"></script>
+    <script src="js/ui.js?v=0.73.7"></script>
+    <script src="js/config.js?v=0.73.7"></script>
+    <script src="js/notification.js?v=0.73.7"></script>
+    <script src="js/api.js?v=0.73.7"></script>
+    <script src="js/auth.js?v=0.73.7"></script>
+    <script src="js/components/sidebar.js?v=0.73.7"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.6"></script>
-    <script src="js/alerts.js?v=0.73.6"></script><script>
+    <script src="js/hr-page.js?v=0.73.7"></script>
+    <script src="js/alerts.js?v=0.73.7"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

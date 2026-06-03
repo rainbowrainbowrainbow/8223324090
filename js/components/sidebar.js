@@ -46,14 +46,7 @@ const Sidebar = (() => {
         ['/copilot', 'AI'],
         ['/staff', 'Графік'],
         ['/hr', 'Пульс'],
-        ['/hr#today', 'Сьогодні'],
-        ['/hr#schedule', 'Графік'],
-        ['/hr#reports', 'Звіти'],
         ['/hr#team', 'Команда'],
-        ['/hr#workers', 'Роб.'],
-        ['/hr#interns', 'Стаж.'],
-        ['/hr#reserve', 'Рез.'],
-        ['/hr#blacklist', 'ЧС'],
         ['/training', 'Навч'],
         ['/checkin', 'Check'],
         ['/programs', 'Прод'],
@@ -140,15 +133,8 @@ const Sidebar = (() => {
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
-        { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти' },
-        { href: '/hr#today',     icon: '☀️', label: 'Сьогодні',      access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
-        { href: '/hr#schedule',  icon: '🗓️', label: 'Графік',        access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
-        { href: '/hr#reports',   icon: '📋', label: 'Звіти',         access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'pulse' },
-        { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список' },
-        { href: '/hr#workers',   icon: '👥', label: 'Робітники',     access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'workers', visible: (user, role) => _canSeeHrTeamBucket('workers', user, role) },
-        { href: '/hr#interns',   icon: '🎓', label: 'Стажери',       access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'interns', visible: (user, role) => _canSeeHrTeamBucket('interns', user, role) },
-        { href: '/hr#reserve',   icon: '📌', label: 'Резерв',        access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'reserve', visible: (user, role) => _canSeeHrTeamBucket('reserve', user, role) },
-        { href: '/hr#blacklist', icon: '⚠️', label: 'Чорний список', access: 'hr_page',        group: 'team', pageAccess: '/hr', navSubitem: 'team', hrTeamBucket: 'blacklist', visible: (user, role) => _canSeeHrTeamBucket('blacklist', user, role) },
+        { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
+        { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist'] },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
         { href: '/hr#team',      icon: '🤝', label: 'HR',            access: 'hr_page',        group: 'team', pageAccess: '/hr', navLegacy: true, noActive: true, description: 'службовий розділ' },
@@ -500,6 +486,11 @@ const Sidebar = (() => {
         if (!item || item.noActive || item.isHashLink) return false;
         const itemBase = item.href.split('#')[0];
         const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
+        const activeHashes = Array.isArray(item.activeHashes) ? item.activeHashes.map(String) : [];
+        if (activeHashes.length && currentPath === itemBase) {
+            if (currentHash) return activeHashes.includes(currentHash);
+            if (!itemHash) return true;
+        }
         if (itemHash) {
             if (currentPath !== itemBase) return false;
             if (currentHash) return currentHash === itemHash;

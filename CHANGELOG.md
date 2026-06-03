@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.5 - HR: кнопки, стани і QA-контракти
+
+### HR / Button QA / UX / (Клешня, 03.06.2026) [codex]
+- **HR-кнопки отримали явний контракт** - кнопки у HTML та JS-render рядках тепер мають `type="button"` або контрольований submit-контекст, щоб майбутні форми не запускали випадковий submit.
+- **Командні bucket-и стали стабільнішими** - навігація `Команда` показує лічильники для `Робітники`, `Стажери`, `Чорний список` і `Резерв`, а пошук чи порожній bucket більше не збиває active state.
+- **People accordion має явні стани** - loading, error і empty показуються всередині кожного bucket-а, з dark/mobile стилями без вкладеного scroll у тілі accordion.
+- **KPI показує джерела даних** - зріз лишається на існуючих API, але явно маркує `monthly report`, `onboarding` і `ratings context` та показує `даних ще немає`, коли вхід порожній.
+- **Додано regression guardrails** - новий `tests/hr-button-contract.test.js` і UI smoke фіксують button types, legacy hash remap, ARIA/data атрибути, KPI source labels і theme/mobile CSS.
+
+---
+
 ## v0.73.4 - HR: підпункти команди і чистий KPI
 
 ### HR / Команда / KPI / (Клешня, 03.06.2026) [codex]

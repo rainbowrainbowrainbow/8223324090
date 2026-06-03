@@ -474,8 +474,9 @@ function renderHrNav() {
             <div class="hr-nav-items">
                 ${group.items.map(item => {
                     const tabId = item.tab || item.id;
+                    const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
                     return `
-                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}</button>
+                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}${countBadge}</button>
                 `;
                 }).join('')}
             </div>
@@ -504,6 +505,15 @@ function syncHrNavActive(target, bucket = null) {
     const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
         || document.querySelector(`.hr-tab[data-tab="${tabSelector}"]`);
     tab?.classList.add('active');
+}
+
+function updatePeopleNavCounts(grouped = []) {
+    const counts = new Map(grouped.map(bucket => [bucket.id, bucket.staff.length]));
+    document.querySelectorAll('[data-nav-count]').forEach(badge => {
+        const value = counts.has(badge.dataset.navCount) ? counts.get(badge.dataset.navCount) : null;
+        badge.textContent = value === null ? '0' : String(value);
+        badge.classList.toggle('hidden', value === null);
+    });
 }
 
 function requestedHrTarget() {
@@ -691,7 +701,7 @@ function renderToday(data) {
                 <div class="hr-staff-name">${escapeHtml(item.staff_name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(item.staff_id, {compact:true}) : ''} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
                 <div class="hr-staff-meta">${roleLabel}${meta ? ' · ' + meta : ''}</div>
             </div>
-            <button class="hr-clock-btn ${btnClass}" ${disabled}
+            <button type="button" class="hr-clock-btn ${btnClass}" ${disabled}
                 onclick="handleClock(${item.staff_id}, '${rec && rec.clock_in && !rec.clock_out ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"
             >${btnText}</button>
         </div>`;
@@ -1537,14 +1547,14 @@ async function loadTeam() {
     await ensureProfessionsLoaded({ silent: true });
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
-    if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
+    if (grid) renderPeopleBucketState('Завантаження команди...', 'loading');
     const data = await hrFetch(`/staff?active=${activeOnly}`);
     if (!data) {
-        if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px">❌ Помилка завантаження. Оновіть сторінку.</div>';
+        if (grid) renderPeopleBucketState('Помилка завантаження. Оновіть сторінку.', 'error');
         return;
     }
     if (!data.success) {
-        if (grid) grid.innerHTML = `<div style="text-align:center;color:var(--gray-400);padding:32px">${escapeHtml(data.error || 'Помилка сервера')}</div>`;
+        if (grid) renderPeopleBucketState(data.error || 'Помилка сервера', 'error');
         return;
     }
     teamStaff = data.data || [];
@@ -1605,12 +1615,9 @@ function renderTeam(staff) {
         ...bucket,
         staff: staff.filter(item => bucketForStaff(item) === bucket.id)
     }));
-    if (!grouped.some(bucket => bucket.staff.length) && staff.length === 0) {
-        grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Нікого не знайдено</div>';
-        return;
-    }
-    if (!forcedBucket && !grouped.some(bucket => bucket.id === activePeopleBucket && bucket.staff.length)) {
-        activePeopleBucket = grouped.find(bucket => bucket.staff.length)?.id || 'workers';
+    updatePeopleNavCounts(grouped);
+    if (!forcedBucket && !PEOPLE_BUCKETS.some(bucket => bucket.id === activePeopleBucket)) {
+        activePeopleBucket = 'workers';
     }
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
@@ -1624,7 +1631,35 @@ function renderTeam(staff) {
                 <span class="hr-people-bucket-icon">${isOpen ? '▲' : '▼'}</span>
             </button>
             <div class="hr-people-bucket-body">
-                ${bucket.staff.length ? `<div class="hr-people-bucket-grid">${renderTeamCards(bucket.staff)}</div>` : '<div class="hr-people-empty">Список порожній</div>'}
+                ${bucket.staff.length ? `<div class="hr-people-bucket-grid">${renderTeamCards(bucket.staff)}</div>` : '<div class="hr-people-empty">Список порожній за поточними фільтрами</div>'}
+            </div>
+        </section>`;
+    }).join('');
+    syncHrNavActive('team', activePeopleBucket);
+}
+
+function renderPeopleBucketState(message, state = 'empty') {
+    const grid = document.getElementById('teamGrid');
+    if (!grid) return;
+    grid.className = 'hr-people-accordion';
+    const grouped = PEOPLE_BUCKETS.map(bucket => ({ ...bucket, staff: [] }));
+    updatePeopleNavCounts(grouped);
+    if (!PEOPLE_BUCKETS.some(bucket => bucket.id === activePeopleBucket)) {
+        activePeopleBucket = 'workers';
+    }
+    grid.innerHTML = grouped.map(bucket => {
+        const isOpen = bucket.id === activePeopleBucket;
+        return `<section class="hr-people-bucket ${isOpen ? 'is-open' : ''}" data-people-bucket="${escapeHtml(bucket.id)}">
+            <button type="button" class="hr-people-bucket-toggle" aria-expanded="${isOpen ? 'true' : 'false'}" onclick="setPeopleBucket('${escapeHtml(bucket.id)}')">
+                <span>
+                    <span class="hr-people-bucket-title">${escapeHtml(bucket.title)}</span>
+                    <span class="hr-people-bucket-note">${escapeHtml(bucket.note)}</span>
+                </span>
+                <span class="hr-people-bucket-count">0</span>
+                <span class="hr-people-bucket-icon">${isOpen ? '▲' : '▼'}</span>
+            </button>
+            <div class="hr-people-bucket-body">
+                <div class="hr-people-empty hr-people-empty--${escapeHtml(state)}">${escapeHtml(message)}</div>
             </div>
         </section>`;
     }).join('');
@@ -1679,7 +1714,7 @@ function renderTeamCards(staff) {
                 ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-stats" style="color:var(--danger)">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
                 ${s.hourly_rate > 0 ? `<div class="hr-team-stats">Ставка: ${s.hourly_rate} ₴/год</div>` : ''}
                 ${accountActions}
-                ${canManage ? `<button class="hr-team-edit" onclick="openStaffEdit(${s.id})">Редагувати</button>` : ''}
+                ${canManage ? `<button type="button" class="hr-team-edit" onclick="openStaffEdit(${s.id})">Редагувати</button>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -3663,8 +3698,8 @@ function renderLeaves(leaves) {
             ${l.reason ? `<div style="font-size:12px;color:var(--gray-500);">Причина: ${escapeHtml(l.reason)}</div>` : ''}
             ${l.status === 'pending' && canManage ? `
                 <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button onclick="reviewLeave(${l.id}, 'approved')" style="padding:6px 16px;border:none;background:#10B981;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Затвердити</button>
-                    <button onclick="reviewLeave(${l.id}, 'rejected')" style="padding:6px 16px;border:none;background:#EF4444;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Відхилити</button>
+                    <button type="button" onclick="reviewLeave(${l.id}, 'approved')" style="padding:6px 16px;border:none;background:#10B981;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Затвердити</button>
+                    <button type="button" onclick="reviewLeave(${l.id}, 'rejected')" style="padding:6px 16px;border:none;background:#EF4444;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Відхилити</button>
                 </div>
             ` : ''}
         </div>
@@ -3829,7 +3864,7 @@ async function showDepremiumPicker(staffId, initialAmount, initialReason, month)
                     </select>
                 </div>
                 <div style="max-height:280px;overflow-y:auto;display:grid;gap:8px;margin-bottom:16px">
-                    ${filtered.map(t => `<button class="dp-tpl-item" data-id="${t.id}" style="width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid ${selectedTpl?.id===t.id?'#a78bfa':'rgba(255,255,255,0.08)'};background:${selectedTpl?.id===t.id?'rgba(168,85,247,0.15)':'rgba(255,255,255,0.03)'};cursor:pointer;transition:all .15s;color:#E2E8F0">
+                    ${filtered.map(t => `<button type="button" class="dp-tpl-item" data-id="${t.id}" style="width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid ${selectedTpl?.id===t.id?'#a78bfa':'rgba(255,255,255,0.08)'};background:${selectedTpl?.id===t.id?'rgba(168,85,247,0.15)':'rgba(255,255,255,0.03)'};cursor:pointer;transition:all .15s;color:#E2E8F0">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                             <span style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#c084fc">${escapeHtml(t.code)}</span>
                             <span style="font-size:11px;font-weight:600" class="severity-${t.severity}">${SEVERITY_LABELS[t.severity]||t.severity}</span>
@@ -3844,9 +3879,9 @@ async function showDepremiumPicker(staffId, initialAmount, initialReason, month)
                     ${selectedTpl ? renderDecisionPanel(selectedTpl) : ''}
                 </div>
                 <div style="display:flex;gap:8px;margin-top:16px">
-                    <button id="dpApply" style="flex:1;padding:12px;border:none;border-radius:12px;background:${selectedTpl?'#7c3aed':'#3D3D5C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;transition:all .15s" ${selectedTpl?'':'disabled'}>✅ Застосувати</button>
-                    <button id="dpCustom" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Довільна причина</button>
-                    <button id="dpCancel" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Скасувати</button>
+                    <button type="button" id="dpApply" style="flex:1;padding:12px;border:none;border-radius:12px;background:${selectedTpl?'#7c3aed':'#3D3D5C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;transition:all .15s" ${selectedTpl?'':'disabled'}>✅ Застосувати</button>
+                    <button type="button" id="dpCustom" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Довільна причина</button>
+                    <button type="button" id="dpCancel" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Скасувати</button>
                 </div>`;
 
             // Bind events
@@ -3944,6 +3979,20 @@ function kpiSignal(text, tone = '') {
     return `<span class="hr-kpi-signal ${tone}">${escapeHtml(text)}</span>`;
 }
 
+function renderKpiSourceLabel(label, value) {
+    return `<span class="hr-kpi-source"><strong>${escapeHtml(label)}</strong>: ${escapeHtml(value)}</span>`;
+}
+
+function renderKpiSources({ rows = [], onboarding = [], ratings = [] } = {}) {
+    const sources = document.getElementById('kpiSources');
+    if (!sources) return;
+    sources.innerHTML = [
+        renderKpiSourceLabel('monthly report', rows.length ? `${rows.length} staff rows` : 'даних ще немає'),
+        renderKpiSourceLabel('onboarding', onboarding.length ? `${onboarding.length} records` : 'даних ще немає'),
+        renderKpiSourceLabel('ratings context', ratings.length ? `${ratings.length} records` : 'даних ще немає')
+    ].join('');
+}
+
 function toneForPercent(value, good = 90, warn = 75) {
     if (value === null || value === undefined) return '';
     if (value >= good) return 'good';
@@ -3982,6 +4031,11 @@ async function loadKpi() {
     ]);
     if (!monthly?.success) {
         const body = document.getElementById('kpiBody');
+        renderKpiSources({
+            rows: [],
+            onboarding: onboarding?.success ? onboarding.data || [] : [],
+            ratings: ratings?.success ? ratings.data || [] : []
+        });
         if (body) body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Не вдалося завантажити KPI-зріз</td></tr>';
         return;
     }
@@ -4002,6 +4056,7 @@ function renderKpi({ rows, onboarding, ratings }) {
     const head = document.getElementById('kpiHead');
     const body = document.getElementById('kpiBody');
     if (!summary || !head || !body) return;
+    renderKpiSources({ rows, onboarding, ratings });
 
     const totals = rows.reduce((acc, row) => {
         acc.scheduled += num(row.days_scheduled);
@@ -4237,10 +4292,10 @@ async function loadVacancies() {
             ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
             ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
             <div class="vac-actions" onclick="event.stopPropagation()">
-                ${v.status === 'open' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">⏸</button>` : ''}
-                ${v.status !== 'filled' && v.status !== 'closed' ? `<button class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">✅ Заповнено</button>` : ''}
-                ${v.status === 'paused' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">▶ Відкрити</button>` : ''}
-                <button class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">✕</button>
+                ${v.status === 'open' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">⏸</button>` : ''}
+                ${v.status !== 'filled' && v.status !== 'closed' ? `<button type="button" class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">✅ Заповнено</button>` : ''}
+                ${v.status === 'paused' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">▶ Відкрити</button>` : ''}
+                <button type="button" class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">✕</button>
             </div>
         </div>
     `).join('');
@@ -4290,10 +4345,10 @@ async function refreshCandidates() {
                         ${a.interview_notes ? `<div class="kc-meta">${escapeHtml(a.interview_notes).slice(0, 120)}</div>` : ''}
                         ${candidateResumeBadgeHtml(a)}
                         <div class="kc-actions">
-                            <button class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
-                            ${s !== 'offer' ? `<button class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
-                            ${s === 'offer' ? `<button class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
-                            <button class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
+                            <button type="button" class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
+                            ${s !== 'offer' ? `<button type="button" class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
+                            ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
+                            <button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
                         </div>
                     </div>
                 `).join('') || '<div style="color:var(--gray-400);font-size:12px;padding:8px">Порожньо</div>'}

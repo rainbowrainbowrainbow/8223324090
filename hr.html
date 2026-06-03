@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.4">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.4">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.4">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.4">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.4">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.4">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.4">
+    <link rel="stylesheet" href="css/base.css?v=0.73.5">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.5">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.5">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.5">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.5">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.5">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -85,6 +85,10 @@
         .hr-tab {
             flex: 1;
             min-width: 120px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
             padding: 10px 16px;
             border: none;
             background: transparent;
@@ -105,6 +109,23 @@
             box-shadow: var(--shadow-xs);
         }
         .hr-tab.hidden { display: none; }
+        .hr-nav-count {
+            min-width: 22px;
+            height: 22px;
+            padding: 0 7px;
+            border-radius: 999px;
+            background: var(--gray-200);
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 900;
+            line-height: 22px;
+            text-align: center;
+        }
+        .hr-nav-count.hidden { display: none; }
+        .hr-tab.active .hr-nav-count {
+            background: rgba(99,102,241,0.12);
+            color: var(--primary);
+        }
         .hr-nav-empty {
             color: var(--gray-400);
             font-size: var(--font-xs);
@@ -119,6 +140,8 @@
         body.dark-mode .hr-tab { color: #9CA3AF; }
         body.dark-mode .hr-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
         body.dark-mode .hr-tab.active { background: #2A2A4A; color: var(--primary-light); }
+        body.dark-mode .hr-nav-count { background: rgba(255,255,255,0.08); color: #CBD5E1; }
+        body.dark-mode .hr-tab.active .hr-nav-count { background: rgba(129,140,248,0.18); color: var(--primary-light); }
 
         .hr-tab-content { display: none; }
         .hr-tab-content.active { display: block; }
@@ -1245,6 +1268,15 @@
             border: 1px dashed var(--gray-200);
             border-radius: var(--radius-sm);
         }
+        .hr-people-empty--loading {
+            color: var(--gray-500);
+            background: var(--gray-50);
+        }
+        .hr-people-empty--error {
+            color: var(--danger);
+            border-color: rgba(239,68,68,0.28);
+            background: rgba(239,68,68,0.06);
+        }
 
         .hr-team-avatar {
             width: 64px;
@@ -1390,6 +1422,24 @@
             color: var(--gray-500);
             font-size: var(--font-xs);
             line-height: 1.35;
+        }
+        .hr-kpi-sources {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 16px;
+        }
+        .hr-kpi-source {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 900;
+            white-space: nowrap;
         }
         .hr-kpi-table .kpi-muted {
             color: var(--gray-400);
@@ -1982,6 +2032,7 @@
             background: rgba(255,255,255,0.04);
         }
         body.dark-mode .hr-people-bucket-count,
+        body.dark-mode .hr-kpi-source,
         body.dark-mode .hr-kpi-signal {
             background: rgba(255,255,255,0.08);
             color: #CBD5E1;
@@ -1989,6 +2040,15 @@
         body.dark-mode .hr-people-empty {
             border-color: rgba(148,163,184,0.22);
             color: #9CA3AF;
+        }
+        body.dark-mode .hr-people-empty--loading {
+            background: rgba(255,255,255,0.04);
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-people-empty--error {
+            background: rgba(239,68,68,0.10);
+            border-color: rgba(248,113,113,0.30);
+            color: #FCA5A5;
         }
         body.dark-mode .hr-profession-list span,
         body.dark-mode .hr-checklist-list span {
@@ -2698,6 +2758,7 @@
                         <button type="button" class="btn-secondary" onclick="loadKpi()">Оновити KPI</button>
                     </div>
                 </div>
+                <div id="kpiSources" class="hr-kpi-sources" aria-label="Джерела KPI"></div>
                 <div id="kpiSummary" class="hr-kpi-grid"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table hr-kpi-table">
@@ -2935,15 +2996,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.4"></script>
-    <script src="js/config.js?v=0.73.4"></script>
-    <script src="js/notification.js?v=0.73.4"></script>
-    <script src="js/api.js?v=0.73.4"></script>
-    <script src="js/auth.js?v=0.73.4"></script>
-    <script src="js/components/sidebar.js?v=0.73.4"></script>
+    <script src="js/ui.js?v=0.73.5"></script>
+    <script src="js/config.js?v=0.73.5"></script>
+    <script src="js/notification.js?v=0.73.5"></script>
+    <script src="js/api.js?v=0.73.5"></script>
+    <script src="js/auth.js?v=0.73.5"></script>
+    <script src="js/components/sidebar.js?v=0.73.5"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.4"></script>
-    <script src="js/alerts.js?v=0.73.4"></script><script>
+    <script src="js/hr-page.js?v=0.73.5"></script>
+    <script src="js/alerts.js?v=0.73.5"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

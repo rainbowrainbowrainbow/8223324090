@@ -4,6 +4,16 @@
 
 ---
 
+## v0.73.1 - Timeline без ghost action-блоків
+
+### Timeline / Toolbar / Booking Lifecycle / 03.06.2026 [codex]
+- **Верхня панель Timeline більше не лишає ghost action-блок** - після створення, редагування, видалення або повторного refresh бронювання меню дій примусово нормалізується в закритий стан і не залишається поверх рядка `15хв / 30хв / 60хв / Компакт / Кімнати / Дії`.
+- **Стан меню дій став єдиним контрактом** - `open/closed`, `aria-expanded`, `aria-hidden`, `hidden` та `inert` тепер синхронізуються одним helper-ом, тому приховані пункти не ловлять кліки й не беруть участь у фокусі.
+- **Render lifecycle закриває тимчасові toolbar-стани** - `renderTimeline()` нормалізує action menu на старті, після оновлення контекстних пунктів і після завершення repaint, що покриває create/update/delete flows.
+- **Regression guardrails додано** - `timeline-lifecycle` тест фіксує force-close під час repaint, а UI smoke перевіряє JS/CSS контракт, щоб закритий dropdown не створював layout/pointer ghost.
+
+---
+
 ## v0.73.0 - Мобільний сайдбар і корисний rail
 
 ### Shell / Sidebar / Mobile / Tablet / 03.06.2026 [codex]

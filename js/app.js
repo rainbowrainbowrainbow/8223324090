@@ -862,19 +862,87 @@ function initSettingsListeners() {
 
 }
 
-function refreshTimelineActionMenuVisibility() {
+function getTimelineActionMenuElements() {
     const dropdown = document.getElementById('adminDropdown');
     const toggle = document.getElementById('menuToggleBtn');
     const content = document.getElementById('dropdownContent');
+    return { dropdown, toggle, content };
+}
+
+function timelineActionMenuHasVisibleItems(content) {
+    if (!content) return false;
+    return Array.from(content.querySelectorAll('.dropdown-item'))
+        .some(item =>
+            !item.classList.contains('hidden')
+            && !item.classList.contains('timeline-hidden-by-config')
+            && !item.hidden
+            && item.getAttribute('aria-hidden') !== 'true'
+        );
+}
+
+function setTimelineActionMenuOpen(open, reason = 'manual') {
+    const { dropdown, toggle, content } = getTimelineActionMenuElements();
+    if (!dropdown || !toggle || !content) return false;
+
+    const externallyHidden = dropdown.hidden || dropdown.classList.contains('timeline-hidden-by-config');
+    const nextOpen = Boolean(open && !externallyHidden && !toggle.hidden && timelineActionMenuHasVisibleItems(content));
+
+    dropdown.classList.toggle('is-open', nextOpen);
+    dropdown.dataset.timelineMenuState = nextOpen ? 'open' : 'closed';
+    if (nextOpen) {
+        delete dropdown.dataset.timelineMenuCloseReason;
+    } else {
+        dropdown.dataset.timelineMenuCloseReason = reason;
+    }
+
+    toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    content.classList.toggle('hidden', !nextOpen);
+    content.hidden = !nextOpen;
+    content.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    if ('inert' in content) content.inert = !nextOpen;
+
+    if (!nextOpen && content.contains(document.activeElement)) {
+        if (typeof toggle.focus === 'function' && !toggle.hidden) {
+            toggle.focus({ preventScroll: true });
+        } else if (typeof document.activeElement?.blur === 'function') {
+            document.activeElement.blur();
+        }
+    }
+
+    return nextOpen;
+}
+
+function closeTimelineActionMenu(reason = 'manual') {
+    return setTimelineActionMenuOpen(false, reason);
+}
+
+function refreshTimelineActionMenuVisibility(options = {}) {
+    const { forceClosed = false, preserveOpen = true, reason = 'refresh' } = options || {};
+    const { dropdown, toggle, content } = getTimelineActionMenuElements();
     if (!dropdown || !toggle || !content) return;
 
-    const hasVisibleItems = Array.from(content.querySelectorAll('.dropdown-item'))
-        .some(item => !item.classList.contains('hidden') && !item.hidden);
+    const hasVisibleItems = timelineActionMenuHasVisibleItems(content);
+    const externallyHidden = dropdown.hidden || dropdown.classList.contains('timeline-hidden-by-config');
 
     dropdown.classList.toggle('is-empty', !hasVisibleItems);
     toggle.hidden = !hasVisibleItems;
-    if (!hasVisibleItems) content.classList.add('hidden');
-    toggle.setAttribute('aria-expanded', content.classList.contains('hidden') ? 'false' : 'true');
+    if (!hasVisibleItems || externallyHidden || forceClosed) {
+        closeTimelineActionMenu(reason);
+        return;
+    }
+
+    const wasOpen = !content.hidden && !content.classList.contains('hidden') && toggle.getAttribute('aria-expanded') === 'true';
+    setTimelineActionMenuOpen(preserveOpen && wasOpen, reason);
+}
+
+function normalizeTimelineToolbarTransientState(reason = 'refresh') {
+    refreshTimelineActionMenuVisibility({ forceClosed: true, reason });
+}
+
+if (typeof window !== 'undefined') {
+    window.refreshTimelineActionMenuVisibility = refreshTimelineActionMenuVisibility;
+    window.closeTimelineActionMenu = closeTimelineActionMenu;
+    window.normalizeTimelineToolbarTransientState = normalizeTimelineToolbarTransientState;
 }
 
 function initUIControlListeners() {
@@ -891,49 +959,45 @@ function initUIControlListeners() {
     // v0.61.22: Timeline action menu is contextual only; sidebar owns navigation.
     const menuToggle = document.getElementById('menuToggleBtn');
     if (menuToggle) {
-        let touchFired = false;
-        const toggleTimelineActionMenu = () => {
-            refreshTimelineActionMenuVisibility();
-            if (menuToggle.hidden) return;
-            const content = document.getElementById('dropdownContent');
-            if (content) {
-                content.classList.toggle('hidden');
-                menuToggle.setAttribute('aria-expanded', content.classList.contains('hidden') ? 'false' : 'true');
-            }
-        };
-        menuToggle.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            touchFired = true;
-            toggleTimelineActionMenu();
-        });
-        menuToggle.addEventListener('click', (e) => {
-            if (touchFired) { touchFired = false; return; }
-            e.preventDefault();
-            e.stopPropagation();
-            toggleTimelineActionMenu();
-        });
+        if (menuToggle.dataset.timelineActionMenuBound !== '1') {
+            menuToggle.dataset.timelineActionMenuBound = '1';
+            let touchFired = false;
+            const toggleTimelineActionMenu = () => {
+                refreshTimelineActionMenuVisibility({ preserveOpen: true, reason: 'toggle-preflight' });
+                if (menuToggle.hidden) return;
+                const { content } = getTimelineActionMenuElements();
+                const isOpen = Boolean(content && !content.hidden && !content.classList.contains('hidden'));
+                setTimelineActionMenuOpen(!isOpen, 'toggle');
+            };
+            menuToggle.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                touchFired = true;
+                toggleTimelineActionMenu();
+            });
+            menuToggle.addEventListener('click', (e) => {
+                if (touchFired) { touchFired = false; return; }
+                e.preventDefault();
+                e.stopPropagation();
+                toggleTimelineActionMenu();
+            });
+        }
         refreshTimelineActionMenuVisibility();
     }
     // Close dropdown on outside click
-    document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById('adminDropdown');
-        if (dropdown && !dropdown.contains(e.target)) {
-            const content = document.getElementById('dropdownContent');
-            if (content) {
-                content.classList.add('hidden');
-                menuToggle?.setAttribute('aria-expanded', 'false');
-            }
-        }
-    });
+    if (document.documentElement.dataset.timelineActionMenuDismissBound !== '1') {
+        document.documentElement.dataset.timelineActionMenuDismissBound = '1';
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('adminDropdown');
+            if (dropdown && !dropdown.contains(e.target)) closeTimelineActionMenu('outside-click');
+        });
+    }
     // Close dropdown when item clicked
     document.querySelectorAll('.dropdown-item').forEach(item => {
+        if (item.dataset.timelineActionMenuItemBound === '1') return;
+        item.dataset.timelineActionMenuItemBound = '1';
         item.addEventListener('click', () => {
-            const content = document.getElementById('dropdownContent');
-            if (content) {
-                content.classList.add('hidden');
-                menuToggle?.setAttribute('aria-expanded', 'false');
-            }
+            closeTimelineActionMenu('item-click');
         });
     });
 

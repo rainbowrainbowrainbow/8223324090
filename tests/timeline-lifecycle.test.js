@@ -125,6 +125,10 @@ function createHarness() {
     window.pushUndo = () => {};
     window.updateUndoButton = () => {};
     window.revealHiddenBooking = () => {};
+    window.__timelineToolbarNormalizations = [];
+    window.__timelineActionMenuRefreshes = [];
+    window.normalizeTimelineToolbarTransientState = reason => window.__timelineToolbarNormalizations.push(reason);
+    window.refreshTimelineActionMenuVisibility = options => window.__timelineActionMenuRefreshes.push(options || {});
     window.handleUndo = async () => {};
     window.changeZoom = () => {};
     window.navigator.vibrate = () => {};
@@ -234,6 +238,17 @@ test('renderTimeline keeps the schedule visible when timeline APIs return non-ar
     assert.ok(timelineLines, 'timeline container should exist');
     assert.doesNotMatch(timelineLines.textContent, /Помилка завантаження таймлайну|CRITICAL/i);
     assert.equal(consoleErrors.some(args => String(args[0] || '').includes('CRITICAL renderTimeline error')), false);
+});
+
+test('renderTimeline force-closes transient toolbar action state around repaint', async () => {
+    const { window, api } = createHarness();
+
+    await api.renderTimeline();
+
+    assert.deepEqual(window.__timelineToolbarNormalizations, ['render-start', 'render-complete']);
+    assert.equal(window.__timelineActionMenuRefreshes.length, 1);
+    assert.equal(window.__timelineActionMenuRefreshes[0].forceClosed, true);
+    assert.equal(window.__timelineActionMenuRefreshes[0].reason, 'render-actions');
 });
 
 test('lostpointercapture cancels a pending booking drag instead of leaving state stuck', () => {

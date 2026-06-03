@@ -2953,6 +2953,22 @@ input[type="date"] {
     animation-duration: 0.16s;
 }
 
+/* v0.73.1: closed Timeline action menu must leave no toolbar ghost block. */
+.admin-dropdown[data-menu-scope="timeline-actions"]:not(.is-open) .dropdown-content,
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content.hidden,
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content[hidden],
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content[aria-hidden="true"] {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+.admin-dropdown[data-menu-scope="timeline-actions"].is-open .dropdown-content {
+    display: block;
+    pointer-events: auto;
+    visibility: visible;
+}
+
 .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item {
     min-height: 38px;
     gap: 7px;

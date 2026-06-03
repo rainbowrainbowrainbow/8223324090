@@ -571,6 +571,9 @@ async function renderTimeline() {
         if (hasActiveTimelineInteractionState()) {
             cancelActiveTimelineInteractions('render');
         }
+        if (typeof normalizeTimelineToolbarTransientState === 'function') {
+            normalizeTimelineToolbarTransientState('render-start');
+        }
 
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
@@ -580,6 +583,9 @@ async function renderTimeline() {
         cancelBanquetLinkDraft(false);
         document.getElementById('timelineBanquetLinkLayer')?.remove();
         await renderMultiDayTimeline();
+        if (typeof normalizeTimelineToolbarTransientState === 'function') {
+            normalizeTimelineToolbarTransientState('render-complete');
+        }
         return;
     }
 
@@ -643,7 +649,7 @@ async function renderTimeline() {
         digestBtn.classList.toggle('hidden', isViewer());
     }
     if (typeof refreshTimelineActionMenuVisibility === 'function') {
-        refreshTimelineActionMenuVisibility();
+        refreshTimelineActionMenuVisibility({ forceClosed: true, reason: 'render-actions' });
     }
 
     const dayOfWeek = selectedDate.getDay();
@@ -738,8 +744,15 @@ async function renderTimeline() {
         renderPendingLine();
     }
 
+    if (typeof normalizeTimelineToolbarTransientState === 'function') {
+        normalizeTimelineToolbarTransientState('render-complete');
+    }
+
     } catch (outerErr) {
         console.error('[Timeline] CRITICAL renderTimeline error:', outerErr);
+        if (typeof normalizeTimelineToolbarTransientState === 'function') {
+            normalizeTimelineToolbarTransientState('render-error');
+        }
         // Show error to user so we can diagnose
         const container = document.getElementById('timelineLines');
         if (container) {

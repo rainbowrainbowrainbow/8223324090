@@ -61,6 +61,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(sidebar, /activeHashes: \['today', 'schedule', 'reports'\]/);
         assert.match(sidebar, /href: '\/hr#team',\s+icon: '👥', label: 'Команда'/);
         assert.match(sidebar, /activeHashes: \['team', 'workers', 'interns', 'reserve', 'blacklist'\]/);
+        assert.match(sidebar, /href: '\/hr#payroll'[\s\S]*label: 'ЗП та KPI'[\s\S]*activeHashes: \['payroll', 'salary', 'kpi'\]/);
         assert.doesNotMatch(sidebar, /href: '\/hr#workers'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#interns'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#reserve'/);
@@ -71,6 +72,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrPage, /function getInitialHrTab/);
         assert.match(hrPage, /id: 'pulse'[\s\S]*label: 'Пульс компанії'/);
         assert.match(hrPage, /const HR_TAB_ALIASES[\s\S]*reserve: \{ tab: 'team', bucket: 'reserve' \}/);
+        assert.match(hrPage, /payroll: \{ tab: 'salary' \}/);
         assert.match(hrPage, /new URLSearchParams\(window\.location\.search\)\.get\('employee'\)/);
         assert.match(hrPage, /activateHrTab\('team'/);
         assert.match(hrHtml, /id="tab-structure"/);

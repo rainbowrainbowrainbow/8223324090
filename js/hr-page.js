@@ -91,8 +91,10 @@ const HR_NAV_GROUPS = [
 ];
 
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
+const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
 
 const HR_TAB_ALIASES = {
+    payroll: { tab: 'salary' },
     workers: { tab: 'team', bucket: 'workers' },
     rating: { tab: 'kpi' },
     ratings: { tab: 'kpi' },
@@ -743,10 +745,22 @@ function isHrStructureWorkspaceTab(target) {
     return HR_STRUCTURE_WORKSPACE_TABS.has(target);
 }
 
+function isHrPayrollWorkspaceTab(target) {
+    return HR_PAYROLL_WORKSPACE_TABS.has(target);
+}
+
+function hrWorkspaceGroupId(target) {
+    if (isHrStructureWorkspaceTab(target)) return 'structure';
+    if (isHrPayrollWorkspaceTab(target)) return 'payroll';
+    return '';
+}
+
 function updateHrPageTitle(target) {
     const title = document.getElementById('hrPageTitle');
     if (!title) return;
-    title.textContent = isHrStructureWorkspaceTab(target) ? 'Структура' : 'HR';
+    if (isHrStructureWorkspaceTab(target)) title.textContent = 'Структура';
+    else if (isHrPayrollWorkspaceTab(target)) title.textContent = 'ЗП та KPI';
+    else title.textContent = 'HR';
 }
 
 function bindHrNavClicks() {
@@ -772,11 +786,12 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     if (!nav) return;
     const resolved = resolveHrTabTarget(activeTarget);
     const target = resolved.tab || activeTarget;
-    const structureMode = isHrStructureWorkspaceTab(target);
-    nav.classList.toggle('hr-nav--structure-only', structureMode);
-    nav.setAttribute('aria-label', structureMode ? 'Навігація структури' : 'HR navigation');
+    const workspaceGroupId = hrWorkspaceGroupId(target);
+    const workspaceMode = Boolean(workspaceGroupId);
+    nav.classList.toggle('hr-nav--structure-only', workspaceMode);
+    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : 'HR navigation');
     const groups = HR_NAV_GROUPS
-        .filter(group => !structureMode || group.id === 'structure')
+        .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id !== 'payroll')
         .map(group => ({
             ...group,
             items: group.items.filter(isHrNavItemVisible)
@@ -784,7 +799,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
         .filter(group => group.items.length > 0);
     nav.innerHTML = groups.length ? groups.map(group => `
         <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
-            <div class="hr-nav-group-title"${structureMode ? ' hidden' : ''}>
+            <div class="hr-nav-group-title"${workspaceMode ? ' hidden' : ''}>
                 <span>${escapeHtml(group.label)}</span>
                 ${group.note ? `<small>${escapeHtml(group.note)}</small>` : ''}
             </div>

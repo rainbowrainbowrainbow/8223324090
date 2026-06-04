@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.25 - HR: ЗП та KPI в sidebar
+
+### HR / Sidebar / ЗП та KPI / Зарплата / KPI / Navigation / Deploy / (Клешня, 04.06.2026) [codex]
+- **`ЗП та KPI` винесено в ліве HR-меню** - у sidebar додано четвертий HR-пункт після `Структура`.
+- **Всередині нового розділу лишилися дві вкладки** - `Зарплата` і `KPI` відкриваються в окремому HR workspace через `/hr#payroll`, `/hr#salary` і `/hr#kpi`.
+- **Загальний `Пульс компанії` більше не показує блок `ЗП та KPI`** - зарплатно-KPI навігація не висить у середині пульсу, а живе в окремому sidebar-вході.
+- **Додано регресійні guardrails** - UI smoke і HR button contract перевіряють порядок sidebar, active hashes і alias `payroll -> salary`.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.25`, cache tags і Service Worker синхронізовано для deploy.
+
+---
+
 ## v0.73.24 - HR: графік пульсу веде на Staff
 
 ### HR / Пульс компанії / Графік / Staff Schedule / Navigation / Deploy / (Клешня, 04.06.2026) [codex]

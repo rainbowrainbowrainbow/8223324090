@@ -2,6 +2,10 @@
  * services/templates.js - Telegram notification templates.
  */
 const { timeToMinutes, minutesToTime } = require('./booking');
+const {
+    CLIENT_PINATA_FILLER_LABEL,
+    isClientOwnedPinataFiller
+} = require('./pinataMode');
 
 // v38.4.0: Escape HTML for Telegram parse_mode: HTML
 function esc(str) {
@@ -19,10 +23,16 @@ function appendPinataOperationalLines(text, booking) {
     if (booking.pinata_number || booking.pinataNumber) {
         text += `🪅 Піньята: №${esc(booking.pinata_number || booking.pinataNumber)}\n`;
     }
-    if (booking.pinata_filler_number || booking.pinataFillerNumber) {
-        text += `🪅 Наповнювач: №${esc(booking.pinata_filler_number || booking.pinataFillerNumber)}\n`;
-    } else if (booking.pinata_filler || booking.pinataFiller) {
-        text += `🪅 Наповнювач: ${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
+    const fillerNumber = booking.pinata_filler_number || booking.pinataFillerNumber;
+    const filler = booking.pinata_filler || booking.pinataFiller;
+    if (fillerNumber) {
+        text += isClientOwnedPinataFiller(fillerNumber)
+            ? `🪅 Наповнювач: ${esc(CLIENT_PINATA_FILLER_LABEL)}\n`
+            : `🪅 Наповнювач: №${esc(fillerNumber)}\n`;
+    } else if (filler) {
+        text += isClientOwnedPinataFiller(filler)
+            ? `🪅 Наповнювач: ${esc(CLIENT_PINATA_FILLER_LABEL)}\n`
+            : `🪅 Наповнювач: ${esc(filler)}\n`;
     }
     return text;
 }

@@ -723,6 +723,14 @@ function initBookingFormListeners() {
             }
         });
     }
+    const pinataFillerSelect = document.getElementById('pinataFillerSelect');
+    if (pinataFillerSelect) {
+        pinataFillerSelect.addEventListener('change', () => {
+            if (typeof syncPinataClientFillerChoice === 'function') {
+                syncPinataClientFillerChoice();
+            }
+        });
+    }
 
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {

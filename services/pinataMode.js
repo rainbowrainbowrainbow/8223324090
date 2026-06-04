@@ -1,4 +1,12 @@
 const PINATA_MODES = new Set(['none', 'park', 'client']);
+const CLIENT_PINATA_FILLER_NUMBER = 'client_filler';
+const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
+const CLIENT_OWN_FILLER_VALUES = new Set([
+    CLIENT_PINATA_FILLER_NUMBER,
+    CLIENT_PINATA_FILLER_LABEL.toLowerCase(),
+    'наповнювач клієнта',
+    'свій наповнювач'
+]);
 const CLIENT_PINATA_FILLERS = new Set([
     'client',
     'own',
@@ -29,6 +37,11 @@ function isClientPinataFiller(value) {
     return !!normalized && CLIENT_PINATA_FILLERS.has(normalized);
 }
 
+function isClientOwnedPinataFiller(value) {
+    const normalized = cleanString(value, 80)?.toLowerCase();
+    return !!normalized && CLIENT_OWN_FILLER_VALUES.has(normalized);
+}
+
 function normalizeServicePrice(value) {
     if (value === undefined || value === null || value === '') return { value: null };
     const amount = Number(value);
@@ -38,7 +51,7 @@ function normalizeServicePrice(value) {
     return { value: Math.round(amount * 100) / 100 };
 }
 
-function inferPinataMode(payload = {}, filler) {
+function inferPinataMode(payload = {}, filler, clientOwnedFiller = false) {
     const explicit = normalizeMode(payload.pinataMode ?? payload.pinata_mode);
     if (explicit) return explicit;
 
@@ -48,15 +61,17 @@ function inferPinataMode(payload = {}, filler) {
     const category = cleanString(payload.category, 80);
     if (programId === 'pinata_own') return 'client';
     if (category === 'pinata' || programId === 'pinata' || programId === 'pinata_custom') return 'park';
-    if (filler) return 'park';
+    if (filler || clientOwnedFiller) return 'park';
     return 'none';
 }
 
 function normalizePinataFields(payload = {}) {
     const rawFiller = cleanString(payload.pinataFiller ?? payload.pinata_filler, 80);
     const pinataNumber = cleanString(payload.pinataNumber ?? payload.pinata_number, 80);
-    const pinataFillerNumber = cleanString(payload.pinataFillerNumber ?? payload.pinata_filler_number, 80);
-    const mode = inferPinataMode(payload, rawFiller);
+    const rawFillerNumber = cleanString(payload.pinataFillerNumber ?? payload.pinata_filler_number, 80);
+    const clientOwnedFiller = isClientOwnedPinataFiller(rawFiller) || isClientOwnedPinataFiller(rawFillerNumber);
+    const pinataFillerNumber = clientOwnedFiller ? CLIENT_PINATA_FILLER_NUMBER : rawFillerNumber;
+    const mode = inferPinataMode(payload, rawFiller, clientOwnedFiller);
     const priceResult = normalizeServicePrice(payload.clientPinataServicePrice ?? payload.client_pinata_service_price);
     if (priceResult.error) return { error: priceResult.error };
 
@@ -76,7 +91,7 @@ function normalizePinataFields(payload = {}) {
             pinataMode: 'park',
             pinataNumber,
             pinataFillerNumber,
-            pinataFiller: isClientPinataFiller(rawFiller) ? null : rawFiller,
+            pinataFiller: (clientOwnedFiller || isClientPinataFiller(rawFiller)) ? null : rawFiller,
             clientPinataServicePrice: null,
             clientPinataServiceNote: null
         };
@@ -103,7 +118,10 @@ function buildPinataServices(pinataFields) {
 }
 
 module.exports = {
+    CLIENT_PINATA_FILLER_NUMBER,
+    CLIENT_PINATA_FILLER_LABEL,
     normalizePinataFields,
     buildPinataServices,
-    isClientPinataFiller
+    isClientPinataFiller,
+    isClientOwnedPinataFiller
 };

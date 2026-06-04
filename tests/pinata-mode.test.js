@@ -2,9 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    CLIENT_PINATA_FILLER_NUMBER,
+    CLIENT_PINATA_FILLER_LABEL,
     normalizePinataFields,
     buildPinataServices,
-    isClientPinataFiller
+    isClientPinataFiller,
+    isClientOwnedPinataFiller
 } = require('../services/pinataMode');
 
 test('client pinata normalizes as service and clears park filler', () => {
@@ -43,6 +46,28 @@ test('park pinata keeps filler and clears client service fields', () => {
     assert.equal(result.pinataFiller, '2XL');
     assert.equal(result.clientPinataServicePrice, null);
     assert.equal(result.clientPinataServiceNote, null);
+});
+
+test('park pinata supports client-owned filler without client pinata service', () => {
+    assert.equal(isClientOwnedPinataFiller(CLIENT_PINATA_FILLER_NUMBER), true);
+    assert.equal(isClientOwnedPinataFiller(CLIENT_PINATA_FILLER_LABEL), true);
+    assert.equal(isClientPinataFiller(CLIENT_PINATA_FILLER_NUMBER), false);
+
+    const result = normalizePinataFields({
+        pinataMode: 'park',
+        pinataFiller: CLIENT_PINATA_FILLER_NUMBER,
+        pinataFillerNumber: 'F-002',
+        pinataNumber: 'P-021',
+        clientPinataServicePrice: '300'
+    });
+
+    assert.equal(result.error, undefined);
+    assert.equal(result.pinataMode, 'park');
+    assert.equal(result.pinataNumber, 'P-021');
+    assert.equal(result.pinataFillerNumber, CLIENT_PINATA_FILLER_NUMBER);
+    assert.equal(result.pinataFiller, null);
+    assert.equal(result.clientPinataServicePrice, null);
+    assert.deepEqual(buildPinataServices(result), []);
 });
 
 test('legacy exact client filler token infers client service', () => {

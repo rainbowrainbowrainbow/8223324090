@@ -19,6 +19,50 @@ function isPinataProgram(program) {
 // Canonical readable labels kept in source for UI/runtime guards:
 // Клієнтська піньята (послуга)
 // Піньята парку
+// Свій наповнювач клієнта
+
+const CLIENT_PINATA_FILLER_VALUE = 'client_filler';
+const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
+
+function isClientPinataFillerChoice(value) {
+    return String(value || '').trim() === CLIENT_PINATA_FILLER_VALUE;
+}
+
+function isClientPinataFillerNumber(value) {
+    const text = String(value || '').trim();
+    return text === CLIENT_PINATA_FILLER_VALUE || text === CLIENT_PINATA_FILLER_LABEL;
+}
+
+function pinataFillerNumberLabel(value) {
+    return isClientPinataFillerNumber(value) ? CLIENT_PINATA_FILLER_LABEL : value;
+}
+
+function syncPinataClientFillerChoice() {
+    const fillerSelect = document.getElementById('pinataFillerSelect');
+    const pinataFillerNumber = document.getElementById('pinataFillerNumber');
+    if (!pinataFillerNumber) return;
+
+    const isClientFiller = isClientPinataFillerChoice(fillerSelect?.value);
+    const wrapper = pinataFillerNumber.closest('.form-section');
+    wrapper?.classList.toggle('pinata-client-filler-active', isClientFiller);
+
+    if (isClientFiller) {
+        if (pinataFillerNumber.value && !isClientPinataFillerNumber(pinataFillerNumber.value)) {
+            pinataFillerNumber.dataset.previousPinataFillerNumber = pinataFillerNumber.value;
+        }
+        pinataFillerNumber.value = CLIENT_PINATA_FILLER_LABEL;
+        pinataFillerNumber.disabled = true;
+        pinataFillerNumber.setAttribute('aria-label', CLIENT_PINATA_FILLER_LABEL);
+        return;
+    }
+
+    pinataFillerNumber.disabled = false;
+    pinataFillerNumber.removeAttribute('aria-label');
+    if (isClientPinataFillerNumber(pinataFillerNumber.value)) {
+        pinataFillerNumber.value = pinataFillerNumber.dataset.previousPinataFillerNumber || '';
+    }
+    delete pinataFillerNumber.dataset.previousPinataFillerNumber;
+}
 
 function getClientPinataDefaultPrice() {
     const ownPinata = getProductsSync().find(p => p.id === 'pinata_own');
@@ -58,6 +102,7 @@ function syncPinataModeFields(mode = getPinataModeValue()) {
         if (servicePrice) servicePrice.value = '';
         if (serviceNote) serviceNote.value = '';
     }
+    syncPinataClientFillerChoice();
 }
 
 function resetPinataModeFields() {
@@ -68,7 +113,12 @@ function resetPinataModeFields() {
     const pinataNumber = document.getElementById('pinataNumber');
     if (pinataNumber) pinataNumber.value = '';
     const pinataFillerNumber = document.getElementById('pinataFillerNumber');
-    if (pinataFillerNumber) pinataFillerNumber.value = '';
+    if (pinataFillerNumber) {
+        pinataFillerNumber.disabled = false;
+        pinataFillerNumber.value = '';
+        delete pinataFillerNumber.dataset.previousPinataFillerNumber;
+        pinataFillerNumber.closest('.form-section')?.classList.remove('pinata-client-filler-active');
+    }
     const servicePrice = document.getElementById('clientPinataServicePrice');
     if (servicePrice) servicePrice.value = '';
     const serviceNote = document.getElementById('clientPinataServiceNote');
@@ -1397,18 +1447,22 @@ function inferBookingPinataMode(booking, program) {
     if (booking?.pinataMode) return booking.pinataMode;
     if (booking?.programId === 'pinata_own') return 'client';
     if (booking?.clientPinataServicePrice !== undefined && booking?.clientPinataServicePrice !== null) return 'client';
+    if (isClientPinataFillerNumber(booking?.pinataFillerNumber) || isClientPinataFillerChoice(booking?.pinataFiller)) return 'park';
     if (booking?.pinataFiller) return 'park';
     return isPinataProgram(program) ? 'park' : 'none';
 }
 
 function renderPinataDetailRows(booking) {
+    const clientOwnedFiller = isClientPinataFillerNumber(booking?.pinataFillerNumber) || isClientPinataFillerChoice(booking?.pinataFiller);
     const numberRows = [
         booking?.pinataNumber
             ? `<div class="booking-detail-row"><span class="label">Номер піньяти:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
             : '',
-        booking?.pinataFillerNumber
-            ? `<div class="booking-detail-row"><span class="label">Номер наповнювача:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
-            : ''
+        clientOwnedFiller
+            ? `<div class="booking-detail-row"><span class="label">Наповнювач:</span><span class="value">${escapeHtml(CLIENT_PINATA_FILLER_LABEL)}</span></div>`
+            : (booking?.pinataFillerNumber
+                ? `<div class="booking-detail-row"><span class="label">Номер наповнювача:</span><span class="value">${escapeHtml(pinataFillerNumberLabel(booking.pinataFillerNumber))}</span></div>`
+                : '')
     ].join('');
 
     if (booking?.pinataMode === 'client') {
@@ -1418,6 +1472,7 @@ function renderPinataDetailRows(booking) {
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
     }
     if ((booking?.pinataMode === 'park' || !booking?.pinataMode) && booking?.pinataFiller) {
+        if (isClientPinataFillerChoice(booking.pinataFiller)) return numberRows;
         return `<div class="booking-detail-row"><span class="label">Піньята парку:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>${numberRows}`;
     }
     if (numberRows) return numberRows;
@@ -1429,6 +1484,7 @@ function renderPinataDetailRows(booking) {
         return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${note}`;
     }
     if ((booking?.pinataMode === 'park' || !booking?.pinataMode) && booking?.pinataFiller) {
+        if (isClientPinataFillerChoice(booking.pinataFiller)) return '';
         return `<div class="booking-detail-row"><span class="label">Піньята парку:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>`;
     }
     return '';
@@ -2572,19 +2628,25 @@ function getBookingFormData() {
         label = `${customName}(${duration})`;
     }
 
-    let pinataFiller = '';
     const pinataMode = program && isPinataProgram(program) ? getPinataModeValue() : 'none';
+    const selectedPinataFiller = document.getElementById('pinataFillerSelect')?.value || '';
+    const clientOwnedFiller = pinataMode === 'park' && isClientPinataFillerChoice(selectedPinataFiller);
+    let pinataFiller = '';
     const pinataNumber = pinataMode !== 'none'
         ? (document.getElementById('pinataNumber')?.value?.trim() || null)
         : null;
     const pinataFillerNumber = pinataMode !== 'none'
-        ? (document.getElementById('pinataFillerNumber')?.value?.trim() || null)
+        ? (clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (document.getElementById('pinataFillerNumber')?.value?.trim() || null))
         : null;
     let clientPinataServicePrice = null;
     let clientPinataServiceNote = null;
     if (program && program.hasFiller && pinataMode === 'park') {
-        pinataFiller = document.getElementById('pinataFillerSelect')?.value;
-        if (pinataFiller) label = `Пін+${pinataFiller}`;
+        pinataFiller = selectedPinataFiller;
+        if (clientOwnedFiller) {
+            label = 'Пін+свій';
+        } else if (pinataFiller) {
+            label = `Пін+${pinataFiller}`;
+        }
     } else if (program && pinataMode === 'client') {
         clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
         clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
@@ -4222,10 +4284,13 @@ async function editBooking(bookingId) {
             syncPinataModeFields(mode);
             const pinataNumberInput = document.getElementById('pinataNumber');
             const pinataFillerNumberInput = document.getElementById('pinataFillerNumber');
+            const clientOwnedFiller = isClientPinataFillerNumber(booking.pinataFillerNumber) || isClientPinataFillerChoice(booking.pinataFiller);
             if (pinataNumberInput) pinataNumberInput.value = booking.pinataNumber || '';
-            if (pinataFillerNumberInput) pinataFillerNumberInput.value = booking.pinataFillerNumber || '';
-            if (mode === 'park' && booking.pinataFiller) {
-                document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            if (pinataFillerNumberInput) pinataFillerNumberInput.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_LABEL : (booking.pinataFillerNumber || '');
+            const pinataFillerSelect = document.getElementById('pinataFillerSelect');
+            if (mode === 'park' && pinataFillerSelect) {
+                pinataFillerSelect.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (booking.pinataFiller || '');
+                syncPinataClientFillerChoice();
             }
             if (mode === 'client') {
                 const priceInput = document.getElementById('clientPinataServicePrice');
@@ -4344,10 +4409,13 @@ async function duplicateBooking(bookingId) {
             syncPinataModeFields(mode);
             const pinataNumberInput = document.getElementById('pinataNumber');
             const pinataFillerNumberInput = document.getElementById('pinataFillerNumber');
+            const clientOwnedFiller = isClientPinataFillerNumber(booking.pinataFillerNumber) || isClientPinataFillerChoice(booking.pinataFiller);
             if (pinataNumberInput) pinataNumberInput.value = booking.pinataNumber || '';
-            if (pinataFillerNumberInput) pinataFillerNumberInput.value = booking.pinataFillerNumber || '';
-            if (mode === 'park' && booking.pinataFiller) {
-                document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            if (pinataFillerNumberInput) pinataFillerNumberInput.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_LABEL : (booking.pinataFillerNumber || '');
+            const pinataFillerSelect = document.getElementById('pinataFillerSelect');
+            if (mode === 'park' && pinataFillerSelect) {
+                pinataFillerSelect.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (booking.pinataFiller || '');
+                syncPinataClientFillerChoice();
             }
             if (mode === 'client') {
                 const priceInput = document.getElementById('clientPinataServicePrice');

@@ -14,11 +14,22 @@ const { sendTelegramMessage, getConfiguredChatId, telegramRequest } = require('.
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
+const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 
 const log = createLogger('Automation');
 
 function getKleshnya() {
     return require('./kleshnya');
+}
+
+function formatPinataFillerPlaceholder(booking = {}) {
+    const fillerNumber = booking.pinataFillerNumber || booking.pinata_filler_number;
+    const filler = booking.pinataFiller || booking.pinata_filler;
+    if (isClientOwnedPinataFiller(fillerNumber) || isClientOwnedPinataFiller(filler)) {
+        return CLIENT_PINATA_FILLER_LABEL;
+    }
+    if (filler) return filler;
+    return fillerNumber ? `№${fillerNumber}` : '';
 }
 
 function bookingBusinessContext(booking) {
@@ -74,7 +85,7 @@ function interpolate(template, booking) {
         .replace(/\{date\}/g, booking.date || '')
         .replace(/\{time\}/g, booking.time || '')
         .replace(/\{programName\}/g, booking.programName || booking.program_name || '')
-        .replace(/\{pinataFiller\}/g, booking.pinataFiller || booking.pinata_filler || '')
+        .replace(/\{pinataFiller\}/g, formatPinataFillerPlaceholder(booking))
         .replace(/\{kidsCount\}/g, booking.kidsCount || booking.kids_count || '?')
         .replace(/\{room\}/g, booking.room || '')
         .replace(/\{groupName\}/g, booking.groupName || booking.group_name || '')

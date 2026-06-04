@@ -11,6 +11,7 @@ const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoD
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
+const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 const { createLogger } = require('../utils/logger');
 const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
 const { createChecklistSubtasks } = require('./taskTaxonomy');
@@ -791,7 +792,9 @@ async function checkWorkDayTriggers() {
         for (const booking of pinataBookings.rows) {
             const pinataLabel = booking.pinata_number || booking.pinata_filler || '?';
             const fillerSuffix = booking.pinata_filler_number
-                ? ` / наповнювач №${booking.pinata_filler_number}`
+                ? (isClientOwnedPinataFiller(booking.pinata_filler_number)
+                    ? ` / наповнювач ${CLIENT_PINATA_FILLER_LABEL}`
+                    : ` / наповнювач №${booking.pinata_filler_number}`)
                 : '';
             // Check if task already exists for this booking
             const existingTask = await pool.query(

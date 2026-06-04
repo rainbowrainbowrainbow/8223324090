@@ -448,9 +448,9 @@ function professionOptionsFromCatalog(current = '') {
         label: `${item.title}${item.department ? ' · ' + item.department : ''}`
     }));
     const known = new Set(catalogOptions.map(item => item.value));
-    Object.entries(ROLE_LABELS).forEach(([value, label]) => {
-        if (!known.has(value)) catalogOptions.push({ value, label });
-    });
+    if (currentKey && !known.has(currentKey)) {
+        catalogOptions.push({ value: currentKey, label: ROLE_LABELS[currentKey] || currentKey });
+    }
     return catalogOptions.sort((a, b) => a.label.localeCompare(b.label, 'uk'));
 }
 
@@ -1531,7 +1531,7 @@ async function openProfessionEditor(professionId = null) {
     const current = professionId ? hrProfessions.find(item => Number(item.id) === Number(professionId)) : null;
     const currentStructureNode = current?.structure_node_id || current?.structureNodeId || '';
     const result = await formModal(current ? `Професія · ${current.title}` : 'Нова професія', [
-        { key: 'key', label: 'Key', required: true, defaultValue: current?.key || '', placeholder: 'animator' },
+        { key: 'key', label: 'Key', required: true, defaultValue: current?.key || '', placeholder: 'animator', hint: current ? 'Технічний key після створення не змінюється, бо до нього привʼязані графік, ставки, чеклісти й навчання.' : '' },
         { key: 'title', label: 'Назва', required: true, defaultValue: current?.title || '', placeholder: 'Аніматор' },
         { key: 'department', label: 'Напрям', defaultValue: current?.department || '', placeholder: 'Аніматори / Зал / Кухня' },
         { key: 'structureNodeId', label: 'Вузол структури', type: 'select', defaultValue: currentStructureNode, options: companyStructureSelectOptions(currentStructureNode) },
@@ -1553,7 +1553,7 @@ async function openProfessionEditor(professionId = null) {
     });
     if (!result) return;
     const body = {
-        key: result.key,
+        key: current?.key || result.key,
         title: result.title,
         department: result.department || null,
         shortInfo: result.shortInfo || '',
@@ -3368,6 +3368,7 @@ const DEFAULT_COMPANY_STRUCTURE_NODES = [
 
 let companyStructureNodes = [];
 let companyStructureLoaded = false;
+let companyStructureUpdatedAt = null;
 let selectedCompanyStructureNodeId = 'director';
 let companyOrgLinkingNodeId = null;
 let companyOrgLinkingEndpoint = null;
@@ -4314,6 +4315,7 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
     }
     const structure = data.data || data.structure || {};
     companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureUpdatedAt = structure.updatedAt || null;
     companyStructureLoaded = true;
     return companyStructureNodes;
 }
@@ -4331,6 +4333,7 @@ async function loadCompanyStructure() {
     const instructionsText = document.getElementById('companyInstructionsText');
     const savedStructure = structure.structure || structure.structure_text || '';
     companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureUpdatedAt = structure.updatedAt || null;
     companyStructureLoaded = true;
     const generatedStructure = companyStructureTextFromNodes(companyStructureNodes);
     if (notesText) notesText.value = savedStructure && savedStructure !== DEFAULT_COMPANY_STRUCTURE_TEXT && savedStructure !== generatedStructure ? savedStructure : '';
@@ -4349,7 +4352,8 @@ async function saveCompanyStructure(options = {}) {
         schemaVersion: 1,
         structure: notes.trim() || document.getElementById('companyStructureText')?.value || DEFAULT_COMPANY_STRUCTURE_TEXT,
         instructions: document.getElementById('companyInstructionsText')?.value || '',
-        nodes: normalizeCompanyStructureNodes(companyStructureNodes)
+        nodes: normalizeCompanyStructureNodes(companyStructureNodes),
+        baseUpdatedAt: companyStructureUpdatedAt
     };
     const data = await hrFetch('/company-structure', {
         method: 'PUT',
@@ -4358,6 +4362,7 @@ async function saveCompanyStructure(options = {}) {
     if (data?.success) {
         const saved = data.data || payload;
         companyStructureNodes = normalizeCompanyStructureNodes(saved.nodes);
+        companyStructureUpdatedAt = saved.updatedAt || null;
         companyStructureLoaded = true;
         syncCompanyStructureText();
         if (!options.preserveRender) {
@@ -4368,8 +4373,17 @@ async function saveCompanyStructure(options = {}) {
             updateCompanyOrgLinkStatus();
         }
         updateCompanyStructureStatus(saved.updatedAt);
-        if (!options.silent) showNotification('Структуру та інструкції збережено', 'success');
+        const stale = data.staleRefsCleared || {};
+        const staleCount = Number(stale.staff || 0) + Number(stale.professions || 0);
+        if (!options.silent) {
+            showNotification(staleCount
+                ? `Структуру збережено. Очищено застарілих привʼязок: ${staleCount}`
+                : 'Структуру та інструкції збережено', 'success');
+        }
         return true;
+    }
+    if (data?.current?.updatedAt) {
+        companyStructureUpdatedAt = data.current.updatedAt;
     }
     showNotification(data?.error || 'Не вдалося зберегти', 'error');
     return false;

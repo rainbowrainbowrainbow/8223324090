@@ -45,8 +45,10 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffPage, /LEGACY_DEPARTMENT_FALLBACK/);
         assert.doesNotMatch(staffPage, /const DEPTS = \[/);
         assert.match(staffPage, /STAFF_ROLE_OPTIONS_BY_DEPT/);
+        assert.match(staffPage, /function professionCatalogOptions/);
+        assert.match(staffPage, /function staffRoleOptionsByDepartment/);
         assert.match(staffPage, /dependsOn:\s*'department'/);
-        assert.match(staffPage, /optionsBy:\s*STAFF_ROLE_OPTIONS_BY_DEPT/);
+        assert.match(staffPage, /optionsBy:\s*roleOptionsByDepartment/);
         assert.doesNotMatch(staffPage, /ROLE_HIERARCHY|PAGE_ACCESS|SIDEBAR_ACCESS/);
     });
 

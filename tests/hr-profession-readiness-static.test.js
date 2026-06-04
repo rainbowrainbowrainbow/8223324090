@@ -6,7 +6,8 @@ const path = require('node:path');
 const {
     staffProfessionKeys,
     staffHasProfession,
-    normalizeProfessionKey
+    normalizeProfessionKey,
+    resolveStaffProfessionAssignment
 } = require('../services/professions');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -36,6 +37,38 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.equal(normalizeProfessionKey(' Bar Tender '), 'bar_tender');
     });
 
+    it('gates schedule profession assignment against primary and secondary professions', async () => {
+        const mockStaff = {
+            id: 7,
+            name: 'Тест Співробітник',
+            role_type: 'animator',
+            secondary_professions: ['host', 'barista'],
+            is_active: true
+        };
+        const db = {
+            async query() {
+                return { rows: [mockStaff] };
+            }
+        };
+
+        const host = await resolveStaffProfessionAssignment(db, 7, 'host');
+        assert.equal(host.ok, true);
+        assert.equal(host.professionKey, 'host');
+
+        const missing = await resolveStaffProfessionAssignment(db, 7, 'cook');
+        assert.equal(missing.ok, false);
+        assert.equal(missing.status, 400);
+        assert.match(missing.error, /немає в основних або додаткових професіях/);
+
+        const inactive = await resolveStaffProfessionAssignment({
+            async query() {
+                return { rows: [{ ...mockStaff, is_active: false }] };
+            }
+        }, 7, 'animator');
+        assert.equal(inactive.ok, false);
+        assert.equal(inactive.error, 'Співробітник неактивний');
+    });
+
     it('adds additive database links for training readiness and schedule profession keys', () => {
         assert.match(migration, /MIGRATION_KIND:\s*mixed/);
         assert.match(migration, /ALTER TABLE staff_schedule[\s\S]*ADD COLUMN IF NOT EXISTS profession_key VARCHAR\(64\)/);
@@ -50,14 +83,30 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     });
 
     it('exposes HR APIs for readiness, checklist progress, schedule gating, and audit history', () => {
+        assert.match(hrRoute, /const HR_VIEW_ROLES = \[[^\]]*'security'/);
+        assert.match(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'hr'[^\]]*'admin'[^\]]*\]/);
+        assert.doesNotMatch(hrRoute, /const HR_MANAGE_ROLES = \[[^\]]*'security'/);
+        assert.match(hrRoute, /const requireHrManage = requireRole\(\.\.\.HR_MANAGE_ROLES\)/);
+        assert.doesNotMatch(hrRoute, /router\.(post|put|delete|patch)\('[^']+', async \(req, res\)/);
         assert.match(hrRoute, /async function attachTrainingReadiness/);
         assert.match(hrRoute, /row\.training_readiness =/);
+        assert.match(hrRoute, /SELECT c\.id, c\.profession_key, c\.target_roles, c\.title, c\.source/);
+        assert.match(hrRoute, /\.filter\(course => !\(course\.source === 'hr_profession_seed' && checklistItems\.length\)\)/);
         assert.match(hrRoute, /router\.get\('\/staff\/:id\/history'/);
         assert.match(hrRoute, /router\.put\('\/staff\/:id\/profession-checklist'/);
+        assert.match(hrRoute, /if \(payload\.key !== currentKey\)/);
+        assert.match(hrRoute, /Key професії не можна змінювати після створення/);
         assert.match(hrRoute, /buildStaffProfileChanges/);
         assert.match(hrRoute, /resolveHrShiftProfession/);
         assert.match(hrRoute, /profession_key = COALESCE\(\$6, profession_key\)/);
         assert.match(hrRoute, /profession_key = EXCLUDED\.profession_key/);
+        assert.match(hrRoute, /router\.post\('\/shifts', requireHrManage/);
+        assert.match(hrRoute, /router\.put\('\/shifts\/:id', requireHrManage/);
+        assert.match(hrRoute, /router\.delete\('\/shifts\/:id', requireHrManage/);
+        assert.match(hrRoute, /SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
+        assert.match(hrRoute, /resolveHrShiftProfession\(staff_id, req\.body, client\)/);
+        assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(result\.rows\[0\], client\)/);
+        assert.match(hrRoute, /removeMirroredStaffSchedule\(existing\.rows\[0\]\.staff_id, existing\.rows\[0\]\.shift_date, client\)/);
         assert.match(hrRoute, /resolveHrShiftProfession\(sid, req\.body, client\)/);
         assert.match(hrRoute, /mirrorHrShiftToStaffSchedule\(result\.rows\[0\], client\)/);
         assert.match(hrRoute, /resolveHrShiftProfession\(row\.staff_id, \{ profession_key: row\.profession_key \}, client\)/);
@@ -78,11 +127,18 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /openStaffTrainingReadiness/);
         assert.match(hrPage, /toggleStaffProfessionChecklist/);
         assert.match(hrPage, /function loadStaffProfileHistory/);
+        assert.match(hrPage, /function professionOptionsFromCatalog/);
+        assert.doesNotMatch(hrPage, /Object\.entries\(ROLE_LABELS\)\.forEach\(\(\[value, label\]\)/);
+        assert.match(hrPage, /key: current\?\.key \|\| result\.key/);
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 
         assert.match(staffHtml, /id="schProfession"/);
         assert.match(staffHtml, /sch-profession/);
+        assert.match(staffPage, /async function fetchHrProfessions/);
+        assert.match(staffPage, /StaffState\.professions/);
+        assert.match(staffPage, /function professionCatalogOptions/);
+        assert.match(staffPage, /await fetchHrProfessions\(\)/);
         assert.match(staffPage, /function staffProfessionOptions/);
         assert.match(staffPage, /professionKey: showTime \? normalizeProfessionKey\(emp\.role_type\) : null/);
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey\)/);
@@ -103,6 +159,11 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /await client\.query\('BEGIN'\)/);
         assert.match(hrRoute, /replaceStaffProfessionRates\(client, req\.params\.id, normalizedProfessionRates\)/);
         assert.match(hrRoute, /await client\.query\('COMMIT'\)/);
+        assert.match(hrRoute, /router\.put\('\/company-structure', requireHrManage/);
+        assert.match(hrRoute, /source\.baseUpdatedAt \|\| source\.expectedUpdatedAt/);
+        assert.match(hrRoute, /Структуру вже оновили в іншій вкладці/);
+        assert.match(hrRoute, /SET company_structure_node_id = NULL/);
+        assert.match(hrRoute, /SET structure_node_id = NULL, updated_at = NOW\(\)/);
         assert.match(hrRoute, /COALESCE\(hs\.profession_key, s\.role_type\) AS profession_key/);
         assert.match(hrRoute, /SUM\(tr\.overtime_minutes\) AS overtime_minutes/);
 
@@ -116,6 +177,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /staffHasProfession\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /function renderSalaryRateSummary/);
         assert.match(hrPage, /structureNodeId: result\.structureNodeId \|\| null/);
+        assert.match(hrPage, /let companyStructureUpdatedAt = null/);
+        assert.match(hrPage, /baseUpdatedAt: companyStructureUpdatedAt/);
 
         assert.match(hrHtml, /id="teamSearch"/);
         assert.match(hrHtml, /id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true"/);

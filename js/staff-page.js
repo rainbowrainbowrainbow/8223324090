@@ -33,6 +33,7 @@ const StaffState = {
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
     allUsers: [],           // v39.1: all users for linking
+    professions: [],
     linkingStaffId: null,   // v39.1: staff being linked
     selectedUserId: null,   // v39.1: selected user in link modal
     bulkResults: null,      // v39.1: bulk create results
@@ -156,8 +157,36 @@ function staffSecondaryProfessions(staff = {}) {
 
 function professionLabel(key) {
     const normalized = normalizeProfessionKey(key);
+    const profession = StaffState.professions.find(item => normalizeProfessionKey(item.key) === normalized);
+    if (profession?.title) return profession.title;
     const option = STAFF_ROLE_OPTIONS.find(item => item.value === normalized);
     return option?.label || normalized;
+}
+
+function professionCatalogOptions() {
+    return (StaffState.professions || [])
+        .filter(item => item.is_active !== false)
+        .map(item => ({
+            value: normalizeProfessionKey(item.key),
+            label: `${item.title || item.key}${item.department ? ' · ' + item.department : ''}`
+        }))
+        .filter(item => item.value)
+        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+}
+
+function staffRoleOptions() {
+    const catalog = professionCatalogOptions();
+    return catalog.length ? catalog : STAFF_ROLE_OPTIONS;
+}
+
+function staffRoleOptionsByDepartment() {
+    const catalog = professionCatalogOptions();
+    if (!catalog.length) return STAFF_ROLE_OPTIONS_BY_DEPT;
+    const optionsByDepartment = { __default: catalog };
+    Object.keys(STAFF_ROLE_OPTIONS_BY_DEPT).forEach(department => {
+        optionsByDepartment[department] = catalog;
+    });
+    return optionsByDepartment;
 }
 
 function staffProfessionOptions(staff = {}, current = '') {
@@ -253,6 +282,25 @@ function todayStr() {
 // ==========================================
 // API CALLS
 // ==========================================
+
+async function fetchHrProfessions() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/hr/professions', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return { success: false };
+        const data = await res.json();
+        if (data.success) {
+            StaffState.professions = Array.isArray(data.data) ? data.data : [];
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchHrProfessions error:', err);
+        StaffState.professions = [];
+        return { success: false };
+    }
+}
 
 async function fetchStaff() {
     try {
@@ -1546,6 +1594,7 @@ function handlePrint() {
 async function openAddStaffModal() {
     const DEPTS = getDepartmentOptionsFromStaffState();
     const defaultDepartment = DEPTS[0]?.value || 'animators';
+    const roleOptionsByDepartment = staffRoleOptionsByDepartment();
     if (typeof formModal !== 'function') return;
     const result = await formModal('Додати співробітника', [
         { key: 'name', label: 'ПІБ', required: true, placeholder: 'Прізвище Ім\'я По батькові' },
@@ -1555,8 +1604,8 @@ async function openAddStaffModal() {
             key: 'role_type',
             label: 'Роль',
             type: 'select',
-            options: STAFF_ROLE_OPTIONS_BY_DEPT[defaultDepartment] || STAFF_ROLE_OPTIONS,
-            optionsBy: STAFF_ROLE_OPTIONS_BY_DEPT,
+            options: roleOptionsByDepartment[defaultDepartment] || staffRoleOptions(),
+            optionsBy: roleOptionsByDepartment,
             dependsOn: 'department'
         },
         {
@@ -1579,7 +1628,7 @@ async function openAddStaffModal() {
                 name: result.name.trim(),
                 department: result.department,
                 position: result.position || '',
-                role_type: result.role_type || 'animator',
+                role_type: result.role_type || staffRoleOptions()[0]?.value || 'animator',
                 secondary_professions: String(result.secondary_professions || '').split(/[\n,;]+/).map(item => item.trim()).filter(Boolean),
                 phone: result.phone || '',
                 address: result.address || ''
@@ -1638,6 +1687,7 @@ async function initPage() {
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Load data
+    await fetchHrProfessions();
     await fetchStaff();
     renderDeptFilter();
 

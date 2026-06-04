@@ -129,10 +129,19 @@ function createFakePool() {
         totalCount: 1,
         idleCount: 1,
         waitingCount: 0,
+        connect: async function() {
+            return {
+                query: this.query.bind(this),
+                release() {}
+            };
+        },
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
 
+            if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
             }
@@ -590,6 +599,12 @@ function createFakePool() {
             }
             if (/INSERT INTO settings \(key, value\) VALUES \('hr_company_structure', \$1\)/i.test(text)) {
                 return { rows: [], rowCount: 1 };
+            }
+            if (/UPDATE staff SET company_structure_node_id = NULL/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
+            if (/UPDATE hr_professions SET structure_node_id = NULL, updated_at = NOW\(\)/i.test(text)) {
+                return { rows: [], rowCount: 0 };
             }
             if (/INSERT INTO hr_audit_log \(action, staff_id, performed_by, details, ip_address\)/i.test(text)) {
                 return { rows: [], rowCount: 1 };

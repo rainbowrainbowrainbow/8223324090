@@ -23,8 +23,11 @@ const {
     resolveStaffProfessionAssignment
 } = require('../services/professions');
 
-// RBAC: HR module — management + HR + security + admin + manager
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'));
+// RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
+const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
+const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
+const requireHrManage = requireRole(...HR_MANAGE_ROLES);
+router.use(requireRole(...HR_VIEW_ROLES));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
@@ -327,14 +330,16 @@ function normalizeProfessionPayload(body = {}, current = {}) {
     };
 }
 
-async function validateStaffProfessionInput(roleType, secondaryProfessions) {
+async function validateStaffProfessionInput(roleType, secondaryProfessions, options = {}) {
     const activeKeys = await activeProfessionKeySet();
+    const allowedExistingKeys = new Set((options.allowedExistingKeys || []).map(normalizeProfessionKey).filter(Boolean));
+    const allowedKeys = new Set([...activeKeys, ...allowedExistingKeys]);
     const primaryKey = normalizeProfessionKey(roleType);
-    if (primaryKey && !activeKeys.has(primaryKey)) {
+    if (primaryKey && !allowedKeys.has(primaryKey)) {
         return { error: `Невідома основна професія: ${primaryKey}` };
     }
     const normalizedSecondary = normalizeSecondaryProfessions(secondaryProfessions, primaryKey);
-    const invalid = validateProfessionKeys(normalizedSecondary, activeKeys);
+    const invalid = validateProfessionKeys(normalizedSecondary, allowedKeys);
     if (invalid.length) {
         return { error: `Невідомі додаткові професії: ${invalid.join(', ')}` };
     }
@@ -370,13 +375,13 @@ async function attachTrainingReadiness(staffRows = []) {
             [professionKeys]
         ),
         pool.query(
-            `SELECT c.id, c.profession_key, c.target_roles, c.title,
+            `SELECT c.id, c.profession_key, c.target_roles, c.title, c.source,
                     COUNT(l.id)::integer AS total_lectures
              FROM training_courses c
              LEFT JOIN training_course_lectures l ON l.course_id = c.id AND l.is_published = true
              WHERE c.is_active = true
                AND (c.profession_key = ANY($1::text[]) OR c.target_roles && $1::text[])
-             GROUP BY c.id, c.profession_key, c.target_roles, c.title`,
+             GROUP BY c.id, c.profession_key, c.target_roles, c.title, c.source`,
             [professionKeys]
         ),
         pool.query(
@@ -429,20 +434,22 @@ async function attachTrainingReadiness(staffRows = []) {
                 };
             });
             const checklistCompleted = checklistItems.filter(item => item.completed_at).length;
-            const courses = (coursesByProfession.get(professionKey) || []).map(course => {
-                const totalLectures = Number(course.total_lectures || 0);
-                const enrollment = enrollmentByStaffCourse.get(`${row.id}:${course.id}`);
-                const completedLectures = enrollment?.completed_at
-                    ? totalLectures
-                    : Math.max(0, Math.min(totalLectures, Number(enrollment?.current_lecture || 0)));
-                return {
-                    id: course.id,
-                    title: course.title,
-                    total_lectures: totalLectures,
-                    completed_lectures: completedLectures,
-                    completed_at: enrollment?.completed_at || null
-                };
-            });
+            const courses = (coursesByProfession.get(professionKey) || [])
+                .filter(course => !(course.source === 'hr_profession_seed' && checklistItems.length))
+                .map(course => {
+                    const totalLectures = Number(course.total_lectures || 0);
+                    const enrollment = enrollmentByStaffCourse.get(`${row.id}:${course.id}`);
+                    const completedLectures = enrollment?.completed_at
+                        ? totalLectures
+                        : Math.max(0, Math.min(totalLectures, Number(enrollment?.current_lecture || 0)));
+                    return {
+                        id: course.id,
+                        title: course.title,
+                        total_lectures: totalLectures,
+                        completed_lectures: completedLectures,
+                        completed_at: enrollment?.completed_at || null
+                    };
+                });
             const courseTotal = courses.reduce((sum, course) => sum + course.total_lectures, 0);
             const courseCompleted = courses.reduce((sum, course) => sum + course.completed_lectures, 0);
             const total = checklistItems.length + courseTotal;
@@ -733,23 +740,28 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
         if (!payload.key || !payload.title) {
             return res.status(400).json({ success: false, error: 'Потрібні key і title професії' });
         }
+        const currentKey = normalizeProfessionKey(current.rows[0].key);
+        if (payload.key !== currentKey) {
+            return res.status(409).json({
+                success: false,
+                error: 'Key професії не можна змінювати після створення. Змініть назву або створіть нову професію.'
+            });
+        }
         const result = await pool.query(
             `UPDATE hr_professions SET
-                key = $1,
-                title = $2,
-                department = $3,
-                short_info = $4,
-                responsibilities = $5::jsonb,
-                checklist = $6::jsonb,
-                color = $7,
-                structure_node_id = $8,
-                sort_order = $9,
-                is_active = $10,
+                title = $1,
+                department = $2,
+                short_info = $3,
+                responsibilities = $4::jsonb,
+                checklist = $5::jsonb,
+                color = $6,
+                structure_node_id = $7,
+                sort_order = $8,
+                is_active = $9,
                 updated_at = NOW()
-             WHERE id = $11
+             WHERE id = $10
              RETURNING *`,
             [
-                payload.key,
                 payload.title,
                 payload.department,
                 payload.shortInfo,
@@ -762,7 +774,7 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
                 req.params.id
             ]
         );
-        await auditLog('profession_update', null, req.user?.username, { id: req.params.id, key: payload.key }, req.ip);
+        await auditLog('profession_update', null, req.user?.username, { id: req.params.id, key: currentKey }, req.ip);
         res.json({ success: true, data: normalizeProfessionCatalogRow(result.rows[0]) });
     } catch (err) {
         if (err.code === '23505') {
@@ -895,7 +907,7 @@ router.get('/staff/:id', async (req, res) => {
 });
 
 // PUT /api/hr/staff/:id — update HR fields
-router.put('/staff/:id', async (req, res) => {
+router.put('/staff/:id', requireHrManage, async (req, res) => {
     try {
         const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
@@ -940,7 +952,9 @@ router.put('/staff/:id', async (req, res) => {
             effectiveRoleType = beforeStaff.role_type;
         }
         const professionValidation = fieldPresence.role_type || hasSecondaryProfessions
-            ? await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : [])
+            ? await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : [], {
+                allowedExistingKeys: staffProfessionKeys(beforeStaff)
+            })
             : { secondaryProfessions: [] };
         if (professionValidation.error) {
             return res.status(400).json({ success: false, error: professionValidation.error });
@@ -1071,7 +1085,7 @@ router.put('/staff/:id', async (req, res) => {
 });
 
 // PUT /api/hr/staff/:id/status — activate/deactivate
-router.put('/staff/:id/status', async (req, res) => {
+router.put('/staff/:id/status', requireHrManage, async (req, res) => {
     try {
         const { is_active } = req.body;
         const result = await pool.query(
@@ -1107,7 +1121,7 @@ router.get('/pool', async (req, res) => {
 });
 
 // PUT /api/hr/staff/:id/pool-status — move staff between core/reserve/blacklist
-router.put('/staff/:id/pool-status', async (req, res) => {
+router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
     try {
         const { status, reason } = req.body;
         if (!['core', 'reserve', 'blacklisted'].includes(status)) {
@@ -1143,24 +1157,65 @@ router.get('/company-structure', async (req, res) => {
     }
 });
 
-router.put('/company-structure', async (req, res) => {
+router.put('/company-structure', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
+        const source = req.body || {};
+        const expectedUpdatedAt = source.baseUpdatedAt || source.expectedUpdatedAt || null;
+
+        await client.query('BEGIN');
+        const current = await client.query(
+            "SELECT value FROM settings WHERE key = 'hr_company_structure' FOR UPDATE"
+        );
+        const currentPayload = normalizeCompanyStructurePayload(current.rows[0]?.value || {});
+        if (expectedUpdatedAt && currentPayload.updatedAt && expectedUpdatedAt !== currentPayload.updatedAt) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Структуру вже оновили в іншій вкладці. Оновіть сторінку та повторіть зміни.',
+                current: currentPayload
+            });
+        }
+
         const payload = {
-            ...normalizeCompanyStructurePayload(req.body || {}),
+            ...normalizeCompanyStructurePayload(source),
             updatedBy: req.user?.username || null,
             updatedAt: new Date().toISOString()
         };
-        await pool.query(
+        await client.query(
             `INSERT INTO settings (key, value)
              VALUES ('hr_company_structure', $1)
              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
             [JSON.stringify(payload)]
         );
+        const nodeIds = payload.nodes.map(node => node.id).filter(Boolean);
+        const staffCleanup = await client.query(
+            `UPDATE staff
+             SET company_structure_node_id = NULL
+             WHERE company_structure_node_id IS NOT NULL
+               AND NOT (company_structure_node_id = ANY($1::text[]))`,
+            [nodeIds]
+        );
+        const professionCleanup = await client.query(
+            `UPDATE hr_professions
+             SET structure_node_id = NULL, updated_at = NOW()
+             WHERE structure_node_id IS NOT NULL
+               AND NOT (structure_node_id = ANY($1::text[]))`,
+            [nodeIds]
+        );
+        const staleRefsCleared = {
+            staff: staffCleanup.rowCount || 0,
+            professions: professionCleanup.rowCount || 0
+        };
+        await client.query('COMMIT');
         await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt, nodes: payload.nodes.length }, req.ip);
-        res.json({ success: true, data: payload });
+        res.json({ success: true, data: payload, staleRefsCleared });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/company-structure error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1178,7 +1233,7 @@ router.get('/shift-templates', async (req, res) => {
     }
 });
 
-router.post('/shift-templates', async (req, res) => {
+router.post('/shift-templates', requireHrManage, async (req, res) => {
     try {
         const { name, planned_start, planned_end, break_minutes, shift_type } = req.body;
         if (!name || !planned_start || !planned_end) {
@@ -1196,7 +1251,7 @@ router.post('/shift-templates', async (req, res) => {
     }
 });
 
-router.delete('/shift-templates/:id', async (req, res) => {
+router.delete('/shift-templates/:id', requireHrManage, async (req, res) => {
     try {
         await pool.query('DELETE FROM hr_shift_templates WHERE id = $1', [req.params.id]);
         res.json({ success: true });
@@ -1264,17 +1319,20 @@ router.get('/shifts', async (req, res) => {
 });
 
 // POST /api/hr/shifts — create single shift
-router.post('/shifts', async (req, res) => {
+router.post('/shifts', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes } = req.body;
         if (!staff_id || !shift_date || !planned_start || !planned_end) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, shift_date, planned_start, planned_end' });
         }
-        const profession = await resolveHrShiftProfession(staff_id, req.body);
+        await client.query('BEGIN');
+        const profession = await resolveHrShiftProfession(staff_id, req.body, client);
         if (!profession.ok) {
+            await client.query('ROLLBACK');
             return res.status(profession.status || 400).json({ success: false, error: profession.error });
         }
-        const result = await pool.query(
+        const result = await client.query(
             `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by, profession_key)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (staff_id, shift_date) DO UPDATE SET
@@ -1284,32 +1342,42 @@ router.post('/shifts', async (req, res) => {
              RETURNING *`,
             [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username, profession.professionKey]
         );
+        await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+        await client.query('COMMIT');
         await auditLog('shift_create', staff_id, req.user?.username, { shift_date, planned_start, planned_end }, req.ip);
-        await mirrorHrShiftToStaffSchedule(result.rows[0]);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/shifts error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 // PUT /api/hr/shifts/:id — update shift
-router.put('/shifts/:id', async (req, res) => {
+router.put('/shifts/:id', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { planned_start, planned_end, shift_type, break_minutes, notes } = req.body;
-        const current = await pool.query('SELECT * FROM hr_shifts WHERE id = $1', [req.params.id]);
-        if (current.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        await client.query('BEGIN');
+        const current = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (current.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
         const hasProfessionField = Object.prototype.hasOwnProperty.call(req.body || {}, 'profession_key')
             || Object.prototype.hasOwnProperty.call(req.body || {}, 'professionKey');
         let professionKey = null;
         if (hasProfessionField || !current.rows[0].profession_key) {
-            const profession = await resolveHrShiftProfession(current.rows[0].staff_id, hasProfessionField ? req.body : {}, pool);
+            const profession = await resolveHrShiftProfession(current.rows[0].staff_id, hasProfessionField ? req.body : {}, client);
             if (!profession.ok) {
+                await client.query('ROLLBACK');
                 return res.status(profession.status || 400).json({ success: false, error: profession.error });
             }
             professionKey = profession.professionKey;
         }
-        const result = await pool.query(
+        const result = await client.query(
             `UPDATE hr_shifts SET
                 planned_start = COALESCE($1, planned_start),
                 planned_end = COALESCE($2, planned_end),
@@ -1321,33 +1389,46 @@ router.put('/shifts/:id', async (req, res) => {
              WHERE id = $7 RETURNING *`,
             [planned_start, planned_end, shift_type, break_minutes, notes, professionKey, req.params.id]
         );
+        await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+        await client.query('COMMIT');
         await auditLog('shift_update', result.rows[0].staff_id, req.user?.username, req.body, req.ip);
-        await mirrorHrShiftToStaffSchedule(result.rows[0]);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/shifts/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 // DELETE /api/hr/shifts/:id
-router.delete('/shifts/:id', async (req, res) => {
+router.delete('/shifts/:id', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const existing = await pool.query('SELECT * FROM hr_shifts WHERE id = $1', [req.params.id]);
-        if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        await pool.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
-        await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date);
+        await client.query('BEGIN');
+        const existing = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        await client.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
+        await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date, client);
+        await client.query('COMMIT');
         await auditLog('shift_delete', existing.rows[0].staff_id, req.user?.username,
             { shift_date: existing.rows[0].shift_date }, req.ip);
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /hr/shifts/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 // POST /api/hr/shifts/:id/replace — move a shift to a replacement staff member
-router.post('/shifts/:id/replace', async (req, res) => {
+router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
         const replacementStaffId = parseInt(req.body.replacement_staff_id, 10);
@@ -1435,7 +1516,7 @@ router.post('/shifts/:id/replace', async (req, res) => {
 });
 
 // POST /api/hr/shifts/bulk — mass create from template
-router.post('/shifts/bulk', async (req, res) => {
+router.post('/shifts/bulk', requireHrManage, async (req, res) => {
     try {
         const { staff_ids, dates, template_id, planned_start, planned_end, break_minutes, shift_type } = req.body;
         if (!staff_ids || !dates || (!template_id && !planned_start)) {
@@ -1493,7 +1574,7 @@ router.post('/shifts/bulk', async (req, res) => {
 });
 
 // POST /api/hr/shifts/copy-week
-router.post('/shifts/copy-week', async (req, res) => {
+router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
     try {
         const { source_week, target_week } = req.body;
         if (!source_week || !target_week) {
@@ -1636,7 +1717,7 @@ router.get('/today', async (req, res) => {
 });
 
 // POST /api/hr/clock-in
-router.post('/clock-in', async (req, res) => {
+router.post('/clock-in', requireHrManage, async (req, res) => {
     try {
         const { staff_id } = req.body;
         if (!staff_id) return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
@@ -1696,7 +1777,7 @@ router.post('/clock-in', async (req, res) => {
 });
 
 // POST /api/hr/clock-out
-router.post('/clock-out', async (req, res) => {
+router.post('/clock-out', requireHrManage, async (req, res) => {
     try {
         const { staff_id } = req.body;
         if (!staff_id) return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
@@ -1764,7 +1845,7 @@ router.post('/clock-out', async (req, res) => {
 });
 
 // POST /api/hr/mark-absent — mark sick/vacation/day_off
-router.post('/mark-absent', async (req, res) => {
+router.post('/mark-absent', requireHrManage, async (req, res) => {
     try {
         const { staff_id, status, notes } = req.body;
         if (!staff_id || !status) {
@@ -1796,7 +1877,7 @@ router.post('/mark-absent', async (req, res) => {
 // CORRECTION (admin only)
 // ==========================================
 
-router.put('/records/:id/correct', async (req, res) => {
+router.put('/records/:id/correct', requireHrManage, async (req, res) => {
     try {
         const { clock_in, clock_out, notes } = req.body;
         const rec = await pool.query('SELECT * FROM hr_time_records WHERE id = $1', [req.params.id]);
@@ -2097,7 +2178,7 @@ router.get('/leave-requests', async (req, res) => {
 });
 
 // POST /api/hr/leave-requests — submit new request
-router.post('/leave-requests', async (req, res) => {
+router.post('/leave-requests', requireHrManage, async (req, res) => {
     try {
         const { staff_id, type, date_from, date_to, reason } = req.body;
         if (!staff_id || !type || !date_from || !date_to) {
@@ -2118,7 +2199,7 @@ router.post('/leave-requests', async (req, res) => {
 });
 
 // PUT /api/hr/leave-requests/:id/review — approve/reject
-router.put('/leave-requests/:id/review', async (req, res) => {
+router.put('/leave-requests/:id/review', requireHrManage, async (req, res) => {
     try {
         const { status, comment } = req.body;
         if (!['approved', 'rejected'].includes(status)) {
@@ -2156,7 +2237,7 @@ router.put('/leave-requests/:id/review', async (req, res) => {
 });
 
 // DELETE /api/hr/leave-requests/:id — cancel
-router.delete('/leave-requests/:id', async (req, res) => {
+router.delete('/leave-requests/:id', requireHrManage, async (req, res) => {
     try {
         const result = await pool.query(
             `UPDATE leave_requests SET status = 'cancelled' WHERE id = $1 AND status = 'pending' RETURNING *`,
@@ -2202,7 +2283,7 @@ router.get('/ratings', async (req, res) => {
 });
 
 // POST /api/hr/ratings/:staffId — add rating
-router.post('/ratings/:staffId', async (req, res) => {
+router.post('/ratings/:staffId', requireHrManage, async (req, res) => {
     try {
         const { score, comment } = req.body;
         if (!score || score < 1 || score > 5) {
@@ -2235,7 +2316,7 @@ router.post('/ratings/:staffId', async (req, res) => {
 // ==========================================
 
 // POST /api/hr/auto-assign — find best animator for a booking
-router.post('/auto-assign', async (req, res) => {
+router.post('/auto-assign', requireHrManage, async (req, res) => {
     try {
         const { date, time_start, time_end, required_skills, exclude_ids } = req.body;
         if (!date || !time_start) {
@@ -2322,7 +2403,7 @@ router.get('/onboarding/templates', async (req, res) => {
 });
 
 // POST /api/hr/onboarding/templates
-router.post('/onboarding/templates', async (req, res) => {
+router.post('/onboarding/templates', requireHrManage, async (req, res) => {
     try {
         const { name, department, items } = req.body;
         if (!name || !items) return res.status(400).json({ success: false, error: 'Потрібні name та items' });
@@ -2338,7 +2419,7 @@ router.post('/onboarding/templates', async (req, res) => {
 });
 
 // POST /api/hr/onboarding/start — start onboarding for staff
-router.post('/onboarding/start', async (req, res) => {
+router.post('/onboarding/start', requireHrManage, async (req, res) => {
     try {
         const { staff_id, template_id } = req.body;
         if (!staff_id || !template_id) return res.status(400).json({ success: false, error: 'Потрібні staff_id та template_id' });
@@ -2383,7 +2464,7 @@ router.get('/onboarding', async (req, res) => {
 });
 
 // PUT /api/hr/onboarding/:id/check — toggle item completion
-router.put('/onboarding/:id/check', async (req, res) => {
+router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
     try {
         const { item_id, done } = req.body;
         const prog = await pool.query('SELECT * FROM onboarding_progress WHERE id = $1', [req.params.id]);
@@ -2437,7 +2518,7 @@ router.get('/certifications', async (req, res) => {
 });
 
 // POST /api/hr/certifications
-router.post('/certifications', async (req, res) => {
+router.post('/certifications', requireHrManage, async (req, res) => {
     try {
         const { staff_id, name, category, issued_at, expires_at, training_id, notes } = req.body;
         if (!staff_id || !name) return res.status(400).json({ success: false, error: 'Потрібні staff_id та name' });
@@ -2455,7 +2536,7 @@ router.post('/certifications', async (req, res) => {
 });
 
 // DELETE /api/hr/certifications/:id
-router.delete('/certifications/:id', async (req, res) => {
+router.delete('/certifications/:id', requireHrManage, async (req, res) => {
     try {
         await pool.query('DELETE FROM staff_certifications WHERE id = $1', [req.params.id]);
         res.json({ success: true });
@@ -2605,7 +2686,7 @@ router.get('/salary', async (req, res) => {
 });
 
 // POST /api/hr/salary/adjustment — add bonus/deduction/depremium
-router.post('/salary/adjustment', async (req, res) => {
+router.post('/salary/adjustment', requireHrManage, async (req, res) => {
     try {
         const { staff_id, month, type, amount, reason, template_id, violation_date, evidence_note, evidence_url } = req.body;
         if (!staff_id || !month || !type || amount === undefined) {
@@ -2730,7 +2811,7 @@ router.get('/costumes', async (req, res) => {
 });
 
 // POST /api/hr/costumes
-router.post('/costumes', async (req, res) => {
+router.post('/costumes', requireHrManage, async (req, res) => {
     try {
         const data = await costumeInventory.createCostume(req.body);
         res.json({ success: true, data });
@@ -2741,7 +2822,7 @@ router.post('/costumes', async (req, res) => {
 });
 
 // PUT /api/hr/costumes/:id
-router.put('/costumes/:id', async (req, res) => {
+router.put('/costumes/:id', requireHrManage, async (req, res) => {
     try {
         const data = await costumeInventory.updateCostume(req.params.id, req.body);
         res.json({ success: true, data });
@@ -2752,7 +2833,7 @@ router.put('/costumes/:id', async (req, res) => {
 });
 
 // DELETE /api/hr/costumes/:id
-router.delete('/costumes/:id', async (req, res) => {
+router.delete('/costumes/:id', requireHrManage, async (req, res) => {
     try {
         await costumeInventory.deleteCostume(req.params.id);
         res.json({ success: true });
@@ -2794,7 +2875,7 @@ router.get('/availability', async (req, res) => {
 });
 
 // PUT /api/hr/availability/:staffId — update status
-router.put('/availability/:staffId', async (req, res) => {
+router.put('/availability/:staffId', requireHrManage, async (req, res) => {
     try {
         const { status, booking_id } = req.body;
         const validStatuses = ['online', 'busy', 'break', 'offline'];
@@ -3019,7 +3100,7 @@ router.get('/vacancies', async (req, res) => {
     } catch (err) { log.error('GET /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/vacancies', async (req, res) => {
+router.post('/vacancies', requireHrManage, async (req, res) => {
     const { title, role_type, department = 'animators', description, requirements,
             salary_from, salary_to, schedule, work_format = 'office',
             status = 'open', priority = 'normal' } = req.body;
@@ -3034,7 +3115,7 @@ router.post('/vacancies', async (req, res) => {
     } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.patch('/vacancies/:id', async (req, res) => {
+router.patch('/vacancies/:id', requireHrManage, async (req, res) => {
     const { status, priority, description, requirements, salary_from, salary_to, schedule, title } = req.body;
     const sets = [], vals = [];
     let i = 1;
@@ -3055,7 +3136,7 @@ router.patch('/vacancies/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/vacancies/:id', async (req, res) => {
+router.delete('/vacancies/:id', requireHrManage, async (req, res) => {
     try {
         await pool.query(`UPDATE job_vacancies SET status='closed', closed_at=NOW() WHERE id=$1`, [req.params.id]);
         res.json({ success: true });
@@ -3078,7 +3159,7 @@ router.get('/vacancies/:id/applications', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/vacancies/:id/applications', async (req, res) => {
+router.post('/vacancies/:id/applications', requireHrManage, async (req, res) => {
     const {
         name, phone, telegram_username, telegram_id, source = 'manual', notes, salary_expectation, cv_url,
         birth_date, address, availability, experience, interview_notes, raw_application_text, parsed_payload
@@ -3111,7 +3192,7 @@ router.get('/applications/:id/resume-files', async (req, res) => {
     }
 });
 
-router.post('/applications/:id/resume-files', handleResumeUpload, async (req, res) => {
+router.post('/applications/:id/resume-files', requireHrManage, handleResumeUpload, async (req, res) => {
     try {
         const appId = parseInt(req.params.id, 10);
         const files = Array.isArray(req.files) ? req.files : [];
@@ -3201,7 +3282,7 @@ router.get('/applications/:id/resume-files/:fileId/download', async (req, res) =
     }
 });
 
-router.patch('/applications/:id', async (req, res) => {
+router.patch('/applications/:id', requireHrManage, async (req, res) => {
     const { status, notes, interview_date, salary_expectation, address, birth_date, availability, experience, interview_notes, raw_application_text, parsed_payload } = req.body;
     const sets = [], vals = [];
     let i = 1;
@@ -3224,7 +3305,7 @@ router.patch('/applications/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/applications/:id/hire', async (req, res) => {
+router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
     try {
         const app = await pool.query(
             `SELECT a.*, v.role_type, v.title as vac_title FROM job_applications a

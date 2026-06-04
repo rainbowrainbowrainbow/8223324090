@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.19">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.19">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.19">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.19">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.19">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.19">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.19">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.19">
-    <link rel="stylesheet" href="css/features.css?v=0.73.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.19">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.19">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.19">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.19">
+    <link rel="stylesheet" href="css/base.css?v=0.73.21">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.21">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.21">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.21">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.21">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.21">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.21">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.21">
+    <link rel="stylesheet" href="css/features.css?v=0.73.21">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.21">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.21">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.21">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.21">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.19">✨ 0.73.19</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.21">✨ 0.73.21</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.19 — HR: команда без техборгу</p>
+                <p class="tagline">AI First CRM v0.73.21 — HR: стабільність професій і структури</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.19</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.21</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1657,6 +1657,29 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.21 — HR: стабільність професій і структури</h4>
+                    <ul>
+                        <li><b>Deploy-реліз HR-стабілізації</b> — у поставку входять виправлення прав доступу, професій, графіка, структури компанії та навчальної готовності.</li>
+                        <li><b>Security лишається read-only у HR</b> — write-маршрути HR тепер проходять через <code>requireHrManage</code>, як і керування в UI.</li>
+                        <li><b>Графік і staff schedule синхронізуються транзакційно</b> — одиночні create/update/delete зміни не залишають часткових записів.</li>
+                        <li><b>Професії стали стабільним джерелом правди</b> — <code>key</code> не перейменовується, picker не підмішує зайві legacy ролі, а <code>/staff</code> бере назви з HR-каталогу.</li>
+                        <li><b>Структуру захищено від stale-save</b> — save перевіряє <code>baseUpdatedAt</code> і чистить мертві прив'язки до видалених вузлів.</li>
+                        <li><b>Версію піднято до <code>0.73.21</code></b> — cache tags і Service Worker синхронізовані під deploy.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.20 — HR: стабільність професій і графіка</h4>
+                    <ul>
+                        <li><b>Security лишається read-only у HR</b> — усі HR mutation routes без власного строгого guard тепер проходять через <code>requireHrManage</code>, як і керування в UI.</li>
+                        <li><b>Одиночні зміни графіка стали атомарними</b> — create/update/delete HR-змін синхронізують <code>hr_shifts</code> і <code>staff_schedule</code> в одній транзакції.</li>
+                        <li><b>Key професії більше не ламає зв'язки</b> — технічний <code>key</code> після створення не перейменовується, щоб не розірвати графік, ставки, чек-листи й навчання.</li>
+                        <li><b>HR і Staff використовують один каталог професій</b> — picker не підмішує всі legacy ролі, а сторінка <code>/staff</code> підтягує HR-каталог для назв і селекторів.</li>
+                        <li><b>Готовність навчання рахується без дублювання</b> — seeded-курси не додаються поверх HR checklist, якщо чекліст професії вже є джерелом прогресу.</li>
+                        <li><b>Структуру захищено від stale-save</b> — save перевіряє <code>baseUpdatedAt</code>, а backend очищає застарілі staff/profession прив'язки до видалених вузлів.</li>
+                        <li><b>Версію піднято до <code>0.73.20</code></b> — guardrails і cache tags оновлені під стабільність HR-професій, графіка й структури.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.19 — HR: команда без техборгу</h4>
                     <ul>
@@ -11113,29 +11136,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.19"></script>
-    <script src="js/timeline-visibility.js?v=0.73.19"></script>
-    <script src="js/config.js?v=0.73.19"></script>
-    <script src="js/api.js?v=0.73.19"></script>
-    <script src="js/ui.js?v=0.73.19"></script>
-    <script src="js/auth.js?v=0.73.19"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.19"></script>
-    <script src="js/timeline.js?v=0.73.19"></script>
-    <script src="js/booking.js?v=0.73.19"></script>
-    <script src="js/settings.js?v=0.73.19"></script>
-    <script src="js/booking-form.js?v=0.73.19"></script>
-    <script src="js/booking-linked.js?v=0.73.19"></script>
-    <script src="js/settings-dashboard.js?v=0.73.19"></script>
-    <script src="js/settings-history.js?v=0.73.19"></script>
-    <script src="js/settings-afisha.js?v=0.73.19"></script>
-    <script src="js/settings-certificates.js?v=0.73.19"></script>
-    <script src="js/offline.js?v=0.73.19"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.19"></script>
-    <script src="js/search.js?v=0.73.19"></script>
-    <script src="js/ws.js?v=0.73.19"></script>
-    <script src="js/app.js?v=0.73.19"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.19"></script>
-    <script src="js/components/sidebar.js?v=0.73.19"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.19"></script>
+    <script src="js/timeline-context.js?v=0.73.21"></script>
+    <script src="js/timeline-visibility.js?v=0.73.21"></script>
+    <script src="js/config.js?v=0.73.21"></script>
+    <script src="js/api.js?v=0.73.21"></script>
+    <script src="js/ui.js?v=0.73.21"></script>
+    <script src="js/auth.js?v=0.73.21"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.21"></script>
+    <script src="js/timeline.js?v=0.73.21"></script>
+    <script src="js/booking.js?v=0.73.21"></script>
+    <script src="js/settings.js?v=0.73.21"></script>
+    <script src="js/booking-form.js?v=0.73.21"></script>
+    <script src="js/booking-linked.js?v=0.73.21"></script>
+    <script src="js/settings-dashboard.js?v=0.73.21"></script>
+    <script src="js/settings-history.js?v=0.73.21"></script>
+    <script src="js/settings-afisha.js?v=0.73.21"></script>
+    <script src="js/settings-certificates.js?v=0.73.21"></script>
+    <script src="js/offline.js?v=0.73.21"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.21"></script>
+    <script src="js/search.js?v=0.73.21"></script>
+    <script src="js/ws.js?v=0.73.21"></script>
+    <script src="js/app.js?v=0.73.21"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.21"></script>
+    <script src="js/components/sidebar.js?v=0.73.21"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.21"></script>
 </body>
 </html>

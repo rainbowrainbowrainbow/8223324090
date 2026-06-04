@@ -49,7 +49,7 @@ const HR_NAV_GROUPS = [
         label: 'Пульс компанії',
         items: [
             { id: 'today', label: 'Сьогодні' },
-            { id: 'schedule', label: 'Графік' },
+            { id: 'schedule', label: 'Графік', href: '/staff' },
             { id: 'reports', label: 'Звіти' }
         ]
     },

@@ -31,6 +31,7 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         'const HR_NAV_GROUPS',
         "id: 'pulse'",
         "label: 'Пульс компанії'",
+        "{ id: 'schedule', label: 'Графік', href: '/staff' }",
         "{ id: 'team', label: 'Команда', tab: 'team' }",
         'visible: () => canManageAccountSecurity()',
         'data-nav-id=',

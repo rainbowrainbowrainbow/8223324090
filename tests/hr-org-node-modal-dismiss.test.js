@@ -240,7 +240,8 @@ test('HR staff edit modal uses the shared modal layer and viewport-safe scrollin
     assert.match(overlayCss, /overflow:\s*hidden/);
     assert.match(dialogCss, /max-height:\s*calc\(100dvh - 32px\)/);
     assert.match(dialogCss, /overflow-y:\s*auto/);
-    assert.match(html, /id="staffEditModal"[^>]*class="hr-modal-overlay"[\s\S]*?<div class="hr-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
+    assert.match(html, /id="staffEditModal"[^>]*class="hr-modal-overlay"[\s\S]*?<div class="hr-modal hr-staff-profile-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
+    assert.match(html, /\.hr-staff-profile-modal\s*\{[\s\S]*?max-width:\s*640px/);
     assert.match(showModalFn, /modal\.setAttribute\('aria-hidden', 'false'\)/);
     assert.match(showModalFn, /modal\.scrollTop = 0/);
     assert.match(showModalFn, /dialog\.scrollTop = 0/);

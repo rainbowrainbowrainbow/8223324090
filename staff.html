@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.14">
+    <link rel="stylesheet" href="css/base.css?v=0.73.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -403,6 +403,20 @@
             line-height: 1.3;
         }
 
+        .sch-cell .sch-profession {
+            display: block;
+            margin-top: 2px;
+            max-width: 78px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 8px;
+            font-weight: 800;
+            color: var(--gray-400);
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
         .sch-cell .sch-label {
             font-size: 9px;
             font-weight: 600;
@@ -538,6 +552,14 @@
             margin-bottom: 4px;
         }
 
+        .sch-modal .form-hint {
+            margin-top: 4px;
+            color: var(--gray-400);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+
         .sch-modal select,
         .sch-modal input {
             width: 100%;
@@ -595,6 +617,7 @@
             border-color: var(--gray-700);
         }
         [data-theme="dark"] .sch-cell .sch-time { color: var(--gray-300); }
+        [data-theme="dark"] .sch-cell .sch-profession { color: var(--gray-500); }
         [data-theme="dark"] .sch-cell.status-unset .sch-label { color: var(--gray-600); }
         [data-theme="dark"] .sch-cell.status-unset:hover { background: rgba(100,116,139,0.1); }
         [data-theme="dark"] .sch-cell.status-dayoff {
@@ -1026,6 +1049,11 @@
             color: #D1D5DB;
         }
 
+        body.dark-mode .sch-cell .sch-profession,
+        [data-theme="dark"] .sch-cell .sch-profession {
+            color: #94A3B8;
+        }
+
         body.dark-mode .sch-cell .sch-note,
         [data-theme="dark"] .sch-cell .sch-note {
             color: #94A3B8;
@@ -1176,6 +1204,11 @@
 
         body.dark-mode .sch-modal label,
         [data-theme="dark"] .sch-modal label {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .sch-modal .form-hint,
+        [data-theme="dark"] .sch-modal .form-hint {
             color: #94A3B8;
         }
 
@@ -1366,6 +1399,11 @@
                     <option value="sick">Лікарняний</option>
                 </select>
             </div>
+            <div id="schProfessionGroup" class="form-group">
+                <label>Професія у зміні</label>
+                <select id="schProfession"></select>
+                <div class="form-hint">Доступні тільки професії з картки співробітника.</div>
+            </div>
             <div id="schTimeFields">
                 <div class="form-group">
                     <label>Початок зміни</label>
@@ -1485,13 +1523,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.14"></script>
-    <script src="js/config.js?v=0.73.14"></script>
-    <script src="js/notification.js?v=0.73.14"></script>
-    <script src="js/api.js?v=0.73.14"></script>
-    <script src="js/auth.js?v=0.73.14"></script>
-    <script src="js/components/sidebar.js?v=0.73.14"></script>
+    <script src="js/ui.js?v=0.73.19"></script>
+    <script src="js/config.js?v=0.73.19"></script>
+    <script src="js/notification.js?v=0.73.19"></script>
+    <script src="js/api.js?v=0.73.19"></script>
+    <script src="js/auth.js?v=0.73.19"></script>
+    <script src="js/components/sidebar.js?v=0.73.19"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.73.14"></script><script src="js/alerts.js?v=0.73.14"></script>
+    <script src="js/staff-page.js?v=0.73.19"></script><script src="js/alerts.js?v=0.73.19"></script>
 </body>
 </html>

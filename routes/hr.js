@@ -18,7 +18,9 @@ const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
-    validateProfessionKeys
+    validateProfessionKeys,
+    staffProfessionKeys,
+    resolveStaffProfessionAssignment
 } = require('../services/professions');
 
 // RBAC: HR module — management + HR + security + admin + manager
@@ -306,6 +308,7 @@ function normalizeProfessionPayload(body = {}, current = {}) {
     const checklist = parseTextList(body.checklist ?? current.checklist, 32);
     const colorRaw = String(body.color ?? current.color ?? '').trim();
     const color = /^#[0-9a-f]{6}$/i.test(colorRaw) ? colorRaw : (colorRaw ? colorRaw.slice(0, 20) : null);
+    const structureNodeId = normalizeCompanyStructureNodeRef(body.structure_node_id ?? body.structureNodeId ?? current.structure_node_id ?? current.structureNodeId);
     const sortOrder = Number.isFinite(Number(body.sort_order ?? body.sortOrder ?? current.sort_order ?? current.sortOrder))
         ? Math.round(Number(body.sort_order ?? body.sortOrder ?? current.sort_order ?? current.sortOrder))
         : 100;
@@ -318,6 +321,7 @@ function normalizeProfessionPayload(body = {}, current = {}) {
         responsibilities,
         checklist,
         color,
+        structureNodeId,
         sortOrder,
         isActive: isActive === undefined ? true : isActive !== false && isActive !== 'false'
     };
@@ -337,6 +341,134 @@ async function validateStaffProfessionInput(roleType, secondaryProfessions) {
     return { secondaryProfessions: normalizedSecondary };
 }
 
+function checklistKeyForIndex(index) {
+    return `item_${Number(index) + 1}`;
+}
+
+function checklistItemsForProfession(row = {}) {
+    const source = Array.isArray(row.checklist) ? row.checklist : parseTextList(row.checklist, 32);
+    return source.map((title, index) => ({
+        key: checklistKeyForIndex(index),
+        title
+    })).filter(item => item.title);
+}
+
+async function attachTrainingReadiness(staffRows = []) {
+    if (!Array.isArray(staffRows) || !staffRows.length) return staffRows;
+    const staffIds = staffRows.map(row => Number(row.id)).filter(Number.isFinite);
+    const professionKeys = [...new Set(staffRows.flatMap(row => staffProfessionKeys(row)))];
+    if (!staffIds.length || !professionKeys.length) {
+        staffRows.forEach(row => { row.training_readiness = { percent: 0, completed: 0, total: 0, professions: [] }; });
+        return staffRows;
+    }
+
+    const [professionRows, courseRows, enrollmentRows, checklistProgressRows] = await Promise.all([
+        pool.query(
+            `SELECT key, title, checklist
+             FROM hr_professions
+             WHERE key = ANY($1::text[]) AND is_active = true`,
+            [professionKeys]
+        ),
+        pool.query(
+            `SELECT c.id, c.profession_key, c.target_roles, c.title,
+                    COUNT(l.id)::integer AS total_lectures
+             FROM training_courses c
+             LEFT JOIN training_course_lectures l ON l.course_id = c.id AND l.is_published = true
+             WHERE c.is_active = true
+               AND (c.profession_key = ANY($1::text[]) OR c.target_roles && $1::text[])
+             GROUP BY c.id, c.profession_key, c.target_roles, c.title`,
+            [professionKeys]
+        ),
+        pool.query(
+            `SELECT course_id, staff_id, current_lecture, completed_at
+             FROM training_course_enrollment
+             WHERE staff_id = ANY($1::int[])`,
+            [staffIds]
+        ),
+        pool.query(
+            `SELECT staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes
+             FROM hr_staff_profession_checklist_progress
+             WHERE staff_id = ANY($1::int[])
+               AND profession_key = ANY($2::text[])`,
+            [staffIds, professionKeys]
+        )
+    ]);
+
+    const professionsByKey = new Map(professionRows.rows.map(row => [normalizeProfessionKey(row.key), row]));
+    const coursesByProfession = new Map();
+    courseRows.rows.forEach(row => {
+        const keys = row.profession_key
+            ? [normalizeProfessionKey(row.profession_key)]
+            : (Array.isArray(row.target_roles) ? row.target_roles.map(normalizeProfessionKey).filter(Boolean) : []);
+        keys.forEach(key => {
+            if (!professionKeys.includes(key)) return;
+            if (!coursesByProfession.has(key)) coursesByProfession.set(key, []);
+            coursesByProfession.get(key).push(row);
+        });
+    });
+    const enrollmentByStaffCourse = new Map(enrollmentRows.rows.map(row => [`${row.staff_id}:${row.course_id}`, row]));
+    const checklistProgressByStaffProfession = new Map();
+    checklistProgressRows.rows.forEach(row => {
+        const key = `${row.staff_id}:${normalizeProfessionKey(row.profession_key)}`;
+        if (!checklistProgressByStaffProfession.has(key)) checklistProgressByStaffProfession.set(key, new Map());
+        checklistProgressByStaffProfession.get(key).set(row.checklist_key, row);
+    });
+
+    staffRows.forEach(row => {
+        const entries = staffProfessionKeys(row).map(professionKey => {
+            const profession = professionsByKey.get(professionKey) || { key: professionKey, title: professionKey, checklist: [] };
+            const checklist = checklistItemsForProfession(profession);
+            const progressMap = checklistProgressByStaffProfession.get(`${row.id}:${professionKey}`) || new Map();
+            const checklistItems = checklist.map(item => {
+                const progress = progressMap.get(item.key);
+                return {
+                    ...item,
+                    completed_at: progress?.completed_at || null,
+                    completed_by: progress?.completed_by || null,
+                    notes: progress?.notes || null
+                };
+            });
+            const checklistCompleted = checklistItems.filter(item => item.completed_at).length;
+            const courses = (coursesByProfession.get(professionKey) || []).map(course => {
+                const totalLectures = Number(course.total_lectures || 0);
+                const enrollment = enrollmentByStaffCourse.get(`${row.id}:${course.id}`);
+                const completedLectures = enrollment?.completed_at
+                    ? totalLectures
+                    : Math.max(0, Math.min(totalLectures, Number(enrollment?.current_lecture || 0)));
+                return {
+                    id: course.id,
+                    title: course.title,
+                    total_lectures: totalLectures,
+                    completed_lectures: completedLectures,
+                    completed_at: enrollment?.completed_at || null
+                };
+            });
+            const courseTotal = courses.reduce((sum, course) => sum + course.total_lectures, 0);
+            const courseCompleted = courses.reduce((sum, course) => sum + course.completed_lectures, 0);
+            const total = checklistItems.length + courseTotal;
+            const completed = checklistCompleted + courseCompleted;
+            return {
+                key: professionKey,
+                title: profession.title || professionKey,
+                checklist: checklistItems,
+                courses,
+                completed,
+                total,
+                percent: total ? Math.round((completed / total) * 100) : 0
+            };
+        });
+        const total = entries.reduce((sum, entry) => sum + entry.total, 0);
+        const completed = entries.reduce((sum, entry) => sum + entry.completed, 0);
+        row.training_readiness = {
+            percent: total ? Math.round((completed / total) * 100) : 0,
+            completed,
+            total,
+            professions: entries
+        };
+    });
+    return staffRows;
+}
+
 function toDateOnly(value) {
     if (!value) return null;
     if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -353,24 +485,174 @@ function buildReplacementNote(shift) {
     return `Підміна за співробітника #${shift.original_staff_id}${reason}`;
 }
 
+function scheduleProfessionFromPayload(payload = {}) {
+    return normalizeProfessionKey(payload.profession_key ?? payload.professionKey ?? payload.role_type ?? payload.roleType);
+}
+
+async function resolveHrShiftProfession(staffId, payload = {}, db = pool) {
+    return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
+}
+
+function normalizeCompanyStructureNodeRef(value) {
+    const raw = sanitizeCompanyStructureString(value, 64);
+    if (!raw) return null;
+    return raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_{2,}/g, '_').slice(0, 64) || null;
+}
+
+function normalizeStaffProfessionRates(value, allowedProfessionKeys = []) {
+    const source = Array.isArray(value) ? value : [];
+    const allowed = new Set((allowedProfessionKeys || []).map(normalizeProfessionKey).filter(Boolean));
+    const seen = new Set();
+    const rates = [];
+    source.forEach(item => {
+        const row = item && typeof item === 'object' ? item : {};
+        const professionKey = normalizeProfessionKey(row.profession_key ?? row.professionKey ?? row.key);
+        const rate = Number(row.hourly_rate ?? row.hourlyRate ?? row.rate);
+        if (!professionKey || seen.has(professionKey)) return;
+        if (allowed.size && !allowed.has(professionKey)) return;
+        if (!Number.isFinite(rate) || rate <= 0) return;
+        seen.add(professionKey);
+        rates.push({ profession_key: professionKey, hourly_rate: Math.round(rate * 100) / 100 });
+    });
+    return rates;
+}
+
+async function attachStaffProfessionRates(staffRows = [], db = pool) {
+    if (!Array.isArray(staffRows) || !staffRows.length) return staffRows;
+    const staffIds = staffRows.map(row => Number(row.id)).filter(Number.isFinite);
+    if (!staffIds.length) return staffRows;
+    const result = await db.query(
+        `SELECT staff_id, profession_key, hourly_rate
+         FROM staff_profession_rates
+         WHERE staff_id = ANY($1::int[])
+         ORDER BY profession_key`,
+        [staffIds]
+    ).catch(err => {
+        log.warn('staff_profession_rates query failed:', err.message);
+        return { rows: [] };
+    });
+    const byStaff = new Map();
+    result.rows.forEach(row => {
+        const staffId = Number(row.staff_id);
+        if (!byStaff.has(staffId)) byStaff.set(staffId, []);
+        byStaff.get(staffId).push({
+            profession_key: normalizeProfessionKey(row.profession_key),
+            hourly_rate: Number(row.hourly_rate || 0)
+        });
+    });
+    staffRows.forEach(row => {
+        row.profession_rates = byStaff.get(Number(row.id)) || [];
+    });
+    return staffRows;
+}
+
+async function replaceStaffProfessionRates(db, staffId, rates = []) {
+    const id = Number(staffId);
+    if (!Number.isFinite(id) || id <= 0) return [];
+    await db.query('DELETE FROM staff_profession_rates WHERE staff_id = $1', [id]);
+    const saved = [];
+    for (const row of rates) {
+        const result = await db.query(
+            `INSERT INTO staff_profession_rates (staff_id, profession_key, hourly_rate, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (staff_id, profession_key) DO UPDATE SET
+                hourly_rate = EXCLUDED.hourly_rate,
+                updated_at = NOW()
+             RETURNING profession_key, hourly_rate`,
+            [id, row.profession_key, row.hourly_rate]
+        );
+        saved.push({
+            profession_key: normalizeProfessionKey(result.rows[0].profession_key),
+            hourly_rate: Number(result.rows[0].hourly_rate || 0)
+        });
+    }
+    return saved;
+}
+
+async function loadStaffProfessionRateMap(staffIds = [], db = pool) {
+    const ids = [...new Set((staffIds || []).map(Number).filter(Number.isFinite))];
+    if (!ids.length) return new Map();
+    const result = await db.query(
+        `SELECT staff_id, profession_key, hourly_rate
+         FROM staff_profession_rates
+         WHERE staff_id = ANY($1::int[])`,
+        [ids]
+    ).catch(err => {
+        log.warn('staff profession rate map query failed:', err.message);
+        return { rows: [] };
+    });
+    return new Map(result.rows.map(row => [
+        `${Number(row.staff_id)}:${normalizeProfessionKey(row.profession_key)}`,
+        Number(row.hourly_rate || 0)
+    ]));
+}
+
+function rateForStaffProfession(staff = {}, professionKey = '', rateMap = new Map()) {
+    const staffId = Number(staff.staff_id ?? staff.id);
+    const normalized = normalizeProfessionKey(professionKey || staff.profession_key || staff.role_type);
+    const override = rateMap.get(`${staffId}:${normalized}`);
+    return Number.isFinite(override) && override > 0
+        ? override
+        : Number(staff.hourly_rate || 0);
+}
+
+function normalizeAuditValue(value) {
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) return value.map(item => String(item)).sort();
+    if (value && typeof value === 'object') {
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch {
+            return String(value);
+        }
+    }
+    if (value === undefined) return null;
+    return value;
+}
+
+function auditValuesEqual(a, b) {
+    return JSON.stringify(normalizeAuditValue(a)) === JSON.stringify(normalizeAuditValue(b));
+}
+
+function buildStaffProfileChanges(before = {}, after = {}, fields = []) {
+    const changes = {};
+    fields.forEach(field => {
+        const beforeValue = field === 'secondary_professions'
+            ? staffProfessionKeys({ role_type: null, secondary_professions: before.secondary_professions })
+            : before[field];
+        const afterValue = field === 'secondary_professions'
+            ? staffProfessionKeys({ role_type: null, secondary_professions: after.secondary_professions })
+            : after[field];
+        if (!auditValuesEqual(beforeValue, afterValue)) {
+            changes[field] = {
+                from: normalizeAuditValue(beforeValue),
+                to: normalizeAuditValue(afterValue)
+            };
+        }
+    });
+    return changes;
+}
+
 async function mirrorHrShiftToStaffSchedule(shift, db = pool) {
     const date = toDateOnly(shift?.shift_date);
     if (!shift?.staff_id || !date) return;
     await db.query(
-        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (staff_id, date)
          DO UPDATE SET shift_start = EXCLUDED.shift_start,
                        shift_end = EXCLUDED.shift_end,
                        status = EXCLUDED.status,
-                       note = EXCLUDED.note`,
+                       note = EXCLUDED.note,
+                       profession_key = EXCLUDED.profession_key`,
         [
             shift.staff_id,
             date,
             shift.planned_start || null,
             shift.planned_end || null,
             staffScheduleStatusForShift(shift.shift_type),
-            buildReplacementNote(shift)
+            buildReplacementNote(shift),
+            shift.profession_key || null
         ]
     );
 }
@@ -395,7 +677,7 @@ router.get('/professions', async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT id, key, title, department, short_info, responsibilities, checklist,
-                    color, sort_order, is_active, created_at, updated_at
+                    color, structure_node_id, sort_order, is_active, created_at, updated_at
              FROM hr_professions
              ORDER BY is_active DESC, sort_order ASC, title ASC`
         );
@@ -416,8 +698,8 @@ router.post('/professions', requireRole('creator', 'director', 'vice_director', 
             return res.status(400).json({ success: false, error: 'Потрібні key і title професії' });
         }
         const result = await pool.query(
-            `INSERT INTO hr_professions (key, title, department, short_info, responsibilities, checklist, color, sort_order, is_active)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+            `INSERT INTO hr_professions (key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
              RETURNING *`,
             [
                 payload.key,
@@ -427,6 +709,7 @@ router.post('/professions', requireRole('creator', 'director', 'vice_director', 
                 JSON.stringify(payload.responsibilities),
                 JSON.stringify(payload.checklist),
                 payload.color,
+                payload.structureNodeId,
                 payload.sortOrder,
                 payload.isActive
             ]
@@ -459,10 +742,11 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
                 responsibilities = $5::jsonb,
                 checklist = $6::jsonb,
                 color = $7,
-                sort_order = $8,
-                is_active = $9,
+                structure_node_id = $8,
+                sort_order = $9,
+                is_active = $10,
                 updated_at = NOW()
-             WHERE id = $10
+             WHERE id = $11
              RETURNING *`,
             [
                 payload.key,
@@ -472,6 +756,7 @@ router.put('/professions/:id', requireRole('creator', 'director', 'vice_director
                 JSON.stringify(payload.responsibilities),
                 JSON.stringify(payload.checklist),
                 payload.color,
+                payload.structureNodeId,
                 payload.sortOrder,
                 payload.isActive,
                 req.params.id
@@ -498,7 +783,7 @@ router.get('/staff', async (req, res) => {
         const { active, role_type, include_freelance } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
+                    hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     is_freelance, unique_person_key, hr_pool_status, blacklist_reason, blacklisted_at,
                     (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
@@ -521,9 +806,69 @@ router.get('/staff', async (req, res) => {
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
         sql += ' ORDER BY name';
         const result = await pool.query(sql, params);
+        await attachStaffProfessionRates(result.rows);
+        await attachTrainingReadiness(result.rows);
         res.json({ success: true, data: result.rows });
     } catch (err) {
         log.error('GET /hr/staff error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/history', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+        const result = await pool.query(
+            `SELECT id, action, staff_id, performed_by, details, ip_address, created_at
+             FROM hr_audit_log
+             WHERE staff_id = $1
+             ORDER BY created_at DESC, id DESC
+             LIMIT $2`,
+            [req.params.id, limit]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/history error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.put('/staff/:id/profession-checklist', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'), async (req, res) => {
+    try {
+        const professionKey = normalizeProfessionKey(req.body.profession_key ?? req.body.professionKey);
+        const checklistKey = String(req.body.checklist_key ?? req.body.checklistKey ?? '').trim().slice(0, 128);
+        const title = String(req.body.title || '').replace(/\u0000/g, '').trim().slice(0, 500);
+        const completed = req.body.completed !== false && req.body.completed !== 'false';
+        const notes = String(req.body.notes || '').replace(/\u0000/g, '').trim().slice(0, 1000) || null;
+        if (!professionKey || !checklistKey || !title) {
+            return res.status(400).json({ success: false, error: 'Потрібні profession_key, checklist_key та title' });
+        }
+        const assignment = await resolveStaffProfessionAssignment(pool, req.params.id, professionKey, { requireActive: false });
+        if (!assignment.ok) {
+            return res.status(assignment.status || 400).json({ success: false, error: assignment.error });
+        }
+        const result = await pool.query(
+            `INSERT INTO hr_staff_profession_checklist_progress
+                (staff_id, profession_key, checklist_key, title, completed_at, completed_by, notes, updated_at)
+             VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN NOW() ELSE NULL END, $6, $7, NOW())
+             ON CONFLICT (staff_id, profession_key, checklist_key) DO UPDATE SET
+                title = EXCLUDED.title,
+                completed_at = CASE WHEN $5 THEN COALESCE(hr_staff_profession_checklist_progress.completed_at, NOW()) ELSE NULL END,
+                completed_by = CASE WHEN $5 THEN $6 ELSE NULL END,
+                notes = EXCLUDED.notes,
+                updated_at = NOW()
+             RETURNING *`,
+            [req.params.id, professionKey, checklistKey, title, completed, req.user?.username || null, notes]
+        );
+        await auditLog('staff_profession_checklist_update', parseInt(req.params.id), req.user?.username, {
+            profession_key: professionKey,
+            checklist_key: checklistKey,
+            title,
+            completed
+        }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /hr/staff/:id/profession-checklist error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
@@ -534,12 +879,14 @@ router.get('/staff/:id', async (req, res) => {
         const staff = await pool.query(
             `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
+                    hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     hr_pool_status, blacklist_reason, blacklisted_at
              FROM staff WHERE id = $1`, [req.params.id]
         );
         if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        await attachStaffProfessionRates(staff.rows);
+        await attachTrainingReadiness(staff.rows);
         res.json({ success: true, data: staff.rows[0] });
     } catch (err) {
         log.error('GET /hr/staff/:id error', err);
@@ -550,12 +897,16 @@ router.get('/staff/:id', async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', async (req, res) => {
     try {
-        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason } = req.body;
+        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
+        const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
         const secondaryInput = hasBodyField('secondary_professions')
             ? req.body.secondary_professions
             : req.body.secondaryProfessions;
+        const professionRateInput = hasBodyField('profession_rates')
+            ? req.body.profession_rates
+            : req.body.professionRates;
         const fieldPresence = {
             phone: hasBodyField('phone'),
             emergency_contact: hasBodyField('emergency_contact'),
@@ -569,14 +920,24 @@ router.put('/staff/:id', async (req, res) => {
             contract_type: hasBodyField('contract_type'),
             skills: hasBodyField('skills'),
             address: hasBodyField('address'),
+            company_structure_node_id: hasBodyField('company_structure_node_id') || hasBodyField('companyStructureNodeId'),
             hr_pool_status: hasBodyField('hr_pool_status'),
             blacklist_reason: hasBodyField('blacklist_reason')
         };
+        const beforeStaffResult = await pool.query(
+            `SELECT id, phone, emergency_contact, emergency_phone, role_type,
+                    COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    hourly_rate, company_structure_node_id, birth_date, address, notes, telegram_id, telegram_username,
+                    contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at
+             FROM staff
+             WHERE id = $1`,
+            [req.params.id]
+        );
+        if (!beforeStaffResult.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        const beforeStaff = beforeStaffResult.rows[0];
         let effectiveRoleType = fieldPresence.role_type ? role_type : null;
         if (hasSecondaryProfessions && !effectiveRoleType) {
-            const currentStaff = await pool.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
-            if (!currentStaff.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
-            effectiveRoleType = currentStaff.rows[0].role_type;
+            effectiveRoleType = beforeStaff.role_type;
         }
         const professionValidation = fieldPresence.role_type || hasSecondaryProfessions
             ? await validateStaffProfessionInput(effectiveRoleType, hasSecondaryProfessions ? secondaryInput : [])
@@ -584,6 +945,25 @@ router.put('/staff/:id', async (req, res) => {
         if (professionValidation.error) {
             return res.status(400).json({ success: false, error: professionValidation.error });
         }
+        const effectiveProfessionKeys = staffProfessionKeys({
+            role_type: fieldPresence.role_type ? role_type : beforeStaff.role_type,
+            secondary_professions: hasSecondaryProfessions ? professionValidation.secondaryProfessions : beforeStaff.secondary_professions
+        });
+        const normalizedProfessionRates = hasProfessionRates
+            ? normalizeStaffProfessionRates(professionRateInput, effectiveProfessionKeys)
+            : [];
+        const beforeRateRows = hasProfessionRates
+            ? (await pool.query(
+                `SELECT profession_key, hourly_rate
+                 FROM staff_profession_rates
+                 WHERE staff_id = $1
+                 ORDER BY profession_key`,
+                [req.params.id]
+            ).catch(() => ({ rows: [] }))).rows.map(row => ({
+                profession_key: normalizeProfessionKey(row.profession_key),
+                hourly_rate: Number(row.hourly_rate || 0)
+            }))
+            : [];
         const values = [];
         const setClauses = [];
         const queueStaffUpdate = (column, value, cast = '') => {
@@ -618,6 +998,9 @@ router.put('/staff/:id', async (req, res) => {
         if (fieldPresence.contract_type) queueStaffUpdate('contract_type', textOrNull(contract_type));
         if (fieldPresence.skills) queueStaffUpdate('skills', arrayOrNull(skills), '::text[]');
         if (fieldPresence.address) queueStaffUpdate('address', textOrNull(address));
+        if (fieldPresence.company_structure_node_id) {
+            queueStaffUpdate('company_structure_node_id', normalizeCompanyStructureNodeRef(company_structure_node_id ?? req.body.companyStructureNodeId));
+        }
         if (fieldPresence.hr_pool_status) {
             queueStaffUpdate('hr_pool_status', textOrNull(hr_pool_status));
             setClauses.push(hr_pool_status === 'blacklisted'
@@ -633,18 +1016,53 @@ router.put('/staff/:id', async (req, res) => {
             queueStaffUpdate('secondary_professions', JSON.stringify(professionValidation.secondaryProfessions || []), '::jsonb');
         }
 
+        let afterRateRows = beforeRateRows;
         let result;
-        if (setClauses.length) {
-            values.push(req.params.id);
-            result = await pool.query(
-                `UPDATE staff SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
-                values
-            );
-        } else {
-            result = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            if (setClauses.length) {
+                values.push(req.params.id);
+                result = await client.query(
+                    `UPDATE staff SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+                    values
+                );
+            } else {
+                result = await client.query('SELECT * FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
+            }
+            if (result.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Не знайдено' });
+            }
+            if (hasProfessionRates) {
+                afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
+                result.rows[0].profession_rates = afterRateRows;
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
         }
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        await auditLog('staff_update', parseInt(req.params.id), req.user?.username, req.body, req.ip);
+        const changedFields = [
+            'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
+            'hourly_rate', 'company_structure_node_id', 'birth_date', 'address', 'notes', 'telegram_id', 'telegram_username',
+            'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at'
+        ];
+        const changes = buildStaffProfileChanges(beforeStaff, result.rows[0], changedFields);
+        if (hasProfessionRates && !auditValuesEqual(beforeRateRows, afterRateRows)) {
+            changes.profession_rates = {
+                from: normalizeAuditValue(beforeRateRows),
+                to: normalizeAuditValue(afterRateRows)
+            };
+        }
+        await auditLog('staff_update', parseInt(req.params.id), req.user?.username, {
+            source: 'hr_staff_profile',
+            changed_fields: Object.keys(changes),
+            changes,
+            requested_fields: Object.keys(req.body || {})
+        }, req.ip);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
@@ -824,7 +1242,8 @@ router.get('/shifts', async (req, res) => {
             dateTo = new Date(mon.setDate(mon.getDate() + 6)).toISOString().split('T')[0];
         }
 
-        let sql = `SELECT hs.*, s.name AS staff_name, s.color AS staff_color, s.role_type
+        let sql = `SELECT hs.*, s.name AS staff_name, s.color AS staff_color, s.role_type,
+                    COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
                     FROM hr_shifts hs
                     JOIN staff s ON s.id = hs.staff_id
                     WHERE hs.shift_date >= $1 AND hs.shift_date <= $2`;
@@ -851,15 +1270,19 @@ router.post('/shifts', async (req, res) => {
         if (!staff_id || !shift_date || !planned_start || !planned_end) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, shift_date, planned_start, planned_end' });
         }
+        const profession = await resolveHrShiftProfession(staff_id, req.body);
+        if (!profession.ok) {
+            return res.status(profession.status || 400).json({ success: false, error: profession.error });
+        }
         const result = await pool.query(
-            `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by, profession_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (staff_id, shift_date) DO UPDATE SET
                 planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
                 shift_type = EXCLUDED.shift_type, break_minutes = EXCLUDED.break_minutes,
-                notes = EXCLUDED.notes, updated_at = NOW()
+                notes = EXCLUDED.notes, profession_key = EXCLUDED.profession_key, updated_at = NOW()
              RETURNING *`,
-            [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username]
+            [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username, profession.professionKey]
         );
         await auditLog('shift_create', staff_id, req.user?.username, { shift_date, planned_start, planned_end }, req.ip);
         await mirrorHrShiftToStaffSchedule(result.rows[0]);
@@ -874,6 +1297,18 @@ router.post('/shifts', async (req, res) => {
 router.put('/shifts/:id', async (req, res) => {
     try {
         const { planned_start, planned_end, shift_type, break_minutes, notes } = req.body;
+        const current = await pool.query('SELECT * FROM hr_shifts WHERE id = $1', [req.params.id]);
+        if (current.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        const hasProfessionField = Object.prototype.hasOwnProperty.call(req.body || {}, 'profession_key')
+            || Object.prototype.hasOwnProperty.call(req.body || {}, 'professionKey');
+        let professionKey = null;
+        if (hasProfessionField || !current.rows[0].profession_key) {
+            const profession = await resolveHrShiftProfession(current.rows[0].staff_id, hasProfessionField ? req.body : {}, pool);
+            if (!profession.ok) {
+                return res.status(profession.status || 400).json({ success: false, error: profession.error });
+            }
+            professionKey = profession.professionKey;
+        }
         const result = await pool.query(
             `UPDATE hr_shifts SET
                 planned_start = COALESCE($1, planned_start),
@@ -881,11 +1316,11 @@ router.put('/shifts/:id', async (req, res) => {
                 shift_type = COALESCE($3, shift_type),
                 break_minutes = COALESCE($4, break_minutes),
                 notes = COALESCE($5, notes),
+                profession_key = COALESCE($6, profession_key),
                 updated_at = NOW()
-             WHERE id = $6 RETURNING *`,
-            [planned_start, planned_end, shift_type, break_minutes, notes, req.params.id]
+             WHERE id = $7 RETURNING *`,
+            [planned_start, planned_end, shift_type, break_minutes, notes, professionKey, req.params.id]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('shift_update', result.rows[0].staff_id, req.user?.username, req.body, req.ip);
         await mirrorHrShiftToStaffSchedule(result.rows[0]);
         res.json({ success: true, data: result.rows[0] });
@@ -942,6 +1377,18 @@ router.post('/shifts/:id/replace', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Підмінний співробітник неактивний або не існує' });
         }
 
+        let replacementProfessionKey = oldShift.profession_key || null;
+        if (!replacementProfessionKey) {
+            const oldStaff = await client.query('SELECT role_type FROM staff WHERE id = $1', [oldShift.staff_id]);
+            replacementProfessionKey = oldStaff.rows[0]?.role_type || null;
+        }
+        const replacementProfession = await resolveStaffProfessionAssignment(client, replacementStaffId, replacementProfessionKey);
+        if (!replacementProfession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(replacementProfession.status || 400).json({ success: false, error: replacementProfession.error });
+        }
+        replacementProfessionKey = replacementProfession.professionKey;
+
         const conflict = await client.query(
             `SELECT id FROM hr_shifts
              WHERE staff_id = $1 AND shift_date = $2 AND id <> $3
@@ -960,10 +1407,11 @@ router.post('/shifts/:id/replace', async (req, res) => {
                 replacement_reason = $2,
                 replaced_by = $3,
                 replaced_at = NOW(),
+                profession_key = $5,
                 updated_at = NOW()
              WHERE id = $4
              RETURNING *`,
-            [replacementStaffId, reason, req.user?.username || null, req.params.id]
+            [replacementStaffId, reason, req.user?.username || null, req.params.id, replacementProfessionKey]
         );
 
         await removeMirroredStaffSchedule(oldShift.staff_id, oldShift.shift_date, client);
@@ -1005,20 +1453,36 @@ router.post('/shifts/bulk', async (req, res) => {
         }
 
         let count = 0;
-        for (const sid of staff_ids) {
-            for (const d of dates) {
-                const result = await pool.query(
-                    `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                     ON CONFLICT (staff_id, shift_date) DO UPDATE SET
-                        planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
-                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()
-                     RETURNING *`,
-                    [sid, d, start, end, brk, stype, req.user?.username]
-                );
-                await mirrorHrShiftToStaffSchedule(result.rows[0]);
-                count++;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const sid of staff_ids) {
+                const profession = await resolveHrShiftProfession(sid, req.body, client);
+                if (!profession.ok) {
+                    await client.query('ROLLBACK');
+                    return res.status(profession.status || 400).json({ success: false, error: profession.error, staff_id: sid });
+                }
+                for (const d of dates) {
+                    const result = await client.query(
+                        `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by, profession_key)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                         ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                            planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                            break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type,
+                            profession_key = EXCLUDED.profession_key, updated_at = NOW()
+                         RETURNING *`,
+                        [sid, d, start, end, brk, stype, req.user?.username, profession.professionKey]
+                    );
+                    await mirrorHrShiftToStaffSchedule(result.rows[0], client);
+                    count++;
+                }
             }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
         }
         await auditLog('shift_bulk', null, req.user?.username, { staff_ids, dates, count }, req.ip);
         res.json({ success: true, count });
@@ -1055,20 +1519,41 @@ router.post('/shifts/copy-week', async (req, res) => {
         );
 
         let count = 0;
-        for (const row of source.rows) {
-            const dayIndex = srcDates.indexOf(row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date);
-            if (dayIndex === -1) continue;
-            const copied = await pool.query(
-                `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, notes, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                 ON CONFLICT (staff_id, shift_date) DO UPDATE SET
-                    planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
-                    break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()
-                 RETURNING *`,
-                [row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username]
-            );
-            await mirrorHrShiftToStaffSchedule(copied.rows[0]);
-            count++;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const row of source.rows) {
+                const sourceDate = row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date;
+                const dayIndex = srcDates.indexOf(sourceDate);
+                if (dayIndex === -1) continue;
+                const profession = await resolveHrShiftProfession(row.staff_id, { profession_key: row.profession_key }, client);
+                if (!profession.ok) {
+                    await client.query('ROLLBACK');
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
+                        staff_id: row.staff_id
+                    });
+                }
+                const copied = await client.query(
+                    `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, notes, created_by, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                        planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type,
+                        profession_key = EXCLUDED.profession_key, updated_at = NOW()
+                     RETURNING *`,
+                    [row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username, profession.professionKey]
+                );
+                await mirrorHrShiftToStaffSchedule(copied.rows[0], client);
+                count++;
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
         }
         await auditLog('shift_copy_week', null, req.user?.username, { source_week, target_week, count }, req.ip);
         res.json({ success: true, count });
@@ -1406,6 +1891,8 @@ router.get('/report/monthly', async (req, res) => {
         const staffList = await pool.query(
             'SELECT id, name, role_type, hourly_rate FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name'
         );
+        const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
+        const staffById = new Map(staffList.rows.map(st => [Number(st.id), st]));
 
         const shifts = await pool.query(
             'SELECT staff_id, COUNT(*) AS cnt FROM hr_shifts WHERE shift_date >= $1 AND shift_date <= $2 GROUP BY staff_id',
@@ -1415,8 +1902,13 @@ router.get('/report/monthly', async (req, res) => {
         for (const r of shifts.rows) shiftCounts[r.staff_id] = parseInt(r.cnt);
 
         const records = await pool.query(
-            `SELECT staff_id, status, late_minutes, early_leave_minutes, overtime_minutes, total_worked_minutes
-             FROM hr_time_records WHERE record_date >= $1 AND record_date <= $2`,
+            `SELECT tr.staff_id,
+                    COALESCE(hs.profession_key, s.role_type) AS profession_key,
+                    tr.status, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes, tr.total_worked_minutes
+             FROM hr_time_records tr
+             JOIN staff s ON s.id = tr.staff_id
+             LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
+             WHERE tr.record_date >= $1 AND tr.record_date <= $2`,
             [dateFrom, dateTo]
         );
 
@@ -1467,6 +1959,8 @@ router.get('/report/monthly', async (req, res) => {
                 s.days_worked++;
                 s.total_worked_minutes += r.total_worked_minutes || 0;
                 s.total_overtime_minutes += r.overtime_minutes || 0;
+                const rate = rateForStaffProfession(staffById.get(Number(r.staff_id)) || { id: r.staff_id }, r.profession_key, professionRateMap);
+                s.estimated_salary = (s.estimated_salary || 0) + (((Number(r.total_worked_minutes) || 0) / 60) * rate);
             }
             if (r.status === 'late') { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
             if (r.status === 'early_leave') s.days_early_leave++;
@@ -1501,7 +1995,7 @@ router.get('/report/monthly', async (req, res) => {
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
-                estimated_salary: Math.round(totalWorkedHours * rate),
+                estimated_salary: Math.round(s.estimated_salary || totalWorkedHours * rate),
                 late_count: s.late_count,
                 avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
                 attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
@@ -1543,23 +2037,25 @@ router.get('/report/export', async (req, res) => {
         if (!from || !to) return res.status(400).json({ success: false, error: 'Потрібні from та to' });
 
         const result = await pool.query(
-            `SELECT s.name, tr.record_date, tr.clock_in, tr.clock_out,
+            `SELECT s.id AS staff_id, s.name, s.role_type, tr.record_date, tr.clock_in, tr.clock_out,
                     tr.planned_start, tr.planned_end,
                     tr.total_worked_minutes, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes,
-                    s.hourly_rate
+                    s.hourly_rate, COALESCE(hs.profession_key, s.role_type) AS profession_key
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
+             LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
              WHERE tr.record_date >= $1 AND tr.record_date <= $2
              ORDER BY s.name, tr.record_date`,
             [from, to]
         );
+        const professionRateMap = await loadStaffProfessionRateMap(result.rows.map(row => row.staff_id));
 
         const header = 'ПІБ;Дата;Прихід;Відхід;Заплановано початок;Заплановано кінець;Відпрацьовано хв;Запізнення хв;Рано пішов хв;Переробка хв;Ставка;Сума\n';
         const rows = result.rows.map(r => {
             const ci = r.clock_in ? new Date(r.clock_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const workedH = ((r.total_worked_minutes || 0) / 60).toFixed(1);
-            const rate = parseFloat(r.hourly_rate) || 0;
+            const rate = rateForStaffProfession(r, r.profession_key, professionRateMap);
             const salary = (parseFloat(workedH) * rate).toFixed(0);
             return `${r.name};${r.record_date};${ci};${co};${r.planned_start || ''};${r.planned_end || ''};${r.total_worked_minutes || 0};${r.late_minutes || 0};${r.early_leave_minutes || 0};${r.overtime_minutes || 0};${rate};${salary}`;
         }).join('\n');
@@ -1996,19 +2492,51 @@ router.get('/salary', async (req, res) => {
             log.warn('staff query failed:', staffErr.message);
             return res.json({ success: true, data: [], totals: { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 }, month });
         }
+        const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
+        const staffById = new Map(staffList.rows.map(st => [Number(st.id), st]));
 
         const recordMap = {};
         try {
             const records = await pool.query(
-                `SELECT staff_id, SUM(total_worked_minutes) AS total_minutes,
-                        SUM(overtime_minutes) AS overtime_minutes,
-                        COUNT(*) FILTER (WHERE status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
-                 FROM hr_time_records
-                 WHERE record_date >= $1 AND record_date <= $2
-                 GROUP BY staff_id`,
+                `SELECT tr.staff_id,
+                        COALESCE(hs.profession_key, s.role_type) AS profession_key,
+                        SUM(tr.total_worked_minutes) AS total_minutes,
+                        SUM(tr.overtime_minutes) AS overtime_minutes,
+                        COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
+                 FROM hr_time_records tr
+                 JOIN staff s ON s.id = tr.staff_id
+                 LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
+                 WHERE tr.record_date >= $1 AND tr.record_date <= $2
+                 GROUP BY tr.staff_id, COALESCE(hs.profession_key, s.role_type)`,
                 [dateFrom, dateTo]
             );
-            for (const r of records.rows) recordMap[r.staff_id] = r;
+            for (const r of records.rows) {
+                const staff = staffById.get(Number(r.staff_id)) || { id: r.staff_id };
+                const professionKey = normalizeProfessionKey(r.profession_key || staff.role_type);
+                const rate = rateForStaffProfession(staff, professionKey, professionRateMap);
+                const totalMinutes = parseInt(r.total_minutes) || 0;
+                const overtimeMinutes = parseInt(r.overtime_minutes) || 0;
+                if (!recordMap[r.staff_id]) {
+                    recordMap[r.staff_id] = {
+                        total_minutes: 0,
+                        overtime_minutes: 0,
+                        days_worked: 0,
+                        base_salary: 0,
+                        overtime_pay: 0,
+                        profession_rates: []
+                    };
+                }
+                recordMap[r.staff_id].total_minutes += totalMinutes;
+                recordMap[r.staff_id].overtime_minutes += overtimeMinutes;
+                recordMap[r.staff_id].days_worked += parseInt(r.days_worked) || 0;
+                recordMap[r.staff_id].base_salary += (totalMinutes / 60) * rate;
+                recordMap[r.staff_id].overtime_pay += (overtimeMinutes / 60) * rate * 1.5;
+                recordMap[r.staff_id].profession_rates.push({
+                    profession_key: professionKey,
+                    rate,
+                    hours: Math.round(totalMinutes / 60 * 10) / 10
+                });
+            }
         } catch (recErr) {
             log.warn('hr_time_records query failed:', recErr.message);
         }
@@ -2030,13 +2558,13 @@ router.get('/salary', async (req, res) => {
         }
 
         const data = staffList.rows.map(st => {
-            const rec = recordMap[st.id] || { total_minutes: 0, overtime_minutes: 0, days_worked: 0 };
+            const rec = recordMap[st.id] || { total_minutes: 0, overtime_minutes: 0, days_worked: 0, base_salary: 0, overtime_pay: 0, profession_rates: [] };
             const adj = adjMap[st.id] || { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
             const rate = parseFloat(st.hourly_rate) || 0;
             const hours = Math.round((parseInt(rec.total_minutes) || 0) / 60 * 10) / 10;
             const overtimeHours = Math.round((parseInt(rec.overtime_minutes) || 0) / 60 * 10) / 10;
-            const baseSalary = Math.round(hours * rate);
-            const overtimePay = Math.round(overtimeHours * rate * 1.5);
+            const baseSalary = Math.round(rec.base_salary || hours * rate);
+            const overtimePay = Math.round(rec.overtime_pay || overtimeHours * rate * 1.5);
             const totalBonuses = adj.bonus + adj.tip;
             const totalDeductions = adj.deduction + adj.penalty;
             const totalSalary = baseSalary + overtimePay + totalBonuses - totalDeductions;
@@ -2047,6 +2575,7 @@ router.get('/salary', async (req, res) => {
                 role_type: st.role_type,
                 department: st.department,
                 hourly_rate: rate,
+                profession_rate_summary: rec.profession_rates,
                 days_worked: parseInt(rec.days_worked) || 0,
                 hours_worked: hours,
                 overtime_hours: overtimeHours,
@@ -2284,7 +2813,7 @@ router.put('/availability/:staffId', async (req, res) => {
     }
 });
 
-// ─── Staff Shifts by display_name (v33.5) ────────────────────
+// в”Ђв”Ђв”Ђ Staff Shifts by display_name (v33.5) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 // GET /api/hr/staff/:id/shifts?month=2026-03
 router.get('/staff/:id/shifts', async (req, res) => {
     try {
@@ -2393,16 +2922,19 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
         // Calculate salaries based on time records
         const salaryResp = await pool.query(
             `SELECT
-                s.id AS staff_id, s.name, s.hourly_rate,
+                s.id AS staff_id, s.name, s.role_type, s.hourly_rate,
+                COALESCE(hs.profession_key, s.role_type) AS profession_key,
                 COALESCE(SUM(tr.total_worked_minutes), 0)::int AS total_minutes
              FROM staff s
              LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
                 AND tr.record_date >= $1::date AND tr.record_date <= ($1::date + INTERVAL '1 month - 1 day')
-             WHERE s.is_active = true AND s.hourly_rate > 0
-             GROUP BY s.id, s.name, s.hourly_rate
+             LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = tr.record_date
+             WHERE s.is_active = true
+             GROUP BY s.id, s.name, s.role_type, s.hourly_rate, COALESCE(hs.profession_key, s.role_type)
              HAVING COALESCE(SUM(tr.total_worked_minutes), 0) > 0`,
             [`${month}-01`]
         );
+        const professionRateMap = await loadStaffProfessionRateMap(salaryResp.rows.map(row => row.staff_id));
 
         // Find salary expense category
         const salCat = await pool.query(
@@ -2410,10 +2942,29 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
         );
         const catId = salCat.rows[0]?.id || null;
 
+        const salaryByStaff = new Map();
+        for (const row of salaryResp.rows) {
+            const existing = salaryByStaff.get(Number(row.staff_id)) || {
+                staff_id: Number(row.staff_id),
+                name: row.name,
+                hourly_rate: Number(row.hourly_rate || 0),
+                total_minutes: 0,
+                base_salary: 0,
+                segments: []
+            };
+            const professionKey = normalizeProfessionKey(row.profession_key || row.role_type);
+            const rate = rateForStaffProfession(row, professionKey, professionRateMap);
+            const totalMinutes = Number(row.total_minutes || 0);
+            existing.total_minutes += totalMinutes;
+            existing.base_salary += (totalMinutes / 60) * rate;
+            existing.segments.push({ profession_key: professionKey, rate, hours: Math.round(totalMinutes / 60 * 10) / 10 });
+            salaryByStaff.set(existing.staff_id, existing);
+        }
+
         const inserted = [];
-        for (const s of salaryResp.rows) {
+        for (const s of salaryByStaff.values()) {
             const workedH = s.total_minutes / 60;
-            const baseSal = Math.round(workedH * parseFloat(s.hourly_rate));
+            const baseSal = Math.round(s.base_salary);
 
             // Bonuses/deductions from salary_adjustments
             let bonuses = 0, deductions = 0;
@@ -2436,7 +2987,7 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
                  VALUES ('expense', $1, $2, $3, $4, 'salary', $5, $6)
                  RETURNING id`,
                 [catId, totalSal,
-                 `Зарплата ${s.name} за ${month} (${Math.round(workedH)}г * ${s.hourly_rate} грн/г)`,
+                 `Зарплата ${s.name} за ${month} (${Math.round(workedH)}г, ставки: ${s.segments.map(segment => `${segment.profession_key} ${segment.rate} грн/г`).join(', ')})`,
                  new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().slice(0, 10), s.staff_id, req.user.username]
             );
             inserted.push({ staffId: s.staff_id, name: s.name, amount: totalSal, transactionId: r.rows[0].id });
@@ -2450,9 +3001,9 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
     }
 });
 
-// ══════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // ВАКАНСІЇ — CRUD
-// ══════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 router.get('/vacancies', async (req, res) => {
     try {
@@ -2511,9 +3062,9 @@ router.delete('/vacancies/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ══════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // КАНДИДАТИ — CRUD
-// ══════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 router.get('/vacancies/:id/applications', async (req, res) => {
     try {

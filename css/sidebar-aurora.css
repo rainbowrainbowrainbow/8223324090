@@ -10192,3 +10192,42 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-v {
   font-size: 8.8px !important;
 }
+
+/* v0.73.15: center the compact Favorites header without extra decoration. */
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-head {
+  display: grid !important;
+  grid-template-columns: 32px minmax(0, 1fr) 32px !important;
+  align-items: center !important;
+  min-height: 44px !important;
+  padding: 5px 6px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-copy {
+  display: grid !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  justify-items: center !important;
+  text-align: center !important;
+  padding-inline: 2px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-title {
+  width: 100% !important;
+  text-align: center !important;
+  font-size: 12.75px !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-dot,
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-chevron {
+  justify-self: center !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-chevron {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+}

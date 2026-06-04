@@ -126,6 +126,29 @@ const PEOPLE_BUCKETS = [
     }
 ];
 
+const HR_TEAM_MOVE_TARGETS = [
+    {
+        id: 'workers',
+        label: 'Робітники',
+        hint: 'Основна команда. Якщо це стажер, треба вибрати нову основну професію.'
+    },
+    {
+        id: 'interns',
+        label: 'Стажери',
+        hint: 'Профіль стане стажером, а попередня професія збережеться як додаткова.'
+    },
+    {
+        id: 'reserve',
+        label: 'Резерв',
+        hint: 'Профіль піде в резервний пул без зміни професій.'
+    },
+    {
+        id: 'blacklist',
+        label: 'Чорний список',
+        hint: 'Потрібна причина, професії не змінюються.'
+    }
+];
+
 function getHrCurrentUser() {
     try {
         return typeof AppState !== 'undefined' ? AppState.currentUser : null;
@@ -182,6 +205,7 @@ let pollTimer = null;
 let hrProfessions = [];
 let activePeopleBucket = null;
 let pendingPeopleBucket = null;
+let draggedTeamStaffId = null;
 
 // ==========================================
 // HELPERS
@@ -191,6 +215,14 @@ let pendingPeopleBucket = null;
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeJsString(value) {
+    return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '')
+        .replace(/\n/g, '\\n');
 }
 
 function normalizeProfessionKey(value) {
@@ -243,6 +275,152 @@ function staffHasProfession(staff = {}, key = '') {
     return normalizeProfessionKey(staff.role_type) === normalized || staffSecondaryProfessions(staff).includes(normalized);
 }
 
+function staffProfessionOptions(staff = {}, current = '') {
+    const selected = normalizeProfessionKey(current);
+    const keys = normalizeProfessionList([
+        staff.role_type,
+        ...staffSecondaryProfessions(staff),
+        selected
+    ]);
+    return keys.map(key => ({
+        value: key,
+        label: professionTitle(key),
+        selected: selected ? key === selected : key === normalizeProfessionKey(staff.role_type)
+    }));
+}
+
+function normalizeSearchText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['`\u2019\u02bc]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function companyStructureSelectOptions(current = '') {
+    const selected = String(current || '');
+    const options = sortCompanyStructureNodes(companyStructureNodes || []).map(node => ({
+        value: node.id,
+        label: `${node.title}${node.meta ? ' - ' + node.meta : ''}`,
+        selected: node.id === selected
+    }));
+    return [{ value: '', label: 'Без привʼязки', selected: !selected }, ...options];
+}
+
+function renderSelectOptions(options = [], selected = '') {
+    const selectedValue = String(selected || '');
+    return options.map(option => {
+        const value = String(option.value ?? '');
+        const isSelected = option.selected || value === selectedValue;
+        return `<option value="${escapeHtml(value)}"${isSelected ? ' selected' : ''}>${escapeHtml(option.label ?? value)}</option>`;
+    }).join('');
+}
+
+function companyStructureNodeTitle(nodeId = '') {
+    const normalized = String(nodeId || '').trim();
+    if (!normalized) return '';
+    const node = companyStructureNodeById(normalized);
+    return node?.title || normalized;
+}
+
+function professionStructureNodeId(professionKey = '') {
+    const key = normalizeProfessionKey(professionKey);
+    const profession = hrProfessions.find(item => normalizeProfessionKey(item.key) === key);
+    return profession?.structure_node_id || profession?.structureNodeId || '';
+}
+
+function staffStructureNodeId(staff = {}) {
+    return staff.company_structure_node_id || staff.companyStructureNodeId || professionStructureNodeId(staff.role_type);
+}
+
+function staffStructureNodeTitle(staff = {}) {
+    return companyStructureNodeTitle(staffStructureNodeId(staff));
+}
+
+function staffProfessionRateRows(staff = {}) {
+    return Array.isArray(staff.profession_rates || staff.professionRates)
+        ? (staff.profession_rates || staff.professionRates)
+        : [];
+}
+
+function staffProfessionRateMap(staff = {}) {
+    const map = new Map();
+    staffProfessionRateRows(staff).forEach(row => {
+        const key = normalizeProfessionKey(row.profession_key || row.professionKey || row.key);
+        const rate = Number(row.hourly_rate ?? row.hourlyRate ?? row.rate);
+        if (key && Number.isFinite(rate) && rate > 0) map.set(key, rate);
+    });
+    return map;
+}
+
+function staffProfessionRateFor(staff = {}, professionKey = '') {
+    const key = normalizeProfessionKey(professionKey);
+    const override = staffProfessionRateMap(staff).get(key);
+    return Number.isFinite(override) && override > 0 ? override : Number(staff.hourly_rate || 0);
+}
+
+function staffProfileCompleteness(staff = {}) {
+    const checks = [
+        staff.name,
+        staff.role_type,
+        staff.phone,
+        staff.emergency_contact || staff.emergency_phone,
+        staff.birth_date,
+        staff.address,
+        Number(staff.hourly_rate || 0) > 0 || staffProfessionRateRows(staff).length > 0
+    ];
+    const done = checks.filter(Boolean).length;
+    return { done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
+}
+
+function renderStaffReadinessBadges(staff = {}) {
+    const training = staffTrainingReadiness(staff);
+    const profile = staffProfileCompleteness(staff);
+    const structureTitle = staffStructureNodeTitle(staff);
+    const badge = (state, title, value, label) => `
+        <span class="hr-ready-badge ${state}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+            <b>${escapeHtml(value)}</b><small>${escapeHtml(label)}</small>
+        </span>`;
+    return `<div class="hr-ready-badges">
+        ${badge(staff.has_face_descriptor ? 'is-ok' : 'is-warn', staff.has_face_descriptor ? 'Фото є' : 'Фото не додано', 'Фото', staff.has_face_descriptor ? 'є' : 'нема')}
+        ${badge(staff.has_account ? 'is-ok' : 'is-warn', staff.has_account ? 'CRM акаунт є' : 'CRM акаунт не привʼязано', 'CRM', staff.has_account ? 'є' : 'нема')}
+        ${badge(profile.percent >= 85 ? 'is-ok' : profile.percent >= 55 ? 'is-info' : 'is-warn', `Профіль заповнено на ${profile.percent}%`, 'Профіль', `${profile.done}/${profile.total}`)}
+        ${badge(trainingTone(training.percent, training.total), training.total ? `Навчання ${training.completed}/${training.total}` : 'Навчальні чек-листи ще не створені', 'Навч.', training.total ? `${training.percent}%` : 'нема')}
+        ${badge(structureTitle ? 'is-info' : 'is-muted', structureTitle ? `Структура: ${structureTitle}` : 'Не привʼязано до структури', 'Структ.', structureTitle ? 'є' : 'нема')}
+    </div>`;
+}
+
+function renderStaffRateSummary(staff = {}) {
+    const professionKeys = normalizeProfessionList([staff.role_type, ...staffSecondaryProfessions(staff)]);
+    if (!professionKeys.length) return '';
+    const rates = professionKeys
+        .map(key => ({ key, label: professionTitle(key), rate: staffProfessionRateFor(staff, key) }))
+        .filter(item => Number(item.rate) > 0);
+    if (!rates.length) return '';
+    const baseRate = Number(staff.hourly_rate || 0);
+    const hasOverrides = staffProfessionRateRows(staff).length > 0;
+    if (!hasOverrides && baseRate > 0) return `${baseRate} ₴/год`;
+    return rates.slice(0, 3).map(item => `${item.label}: ${item.rate} ₴/год`).join(' · ');
+}
+
+function teamSearchHaystack(staff = {}) {
+    const professionTexts = normalizeProfessionList([staff.role_type, ...staffSecondaryProfessions(staff)])
+        .flatMap(key => [key, professionTitle(key)]);
+    return normalizeSearchText([
+        staff.name,
+        staff.phone,
+        staff.position,
+        staff.department,
+        staff.address,
+        staff.telegram_username,
+        staffStructureNodeTitle(staff),
+        HR_POOL_LABELS[staffPoolStatus(staff)],
+        ...professionTexts
+    ].filter(Boolean).join(' '));
+}
+
 function staffPoolStatus(staff = {}) {
     return staff.hr_pool_status || 'core';
 }
@@ -280,6 +458,81 @@ function renderProfessionChips(keys = []) {
     const normalized = normalizeProfessionList(keys);
     if (!normalized.length) return '';
     return `<div class="hr-secondary-profession-row">${normalized.map(key => `<span class="hr-secondary-profession-chip">${escapeHtml(professionTitle(key))}</span>`).join('')}</div>`;
+}
+
+function staffTrainingReadiness(staff = {}) {
+    const readiness = staff.training_readiness || staff.trainingReadiness || {};
+    const total = Number(readiness.total || 0);
+    const completed = Number(readiness.completed || 0);
+    const percent = total ? Math.max(0, Math.min(100, Number(readiness.percent || Math.round((completed / total) * 100)))) : 0;
+    return {
+        ...readiness,
+        total,
+        completed,
+        percent,
+        professions: Array.isArray(readiness.professions) ? readiness.professions : []
+    };
+}
+
+function trainingTone(percent, total = 0) {
+    if (!total) return 'is-muted';
+    if (percent >= 85) return 'is-ok';
+    if (percent >= 45) return 'is-info';
+    return 'is-warn';
+}
+
+function renderStaffTrainingReadiness(staff = {}) {
+    const readiness = staffTrainingReadiness(staff);
+    const tone = trainingTone(readiness.percent, readiness.total);
+    const label = readiness.total
+        ? `${readiness.completed}/${readiness.total} · ${readiness.percent}%`
+        : 'Немає чек-листів';
+    return `<button type="button" class="hr-team-training-readiness ${tone}" onclick="openStaffTrainingReadiness(${Number(staff.id)})" aria-label="Навчання ${escapeHtml(staff.name || '')}">
+        <span class="hr-team-training-head">
+            <b>Навчання</b>
+            <span>${escapeHtml(label)}</span>
+        </span>
+        <span class="hr-team-training-meter" aria-hidden="true"><i style="width:${readiness.total ? readiness.percent : 0}%"></i></span>
+    </button>`;
+}
+
+function selectedSecondaryProfessionKeys() {
+    const picker = document.getElementById('editSecondaryProfessionPicker');
+    if (!picker) return [];
+    try {
+        return normalizeProfessionList(JSON.parse(picker.dataset.selected || '[]'), [document.getElementById('editRoleType')?.value]);
+    } catch {
+        return [];
+    }
+}
+
+function setSelectedSecondaryProfessionKeys(keys = [], primaryRole = '') {
+    const picker = document.getElementById('editSecondaryProfessionPicker');
+    if (!picker) return;
+    picker.dataset.selected = JSON.stringify(normalizeProfessionList(keys, [primaryRole]));
+}
+
+function staffMoveTargetOptions(currentBucket = 'workers') {
+    return HR_TEAM_MOVE_TARGETS
+        .filter(target => target.id !== currentBucket && canSeeHrTeamBucket(target.id))
+        .map(target => ({
+            value: target.id,
+            label: `${target.label} - ${target.hint}`
+        }));
+}
+
+function preferredWorkerRoleForStaff(staff = {}) {
+    const currentPrimary = normalizeProfessionKey(staff.role_type);
+    if (currentPrimary && currentPrimary !== 'intern') return currentPrimary;
+    const secondary = staffSecondaryProfessions(staff).filter(key => key !== 'intern');
+    return secondary[0] || 'animator';
+}
+
+function professionSelectOptionsForStaffMove(staff = {}) {
+    const preferred = preferredWorkerRoleForStaff(staff);
+    return professionOptionsFromCatalog(preferred)
+        .filter(option => normalizeProfessionKey(option.value) !== 'intern')
+        .map(option => ({ ...option, selected: normalizeProfessionKey(option.value) === preferred }));
 }
 
 function formatDate(d) {
@@ -456,10 +709,13 @@ function initNewTabs() {
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
     document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionEditor());
+    bindSecondaryProfessionPicker();
     document.getElementById('editRoleType')?.addEventListener('change', () => {
         const selected = readStaffSecondaryProfessionSelection();
         populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
+        refreshStaffRateEditorFromCurrentForm();
     });
+    document.getElementById('editHourlyRate')?.addEventListener('input', refreshStaffRateEditorFromCurrentForm);
     const autoLayoutButton = document.getElementById('hrOrgAutoLayoutBtn');
     if (autoLayoutButton) autoLayoutButton.onclick = autoArrangeCompanyOrgChart;
     initCompanyOrgChart();
@@ -999,13 +1255,16 @@ function renderSchedule(dates) {
             const isPast = ds < today;
             const shift = shiftMap[`${staff.id}_${ds}`];
             let cellContent;
+            let cellExtra = '';
             if (shift) {
                 const cls = isPast ? 'past ' + (shift.shift_type || 'regular') : (shift.shift_type || 'regular');
+                const professionLabel = professionTitle(shift.profession_key || staff.role_type);
+                cellExtra = professionLabel ? `<small class="hr-shift-profession">${escapeHtml(professionLabel)}</small>` : '';
                 cellContent = `<span class="hr-shift-cell ${cls}">${fmtTime(shift.planned_start)}–${fmtTime(shift.planned_end)}</span>`;
             } else {
                 cellContent = '<span class="hr-shift-cell empty">—</span>';
             }
-            row += `<td class="${isToday ? 'today' : ''}" onclick="openShiftModal(${staff.id}, '${ds}')">${cellContent}</td>`;
+            row += `<td class="${isToday ? 'today' : ''}" onclick="openShiftModal(${staff.id}, '${ds}')">${cellContent}${cellExtra}</td>`;
         }
         row += '</tr>';
         return row;
@@ -1023,6 +1282,15 @@ function openShiftModal(staffId, date) {
     editingShift = { staffId, date, existing };
 
     const staff = scheduleStaff.find(s => s.id === staffId);
+    const professionSelect = document.getElementById('shiftProfession');
+    if (professionSelect) {
+        const selectedProfession = existing?.profession_key || staff?.role_type || '';
+        const options = staffProfessionOptions(staff || {}, selectedProfession);
+        professionSelect.innerHTML = options.length
+            ? options.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
+            : '<option value="">Професія не задана</option>';
+        professionSelect.disabled = !options.length;
+    }
     document.getElementById('shiftModalTitle').textContent = existing
         ? `Редагувати зміну — ${staff?.name || ''}`
         : `Додати зміну — ${staff?.name || ''}`;
@@ -1062,8 +1330,15 @@ async function saveShift() {
         planned_end: document.getElementById('shiftEnd')?.value,
         shift_type: document.getElementById('shiftType')?.value,
         break_minutes: parseInt(document.getElementById('shiftBreak')?.value) || 0,
-        notes: document.getElementById('shiftNotes')?.value
+        notes: document.getElementById('shiftNotes')?.value,
+        profession_key: document.getElementById('shiftProfession')?.value || null
     };
+    const staff = scheduleStaff.find(item => Number(item.id) === Number(editingShift.staffId));
+    const selectedProfession = normalizeProfessionKey(body.profession_key || staff?.role_type);
+    if (selectedProfession && !staffHasProfession(staff || {}, selectedProfession)) {
+        showNotification('Цієї професії немає в картці співробітника. Спочатку додайте її в HR → Команда.', 'error');
+        return;
+    }
 
     if (!body.planned_start || !body.planned_end) {
         showNotification('Вкажіть час початку і кінця', 'error');
@@ -1112,8 +1387,11 @@ async function deleteShift() {
 
 async function replaceShift() {
     if (!editingShift?.existing) return;
+    const currentStaff = scheduleStaff.find(s => s.id === editingShift.staffId);
+    const requiredProfession = normalizeProfessionKey(editingShift.existing.profession_key || currentStaff?.role_type);
     const candidates = scheduleStaff
         .filter(s => s.id !== editingShift.staffId && s.is_active !== false)
+        .filter(s => staffHasProfession(s, requiredProfession))
         .map(s => ({ value: String(s.id), label: `${s.name}${s.role_type ? ' · ' + (ROLE_LABELS[s.role_type] || s.role_type) : ''}` }));
     if (!candidates.length) {
         showNotification('Немає активних співробітників для підміни', 'error');
@@ -1179,6 +1457,7 @@ async function ensureProfessionsLoaded(options = {}) {
 
 async function loadProfessions() {
     await ensureProfessionsLoaded({ force: true });
+    await ensureCompanyStructureNodesLoaded({ silent: true });
     renderProfessions();
 }
 
@@ -1197,6 +1476,7 @@ function renderProfessions() {
                     <span class="hr-profession-key">${escapeHtml(item.key)}</span>
                 </div>
                 ${item.department ? `<span class="hr-profession-chip">${escapeHtml(item.department)}</span>` : ''}
+                ${(item.structure_node_id || item.structureNodeId) ? `<span class="hr-profession-chip">${escapeHtml(companyStructureNodeTitle(item.structure_node_id || item.structureNodeId))}</span>` : ''}
             </div>
             <p>${escapeHtml(item.shortInfo || item.short_info || 'Короткий опис ще не заповнений.')}</p>
             <div class="hr-profession-list">
@@ -1211,6 +1491,7 @@ function renderProfessions() {
 
 async function loadProfessionChecklists() {
     await ensureProfessionsLoaded({ force: true });
+    await ensureCompanyStructureNodesLoaded({ silent: true });
     renderProfessionChecklists();
 }
 
@@ -1246,11 +1527,14 @@ function normalizeProfessionTextList(value) {
 
 async function openProfessionEditor(professionId = null) {
     await ensureProfessionsLoaded({ silent: true });
+    await ensureCompanyStructureNodesLoaded({ silent: true });
     const current = professionId ? hrProfessions.find(item => Number(item.id) === Number(professionId)) : null;
+    const currentStructureNode = current?.structure_node_id || current?.structureNodeId || '';
     const result = await formModal(current ? `Професія · ${current.title}` : 'Нова професія', [
         { key: 'key', label: 'Key', required: true, defaultValue: current?.key || '', placeholder: 'animator' },
         { key: 'title', label: 'Назва', required: true, defaultValue: current?.title || '', placeholder: 'Аніматор' },
         { key: 'department', label: 'Напрям', defaultValue: current?.department || '', placeholder: 'Аніматори / Зал / Кухня' },
+        { key: 'structureNodeId', label: 'Вузол структури', type: 'select', defaultValue: currentStructureNode, options: companyStructureSelectOptions(currentStructureNode) },
         { key: 'shortInfo', label: 'Короткий опис', type: 'textarea', defaultValue: current?.shortInfo || current?.short_info || '', placeholder: 'Що тримає ця професія' },
         { key: 'responsibilities', label: 'Відповідальності, кожна з нового рядка', type: 'textarea', defaultValue: (current?.responsibilities || []).join('\n') },
         { key: 'checklist', label: 'Чекліст, кожен пункт з нового рядка', type: 'textarea', defaultValue: (current?.checklist || []).join('\n') },
@@ -1275,6 +1559,7 @@ async function openProfessionEditor(professionId = null) {
         shortInfo: result.shortInfo || '',
         responsibilities: normalizeProfessionTextList(result.responsibilities),
         checklist: normalizeProfessionTextList(result.checklist),
+        structureNodeId: result.structureNodeId || null,
         color: result.color || null,
         sortOrder: parseInt(result.sortOrder, 10) || 100,
         isActive: result.isActive !== 'false'
@@ -1629,6 +1914,7 @@ function applyAccountDeepLinkFilters() {
 
 async function loadTeam() {
     await ensureProfessionsLoaded({ silent: true });
+    await ensureCompanyStructureNodesLoaded({ silent: true });
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
     if (grid) renderPeopleBucketState('Завантаження команди...', 'loading');
@@ -1669,15 +1955,12 @@ async function loadTeam() {
 }
 
 function filterAndRenderTeam() {
-    const query = document.getElementById('teamSearch')?.value.toLowerCase();
+    const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
     const role = document.getElementById('teamRoleFilter')?.value;
 
     let filtered = teamStaff;
     if (query) {
-        filtered = filtered.filter(s =>
-            s.name.toLowerCase().includes(query) ||
-            (s.phone && s.phone.includes(query))
-        );
+        filtered = filtered.filter(s => teamSearchHaystack(s).includes(query));
     }
     if (role) {
         filtered = filtered.filter(s => staffHasProfession(s, role));
@@ -1731,6 +2014,7 @@ function renderTeam(staff) {
             </div>
         </section>`;
     }).join('');
+    initTeamDragAndDrop();
     syncHrNavActive('team', activePeopleBucket);
 }
 
@@ -1782,7 +2066,8 @@ function renderTeamCards(staff) {
             ? `<img src="${escapeHtml(s.photo_url)}" alt="${escapeHtml(s.name)}">`
             : initials;
         const roleLabel = ROLE_LABELS[s.role_type] || s.role_type || '';
-        const secondaryChips = renderProfessionChips(staffSecondaryProfessions(s));
+        const secondary = staffSecondaryProfessions(s);
+        const secondaryChips = renderProfessionChips(secondary);
         const hireStr = s.hire_date ? new Date(s.hire_date).toLocaleDateString('uk-UA') : '';
         const phone = s.phone || '';
         const emergency = s.emergency_contact
@@ -1790,37 +2075,346 @@ function renderTeamCards(staff) {
             : '';
         const poolStatus = s.hr_pool_status || 'core';
         const poolBadge = poolStatus !== 'core'
-            ? `<span class="hr-badge ${poolStatus === 'blacklisted' ? 'hr-badge--warn' : 'hr-badge--ok'}">${HR_POOL_LABELS[poolStatus] || escapeHtml(poolStatus)}</span>`
+            ? `<span class="hr-team-status-pill ${poolStatus === 'blacklisted' ? 'is-warn' : 'is-info'}">${HR_POOL_LABELS[poolStatus] || escapeHtml(poolStatus)}</span>`
             : '';
         const accountActions = canLinkAccounts()
             ? (s.has_account
-                ? `<div class="hr-team-stats"><button type="button" class="hr-account-toggle" onclick="openAccountForStaff(${Number(s.id)}, this)">Керувати акаунтом</button></div>`
-                : `<div class="hr-team-stats">
+                ? `<button type="button" class="hr-account-toggle" onclick="openAccountForStaff(${Number(s.id)}, this)">Акаунт</button>`
+                : `
                     <button type="button" class="hr-account-toggle" onclick="openAccountLinkForStaff(${Number(s.id)}, this)">Привʼязати акаунт</button>
                     ${canManageAccountSecurity() ? `<button type="button" class="hr-account-toggle" onclick="openAccountCreateForStaff(${Number(s.id)}, this)">Створити акаунт</button>` : ''}
-                </div>`)
+                `)
             : '';
+        const contactRows = [
+            phone ? `<span><b>Телефон</b>${escapeHtml(phone)}</span>` : '',
+            emergency ? `<span><b>Екстр.</b>${emergency}</span>` : '',
+            s.address ? `<span><b>Адреса</b>${escapeHtml(s.address)}</span>` : '',
+            renderStaffRateSummary(s) ? `<span><b>Ставка</b>${escapeHtml(renderStaffRateSummary(s))}</span>` : '',
+            staffStructureNodeTitle(s) ? `<span><b>Структ.</b>${escapeHtml(staffStructureNodeTitle(s))}</span>` : ''
+        ].filter(Boolean).join('');
+        const primaryRole = professionTitle(s.role_type) || roleLabel || 'Професія не задана';
 
-        return `<div class="hr-team-card ${s.is_active ? '' : 'inactive'}">
-            <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
-            <div class="hr-team-details">
-                <div class="hr-team-name">${escapeHtml(s.name)} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
-                <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${escapeHtml(professionTitle(s.role_type) || roleLabel)}${hireStr ? ' · з ' + hireStr : ''}</div>
-                ${secondaryChips}
-                <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'} ${poolBadge}</div>
-                <div class="hr-team-contact">
-                    ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}
-                    ${emergency ? '⚡ ' + emergency : ''}
-                    ${s.address ? `${phone || emergency ? '<br>' : ''}📍 ${escapeHtml(s.address)}` : ''}
+        return `<article class="hr-team-card ${s.is_active ? '' : 'inactive'}" data-staff-id="${Number(s.id)}" data-current-bucket="${escapeHtml(bucketForStaff(s))}" draggable="${canManage ? 'true' : 'false'}">
+            <div class="hr-team-card-head">
+                <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
+                <div class="hr-team-details">
+                    <div class="hr-team-name-row">
+                        <div class="hr-team-name">${escapeHtml(s.name)}</div>
+                        ${s.is_active ? '' : '<span class="hr-team-status-pill is-muted">звільнений</span>'}
+                    </div>
+                    <div class="hr-team-role">
+                        <strong>${escapeHtml(primaryRole)}</strong>
+                        ${s.position ? `<span>${escapeHtml(s.position)}</span>` : ''}
+                        ${hireStr ? `<span>з ${hireStr}</span>` : ''}
+                    </div>
                 </div>
-                ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-stats" style="color:var(--danger)">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
-                ${s.hourly_rate > 0 ? `<div class="hr-team-stats">Ставка: ${s.hourly_rate} ₴/год</div>` : ''}
-                ${accountActions}
-                ${canManage ? `<button type="button" class="hr-team-edit" onclick="openStaffEdit(${s.id})">Редагувати</button>` : ''}
             </div>
-        </div>`;
+            <div class="hr-team-profession-area">
+                ${secondaryChips || '<span class="hr-team-no-secondary">Додаткові професії не додані</span>'}
+            </div>
+            <div class="hr-team-status-row">
+                ${renderStaffReadinessBadges(s)}
+                ${poolBadge}
+            </div>
+            ${renderStaffTrainingReadiness(s)}
+            ${contactRows ? `<div class="hr-team-contact-grid">${contactRows}</div>` : '<div class="hr-team-contact-grid is-empty">Контакти не заповнені</div>'}
+            ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-warning-note">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
+            <div class="hr-team-actions">
+                ${accountActions}
+                ${canManage ? `<button type="button" class="hr-team-edit" onclick="openStaffEdit(${Number(s.id)})">Профіль</button>
+                    <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>` : ''}
+            </div>
+        </article>`;
     }).join('');
 }
+
+function buildStaffMovePayload(staff = {}, targetBucket = 'workers', targetRole = '', reason = '') {
+    const currentPrimary = normalizeProfessionKey(staff.role_type);
+    const currentSecondary = staffSecondaryProfessions(staff);
+    const body = {};
+    if (targetBucket === 'reserve') {
+        body.hr_pool_status = 'reserve';
+        body.blacklist_reason = null;
+        return body;
+    }
+    if (targetBucket === 'blacklist') {
+        body.hr_pool_status = 'blacklisted';
+        body.blacklist_reason = String(reason || staff.blacklist_reason || '').trim();
+        return body;
+    }
+    if (targetBucket === 'interns') {
+        body.hr_pool_status = 'core';
+        body.blacklist_reason = null;
+        body.role_type = 'intern';
+        body.secondary_professions = normalizeProfessionList([
+            currentPrimary && currentPrimary !== 'intern' ? currentPrimary : '',
+            ...currentSecondary
+        ], ['intern']);
+        return body;
+    }
+    const nextPrimary = normalizeProfessionKey(targetRole) || preferredWorkerRoleForStaff(staff);
+    body.hr_pool_status = 'core';
+    body.blacklist_reason = null;
+    if (currentPrimary === 'intern' || currentSecondary.includes('intern')) {
+        body.role_type = nextPrimary;
+        body.secondary_professions = normalizeProfessionList(
+            currentSecondary.filter(key => key !== 'intern'),
+            [nextPrimary]
+        );
+    }
+    return body;
+}
+
+async function openStaffMoveMenu(staffId, button) {
+    if (!canManage) {
+        showNotification('Переміщення доступне тільки HR/керівникам', 'error');
+        return;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) return;
+    await ensureProfessionsLoaded({ silent: true });
+    const currentBucket = bucketForStaff(staff);
+    const preferredRole = preferredWorkerRoleForStaff(staff);
+    const targetOptions = staffMoveTargetOptions(currentBucket);
+    if (!targetOptions.length) {
+        showNotification('Для вашої ролі немає доступних HR-розділів для переміщення', 'error');
+        return;
+    }
+    const result = await formModal(`Перемістити: ${staff.name}`, [
+        {
+            key: 'targetBucket',
+            label: 'Куди перемістити',
+            type: 'select',
+            defaultValue: targetOptions[0]?.value || '',
+            options: targetOptions
+        },
+        {
+            key: 'targetRole',
+            label: 'Основна професія після повернення зі стажерів',
+            type: 'select',
+            defaultValue: preferredRole,
+            options: professionSelectOptionsForStaffMove(staff),
+            hint: 'Використовується тільки для переходу зі “Стажери” в “Робітники”.'
+        },
+        {
+            key: 'reason',
+            label: 'Причина для чорного списку',
+            type: 'textarea',
+            defaultValue: staff.blacklist_reason || '',
+            placeholder: 'Обовʼязково тільки для чорного списку'
+        }
+    ], {
+        icon: '↔',
+        type: 'info',
+        okText: 'Перемістити',
+        className: 'hr-staff-move-modal'
+    });
+    if (!result) return;
+    const targetBucket = String(result.targetBucket || currentBucket);
+    if (targetBucket === currentBucket) {
+        showNotification('Співробітник уже в цьому розділі', 'info');
+        return;
+    }
+    if (targetBucket === 'blacklist' && !String(result.reason || staff.blacklist_reason || '').trim()) {
+        showNotification('Для чорного списку потрібно вказати причину', 'error');
+        return;
+    }
+    const body = buildStaffMovePayload(staff, targetBucket, result.targetRole, result.reason);
+    if (button) button.disabled = true;
+    let data;
+    try {
+        data = await hrFetch(`/staff/${staff.id}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        });
+    } finally {
+        if (button) button.disabled = false;
+    }
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
+        return;
+    }
+    activePeopleBucket = normalizeVisiblePeopleBucket(targetBucket);
+    showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === targetBucket)?.label || targetBucket}"`, 'success');
+    await loadTeam();
+}
+
+window.openStaffMoveMenu = openStaffMoveMenu;
+
+async function moveStaffToBucket(staffId, targetBucket, options = {}) {
+    if (!canManage) {
+        showNotification('Переміщення доступне тільки HR/керівникам', 'error');
+        return false;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) return false;
+    const normalizedTarget = normalizeVisiblePeopleBucket(targetBucket);
+    const currentBucket = bucketForStaff(staff);
+    if (normalizedTarget === currentBucket) return false;
+    let reason = options.reason || '';
+    if (normalizedTarget === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
+        const result = await formModal('Причина чорного списку', [
+            { key: 'reason', label: 'Причина', type: 'textarea', required: true }
+        ], { icon: '!', type: 'warning', okText: 'Перемістити' });
+        if (!result?.reason?.trim()) return false;
+        reason = result.reason.trim();
+    }
+    const body = buildStaffMovePayload(staff, normalizedTarget, options.targetRole || preferredWorkerRoleForStaff(staff), reason);
+    const data = await hrFetch(`/staff/${staff.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body)
+    });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
+        return false;
+    }
+    activePeopleBucket = normalizedTarget;
+    showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === normalizedTarget)?.label || normalizedTarget}"`, 'success');
+    await loadTeam();
+    return true;
+}
+
+function initTeamDragAndDrop() {
+    const grid = document.getElementById('teamGrid');
+    if (!grid || !canManage) return;
+    grid.querySelectorAll('.hr-team-card[draggable="true"]').forEach(card => {
+        card.addEventListener('dragstart', event => {
+            draggedTeamStaffId = card.dataset.staffId || null;
+            card.classList.add('is-dragging');
+            event.dataTransfer?.setData('text/plain', draggedTeamStaffId || '');
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        });
+        card.addEventListener('dragend', () => {
+            draggedTeamStaffId = null;
+            card.classList.remove('is-dragging');
+            grid.querySelectorAll('.hr-people-bucket').forEach(bucket => bucket.classList.remove('is-drop-target'));
+        });
+    });
+    grid.querySelectorAll('.hr-people-bucket').forEach(bucket => {
+        bucket.addEventListener('dragover', event => {
+            if (!draggedTeamStaffId) return;
+            event.preventDefault();
+            bucket.classList.add('is-drop-target');
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        });
+        bucket.addEventListener('dragleave', event => {
+            if (bucket.contains(event.relatedTarget)) return;
+            bucket.classList.remove('is-drop-target');
+        });
+        bucket.addEventListener('drop', async event => {
+            event.preventDefault();
+            bucket.classList.remove('is-drop-target');
+            const staffId = draggedTeamStaffId || event.dataTransfer?.getData('text/plain');
+            draggedTeamStaffId = null;
+            if (!staffId) return;
+            await moveStaffToBucket(staffId, bucket.dataset.peopleBucket);
+        });
+    });
+}
+
+function closeStaffTrainingReadinessModal() {
+    document.getElementById('staffTrainingReadinessOverlay')?.remove();
+}
+
+function renderStaffTrainingProfessionDetails(staffId, entry = {}) {
+    const checklist = Array.isArray(entry.checklist) ? entry.checklist : [];
+    const courses = Array.isArray(entry.courses) ? entry.courses : [];
+    const checklistHtml = checklist.length
+        ? checklist.map(item => {
+            const done = !!item.completed_at;
+            return `<button type="button" class="hr-training-check-item ${done ? 'is-done' : ''}"
+                    onclick="toggleStaffProfessionChecklist(${Number(staffId)}, '${escapeJsString(entry.key)}', '${escapeJsString(item.key)}', '${escapeJsString(item.title)}', ${done ? 'false' : 'true'}, this)">
+                <span class="hr-training-check-box">${done ? '✓' : ''}</span>
+                <span>${escapeHtml(item.title)}</span>
+            </button>`;
+        }).join('')
+        : '<div class="hr-training-empty">Для цієї професії ще немає чек-пунктів.</div>';
+    const courseHtml = courses.length
+        ? courses.map(course => {
+            const total = Number(course.total_lectures || 0);
+            const completed = Number(course.completed_lectures || 0);
+            const percent = total ? Math.round((completed / total) * 100) : 0;
+            return `<div class="hr-training-course-row">
+                <div>
+                    <b>${escapeHtml(course.title || 'Курс')}</b>
+                    <span>${completed}/${total} лекцій</span>
+                </div>
+                <div class="hr-team-training-meter"><i style="width:${percent}%"></i></div>
+            </div>`;
+        }).join('')
+        : '<div class="hr-training-empty">Для цієї професії ще немає курсу.</div>';
+    return `<section class="hr-training-profession-card">
+        <div class="hr-training-profession-head">
+            <div>
+                <h4>${escapeHtml(entry.title || professionTitle(entry.key) || entry.key)}</h4>
+                <span>${Number(entry.completed || 0)}/${Number(entry.total || 0)} · ${Number(entry.percent || 0)}%</span>
+            </div>
+            <div class="hr-team-training-meter"><i style="width:${Number(entry.percent || 0)}%"></i></div>
+        </div>
+        <div class="hr-training-subtitle">Чек-лист HR</div>
+        <div class="hr-training-check-list">${checklistHtml}</div>
+        <div class="hr-training-subtitle">Навчальні курси</div>
+        <div class="hr-training-course-list">${courseHtml}</div>
+    </section>`;
+}
+
+function openStaffTrainingReadiness(staffId) {
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) return;
+    const readiness = staffTrainingReadiness(staff);
+    closeStaffTrainingReadinessModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'staffTrainingReadinessOverlay';
+    overlay.className = 'candidate-detail-overlay';
+    overlay.innerHTML = `
+        <div class="candidate-detail-modal hr-training-readiness-modal" role="dialog" aria-modal="true" aria-labelledby="staffTrainingReadinessTitle">
+            <div class="candidate-detail-head">
+                <div>
+                    <div class="candidate-detail-kicker">Навчання і чек-листи</div>
+                    <h3 id="staffTrainingReadinessTitle">${escapeHtml(staff.name || 'Співробітник')}</h3>
+                    <p>${readiness.total ? `${readiness.completed}/${readiness.total} пунктів · ${readiness.percent}% готовності` : 'Для професій ще немає чек-листів'}</p>
+                </div>
+                <button type="button" class="candidate-detail-close" onclick="closeStaffTrainingReadinessModal()" aria-label="Закрити">×</button>
+            </div>
+            <div class="hr-training-readiness-summary">
+                <div class="hr-team-training-meter"><i style="width:${readiness.total ? readiness.percent : 0}%"></i></div>
+            </div>
+            <div class="hr-training-profession-list">
+                ${readiness.professions.length
+                    ? readiness.professions.map(entry => renderStaffTrainingProfessionDetails(staff.id, entry)).join('')
+                    : '<div class="hr-training-empty">У співробітника немає активних професій для навчання.</div>'}
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeStaffTrainingReadinessModal();
+    });
+}
+
+async function toggleStaffProfessionChecklist(staffId, professionKey, checklistKey, title, completed, button) {
+    if (button) button.disabled = true;
+    const data = await hrFetch(`/staff/${staffId}/profession-checklist`, {
+        method: 'PUT',
+        body: JSON.stringify({
+            profession_key: professionKey,
+            checklist_key: checklistKey,
+            title,
+            completed
+        })
+    });
+    if (!data?.success) {
+        if (button) button.disabled = false;
+        showNotification(data?.error || 'Не вдалося оновити чек-лист', 'error');
+        return;
+    }
+    showNotification(completed ? 'Чек-пункт закрито' : 'Чек-пункт відкрито', 'success');
+    await loadTeam();
+    openStaffTrainingReadiness(staffId);
+}
+
+window.openStaffTrainingReadiness = openStaffTrainingReadiness;
+window.closeStaffTrainingReadinessModal = closeStaffTrainingReadinessModal;
+window.toggleStaffProfessionChecklist = toggleStaffProfessionChecklist;
 
 // ==========================================
 // TAB 3B: ACCOUNT CENTER
@@ -2368,16 +2962,147 @@ function renderProfessionOptions(options, selectedValues = []) {
 }
 
 function readStaffSecondaryProfessionSelection() {
+    const pickerSelection = selectedSecondaryProfessionKeys();
+    if (pickerSelection.length || document.getElementById('editSecondaryProfessionPicker')) return pickerSelection;
     return Array.from(document.getElementById('editSecondaryProfessions')?.selectedOptions || [])
         .map(option => option.value);
 }
 
-function populateSecondaryProfessionSelect(selected = [], primaryRole = '') {
+function syncHiddenSecondaryProfessionSelect(options = [], selected = []) {
     const select = document.getElementById('editSecondaryProfessions');
     if (!select) return;
+    select.innerHTML = renderProfessionOptions(options, selected);
+}
+
+function renderSecondaryProfessionPicker(options = [], selected = [], query = '') {
+    const chipsRoot = document.getElementById('editSecondaryProfessionChips');
+    const optionsRoot = document.getElementById('editSecondaryProfessionOptions');
+    const countRoot = document.getElementById('editSecondaryProfessionCount');
+    const selectedSet = new Set(normalizeProfessionList(selected));
+    if (countRoot) {
+        countRoot.textContent = selectedSet.size
+            ? `${selectedSet.size} додатково`
+            : 'Додаткові професії не вибрані';
+    }
+    if (chipsRoot) {
+        chipsRoot.innerHTML = selectedSet.size
+            ? Array.from(selectedSet).map(key => `
+                <button type="button" class="hr-profession-selected-chip" data-secondary-remove="${escapeHtml(key)}">
+                    <span>${escapeHtml(professionTitle(key))}</span>
+                    <b aria-hidden="true">×</b>
+                </button>
+            `).join('')
+            : '<span class="hr-profession-picker-empty">Додайте професії нижче, якщо співробітник може працювати у кількох ролях.</span>';
+    }
+    if (optionsRoot) {
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        const filtered = options
+            .filter(option => !selectedSet.has(normalizeProfessionKey(option.value)))
+            .filter(option => {
+                if (!normalizedQuery) return true;
+                return `${option.label} ${option.value}`.toLowerCase().includes(normalizedQuery);
+            })
+            .slice(0, 18);
+        optionsRoot.innerHTML = filtered.length
+            ? filtered.map(option => `
+                <button type="button" class="hr-profession-option" data-secondary-add="${escapeHtml(option.value)}">
+                    <span>${escapeHtml(option.label)}</span>
+                </button>
+            `).join('')
+            : '<div class="hr-profession-picker-empty">Нічого не знайдено або всі професії вже додані.</div>';
+    }
+}
+
+function populateSecondaryProfessionSelect(selected = [], primaryRole = '') {
     const primary = normalizeProfessionKey(primaryRole);
     const options = professionOptionsFromCatalog(primary).filter(option => normalizeProfessionKey(option.value) !== primary);
-    select.innerHTML = renderProfessionOptions(options, selected);
+    const normalized = normalizeProfessionList(selected, [primary])
+        .filter(key => options.some(option => normalizeProfessionKey(option.value) === key));
+    setSelectedSecondaryProfessionKeys(normalized, primary);
+    syncHiddenSecondaryProfessionSelect(options, normalized);
+    renderSecondaryProfessionPicker(options, normalized, document.getElementById('editSecondaryProfessionSearch')?.value || '');
+}
+
+function currentStaffProfessionKeysForEdit(staff = {}) {
+    return normalizeProfessionList([
+        document.getElementById('editRoleType')?.value || staff.role_type,
+        ...readStaffSecondaryProfessionSelection()
+    ]);
+}
+
+function renderStaffProfessionRatesEditor(staff = {}) {
+    const root = document.getElementById('editProfessionRates');
+    if (!root) return;
+    const keys = currentStaffProfessionKeysForEdit(staff);
+    if (!keys.length) {
+        root.innerHTML = '<div class="hr-profession-picker-empty">Спочатку виберіть основну професію.</div>';
+        return;
+    }
+    const rateMap = staffProfessionRateMap(staff);
+    const currentInputValues = new Map();
+    root.querySelectorAll('[data-profession-rate]').forEach(input => {
+        const key = normalizeProfessionKey(input.dataset.professionRate);
+        if (key) currentInputValues.set(key, input.value);
+    });
+    const baseRate = Number(document.getElementById('editHourlyRate')?.value || staff.hourly_rate || 0);
+    root.innerHTML = keys.map(key => {
+        const customRate = rateMap.get(key);
+        const displayRate = currentInputValues.has(key)
+            ? currentInputValues.get(key)
+            : (Number.isFinite(customRate) && customRate > 0 ? customRate : '');
+        return `<label class="hr-profession-rate-row" data-rate-profession="${escapeHtml(key)}">
+            <span>${escapeHtml(professionTitle(key))}</span>
+            <input type="number" min="0" step="10" inputmode="decimal" data-profession-rate="${escapeHtml(key)}" value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="${baseRate > 0 ? escapeHtml(baseRate) : '0'}">
+        </label>`;
+    }).join('');
+}
+
+function readStaffProfessionRates() {
+    return Array.from(document.querySelectorAll('[data-profession-rate]'))
+        .map(input => ({
+            profession_key: normalizeProfessionKey(input.dataset.professionRate),
+            hourly_rate: Number(input.value || 0)
+        }))
+        .filter(row => row.profession_key && Number.isFinite(row.hourly_rate) && row.hourly_rate > 0);
+}
+
+function populateStaffStructureSelect(staff = {}) {
+    const select = document.getElementById('editCompanyStructureNode');
+    if (!select) return;
+    const current = staff.company_structure_node_id || staff.companyStructureNodeId || '';
+    select.innerHTML = renderSelectOptions(companyStructureSelectOptions(current), current);
+}
+
+function refreshStaffRateEditorFromCurrentForm() {
+    const staffId = Number(document.getElementById('editStaffId')?.value);
+    const staff = teamStaff.find(item => Number(item.id) === staffId) || {};
+    renderStaffProfessionRatesEditor(staff);
+}
+
+function bindSecondaryProfessionPicker() {
+    const search = document.getElementById('editSecondaryProfessionSearch');
+    const picker = document.getElementById('editSecondaryProfessionPicker');
+    if (search) {
+        search.oninput = () => {
+            populateSecondaryProfessionSelect(readStaffSecondaryProfessionSelection(), document.getElementById('editRoleType')?.value);
+            refreshStaffRateEditorFromCurrentForm();
+        };
+    }
+    if (picker) {
+        picker.onclick = event => {
+            const add = event.target.closest('[data-secondary-add]');
+            const remove = event.target.closest('[data-secondary-remove]');
+            if (!add && !remove) return;
+            const current = readStaffSecondaryProfessionSelection();
+            const primary = document.getElementById('editRoleType')?.value;
+            const next = add
+                ? normalizeProfessionList([...current, add.dataset.secondaryAdd], [primary])
+                : normalizeProfessionList(current.filter(key => key !== remove.dataset.secondaryRemove), [primary]);
+            if (search && add) search.value = '';
+            populateSecondaryProfessionSelect(next, primary);
+            refreshStaffRateEditorFromCurrentForm();
+        };
+    }
 }
 
 function populateStaffProfessionControls(staff = {}) {
@@ -2387,13 +3112,91 @@ function populateStaffProfessionControls(staff = {}) {
         primarySelect.innerHTML = renderProfessionOptions(professionOptionsFromCatalog(primary), [primary]);
         primarySelect.value = primary;
     }
+    const search = document.getElementById('editSecondaryProfessionSearch');
+    if (search) search.value = '';
     populateSecondaryProfessionSelect(staffSecondaryProfessions(staff), primary);
+    populateStaffStructureSelect(staff);
+    renderStaffProfessionRatesEditor(staff);
+}
+
+const STAFF_HISTORY_ACTION_LABELS = {
+    staff_update: 'Оновлення профілю',
+    pool_status_update: 'Переміщення між списками',
+    status_change: 'Зміна активності',
+    staff_profession_checklist_update: 'Чек-лист професії',
+    shift_create: 'Додано зміну',
+    shift_update: 'Оновлено зміну',
+    shift_replace: 'Підміна зміни',
+    shift_delete: 'Видалено зміну',
+    correction: 'Корекція часу'
+};
+
+const STAFF_HISTORY_FIELD_LABELS = {
+    role_type: 'основна професія',
+    secondary_professions: 'додаткові професії',
+    profession_rates: 'ставки по професіях',
+    company_structure_node_id: 'вузол структури',
+    hr_pool_status: 'HR-статус',
+    blacklist_reason: 'чорний список',
+    hourly_rate: 'ставка',
+    phone: 'телефон',
+    emergency_contact: 'екстрений контакт',
+    emergency_phone: 'телефон екстр. контакту',
+    telegram_id: 'Telegram ID',
+    telegram_username: 'Telegram нік',
+    contract_type: 'тип контракту',
+    skills: 'навички',
+    address: 'адреса',
+    notes: 'нотатки',
+    birth_date: 'дата народження'
+};
+
+function formatStaffHistoryTime(value) {
+    if (!value) return 'без дати';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function staffHistoryChangedFields(details = {}) {
+    const changes = details?.changes && typeof details.changes === 'object' ? details.changes : null;
+    const fields = changes ? Object.keys(changes) : (Array.isArray(details?.changed_fields) ? details.changed_fields : []);
+    return fields.map(field => STAFF_HISTORY_FIELD_LABELS[field] || field).slice(0, 8);
+}
+
+function renderStaffHistoryRows(rows = []) {
+    if (!rows.length) return '<div class="hr-staff-history-empty">Змін профілю ще немає.</div>';
+    return rows.map(row => {
+        const details = row.details || {};
+        const fields = staffHistoryChangedFields(details);
+        const fieldHtml = fields.length
+            ? `<div class="hr-staff-history-fields">${fields.map(field => `<i>${escapeHtml(field)}</i>`).join('')}</div>`
+            : '';
+        return `<article class="hr-staff-history-item">
+            <b>${escapeHtml(STAFF_HISTORY_ACTION_LABELS[row.action] || row.action || 'Подія')}</b>
+            <span>${escapeHtml(formatStaffHistoryTime(row.created_at))} · ${escapeHtml(row.performed_by || 'система')}</span>
+            ${fieldHtml}
+        </article>`;
+    }).join('');
+}
+
+async function loadStaffProfileHistory(staffId) {
+    const root = document.getElementById('editStaffHistory');
+    if (!root || !staffId) return;
+    root.innerHTML = 'Історія завантажується...';
+    const data = await hrFetch(`/staff/${staffId}/history?limit=30`);
+    if (!data?.success) {
+        root.innerHTML = '<div class="hr-staff-history-empty">Не вдалося завантажити історію.</div>';
+        return;
+    }
+    root.innerHTML = renderStaffHistoryRows(data.data || []);
 }
 
 async function openStaffEdit(staffId) {
     const s = teamStaff.find(st => st.id === staffId);
     if (!s) return;
     await ensureProfessionsLoaded({ silent: true });
+    await ensureCompanyStructureNodesLoaded({ silent: true });
 
     document.getElementById('editStaffId').value = staffId;
     populateStaffProfessionControls(s);
@@ -2412,6 +3215,7 @@ async function openStaffEdit(staffId) {
     document.getElementById('editNotes').value = s.notes || '';
 
     showHrEditableModal('staffEditModal');
+    loadStaffProfileHistory(staffId);
 }
 
 async function saveStaffEdit() {
@@ -2430,6 +3234,8 @@ async function saveStaffEdit() {
         contract_type: document.getElementById('editContractType')?.value || 'parttime',
         hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core',
         blacklist_reason: document.getElementById('editBlacklistReason')?.value || null,
+        company_structure_node_id: document.getElementById('editCompanyStructureNode')?.value || null,
+        profession_rates: readStaffProfessionRates(),
         skills: document.getElementById('editSkills')?.value ? document.getElementById('editSkills')?.value.split(',').map(s => s.trim()).filter(Boolean) : null,
         notes: document.getElementById('editNotes')?.value || null
     };
@@ -2561,6 +3367,7 @@ const DEFAULT_COMPANY_STRUCTURE_NODES = [
 ];
 
 let companyStructureNodes = [];
+let companyStructureLoaded = false;
 let selectedCompanyStructureNodeId = 'director';
 let companyOrgLinkingNodeId = null;
 let companyOrgLinkingEndpoint = null;
@@ -3497,6 +4304,20 @@ function initCompanyOrgChart() {
     selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
 }
 
+async function ensureCompanyStructureNodesLoaded(options = {}) {
+    if (companyStructureLoaded && !options.force) return companyStructureNodes;
+    const data = await hrFetch('/company-structure');
+    if (!data?.success) {
+        if (!options.silent) showNotification(data?.error || 'Не вдалося завантажити структуру', 'error');
+        if (!companyStructureNodes.length) companyStructureNodes = normalizeCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
+        return companyStructureNodes;
+    }
+    const structure = data.data || data.structure || {};
+    companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureLoaded = true;
+    return companyStructureNodes;
+}
+
 async function loadCompanyStructure() {
     const statusEl = document.getElementById('companyStructureStatus');
     if (statusEl) statusEl.textContent = 'Завантаження...';
@@ -3510,6 +4331,7 @@ async function loadCompanyStructure() {
     const instructionsText = document.getElementById('companyInstructionsText');
     const savedStructure = structure.structure || structure.structure_text || '';
     companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureLoaded = true;
     const generatedStructure = companyStructureTextFromNodes(companyStructureNodes);
     if (notesText) notesText.value = savedStructure && savedStructure !== DEFAULT_COMPANY_STRUCTURE_TEXT && savedStructure !== generatedStructure ? savedStructure : '';
     if (instructionsText) instructionsText.value = structure.instructions || structure.instructions_text || '';
@@ -3536,6 +4358,7 @@ async function saveCompanyStructure(options = {}) {
     if (data?.success) {
         const saved = data.data || payload;
         companyStructureNodes = normalizeCompanyStructureNodes(saved.nodes);
+        companyStructureLoaded = true;
         syncCompanyStructureText();
         if (!options.preserveRender) {
             renderCompanyOrgChart();
@@ -3722,6 +4545,9 @@ function initModals() {
     // Staff edit modal
     document.getElementById('editSave')?.addEventListener('click', saveStaffEdit);
     document.getElementById('editCancel')?.addEventListener('click', () => closeHrEditableModal('staffEditModal', false, 'Є незбережені зміни співробітника. Закрити без збереження?'));
+    document.getElementById('editHistoryRefresh')?.addEventListener('click', () => {
+        loadStaffProfileHistory(document.getElementById('editStaffId')?.value);
+    });
 
     // Correction modal
     document.getElementById('corrSave')?.addEventListener('click', saveCorrection);
@@ -3861,6 +4687,21 @@ async function loadSalary() {
     renderSalary(data);
 }
 
+function renderSalaryRateSummary(row = {}) {
+    const segments = Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [];
+    const normalized = segments
+        .map(segment => ({
+            key: normalizeProfessionKey(segment.profession_key || segment.professionKey || segment.key),
+            rate: Number(segment.rate || segment.hourly_rate || segment.hourlyRate || 0),
+            hours: Number(segment.hours || 0)
+        }))
+        .filter(segment => segment.key && segment.rate > 0);
+    if (!normalized.length) return `${Number(row.hourly_rate || 0)} ₴/год`;
+    return normalized
+        .map(segment => `${escapeHtml(professionTitle(segment.key))}: ${segment.rate} ₴/год${segment.hours ? ` · ${segment.hours} год` : ''}`)
+        .join('<br>');
+}
+
 function renderSalary(data) {
     const totals = data.totals;
     document.getElementById('salaryTotals').innerHTML = `
@@ -3881,7 +4722,7 @@ function renderSalary(data) {
     document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
         <td><strong>${escapeHtml(s.staff_name)}</strong></td>
         <td>${ROLE_LABELS[s.role_type] || s.role_type || ''}</td>
-        <td>${s.hourly_rate} ₴/год</td>
+        <td>${renderSalaryRateSummary(s)}</td>
         <td>${s.days_worked}</td>
         <td>${s.hours_worked}</td>
         <td>${s.base_salary.toLocaleString('uk-UA')} ₴</td>

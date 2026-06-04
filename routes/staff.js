@@ -38,7 +38,11 @@ const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegr
 const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
-const { normalizeSecondaryProfessions } = require('../services/professions');
+const {
+    normalizeProfessionKey,
+    normalizeSecondaryProfessions,
+    resolveStaffProfessionAssignment
+} = require('../services/professions');
 const {
     linkUserToStaffProfile,
     unlinkStaffAccount,
@@ -56,6 +60,19 @@ const log = createLogger('Staff');
 router.use(authenticateToken);
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
+
+function scheduleStatusNeedsProfession(status) {
+    return ['working', 'remote'].includes(String(status || 'working'));
+}
+
+function scheduleProfessionFromPayload(payload = {}) {
+    return normalizeProfessionKey(payload.profession_key ?? payload.professionKey ?? payload.role_type ?? payload.roleType);
+}
+
+async function resolveScheduleProfession(staffId, status, payload = {}, db = pool) {
+    if (!scheduleStatusNeedsProfession(status)) return { ok: true, professionKey: null };
+    return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
+}
 
 /**
  * Send Telegram notification when schedule changes.
@@ -137,7 +154,8 @@ router.get('/schedule', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
         const result = await pool.query(
-            `SELECT ss.*, s.name, s.department, s.position, s.color, s.is_active
+            `SELECT ss.*, s.name, s.department, s.position, s.color, s.is_active,
+                    s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
              WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
@@ -158,16 +176,21 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
         if (!staffId || !date) {
             return res.status(400).json({ success: false, error: 'Потрібні staffId та date' });
         }
+        const scheduleStatus = status || 'working';
+        const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body);
+        if (!profession.ok) {
+            return res.status(profession.status || 400).json({ success: false, error: profession.error });
+        }
         const result = await pool.query(
-            `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (staff_id, date)
-             DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6
+             DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7
              RETURNING *`,
-            [staffId, date, shiftStart || null, shiftEnd || null, status || 'working', note || null]
+            [staffId, date, shiftStart || null, shiftEnd || null, scheduleStatus, note || null, profession.professionKey]
         );
         // Fire-and-forget Telegram notification
-        notifyScheduleChange(staffId, date, status || 'working', shiftStart, shiftEnd);
+        notifyScheduleChange(staffId, date, scheduleStatus, shiftStart, shiftEnd);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /staff/schedule error', err);
@@ -192,17 +215,37 @@ router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director'
         }
         let count = 0;
         const affectedStaff = new Set();
-        for (const e of entries) {
-            if (!e.staffId || !e.date) continue;
-            await pool.query(
-                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (staff_id, date)
-                 DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
-                [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, e.status || 'working', e.note || null]
-            );
-            affectedStaff.add(e.staffId);
-            count++;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const e of entries) {
+                if (!e.staffId || !e.date) continue;
+                const entryStatus = e.status || 'working';
+                const profession = await resolveScheduleProfession(e.staffId, entryStatus, e, client);
+                if (!profession.ok) {
+                    await client.query('ROLLBACK');
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
+                        entry: { staffId: e.staffId, date: e.date }
+                    });
+                }
+                await client.query(
+                    `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     ON CONFLICT (staff_id, date)
+                     DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7`,
+                    [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, entryStatus, e.note || null, profession.professionKey]
+                );
+                affectedStaff.add(e.staffId);
+                count++;
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
         }
         // Fire-and-forget: bulk notification summary
         notifyBulkScheduleChange(affectedStaff, count);
@@ -250,19 +293,39 @@ router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_dire
 
         let count = 0;
         const affectedStaff = new Set();
-        for (const row of source.rows) {
-            const dayIndex = fromDates.indexOf(row.date);
-            if (dayIndex === -1) continue;
-            const targetDate = toDates[dayIndex];
-            await pool.query(
-                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (staff_id, date)
-                 DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
-                [row.staff_id, targetDate, row.shift_start, row.shift_end, row.status, row.note]
-            );
-            affectedStaff.add(row.staff_id);
-            count++;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const row of source.rows) {
+                const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
+                const dayIndex = fromDates.indexOf(sourceDate);
+                if (dayIndex === -1) continue;
+                const targetDate = toDates[dayIndex];
+                const profession = await resolveScheduleProfession(row.staff_id, row.status, { profession_key: row.profession_key }, client);
+                if (!profession.ok) {
+                    await client.query('ROLLBACK');
+                    return res.status(profession.status || 400).json({
+                        success: false,
+                        error: profession.error,
+                        entry: { staffId: row.staff_id, date: targetDate }
+                    });
+                }
+                await client.query(
+                    `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     ON CONFLICT (staff_id, date)
+                     DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7`,
+                    [row.staff_id, targetDate, row.shift_start, row.shift_end, row.status, row.note, profession.professionKey]
+                );
+                affectedStaff.add(row.staff_id);
+                count++;
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
         }
         // Fire-and-forget notification
         if (count > 0) notifyBulkScheduleChange(affectedStaff, count);

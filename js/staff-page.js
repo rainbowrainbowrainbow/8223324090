@@ -121,6 +121,58 @@ const STAFF_ROLE_OPTIONS_BY_DEPT = {
     __default: STAFF_ROLE_OPTIONS
 };
 
+function normalizeProfessionKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .slice(0, 64);
+}
+
+function parseProfessionArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+    return trimmed.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean);
+}
+
+function staffSecondaryProfessions(staff = {}) {
+    const primary = normalizeProfessionKey(staff.role_type);
+    const seen = new Set([primary].filter(Boolean));
+    return parseProfessionArray(staff.secondary_professions || staff.secondaryProfessions)
+        .map(normalizeProfessionKey)
+        .filter(key => key && !seen.has(key) && seen.add(key));
+}
+
+function professionLabel(key) {
+    const normalized = normalizeProfessionKey(key);
+    const option = STAFF_ROLE_OPTIONS.find(item => item.value === normalized);
+    return option?.label || normalized;
+}
+
+function staffProfessionOptions(staff = {}, current = '') {
+    const selected = normalizeProfessionKey(current);
+    const seen = new Set();
+    const keys = [staff.role_type, ...staffSecondaryProfessions(staff), selected]
+        .map(normalizeProfessionKey)
+        .filter(key => key && !seen.has(key) && seen.add(key));
+    return keys.map(key => ({
+        value: key,
+        label: professionLabel(key),
+        selected: selected ? key === selected : key === normalizeProfessionKey(staff.role_type)
+    }));
+}
+
 const LEGACY_DEPARTMENT_FALLBACK = {
     animators: 'Аніматори',
     trampoline: 'Батутисти',
@@ -242,12 +294,12 @@ async function fetchSchedule(from, to) {
     }
 }
 
-async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note) {
+async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey = null) {
     const token = localStorage.getItem('pzp_token');
     const res = await fetch('/api/staff/schedule', {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId, date, shiftStart, shiftEnd, status, note })
+        body: JSON.stringify({ staffId, date, shiftStart, shiftEnd, status, note, professionKey })
     });
     return await res.json();
 }
@@ -379,6 +431,8 @@ function renderEmpRow(emp, dates, today) {
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+            const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
+            if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
             if (status === 'remote') cellContent += `<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`;
         } else if (status === 'working') {
             cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
@@ -530,7 +584,7 @@ let _staffScheduleInitialState = '';
 let _staffFillInitialState = '';
 
 function getStaffScheduleState() {
-    return ['schStatus', 'schStart', 'schEnd', 'schNote'].map(id => {
+    return ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
@@ -556,6 +610,14 @@ function openEditModal(staffId, date) {
     document.getElementById('schStart').value = entry?.shift_start || '10:00';
     document.getElementById('schEnd').value = entry?.shift_end || '20:00';
     document.getElementById('schNote').value = entry?.note || '';
+    const professionSelect = document.getElementById('schProfession');
+    if (professionSelect) {
+        const options = staffProfessionOptions(emp, entry?.profession_key || emp.role_type);
+        professionSelect.innerHTML = options.length
+            ? options.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
+            : '<option value="">Професія не задана</option>';
+        professionSelect.disabled = !options.length;
+    }
 
     toggleTimeFields();
     const overlay = document.getElementById('schModalOverlay');
@@ -587,7 +649,10 @@ async function closeEditModal(force = false) {
 
 function toggleTimeFields() {
     const status = document.getElementById('schStatus')?.value;
-    document.getElementById('schTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
+    const visible = status === 'working' || status === 'remote';
+    document.getElementById('schTimeFields').style.display = visible ? '' : 'none';
+    const professionGroup = document.getElementById('schProfessionGroup');
+    if (professionGroup) professionGroup.style.display = visible ? '' : 'none';
 }
 
 async function handleSave() {
@@ -596,9 +661,10 @@ async function handleSave() {
     const showTime = status === 'working' || status === 'remote';
     const shiftStart = showTime ? document.getElementById('schStart')?.value : null;
     const shiftEnd = showTime ? document.getElementById('schEnd')?.value : null;
+    const professionKey = showTime ? (document.getElementById('schProfession')?.value || null) : null;
     const note = document.getElementById('schNote')?.value.trim() || null;
 
-    const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note);
+    const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey);
     if (result.success) {
         StaffState.schedule[`${staffId}_${date}`] = result.data;
         renderSchedule();
@@ -726,7 +792,8 @@ async function handleFillWeekSave() {
                 entries.push({
                     staffId: emp.id,
                     date: formatDateStr(d),
-                    shiftStart, shiftEnd, status, note
+                    shiftStart, shiftEnd, status, note,
+                    professionKey: showTime ? normalizeProfessionKey(emp.role_type) : null
                 });
             }
         }

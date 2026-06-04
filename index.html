@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.14">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.14">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.14">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.14">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.14">
-    <link rel="stylesheet" href="css/features.css?v=0.73.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.14">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.14">
+    <link rel="stylesheet" href="css/base.css?v=0.73.19">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.19">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.19">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.19">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.19">
+    <link rel="stylesheet" href="css/features.css?v=0.73.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.19">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.14">✨ 0.73.14</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.19">✨ 0.73.19</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.14 — HR: структура без зайвих вкладок</p>
+                <p class="tagline">AI First CRM v0.73.19 — HR: команда без техборгу</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.14</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.19</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1657,6 +1657,56 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.19 — HR: команда без техборгу</h4>
+                    <ul>
+                        <li><b>Доведено HR-команду після великого редизайну</b> — додаткові професії редагуються через picker із чіпами, картки стали читабельнішими, а кнопки й професії більше не злипаються.</li>
+                        <li><b>Навчання і готовність видно прямо в картках</b> — професії отримали тестові чек-листи, а компактні значки показують фото, CRM-акаунт, заповнення профілю, навчання і структуру.</li>
+                        <li><b>Графік, професії і ставки зв'язано між собою</b> — зміну можна поставити тільки на професію співробітника, а зарплатні розрахунки беруть ставку саме професії зміни.</li>
+                        <li><b>Команду зв'язано зі структурою компанії</b> — професія може мати вузол структури, співробітник може його успадкувати або отримати ручну прив'язку, а пошук знаходить людей по ПІБ, телефону, професіях, статусах і структурі.</li>
+                        <li><b>Додано історію змін і переміщення людей</b> — у профілі видно, хто змінював HR-поля, ставки й статуси; співробітників можна переносити між робітниками, стажерами, резервом і чорним списком кнопкою або drag/drop.</li>
+                        <li><b>Прибрано технічний борг у збереженні</b> — профіль зі ставками, масові правки графіка, copy-week і HR-зміни тепер проходять транзакційно, без часткових записів після помилки.</li>
+                        <li><b>Версію піднято до <code>0.73.19</code></b> — guardrails і cache tags оновлені під великий HR-реліз.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.18 — HR: пошук, ставки і структура</h4>
+                    <ul>
+                        <li><b>Команда отримала один пошук</b> — рядок шукає по ПІБ, телефону, професіях, HR-статусах і вузлах структури без окремого селекта ролей.</li>
+                        <li><b>Додано ставки по професіях</b> — у профілі співробітника можна задати окрему погодинну ставку для кожної основної або додаткової професії.</li>
+                        <li><b>Зарплата враховує професію зміни</b> — години в графіку і зарплатних звітах рахуються за ставкою тієї професії, на яку співробітника поставили.</li>
+                        <li><b>Професії і картки зв'язано зі структурою</b> — професія може мати вузол структури, а співробітник може успадкувати його або отримати ручну прив'язку.</li>
+                        <li><b>Картки стали керованішими</b> — додано компактні значки готовності та drag/drop переміщення між робітниками, стажерами, резервом і чорним списком.</li>
+                        <li><b>Версію піднято до <code>0.73.18</code></b> — guardrails і cache tags оновлені під HR-пошук, ставки і структуру.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.17 — HR: навчання, графік і історія</h4>
+                    <ul>
+                        <li><b>Картки співробітників показують прогрес навчання</b> — у HR-команді видно готовність за професіями, чек-листами й курсами.</li>
+                        <li><b>Професії отримали тестові навчальні чек-листи</b> — базові курси створюються з чек-листів <code>hr_professions</code> і прив'язуються до конкретної професії.</li>
+                        <li><b>Графік прив'язано до професії</b> — зміну можна поставити тільки на основну або додаткову професію співробітника, включно з copy-week.</li>
+                        <li><b>Додано історію змін профілю</b> — у картці видно, хто і коли змінював поля, переміщував співробітника або оновлював HR-статус.</li>
+                        <li><b>Версію піднято до <code>0.73.17</code></b> — guardrails і cache tags оновлені під HR-навчання, графік і історію.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.16 — HR: професії і картки команди</h4>
+                    <ul>
+                        <li><b>Додаткові професії у профілі HR стали чіпами</b> — замість незручного списку тепер є пошук, додавання кліком і зняття через <code>×</code>.</li>
+                        <li><b>Картки співробітників стали читабельнішими</b> — основна професія, додаткові ролі, статуси, контакти й дії рознесені по окремих блоках.</li>
+                        <li><b>Додано кнопку <code>Перемістити</code></b> — співробітника можна перевести в <code>Робітники</code>, <code>Стажери</code>, <code>Резерв</code> або <code>Чорний список</code>.</li>
+                        <li><b>Версію піднято до <code>0.73.16</code></b> — guardrails і cache tags оновлені під HR-команду.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.15 — Sidebar: центроване Обране</h4>
+                    <ul>
+                        <li><b>Кнопку <code>Обране</code> в лівому меню вирівняно акуратніше</b> — назва тепер центрована між іконкою <code>+</code> та стрілкою згортання.</li>
+                        <li><b>Без зайвого декору</b> — збережено наявний стиль, змінено тільки симетрію колонок, висоту й центрування тексту.</li>
+                        <li><b>Версію піднято до <code>0.73.15</code></b> — guardrails і cache tags оновлені під цю sidebar-правку.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.14 — HR: структура без зайвих вкладок</h4>
                     <ul>
@@ -11063,29 +11113,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.14"></script>
-    <script src="js/timeline-visibility.js?v=0.73.14"></script>
-    <script src="js/config.js?v=0.73.14"></script>
-    <script src="js/api.js?v=0.73.14"></script>
-    <script src="js/ui.js?v=0.73.14"></script>
-    <script src="js/auth.js?v=0.73.14"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.14"></script>
-    <script src="js/timeline.js?v=0.73.14"></script>
-    <script src="js/booking.js?v=0.73.14"></script>
-    <script src="js/settings.js?v=0.73.14"></script>
-    <script src="js/booking-form.js?v=0.73.14"></script>
-    <script src="js/booking-linked.js?v=0.73.14"></script>
-    <script src="js/settings-dashboard.js?v=0.73.14"></script>
-    <script src="js/settings-history.js?v=0.73.14"></script>
-    <script src="js/settings-afisha.js?v=0.73.14"></script>
-    <script src="js/settings-certificates.js?v=0.73.14"></script>
-    <script src="js/offline.js?v=0.73.14"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.14"></script>
-    <script src="js/search.js?v=0.73.14"></script>
-    <script src="js/ws.js?v=0.73.14"></script>
-    <script src="js/app.js?v=0.73.14"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.14"></script>
-    <script src="js/components/sidebar.js?v=0.73.14"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.14"></script>
+    <script src="js/timeline-context.js?v=0.73.19"></script>
+    <script src="js/timeline-visibility.js?v=0.73.19"></script>
+    <script src="js/config.js?v=0.73.19"></script>
+    <script src="js/api.js?v=0.73.19"></script>
+    <script src="js/ui.js?v=0.73.19"></script>
+    <script src="js/auth.js?v=0.73.19"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.19"></script>
+    <script src="js/timeline.js?v=0.73.19"></script>
+    <script src="js/booking.js?v=0.73.19"></script>
+    <script src="js/settings.js?v=0.73.19"></script>
+    <script src="js/booking-form.js?v=0.73.19"></script>
+    <script src="js/booking-linked.js?v=0.73.19"></script>
+    <script src="js/settings-dashboard.js?v=0.73.19"></script>
+    <script src="js/settings-history.js?v=0.73.19"></script>
+    <script src="js/settings-afisha.js?v=0.73.19"></script>
+    <script src="js/settings-certificates.js?v=0.73.19"></script>
+    <script src="js/offline.js?v=0.73.19"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.19"></script>
+    <script src="js/search.js?v=0.73.19"></script>
+    <script src="js/ws.js?v=0.73.19"></script>
+    <script src="js/app.js?v=0.73.19"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.19"></script>
+    <script src="js/components/sidebar.js?v=0.73.19"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.19"></script>
 </body>
 </html>

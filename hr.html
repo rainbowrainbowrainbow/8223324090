@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.14">
+    <link rel="stylesheet" href="css/base.css?v=0.73.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1174,6 +1174,18 @@
         .hr-shift-cell.holiday { background: #EDE9FE; color: #5B21B6; }
         .hr-shift-cell.empty { color: var(--gray-300); font-weight: 400; }
         .hr-shift-cell.past { opacity: 0.5; }
+        .hr-shift-profession {
+            display: block;
+            margin-top: 4px;
+            color: var(--gray-400);
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1.2;
+            max-width: 96px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
         /* ==========================================
            TAB 3: TEAM
@@ -1213,14 +1225,77 @@
             background: var(--white);
             border: 1px solid var(--gray-100);
             border-radius: var(--radius-sm);
-            padding: 12px;
+            padding: 14px;
             box-shadow: var(--shadow-xs);
-            display: flex;
-            gap: 10px;
-            transition: box-shadow var(--speed-fast);
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+            transition: border-color var(--speed-fast), box-shadow var(--speed-fast), transform var(--speed-fast);
         }
-        .hr-team-card:hover { box-shadow: var(--shadow-sm); }
+        .hr-team-card:hover {
+            border-color: rgba(20, 184, 166, 0.26);
+            box-shadow: var(--shadow-sm);
+            transform: translateY(-1px);
+        }
         .hr-team-card.inactive { opacity: 0.5; }
+        .hr-team-card-head {
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr);
+            gap: 12px;
+            align-items: start;
+        }
+        .hr-team-training-readiness {
+            width: 100%;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--gray-50);
+            color: var(--gray-700);
+            padding: 8px 10px;
+            font: inherit;
+            cursor: pointer;
+            text-align: left;
+            display: grid;
+            gap: 6px;
+        }
+        .hr-team-training-readiness:hover {
+            border-color: rgba(20,184,166,0.36);
+            background: rgba(20,184,166,0.06);
+        }
+        .hr-team-training-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
+        }
+        .hr-team-training-head b {
+            font-size: 12px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .hr-team-training-head span {
+            font-size: 11px;
+            font-weight: 900;
+            color: var(--gray-500);
+            white-space: nowrap;
+        }
+        .hr-team-training-meter {
+            width: 100%;
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(148,163,184,0.20);
+            overflow: hidden;
+        }
+        .hr-team-training-meter i {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: #14B8A6;
+        }
+        .hr-team-training-readiness.is-ok .hr-team-training-meter i { background: #10B981; }
+        .hr-team-training-readiness.is-info .hr-team-training-meter i { background: #3B82F6; }
+        .hr-team-training-readiness.is-warn .hr-team-training-meter i { background: #F59E0B; }
+        .hr-team-training-readiness.is-muted .hr-team-training-meter i { background: var(--gray-300); }
 
         .hr-people-accordion {
             display: flex;
@@ -1332,17 +1407,39 @@
             object-fit: cover;
         }
 
-        .hr-team-details { flex: 1; min-width: 0; }
+        .hr-team-details { min-width: 0; }
+        .hr-team-name-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
+        }
         .hr-team-name {
             font-weight: 800;
-            font-size: var(--font-sm);
+            font-size: 15px;
+            line-height: 1.25;
             color: var(--gray-800);
-            margin-bottom: 2px;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
         .hr-team-role {
-            font-size: var(--font-xs);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            align-items: center;
+            font-size: 12px;
             color: var(--gray-500);
-            margin-bottom: 6px;
+            margin-top: 4px;
+            line-height: 1.3;
+        }
+        .hr-team-role strong {
+            color: var(--gray-700);
+            font-weight: 900;
+        }
+        .hr-team-profession-area {
+            display: block;
+            min-height: 26px;
         }
         .hr-team-badges {
             display: flex;
@@ -1366,6 +1463,131 @@
             background: rgba(245, 158, 11, 0.15);
             color: var(--warning, #f59e0b);
         }
+        .hr-team-status-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .hr-team-status-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 8px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            font-size: 11px;
+            line-height: 1;
+            font-weight: 850;
+            white-space: nowrap;
+        }
+        .hr-team-status-pill.is-ok {
+            background: rgba(34, 197, 94, 0.11);
+            border-color: rgba(34, 197, 94, 0.2);
+            color: #047857;
+        }
+        .hr-team-status-pill.is-warn {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.22);
+            color: #b45309;
+        }
+        .hr-team-status-pill.is-info {
+            background: rgba(14, 165, 233, 0.12);
+            border-color: rgba(14, 165, 233, 0.22);
+            color: #0369a1;
+        }
+        .hr-team-status-pill.is-muted {
+            background: var(--gray-100);
+            color: var(--gray-500);
+        }
+        .hr-ready-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-width: 0;
+        }
+        .hr-ready-badge {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+            min-height: 24px;
+            padding: 3px 7px;
+            border: 1px solid var(--gray-200);
+            border-radius: 999px;
+            background: var(--gray-50);
+            color: var(--gray-600);
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .hr-ready-badge b {
+            font-size: 10px;
+            font-weight: 900;
+        }
+        .hr-ready-badge small {
+            font-size: 10px;
+            font-weight: 850;
+        }
+        .hr-ready-badge.is-ok {
+            background: rgba(16,185,129,0.10);
+            border-color: rgba(16,185,129,0.22);
+            color: #047857;
+        }
+        .hr-ready-badge.is-info {
+            background: rgba(14,165,233,0.10);
+            border-color: rgba(14,165,233,0.22);
+            color: #0369A1;
+        }
+        .hr-ready-badge.is-warn {
+            background: rgba(245,158,11,0.12);
+            border-color: rgba(245,158,11,0.24);
+            color: #B45309;
+        }
+        .hr-ready-badge.is-muted {
+            color: var(--gray-400);
+        }
+        .hr-team-card.is-dragging {
+            opacity: 0.55;
+            transform: scale(0.99);
+        }
+        .hr-people-bucket.is-drop-target {
+            outline: 2px solid rgba(20,184,166,0.42);
+            outline-offset: 3px;
+            background: rgba(20,184,166,0.04);
+        }
+        .hr-profession-rate-editor {
+            display: grid;
+            gap: 8px;
+        }
+        .hr-profession-rate-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 120px;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 10px;
+            border: 1px solid var(--gray-100);
+            border-radius: 8px;
+            background: var(--gray-50);
+        }
+        .hr-profession-rate-row span {
+            min-width: 0;
+            font-size: 13px;
+            font-weight: 850;
+            color: var(--gray-700);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .hr-profession-rate-row input {
+            width: 100%;
+            min-height: 34px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 6px 8px;
+            font: inherit;
+            font-weight: 800;
+            background: var(--white);
+            color: var(--gray-800);
+        }
         .hr-missing-banner {
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.1));
             border: 1px solid rgba(245, 158, 11, 0.3);
@@ -1375,10 +1597,30 @@
             font-size: 14px;
             color: var(--gray-700);
         }
-        .hr-team-contact {
-            font-size: var(--font-xs);
+        .hr-team-contact-grid {
+            display: grid;
+            gap: 6px;
+            padding: 10px 0 0;
+            border-top: 1px solid var(--gray-100);
+            font-size: 12px;
             color: var(--gray-600);
             line-height: 1.35;
+        }
+        .hr-team-contact-grid span {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr);
+            gap: 8px;
+            min-width: 0;
+        }
+        .hr-team-contact-grid b {
+            color: var(--gray-400);
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .hr-team-contact-grid.is-empty {
+            color: var(--gray-400);
+            font-style: italic;
         }
         .hr-team-stats {
             font-size: 11px;
@@ -1387,8 +1629,22 @@
             padding-top: 6px;
             border-top: 1px solid var(--gray-100);
         }
+        .hr-team-warning-note {
+            padding: 8px 10px;
+            border: 1px solid rgba(239, 68, 68, 0.18);
+            border-radius: 10px;
+            background: rgba(239, 68, 68, 0.07);
+            color: var(--danger);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .hr-team-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
         .hr-team-edit {
-            margin-top: 8px;
             padding: 5px 10px;
             border: 1px solid var(--gray-200);
             background: var(--white);
@@ -1400,16 +1656,33 @@
             color: var(--gray-600);
         }
         .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+        .hr-team-move {
+            padding: 5px 10px;
+            border: 1px solid rgba(14, 165, 233, 0.24);
+            background: rgba(14, 165, 233, 0.08);
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 800;
+            cursor: pointer;
+            color: #0369a1;
+        }
+        .hr-team-move:hover {
+            border-color: rgba(14, 165, 233, 0.42);
+            background: rgba(14, 165, 233, 0.14);
+        }
         .hr-team-card .hr-account-toggle {
             padding: 5px 8px;
             border-radius: 8px;
             font-size: 11px;
         }
-        .hr-team-card .hr-team-stats {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
+        .hr-team-no-secondary {
+            display: inline-flex;
             align-items: center;
+            min-height: 24px;
+            color: var(--gray-400);
+            font-size: 12px;
+            font-style: italic;
         }
 
         .hr-kpi-toolbar {
@@ -2014,7 +2287,75 @@
             display: flex;
             gap: 6px;
             flex-wrap: wrap;
-            margin-top: 8px;
+            margin: 0;
+        }
+        .hr-staff-profile-modal {
+            max-width: 640px;
+        }
+        .hr-profession-picker {
+            display: grid;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid rgba(20, 184, 166, 0.22);
+            border-radius: 12px;
+            background: rgba(20, 184, 166, 0.04);
+        }
+        .hr-profession-picker-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .hr-profession-picker-head strong {
+            color: var(--gray-500);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .hr-profession-selected-list,
+        .hr-profession-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .hr-profession-selected-chip,
+        .hr-profession-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 28px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(20, 184, 166, 0.24);
+            background: var(--white);
+            color: var(--gray-700);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 850;
+            cursor: pointer;
+        }
+        .hr-profession-selected-chip {
+            background: rgba(20, 184, 166, 0.13);
+            color: #047857;
+        }
+        .hr-profession-selected-chip b {
+            font-size: 15px;
+            line-height: 1;
+        }
+        .hr-profession-option:hover,
+        .hr-profession-selected-chip:hover {
+            border-color: rgba(20, 184, 166, 0.42);
+            background: rgba(20, 184, 166, 0.16);
+        }
+        .hr-profession-picker-search input {
+            min-height: 38px;
+        }
+        .hr-profession-picker-empty {
+            color: var(--gray-400);
+            font-size: 12px;
+            line-height: 1.35;
         }
         .hr-modal .form-hint {
             display: block;
@@ -2022,6 +2363,68 @@
             color: var(--gray-500);
             font-size: 11px;
             line-height: 1.35;
+        }
+        .hr-staff-history-panel {
+            margin: 14px 0 4px;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            background: var(--gray-50);
+            padding: 12px;
+        }
+        .hr-staff-history-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .hr-staff-history-head strong {
+            color: var(--gray-800);
+            font-size: 13px;
+            font-weight: 900;
+        }
+        .hr-staff-history-head .btn-secondary {
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+        .hr-staff-history-list {
+            display: grid;
+            gap: 7px;
+            max-height: 210px;
+            overflow: auto;
+            color: var(--gray-500);
+            font-size: 12px;
+        }
+        .hr-staff-history-item {
+            border: 1px solid var(--gray-100);
+            border-radius: 8px;
+            background: var(--white);
+            padding: 8px 10px;
+        }
+        .hr-staff-history-item b,
+        .hr-staff-history-item span { display: block; }
+        .hr-staff-history-item b {
+            color: var(--gray-800);
+            font-size: 12px;
+        }
+        .hr-staff-history-item span {
+            margin-top: 2px;
+            color: var(--gray-500);
+        }
+        .hr-staff-history-fields {
+            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .hr-staff-history-fields i {
+            border-radius: 999px;
+            background: rgba(20,184,166,0.10);
+            color: #0F766E;
+            padding: 2px 7px;
+            font-style: normal;
+            font-weight: 900;
+            font-size: 11px;
         }
         .hr-modal select[multiple] {
             min-height: 132px;
@@ -2073,6 +2476,27 @@
         body.dark-mode .hr-profession-card p,
         body.dark-mode .hr-checklist-card p,
         body.dark-mode .hr-modal .form-hint { color: #9CA3AF; }
+        body.dark-mode .hr-staff-history-panel,
+        body.dark-mode .hr-staff-history-item {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .hr-staff-history-head strong,
+        body.dark-mode .hr-staff-history-item b { color: #F8FAFC; }
+        body.dark-mode .hr-staff-history-list,
+        body.dark-mode .hr-staff-history-item span { color: #94A3B8; }
+        body.dark-mode .hr-staff-history-fields i {
+            background: rgba(20,184,166,0.16);
+            color: #5EEAD4;
+        }
+        body.dark-mode .hr-modal .form-group input,
+        body.dark-mode .hr-modal .form-group select,
+        body.dark-mode .hr-modal .form-group textarea {
+            background: #1E1E38;
+            border-color: #4A4A6A;
+            color: #F8FAFC;
+            color-scheme: dark;
+        }
         body.dark-mode .hr-people-bucket-toggle:hover,
         body.dark-mode .hr-kpi-card.is-placeholder {
             background: rgba(255,255,255,0.04);
@@ -2131,6 +2555,66 @@
             border-color: #4A4A6A;
             color: #F8FAFC;
             color-scheme: dark;
+        }
+        body.dark-mode .hr-team-role strong,
+        body.dark-mode .hr-team-contact-grid {
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-team-role,
+        body.dark-mode .hr-team-contact-grid b,
+        body.dark-mode .hr-team-no-secondary {
+            color: #94A3B8;
+        }
+        body.dark-mode .hr-team-contact-grid {
+            border-color: rgba(148,163,184,0.18);
+        }
+        body.dark-mode .hr-ready-badge,
+        body.dark-mode .hr-profession-rate-row {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(148,163,184,0.18);
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-profession-rate-row span {
+            color: #E2E8F0;
+        }
+        body.dark-mode .hr-profession-rate-row input {
+            background: #1E1E38;
+            border-color: #4A4A6A;
+            color: #F8FAFC;
+        }
+        body.dark-mode .hr-people-bucket.is-drop-target {
+            outline-color: rgba(45,212,191,0.52);
+            background: rgba(20,184,166,0.10);
+        }
+        body.dark-mode .hr-team-edit,
+        body.dark-mode .hr-team-move {
+            background: rgba(15,23,42,0.42);
+            border-color: rgba(148,163,184,0.24);
+            color: #E2E8F0;
+        }
+        body.dark-mode .hr-team-move {
+            border-color: rgba(56,189,248,0.32);
+            color: #BAE6FD;
+        }
+        body.dark-mode .hr-profession-picker {
+            background: rgba(20,184,166,0.08);
+            border-color: rgba(45,212,191,0.26);
+        }
+        body.dark-mode .hr-profession-picker-head,
+        body.dark-mode .hr-profession-picker-head strong,
+        body.dark-mode .hr-profession-picker-empty {
+            color: #94A3B8;
+        }
+        body.dark-mode .hr-profession-option {
+            background: rgba(15,23,42,0.42);
+            border-color: rgba(148,163,184,0.22);
+            color: #E2E8F0;
+        }
+        body.dark-mode .hr-profession-selected-chip,
+        body.dark-mode .hr-secondary-profession-chip {
+            background: rgba(20,184,166,0.18);
+            border-color: rgba(45,212,191,0.28);
+            color: #5EEAD4;
         }
         body.dark-mode .hr-account-row.is-recently-updated {
             border-color: rgba(52,211,153,0.48);
@@ -2203,6 +2687,7 @@
         body.dark-mode .hr-shift-cell.event { background: rgba(245,158,11,0.18); color: #FDE68A; }
         body.dark-mode .hr-shift-cell.training { background: rgba(59,130,246,0.18); color: #BFDBFE; }
         body.dark-mode .hr-shift-cell.holiday { background: rgba(139,92,246,0.20); color: #DDD6FE; }
+        body.dark-mode .hr-shift-profession { color: #94A3B8; }
         body.dark-mode .hr-report-table { background: #2A2A4A; border-color: #3D3D5C; }
         body.dark-mode .hr-report-table th { background: #1E1E38; border-color: #3D3D5C; color: #9CA3AF; }
         body.dark-mode .hr-report-table td { border-color: #3D3D5C; color: #E2E8F0; }
@@ -2263,8 +2748,15 @@
             .hr-kpi-toolbar select,
             .hr-kpi-toolbar button { width: 100%; }
             .hr-team-card { padding: 10px; }
+            .hr-team-card-head { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
             .hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }
             .hr-team-badges { gap: 4px; }
+            .hr-team-actions > button { flex: 1 1 120px; }
+            .hr-team-contact-grid span { grid-template-columns: 52px minmax(0, 1fr); }
+            .hr-profession-picker-head { align-items: flex-start; flex-direction: column; }
+            .hr-profession-selected-chip,
+            .hr-profession-option { min-height: 32px; }
+            .hr-profession-rate-row { grid-template-columns: 1fr; }
             .hr-account-row { grid-template-columns: 40px 1fr; }
             .hr-account-actions { grid-column: 1 / -1; justify-content: flex-start; }
             .hr-badge { font-size: 10px; padding: 1px 4px; }
@@ -2515,8 +3007,114 @@
         .candidate-file-chip { padding: 4px 8px; border-radius: 999px; background: rgba(37,99,235,0.08); color: #1D4ED8; font-size: 12px; font-weight: 700; }
         .candidate-intake-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 16px; }
         .candidate-intake-actions span { margin-right: auto; color: var(--gray-500); font-size: 13px; }
+        .hr-training-readiness-modal { width: min(760px, 100%); }
+        .hr-training-readiness-summary { margin-bottom: 14px; }
+        .hr-training-profession-list { display: grid; gap: 12px; }
+        .hr-training-profession-card {
+            border: 1px solid var(--gray-100);
+            border-radius: 10px;
+            background: var(--gray-50);
+            padding: 12px;
+        }
+        .hr-training-profession-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 140px;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .hr-training-profession-head h4 {
+            margin: 0 0 3px;
+            font-size: 15px;
+            color: var(--gray-900);
+        }
+        .hr-training-profession-head span {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .hr-training-subtitle {
+            margin: 10px 0 6px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .hr-training-check-list,
+        .hr-training-course-list { display: grid; gap: 6px; }
+        .hr-training-check-item {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 24px minmax(0, 1fr);
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--white);
+            color: var(--gray-700);
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+            text-align: left;
+            cursor: pointer;
+        }
+        .hr-training-check-item.is-done {
+            border-color: rgba(16,185,129,0.28);
+            background: rgba(16,185,129,0.08);
+            color: #047857;
+        }
+        .hr-training-check-box {
+            width: 22px;
+            height: 22px;
+            border-radius: 7px;
+            display: inline-grid;
+            place-items: center;
+            background: rgba(148,163,184,0.16);
+            color: #047857;
+            font-weight: 900;
+        }
+        .hr-training-course-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 120px;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+        }
+        .hr-training-course-row b,
+        .hr-training-course-row span { display: block; }
+        .hr-training-course-row b { color: var(--gray-800); font-size: 13px; }
+        .hr-training-course-row span { color: var(--gray-500); font-size: 12px; }
+        .hr-training-empty {
+            border: 1px dashed var(--gray-200);
+            border-radius: 8px;
+            padding: 10px;
+            color: var(--gray-500);
+            background: var(--white);
+            font-size: 13px;
+        }
         /* Dark mode vacancies */
         body.dark-mode .hr-vacancy-card, body.dark-mode .kanban-card, body.dark-mode .vac-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .hr-team-training-readiness { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: #CBD5E1; }
+        body.dark-mode .hr-team-training-head b { color: #F8FAFC; }
+        body.dark-mode .hr-team-training-head span { color: #94A3B8; }
+        body.dark-mode .hr-training-profession-card,
+        body.dark-mode .hr-training-check-item,
+        body.dark-mode .hr-training-course-row,
+        body.dark-mode .hr-training-empty {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.08);
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-training-profession-head h4,
+        body.dark-mode .hr-training-course-row b { color: #F8FAFC; }
+        body.dark-mode .hr-training-profession-head span,
+        body.dark-mode .hr-training-subtitle,
+        body.dark-mode .hr-training-course-row span,
+        body.dark-mode .hr-training-empty { color: #94A3B8; }
         body.dark-mode .kanban-col { background: rgba(255,255,255,0.03); }
         body.dark-mode .vac-desc { color: var(--gray-400); }
         body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-300); }
@@ -2642,8 +3240,8 @@
                 </div>
                 <div id="teamMissingBanner"></div>
                 <div class="hr-team-filters">
-                    <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук за ім'ям або телефоном..." placeholder="Пошук за ім'ям або телефоном...">
-                    <select id="teamRoleFilter" class="hr-team-select">
+                    <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук по ПІБ, професії, телефону або структурі" placeholder="Пошук: ПІБ, професія, телефон, структура...">
+                    <select id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true">
                         <option value="">Всі ролі</option>
                         <optgroup label="Керівництво">
                             <option value="director">Директор</option>
@@ -2867,6 +3465,11 @@
         <div class="hr-modal">
             <h3 id="shiftModalTitle">Додати зміну</h3>
             <div class="form-group">
+                <label>Професія у зміні</label>
+                <select id="shiftProfession"></select>
+                <div class="form-hint">Можна вибрати тільки професії, які є в картці співробітника.</div>
+            </div>
+            <div class="form-group">
                 <label>Початок</label>
                 <input type="time" id="shiftStart">
             </div>
@@ -2903,11 +3506,11 @@
 
     <!-- Staff edit modal -->
     <div id="staffEditModal" class="hr-modal-overlay" style="display:none;">
-        <div class="hr-modal" style="max-width:520px;" role="dialog" aria-modal="true">
+        <div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true">
             <h3>Редагувати профіль</h3>
             <input type="hidden" id="editStaffId">
             <div class="form-group">
-                <label>Посада / Роль</label>
+                <label>Основна професія</label>
                 <select id="editRoleType">
                     <optgroup label="Керівництво">
                         <option value="director">Директор</option>
@@ -2933,11 +3536,23 @@
                         <option value="cleaner">Прибиральник</option>
                     </optgroup>
                 </select>
+                <small class="form-hint">Основна професія керує головним групуванням, графіком і таймлайном.</small>
             </div>
             <div class="form-group">
                 <label>Додаткові професії</label>
-                <select id="editSecondaryProfessions" multiple></select>
-                <small class="form-hint">Можна обрати кілька додаткових професій. Основна роль лишається джерелом групування графіка і таймлайну.</small>
+                <select id="editSecondaryProfessions" multiple hidden aria-hidden="true"></select>
+                <div class="hr-profession-picker" id="editSecondaryProfessionPicker" data-selected="[]">
+                    <div class="hr-profession-picker-head">
+                        <span>Може підміняти / працювати як</span>
+                        <strong id="editSecondaryProfessionCount">Додаткові професії не вибрані</strong>
+                    </div>
+                    <div id="editSecondaryProfessionChips" class="hr-profession-selected-list"></div>
+                    <div class="hr-profession-picker-search">
+                        <input type="text" id="editSecondaryProfessionSearch" aria-label="Знайти додаткову професію" placeholder="Знайти і додати професію...">
+                    </div>
+                    <div id="editSecondaryProfessionOptions" class="hr-profession-options"></div>
+                </div>
+                <small class="form-hint">Клік по професії додає її до чіпів. Основну професію дублювати не можна.</small>
             </div>
             <div class="form-group">
                 <label>Телефон</label>
@@ -2962,6 +3577,17 @@
             <div class="form-group">
                 <label>Ставка грн/год</label>
                 <input type="number" id="editHourlyRate" min="0" step="10" value="0">
+                <small class="form-hint">Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.</small>
+            </div>
+            <div class="form-group">
+                <label>Ставки по професіях</label>
+                <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
+                <small class="form-hint">Заповнюйте тільки ті ролі, де ставка відрізняється від базової.</small>
+            </div>
+            <div class="form-group">
+                <label>Вузол структури</label>
+                <select id="editCompanyStructureNode"></select>
+                <small class="form-hint">Якщо не вибрано вручну, картка бере структуру з основної професії.</small>
             </div>
             <div class="form-group">
                 <label>Telegram ID</label>
@@ -2999,6 +3625,13 @@
                 <label>Нотатки</label>
                 <textarea id="editNotes" rows="3"></textarea>
             </div>
+            <section class="hr-staff-history-panel" aria-label="Історія змін профілю">
+                <div class="hr-staff-history-head">
+                    <strong>Історія змін</strong>
+                    <button type="button" id="editHistoryRefresh" class="btn-secondary">Оновити</button>
+                </div>
+                <div id="editStaffHistory" class="hr-staff-history-list">Історія завантажується...</div>
+            </section>
             <div class="hr-modal-actions">
                 <button type="button" id="editCancel" class="btn-secondary">Скасувати</button>
                 <button type="button" id="editSave" class="btn-primary">Зберегти</button>
@@ -3053,15 +3686,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.14"></script>
-    <script src="js/config.js?v=0.73.14"></script>
-    <script src="js/notification.js?v=0.73.14"></script>
-    <script src="js/api.js?v=0.73.14"></script>
-    <script src="js/auth.js?v=0.73.14"></script>
-    <script src="js/components/sidebar.js?v=0.73.14"></script>
+    <script src="js/ui.js?v=0.73.19"></script>
+    <script src="js/config.js?v=0.73.19"></script>
+    <script src="js/notification.js?v=0.73.19"></script>
+    <script src="js/api.js?v=0.73.19"></script>
+    <script src="js/auth.js?v=0.73.19"></script>
+    <script src="js/components/sidebar.js?v=0.73.19"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.14"></script>
-    <script src="js/alerts.js?v=0.73.14"></script><script>
+    <script src="js/hr-page.js?v=0.73.19"></script>
+    <script src="js/alerts.js?v=0.73.19"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

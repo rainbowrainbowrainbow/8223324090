@@ -181,7 +181,7 @@ test('HR org canvas creates visible parent links directly through node ports', a
     assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"] .hr-org-link-hit'));
 });
 
-test('HR org canvas keeps saved relations focused instead of rendering every line at once', async () => {
+test('HR org canvas renders every saved relation instead of hiding unfocused branches', async () => {
     const { window, api } = createHarness();
     api.setNodes([
         { id: 'child', title: 'Child', description: 'Child role.', tone: 'blue', lane: 'leadership', parentId: 'parent', order: 1, stack: null, meta: 'child', x: 90, y: 120 },
@@ -192,7 +192,7 @@ test('HR org canvas keeps saved relations focused instead of rendering every lin
     api.renderCanvas();
 
     assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="child"]'));
-    assert.equal(window.document.querySelector('.hr-org-link-group[data-org-link-child="other_child"]'), null);
+    assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="other_child"]'));
 });
 
 test('HR org canvas does not create links from card clicks while relinking is active', async () => {
@@ -341,4 +341,37 @@ test('HR org auto-arrange spreads cards instead of stacking roles on top of each
             assert.equal(overlap, false, `${a.id} should not overlap ${b.id}`);
         });
     });
+});
+
+test('HR org auto-arrange infers the default company tree and lays it out top-down', async () => {
+    const { window, api } = createHarness();
+    api.setNodes([
+        { id: 'director', title: 'Director', description: 'Root.', tone: 'gold', lane: 'root', parentId: null, order: 1, stack: null, meta: 'root', x: 0, y: 0 },
+        { id: 'deputy_director', title: 'Deputy', description: 'Deputy.', tone: 'blue', lane: 'deputy', parentId: null, order: 2, stack: null, meta: 'ops', x: 0, y: 0 },
+        { id: 'art_director', title: 'Art director', description: 'Art.', tone: 'purple', lane: 'leadership', parentId: null, order: 3, stack: 'art', meta: 'art', x: 0, y: 0 },
+        { id: 'animators', title: 'Animators', description: 'Programs.', tone: 'purple', lane: 'operations', parentId: null, order: 4, stack: null, meta: 'programs', x: 0, y: 0 },
+        { id: 'admins', title: 'Admins', description: 'Hall.', tone: 'purple', lane: 'leadership', parentId: null, order: 5, stack: 'art', meta: 'hall', x: 0, y: 0 },
+        { id: 'barista', title: 'Barista', description: 'Bar.', tone: 'purple', lane: 'operations', parentId: null, order: 6, stack: null, meta: 'bar', x: 0, y: 0 },
+        { id: 'chef', title: 'Chef', description: 'Kitchen.', tone: 'violet', lane: 'support', parentId: null, order: 7, stack: 'kitchen', meta: 'kitchen', x: 0, y: 0 },
+        { id: 'cooks', title: 'Cooks', description: 'Kitchen team.', tone: 'violet', lane: 'support', parentId: null, order: 8, stack: 'kitchen', meta: 'production', x: 0, y: 0 }
+    ]);
+    api.renderCanvas();
+
+    click(window, window.document.getElementById('hrOrgAutoLayoutBtn'));
+    await settle();
+
+    const byId = new Map(api.nodes().map(node => [node.id, node]));
+    assert.equal(byId.get('deputy_director').parentId, 'director');
+    assert.equal(byId.get('art_director').parentId, 'deputy_director');
+    assert.equal(byId.get('animators').parentId, 'art_director');
+    assert.equal(byId.get('admins').parentId, 'art_director');
+    assert.equal(byId.get('barista').parentId, 'admins');
+    assert.equal(byId.get('chef').parentId, 'deputy_director');
+    assert.equal(byId.get('cooks').parentId, 'chef');
+
+    assert.ok(Number(byId.get('director').y) < Number(byId.get('deputy_director').y));
+    assert.ok(Number(byId.get('deputy_director').y) < Number(byId.get('art_director').y));
+    assert.ok(Number(byId.get('art_director').y) < Number(byId.get('animators').y));
+    assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="animators"]'));
+    assert.ok(window.document.querySelector('.hr-org-link-group[data-org-link-child="cooks"]'));
 });

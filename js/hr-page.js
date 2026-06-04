@@ -3303,11 +3303,47 @@ const ORG_NODE_WIDTH = 168;
 const ORG_NODE_HEIGHT = 108;
 const ORG_ROOT_NODE_WIDTH = 220;
 const ORG_ROOT_NODE_HEIGHT = 128;
-const ORG_AUTO_LAYOUT_X_GAP = 96;
-const ORG_AUTO_LAYOUT_ROOT_GAP = 132;
 const ORG_AUTO_LAYOUT_ROW_GAP = 190;
+const ORG_AUTO_LAYOUT_COMPACT_COLUMNS = 7;
+const ORG_AUTO_LAYOUT_COMPACT_X_GAP = 54;
 const ORG_COLLISION_PADDING_X = 48;
 const ORG_COLLISION_PADDING_Y = 36;
+const ORG_AUTO_LAYOUT_LANE_RANK = { root: 0, deputy: 1, leadership: 2, operations: 3, support: 4 };
+const ORG_AUTO_PARENT_BY_ID = {
+    deputy_director: 'director',
+    top_manager: 'deputy_director',
+    managers: 'top_manager',
+    hr: 'deputy_director',
+    accountant: 'director',
+    art_director: 'deputy_director',
+    admins: 'top_manager',
+    marketer: 'top_manager',
+    it_specialist: 'deputy_director',
+    senior_trampoline: 'deputy_director',
+    trampoline_instructors: 'senior_trampoline',
+    animators: 'art_director',
+    waiters: 'admins',
+    barista: 'admins',
+    reception: 'admins',
+    chef: 'deputy_director',
+    cooks: 'chef',
+    dishwash: 'chef',
+    pastry_chef: 'chef',
+    pastry_team: 'pastry_chef',
+    pastry_wash: 'pastry_chef',
+    technical_staff: 'deputy_director',
+    wardrobe: 'technical_staff',
+    cleaning: 'technical_staff',
+    facilities: 'technical_staff'
+};
+const ORG_AUTO_STACK_PARENT_BY_STACK = {
+    management: 'top_manager',
+    art: 'art_director',
+    trampoline: 'senior_trampoline',
+    kitchen: 'chef',
+    pastry: 'pastry_chef',
+    technical: 'technical_staff'
+};
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
     director: { x: 530, y: 24 },
     deputy_director: { x: 555, y: 158 },
@@ -3497,6 +3533,18 @@ function sortCompanyStructureNodes(nodes) {
     return [...(nodes || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.title).localeCompare(String(b.title), 'uk'));
 }
 
+function compareCompanyOrgAutoLayoutNodes(a, b) {
+    const laneDelta = (ORG_AUTO_LAYOUT_LANE_RANK[a?.lane] ?? 99) - (ORG_AUTO_LAYOUT_LANE_RANK[b?.lane] ?? 99);
+    if (laneDelta) return laneDelta;
+    const stackDelta = String(a?.stack || '').localeCompare(String(b?.stack || ''), 'uk');
+    if (stackDelta) return stackDelta;
+    return (Number(a?.order) || 0) - (Number(b?.order) || 0) || String(a?.title || '').localeCompare(String(b?.title || ''), 'uk');
+}
+
+function sortCompanyOrgAutoLayoutNodes(nodes) {
+    return [...(nodes || [])].sort(compareCompanyOrgAutoLayoutNodes);
+}
+
 function companyStructureNodeById(id) {
     return companyStructureNodes.find(node => node.id === id) || null;
 }
@@ -3553,19 +3601,6 @@ function companyOrgLinkPath(parent, child) {
     return companyOrgFloatingLinkPath(start, end);
 }
 
-function companyOrgFocusedLinkSet() {
-    const focusIds = new Set([selectedCompanyStructureNodeId, companyOrgLinkingNodeId].filter(Boolean));
-    const visible = new Set();
-    if (!focusIds.size) return visible;
-    companyStructureNodes.forEach(node => {
-        if (!node.parentId) return;
-        if (focusIds.has(node.id) || focusIds.has(node.parentId)) {
-            visible.add(node.id);
-        }
-    });
-    return visible;
-}
-
 function companyOrgFloatingLinkPath(start, end) {
     const midY = Math.round((start.y + end.y) / 2);
     return `M ${Math.round(start.x)} ${Math.round(start.y)} C ${Math.round(start.x)} ${midY}, ${Math.round(end.x)} ${midY}, ${Math.round(end.x)} ${Math.round(end.y)}`;
@@ -3591,12 +3626,10 @@ function renderCompanyOrgLinks() {
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
     const byId = new Map(companyStructureNodes.map(node => [node.id, node]));
-    const focusedLinks = companyOrgFocusedLinkSet();
     const linkHtml = companyStructureNodes.map(node => {
         const parent = node.parentId ? byId.get(node.parentId) : null;
         if (!parent) return '';
         const active = node.id === selectedCompanyStructureNodeId || parent.id === selectedCompanyStructureNodeId ? ' is-active' : '';
-        if (!focusedLinks.has(node.id)) return '';
         const path = companyOrgLinkPath(parent, node);
         return `
             <g class="hr-org-link-group${active}" tabindex="0" role="button" data-org-link-child="${escapeHtml(node.id)}" aria-label="Лінія: ${escapeHtml(parent.title)} керує ${escapeHtml(node.title)}">
@@ -3705,7 +3738,7 @@ function renderCompanyOrgChart() {
     stage.style.minHeight = `${height}px`;
     stage.classList.toggle('is-linking', Boolean(companyOrgLinkingNodeId));
     stage.innerHTML = companyStructureNodes.length ? `
-        <svg class="hr-org-link-layer" aria-hidden="true" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>
+        <svg class="hr-org-link-layer" role="group" aria-label="Лінії підпорядкування" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>
         <div class="hr-org-node-plane">
             ${sortCompanyStructureNodes(companyStructureNodes).map(renderCompanyOrgNode).join('')}
         </div>
@@ -3714,6 +3747,18 @@ function renderCompanyOrgChart() {
     renderCompanyOrgLinks();
     updateCompanyOrgLinkStatus();
     bindCompanyOrgKeyboard();
+}
+
+function focusCompanyOrgCanvasOnNode(nodeId) {
+    const stage = document.getElementById('companyOrgChart');
+    const canvas = stage?.closest?.('.hr-org-canvas');
+    const node = companyStructureNodeById(nodeId);
+    if (!canvas || !node) return;
+    const size = companyOrgNodeSize(node);
+    const nextLeft = Math.max(0, Number(node.x || 0) + size.width / 2 - canvas.clientWidth / 2);
+    const nextTop = Math.max(0, Number(node.y || 0) - 36);
+    canvas.scrollLeft = nextLeft;
+    canvas.scrollTop = nextTop;
 }
 
 function startCompanyOrgDrag(event, nodeId) {
@@ -3960,8 +4005,62 @@ function autoArrangeFlatCompanyOrgNodes(nodes) {
     }));
 }
 
+function companyOrgHasCycleInMap(byId, childId, parentId) {
+    if (!childId || !parentId || childId === parentId) return true;
+    let cursor = parentId;
+    const guard = new Set();
+    while (cursor && !guard.has(cursor)) {
+        if (cursor === childId) return true;
+        guard.add(cursor);
+        cursor = byId.get(cursor)?.parentId || null;
+    }
+    return false;
+}
+
+function primaryCompanyOrgRoot(nodes, byId = new Map((nodes || []).map(node => [node.id, node]))) {
+    const sorted = sortCompanyOrgAutoLayoutNodes(nodes || []);
+    return byId.get('director')
+        || sorted.find(node => node.lane === 'root')
+        || sorted.find(node => node.tone === 'gold')
+        || sorted[0]
+        || null;
+}
+
+function preferredCompanyOrgParentId(node, byId, primaryRoot) {
+    if (!node || !byId?.size) return null;
+    const rootId = primaryRoot?.id || null;
+    if (node.id === rootId) return null;
+    const candidates = [
+        ORG_AUTO_PARENT_BY_ID[node.id],
+        node.stack ? ORG_AUTO_STACK_PARENT_BY_STACK[node.stack] : null,
+        node.lane === 'deputy' ? 'director' : null,
+        node.lane === 'leadership' ? 'deputy_director' : null,
+        node.lane === 'operations' ? 'deputy_director' : null,
+        node.lane === 'support' ? 'deputy_director' : null,
+        rootId
+    ].filter(Boolean);
+    return candidates.find(parentId => parentId !== node.id && byId.has(parentId)) || null;
+}
+
+function inferCompanyOrgAutoLayoutParents(nodes) {
+    const next = normalizeCompanyStructureNodes(nodes).map(node => ({ ...node }));
+    const byId = new Map(next.map(node => [node.id, node]));
+    const primaryRoot = primaryCompanyOrgRoot(next, byId);
+    sortCompanyOrgAutoLayoutNodes(next).forEach(node => {
+        if (!node || node.id === primaryRoot?.id) {
+            if (node) node.parentId = null;
+            return;
+        }
+        if (node.parentId && byId.has(node.parentId) && node.parentId !== node.id) return;
+        const parentId = preferredCompanyOrgParentId(node, byId, primaryRoot);
+        if (!parentId || companyOrgHasCycleInMap(byId, node.id, parentId)) return;
+        node.parentId = parentId;
+    });
+    return normalizeCompanyStructureNodes(next);
+}
+
 function autoArrangeTreeCompanyOrgNodes(nodes) {
-    const normalized = normalizeCompanyStructureNodes(nodes);
+    const normalized = inferCompanyOrgAutoLayoutParents(nodes);
     const byId = new Map(normalized.map(node => [node.id, node]));
     const children = new Map();
     normalized.forEach(node => children.set(node.id, []));
@@ -3970,59 +4069,69 @@ function autoArrangeTreeCompanyOrgNodes(nodes) {
             children.get(node.parentId)?.push(node);
         }
     });
-    children.forEach(list => list.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.title).localeCompare(String(b.title), 'uk')));
-    const roots = sortCompanyStructureNodes(normalized.filter(node => !node.parentId || !byId.has(node.parentId)));
+    children.forEach(list => list.sort(compareCompanyOrgAutoLayoutNodes));
+    const primaryRoot = primaryCompanyOrgRoot(normalized, byId);
+    const roots = sortCompanyOrgAutoLayoutNodes(normalized.filter(node => !node.parentId || !byId.has(node.parentId)));
+    if (primaryRoot) {
+        roots.sort((a, b) => (a.id === primaryRoot.id ? -1 : 0) + (b.id === primaryRoot.id ? 1 : 0));
+    }
     const hasAnyLink = normalized.some(node => node.parentId && byId.has(node.parentId));
     if (!hasAnyLink) return autoArrangeFlatCompanyOrgNodes(normalized);
 
-    const widthById = new Map();
-    const measure = node => {
-        const size = companyOrgNodeSize(node);
-        const childList = children.get(node.id) || [];
-        if (!childList.length) {
-            widthById.set(node.id, size.width);
-            return size.width;
-        }
-        const childrenWidth = childList.reduce((sum, child, index) => sum + measure(child) + (index ? ORG_AUTO_LAYOUT_X_GAP : 0), 0);
-        const width = Math.max(size.width, childrenWidth);
-        widthById.set(node.id, width);
-        return width;
-    };
-
-    roots.forEach(measure);
     const next = normalized.map(node => ({ ...node }));
     const nextById = new Map(next.map(node => [node.id, node]));
-    const place = (node, left, depth) => {
-        const target = nextById.get(node.id);
-        const size = companyOrgNodeSize(node);
-        const width = widthById.get(node.id) || size.width;
-        if (target) {
-            target.x = snapCompanyOrgCoord(left + (width - size.width) / 2);
-            target.y = snapCompanyOrgCoord(ORG_CANVAS_PADDING + depth * ORG_AUTO_LAYOUT_ROW_GAP);
-        }
-        let cursor = left;
-        (children.get(node.id) || []).forEach((child, index) => {
-            if (index) cursor += ORG_AUTO_LAYOUT_X_GAP;
-            place(child, cursor, depth + 1);
-            cursor += widthById.get(child.id) || companyOrgNodeSize(child).width;
-        });
+    const depthById = new Map();
+    const depthGroups = new Map();
+    const addToDepth = (node, depth) => {
+        if (!node || depthById.has(node.id)) return;
+        depthById.set(node.id, depth);
+        if (!depthGroups.has(depth)) depthGroups.set(depth, []);
+        depthGroups.get(depth).push(node);
+        (children.get(node.id) || []).forEach(child => addToDepth(child, depth + 1));
     };
-
-    let cursor = ORG_CANVAS_PADDING;
-    roots.forEach((root, index) => {
-        if (index) cursor += ORG_AUTO_LAYOUT_ROOT_GAP;
-        place(root, cursor, 0);
-        cursor += widthById.get(root.id) || companyOrgNodeSize(root).width;
+    roots.forEach(root => addToDepth(root, 0));
+    sortCompanyOrgAutoLayoutNodes(normalized).forEach(node => {
+        if (!depthById.has(node.id)) addToDepth(node, 0);
     });
-    return resolveCompanyOrgNodeOverlaps(next);
+
+    let visualRow = 0;
+    [...depthGroups.keys()].sort((a, b) => a - b).forEach(depth => {
+        const levelNodes = [...(depthGroups.get(depth) || [])].sort((a, b) => {
+            const parentA = a.parentId ? nextById.get(a.parentId) : null;
+            const parentB = b.parentId ? nextById.get(b.parentId) : null;
+            const parentDelta = (Number(parentA?.x) || 0) - (Number(parentB?.x) || 0);
+            if (parentDelta) return parentDelta;
+            return compareCompanyOrgAutoLayoutNodes(a, b);
+        });
+        for (let index = 0; index < levelNodes.length; index += ORG_AUTO_LAYOUT_COMPACT_COLUMNS) {
+            const chunk = levelNodes.slice(index, index + ORG_AUTO_LAYOUT_COMPACT_COLUMNS);
+            const rowWidth = chunk.reduce((sum, node, itemIndex) => {
+                return sum + (itemIndex ? ORG_AUTO_LAYOUT_COMPACT_X_GAP : 0) + companyOrgNodeSize(node).width;
+            }, 0);
+            let cursor = Math.max(ORG_CANVAS_PADDING, Math.round((ORG_CANVAS_MIN_WIDTH - rowWidth) / 2));
+            chunk.forEach((node, itemIndex) => {
+                const target = nextById.get(node.id);
+                const size = companyOrgNodeSize(node);
+                if (!target) return;
+                if (itemIndex) cursor += ORG_AUTO_LAYOUT_COMPACT_X_GAP;
+                target.x = snapCompanyOrgCoord(cursor);
+                target.y = snapCompanyOrgCoord(ORG_CANVAS_PADDING + visualRow * ORG_AUTO_LAYOUT_ROW_GAP);
+                cursor += size.width;
+            });
+            visualRow += 1;
+        }
+    });
+    return sortCompanyStructureNodes(next);
 }
 
 function autoArrangeCompanyOrgChart() {
     companyStructureNodes = autoArrangeTreeCompanyOrgNodes(companyStructureNodes);
     setCompanyOrgLinkMode(null);
     syncCompanyStructureText();
+    selectedCompanyStructureNodeId = primaryCompanyOrgRoot(companyStructureNodes)?.id || selectedCompanyStructureNodeId;
     renderCompanyOrgChart();
     selectCompanyOrgNodeById(selectedCompanyStructureNodeId);
+    focusCompanyOrgCanvasOnNode(selectedCompanyStructureNodeId);
     saveCompanyStructure({ silent: true, preserveRender: true }).then(saved => {
         if (saved) showNotification('Структуру впорядковано', 'success');
     });

@@ -304,7 +304,7 @@ test('HR org canvas drag cancels sticky relink mode and persists the moved node 
 
     const moved = api.nodes().find(item => item.id === 'parent');
     assert.equal(window.document.getElementById('companyOrgChart').classList.contains('is-linking'), false);
-    assert.equal(moved.x, 390);
+    assert.equal(moved.x, 400);
     assert.equal(moved.y, 60);
 });
 
@@ -329,15 +329,15 @@ test('HR org auto-arrange spreads cards instead of stacking roles on top of each
         id: node.id,
         x: Number(node.x),
         y: Number(node.y),
-        width: node.tone === 'gold' ? 220 : 168,
-        height: node.tone === 'gold' ? 128 : 108
+        width: node.tone === 'gold' ? 180 : 142,
+        height: node.tone === 'gold' ? 96 : 84
     }));
     rects.forEach((a, index) => {
         rects.slice(index + 1).forEach(b => {
-            const overlap = a.x < b.x + b.width + 24
-                && a.x + a.width + 24 > b.x
-                && a.y < b.y + b.height + 24
-                && a.y + a.height + 24 > b.y;
+            const overlap = a.x < b.x + b.width + 16
+                && a.x + a.width + 16 > b.x
+                && a.y < b.y + b.height + 18
+                && a.y + a.height + 18 > b.y;
             assert.equal(overlap, false, `${a.id} should not overlap ${b.id}`);
         });
     });

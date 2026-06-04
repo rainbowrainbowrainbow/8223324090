@@ -3310,19 +3310,21 @@ const ORG_LANE_LABELS = {
 
 const ORG_ALLOWED_TONES = Object.keys(ORG_TONE_LABELS);
 const ORG_ALLOWED_LANES = Object.keys(ORG_LANE_LABELS);
-const ORG_CANVAS_MIN_WIDTH = 1280;
-const ORG_CANVAS_MIN_HEIGHT = 900;
-const ORG_CANVAS_PADDING = 72;
-const ORG_GRID_STEP = 30;
-const ORG_NODE_WIDTH = 168;
-const ORG_NODE_HEIGHT = 108;
-const ORG_ROOT_NODE_WIDTH = 220;
-const ORG_ROOT_NODE_HEIGHT = 128;
-const ORG_AUTO_LAYOUT_ROW_GAP = 190;
+const ORG_CANVAS_MIN_WIDTH = 1180;
+const ORG_CANVAS_MIN_HEIGHT = 700;
+const ORG_CANVAS_PADDING = 32;
+const ORG_GRID_STEP = 20;
+const ORG_NODE_WIDTH = 142;
+const ORG_NODE_HEIGHT = 84;
+const ORG_ROOT_NODE_WIDTH = 180;
+const ORG_ROOT_NODE_HEIGHT = 96;
+const ORG_AUTO_LAYOUT_ROW_GAP = 120;
 const ORG_AUTO_LAYOUT_COMPACT_COLUMNS = 7;
-const ORG_AUTO_LAYOUT_COMPACT_X_GAP = 54;
-const ORG_COLLISION_PADDING_X = 48;
-const ORG_COLLISION_PADDING_Y = 36;
+const ORG_AUTO_LAYOUT_COMPACT_X_GAP = 20;
+const ORG_COLLISION_PADDING_X = 16;
+const ORG_COLLISION_PADDING_Y = 18;
+const ORG_ONE_SCREEN_MAX_WIDTH = 1240;
+const ORG_ONE_SCREEN_MAX_HEIGHT = 760;
 const ORG_AUTO_LAYOUT_LANE_RANK = { root: 0, deputy: 1, leadership: 2, operations: 3, support: 4 };
 const ORG_AUTO_PARENT_BY_ID = {
     deputy_director: 'director',
@@ -3360,32 +3362,32 @@ const ORG_AUTO_STACK_PARENT_BY_STACK = {
     technical: 'technical_staff'
 };
 const DEFAULT_COMPANY_STRUCTURE_POSITIONS = {
-    director: { x: 530, y: 24 },
-    deputy_director: { x: 555, y: 158 },
-    top_manager: { x: 210, y: 300 },
-    managers: { x: 210, y: 438 },
-    hr: { x: 390, y: 300 },
-    accountant: { x: 570, y: 300 },
-    art_director: { x: 750, y: 300 },
-    admins: { x: 750, y: 438 },
-    marketer: { x: 930, y: 300 },
-    it_specialist: { x: 1110, y: 300 },
-    senior_trampoline: { x: 260, y: 575 },
-    trampoline_instructors: { x: 245, y: 710 },
-    animators: { x: 455, y: 575 },
-    waiters: { x: 655, y: 575 },
-    barista: { x: 855, y: 575 },
-    reception: { x: 1055, y: 575 },
-    chef: { x: 300, y: 815 },
-    cooks: { x: 210, y: 940 },
-    dishwash: { x: 390, y: 940 },
-    pastry_chef: { x: 605, y: 815 },
-    pastry_team: { x: 525, y: 940 },
-    pastry_wash: { x: 705, y: 940 },
-    technical_staff: { x: 910, y: 815 },
-    wardrobe: { x: 830, y: 940 },
-    cleaning: { x: 1010, y: 940 },
-    facilities: { x: 1190, y: 940 }
+    director: { x: 500, y: 20 },
+    deputy_director: { x: 440, y: 140 },
+    accountant: { x: 600, y: 140 },
+    top_manager: { x: 40, y: 260 },
+    hr: { x: 200, y: 260 },
+    art_director: { x: 360, y: 260 },
+    it_specialist: { x: 520, y: 260 },
+    senior_trampoline: { x: 680, y: 260 },
+    chef: { x: 840, y: 260 },
+    technical_staff: { x: 1000, y: 260 },
+    managers: { x: 40, y: 380 },
+    admins: { x: 200, y: 380 },
+    marketer: { x: 360, y: 380 },
+    animators: { x: 520, y: 380 },
+    trampoline_instructors: { x: 680, y: 380 },
+    cooks: { x: 840, y: 380 },
+    dishwash: { x: 1000, y: 380 },
+    pastry_chef: { x: 280, y: 500 },
+    wardrobe: { x: 440, y: 500 },
+    cleaning: { x: 600, y: 500 },
+    facilities: { x: 760, y: 500 },
+    waiters: { x: 200, y: 620 },
+    barista: { x: 360, y: 620 },
+    reception: { x: 520, y: 620 },
+    pastry_team: { x: 680, y: 620 },
+    pastry_wash: { x: 840, y: 620 }
 };
 
 const DEFAULT_COMPANY_STRUCTURE_NODES = [
@@ -3587,8 +3589,8 @@ function syncCompanyStructureText() {
     }
 }
 
-function companyOrgStageSize() {
-    const bounds = companyStructureNodes.reduce((max, node) => {
+function companyOrgStageSizeForNodes(nodes) {
+    const bounds = (nodes || []).reduce((max, node) => {
         const size = companyOrgNodeSize(node);
         return {
             width: Math.max(max.width, Number(node.x || 0) + size.width + ORG_CANVAS_PADDING),
@@ -3599,6 +3601,22 @@ function companyOrgStageSize() {
         width: Math.ceil(bounds.width),
         height: Math.ceil(bounds.height)
     };
+}
+
+function companyOrgStageSize() {
+    return companyOrgStageSizeForNodes(companyStructureNodes);
+}
+
+function companyOrgNeedsOneScreenLayout(nodes) {
+    const { width, height } = companyOrgStageSizeForNodes(nodes);
+    return width > ORG_ONE_SCREEN_MAX_WIDTH || height > ORG_ONE_SCREEN_MAX_HEIGHT;
+}
+
+function compactCompanyOrgNodesForOneScreen(nodes) {
+    const normalized = normalizeCompanyStructureNodes(nodes);
+    return companyOrgNeedsOneScreenLayout(normalized)
+        ? autoArrangeTreeCompanyOrgNodes(normalized)
+        : normalized;
 }
 
 function companyOrgNodeAnchor(node, edge = 'center') {
@@ -3747,7 +3765,7 @@ function renderCompanyOrgChart() {
     if (!companyStructureNodes.length) {
         companyStructureNodes = cloneCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
     }
-    companyStructureNodes = normalizeCompanyStructureNodes(companyStructureNodes);
+    companyStructureNodes = compactCompanyOrgNodesForOneScreen(companyStructureNodes);
     const { width, height } = companyOrgStageSize();
     stage.style.width = `${width}px`;
     stage.style.minHeight = `${height}px`;
@@ -4434,11 +4452,11 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
     const data = await hrFetch('/company-structure');
     if (!data?.success) {
         if (!options.silent) showNotification(data?.error || 'Не вдалося завантажити структуру', 'error');
-        if (!companyStructureNodes.length) companyStructureNodes = normalizeCompanyStructureNodes(DEFAULT_COMPANY_STRUCTURE_NODES);
+        if (!companyStructureNodes.length) companyStructureNodes = compactCompanyOrgNodesForOneScreen(DEFAULT_COMPANY_STRUCTURE_NODES);
         return companyStructureNodes;
     }
     const structure = data.data || data.structure || {};
-    companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes);
     companyStructureUpdatedAt = structure.updatedAt || null;
     companyStructureLoaded = true;
     return companyStructureNodes;
@@ -4456,7 +4474,7 @@ async function loadCompanyStructure() {
     const notesText = document.getElementById('companyStructureNotes');
     const instructionsText = document.getElementById('companyInstructionsText');
     const savedStructure = structure.structure || structure.structure_text || '';
-    companyStructureNodes = normalizeCompanyStructureNodes(structure.nodes);
+    companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes);
     companyStructureUpdatedAt = structure.updatedAt || null;
     companyStructureLoaded = true;
     const generatedStructure = companyStructureTextFromNodes(companyStructureNodes);

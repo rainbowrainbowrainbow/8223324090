@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.25",
+  "version": "0.73.26",
   "eventGenix": {
-    "releaseLabel": "HR: ЗП та KPI в sidebar"
+    "releaseLabel": "HR: структура на одному екрані"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

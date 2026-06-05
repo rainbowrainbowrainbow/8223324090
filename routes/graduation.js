@@ -1378,8 +1378,9 @@ router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director',
         const templateRow = await ensureDefaultDiplomaTemplate();
         const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         await markDiplomaExport(req.params.id, templateRow.id, 'csv', children.length, req.user.username);
+        const filename = `graduation_children_${safeExportFilename(quote.quote_number || req.params.id)}.csv`;
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="graduation_children_${quote.quote_number || req.params.id}.csv"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.send(buildRosterCsv(children));
     } catch (err) {
         log.error('Diploma CSV export error', err);
@@ -1419,8 +1420,9 @@ router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director'
         sheet.eachRow((row) => {
             row.alignment = { vertical: 'top', wrapText: true };
         });
+        const filename = `graduation_children_${safeExportFilename(quote.quote_number || req.params.id)}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="graduation_children_${quote.quote_number || req.params.id}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         await workbook.xlsx.write(res);
         res.end();
     } catch (err) {

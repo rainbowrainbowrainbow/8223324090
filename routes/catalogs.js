@@ -262,12 +262,13 @@ router.post('/generate-image', requireRole('admin', 'creator', 'director', 'art_
 
 router.get('/generate-image/:taskId', async (req, res) => {
     try {
-        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${req.params.taskId}`);
+        const taskId = String(req.params.taskId || '').trim();
+        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`);
         const data   = r?.data || {};
         const state  = data.state || null;
         const imgUrl = parseKieImageUrl(data);
         const done   = state === 'success' && !!imgUrl;
-        res.json({ success: true, taskId: req.params.taskId, state, done,
+        res.json({ success: true, taskId, state, done,
                    imageUrl: done ? imgUrl : null,
                    error: state === 'failed' ? (data.failMsg || 'Failed') : null });
     } catch (err) {

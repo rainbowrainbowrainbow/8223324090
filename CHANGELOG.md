@@ -4,6 +4,20 @@
 
 ---
 
+## v0.73.39 - Безпека та theme guardrails
+
+### Dependencies / Upload / Backend Hygiene / Light-Dark Theme / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **Оновлено security dependencies без force-довнгрейдів** - підтягнуто сумісні версії `express`, `express-rate-limit`, `multer`, `pg`, `ws` і `jsdom`; звичайний `npm audit fix` прибрав сумісні транзитивні advisory.
+- **Voice upload помічника отримав whitelist форматів** - `/api/crm-assistant/transcribe` тепер приймає тільки аудіо/відео MIME та розширення, має size-limit і повертає контрольовану JSON-помилку.
+- **Excel-імпорт staff захищено file filter-ом** - `/api/staff/import-excel` приймає тільки `.xlsx`/`.xlsm`, перевіряє MIME і не віддає сирі multer-помилки.
+- **Закрито точкові backend hygiene gaps** - `taskId` для Kie.ai lookup кодується через `encodeURIComponent`, а graduation CSV/XLSX export використовує `safeExportFilename` для `Content-Disposition`.
+- **Standalone theme cleanup** - `checkin.html` і `invite.html` отримали локальний light/dark contract, `status.html` має світлий варіант, а `room.html` переведено на theme-змінні для базової кімнати.
+- **Додано `check:theme-surface` у `npm test`** - новий guardrail фіксує root HTML theme policy, redirect/standalone exceptions і бюджети історичного inline CSS та `!important` боргу.
+- **Залишковий audit risk зафіксовано свідомо** - `exceljs@4.4.0` лишається на актуальній версії; npm пропонує тільки force-довнгрейд до `3.4.0`, тому його не застосовано, щоб не ламати XLSX-експорти.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.39`, cache tags і Service Worker синхронізовано для deploy.
+
+---
+
 ## v0.73.38 - HR: фільтри сьогоднішнього пульсу
 
 ### HR / Пульс компанії / Сьогодні / Пошук / Відділи / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

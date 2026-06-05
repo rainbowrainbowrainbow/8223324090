@@ -334,6 +334,64 @@
             box-shadow: 0 4px 12px rgba(16,185,129,0.15);
         }
 
+        html[data-theme="light"] {
+            --invite-page-bg: #064E3B;
+            --invite-page-glow-a: rgba(16,185,129,0.4);
+            --invite-page-glow-b: rgba(59,130,246,0.15);
+            --invite-card-bg: #FFFFFF;
+            --invite-section-bg: #F8FAFC;
+            --invite-section-hover: #ECFDF5;
+            --invite-text: #1E293B;
+            --invite-muted: #64748B;
+            --invite-border: #F1F5F9;
+            --invite-strong-border: #D1FAE5;
+        }
+        html[data-theme="dark"] {
+            --invite-page-bg: #07111F;
+            --invite-page-glow-a: rgba(16,185,129,0.22);
+            --invite-page-glow-b: rgba(96,165,250,0.12);
+            --invite-card-bg: #111827;
+            --invite-section-bg: rgba(255,255,255,0.06);
+            --invite-section-hover: rgba(16,185,129,0.12);
+            --invite-text: #F8FAFC;
+            --invite-muted: #CBD5E1;
+            --invite-border: rgba(255,255,255,0.10);
+            --invite-strong-border: rgba(52,211,153,0.28);
+        }
+        body {
+            background: var(--invite-page-bg);
+            background-image:
+                radial-gradient(ellipse at 30% 0%, var(--invite-page-glow-a) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 100%, var(--invite-page-glow-b) 0%, transparent 60%);
+        }
+        .invite-card {
+            background: var(--invite-card-bg);
+        }
+        .invite-section h2,
+        .invite-info-row .info .value,
+        .share-btn {
+            color: var(--invite-text);
+        }
+        .invite-section p,
+        .invite-info-row .info .label,
+        .invite-footer p {
+            color: var(--invite-muted);
+        }
+        .invite-info-row,
+        .invite-footer {
+            background: var(--invite-section-bg);
+            border-color: var(--invite-border);
+        }
+        .invite-info-row:hover,
+        .share-btn:hover {
+            background: var(--invite-section-hover);
+            border-color: var(--invite-strong-border);
+        }
+        .share-btn {
+            background: var(--invite-card-bg);
+            border-color: var(--invite-border);
+        }
+
         @media (max-width: 480px) {
             body { padding: 12px; }
             .invite-body { padding: 24px 20px; }

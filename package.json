@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.38",
+  "version": "0.73.39",
   "eventGenix": {
-    "releaseLabel": "HR: фільтри сьогоднішнього пульсу"
+    "releaseLabel": "Безпека та theme guardrails"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -11,7 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "npm run verify",
-    "verify": "npm run check:runtime && npm run check:version && npm run check:access && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:migrations && npm run check:syntax && npm run test:unit && npm run test:ui",
+    "verify": "npm run check:runtime && npm run check:version && npm run check:access && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:migrations && npm run check:syntax && npm run test:unit && npm run test:ui",
     "check:runtime": "node scripts/check-runtime.js",
     "version:current": "node scripts/current-version.js",
     "check:version": "node scripts/version-sync.js",
@@ -19,6 +19,7 @@
     "check:auth-boundary": "node scripts/check-auth-boundary.js",
     "check:static-surface": "node scripts/check-static-surface.js",
     "check:css-surface": "node scripts/check-css-surface.js",
+    "check:theme-surface": "node scripts/check-theme-surface.js",
     "check:api-surface": "node scripts/check-api-surface.js",
     "check:storage-surface": "node scripts/check-storage-surface.js",
     "check:service-worker-policy": "node scripts/check-service-worker-policy.js",
@@ -47,22 +48,22 @@
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
-    "express": "^4.18.2",
-    "express-rate-limit": "^8.3.1",
+    "express": "^4.22.2",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.0.2",
+    "multer": "^2.1.1",
     "pdfkit": "^0.18.0",
-    "pg": "^8.11.3",
+    "pg": "^8.21.0",
     "qrcode": "^1.5.4",
     "swagger-ui-express": "^5.0.1",
     "web-push": "^3.6.7",
-    "ws": "^8.19.0"
+    "ws": "^8.21.0"
   },
   "engines": {
     "node": "22.x",
     "npm": "10.x"
   },
   "devDependencies": {
-    "jsdom": "^29.0.1"
+    "jsdom": "^29.1.1"
   }
 }

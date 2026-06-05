@@ -906,9 +906,52 @@ router.post('/bulk-pdf', requireRole('creator', 'director'), async (req, res) =>
 // POST /api/staff/import-excel — import staff from Excel file
 const multer = require('multer');
 const ExcelJS = require('exceljs');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const STAFF_IMPORT_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xlsm']);
+const STAFF_IMPORT_ALLOWED_MIME_TYPES = new Set([
+    'application/octet-stream',
+    'application/vnd.ms-excel.sheet.macroenabled.12',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+]);
 
-router.post('/import-excel', requireRole('creator', 'director'), upload.single('file'), async (req, res) => {
+function validateStaffImportFile(file) {
+    const name = String(file?.originalname || '').toLowerCase();
+    const dot = name.lastIndexOf('.');
+    const ext = dot >= 0 ? name.slice(dot) : '';
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (!STAFF_IMPORT_ALLOWED_EXTENSIONS.has(ext)) {
+        const err = new Error('Підтримуються тільки .xlsx або .xlsm файли');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (mime && !STAFF_IMPORT_ALLOWED_MIME_TYPES.has(mime)) {
+        const err = new Error('Непідтримуваний MIME-тип Excel файлу');
+        err.statusCode = 400;
+        throw err;
+    }
+}
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateStaffImportFile(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
+});
+
+function handleStaffImportUpload(req, res, next) {
+    upload.single('file')(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        res.status(status).json({ success: false, error: err.message || 'Не вдалося завантажити Excel файл' });
+    });
+}
+
+router.post('/import-excel', requireRole('creator', 'director'), handleStaffImportUpload, async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, error: 'Файл не завантажено' });
 

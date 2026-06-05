@@ -138,6 +138,59 @@
             margin: 10px 0;
         }
 
+        html[data-theme="light"] {
+            --checkin-bg: #F7FAFC;
+            --checkin-text: #1E293B;
+            --checkin-header-bg: linear-gradient(135deg, #FFFFFF 0%, #E9F7F3 100%);
+            --checkin-header-border: rgba(15, 118, 110, 0.16);
+            --checkin-surface: #FFFFFF;
+            --checkin-surface-soft: #F1F5F9;
+            --checkin-border: rgba(15, 118, 110, 0.20);
+            --checkin-accent: #0F9F8A;
+            --checkin-muted: #64748B;
+        }
+        html[data-theme="dark"] {
+            --checkin-bg: #0D0D0D;
+            --checkin-text: #F3F4F6;
+            --checkin-header-bg: linear-gradient(135deg, #2A2A4A 0%, #1a1a3a 100%);
+            --checkin-header-border: rgba(167, 139, 250, 0.24);
+            --checkin-surface: rgba(255,255,255,0.05);
+            --checkin-surface-soft: rgba(255,255,255,0.1);
+            --checkin-border: rgba(167,139,250,0.42);
+            --checkin-accent: #A78BFA;
+            --checkin-muted: #9CA3AF;
+        }
+        body {
+            background: var(--checkin-bg);
+            color: var(--checkin-text);
+        }
+        .header {
+            background: var(--checkin-header-bg);
+            border-bottom: 1px solid var(--checkin-header-border);
+        }
+        .header .clock,
+        .result .name,
+        .log-entry .le-time {
+            color: var(--checkin-accent);
+        }
+        .header .date,
+        .result .time,
+        .log h3 {
+            color: var(--checkin-muted);
+        }
+        .camera-container,
+        .register-panel select {
+            border-color: var(--checkin-border);
+        }
+        .log-entry,
+        .btn-secondary {
+            background: var(--checkin-surface);
+        }
+        .register-panel select {
+            background: var(--checkin-surface-soft);
+            color: var(--checkin-text);
+        }
+
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>

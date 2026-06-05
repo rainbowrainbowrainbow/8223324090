@@ -11,13 +11,13 @@
     <title>Event Genix | Status</title>
     <meta name="description" content="Event Genix — системний статус">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.38">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.38">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.38">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.38">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.38">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.38">
+    <link rel="stylesheet" href="css/base.css?v=0.73.39">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.39">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.39">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.39">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.39">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -278,6 +278,53 @@
             font-size: 14px;
         }
 
+        html[data-theme="light"] body:not(.dark-mode) {
+            background:
+                radial-gradient(ellipse at 20% 0%, rgba(16,185,129,0.10) 0%, transparent 45%),
+                linear-gradient(180deg, #FBFAF6 0%, #F4EFE6 100%);
+            color: #1F2933;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .page-container {
+            background: transparent;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .status-header h1,
+        html[data-theme="light"] body:not(.dark-mode) .component-name,
+        html[data-theme="light"] body:not(.dark-mode) .incident-title {
+            color: #0F172A;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .status-header .subtitle,
+        html[data-theme="light"] body:not(.dark-mode) .component-desc,
+        html[data-theme="light"] body:not(.dark-mode) .incident-meta,
+        html[data-theme="light"] body:not(.dark-mode) .incident-update-time,
+        html[data-theme="light"] body:not(.dark-mode) .no-incidents,
+        html[data-theme="light"] body:not(.dark-mode) .loading,
+        html[data-theme="light"] body:not(.dark-mode) .status-footer {
+            color: #64748B;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .component-list,
+        html[data-theme="light"] body:not(.dark-mode) .incident-card {
+            background: rgba(255,255,255,0.86);
+            border-color: rgba(113,89,50,0.14);
+            box-shadow: 0 16px 34px rgba(54,43,24,0.08);
+        }
+        html[data-theme="light"] body:not(.dark-mode) .component-row {
+            border-bottom-color: rgba(113,89,50,0.10);
+        }
+        html[data-theme="light"] body:not(.dark-mode) .incident-update {
+            border-left-color: rgba(15,118,110,0.18);
+        }
+        html[data-theme="light"] body:not(.dark-mode) .incident-update-msg {
+            color: #334155;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .status-header a {
+            background: rgba(255,255,255,0.78) !important;
+            border-color: rgba(15,118,110,0.20) !important;
+            color: #0F766E !important;
+        }
+        html[data-theme="light"] body:not(.dark-mode) .status-footer a {
+            color: #0F766E;
+        }
+
         @media (max-width: 480px) {
             .status-header { padding: 32px 16px 24px; }
             .status-header h1 { font-size: 18px; }
@@ -387,13 +434,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.73.38"></script>
-    <script src="js/notification.js?v=0.73.38"></script>
-    <script src="js/api.js?v=0.73.38"></script>
-    <script src="js/auth.js?v=0.73.38"></script>
-    <script src="js/components/sidebar.js?v=0.73.38"></script>
+    <script src="js/config.js?v=0.73.39"></script>
+    <script src="js/notification.js?v=0.73.39"></script>
+    <script src="js/api.js?v=0.73.39"></script>
+    <script src="js/auth.js?v=0.73.39"></script>
+    <script src="js/components/sidebar.js?v=0.73.39"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/status-page.js?v=0.73.38"></script><script src="js/alerts.js?v=0.73.38"></script>
-    <script src="js/ui.js?v=0.73.38"></script>
+    <script src="js/status-page.js?v=0.73.39"></script><script src="js/alerts.js?v=0.73.39"></script>
+    <script src="js/ui.js?v=0.73.39"></script>
 </body>
 </html>

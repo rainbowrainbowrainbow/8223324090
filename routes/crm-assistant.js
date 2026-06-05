@@ -13,9 +13,49 @@ const router = express.Router();
 const log = createLogger('CrmAssistantRoutes');
 const { getDashboardAssistantReply } = dashboardAssistant;
 const normalizeAssistantReply = dashboardAssistant.normalizeAssistantReply || ((reply) => reply);
+const ASSISTANT_AUDIO_ALLOWED_MIME_TYPES = new Set([
+    'audio/aac',
+    'audio/flac',
+    'audio/m4a',
+    'audio/mp3',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/ogg',
+    'audio/wav',
+    'audio/webm',
+    'video/mp4',
+    'video/webm'
+]);
+const ASSISTANT_AUDIO_ALLOWED_EXTENSIONS = new Set(['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.oga', '.ogg', '.wav', '.webm']);
+
+function validateAssistantAudioFile(file) {
+    const name = String(file?.originalname || '').toLowerCase();
+    const dot = name.lastIndexOf('.');
+    const ext = dot >= 0 ? name.slice(dot) : '';
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (ext && !ASSISTANT_AUDIO_ALLOWED_EXTENSIONS.has(ext)) {
+        const err = new Error('Непідтримуваний формат аудіо');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (mime && !ASSISTANT_AUDIO_ALLOWED_MIME_TYPES.has(mime)) {
+        const err = new Error('Непідтримуваний MIME-тип аудіо');
+        err.statusCode = 400;
+        throw err;
+    }
+}
+
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 12 * 1024 * 1024 }
+    limits: { fileSize: 12 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateAssistantAudioFile(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
 });
 const TELEMETRY_EVENT_TYPES = new Set([
     'action_unavailable',
@@ -36,6 +76,14 @@ function sendAssistantError(res, error, fallbackCode) {
     if (status >= 500) log.error(code, error);
     else log.warn(code, { status, message: error?.message });
     res.status(status).json({ success: false, error: code });
+}
+
+function handleAssistantAudioUpload(req, res, next) {
+    upload.single('audio')(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        res.status(status).json({ success: false, error: err.message || 'Не вдалося завантажити аудіо' });
+    });
 }
 
 function compactTelemetryText(value, limit = 120) {
@@ -122,7 +170,7 @@ router.post('/telemetry', express.json({ limit: '16kb' }), async (req, res) => {
     }
 });
 
-router.post('/transcribe', upload.single('audio'), async (req, res) => {
+router.post('/transcribe', handleAssistantAudioUpload, async (req, res) => {
     try {
         if (!req.file?.buffer) return res.status(400).json({ success: false, error: 'audio_required' });
         const text = await transcribeDashboardAudio({

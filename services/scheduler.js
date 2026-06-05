@@ -2511,10 +2511,9 @@ async function checkCertExpiryReminders() {
         certExpirySentToday = todayStr;
         await setLastSent('cert_expiry_reminder', todayStr);
 
-        // staff_certifications has no business_context yet; keep this reminder global until HR certs are scoped.
-        // Find certs expiring in next 14 days
+        // Find certs expiring in next 14 days. business_context is optional, so legacy rows remain global.
         const result = await pool.query(`
-            SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status,
+            SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status, sc.business_context,
                    s.name AS staff_name, s.id AS staff_id
             FROM staff_certifications sc
             JOIN staff s ON s.id = sc.staff_id
@@ -2539,7 +2538,8 @@ async function checkCertExpiryReminders() {
         for (const cert of result.rows) {
             const daysLeft = Math.ceil((new Date(cert.expires_at) - new Date(todayStr)) / 86400000);
             const urgency = daysLeft <= 3 ? '🔴' : daysLeft <= 7 ? '🟡' : '🟢';
-            text += `${urgency} <b>${cert.staff_name}</b> — ${cert.cert_name} (${daysLeft} дн.)\n`;
+            const scope = cert.business_context ? ` · ${cert.business_context}` : '';
+            text += `${urgency} <b>${cert.staff_name}</b> — ${cert.cert_name}${scope} (${daysLeft} дн.)\n`;
         }
 
         await sendTelegramMessage(chatId, text);

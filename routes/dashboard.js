@@ -1568,7 +1568,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const [absences, pendingLeaves, birthdays, expiring] = await Promise.all([
                     pool.query(`SELECT s.name, ss.status FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
                         WHERE ss.date = $1 AND ss.status IN ('sick','vacation') AND s.is_active = true ORDER BY s.name`, [today]),
-                    pool.query(`SELECT lr.id, s.name, lr.type, lr.date_from, lr.date_to FROM hr_leave_requests lr
+                    pool.query(`SELECT lr.id, s.name, lr.type, lr.date_from, lr.date_to FROM leave_requests lr
                         JOIN staff s ON s.id = lr.staff_id WHERE lr.status = 'pending' ORDER BY lr.created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
                     pool.query(`SELECT name, birth_date FROM staff WHERE is_active = true AND birth_date IS NOT NULL
                         AND EXTRACT(MONTH FROM birth_date::date) = EXTRACT(MONTH FROM $1::date)

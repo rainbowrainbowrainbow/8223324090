@@ -4,6 +4,21 @@
 
 ---
 
+## v0.73.56 - HR картка foundation
+
+### HR / Картка співробітника / Приватні документи / Медкнижка / Ресурси / Offboarding / Dashboard / Deploy / (Клешня, 05.06.2026) [codex]
+- **Додано приватне сховище HR-документів співробітника** - нова таблиця `staff_documents` зберігає файли в PostgreSQL `bytea`, а не в публічному `/uploads`.
+- **Документи віддаються тільки через авторизований HR API** - metadata доступна через `/api/hr/staff/:id/documents`, а binary-download йде окремим guarded route з `Cache-Control: no-store`.
+- **У профіль співробітника додано блок документів** - HR/керівник може додати паспорт, ІПН, договір, медкнижку, сертифікат, навчальний або інший файл із датами та нотаткою.
+- **Медкнижку винесено в окремий HR-контроль** - `/api/hr/staff/:id/medical-book` пише її як `staff_certifications.category='medical_book'`, а certs отримали `business_context` і `document_id`.
+- **Додано перший облік виданих ресурсів** - нова таблиця `staff_resource_assignments` фіксує видане майно, тип ресурсу, кількість, строк повернення і факт повернення.
+- **Додано offboarding foundation** - нова таблиця `staff_offboarding_events` фіксує завершення співпраці, причину, дату, цільовий HR-статус, дію з акаунтом і кількість неповернутих ресурсів.
+- **Legacy видалення staff зроблено безпечним** - `DELETE /api/staff/:id` більше не робить фізичний `DELETE`, а переводить співробітника в неактивний soft-archive стан.
+- **Dashboard HR leave widget виправлено** - огляд HR читає `leave_requests`, тобто ту саму таблицю, з якою працюють HR routes.
+- **Оновлено релізні маркери** - версію піднято до `0.73.56`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.55 - HR графік підміни
 
 ### HR / Пульс компанії / Графік роботи / Staff Schedule / Replacement Flow / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

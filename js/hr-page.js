@@ -43,6 +43,35 @@ const HR_POOL_LABELS = {
     blacklisted: 'Чорний список'
 };
 
+const STAFF_DOCUMENT_TYPE_LABELS = {
+    passport: 'Паспорт',
+    tax_id: 'ІПН',
+    contract: 'Договір',
+    medical_book: 'Медкнижка',
+    certificate: 'Сертифікат',
+    training: 'Навчання',
+    other: 'Інше'
+};
+
+const STAFF_RESOURCE_KIND_LABELS = {
+    warehouse_stock: 'Склад',
+    costume: 'Костюм',
+    custom: 'Ручний ресурс'
+};
+
+const STAFF_RESOURCE_STATUS_LABELS = {
+    issued: 'Видано',
+    returned: 'Повернуто',
+    lost: 'Втрачено',
+    written_off: 'Списано'
+};
+
+const STAFF_OFFBOARDING_ACCOUNT_LABELS = {
+    none: 'Акаунт не змінювався',
+    review: 'Потрібна ручна перевірка акаунту',
+    disable: 'CRM-акаунт вимкнено'
+};
+
 const STAFF_DEPARTMENT_LABELS = {
     animators: 'Аніматори',
     trampoline: 'Батутисти',
@@ -677,6 +706,12 @@ async function crmApiFetch(path, options = {}) {
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) return { success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
     return data;
+}
+
+async function confirmHrAction(message, title = 'Підтвердження') {
+    if (typeof customConfirm === 'function') return customConfirm(message, title);
+    showNotification('Модалка підтвердження недоступна. Оновіть сторінку і повторіть дію.', 'error');
+    return false;
 }
 
 // ==========================================
@@ -1799,6 +1834,8 @@ async function openProfessionEditor(professionId = null) {
 }
 
 let teamStaff = [];
+let staffFoundationLoadSeq = 0;
+let staffDocumentNameById = new Map();
 let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
@@ -3363,6 +3400,12 @@ const STAFF_HISTORY_ACTION_LABELS = {
     pool_status_update: 'Переміщення між списками',
     status_change: 'Зміна активності',
     staff_profession_checklist_update: 'Чек-лист професії',
+    staff_document_upload: 'Документ додано',
+    staff_document_archive: 'Документ архівовано',
+    medical_book_update: 'Медкнижку оновлено',
+    staff_resource_issue: 'Ресурс видано',
+    staff_resource_return: 'Ресурс повернуто',
+    staff_offboarding_complete: 'Співпрацю завершено',
     shift_create: 'Додано зміну',
     shift_update: 'Оновлено зміну',
     shift_replace: 'Підміна зміни',
@@ -3431,6 +3474,301 @@ async function loadStaffProfileHistory(staffId) {
     root.innerHTML = renderStaffHistoryRows(data.data || []);
 }
 
+function activeEditStaffId() {
+    return document.getElementById('editStaffId')?.value;
+}
+
+function formatStaffDateValue(value) {
+    if (!value) return 'без дати';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+    return date.toLocaleDateString('uk-UA');
+}
+
+function formatStaffFileSize(bytes) {
+    return formatResumeFileSize(bytes);
+}
+
+function staffDateTone(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const days = Math.ceil((date.getTime() - Date.now()) / 86400000);
+    if (days < 0) return 'hr-staff-foundation-danger';
+    if (days <= 30) return 'hr-staff-foundation-warning';
+    return '';
+}
+
+function renderStaffFoundationEmpty(text) {
+    return `<div class="hr-staff-foundation-empty">${escapeHtml(text)}</div>`;
+}
+
+function renderStaffDocuments(rows = []) {
+    staffDocumentNameById = new Map(rows.map(doc => [Number(doc.id), doc.original_name || doc.title || 'staff-document']));
+    if (!rows.length) return renderStaffFoundationEmpty('Документи ще не додані.');
+    return rows.map(doc => {
+        const title = doc.title || doc.original_name || 'Документ';
+        const type = STAFF_DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type || 'Документ';
+        const expires = doc.expires_at ? ` · діє до ${formatStaffDateValue(doc.expires_at)}` : '';
+        const issued = doc.issued_at ? ` · видано ${formatStaffDateValue(doc.issued_at)}` : '';
+        const note = doc.notes ? ` · ${doc.notes}` : '';
+        return `<article class="hr-staff-foundation-item ${staffDateTone(doc.expires_at)}">
+            <div>
+                <b>${escapeHtml(title)}</b>
+                <span>${escapeHtml(type)} · ${escapeHtml(formatStaffFileSize(doc.file_size))}${escapeHtml(issued)}${escapeHtml(expires)}${escapeHtml(note)}</span>
+            </div>
+            <div class="hr-staff-foundation-actions">
+                <button type="button" class="btn-secondary" onclick="downloadStaffDocument(${Number(doc.id)})">Скачати</button>
+                <button type="button" class="btn-secondary" onclick="archiveStaffDocument(${Number(doc.id)})">Архів</button>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+function renderStaffMedicalBook(rows = []) {
+    if (!rows.length) return renderStaffFoundationEmpty('Медкнижка ще не зафіксована.');
+    return rows.slice(0, 5).map(item => {
+        const status = item.status === 'expired' ? 'прострочено' : 'активно';
+        const doc = item.document_title ? ` · файл: ${item.document_title}` : '';
+        const note = item.notes ? ` · ${item.notes}` : '';
+        return `<article class="hr-staff-foundation-item ${staffDateTone(item.expires_at)}">
+            <div>
+                <b>Медкнижка · ${escapeHtml(status)}</b>
+                <span>видано ${escapeHtml(formatStaffDateValue(item.issued_at))} · діє до ${escapeHtml(formatStaffDateValue(item.expires_at))}${escapeHtml(doc)}${escapeHtml(note)}</span>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+function renderStaffResources(rows = []) {
+    if (!rows.length) return renderStaffFoundationEmpty('Немає активних виданих ресурсів.');
+    return rows.map(item => {
+        const kind = STAFF_RESOURCE_KIND_LABELS[item.resource_kind] || item.resource_kind || 'Ресурс';
+        const status = STAFF_RESOURCE_STATUS_LABELS[item.status] || item.status || '';
+        const due = item.due_return_at ? ` · повернути до ${formatStaffDateValue(item.due_return_at)}` : '';
+        const note = item.notes ? ` · ${item.notes}` : '';
+        return `<article class="hr-staff-foundation-item ${item.status === 'issued' ? staffDateTone(item.due_return_at) : ''}">
+            <div>
+                <b>${escapeHtml(item.title || 'Ресурс')}</b>
+                <span>${escapeHtml(kind)} · ${escapeHtml(status)} · ${escapeHtml(item.quantity || 1)} шт.${escapeHtml(due)}${escapeHtml(note)}</span>
+            </div>
+            <div class="hr-staff-foundation-actions">
+                ${item.status === 'issued' ? `<button type="button" class="btn-secondary" onclick="returnStaffResource(${Number(item.id)})">Повернуто</button>` : ''}
+            </div>
+        </article>`;
+    }).join('');
+}
+
+function renderStaffOffboarding(rows = []) {
+    if (!rows.length) return renderStaffFoundationEmpty('Подій завершення співпраці ще немає.');
+    return rows.slice(0, 5).map(item => {
+        const account = STAFF_OFFBOARDING_ACCOUNT_LABELS[item.account_action] || item.account_action || '';
+        const resources = Number(item.open_resource_count || 0);
+        const resourceText = resources ? ` · неповернуті ресурси: ${resources}` : '';
+        return `<article class="hr-staff-foundation-item ${resources ? 'hr-staff-foundation-warning' : ''}">
+            <div>
+                <b>${escapeHtml(formatStaffDateValue(item.effective_date))} · ${escapeHtml(HR_POOL_LABELS[item.target_pool_status] || item.target_pool_status || '')}</b>
+                <span>${escapeHtml(item.reason || 'Без причини')} · ${escapeHtml(account)}${escapeHtml(resourceText)}</span>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+function setStaffFoundationLoading() {
+    const docs = document.getElementById('editStaffDocuments');
+    const medical = document.getElementById('editMedicalBookList');
+    const resources = document.getElementById('editStaffResources');
+    const offboarding = document.getElementById('editStaffOffboarding');
+    if (docs) docs.innerHTML = 'Документи завантажуються...';
+    if (medical) medical.innerHTML = 'Медкнижка завантажується...';
+    if (resources) resources.innerHTML = 'Ресурси завантажуються...';
+    if (offboarding) offboarding.innerHTML = 'Offboarding завантажується...';
+}
+
+async function loadStaffFoundation(staffId) {
+    const docsRoot = document.getElementById('editStaffDocuments');
+    const medicalRoot = document.getElementById('editMedicalBookList');
+    const resourcesRoot = document.getElementById('editStaffResources');
+    const offboardingRoot = document.getElementById('editStaffOffboarding');
+    if (!docsRoot && !medicalRoot && !resourcesRoot && !offboardingRoot) return;
+    const seq = ++staffFoundationLoadSeq;
+    if (!canManage) {
+        const restricted = renderStaffFoundationEmpty('Доступ до HR-документів і offboarding має тільки HR/керівник.');
+        if (docsRoot) docsRoot.innerHTML = restricted;
+        if (medicalRoot) medicalRoot.innerHTML = restricted;
+        if (resourcesRoot) resourcesRoot.innerHTML = restricted;
+        if (offboardingRoot) offboardingRoot.innerHTML = restricted;
+        return;
+    }
+    setStaffFoundationLoading();
+    const [docs, medical, resources, offboarding] = await Promise.all([
+        hrFetch(`/staff/${staffId}/documents`).catch(() => null),
+        hrFetch(`/staff/${staffId}/medical-book`).catch(() => null),
+        hrFetch(`/staff/${staffId}/resources`).catch(() => null),
+        hrFetch(`/staff/${staffId}/offboarding`).catch(() => null)
+    ]);
+    if (seq !== staffFoundationLoadSeq) return;
+    if (docsRoot) docsRoot.innerHTML = docs?.success ? renderStaffDocuments(docs.data || []) : renderStaffFoundationEmpty(docs?.error || 'Не вдалося завантажити документи.');
+    if (medicalRoot) medicalRoot.innerHTML = medical?.success ? renderStaffMedicalBook(medical.data || []) : renderStaffFoundationEmpty(medical?.error || 'Не вдалося завантажити медкнижку.');
+    if (resourcesRoot) resourcesRoot.innerHTML = resources?.success ? renderStaffResources(resources.data || []) : renderStaffFoundationEmpty(resources?.error || 'Не вдалося завантажити ресурси.');
+    if (offboardingRoot) offboardingRoot.innerHTML = offboarding?.success ? renderStaffOffboarding(offboarding.data || []) : renderStaffFoundationEmpty(offboarding?.error || 'Не вдалося завантажити offboarding.');
+}
+
+async function uploadStaffDocument() {
+    const staffId = activeEditStaffId();
+    const fileInput = document.getElementById('editDocumentFile');
+    const file = fileInput?.files?.[0];
+    if (!staffId || !file) {
+        showNotification('Виберіть файл документа', 'error');
+        return;
+    }
+    const body = new FormData();
+    body.append('document', file);
+    body.append('document_type', document.getElementById('editDocumentType')?.value || 'other');
+    body.append('title', document.getElementById('editDocumentTitle')?.value || file.name);
+    body.append('issued_at', document.getElementById('editDocumentIssuedAt')?.value || '');
+    body.append('expires_at', document.getElementById('editDocumentExpiresAt')?.value || '');
+    body.append('notes', document.getElementById('editDocumentNotes')?.value || '');
+    const data = await hrFetch(`/staff/${staffId}/documents`, { method: 'POST', body });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося завантажити документ', 'error');
+        return;
+    }
+    ['editDocumentTitle', 'editDocumentIssuedAt', 'editDocumentExpiresAt', 'editDocumentNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    if (fileInput) fileInput.value = '';
+    showNotification('Документ додано', 'success');
+    loadStaffFoundation(staffId);
+}
+
+async function downloadStaffDocument(documentId, fallbackName = 'staff-document') {
+    const staffId = activeEditStaffId();
+    if (!staffId || !documentId) return;
+    const resp = typeof apiFetchWithAuthRetry === 'function'
+        ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
+        : await fetch(`/api/hr/staff/${staffId}/documents/${documentId}/download`);
+    if (!resp?.ok) {
+        const payload = await resp?.json?.().catch(() => ({}));
+        showNotification(payload?.error || 'Не вдалося скачати документ', 'error');
+        return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = staffDocumentNameById.get(Number(documentId)) || fallbackName || 'staff-document';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function archiveStaffDocument(documentId) {
+    const staffId = activeEditStaffId();
+    if (!staffId || !documentId) return;
+    const ok = await confirmHrAction('Архівувати документ? Файл не буде видимий у активному списку, але залишиться в аудиті.');
+    if (!ok) return;
+    const data = await hrFetch(`/staff/${staffId}/documents/${documentId}`, { method: 'DELETE' });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося архівувати документ', 'error');
+        return;
+    }
+    showNotification('Документ перенесено в архів', 'success');
+    loadStaffFoundation(staffId);
+}
+
+async function saveStaffMedicalBook() {
+    const staffId = activeEditStaffId();
+    if (!staffId) return;
+    const body = {
+        issued_at: document.getElementById('editMedicalIssuedAt')?.value || null,
+        expires_at: document.getElementById('editMedicalExpiresAt')?.value || null,
+        notes: document.getElementById('editMedicalNotes')?.value || null
+    };
+    if (!body.issued_at && !body.expires_at) {
+        showNotification('Вкажіть дату медкнижки', 'error');
+        return;
+    }
+    const data = await hrFetch(`/staff/${staffId}/medical-book`, { method: 'POST', body });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити медкнижку', 'error');
+        return;
+    }
+    showNotification('Медкнижку оновлено', 'success');
+    loadStaffFoundation(staffId);
+}
+
+async function issueStaffResource() {
+    const staffId = activeEditStaffId();
+    if (!staffId) return;
+    const body = {
+        resource_kind: document.getElementById('editResourceKind')?.value || 'custom',
+        title: document.getElementById('editResourceTitle')?.value || null,
+        quantity: Number(document.getElementById('editResourceQuantity')?.value || 1),
+        due_return_at: document.getElementById('editResourceDueReturnAt')?.value || null,
+        notes: document.getElementById('editResourceNotes')?.value || null
+    };
+    if (!body.title) {
+        showNotification('Вкажіть назву ресурсу', 'error');
+        return;
+    }
+    const data = await hrFetch(`/staff/${staffId}/resources`, { method: 'POST', body });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося видати ресурс', 'error');
+        return;
+    }
+    ['editResourceTitle', 'editResourceDueReturnAt', 'editResourceNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    const quantity = document.getElementById('editResourceQuantity');
+    if (quantity) quantity.value = '1';
+    showNotification('Ресурс видано', 'success');
+    loadStaffFoundation(staffId);
+}
+
+async function returnStaffResource(assignmentId) {
+    const staffId = activeEditStaffId();
+    if (!staffId || !assignmentId) return;
+    const data = await hrFetch(`/staff/${staffId}/resources/${assignmentId}/return`, { method: 'PUT', body: {} });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося повернути ресурс', 'error');
+        return;
+    }
+    showNotification('Ресурс позначено як повернутий', 'success');
+    loadStaffFoundation(staffId);
+}
+
+async function completeStaffOffboarding() {
+    const staffId = activeEditStaffId();
+    if (!staffId) return;
+    const reason = document.getElementById('editOffboardingReason')?.value || '';
+    if (!reason.trim()) {
+        showNotification('Вкажіть причину завершення співпраці', 'error');
+        return;
+    }
+    const ok = await confirmHrAction('Завершити співпрацю з цим співробітником? Профіль стане неактивним.');
+    if (!ok) return;
+    const body = {
+        effective_date: document.getElementById('editOffboardingDate')?.value || todayStr(),
+        target_pool_status: document.getElementById('editOffboardingPoolStatus')?.value || 'reserve',
+        account_action: document.getElementById('editOffboardingAccountAction')?.value || 'review',
+        reason,
+        notes: document.getElementById('editOffboardingNotes')?.value || null
+    };
+    const data = await hrFetch(`/staff/${staffId}/offboarding`, { method: 'POST', body });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося завершити співпрацю', 'error');
+        return;
+    }
+    const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
+    showNotification(`Співпрацю завершено.${resourceNote}`, data.open_resource_count ? 'warning' : 'success');
+    await closeHrEditableModal('staffEditModal', true);
+    await loadTeam();
+}
+
 async function openStaffEdit(staffId) {
     const s = teamStaff.find(st => st.id === staffId);
     if (!s) return;
@@ -3452,9 +3790,31 @@ async function openStaffEdit(staffId) {
     document.getElementById('editBlacklistReason').value = s.blacklist_reason || '';
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
+    ['editDocumentTitle', 'editDocumentIssuedAt', 'editDocumentExpiresAt', 'editDocumentNotes',
+     'editMedicalIssuedAt', 'editMedicalExpiresAt', 'editMedicalNotes',
+     'editResourceTitle', 'editResourceDueReturnAt', 'editResourceNotes',
+     'editOffboardingReason', 'editOffboardingNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    const documentFile = document.getElementById('editDocumentFile');
+    if (documentFile) documentFile.value = '';
+    const documentType = document.getElementById('editDocumentType');
+    if (documentType) documentType.value = 'other';
+    const resourceKind = document.getElementById('editResourceKind');
+    if (resourceKind) resourceKind.value = 'custom';
+    const resourceQuantity = document.getElementById('editResourceQuantity');
+    if (resourceQuantity) resourceQuantity.value = '1';
+    const offboardingDate = document.getElementById('editOffboardingDate');
+    if (offboardingDate) offboardingDate.value = todayStr();
+    const offboardingPool = document.getElementById('editOffboardingPoolStatus');
+    if (offboardingPool) offboardingPool.value = 'reserve';
+    const offboardingAccount = document.getElementById('editOffboardingAccountAction');
+    if (offboardingAccount) offboardingAccount.value = 'review';
 
     showHrEditableModal('staffEditModal');
     loadStaffProfileHistory(staffId);
+    loadStaffFoundation(staffId);
 }
 
 async function saveStaffEdit() {

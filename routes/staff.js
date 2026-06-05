@@ -877,11 +877,22 @@ router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_m
     }
 });
 
-// DELETE /api/staff/:id — remove employee
+// DELETE /api/staff/:id — legacy soft archive. Do not physically delete staff history.
 router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     try {
-        await pool.query('DELETE FROM staff WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
+        const result = await pool.query(
+            `UPDATE staff
+             SET is_active = false,
+                 hr_pool_status = CASE WHEN hr_pool_status = 'blacklisted' THEN 'blacklisted' ELSE 'reserve' END,
+                 termination_recorded_at = COALESCE(termination_recorded_at, NOW()),
+                 termination_recorded_by = COALESCE(termination_recorded_by, $2),
+                 termination_reason = COALESCE(termination_reason, 'Legacy archive через /api/staff')
+             WHERE id = $1
+             RETURNING id, name, is_active, hr_pool_status`,
+            [req.params.id, req.user?.username || null]
+        );
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        res.json({ success: true, archived: true, data: result.rows[0] });
     } catch (err) {
         log.error('DELETE /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

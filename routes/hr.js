@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
+const crypto = require('crypto');
 const multer = require('multer');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -66,6 +67,30 @@ const RESUME_ALLOWED_MIME_TYPES = new Set([
     'application/octet-stream'
 ]);
 
+const STAFF_DOCUMENT_UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
+const STAFF_DOCUMENT_TYPES = new Set(['passport', 'tax_id', 'contract', 'medical_book', 'certificate', 'training', 'other']);
+const STAFF_DOCUMENT_STATUSES = new Set(['active', 'archived', 'expired', 'revoked']);
+const STAFF_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
+    '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'
+]);
+const STAFF_DOCUMENT_ALLOWED_MIME_TYPES = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'text/plain',
+    'application/octet-stream'
+]);
+const STAFF_RESOURCE_KINDS = new Set(['warehouse_stock', 'costume', 'custom']);
+const STAFF_RESOURCE_STATUSES = new Set(['issued', 'returned', 'lost', 'written_off']);
+const STAFF_OFFBOARDING_POOL_STATUSES = new Set(['core', 'reserve', 'blacklisted']);
+const STAFF_OFFBOARDING_ACCOUNT_ACTIONS = new Set(['none', 'review', 'disable']);
+
 function resumeFileExt(file) {
     return path.extname(file?.originalname || '').toLowerCase();
 }
@@ -110,6 +135,168 @@ function handleResumeUpload(req, res, next) {
             : (err.message || 'Не вдалося завантажити резюме');
         res.status(status).json({ success: false, error });
     });
+}
+
+function staffDocumentFileExt(file) {
+    return path.extname(file?.originalname || '').toLowerCase();
+}
+
+function validateStaffDocumentUploadFile(file) {
+    const ext = staffDocumentFileExt(file);
+    const mime = String(file?.mimetype || '').toLowerCase();
+    if (!STAFF_DOCUMENT_ALLOWED_EXTENSIONS.has(ext)) {
+        const err = new Error('Непідтримуваний формат HR-документа');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (mime && !mime.startsWith('text/') && !STAFF_DOCUMENT_ALLOWED_MIME_TYPES.has(mime)) {
+        const err = new Error('Непідтримуваний MIME-тип HR-документа');
+        err.statusCode = 400;
+        throw err;
+    }
+}
+
+const staffDocumentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: STAFF_DOCUMENT_UPLOAD_LIMIT_BYTES,
+        files: 1
+    },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateStaffDocumentUploadFile(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
+});
+
+function handleStaffDocumentUpload(req, res, next) {
+    staffDocumentUpload.single('document')(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        const error = err.code === 'LIMIT_FILE_SIZE'
+            ? 'HR-документ завеликий. Максимум 10 МБ'
+            : (err.message || 'Не вдалося завантажити HR-документ');
+        res.status(status).json({ success: false, error });
+    });
+}
+
+function cleanStaffText(value, limit = 1000) {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).replace(/\u0000/g, '').trim();
+    return normalized ? normalized.slice(0, limit) : null;
+}
+
+function cleanStaffDate(value) {
+    const normalized = cleanStaffText(value, 20);
+    return normalized && /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeStaffDocumentType(value) {
+    const type = cleanStaffText(value, 64) || 'other';
+    return STAFF_DOCUMENT_TYPES.has(type) ? type : 'other';
+}
+
+function normalizeStaffDocumentStatus(value) {
+    const status = cleanStaffText(value, 32) || 'active';
+    return STAFF_DOCUMENT_STATUSES.has(status) ? status : 'active';
+}
+
+function normalizeStaffCertificationStatus(value) {
+    const status = cleanStaffText(value, 32) || 'active';
+    return ['active', 'expired', 'revoked'].includes(status) ? status : 'active';
+}
+
+function normalizeStaffResourceKind(value) {
+    const kind = cleanStaffText(value, 64) || 'custom';
+    return STAFF_RESOURCE_KINDS.has(kind) ? kind : 'custom';
+}
+
+function normalizeStaffResourceStatus(value) {
+    const status = cleanStaffText(value, 32) || 'issued';
+    return STAFF_RESOURCE_STATUSES.has(status) ? status : 'issued';
+}
+
+function normalizeStaffOffboardingPoolStatus(value) {
+    const status = cleanStaffText(value, 32) || 'reserve';
+    return STAFF_OFFBOARDING_POOL_STATUSES.has(status) ? status : 'reserve';
+}
+
+function normalizeStaffOffboardingAccountAction(value) {
+    const action = cleanStaffText(value, 32) || 'review';
+    return STAFF_OFFBOARDING_ACCOUNT_ACTIONS.has(action) ? action : 'review';
+}
+
+function numberOrNull(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const normalized = Number(value);
+    return Number.isFinite(normalized) ? normalized : null;
+}
+
+function safeDownloadFilename(value, fallback = 'staff-document') {
+    const raw = cleanStaffText(value, 180) || fallback;
+    return raw.replace(/[\r\n"\\]/g, '_');
+}
+
+function staffDocumentMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        staff_id: row.staff_id,
+        document_type: row.document_type,
+        title: row.title,
+        original_name: row.original_name,
+        mime_type: row.mime_type,
+        file_ext: row.file_ext,
+        file_size: row.file_size,
+        file_sha256: row.file_sha256,
+        issued_at: row.issued_at,
+        expires_at: row.expires_at,
+        status: row.status,
+        notes: row.notes,
+        uploaded_by: row.uploaded_by,
+        archived_at: row.archived_at,
+        archived_by: row.archived_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`
+    };
+}
+
+function staffResourceAssignmentMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        staff_id: row.staff_id,
+        resource_kind: row.resource_kind,
+        warehouse_stock_id: row.warehouse_stock_id,
+        costume_id: row.costume_id,
+        warehouse_stock_name: row.warehouse_stock_name || null,
+        costume_name: row.costume_name || null,
+        title: row.title,
+        quantity: Number(row.quantity || 0),
+        issued_at: row.issued_at,
+        due_return_at: row.due_return_at,
+        returned_at: row.returned_at,
+        status: row.status,
+        notes: row.notes,
+        issued_by: row.issued_by,
+        returned_by: row.returned_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+    };
+}
+
+async function loadStaffRowOrNull(staffId, db = pool, { lock = false } = {}) {
+    const result = await db.query(
+        `SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes
+         FROM staff
+         WHERE id = $1${lock ? ' FOR UPDATE' : ''}`,
+        [staffId]
+    );
+    return result.rows[0] || null;
 }
 
 function normalizeResumeText(text) {
@@ -1338,6 +1525,7 @@ router.get('/staff', async (req, res) => {
                     hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     is_freelance, unique_person_key, hr_pool_status, blacklist_reason, blacklisted_at,
+                    termination_date, termination_reason, termination_recorded_at, termination_recorded_by,
                     (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
                     (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account
                     FROM staff`;
@@ -1433,7 +1621,8 @@ router.get('/staff/:id', async (req, res) => {
                     role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
-                    hr_pool_status, blacklist_reason, blacklisted_at
+                    hr_pool_status, blacklist_reason, blacklisted_at,
+                    termination_date, termination_reason, termination_recorded_at, termination_recorded_by
              FROM staff WHERE id = $1`, [req.params.id]
         );
         if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
@@ -1443,6 +1632,393 @@ router.get('/staff/:id', async (req, res) => {
     } catch (err) {
         log.error('GET /hr/staff/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/staff/:id/documents — private metadata only; binary is served by guarded download route.
+router.get('/staff/:id/documents', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const includeArchived = req.query.include_archived === 'true';
+        let sql = `SELECT id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
+                          file_sha256, issued_at, expires_at, status, notes, uploaded_by,
+                          archived_at, archived_by, created_at, updated_at
+                   FROM staff_documents
+                   WHERE staff_id = $1`;
+        if (!includeArchived) sql += ` AND status = 'active'`;
+        sql += ` ORDER BY expires_at ASC NULLS LAST, created_at DESC, id DESC`;
+        const result = await pool.query(sql, [req.params.id]);
+        res.json({ success: true, data: result.rows.map(staffDocumentMeta) });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/documents error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/staff/:id/documents — private DB-backed upload, never public /uploads.
+router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const file = req.file;
+        if (!file?.buffer?.length) return res.status(400).json({ success: false, error: 'Файл обовʼязковий' });
+
+        const documentType = normalizeStaffDocumentType(req.body.document_type || req.body.documentType);
+        const originalName = cleanStaffText(file.originalname, 255) || 'document';
+        const title = cleanStaffText(req.body.title, 160) || path.basename(originalName, staffDocumentFileExt(file)) || 'HR-документ';
+        const mimeType = cleanStaffText(file.mimetype, 120) || 'application/octet-stream';
+        const fileExt = staffDocumentFileExt(file).slice(0, 16) || null;
+        const fileSha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
+        const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt);
+        const expiresAt = cleanStaffDate(req.body.expires_at || req.body.expiresAt);
+        const notes = cleanStaffText(req.body.notes, 2000);
+
+        const result = await pool.query(
+            `INSERT INTO staff_documents
+                (staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
+                 file_sha256, file_data, issued_at, expires_at, notes, uploaded_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+             RETURNING id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
+                       file_sha256, issued_at, expires_at, status, notes, uploaded_by,
+                       archived_at, archived_by, created_at, updated_at`,
+            [
+                req.params.id,
+                documentType,
+                title,
+                originalName,
+                mimeType,
+                fileExt,
+                file.size,
+                fileSha256,
+                file.buffer,
+                issuedAt,
+                expiresAt,
+                notes,
+                req.user?.username || null
+            ]
+        );
+        await auditLog('staff_document_upload', parseInt(req.params.id), req.user?.username, {
+            document_id: result.rows[0].id,
+            document_type: documentType,
+            title,
+            original_name: originalName,
+            file_size: file.size
+        }, req.ip);
+        res.json({ success: true, data: staffDocumentMeta(result.rows[0]) });
+    } catch (err) {
+        log.error('POST /hr/staff/:id/documents error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid document ID' });
+        }
+        const result = await pool.query(
+            `SELECT id, staff_id, original_name, mime_type, file_size, file_data
+             FROM staff_documents
+             WHERE id = $1 AND staff_id = $2`,
+            [req.params.documentId, req.params.id]
+        );
+        const doc = result.rows[0];
+        if (!doc) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
+        res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
+        res.setHeader('Content-Length', String(doc.file_size || doc.file_data.length || 0));
+        res.setHeader('Cache-Control', 'no-store, private');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeDownloadFilename(doc.original_name)}"`);
+        res.send(doc.file_data);
+    } catch (err) {
+        log.error('GET /hr/staff/:id/documents/:documentId/download error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.delete('/staff/:id/documents/:documentId', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid document ID' });
+        }
+        const result = await pool.query(
+            `UPDATE staff_documents
+             SET status = 'archived', archived_at = NOW(), archived_by = $3, updated_at = NOW()
+             WHERE id = $1 AND staff_id = $2
+             RETURNING id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
+                       file_sha256, issued_at, expires_at, status, notes, uploaded_by,
+                       archived_at, archived_by, created_at, updated_at`,
+            [req.params.documentId, req.params.id, req.user?.username || null]
+        );
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
+        await auditLog('staff_document_archive', parseInt(req.params.id), req.user?.username, {
+            document_id: result.rows[0].id,
+            title: result.rows[0].title
+        }, req.ip);
+        res.json({ success: true, data: staffDocumentMeta(result.rows[0]) });
+    } catch (err) {
+        log.error('DELETE /hr/staff/:id/documents/:documentId error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/medical-book', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const result = await pool.query(
+            `SELECT sc.*, sd.title AS document_title
+             FROM staff_certifications sc
+             LEFT JOIN staff_documents sd ON sd.id = sc.document_id
+             WHERE sc.staff_id = $1 AND sc.category = 'medical_book'
+             ORDER BY sc.expires_at DESC NULLS LAST, sc.created_at DESC, sc.id DESC`,
+            [req.params.id]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/medical-book error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/staff/:id/medical-book', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt);
+        const expiresAt = cleanStaffDate(req.body.expires_at || req.body.expiresAt);
+        const notes = cleanStaffText(req.body.notes, 2000);
+        const documentId = numberOrNull(req.body.document_id || req.body.documentId);
+        let status = normalizeStaffCertificationStatus(req.body.status);
+        if (expiresAt && new Date(`${expiresAt}T00:00:00Z`) < new Date()) status = 'expired';
+        const result = await pool.query(
+            `INSERT INTO staff_certifications
+                (staff_id, name, category, issued_at, expires_at, status, notes, document_id, business_context)
+             VALUES ($1, 'Медкнижка', 'medical_book', $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [
+                req.params.id,
+                issuedAt,
+                expiresAt,
+                status,
+                notes,
+                documentId,
+                cleanStaffText(req.body.business_context || req.body.businessContext, 64)
+            ]
+        );
+        await auditLog('medical_book_update', parseInt(req.params.id), req.user?.username, {
+            certification_id: result.rows[0].id,
+            expires_at: expiresAt,
+            status
+        }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/staff/:id/medical-book error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const includeReturned = req.query.include_returned === 'true';
+        let sql = `SELECT sra.*, ws.name AS warehouse_stock_name, c.name AS costume_name
+                   FROM staff_resource_assignments sra
+                   LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
+                   LEFT JOIN costumes c ON c.id = sra.costume_id
+                   WHERE sra.staff_id = $1`;
+        if (!includeReturned) sql += ` AND sra.status = 'issued'`;
+        sql += ` ORDER BY sra.status = 'issued' DESC, sra.due_return_at ASC NULLS LAST, sra.created_at DESC`;
+        const result = await pool.query(sql, [req.params.id]);
+        res.json({ success: true, data: result.rows.map(staffResourceAssignmentMeta) });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/resources error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const resourceKind = normalizeStaffResourceKind(req.body.resource_kind || req.body.resourceKind);
+        const warehouseStockId = resourceKind === 'warehouse_stock' ? numberOrNull(req.body.warehouse_stock_id || req.body.warehouseStockId) : null;
+        const costumeId = resourceKind === 'costume' ? numberOrNull(req.body.costume_id || req.body.costumeId) : null;
+        let title = cleanStaffText(req.body.title, 160);
+        if (!title && warehouseStockId) {
+            const stock = await pool.query('SELECT name FROM warehouse_stock WHERE id = $1', [warehouseStockId]);
+            title = stock.rows[0]?.name || null;
+        }
+        if (!title && costumeId) {
+            const costume = await pool.query('SELECT name FROM costumes WHERE id = $1', [costumeId]);
+            title = costume.rows[0]?.name || null;
+        }
+        if (!title) return res.status(400).json({ success: false, error: 'Назва ресурсу обовʼязкова' });
+        const quantity = Math.max(0.01, numberOrNull(req.body.quantity) || 1);
+        const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt) || todayKyiv();
+        const dueReturnAt = cleanStaffDate(req.body.due_return_at || req.body.dueReturnAt);
+        const notes = cleanStaffText(req.body.notes, 2000);
+        const result = await pool.query(
+            `INSERT INTO staff_resource_assignments
+                (staff_id, resource_kind, warehouse_stock_id, costume_id, title, quantity,
+                 issued_at, due_return_at, notes, issued_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             RETURNING *`,
+            [req.params.id, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, req.user?.username || null]
+        );
+        await auditLog('staff_resource_issue', parseInt(req.params.id), req.user?.username, {
+            assignment_id: result.rows[0].id,
+            resource_kind: resourceKind,
+            title,
+            due_return_at: dueReturnAt
+        }, req.ip);
+        res.json({ success: true, data: staffResourceAssignmentMeta(result.rows[0]) });
+    } catch (err) {
+        log.error('POST /hr/staff/:id/resources error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (req, res) => {
+    try {
+        if (!/^[0-9]+$/.test(String(req.params.assignmentId || ''))) {
+            return res.status(400).json({ success: false, error: 'Invalid assignment ID' });
+        }
+        const returnedAt = cleanStaffDate(req.body.returned_at || req.body.returnedAt) || todayKyiv();
+        const result = await pool.query(
+            `UPDATE staff_resource_assignments
+             SET status = 'returned', returned_at = $3, returned_by = $4, updated_at = NOW()
+             WHERE id = $1 AND staff_id = $2
+             RETURNING *`,
+            [req.params.assignmentId, req.params.id, returnedAt, req.user?.username || null]
+        );
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Ресурс не знайдено' });
+        await auditLog('staff_resource_return', parseInt(req.params.id), req.user?.username, {
+            assignment_id: result.rows[0].id,
+            title: result.rows[0].title,
+            returned_at: returnedAt
+        }, req.ip);
+        res.json({ success: true, data: staffResourceAssignmentMeta(result.rows[0]) });
+    } catch (err) {
+        log.error('PUT /hr/staff/:id/resources/:assignmentId/return error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/offboarding', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const result = await pool.query(
+            `SELECT *
+             FROM staff_offboarding_events
+             WHERE staff_id = $1
+             ORDER BY created_at DESC, id DESC
+             LIMIT 20`,
+            [req.params.id]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/offboarding error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const reason = cleanStaffText(req.body.reason, 2000);
+        if (!reason) return res.status(400).json({ success: false, error: 'Причина завершення співпраці обовʼязкова' });
+        const effectiveDate = cleanStaffDate(req.body.effective_date || req.body.effectiveDate) || todayKyiv();
+        const targetPoolStatus = normalizeStaffOffboardingPoolStatus(req.body.target_pool_status || req.body.targetPoolStatus);
+        const accountAction = normalizeStaffOffboardingAccountAction(req.body.account_action || req.body.accountAction);
+        const notes = cleanStaffText(req.body.notes, 2000);
+
+        await client.query('BEGIN');
+        const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true });
+        if (!staff) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        }
+        const openResources = await client.query(
+            `SELECT COUNT(*)::int AS count
+             FROM staff_resource_assignments
+             WHERE staff_id = $1 AND status = 'issued'`,
+            [req.params.id]
+        );
+        const openResourceCount = openResources.rows[0]?.count || 0;
+        const event = await client.query(
+            `INSERT INTO staff_offboarding_events
+                (staff_id, status, effective_date, reason, target_pool_status, account_action,
+                 resource_check_required, open_resource_count, notes, created_by, completed_by)
+             VALUES ($1, 'completed', $2, $3, $4, $5, true, $6, $7, $8, $8)
+             RETURNING *`,
+            [
+                req.params.id,
+                effectiveDate,
+                reason,
+                targetPoolStatus,
+                accountAction,
+                openResourceCount,
+                notes,
+                req.user?.username || null
+            ]
+        );
+        const staffUpdate = await client.query(
+            `UPDATE staff
+             SET is_active = false,
+                 hr_pool_status = $2,
+                 blacklist_reason = CASE WHEN $2 = 'blacklisted' THEN $3 ELSE NULL END,
+                 blacklisted_at = CASE WHEN $2 = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END,
+                 termination_date = $4,
+                 termination_reason = $3,
+                 termination_recorded_at = NOW(),
+                 termination_recorded_by = $5
+             WHERE id = $1
+             RETURNING *`,
+            [req.params.id, targetPoolStatus, reason, effectiveDate, req.user?.username || null]
+        );
+        let disabledAccounts = 0;
+        if (accountAction === 'disable') {
+            const disabledProfiles = await client.query(
+                `UPDATE employee_profiles
+                 SET is_active = false
+                 WHERE staff_id = $1 AND is_active = true
+                 RETURNING user_id`,
+                [req.params.id]
+            );
+            const userIds = disabledProfiles.rows.map(row => Number(row.user_id)).filter(Number.isFinite);
+            if (userIds.length) {
+                const disabledUsers = await client.query(
+                    `UPDATE users SET is_active = false WHERE id = ANY($1::int[]) RETURNING id`,
+                    [userIds]
+                );
+                disabledAccounts = disabledUsers.rowCount || 0;
+            }
+        }
+        await client.query('COMMIT');
+        await auditLog('staff_offboarding_complete', parseInt(req.params.id), req.user?.username, {
+            event_id: event.rows[0].id,
+            effective_date: effectiveDate,
+            target_pool_status: targetPoolStatus,
+            account_action: accountAction,
+            disabled_accounts: disabledAccounts,
+            open_resource_count: openResourceCount
+        }, req.ip);
+        res.json({
+            success: true,
+            data: event.rows[0],
+            staff: staffUpdate.rows[0],
+            open_resource_count: openResourceCount,
+            disabled_accounts: disabledAccounts
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /hr/staff/:id/offboarding error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -3073,12 +3649,22 @@ router.get('/certifications', async (req, res) => {
 // POST /api/hr/certifications
 router.post('/certifications', requireHrManage, async (req, res) => {
     try {
-        const { staff_id, name, category, issued_at, expires_at, training_id, notes } = req.body;
+        const { staff_id, name, category, issued_at, expires_at, training_id, notes, document_id, documentId, business_context, businessContext } = req.body;
         if (!staff_id || !name) return res.status(400).json({ success: false, error: 'Потрібні staff_id та name' });
         const result = await pool.query(
-            `INSERT INTO staff_certifications (staff_id, name, category, issued_at, expires_at, training_id, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [staff_id, name, category || 'general', issued_at, expires_at, training_id, notes]
+            `INSERT INTO staff_certifications (staff_id, name, category, issued_at, expires_at, training_id, notes, document_id, business_context)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [
+                staff_id,
+                name,
+                category || 'general',
+                issued_at,
+                expires_at,
+                training_id,
+                notes,
+                numberOrNull(document_id || documentId),
+                cleanStaffText(business_context || businessContext, 64)
+            ]
         );
         await auditLog('certification_add', staff_id, req.user?.username, { name, category }, req.ip);
         res.json({ success: true, data: result.rows[0] });

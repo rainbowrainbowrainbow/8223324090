@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.55">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.55">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.55">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.55">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.55">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.55">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.55">
+    <link rel="stylesheet" href="css/base.css?v=0.73.56">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.56">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.56">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.56">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.56">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.56">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.56">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3900,6 +3900,151 @@
                 <label>Нотатки</label>
                 <textarea id="editNotes" rows="3"></textarea>
             </div>
+            <section class="hr-staff-foundation-panel" aria-label="Приватні HR-документи">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Документи</strong>
+                        <span>Файли зберігаються приватно в базі й не доступні через публічний /uploads.</span>
+                    </div>
+                    <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати</button>
+                </div>
+                <div class="hr-staff-foundation-grid">
+                    <div class="form-group">
+                        <label>Тип</label>
+                        <select id="editDocumentType">
+                            <option value="passport">Паспорт</option>
+                            <option value="tax_id">ІПН</option>
+                            <option value="contract">Договір</option>
+                            <option value="medical_book">Медкнижка</option>
+                            <option value="certificate">Сертифікат</option>
+                            <option value="training">Навчання</option>
+                            <option value="other">Інше</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Назва</label>
+                        <input type="text" id="editDocumentTitle" maxlength="160" placeholder="Напр. Медкнижка 2026">
+                    </div>
+                    <div class="form-group">
+                        <label>Видано</label>
+                        <input type="date" id="editDocumentIssuedAt">
+                    </div>
+                    <div class="form-group">
+                        <label>Діє до</label>
+                        <input type="date" id="editDocumentExpiresAt">
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Файл</label>
+                        <input type="file" id="editDocumentFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt">
+                        <small class="form-hint">Максимум 10 МБ. Доступ тільки для HR/керівників через авторизований API.</small>
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Нотатка</label>
+                        <textarea id="editDocumentNotes" rows="2" placeholder="Що це за документ або коли перевірити"></textarea>
+                    </div>
+                </div>
+                <div id="editStaffDocuments" class="hr-staff-foundation-list">Документи завантажуються...</div>
+            </section>
+            <section class="hr-staff-foundation-panel" aria-label="Медична книжка">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Медкнижка</strong>
+                        <span>Окремий HR-контроль строку дії через сертифікації.</span>
+                    </div>
+                    <button type="button" id="editMedicalSave" class="btn-secondary" onclick="saveStaffMedicalBook()">Оновити</button>
+                </div>
+                <div class="hr-staff-foundation-grid">
+                    <div class="form-group">
+                        <label>Видано</label>
+                        <input type="date" id="editMedicalIssuedAt">
+                    </div>
+                    <div class="form-group">
+                        <label>Діє до</label>
+                        <input type="date" id="editMedicalExpiresAt">
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Нотатка</label>
+                        <textarea id="editMedicalNotes" rows="2" placeholder="Напр. перевірити за 2 тижні до завершення"></textarea>
+                    </div>
+                </div>
+                <div id="editMedicalBookList" class="hr-staff-foundation-list">Медкнижка завантажується...</div>
+            </section>
+            <section class="hr-staff-foundation-panel" aria-label="Видані ресурси">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Видані ресурси</strong>
+                        <span>Перший облік майна: костюм, складський товар або ручний запис.</span>
+                    </div>
+                    <button type="button" id="editResourceIssue" class="btn-secondary" onclick="issueStaffResource()">Видати</button>
+                </div>
+                <div class="hr-staff-foundation-grid">
+                    <div class="form-group">
+                        <label>Тип</label>
+                        <select id="editResourceKind">
+                            <option value="custom">Ручний ресурс</option>
+                            <option value="warehouse_stock">Складський товар</option>
+                            <option value="costume">Костюм</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Назва</label>
+                        <input type="text" id="editResourceTitle" maxlength="160" placeholder="Напр. Радіостанція / костюм">
+                    </div>
+                    <div class="form-group">
+                        <label>Кількість</label>
+                        <input type="number" id="editResourceQuantity" min="0.01" step="1" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Повернути до</label>
+                        <input type="date" id="editResourceDueReturnAt">
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Нотатка</label>
+                        <textarea id="editResourceNotes" rows="2" placeholder="Стан, серійний номер, відповідальний"></textarea>
+                    </div>
+                </div>
+                <div id="editStaffResources" class="hr-staff-foundation-list">Ресурси завантажуються...</div>
+            </section>
+            <section class="hr-staff-foundation-panel hr-staff-foundation-danger" aria-label="Завершення співпраці">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Завершення співпраці</strong>
+                        <span>Фіксує причину, дату, цільовий HR-статус і неповернуті ресурси.</span>
+                    </div>
+                    <button type="button" id="editOffboardingComplete" class="btn-danger" onclick="completeStaffOffboarding()">Завершити</button>
+                </div>
+                <div class="hr-staff-foundation-grid">
+                    <div class="form-group">
+                        <label>Дата</label>
+                        <input type="date" id="editOffboardingDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Після завершення</label>
+                        <select id="editOffboardingPoolStatus">
+                            <option value="reserve">Резерв</option>
+                            <option value="blacklisted">Чорний список</option>
+                            <option value="core">Основна команда</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Дія з акаунтом</label>
+                        <select id="editOffboardingAccountAction">
+                            <option value="review">Перевірити вручну</option>
+                            <option value="none">Не чіпати</option>
+                            <option value="disable">Вимкнути CRM-акаунт</option>
+                        </select>
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Причина</label>
+                        <textarea id="editOffboardingReason" rows="2" placeholder="Причина завершення співпраці"></textarea>
+                    </div>
+                    <div class="form-group is-wide">
+                        <label>Нотатка</label>
+                        <textarea id="editOffboardingNotes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
+                    </div>
+                </div>
+                <div id="editStaffOffboarding" class="hr-staff-foundation-list">Offboarding завантажується...</div>
+            </section>
             <section class="hr-staff-history-panel" aria-label="Історія змін профілю">
                 <div class="hr-staff-history-head">
                     <strong>Історія змін</strong>
@@ -3961,14 +4106,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.55"></script>
-    <script src="js/config.js?v=0.73.55"></script>
-    <script src="js/notification.js?v=0.73.55"></script>
-    <script src="js/api.js?v=0.73.55"></script>
-    <script src="js/auth.js?v=0.73.55"></script>
-    <script src="js/components/sidebar.js?v=0.73.55"></script>
+    <script src="js/ui.js?v=0.73.56"></script>
+    <script src="js/config.js?v=0.73.56"></script>
+    <script src="js/notification.js?v=0.73.56"></script>
+    <script src="js/api.js?v=0.73.56"></script>
+    <script src="js/auth.js?v=0.73.56"></script>
+    <script src="js/components/sidebar.js?v=0.73.56"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.55"></script>
-    <script src="js/alerts.js?v=0.73.55"></script>
+    <script src="js/hr-page.js?v=0.73.56"></script>
+    <script src="js/alerts.js?v=0.73.56"></script>
 </body>
 </html>

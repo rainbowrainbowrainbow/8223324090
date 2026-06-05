@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.55",
+  "version": "0.73.56",
   "eventGenix": {
-    "releaseLabel": "HR графік підміни"
+    "releaseLabel": "HR картка foundation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

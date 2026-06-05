@@ -6524,3 +6524,157 @@ body.dark-mode .page-container .hr-team-filter-info,
         width: 100%;
     }
 }
+/* HR employee-card foundation: documents, medical book, issued resources, offboarding */
+.hr-staff-foundation-panel {
+    margin: 14px 0 4px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--gray-50);
+    padding: 12px;
+}
+
+.hr-staff-foundation-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.hr-staff-foundation-head strong {
+    display: block;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.hr-staff-foundation-head span {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.hr-staff-foundation-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.hr-staff-foundation-grid .is-wide {
+    grid-column: 1 / -1;
+}
+
+.hr-staff-foundation-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.hr-staff-foundation-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: 8px;
+    background: var(--white);
+    padding: 9px 10px;
+}
+
+.hr-staff-foundation-item b,
+.hr-staff-foundation-item span {
+    display: block;
+}
+
+.hr-staff-foundation-item b {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.hr-staff-foundation-item span {
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.hr-staff-foundation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.hr-staff-foundation-actions button,
+.hr-staff-foundation-panel .btn-secondary,
+.hr-staff-foundation-panel .btn-primary,
+.hr-staff-foundation-panel .btn-danger {
+    padding: 7px 10px;
+    font-size: 12px;
+}
+
+.hr-staff-foundation-empty {
+    border: 1px dashed var(--gray-200);
+    border-radius: 8px;
+    color: var(--gray-500);
+    font-size: 12px;
+    padding: 10px;
+}
+
+.hr-staff-foundation-warning {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.hr-staff-foundation-danger {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+body.dark-mode .hr-staff-foundation-panel,
+body.dark-mode .hr-staff-foundation-item {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+}
+
+body.dark-mode .hr-staff-foundation-head strong,
+body.dark-mode .hr-staff-foundation-item b {
+    color: #F8FAFC;
+}
+
+body.dark-mode .hr-staff-foundation-head span,
+body.dark-mode .hr-staff-foundation-item span,
+body.dark-mode .hr-staff-foundation-empty {
+    color: #94A3B8;
+}
+
+body.dark-mode .hr-staff-foundation-empty {
+    border-color: rgba(148,163,184,0.22);
+}
+
+body.dark-mode .hr-staff-foundation-warning {
+    background: rgba(245, 158, 11, 0.10);
+    border-color: rgba(245, 158, 11, 0.30);
+}
+
+body.dark-mode .hr-staff-foundation-danger {
+    background: rgba(239, 68, 68, 0.10);
+    border-color: rgba(239, 68, 68, 0.32);
+}
+
+@media (max-width: 768px) {
+    .hr-staff-foundation-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-staff-foundation-item {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-staff-foundation-actions {
+        justify-content: flex-start;
+    }
+}

@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.32">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.32">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.32">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.32">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.32">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.32">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.32">
+    <link rel="stylesheet" href="css/base.css?v=0.73.33">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.33">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.33">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.33">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.33">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.33">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.33">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -80,19 +80,23 @@
             flex-direction: row;
         }
         .hr-nav--pulse {
-            position: sticky;
-            top: 76px;
-            z-index: 8;
+            position: relative;
+            top: auto;
+            z-index: 2;
             flex-direction: row;
             align-items: center;
             gap: 0;
-            margin-bottom: 28px;
+            margin-bottom: 18px;
             padding: 8px;
             border: 1px solid rgba(20,184,166,0.14);
             border-radius: 18px;
             background: linear-gradient(135deg, rgba(15,23,42,0.04), rgba(99,102,241,0.08));
             box-shadow: 0 16px 34px rgba(15,23,42,0.08);
             overflow: visible;
+        }
+        .hr-nav--pulse + #tab-today.active {
+            position: relative;
+            z-index: 1;
         }
         .hr-nav--structure-only .hr-nav-group {
             padding: 4px;
@@ -236,6 +240,12 @@
             border-color: rgba(34,211,238,0.32);
             background: linear-gradient(135deg, rgba(20,184,166,0.22), rgba(99,102,241,0.18));
             color: #67E8F9;
+        }
+        body.dark-mode .hr-today-date {
+            border-color: rgba(34,211,238,0.18);
+            background: linear-gradient(135deg, rgba(20,184,166,0.14), rgba(99,102,241,0.12));
+            color: #E2E8F0;
+            box-shadow: 0 14px 28px rgba(0,0,0,0.18);
         }
         body.dark-mode .hr-nav-count { background: rgba(255,255,255,0.08); color: #CBD5E1; }
         body.dark-mode .hr-tab.active .hr-nav-count { background: rgba(129,140,248,0.18); color: var(--primary-light); }
@@ -999,10 +1009,22 @@
         .hr-summary-card.red .value { color: #EF4444; }
 
         .hr-today-date {
-            font-size: var(--font-lg);
-            font-weight: 800;
-            color: var(--gray-800);
-            margin-bottom: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: fit-content;
+            max-width: 100%;
+            min-height: 36px;
+            padding: 8px 13px;
+            border: 1px solid rgba(20,184,166,0.18);
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(20,184,166,0.10), rgba(99,102,241,0.08));
+            color: var(--gray-700);
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.2;
+            margin: 0 0 16px;
+            box-shadow: 0 10px 24px rgba(15,23,42,0.06);
         }
 
         .hr-staff-list {
@@ -2809,7 +2831,7 @@
                 padding: 6px;
             }
             .hr-nav--pulse {
-                top: 64px;
+                top: auto;
                 align-items: stretch;
                 padding: 6px;
                 margin-bottom: 20px;
@@ -2841,6 +2863,14 @@
                 min-height: 44px;
                 padding: 10px 8px;
                 font-size: 12px;
+            }
+            .hr-today-date {
+                width: 100%;
+                min-height: 34px;
+                padding: 8px 10px;
+                border-radius: 14px;
+                font-size: 13px;
+                margin-bottom: 12px;
             }
             .hr-schedule-controls { flex-direction: column; align-items: stretch; }
             .hr-schedule-actions { margin-left: 0; }
@@ -3795,15 +3825,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.32"></script>
-    <script src="js/config.js?v=0.73.32"></script>
-    <script src="js/notification.js?v=0.73.32"></script>
-    <script src="js/api.js?v=0.73.32"></script>
-    <script src="js/auth.js?v=0.73.32"></script>
-    <script src="js/components/sidebar.js?v=0.73.32"></script>
+    <script src="js/ui.js?v=0.73.33"></script>
+    <script src="js/config.js?v=0.73.33"></script>
+    <script src="js/notification.js?v=0.73.33"></script>
+    <script src="js/api.js?v=0.73.33"></script>
+    <script src="js/auth.js?v=0.73.33"></script>
+    <script src="js/components/sidebar.js?v=0.73.33"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.32"></script>
-    <script src="js/alerts.js?v=0.73.32"></script><script>
+    <script src="js/hr-page.js?v=0.73.33"></script>
+    <script src="js/alerts.js?v=0.73.33"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

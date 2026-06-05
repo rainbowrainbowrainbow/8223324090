@@ -10784,3 +10784,100 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[d
     animation: none !important;
   }
 }
+
+/* v0.73.37: business selector owns the full bottom row; time/date keeps only the useful internal divider. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-areas:
+    "identity-title identity-title"
+    "identity-portrait identity-main"
+    "identity-business identity-business" !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  grid-template-areas:
+    "identity-summary"
+    "identity-meta" !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-context,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-context,
+.sidebar-nav:not(.collapsed) .sidebar-business-context {
+  grid-area: identity-business !important;
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: max-content minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 7px !important;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 74%, transparent) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sb-enterprise-panel) 86%, transparent), color-mix(in srgb, #071017 70%, transparent)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent) !important;
+  overflow: visible !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-label,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-label,
+.sidebar-nav:not(.collapsed) .sidebar-business-label {
+  display: inline-grid !important;
+  place-items: center !important;
+  min-width: 62px !important;
+  min-height: 30px !important;
+  padding: 0 9px !important;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-accent) 28%, transparent) !important;
+  border-radius: 7px !important;
+  background: color-mix(in srgb, var(--sb-enterprise-accent) 11%, transparent) !important;
+  color: color-mix(in srgb, var(--sb-enterprise-text) 82%, transparent) !important;
+  font-size: 8px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.07em !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-select,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-select,
+.sidebar-nav:not(.collapsed) .sidebar-business-select {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 32px !important;
+  border-radius: 7px !important;
+  border-color: color-mix(in srgb, var(--sb-enterprise-accent) 32%, transparent) !important;
+  background: color-mix(in srgb, var(--sb-enterprise-bg) 78%, transparent) !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  text-align: center !important;
+  text-overflow: ellipsis !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-chip,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-chip,
+.sidebar-nav:not(.collapsed) .sidebar-business-chip {
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 32px !important;
+  border-radius: 7px !important;
+  color: var(--sb-enterprise-text) !important;
+  text-align: center !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux {
+  border-top: 0 !important;
+  border-radius: 0 0 8px 8px !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, #ffffff 5%, transparent) !important;
+}

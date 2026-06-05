@@ -1871,8 +1871,8 @@ const Sidebar = (() => {
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
                             </button>
                         </span>
-                        <span class="sidebar-business-context" id="sidebarBusinessContextHost" data-sidebar-stop-profile="true"></span>
                     </span>
+                    <span class="sidebar-business-context" id="sidebarBusinessContextHost" data-sidebar-stop-profile="true"></span>
                     <span class="sidebar-identity-chevron" aria-hidden="true">›</span>
                 </div>
 

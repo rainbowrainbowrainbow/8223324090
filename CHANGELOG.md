@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.37 - Sidebar: бізнес на всю строку
+
+### Sidebar / Profile Card / Business Switcher / Full Row / Time Date Panel / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **Перемикач бізнесу перенесено в окремий нижній рядок профільної картки** - `sidebarBusinessContextHost` тепер стоїть після основної сітки профілю і займає `identity-business identity-business`, тобто всю ширину картки.
+- **Label `Бізнес` і select вирівняні в одному акуратному блоці** - кнопка-мітка та перемикач бізнесу більше не затиснуті справа, тому назви на кшталт `Парк`, `Майстерня` або `CRM продажі` не обрізаються збоку.
+- **Time/date панель під аватаром стала легшою** - верхню лінію рамки прибрано, але внутрішній розділювач між `Час` і `День` залишено.
+- **Оновлено UI smoke і headless Chrome layout guardrails** - перевірка фіксує full-row business, видимий select, відсутній top border у time/date і наявний divider між часом та днем.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.37`, cache tags і Service Worker синхронізовано для deploy.
+
+---
+
 ## v0.73.36 - Sidebar: гарна профільна картка
 
 ### Sidebar / Profile Card / Name Role / Alert Pulse / USD Tile / Time Date Panel / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

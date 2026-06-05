@@ -4,6 +4,21 @@
 
 ---
 
+## v0.73.50 - Payroll контроль періоду
+
+### HR / Зарплата / Payroll Lock / Reversal / Finance Reconciliation / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **Додано контроль зарплатного періоду** - нова таблиця `payroll_period_locks` фіксує відкритий/закритий стан місяця, хто закрив або відкрив період, і службову примітку.
+- **Commit зарплати тепер автоматично закриває місяць** - після успішного `/api/hr/salary/commit` період блокується, а повторне нарахування або ручні коригування повертають контрольовану `423`-відповідь.
+- **Payroll reports отримали зв'язок із фінансами** - `payroll_reports` зберігають `finance_transaction_id`, `committed_at`, `committed_by`, а також metadata для сторно.
+- **Додано сторно зарплати** - `/api/hr/salary/reverse` створює finance-транзакції з `payment_method='salary_reversal'`, переводить активні payroll reports у `voided` і відкриває період для повторного правильного нарахування.
+- **Додано reconciliation API** - `/api/hr/salary/reconciliation` порівнює active payroll total, finance salary total, salary reversal total, різницю, orphan finance rows і missing finance links.
+- **Вкладка `Зарплата` отримала операційні кнопки** - у UI додано `Звірка`, `Закрити період`, `Відкрити період`, `Сторнувати`, а також видимий статус періоду й reconciliation-картки.
+- **Захищено ручні коригування** - бонуси, утримання і депремії більше не додаються у locked payroll month без попереднього відкриття періоду.
+- **Оновлено guardrails** - HR static contract фіксує frontend controls, backend routes, lock helpers, reconciliation і reversal API.
+- **Оновлено релізні маркери** - версію піднято до `0.73.50`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.49 - HR критичні хвости закрито
 
 ### HR / Зарплата / KPI / Склад костюмів / Legacy Surface / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

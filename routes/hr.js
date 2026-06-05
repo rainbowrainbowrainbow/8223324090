@@ -26,7 +26,9 @@ const {
 // RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
 const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
+const PAYROLL_CONTROL_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
 const requireHrManage = requireRole(...HR_MANAGE_ROLES);
+const requirePayrollControl = requireRole(...PAYROLL_CONTROL_ROLES);
 router.use(requireRole(...HR_VIEW_ROLES));
 // v40: Validate numeric ID params
 router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
@@ -625,6 +627,170 @@ function payrollTotals(rows = []) {
     }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 });
 }
 
+function payrollActor(user = {}) {
+    return user.username || user.name || user.email || 'crm';
+}
+
+function payrollMonthRange(month) {
+    const year = Number(String(month).slice(0, 4));
+    const monthNumber = Number(String(month).slice(5, 7));
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    return {
+        from: `${month}-01`,
+        to: `${month}-${String(lastDay).padStart(2, '0')}`
+    };
+}
+
+function payrollDefaultLock(month) {
+    return {
+        period_month: month,
+        is_locked: false,
+        locked_at: null,
+        locked_by: null,
+        unlocked_at: null,
+        unlocked_by: null,
+        note: null,
+        meta_json: {}
+    };
+}
+
+async function loadPayrollPeriodLock(month, db = pool) {
+    const result = await db.query(
+        `SELECT period_month, is_locked, locked_at, locked_by, unlocked_at, unlocked_by, note, meta_json
+         FROM payroll_period_locks
+         WHERE period_month = $1`,
+        [month]
+    );
+    const row = result.rows[0];
+    if (!row) return payrollDefaultLock(month);
+    return {
+        period_month: row.period_month,
+        is_locked: row.is_locked === true,
+        locked_at: row.locked_at || null,
+        locked_by: row.locked_by || null,
+        unlocked_at: row.unlocked_at || null,
+        unlocked_by: row.unlocked_by || null,
+        note: row.note || null,
+        meta_json: row.meta_json && typeof row.meta_json === 'object' ? row.meta_json : {}
+    };
+}
+
+async function assertPayrollPeriodOpen(month, db = pool) {
+    const lock = await loadPayrollPeriodLock(month, db);
+    if (lock.is_locked) {
+        const err = new Error(`Зарплатний період ${month} закрито. Відкрийте період або зробіть сторно перед змінами.`);
+        err.statusCode = 423;
+        err.payrollLock = lock;
+        throw err;
+    }
+    return lock;
+}
+
+async function setPayrollPeriodLock(month, locked, actor, note = '', db = pool) {
+    const result = await db.query(
+        `INSERT INTO payroll_period_locks
+            (period_month, is_locked, locked_at, locked_by, unlocked_at, unlocked_by, note, updated_at)
+         VALUES (
+            $1, $2,
+            CASE WHEN $2 THEN NOW() ELSE NULL END,
+            CASE WHEN $2 THEN $3 ELSE NULL END,
+            CASE WHEN $2 THEN NULL ELSE NOW() END,
+            CASE WHEN $2 THEN NULL ELSE $3 END,
+            NULLIF($4, ''), NOW()
+         )
+         ON CONFLICT (period_month) DO UPDATE SET
+            is_locked = EXCLUDED.is_locked,
+            locked_at = CASE WHEN EXCLUDED.is_locked THEN NOW() ELSE payroll_period_locks.locked_at END,
+            locked_by = CASE WHEN EXCLUDED.is_locked THEN EXCLUDED.locked_by ELSE payroll_period_locks.locked_by END,
+            unlocked_at = CASE WHEN EXCLUDED.is_locked THEN payroll_period_locks.unlocked_at ELSE NOW() END,
+            unlocked_by = CASE WHEN EXCLUDED.is_locked THEN payroll_period_locks.unlocked_by ELSE EXCLUDED.unlocked_by END,
+            note = EXCLUDED.note,
+            updated_at = NOW()
+         RETURNING period_month, is_locked, locked_at, locked_by, unlocked_at, unlocked_by, note, meta_json`,
+        [month, locked === true, actor, String(note || '').trim()]
+    );
+    return loadPayrollPeriodLock(result.rows[0].period_month, db);
+}
+
+async function loadPayrollReconciliation(month, db = pool) {
+    const range = payrollMonthRange(month);
+    const result = await db.query(
+        `WITH active_reports AS (
+            SELECT id, staff_id, net_amount, finance_transaction_id
+            FROM payroll_reports
+            WHERE period_month = $1
+              AND status = 'paid'
+              AND voided_at IS NULL
+        ),
+        voided_reports AS (
+            SELECT id
+            FROM payroll_reports
+            WHERE period_month = $1
+              AND voided_at IS NOT NULL
+        ),
+        salary_finance AS (
+            SELECT ft.id, ft.amount, ft.staff_id
+            FROM finance_transactions ft
+            WHERE ft.payment_method = 'salary'
+              AND ft.date::date >= $2::date
+              AND ft.date::date <= $3::date
+        ),
+        reversal_finance AS (
+            SELECT ft.id, ft.amount
+            FROM finance_transactions ft
+            WHERE ft.payment_method = 'salary_reversal'
+              AND ft.date::date >= $2::date
+              AND ft.date::date <= $3::date
+        ),
+        missing_finance AS (
+            SELECT ar.id
+            FROM active_reports ar
+            LEFT JOIN finance_transactions ft ON ft.id = ar.finance_transaction_id
+            WHERE ar.finance_transaction_id IS NULL OR ft.id IS NULL
+        ),
+        orphan_salary AS (
+            SELECT sf.id
+            FROM salary_finance sf
+            LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = sf.id AND pr.period_month = $1
+            WHERE pr.id IS NULL
+        )
+        SELECT
+            COALESCE((SELECT COUNT(*) FROM active_reports), 0)::int AS payroll_count,
+            COALESCE((SELECT SUM(net_amount) FROM active_reports), 0)::numeric AS payroll_total,
+            COALESCE((SELECT COUNT(*) FROM voided_reports), 0)::int AS voided_count,
+            COALESCE((SELECT COUNT(*) FROM salary_finance), 0)::int AS finance_salary_count,
+            COALESCE((SELECT SUM(amount) FROM salary_finance), 0)::numeric AS finance_salary_total,
+            COALESCE((SELECT COUNT(*) FROM reversal_finance), 0)::int AS finance_reversal_count,
+            COALESCE((SELECT SUM(amount) FROM reversal_finance), 0)::numeric AS finance_reversal_total,
+            COALESCE((SELECT COUNT(*) FROM missing_finance), 0)::int AS missing_finance_count,
+            COALESCE((SELECT COUNT(*) FROM orphan_salary), 0)::int AS orphan_salary_count`,
+        [month, range.from, range.to]
+    );
+    const row = result.rows[0] || {};
+    const payrollTotal = Number(row.payroll_total || 0);
+    const financeSalaryTotal = Number(row.finance_salary_total || 0);
+    const financeReversalTotal = Number(row.finance_reversal_total || 0);
+    const financeNetTotal = financeSalaryTotal - financeReversalTotal;
+    const variance = payrollTotal - financeNetTotal;
+    const missingFinanceCount = Number(row.missing_finance_count || 0);
+    const orphanSalaryCount = Number(row.orphan_salary_count || 0);
+    return {
+        month,
+        payroll_count: Number(row.payroll_count || 0),
+        payroll_total: payrollTotal,
+        voided_count: Number(row.voided_count || 0),
+        finance_salary_count: Number(row.finance_salary_count || 0),
+        finance_salary_total: financeSalaryTotal,
+        finance_reversal_count: Number(row.finance_reversal_count || 0),
+        finance_reversal_total: financeReversalTotal,
+        finance_net_total: financeNetTotal,
+        missing_finance_count: missingFinanceCount,
+        orphan_salary_count: orphanSalaryCount,
+        variance,
+        status: variance === 0 && missingFinanceCount === 0 && orphanSalaryCount === 0 ? 'ok' : 'attention'
+    };
+}
+
 async function loadPayrollCalculation(monthValue, db = pool) {
     const month = normalizePayrollMonth(monthValue);
     const result = await db.query(`
@@ -689,6 +855,7 @@ async function loadPayrollCalculation(monthValue, db = pool) {
             SELECT pr.staff_id, pr.status AS payroll_status, pr.id AS payroll_report_id
             FROM payroll_reports pr
             JOIN params p ON pr.period_month = p.month
+            WHERE pr.voided_at IS NULL
         )
         SELECT s.id AS staff_id,
                s.name AS staff_name,
@@ -2881,7 +3048,11 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 router.get('/salary', async (req, res) => {
     try {
         const calculation = await loadPayrollCalculation(req.query.month);
-        res.json({ success: true, ...calculation });
+        const [periodLock, reconciliation] = await Promise.all([
+            loadPayrollPeriodLock(calculation.month),
+            loadPayrollReconciliation(calculation.month)
+        ]);
+        res.json({ success: true, ...calculation, period_lock: periodLock, reconciliation });
     } catch (err) {
         log.error('GET /hr/salary error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2895,6 +3066,10 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         if (!staff_id || !month || !type || amount === undefined) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
         }
+
+        const payrollMonth = requirePayrollMonth(month);
+        if (!payrollMonth) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        await assertPayrollPeriodOpen(payrollMonth);
 
         let finalReason = reason;
         let finalAmount = Number(amount);
@@ -2937,7 +3112,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
              template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
              violation_date, evidence_note, evidence_url)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-            [staff_id, month, type, finalAmount, finalReason, req.user?.username,
+            [staff_id, payrollMonth, type, finalAmount, finalReason, req.user?.username,
              tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status,
              violation_date || null, evidence_note || null, evidence_url || null]
         );
@@ -2974,6 +3149,9 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         res.json({ success: true, data: adj, needsReview });
     } catch (err) {
         log.error('POST /hr/salary/adjustment error', err);
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+        }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
@@ -3193,27 +3371,149 @@ router.get('/shifts-summary', async (req, res) => {
     }
 });
 
+router.get('/salary/reconciliation', async (req, res) => {
+    try {
+        const month = requirePayrollMonth(req.query.month);
+        if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        const [periodLock, reconciliation] = await Promise.all([
+            loadPayrollPeriodLock(month),
+            loadPayrollReconciliation(month)
+        ]);
+        res.json({ success: true, month, period_lock: periodLock, reconciliation });
+    } catch (err) {
+        log.error('GET /hr/salary/reconciliation error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/salary/period-lock', requirePayrollControl, async (req, res) => {
+    try {
+        const month = requirePayrollMonth(req.body?.month);
+        if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        const actor = payrollActor(req.user);
+        const locked = req.body?.locked !== false;
+        const periodLock = await setPayrollPeriodLock(month, locked, actor, req.body?.note || '');
+        const reconciliation = await loadPayrollReconciliation(month);
+        res.json({ success: true, month, period_lock: periodLock, reconciliation });
+    } catch (err) {
+        log.error('POST /hr/salary/period-lock error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const month = requirePayrollMonth(req.body?.month);
+        if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        const reason = String(req.body?.reason || '').trim() || 'Сторно зарплатного періоду';
+        const actor = payrollActor(req.user);
+        const range = payrollMonthRange(month);
+
+        await client.query('BEGIN');
+        const reports = await client.query(
+            `SELECT pr.id, pr.staff_id, pr.net_amount, pr.finance_transaction_id, s.name AS staff_name,
+                    ft.category_id, ft.date AS finance_date
+             FROM payroll_reports pr
+             JOIN staff s ON s.id = pr.staff_id
+             LEFT JOIN finance_transactions ft ON ft.id = pr.finance_transaction_id
+             WHERE pr.period_month = $1
+               AND pr.status = 'paid'
+               AND pr.voided_at IS NULL
+             ORDER BY s.name
+             FOR UPDATE OF pr`,
+            [month]
+        );
+        if (!reports.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: `Немає активних нарахувань зарплати за ${month}` });
+        }
+
+        const reversed = [];
+        for (const report of reports.rows) {
+            const amount = Math.round(Number(report.net_amount || 0));
+            if (amount <= 0) continue;
+            const tx = await client.query(
+                `INSERT INTO finance_transactions
+                    (type, category_id, amount, description, date, payment_method, staff_id, created_by)
+                 VALUES ('income', $1, $2, $3, $4, 'salary_reversal', $5, $6)
+                 RETURNING id`,
+                [
+                    report.category_id || null,
+                    amount,
+                    `Сторно зарплати ${report.staff_name} за ${month}: ${reason}`,
+                    range.to,
+                    report.staff_id,
+                    actor
+                ]
+            );
+            await client.query(
+                `UPDATE payroll_reports
+                 SET status = 'voided',
+                     voided_at = NOW(),
+                     voided_by = $1,
+                     void_reason = $2,
+                     reversal_transaction_id = $3,
+                     updated_by = $1,
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [actor, reason, tx.rows[0].id, report.id]
+            );
+            reversed.push({ staffId: report.staff_id, name: report.staff_name, amount, reversalTransactionId: tx.rows[0].id });
+        }
+
+        const periodLock = await setPayrollPeriodLock(month, false, actor, `Сторновано: ${reason}`, client);
+        const reconciliation = await loadPayrollReconciliation(month, client);
+        await client.query('COMMIT');
+
+        res.json({ success: true, month, reversed, count: reversed.length, period_lock: periodLock, reconciliation });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /hr/salary/reverse error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
+    }
+});
+
 // ==========================================
 // v33.8.0 Integration 9: Salary commit to finance
 // ==========================================
 
 // POST /api/hr/salary/commit — record calculated salaries as finance transactions
-router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager'), async (req, res) => {
+router.post('/salary/commit', requirePayrollControl, async (req, res) => {
     const client = await pool.connect();
     try {
         const month = requirePayrollMonth(req.body?.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
-        const actor = req.user?.username || req.user?.name || 'crm';
+        const actor = payrollActor(req.user);
 
         await client.query('BEGIN');
+        await assertPayrollPeriodOpen(month, client);
+
+        const activeReports = await client.query(
+            `SELECT COUNT(*)::int AS c
+             FROM payroll_reports
+             WHERE period_month = $1
+               AND status = 'paid'
+               AND voided_at IS NULL`,
+            [month]
+        );
+        if (parseInt(activeReports.rows[0].c, 10) > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: `Зарплати за ${month} вже мають активні payroll-звіти (${activeReports.rows[0].c})` });
+        }
 
         // Check if already committed
         const already = await client.query(
-            `SELECT COUNT(*)::int AS c FROM finance_transactions
-             WHERE payment_method = 'salary'
-               AND date >= $1::date
-               AND date <= ($1::date + INTERVAL '1 month - 1 day')`,
-            [`${month}-01`]
+            `SELECT COUNT(*)::int AS c
+             FROM finance_transactions ft
+             LEFT JOIN payroll_reports pr ON pr.finance_transaction_id = ft.id AND pr.period_month = $2
+             WHERE ft.payment_method = 'salary'
+               AND ft.date::date >= $1::date
+               AND ft.date::date <= ($1::date + INTERVAL '1 month - 1 day')
+               AND (pr.id IS NULL OR pr.voided_at IS NULL)`,
+            [`${month}-01`, month]
         );
         if (parseInt(already.rows[0].c) > 0) {
             await client.query('ROLLBACK');
@@ -3246,10 +3546,11 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
                 profession_rates: row.profession_rate_summary
             };
 
-            await client.query(
+            const reportResult = await client.query(
                 `INSERT INTO payroll_reports
-                    (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status, breakdown_json, generated_at, created_by, updated_by, updated_at)
-                 VALUES ($1, $2, $3, $4, 0, $5, 'paid', $6::jsonb, NOW(), $7, $7, NOW())
+                    (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status,
+                     breakdown_json, generated_at, committed_at, committed_by, created_by, updated_by, updated_at)
+                 VALUES ($1, $2, $3, $4, 0, $5, 'paid', $6::jsonb, NOW(), NOW(), $7, $7, $7, NOW())
                  ON CONFLICT (period_month, staff_id) DO UPDATE SET
                     gross_amount = EXCLUDED.gross_amount,
                     deductions_amount = EXCLUDED.deductions_amount,
@@ -3258,8 +3559,16 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
                     status = 'paid',
                     breakdown_json = EXCLUDED.breakdown_json,
                     generated_at = NOW(),
+                    committed_at = NOW(),
+                    committed_by = EXCLUDED.committed_by,
+                    finance_transaction_id = NULL,
+                    reversal_transaction_id = NULL,
+                    voided_at = NULL,
+                    voided_by = NULL,
+                    void_reason = NULL,
                     updated_by = EXCLUDED.updated_by,
-                    updated_at = NOW()`,
+                    updated_at = NOW()
+                 RETURNING id`,
                 [month, row.staff_id, grossAmount, deductionsAmount, totalSalary, JSON.stringify(breakdown), actor]
             );
 
@@ -3295,15 +3604,28 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
                     actor
                 ]
             );
+            await client.query(
+                `UPDATE payroll_reports
+                 SET finance_transaction_id = $1,
+                     updated_by = $2,
+                     updated_at = NOW()
+                 WHERE id = $3`,
+                [r.rows[0].id, actor, reportResult.rows[0].id]
+            );
             inserted.push({ staffId: row.staff_id, name: row.staff_name, amount: totalSalary, transactionId: r.rows[0].id });
         }
 
+        const periodLock = await setPayrollPeriodLock(month, true, actor, 'Автоматично закрито після нарахування зарплати', client);
+        const reconciliation = await loadPayrollReconciliation(month, client);
         await client.query('COMMIT');
         log.info(`[SalaryCommit] Committed ${inserted.length} salaries for ${month}`);
-        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals });
+        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals, period_lock: periodLock, reconciliation });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('[SalaryCommit] Error', err);
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+        }
         res.status(500).json({ success: false, error: 'Internal server error' });
     } finally {
         client.release();

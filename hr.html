@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.49">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.49">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.49">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.49">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.49">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.49">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.49">
+    <link rel="stylesheet" href="css/base.css?v=0.73.50">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.50">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.50">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.50">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.50">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.50">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.50">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1007,6 +1007,12 @@
         .hr-summary-card.green .value { color: #10B981; }
         .hr-summary-card.yellow .value { color: #F59E0B; }
         .hr-summary-card.red .value { color: #EF4444; }
+        .hr-salary-toolbar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+        .hr-salary-status { color: var(--gray-500); font-weight: 800; margin-bottom: 12px; }
+        .hr-salary-status.is-locked { color: #F59E0B; }
+        .hr-salary-reconciliation { margin-bottom: 16px; }
+        .hr-salary-secondary { background: var(--gray-100); color: var(--gray-800); }
+        .hr-salary-danger { background: #7F1D1D; color: #FEE2E2; }
 
         .hr-today-date {
             display: inline-flex;
@@ -3664,11 +3670,17 @@
 
             <!-- TAB 7: SALARY -->
             <div id="tab-salary" class="hr-tab-content">
-                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                <div class="hr-salary-toolbar">
                     <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
                     <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус / Депреміювання</button>
                     <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">💰 Нарахувати зарплати</button>
+                    <button type="button" id="btnRefreshSalaryReconciliation" class="btn-add hr-salary-secondary">Звірка</button>
+                    <button type="button" id="btnLockSalaryPeriod" class="btn-add hr-salary-secondary">Закрити період</button>
+                    <button type="button" id="btnUnlockSalaryPeriod" class="btn-add hr-salary-secondary" hidden>Відкрити період</button>
+                    <button type="button" id="btnReverseSalary" class="btn-add hr-salary-danger">Сторнувати</button>
                 </div>
+                <div id="salaryPeriodStatus" class="hr-salary-status"></div>
+                <div id="salaryReconciliation" class="hr-salary-reconciliation"></div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table">
@@ -3963,14 +3975,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.49"></script>
-    <script src="js/config.js?v=0.73.49"></script>
-    <script src="js/notification.js?v=0.73.49"></script>
-    <script src="js/api.js?v=0.73.49"></script>
-    <script src="js/auth.js?v=0.73.49"></script>
-    <script src="js/components/sidebar.js?v=0.73.49"></script>
+    <script src="js/ui.js?v=0.73.50"></script>
+    <script src="js/config.js?v=0.73.50"></script>
+    <script src="js/notification.js?v=0.73.50"></script>
+    <script src="js/api.js?v=0.73.50"></script>
+    <script src="js/auth.js?v=0.73.50"></script>
+    <script src="js/components/sidebar.js?v=0.73.50"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.49"></script>
-    <script src="js/alerts.js?v=0.73.49"></script>
+    <script src="js/hr-page.js?v=0.73.50"></script>
+    <script src="js/alerts.js?v=0.73.50"></script>
 </body>
 </html>

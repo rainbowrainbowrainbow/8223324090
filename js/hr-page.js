@@ -739,6 +739,10 @@ function initNewTabs() {
     document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnCommitSalary')?.addEventListener('click', () => window.commitSalaries?.());
+    document.getElementById('btnRefreshSalaryReconciliation')?.addEventListener('click', refreshSalaryReconciliation);
+    document.getElementById('btnLockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(true));
+    document.getElementById('btnUnlockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(false));
+    document.getElementById('btnReverseSalary')?.addEventListener('click', reverseSalaryPeriod);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
     document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionEditor());
@@ -5038,8 +5042,54 @@ function renderSalaryRateSummary(row = {}) {
         .join('<br>');
 }
 
+function currentSalaryMonth() {
+    return document.getElementById('salaryMonth')?.value || '';
+}
+
+function renderSalaryPeriodControls(data = {}) {
+    const lock = data.period_lock || { is_locked: false };
+    const reconciliation = data.reconciliation || {};
+    const statusEl = document.getElementById('salaryPeriodStatus');
+    const reconciliationEl = document.getElementById('salaryReconciliation');
+    const commitBtn = document.getElementById('btnCommitSalary');
+    const adjustmentBtn = document.getElementById('btnAddAdjustment');
+    const lockBtn = document.getElementById('btnLockSalaryPeriod');
+    const unlockBtn = document.getElementById('btnUnlockSalaryPeriod');
+    const reverseBtn = document.getElementById('btnReverseSalary');
+    const isLocked = lock.is_locked === true;
+
+    if (statusEl) {
+        statusEl.classList.toggle('is-locked', isLocked);
+        const actor = isLocked && lock.locked_by ? ` · ${escapeHtml(lock.locked_by)}` : '';
+        statusEl.innerHTML = isLocked
+            ? `Період закрито${actor}${lock.note ? ` · ${escapeHtml(lock.note)}` : ''}`
+            : `Період відкрито${lock.unlocked_by ? ` · ${escapeHtml(lock.unlocked_by)}` : ''}`;
+    }
+
+    if (commitBtn) commitBtn.disabled = isLocked;
+    if (adjustmentBtn) adjustmentBtn.disabled = isLocked;
+    if (lockBtn) lockBtn.hidden = isLocked;
+    if (unlockBtn) unlockBtn.hidden = !isLocked;
+    if (reverseBtn) reverseBtn.disabled = Number(reconciliation.finance_salary_count || 0) === 0 && Number(reconciliation.payroll_count || 0) === 0;
+
+    if (reconciliationEl) {
+        const variance = Number(reconciliation.variance || 0);
+        const statusClass = reconciliation.status === 'ok' ? 'green' : 'yellow';
+        reconciliationEl.innerHTML = `
+            <div class="hr-summary">
+                <div class="hr-summary-card"><div class="value">${fmtMoney(Number(reconciliation.payroll_total || 0))}</div><div class="label">Payroll active</div></div>
+                <div class="hr-summary-card"><div class="value">${fmtMoney(Number(reconciliation.finance_salary_total || 0))}</div><div class="label">Finance salary</div></div>
+                <div class="hr-summary-card"><div class="value">${fmtMoney(Number(reconciliation.finance_reversal_total || 0))}</div><div class="label">Сторно</div></div>
+                <div class="hr-summary-card ${statusClass}"><div class="value">${fmtMoney(variance)}</div><div class="label">Різниця</div></div>
+                <div class="hr-summary-card"><div class="value">${Number(reconciliation.orphan_salary_count || 0) + Number(reconciliation.missing_finance_count || 0)}</div><div class="label">Хвости</div></div>
+            </div>
+        `;
+    }
+}
+
 function renderSalary(data) {
     const totals = data.totals;
+    renderSalaryPeriodControls(data);
     document.getElementById('salaryTotals').innerHTML = `
         <div class="hr-summary">
             <div class="hr-summary-card"><div class="value">${(totals.total_salary || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Всього</div></div>
@@ -5480,6 +5530,54 @@ window.showStartOnboarding = async function() {
     const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(result.staffId), template_id: parseInt(result.templateId) });
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
+
+async function refreshSalaryReconciliation() {
+    const month = currentSalaryMonth();
+    if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const data = await hrFetch(`/salary/reconciliation?month=${month}`);
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити звірку', 'error');
+        return;
+    }
+    renderSalaryPeriodControls(data);
+    showNotification('Звірку оновлено', 'success');
+}
+
+async function setSalaryPeriodLock(locked) {
+    const month = currentSalaryMonth();
+    if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const okText = locked ? 'Закрити' : 'Відкрити';
+    const message = locked
+        ? `Закрити зарплатний період ${month}? Після цього коригування і повторне нарахування будуть заблоковані.`
+        : `Відкрити зарплатний період ${month}? Це дозволить коригування і повторну роботу з періодом.`;
+    if (!await confirmModal(message, { type: locked ? 'warning' : 'info', okText })) return;
+    const data = await hrFetch('/salary/period-lock', 'POST', { month, locked, note: locked ? 'Закрито вручну' : 'Відкрито вручну' });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити період', 'error');
+        return;
+    }
+    renderSalaryPeriodControls(data);
+    showNotification(locked ? 'Період закрито' : 'Період відкрито', 'success');
+    loadSalary();
+}
+
+async function reverseSalaryPeriod() {
+    const month = currentSalaryMonth();
+    if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const reason = await promptModal(`Причина сторно зарплати за ${month}`, {
+        placeholder: 'Наприклад: виправлення ставок або помилкове нарахування',
+        defaultValue: 'Корекція зарплатного періоду'
+    });
+    if (reason === null) return;
+    if (!await confirmModal(`Сторнувати активні нарахування зарплати за ${month}? Будуть створені finance сторно-транзакції.`, { type: 'danger', okText: 'Сторнувати' })) return;
+    const data = await hrFetch('/salary/reverse', 'POST', { month, reason });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося сторнувати зарплату', 'error');
+        return;
+    }
+    showNotification(`Сторновано ${data.count || 0} нарахувань`, 'success');
+    loadSalary();
+}
 
 // Salary commit uses the same backend payroll calculation as the salary preview.
 window.commitSalaries = async function commitSalaries() {

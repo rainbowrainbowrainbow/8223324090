@@ -6,6 +6,7 @@ const test = require('node:test');
 const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 
 function lineNumber(source, index) {
     return source.slice(0, index).split(/\r?\n/).length;
@@ -119,6 +120,51 @@ test('HR KPI surface labels backend snapshot sources explicitly', () => {
     assert.equal(loadKpiBlock.includes("hrFetch('/ratings')"), false);
     assert.equal(HR_JS.includes('monthly report'), false);
     assert.equal(HR_JS.includes('ratings context'), false);
+});
+
+test('HR salary surface exposes payroll lock, reconciliation, and reversal controls', () => {
+    for (const token of [
+        'id="salaryPeriodStatus"',
+        'id="salaryReconciliation"',
+        'id="btnRefreshSalaryReconciliation"',
+        'id="btnLockSalaryPeriod"',
+        'id="btnUnlockSalaryPeriod"',
+        'id="btnReverseSalary"',
+        'function renderSalaryPeriodControls',
+        'function refreshSalaryReconciliation',
+        'function setSalaryPeriodLock',
+        'function reverseSalaryPeriod',
+        'hrFetch(`/salary/reconciliation?month=${month}`)',
+        "hrFetch('/salary/period-lock', 'POST'",
+        "hrFetch('/salary/reverse', 'POST'",
+        'Період закрито',
+        'Payroll active',
+        'Finance salary'
+    ]) {
+        assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
+    }
+});
+
+test('HR salary backend owns payroll period lock, reconciliation, and reversal APIs', () => {
+    for (const token of [
+        'const PAYROLL_CONTROL_ROLES',
+        'function payrollMonthRange',
+        'async function loadPayrollPeriodLock',
+        'async function assertPayrollPeriodOpen',
+        'async function setPayrollPeriodLock',
+        'async function loadPayrollReconciliation',
+        "router.get('/salary/reconciliation'",
+        "router.post('/salary/period-lock'",
+        "router.post('/salary/reverse'",
+        "router.post('/salary/commit', requirePayrollControl",
+        'finance_transaction_id',
+        'salary_reversal',
+        'await assertPayrollPeriodOpen(month, client)',
+        'await assertPayrollPeriodOpen(payrollMonth)',
+        'period_lock: periodLock, reconciliation'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing ${token}`);
+    }
 });
 
 test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap targets', () => {

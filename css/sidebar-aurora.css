@@ -10193,6 +10193,47 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   font-size: 8.8px !important;
 }
 
+/* v0.73.32: currency chip must fit the full UAH rate.
+   Keep all three identity chips in one row, but give USD enough room for ₴00.00. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-template-columns: minmax(62px, 1.22fr) minmax(48px, 0.92fr) minmax(50px, 0.98fr) !important;
+  gap: 3px !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  padding: 5px 3px !important;
+  justify-items: center !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  width: 100% !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-align: center !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  font-size: 9.4px !important;
+  line-height: 1.05 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v {
+  font-size: 9.2px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-v {
+  font-size: 8.3px !important;
+}
+
 /* v0.73.15: center the compact Favorites header without extra decoration. */
 .sidebar-nav:not(.collapsed) .sidebar-design-extras-head {
   display: grid !important;

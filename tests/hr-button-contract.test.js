@@ -36,9 +36,14 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         "other: { tab: 'onboarding' }",
         'const HR_OTHER_WORKSPACE_TABS',
         'function isHrOtherWorkspaceTab',
+        'const HR_PULSE_WORKSPACE_TABS',
+        'function isHrPulseWorkspaceTab',
         "payroll: { tab: 'salary' }",
         'const HR_PAYROLL_WORKSPACE_TABS',
         'function isHrPayrollWorkspaceTab',
+        "nav.classList.toggle('hr-nav--pulse'",
+        "workspaceMode || pulseMode ? ' hidden' : ''",
+        "if (header) header.hidden = pulseMode",
         'visible: () => canManageAccountSecurity()',
         'data-nav-id=',
         'data-tab=',
@@ -113,6 +118,9 @@ test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap t
     assert.ok(HR_HTML.includes('@media (max-width: 768px)'));
     assert.ok(HR_HTML.includes('.hr-people-bucket-grid { grid-template-columns: 1fr; }'));
     assert.ok(HR_HTML.includes('.hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }'));
+    assert.ok(HR_HTML.includes('.hr-nav--pulse .hr-nav-items'));
+    assert.ok(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'));
+    assert.ok(HR_HTML.includes('body.dark-mode .hr-nav--pulse .hr-tab.active'));
 
     const bodyRule = HR_HTML.match(/\.hr-people-bucket-body\s*\{([\s\S]*?)\}/)?.[1] || '';
     assert.equal(/overflow-[xy]\s*:/.test(bodyRule), false, 'people accordion body should not introduce nested scrolling');

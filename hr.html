@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.30">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.30">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.30">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.30">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.30">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.30">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.30">
+    <link rel="stylesheet" href="css/base.css?v=0.73.31">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.31">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.31">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.31">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.31">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.31">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -79,10 +79,32 @@
         .hr-nav--structure-only {
             flex-direction: row;
         }
+        .hr-nav--pulse {
+            position: sticky;
+            top: 76px;
+            z-index: 8;
+            flex-direction: row;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 28px;
+            padding: 8px;
+            border: 1px solid rgba(20,184,166,0.14);
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.04), rgba(99,102,241,0.08));
+            box-shadow: 0 16px 34px rgba(15,23,42,0.08);
+            overflow: visible;
+        }
         .hr-nav--structure-only .hr-nav-group {
             padding: 4px;
         }
+        .hr-nav--pulse .hr-nav-group {
+            padding: 0;
+            background: transparent;
+        }
         .hr-nav--structure-only .hr-nav-group-title {
+            display: none;
+        }
+        .hr-nav--pulse .hr-nav-group-title {
             display: none;
         }
         .hr-nav-items {
@@ -93,11 +115,42 @@
             flex: 1;
             min-width: 0;
         }
+        .hr-nav--pulse .hr-nav-items {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            width: 100%;
+        }
         .hr-nav--structure-only .hr-nav-items {
             width: 100%;
         }
         .hr-nav--structure-only .hr-tab {
             flex: 1 1 150px;
+        }
+        .hr-nav--pulse .hr-tab {
+            position: relative;
+            min-width: 0;
+            min-height: 52px;
+            padding: 13px 16px;
+            border: 1px solid transparent;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.42);
+            color: var(--gray-600);
+            font-size: 14px;
+            font-weight: 900;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
+        }
+        .hr-nav--pulse .hr-tab:hover,
+        .hr-nav--pulse .hr-tab:focus-visible {
+            border-color: rgba(20,184,166,0.20);
+            background: rgba(255,255,255,0.72);
+            color: var(--gray-800);
+        }
+        .hr-nav--pulse .hr-tab.active {
+            border-color: rgba(20,184,166,0.30);
+            background: linear-gradient(135deg, rgba(20,184,166,0.18), rgba(99,102,241,0.16));
+            color: var(--primary);
+            box-shadow: 0 14px 26px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.50);
         }
         .hr-tab {
             flex: 0 1 150px;
@@ -154,13 +207,36 @@
         }
         body.dark-mode .hr-tabs,
         body.dark-mode .hr-nav { background: #1E1E38; }
+        body.dark-mode .hr-nav--pulse {
+            border-color: rgba(34,211,238,0.18);
+            background: linear-gradient(135deg, rgba(30,30,56,0.96), rgba(42,42,74,0.96));
+            box-shadow: 0 18px 42px rgba(0,0,0,0.30);
+        }
         body.dark-mode .hr-nav-group {
             background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .hr-nav--pulse .hr-nav-group {
+            background: transparent;
         }
         body.dark-mode .hr-nav-group-title { color: #94A3B8; }
         body.dark-mode .hr-tab { color: #9CA3AF; }
         body.dark-mode .hr-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
         body.dark-mode .hr-tab.active { background: #2A2A4A; color: var(--primary-light); }
+        body.dark-mode .hr-nav--pulse .hr-tab {
+            background: rgba(255,255,255,0.05);
+            color: #AEB6CB;
+        }
+        body.dark-mode .hr-nav--pulse .hr-tab:hover,
+        body.dark-mode .hr-nav--pulse .hr-tab:focus-visible {
+            border-color: rgba(34,211,238,0.24);
+            background: rgba(255,255,255,0.08);
+            color: #F8FAFC;
+        }
+        body.dark-mode .hr-nav--pulse .hr-tab.active {
+            border-color: rgba(34,211,238,0.32);
+            background: linear-gradient(135deg, rgba(20,184,166,0.22), rgba(99,102,241,0.18));
+            color: #67E8F9;
+        }
         body.dark-mode .hr-nav-count { background: rgba(255,255,255,0.08); color: #CBD5E1; }
         body.dark-mode .hr-tab.active .hr-nav-count { background: rgba(129,140,248,0.18); color: var(--primary-light); }
 
@@ -2732,11 +2808,21 @@
                 align-items: flex-start;
                 padding: 6px;
             }
+            .hr-nav--pulse {
+                top: 64px;
+                align-items: stretch;
+                padding: 6px;
+                margin-bottom: 20px;
+                border-radius: 14px;
+            }
             .hr-nav-group {
                 flex: 0 0 auto;
                 width: 100%;
                 min-width: 0;
                 flex-direction: column;
+            }
+            .hr-nav--pulse .hr-nav-group {
+                flex-direction: row;
             }
             .hr-nav--structure-only .hr-nav-group {
                 flex-direction: row;
@@ -2747,6 +2833,15 @@
                 padding: 6px 8px 2px;
             }
             .hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }
+            .hr-nav--pulse .hr-nav-items {
+                gap: 6px;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            .hr-nav--pulse .hr-tab {
+                min-height: 44px;
+                padding: 10px 8px;
+                font-size: 12px;
+            }
             .hr-schedule-controls { flex-direction: column; align-items: stretch; }
             .hr-schedule-actions { margin-left: 0; }
             .hr-team-grid { grid-template-columns: 1fr; }
@@ -3700,15 +3795,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.30"></script>
-    <script src="js/config.js?v=0.73.30"></script>
-    <script src="js/notification.js?v=0.73.30"></script>
-    <script src="js/api.js?v=0.73.30"></script>
-    <script src="js/auth.js?v=0.73.30"></script>
-    <script src="js/components/sidebar.js?v=0.73.30"></script>
+    <script src="js/ui.js?v=0.73.31"></script>
+    <script src="js/config.js?v=0.73.31"></script>
+    <script src="js/notification.js?v=0.73.31"></script>
+    <script src="js/api.js?v=0.73.31"></script>
+    <script src="js/auth.js?v=0.73.31"></script>
+    <script src="js/components/sidebar.js?v=0.73.31"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.30"></script>
-    <script src="js/alerts.js?v=0.73.30"></script><script>
+    <script src="js/hr-page.js?v=0.73.31"></script>
+    <script src="js/alerts.js?v=0.73.31"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

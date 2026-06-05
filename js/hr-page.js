@@ -93,6 +93,7 @@ const HR_NAV_GROUPS = [
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
 const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
 const HR_OTHER_WORKSPACE_TABS = new Set(['onboarding', 'vacancies']);
+const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
 
 const HR_TAB_ALIASES = {
     other: { tab: 'onboarding' },
@@ -755,6 +756,10 @@ function isHrOtherWorkspaceTab(target) {
     return HR_OTHER_WORKSPACE_TABS.has(target);
 }
 
+function isHrPulseWorkspaceTab(target) {
+    return HR_PULSE_WORKSPACE_TABS.has(target);
+}
+
 function hrWorkspaceGroupId(target) {
     if (isHrStructureWorkspaceTab(target)) return 'structure';
     if (isHrPayrollWorkspaceTab(target)) return 'payroll';
@@ -765,9 +770,17 @@ function hrWorkspaceGroupId(target) {
 function updateHrPageTitle(target) {
     const title = document.getElementById('hrPageTitle');
     if (!title) return;
+    const header = title.closest('.page-header');
+    const pulseMode = isHrPulseWorkspaceTab(target);
+    if (header) header.hidden = pulseMode;
+    if (pulseMode) {
+        title.textContent = '';
+        return;
+    }
     if (isHrStructureWorkspaceTab(target)) title.textContent = 'Структура';
     else if (isHrPayrollWorkspaceTab(target)) title.textContent = 'ЗП та KPI';
     else if (isHrOtherWorkspaceTab(target)) title.textContent = 'Тимчасове';
+    else if (target === 'team') title.textContent = 'Команда';
     else title.textContent = 'HR';
 }
 
@@ -796,8 +809,10 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     const target = resolved.tab || activeTarget;
     const workspaceGroupId = hrWorkspaceGroupId(target);
     const workspaceMode = Boolean(workspaceGroupId);
+    const pulseMode = !workspaceMode && isHrPulseWorkspaceTab(target);
     nav.classList.toggle('hr-nav--structure-only', workspaceMode);
-    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : 'HR navigation');
+    nav.classList.toggle('hr-nav--pulse', pulseMode);
+    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'HR navigation');
     const groups = HR_NAV_GROUPS
         .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
@@ -807,7 +822,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
         .filter(group => group.items.length > 0);
     nav.innerHTML = groups.length ? groups.map(group => `
         <section class="hr-nav-group" data-hr-nav-group="${escapeHtml(group.id)}">
-            <div class="hr-nav-group-title"${workspaceMode ? ' hidden' : ''}>
+            <div class="hr-nav-group-title"${workspaceMode || pulseMode ? ' hidden' : ''}>
                 <span>${escapeHtml(group.label)}</span>
                 ${group.note ? `<small>${escapeHtml(group.note)}</small>` : ''}
             </div>

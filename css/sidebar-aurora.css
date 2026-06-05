@@ -9385,15 +9385,16 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 
 .sidebar-nav:not(.collapsed) .sidebar-business-context {
   display: grid !important;
-  grid-template-columns: 52px minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   align-items: center !important;
-  gap: 8px !important;
+  gap: 0 !important;
   margin-top: 2px !important;
   padding-top: 9px !important;
   border-top: 1px solid color-mix(in srgb, var(--sb-enterprise-border) 82%, transparent) !important;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-business-label {
+  display: none;
   color: var(--sb-enterprise-faint) !important;
   font-size: 8.5px !important;
   font-weight: 900 !important;
@@ -10786,6 +10787,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[d
 }
 
 /* v0.73.37: business selector owns the full bottom row; time/date keeps only the useful internal divider. */
+/* v0.73.41: profile business selector is label-free and stretches across the card. */
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
 .sidebar-nav:not(.collapsed) .sidebar-identity-card {
@@ -10809,9 +10811,9 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-context,
   grid-area: identity-business !important;
   grid-column: 1 / -1 !important;
   display: grid !important;
-  grid-template-columns: max-content minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   align-items: center !important;
-  gap: 8px !important;
+  gap: 0 !important;
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
@@ -10828,7 +10830,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-context,
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-business-label,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-business-label,
 .sidebar-nav:not(.collapsed) .sidebar-business-label {
-  display: inline-grid !important;
+  display: none !important;
   place-items: center !important;
   min-width: 62px !important;
   min-height: 30px !important;

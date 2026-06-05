@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.41 - Sidebar бізнес-селектор профілю
+
+### Sidebar / Profile Card / Business Selector / UI Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **У профільній картці сайдбара прибрано видимий напис `Бізнес`** - селектор більше не витрачає місце на зайвий label і не ріже назву поточного бізнесу до `П...`.
+- **Селектор бізнесу розтягнуто на всю ширину профільного блоку** - select/chip займає один повний ряд у нижній частині картки, без лівої колонки під label.
+- **Додано fallback у CSS проти старого DOM** - якщо кеш на мить віддасть старий `sidebar-business-label`, він буде прихований стилями після оновлення.
+- **Оновлено UI smoke guardrail** - тест тепер фіксує label-free full-width контракт для профільного бізнес-селектора.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.41`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.40 - Upload та Kie.ai guardrails
 
 ### Upload / Kie.ai / Staff Import / Voice Assistant / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

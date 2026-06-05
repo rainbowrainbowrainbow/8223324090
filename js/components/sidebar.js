@@ -2022,7 +2022,6 @@ const Sidebar = (() => {
         host.dataset.businessScope = scope.mode || 'single';
         if (options.length <= 1) {
             host.innerHTML = `
-                <span class="sidebar-business-label">Бізнес</span>
                 <span class="sidebar-business-chip" title="${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
         }
@@ -2057,7 +2056,6 @@ const Sidebar = (() => {
             </span>` : ''}
         ` : '';
         host.innerHTML = `
-            <span class="sidebar-business-label">Бізнес</span>
             <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
                 ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
             </select>

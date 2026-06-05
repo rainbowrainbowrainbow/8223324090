@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.41">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.41">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.41">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.41">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.41">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.41">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.41">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.41">
-    <link rel="stylesheet" href="css/features.css?v=0.73.41">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.41">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.41">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.41">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.41">
+    <link rel="stylesheet" href="css/base.css?v=0.73.42">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.42">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.42">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.42">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.42">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.42">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.42">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.42">
+    <link rel="stylesheet" href="css/features.css?v=0.73.42">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.42">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.42">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.42">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.42">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.41">✨ 0.73.41</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.42">✨ 0.73.42</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.41 — Sidebar бізнес-селектор профілю</p>
+                <p class="tagline">AI First CRM v0.73.42 — Sidebar групи без хвостів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.41</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.42</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,6 +1658,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.42 — Sidebar групи без хвостів</h4>
+                    <ul>
+                        <li><b>Закриті групи сайдбара більше не залишають видимий хвіст</b> — підменю стискається в нульову висоту, тому під заголовками не видно обрізаних шматків попереднього блока.</li>
+                        <li><b>Відкриття і закриття стало плавним</b> — секції анімуються через висоту, прозорість і відступи без різкого стрибка layout.</li>
+                        <li><b>Приховані пункти більше не ловлять misclick</b> — закриті панелі отримують <code>aria-hidden</code> і <code>inert</code>.</li>
+                        <li><b>Активний індикатор синхронізується після анімації</b> — підсвітка не лишається на старому місці після згортання або розгортання групи.</li>
+                        <li><b>Додано UI guardrail</b> — smoke test фіксує clipped/inert контракт для collapsed sidebar groups.</li>
+                        <li><b>Версію піднято до <code>0.73.42</code></b> — cache tags і Service Worker синхронізовані під release.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.41 — Sidebar бізнес-селектор профілю</h4>
                     <ul>
@@ -11345,29 +11356,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.41"></script>
-    <script src="js/timeline-visibility.js?v=0.73.41"></script>
-    <script src="js/config.js?v=0.73.41"></script>
-    <script src="js/api.js?v=0.73.41"></script>
-    <script src="js/ui.js?v=0.73.41"></script>
-    <script src="js/auth.js?v=0.73.41"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.41"></script>
-    <script src="js/timeline.js?v=0.73.41"></script>
-    <script src="js/booking.js?v=0.73.41"></script>
-    <script src="js/settings.js?v=0.73.41"></script>
-    <script src="js/booking-form.js?v=0.73.41"></script>
-    <script src="js/booking-linked.js?v=0.73.41"></script>
-    <script src="js/settings-dashboard.js?v=0.73.41"></script>
-    <script src="js/settings-history.js?v=0.73.41"></script>
-    <script src="js/settings-afisha.js?v=0.73.41"></script>
-    <script src="js/settings-certificates.js?v=0.73.41"></script>
-    <script src="js/offline.js?v=0.73.41"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.41"></script>
-    <script src="js/search.js?v=0.73.41"></script>
-    <script src="js/ws.js?v=0.73.41"></script>
-    <script src="js/app.js?v=0.73.41"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.41"></script>
-    <script src="js/components/sidebar.js?v=0.73.41"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.41"></script>
+    <script src="js/timeline-context.js?v=0.73.42"></script>
+    <script src="js/timeline-visibility.js?v=0.73.42"></script>
+    <script src="js/config.js?v=0.73.42"></script>
+    <script src="js/api.js?v=0.73.42"></script>
+    <script src="js/ui.js?v=0.73.42"></script>
+    <script src="js/auth.js?v=0.73.42"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.42"></script>
+    <script src="js/timeline.js?v=0.73.42"></script>
+    <script src="js/booking.js?v=0.73.42"></script>
+    <script src="js/settings.js?v=0.73.42"></script>
+    <script src="js/booking-form.js?v=0.73.42"></script>
+    <script src="js/booking-linked.js?v=0.73.42"></script>
+    <script src="js/settings-dashboard.js?v=0.73.42"></script>
+    <script src="js/settings-history.js?v=0.73.42"></script>
+    <script src="js/settings-afisha.js?v=0.73.42"></script>
+    <script src="js/settings-certificates.js?v=0.73.42"></script>
+    <script src="js/offline.js?v=0.73.42"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.42"></script>
+    <script src="js/search.js?v=0.73.42"></script>
+    <script src="js/ws.js?v=0.73.42"></script>
+    <script src="js/app.js?v=0.73.42"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.42"></script>
+    <script src="js/components/sidebar.js?v=0.73.42"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.42"></script>
 </body>
 </html>

@@ -1058,7 +1058,7 @@ const Sidebar = (() => {
     <span class="sidebar-group-signal" id="sidebarGroupSignal-${item.key}" aria-hidden="true"></span>
     ${_renderGroupChevron()}
   </button>
-  <div class="sidebar-group-items${finalOpen ? ' open' : ''}" id="sidebarGroupItems-${item.key}">
+  <div class="sidebar-group-items${finalOpen ? ' open' : ''}" id="sidebarGroupItems-${item.key}" aria-hidden="${finalOpen ? 'false' : 'true'}"${finalOpen ? '' : ' inert'}>
     <div class="sidebar-group-inner">`;
                 continue;
             }
@@ -1114,6 +1114,7 @@ const Sidebar = (() => {
         _removeSidebarTodayDock();
         _syncGroupSignals();
         _ensureActiveIndicator();
+        _syncSidebarGroupPanelStates(container);
         _initCollapsedRailInteractions(document.getElementById('sidebarNav'));
         _initSpotlight();
         _initRipple();
@@ -1137,6 +1138,31 @@ const Sidebar = (() => {
     }
 
     // ═══ TOGGLE GROUP ══════════════════════════════════════════════
+    function _setSidebarGroupPanelState(btn, items, expanded) {
+        if (!btn || !items) return;
+        items.classList.toggle('open', expanded);
+        btn.classList.toggle('open', expanded);
+        btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        items.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+        if (expanded) {
+            items.removeAttribute('inert');
+        } else {
+            items.setAttribute('inert', '');
+        }
+        try {
+            items.inert = !expanded;
+        } catch {}
+    }
+
+    function _syncSidebarGroupPanelStates(root = document) {
+        root.querySelectorAll('.sidebar-group').forEach(group => {
+            const btn = group.querySelector('.sidebar-group-header');
+            const items = group.querySelector('.sidebar-group-items');
+            if (!btn || !items) return;
+            _setSidebarGroupPanelState(btn, items, items.classList.contains('open'));
+        });
+    }
+
     function toggleGroup(key, btn) {
         if (!btn) return;
         const group = btn.closest('.sidebar-group');
@@ -1144,11 +1170,10 @@ const Sidebar = (() => {
         const items = group.querySelector('.sidebar-group-items');
         if (!items) return;
         const isOpen = items.classList.contains('open');
-        items.classList.toggle('open', !isOpen);
-        btn.classList.toggle('open', !isOpen);
-        btn.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+        _setSidebarGroupPanelState(btn, items, !isOpen);
         _saveGroupStateFromDom(document.getElementById('sidebarNav'));
         _queueActiveIndicatorUpdate();
+        setTimeout(_queueActiveIndicatorUpdate, 260);
     }
 
     // ═══ ACCESS CHECK ══════════════════════════════════════════════

@@ -1853,15 +1853,17 @@ const Sidebar = (() => {
                             <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
-                        <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Швидкий статус">
-                            <span class="sidebar-identity-meta-item" data-sidebar-meta="time" data-sidebar-static="true" data-sidebar-stop-profile="true" aria-label="Поточний час">
-                                <span class="sidebar-identity-meta-k">Час</span>
-                                <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
+                        <span class="sidebar-identity-aux" id="sidebarIdentityAux" data-sidebar-stop-profile="true" aria-label="Час і дата">
+                            <span class="sidebar-identity-aux-item" data-sidebar-meta="time" data-sidebar-static="true" aria-label="Поточний час">
+                                <span class="sidebar-identity-aux-k">Час</span>
+                                <span class="sidebar-identity-aux-v" id="sidebarIdentityTime">--:--</span>
                             </span>
-                            <span class="sidebar-identity-meta-item" data-sidebar-meta="date" data-sidebar-static="true" data-sidebar-stop-profile="true" aria-label="Сьогоднішній день">
-                                <span class="sidebar-identity-meta-k">День</span>
-                                <span class="sidebar-identity-meta-v" id="sidebarIdentityDate">--.--</span>
+                            <span class="sidebar-identity-aux-item" data-sidebar-meta="date" data-sidebar-static="true" aria-label="Сьогоднішній день">
+                                <span class="sidebar-identity-aux-k">День</span>
+                                <span class="sidebar-identity-aux-v" id="sidebarIdentityDate">--.--</span>
                             </span>
+                        </span>
+                        <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Курс USD">
                             <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют у фінансах" title="Відкрити курси валют у фінансах"${currencySignalEnabled ? '' : ' hidden'}>
                                 <span class="sidebar-identity-meta-k">USD</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>

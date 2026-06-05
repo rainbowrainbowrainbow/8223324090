@@ -10272,3 +10272,140 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   height: 26px !important;
   min-width: 26px !important;
 }
+
+/* v0.73.34: identity signal split.
+   USD stays a single compact chip; time and day move to a quiet text row. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-areas:
+    "identity-title"
+    "identity-summary"
+    "identity-meta"
+    "identity-aux"
+    "identity-business" !important;
+  align-items: start !important;
+  gap: 6px !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-area: identity-title !important;
+  grid-column: 1 / 2 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  grid-area: identity-summary !important;
+  grid-column: 1 / 2 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-area: identity-meta !important;
+  grid-column: 1 / 2 !important;
+  display: block !important;
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item:not([data-sidebar-meta="currency"]) {
+  display: none !important;
+}
+
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item[data-sidebar-meta="currency"],
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] {
+  display: grid !important;
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
+  min-height: 40px !important;
+  padding: 6px 5px !important;
+  align-content: center !important;
+  justify-items: center !important;
+  gap: 2px !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v {
+  width: 100% !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-align: center !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-k {
+  font-size: 7px !important;
+  line-height: 1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v {
+  font-size: 9.6px !important;
+  line-height: 1.05 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux {
+  grid-area: identity-aux !important;
+  grid-column: 1 / 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  justify-self: stretch !important;
+  place-self: stretch !important;
+  flex-wrap: wrap !important;
+  gap: 4px 10px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 18px !important;
+  padding: 1px 0 0 !important;
+  color: var(--sb-enterprise-muted) !important;
+  overflow: visible !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-item {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-k {
+  color: color-mix(in srgb, var(--sb-enterprise-muted) 78%, transparent) !important;
+  font-size: 7px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  text-transform: uppercase !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-v {
+  min-width: 0 !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 10.5px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  line-height: 1 !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-business-context {
+  grid-area: identity-business !important;
+  grid-column: 1 / 2 !important;
+}
+
+.sidebar-nav.collapsed .sidebar-identity-aux,
+.sidebar-nav.collapsed:hover .sidebar-identity-aux {
+  display: none !important;
+}

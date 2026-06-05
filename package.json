@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.50",
+  "version": "0.73.51",
   "eventGenix": {
-    "releaseLabel": "Payroll контроль періоду"
+    "releaseLabel": "Payroll журнал періоду"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

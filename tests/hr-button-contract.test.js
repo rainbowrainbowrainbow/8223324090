@@ -7,6 +7,7 @@ const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
 
 function lineNumber(source, index) {
     return source.slice(0, index).split(/\r?\n/).length;
@@ -126,11 +127,13 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
     for (const token of [
         'id="salaryPeriodStatus"',
         'id="salaryReconciliation"',
+        'id="salaryPeriodEvents"',
         'id="btnRefreshSalaryReconciliation"',
         'id="btnLockSalaryPeriod"',
         'id="btnUnlockSalaryPeriod"',
         'id="btnReverseSalary"',
         'function renderSalaryPeriodControls',
+        'function renderSalaryPeriodEvents',
         'function refreshSalaryReconciliation',
         'function setSalaryPeriodLock',
         'function reverseSalaryPeriod',
@@ -138,6 +141,7 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
         "hrFetch('/salary/period-lock', 'POST'",
         "hrFetch('/salary/reverse', 'POST'",
         'Період закрито',
+        'Журнал періоду',
         'Payroll active',
         'Finance salary'
     ]) {
@@ -153,6 +157,8 @@ test('HR salary backend owns payroll period lock, reconciliation, and reversal A
         'async function assertPayrollPeriodOpen',
         'async function setPayrollPeriodLock',
         'async function loadPayrollReconciliation',
+        'async function recordPayrollPeriodEvent',
+        'async function loadPayrollPeriodEvents',
         "router.get('/salary/reconciliation'",
         "router.post('/salary/period-lock'",
         "router.post('/salary/reverse'",
@@ -161,9 +167,18 @@ test('HR salary backend owns payroll period lock, reconciliation, and reversal A
         'salary_reversal',
         'await assertPayrollPeriodOpen(month, client)',
         'await assertPayrollPeriodOpen(payrollMonth)',
-        'period_lock: periodLock, reconciliation'
+        'period_lock: periodLock, reconciliation',
+        'events'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing ${token}`);
+    }
+
+    for (const token of [
+        'CREATE TABLE IF NOT EXISTS payroll_period_events',
+        "CHECK (event_type IN ('lock','unlock','commit','reverse'))",
+        'idx_payroll_period_events_month_created'
+    ]) {
+        assert.ok(PAYROLL_EVENTS_MIGRATION.includes(token), `missing migration token ${token}`);
     }
 });
 

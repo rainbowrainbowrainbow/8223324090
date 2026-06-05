@@ -4,6 +4,19 @@
 
 ---
 
+## v0.73.51 - Payroll журнал періоду
+
+### HR / Зарплата / Payroll Audit / Reversal Guardrails / Period Events / Deploy / (Клешня, 05.06.2026) [codex]
+- **Додано журнал зарплатного періоду** - нова таблиця `payroll_period_events` фіксує `lock`, `unlock`, `commit` і `reverse` по кожному payroll month.
+- **Журнал пишеться в тій самій транзакції, що й дія** - commit зарплати, ручне закриття/відкриття і сторно більше не лишаються без audit-сліду.
+- **Зарплатні API повертають останні події** - `/api/hr/salary`, `/api/hr/salary/reconciliation`, `/api/hr/salary/period-lock`, `/api/hr/salary/reverse` і `/api/hr/salary/commit` віддають `events` разом зі статусом і звіркою.
+- **У вкладці `Зарплата` додано видимий журнал** - під reconciliation-картками показуються останні дії, виконавець, час, кількість рядків, сума і примітка.
+- **Сторно закриває нульові payroll reports коректно** - reports із `0` сумою теж переводяться у `voided`, навіть якщо finance reversal-транзакція для них не створюється.
+- **Оновлено guardrails** - HR static contract перевіряє DOM-блок журналу, backend helpers і SQL-міграцію `payroll_period_events`.
+- **Оновлено релізні маркери** - версію піднято до `0.73.51`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.50 - Payroll контроль періоду
 
 ### HR / Зарплата / Payroll Lock / Reversal / Finance Reconciliation / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

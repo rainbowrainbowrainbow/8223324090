@@ -27,6 +27,13 @@ const {
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
 const HR_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
 const PAYROLL_CONTROL_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
+const PAYROLL_EVENT_TYPES = new Set(['lock', 'unlock', 'commit', 'reverse']);
+const PAYROLL_EVENT_LABELS = {
+    lock: 'Період закрито',
+    unlock: 'Період відкрито',
+    commit: 'Зарплату нараховано',
+    reverse: 'Сторно зарплати'
+};
 const requireHrManage = requireRole(...HR_MANAGE_ROLES);
 const requirePayrollControl = requireRole(...PAYROLL_CONTROL_ROLES);
 router.use(requireRole(...HR_VIEW_ROLES));
@@ -686,6 +693,50 @@ async function assertPayrollPeriodOpen(month, db = pool) {
     return lock;
 }
 
+function normalizePayrollPeriodEvent(row = {}) {
+    const type = row.event_type || '';
+    return {
+        id: Number(row.id || 0),
+        period_month: row.period_month || null,
+        event_type: type,
+        event_label: PAYROLL_EVENT_LABELS[type] || type,
+        actor: row.actor || null,
+        note: row.note || null,
+        amount: row.amount === null || row.amount === undefined ? null : Number(row.amount),
+        items_count: row.items_count === null || row.items_count === undefined ? null : Number(row.items_count),
+        meta_json: row.meta_json && typeof row.meta_json === 'object' ? row.meta_json : {},
+        created_at: row.created_at || null
+    };
+}
+
+async function recordPayrollPeriodEvent(month, eventType, actor, note = '', meta = {}, db = pool) {
+    if (!PAYROLL_EVENT_TYPES.has(eventType)) return null;
+    const payload = meta && typeof meta === 'object' ? meta : {};
+    const amount = Number.isFinite(Number(payload.amount)) ? Number(payload.amount) : null;
+    const count = Number.isFinite(Number(payload.count)) ? Math.trunc(Number(payload.count)) : null;
+    const result = await db.query(
+        `INSERT INTO payroll_period_events
+            (period_month, event_type, actor, note, amount, items_count, meta_json)
+         VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7::jsonb)
+         RETURNING id, period_month, event_type, actor, note, amount, items_count, meta_json, created_at`,
+        [month, eventType, actor || null, String(note || '').trim(), amount, count, JSON.stringify(payload)]
+    );
+    return normalizePayrollPeriodEvent(result.rows[0]);
+}
+
+async function loadPayrollPeriodEvents(month, db = pool, limit = 12) {
+    const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 12, 50));
+    const result = await db.query(
+        `SELECT id, period_month, event_type, actor, note, amount, items_count, meta_json, created_at
+         FROM payroll_period_events
+         WHERE period_month = $1
+         ORDER BY created_at DESC, id DESC
+         LIMIT $2`,
+        [month, safeLimit]
+    );
+    return result.rows.map(normalizePayrollPeriodEvent);
+}
+
 async function setPayrollPeriodLock(month, locked, actor, note = '', db = pool) {
     const result = await db.query(
         `INSERT INTO payroll_period_locks
@@ -708,6 +759,14 @@ async function setPayrollPeriodLock(month, locked, actor, note = '', db = pool) 
             updated_at = NOW()
          RETURNING period_month, is_locked, locked_at, locked_by, unlocked_at, unlocked_by, note, meta_json`,
         [month, locked === true, actor, String(note || '').trim()]
+    );
+    await recordPayrollPeriodEvent(
+        result.rows[0].period_month,
+        locked === true ? 'lock' : 'unlock',
+        actor,
+        note,
+        { locked: locked === true },
+        db
     );
     return loadPayrollPeriodLock(result.rows[0].period_month, db);
 }
@@ -3048,11 +3107,12 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 router.get('/salary', async (req, res) => {
     try {
         const calculation = await loadPayrollCalculation(req.query.month);
-        const [periodLock, reconciliation] = await Promise.all([
+        const [periodLock, reconciliation, events] = await Promise.all([
             loadPayrollPeriodLock(calculation.month),
-            loadPayrollReconciliation(calculation.month)
+            loadPayrollReconciliation(calculation.month),
+            loadPayrollPeriodEvents(calculation.month)
         ]);
-        res.json({ success: true, ...calculation, period_lock: periodLock, reconciliation });
+        res.json({ success: true, ...calculation, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         log.error('GET /hr/salary error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3375,11 +3435,12 @@ router.get('/salary/reconciliation', async (req, res) => {
     try {
         const month = requirePayrollMonth(req.query.month);
         if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
-        const [periodLock, reconciliation] = await Promise.all([
+        const [periodLock, reconciliation, events] = await Promise.all([
             loadPayrollPeriodLock(month),
-            loadPayrollReconciliation(month)
+            loadPayrollReconciliation(month),
+            loadPayrollPeriodEvents(month)
         ]);
-        res.json({ success: true, month, period_lock: periodLock, reconciliation });
+        res.json({ success: true, month, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         log.error('GET /hr/salary/reconciliation error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3393,8 +3454,11 @@ router.post('/salary/period-lock', requirePayrollControl, async (req, res) => {
         const actor = payrollActor(req.user);
         const locked = req.body?.locked !== false;
         const periodLock = await setPayrollPeriodLock(month, locked, actor, req.body?.note || '');
-        const reconciliation = await loadPayrollReconciliation(month);
-        res.json({ success: true, month, period_lock: periodLock, reconciliation });
+        const [reconciliation, events] = await Promise.all([
+            loadPayrollReconciliation(month),
+            loadPayrollPeriodEvents(month)
+        ]);
+        res.json({ success: true, month, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         log.error('POST /hr/salary/period-lock error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3432,21 +3496,24 @@ router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
         const reversed = [];
         for (const report of reports.rows) {
             const amount = Math.round(Number(report.net_amount || 0));
-            if (amount <= 0) continue;
-            const tx = await client.query(
-                `INSERT INTO finance_transactions
-                    (type, category_id, amount, description, date, payment_method, staff_id, created_by)
-                 VALUES ('income', $1, $2, $3, $4, 'salary_reversal', $5, $6)
-                 RETURNING id`,
-                [
-                    report.category_id || null,
-                    amount,
-                    `Сторно зарплати ${report.staff_name} за ${month}: ${reason}`,
-                    range.to,
-                    report.staff_id,
-                    actor
-                ]
-            );
+            let reversalTransactionId = null;
+            if (amount > 0) {
+                const tx = await client.query(
+                    `INSERT INTO finance_transactions
+                        (type, category_id, amount, description, date, payment_method, staff_id, created_by)
+                     VALUES ('income', $1, $2, $3, $4, 'salary_reversal', $5, $6)
+                     RETURNING id`,
+                    [
+                        report.category_id || null,
+                        amount,
+                        `Сторно зарплати ${report.staff_name} за ${month}: ${reason}`,
+                        range.to,
+                        report.staff_id,
+                        actor
+                    ]
+                );
+                reversalTransactionId = tx.rows[0].id;
+            }
             await client.query(
                 `UPDATE payroll_reports
                  SET status = 'voided',
@@ -3457,16 +3524,19 @@ router.post('/salary/reverse', requirePayrollControl, async (req, res) => {
                      updated_by = $1,
                      updated_at = NOW()
                  WHERE id = $4`,
-                [actor, reason, tx.rows[0].id, report.id]
+                [actor, reason, reversalTransactionId, report.id]
             );
-            reversed.push({ staffId: report.staff_id, name: report.staff_name, amount, reversalTransactionId: tx.rows[0].id });
+            reversed.push({ staffId: report.staff_id, name: report.staff_name, amount, reversalTransactionId });
         }
 
+        const reversedTotal = reversed.reduce((sum, row) => sum + Number(row.amount || 0), 0);
         const periodLock = await setPayrollPeriodLock(month, false, actor, `Сторновано: ${reason}`, client);
+        await recordPayrollPeriodEvent(month, 'reverse', actor, reason, { count: reversed.length, amount: reversedTotal }, client);
         const reconciliation = await loadPayrollReconciliation(month, client);
+        const events = await loadPayrollPeriodEvents(month, client);
         await client.query('COMMIT');
 
-        res.json({ success: true, month, reversed, count: reversed.length, period_lock: periodLock, reconciliation });
+        res.json({ success: true, month, reversed, count: reversed.length, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/salary/reverse error', err);
@@ -3616,10 +3686,13 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
         }
 
         const periodLock = await setPayrollPeriodLock(month, true, actor, 'Автоматично закрито після нарахування зарплати', client);
+        const committedTotal = inserted.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        await recordPayrollPeriodEvent(month, 'commit', actor, 'Зарплату нараховано у фінанси', { count: inserted.length, amount: committedTotal }, client);
         const reconciliation = await loadPayrollReconciliation(month, client);
+        const events = await loadPayrollPeriodEvents(month, client);
         await client.query('COMMIT');
         log.info(`[SalaryCommit] Committed ${inserted.length} salaries for ${month}`);
-        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals, period_lock: periodLock, reconciliation });
+        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('[SalaryCommit] Error', err);

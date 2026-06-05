@@ -5046,11 +5046,50 @@ function currentSalaryMonth() {
     return document.getElementById('salaryMonth')?.value || '';
 }
 
+function formatPayrollEventTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Kyiv'
+    });
+}
+
+function renderSalaryPeriodEvents(events = []) {
+    const rows = Array.isArray(events) ? events.slice(0, 8) : [];
+    if (!rows.length) {
+        return `<div class="hr-salary-event">
+            <strong>Журнал періоду</strong>
+            <span>Дій по цьому місяцю ще немає.</span>
+            <span class="meta">—</span>
+        </div>`;
+    }
+    return rows.map(event => {
+        const meta = [
+            event.items_count !== null && event.items_count !== undefined ? `${Number(event.items_count)} ряд.` : '',
+            event.amount !== null && event.amount !== undefined ? fmtMoney(Number(event.amount || 0)) : ''
+        ].filter(Boolean).join(' · ');
+        const actor = event.actor ? ` · ${escapeHtml(event.actor)}` : '';
+        const note = event.note ? `<span>${escapeHtml(event.note)}</span>` : '<span>Без примітки</span>';
+        return `<div class="hr-salary-event">
+            <strong>${escapeHtml(event.event_label || event.event_type || 'Подія')}</strong>
+            <div>${note}<small>${escapeHtml(formatPayrollEventTime(event.created_at))}${actor}</small></div>
+            <span class="meta">${escapeHtml(meta || '—')}</span>
+        </div>`;
+    }).join('');
+}
+
 function renderSalaryPeriodControls(data = {}) {
     const lock = data.period_lock || { is_locked: false };
     const reconciliation = data.reconciliation || {};
+    const events = Array.isArray(data.events) ? data.events : [];
     const statusEl = document.getElementById('salaryPeriodStatus');
     const reconciliationEl = document.getElementById('salaryReconciliation');
+    const eventsEl = document.getElementById('salaryPeriodEvents');
     const commitBtn = document.getElementById('btnCommitSalary');
     const adjustmentBtn = document.getElementById('btnAddAdjustment');
     const lockBtn = document.getElementById('btnLockSalaryPeriod');
@@ -5084,6 +5123,10 @@ function renderSalaryPeriodControls(data = {}) {
                 <div class="hr-summary-card"><div class="value">${Number(reconciliation.orphan_salary_count || 0) + Number(reconciliation.missing_finance_count || 0)}</div><div class="label">Хвости</div></div>
             </div>
         `;
+    }
+
+    if (eventsEl) {
+        eventsEl.innerHTML = renderSalaryPeriodEvents(events);
     }
 }
 

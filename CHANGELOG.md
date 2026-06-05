@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.60 - HR offboarding route-smoke покриття
+
+### HR / Offboarding / Route Smoke / Акаунти / Склад / Документи / Audit / Deploy / (Клешня, 06.06.2026) [codex]
+- **Додано route-smoke покриття HR offboarding** - тест перевіряє реальний HTTP-флоу `/api/hr/staff/:id/offboarding-readiness` і `/api/hr/staff/:id/offboarding`, а не тільки статичну наявність кнопок чи CSS.
+- **Звʼязку з іншими розділами закріплено тестами** - readiness підтверджує неповернуті ресурси складу/костюмів, активні CRM-акаунти та документи/сертифікації зі строком ризику.
+- **Вимкнення акаунта перевіряє повний ланцюжок безпеки** - тест фіксує оновлення `users.is_active`, деактивацію `employee_profiles`, відкликання `refresh_tokens` і запис `account_security_events`.
+- **Захист creator і власного акаунта покрито regression-тестом** - offboarding блокує критичні сценарії до створення `staff_offboarding_events` і без мутації `users`.
+- **Audit-log звʼязку перевірено на рівні маршруту** - успішне завершення співпраці має писати `staff_offboarding_complete` у `hr_audit_log`.
+- **Оновлено релізні маркери** - версію піднято до `0.73.60`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.59 - HR Stage 3: offboarding контроль
 
 ### HR / Картка співробітника / Offboarding / Акаунти / Документи / Deploy / (Клешня, 06.06.2026) [codex]

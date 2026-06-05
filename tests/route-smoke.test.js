@@ -126,6 +126,94 @@ function clearModules() {
 }
 
 function createFakePool() {
+    const hrState = {
+        staff: new Map([
+            [42, {
+                id: 42,
+                name: 'HR Offboard Normal',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
+            }],
+            [43, {
+                id: 43,
+                name: 'HR Offboard Creator',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
+            }],
+            [44, {
+                id: 44,
+                name: 'HR Offboard Current',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
+            }]
+        ]),
+        resourcesByStaff: new Map([
+            [42, [{
+                id: 501,
+                resource_kind: 'warehouse_stock',
+                title: 'Радіостанція',
+                quantity: '1.00',
+                issued_at: '2099-05-01',
+                due_return_at: '2099-06-01',
+                warehouse_stock_name: 'Рація складу',
+                costume_name: null,
+                total_count: 1
+            }]]
+        ]),
+        accountsByStaff: new Map([
+            [42, [{
+                id: 77,
+                username: 'offboard.employee',
+                name: 'Offboard Employee',
+                role: 'animator',
+                extra_roles: [],
+                profile_id: 770,
+                full_name: 'Offboard Employee',
+                is_active: true,
+                profile_active: true
+            }]],
+            [43, [{
+                id: 78,
+                username: 'protected.creator',
+                name: 'Protected Creator',
+                role: 'creator',
+                extra_roles: [],
+                profile_id: 780,
+                full_name: 'Protected Creator',
+                is_active: true,
+                profile_active: true
+            }]],
+            [44, [{
+                id: 1,
+                username: 'route-smoke',
+                name: 'Route Smoke',
+                role: 'creator',
+                extra_roles: [],
+                profile_id: 790,
+                full_name: 'Route Smoke',
+                is_active: true,
+                profile_active: true
+            }]]
+        ]),
+        documentAlertsByStaff: new Map([
+            [42, [{
+                source: 'document',
+                id: 301,
+                type: 'medical_book',
+                title: 'Медкнижка 2026',
+                expires_at: '2099-06-02',
+                status: 'active',
+                total_count: 1
+            }]]
+        ]),
+        nextOffboardingEventId: 900
+    };
     return {
         totalCount: 1,
         idleCount: 1,
@@ -148,6 +236,112 @@ function createFakePool() {
             }
             if (/SELECT COUNT\(\*\)::int as c FROM users/i.test(text)) {
                 return { rows: [{ c: 2 }] };
+            }
+            if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
+                return { rows: [{ is_active: true, session_revoked_at: null }] };
+            }
+            if (/SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes FROM staff WHERE id = \$1/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [staff] : [] };
+            }
+            if (/FROM staff_resource_assignments sra LEFT JOIN warehouse_stock ws ON ws\.id = sra\.warehouse_stock_id LEFT JOIN costumes c ON c\.id = sra\.costume_id WHERE sra\.staff_id = \$1 AND sra\.status = 'issued'/i.test(text)) {
+                return { rows: hrState.resourcesByStaff.get(Number(params[0])) || [] };
+            }
+            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1/i.test(text)) {
+                const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
+                    .filter(row => row.is_active !== false && row.profile_active !== false)
+                    .map(row => ({
+                        id: row.id,
+                        username: row.username,
+                        name: row.name,
+                        role: row.role,
+                        extra_roles: row.extra_roles || [],
+                        profile_id: row.profile_id,
+                        full_name: row.full_name
+                    }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/FROM \( SELECT 'document'::text AS source/i.test(text) && /FROM staff_documents sd/i.test(text) && /FROM staff_certifications sc/i.test(text)) {
+                return { rows: hrState.documentAlertsByStaff.get(Number(params[0])) || [] };
+            }
+            if (/FROM staff_offboarding_events WHERE staff_id = \$1/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/INSERT INTO staff_offboarding_events/i.test(text)) {
+                return {
+                    rows: [{
+                        id: hrState.nextOffboardingEventId++,
+                        staff_id: Number(params[0]),
+                        status: 'completed',
+                        effective_date: params[1],
+                        reason: params[2],
+                        target_pool_status: params[3],
+                        account_action: params[4],
+                        open_resource_count: params[5],
+                        notes: params[6],
+                        created_by: params[7],
+                        completed_by: params[7],
+                        created_at: '2099-06-06T12:00:00Z',
+                        completed_at: '2099-06-06T12:00:00Z'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/UPDATE staff SET is_active = false,/i.test(text) && /termination_recorded_by = \$5 WHERE id = \$1 RETURNING \*/i.test(text)) {
+                const id = Number(params[0]);
+                const staff = hrState.staff.get(id);
+                if (!staff) return { rows: [], rowCount: 0 };
+                const updated = {
+                    ...staff,
+                    is_active: false,
+                    hr_pool_status: params[1],
+                    blacklist_reason: params[1] === 'blacklisted' ? params[2] : null,
+                    termination_date: params[3],
+                    termination_reason: params[2],
+                    termination_recorded_by: params[4]
+                };
+                hrState.staff.set(id, updated);
+                return { rows: [updated], rowCount: 1 };
+            }
+            if (/UPDATE users SET is_active = false, session_revoked_at = NOW\(\) WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
+                const ids = Array.isArray(params[0]) ? params[0].map(Number) : [];
+                const rows = [];
+                for (const accounts of hrState.accountsByStaff.values()) {
+                    for (const account of accounts) {
+                        if (ids.includes(Number(account.id)) && account.is_active !== false) {
+                            account.is_active = false;
+                            rows.push({
+                                id: account.id,
+                                username: account.username,
+                                name: account.name,
+                                role: account.role
+                            });
+                        }
+                    }
+                }
+                return { rows, rowCount: rows.length };
+            }
+            if (/UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\)/i.test(text)) {
+                const ids = Array.isArray(params[1]) ? params[1].map(Number) : [];
+                const accounts = hrState.accountsByStaff.get(Number(params[0])) || [];
+                let rowCount = 0;
+                for (const account of accounts) {
+                    if (ids.includes(Number(account.id)) && account.profile_active !== false) {
+                        account.profile_active = false;
+                        rowCount += 1;
+                    }
+                }
+                return { rows: [], rowCount };
+            }
+            if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE user_id = ANY\(\$1::int\[\]\) AND revoked_at IS NULL/i.test(text)) {
+                const ids = Array.isArray(params[0]) ? params[0] : [];
+                return { rows: [], rowCount: ids.length };
+            }
+            if (/INSERT INTO account_security_events/i.test(text)) {
+                return { rows: [{ id: 990 }], rowCount: 1 };
+            }
+            if (/INSERT INTO hr_audit_log/i.test(text)) {
+                return { rows: [{ id: 991 }], rowCount: 1 };
             }
             if (/SELECT id FROM leads/i.test(text) && /external_id = \$2/i.test(text)) {
                 return { rows: params[1] === 'existing-external' ? [{ id: 777 }] : [] };
@@ -977,6 +1171,63 @@ describe('route-level API safety smoke', () => {
         assert.ok(roles.data.pageAccess['/staff'].includes('security'));
         assert.ok(!roles.data.pageAccess['/tasks'].includes('waiter'));
         assert.ok(roles.data.actionPermissions.create_booking);
+    });
+
+    it('keeps HR offboarding readiness connected to resources, accounts, and document alerts', async () => {
+        const res = await request('GET', '/api/hr/staff/42/offboarding-readiness', undefined, withAuth());
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.data.open_resource_count, 1);
+        assert.equal(res.data.data.active_account_count, 1);
+        assert.equal(res.data.data.document_alert_count, 1);
+        assert.equal(res.data.data.disable_available, true);
+        assert.equal(res.data.data.open_resources[0].title, 'Рація складу');
+        assert.equal(res.data.data.active_accounts[0].username, 'offboard.employee');
+        assert.equal(res.data.data.document_alerts[0].title, 'Медкнижка 2026');
+    });
+
+    it('deactivates linked CRM account, profile, tokens, and audit when HR offboarding disables account', async () => {
+        const res = await request('POST', '/api/hr/staff/42/offboarding', {
+            effective_date: '2099-06-06',
+            target_pool_status: 'reserve',
+            account_action: 'disable',
+            reason: 'Завершення тестової співпраці',
+            notes: 'route smoke'
+        }, withAuth());
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.open_resource_count, 1);
+        assert.equal(res.data.disabled_accounts, 1);
+        assert.deepEqual(res.data.disabled_account_usernames, ['offboard.employee']);
+        assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = NOW\(\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE refresh_tokens SET revoked_at = NOW\(\)/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO account_security_events/i.test(q.text) && q.params[4] === 'account_deactivated' && q.params[5] === 'hr_offboarding'));
+        assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'staff_offboarding_complete'));
+    });
+
+    it('blocks HR offboarding from disabling protected creator or current CRM accounts', async () => {
+        const protectedCreator = await request('POST', '/api/hr/staff/43/offboarding', {
+            effective_date: '2099-06-06',
+            target_pool_status: 'reserve',
+            account_action: 'disable',
+            reason: 'Creator should stay protected'
+        }, withAuth());
+        assert.equal(protectedCreator.status, 409, JSON.stringify(protectedCreator.data));
+        assert.match(protectedCreator.data.error, /Creator-акаунт/);
+
+        queries.length = 0;
+        const currentUser = await request('POST', '/api/hr/staff/44/offboarding', {
+            effective_date: '2099-06-06',
+            target_pool_status: 'reserve',
+            account_action: 'disable',
+            reason: 'Current user should stay protected'
+        }, withAuth());
+        assert.equal(currentUser.status, 409, JSON.stringify(currentUser.data));
+        assert.match(currentUser.data.error, /власний CRM-акаунт/);
+        assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO staff_offboarding_events/i.test(q.text)), false);
     });
 
     it('exposes typed task operations endpoints behind object visibility', async () => {

@@ -603,6 +603,320 @@ function rateForStaffProfession(staff = {}, professionKey = '', rateMap = new Ma
         : Number(staff.hourly_rate || 0);
 }
 
+function normalizePayrollMonth(value) {
+    const month = String(value || '').trim();
+    if (/^\d{4}-\d{2}$/.test(month)) return month;
+    const now = nowKyiv();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function requirePayrollMonth(value) {
+    const month = String(value || '').trim();
+    return /^\d{4}-\d{2}$/.test(month) ? month : null;
+}
+
+function payrollTotals(rows = []) {
+    return rows.reduce((acc, row) => ({
+        total_base: acc.total_base + Number(row.base_salary || 0),
+        total_overtime: acc.total_overtime + Number(row.overtime_pay || 0),
+        total_bonuses: acc.total_bonuses + Number(row.bonuses || 0) + Number(row.tips || 0),
+        total_deductions: acc.total_deductions + Number(row.deductions || 0) + Number(row.penalties || 0),
+        total_salary: acc.total_salary + Number(row.total_salary || 0)
+    }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 });
+}
+
+async function loadPayrollCalculation(monthValue, db = pool) {
+    const month = normalizePayrollMonth(monthValue);
+    const result = await db.query(`
+        WITH params AS (
+            SELECT $1::varchar(7) AS month,
+                   ($1 || '-01')::date AS date_from,
+                   (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
+        ),
+        active_staff AS (
+            SELECT id, name, role_type, hourly_rate, department
+            FROM staff
+            WHERE is_active = true
+              AND (is_freelance = false OR is_freelance IS NULL)
+        ),
+        time_segments AS (
+            SELECT s.id AS staff_id,
+                   COALESCE(hs.profession_key, s.role_type) AS profession_key,
+                   COALESCE(NULLIF(spr.hourly_rate, 0), s.hourly_rate, 0)::numeric AS rate,
+                   COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_minutes,
+                   SUM(tr.overtime_minutes) AS overtime_minutes,
+                   COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed', 'unscheduled'))::int AS days_worked
+            FROM active_staff s
+            CROSS JOIN params p
+            LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
+                AND tr.record_date >= p.date_from AND tr.record_date <= p.date_to
+            LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = tr.record_date
+            LEFT JOIN staff_profession_rates spr ON spr.staff_id = s.id
+                AND spr.profession_key = COALESCE(hs.profession_key, s.role_type)
+            GROUP BY s.id, COALESCE(hs.profession_key, s.role_type),
+                     COALESCE(NULLIF(spr.hourly_rate, 0), s.hourly_rate, 0)
+        ),
+        time_totals AS (
+            SELECT staff_id,
+                   SUM(total_minutes)::numeric AS total_minutes,
+                   SUM(overtime_minutes)::numeric AS overtime_minutes,
+                   SUM(days_worked)::int AS days_worked,
+                   SUM((total_minutes / 60.0) * rate)::numeric AS base_salary,
+                   SUM((overtime_minutes / 60.0) * rate * 1.5)::numeric AS overtime_pay,
+                   COALESCE(
+                       jsonb_agg(jsonb_build_object(
+                           'profession_key', profession_key,
+                           'rate', rate,
+                           'hours', ROUND(total_minutes / 60.0, 1)
+                       ) ORDER BY profession_key) FILTER (WHERE total_minutes > 0 OR overtime_minutes > 0),
+                       '[]'::jsonb
+                   ) AS profession_rates
+            FROM time_segments
+            WHERE profession_key IS NOT NULL
+            GROUP BY staff_id
+        ),
+        adjustment_totals AS (
+            SELECT sa.staff_id,
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'bonus'), 0)::numeric AS bonuses,
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'tip'), 0)::numeric AS tips,
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'deduction'), 0)::numeric AS deductions,
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'penalty'), 0)::numeric AS penalties
+            FROM salary_adjustments sa
+            JOIN params p ON sa.month = p.month
+            GROUP BY sa.staff_id
+        ),
+        report_snapshots AS (
+            SELECT pr.staff_id, pr.status AS payroll_status, pr.id AS payroll_report_id
+            FROM payroll_reports pr
+            JOIN params p ON pr.period_month = p.month
+        )
+        SELECT s.id AS staff_id,
+               s.name AS staff_name,
+               s.role_type,
+               s.department,
+               COALESCE(s.hourly_rate, 0)::numeric AS hourly_rate,
+               COALESCE(tt.profession_rates, '[]'::jsonb) AS profession_rate_summary,
+               COALESCE(tt.days_worked, 0)::int AS days_worked,
+               ROUND(COALESCE(tt.total_minutes, 0) / 60.0, 1)::numeric AS hours_worked,
+               ROUND(COALESCE(tt.overtime_minutes, 0) / 60.0, 1)::numeric AS overtime_hours,
+               ROUND(COALESCE(tt.base_salary, 0))::int AS base_salary,
+               ROUND(COALESCE(tt.overtime_pay, 0))::int AS overtime_pay,
+               ROUND(COALESCE(at.bonuses, 0))::int AS bonuses,
+               ROUND(COALESCE(at.tips, 0))::int AS tips,
+               ROUND(COALESCE(at.deductions, 0))::int AS deductions,
+               ROUND(COALESCE(at.penalties, 0))::int AS penalties,
+               ROUND(COALESCE(tt.base_salary, 0) + COALESCE(tt.overtime_pay, 0) + COALESCE(at.bonuses, 0) + COALESCE(at.tips, 0) - COALESCE(at.deductions, 0) - COALESCE(at.penalties, 0))::int AS total_salary,
+               rs.payroll_status,
+               rs.payroll_report_id
+        FROM active_staff s
+        LEFT JOIN time_totals tt ON tt.staff_id = s.id
+        LEFT JOIN adjustment_totals at ON at.staff_id = s.id
+        LEFT JOIN report_snapshots rs ON rs.staff_id = s.id
+        ORDER BY s.name
+    `, [month]);
+    const data = result.rows.map(row => ({
+        staff_id: Number(row.staff_id),
+        staff_name: row.staff_name,
+        role_type: row.role_type,
+        department: row.department,
+        hourly_rate: Number(row.hourly_rate || 0),
+        profession_rate_summary: Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [],
+        days_worked: Number(row.days_worked || 0),
+        hours_worked: Number(row.hours_worked || 0),
+        overtime_hours: Number(row.overtime_hours || 0),
+        base_salary: Number(row.base_salary || 0),
+        overtime_pay: Number(row.overtime_pay || 0),
+        bonuses: Number(row.bonuses || 0),
+        tips: Number(row.tips || 0),
+        deductions: Number(row.deductions || 0),
+        penalties: Number(row.penalties || 0),
+        total_salary: Number(row.total_salary || 0),
+        payroll_status: row.payroll_status || null,
+        payroll_report_id: row.payroll_report_id || null
+    }));
+    return { month, data, totals: payrollTotals(data) };
+}
+
+async function loadKpiSnapshot(monthValue, db = pool) {
+    const month = normalizePayrollMonth(monthValue);
+    const result = await db.query(`
+        WITH params AS (
+            SELECT $1::varchar(7) AS month,
+                   ($1 || '-01')::date AS date_from,
+                   (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
+        ),
+        active_staff AS (
+            SELECT id, name, department, role_type, color, photo_url,
+                   COALESCE(avg_rating, 0)::numeric AS avg_rating,
+                   COALESCE(total_ratings, 0)::int AS total_ratings
+            FROM staff
+            WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)
+        ),
+        shift_stats AS (
+            SELECT hs.staff_id, COUNT(*)::int AS days_scheduled
+            FROM hr_shifts hs
+            JOIN params p ON hs.shift_date >= p.date_from AND hs.shift_date <= p.date_to
+            GROUP BY hs.staff_id
+        ),
+        time_stats AS (
+            SELECT tr.staff_id,
+                   COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed', 'unscheduled'))::int AS days_worked,
+                   COUNT(*) FILTER (WHERE tr.status = 'late')::int AS late_count,
+                   COUNT(*) FILTER (WHERE tr.status IN ('absent', 'no_show'))::int AS days_absent,
+                   COALESCE(SUM(tr.late_minutes), 0)::int AS total_late_minutes,
+                   COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_worked_minutes,
+                   COALESCE(SUM(tr.overtime_minutes), 0)::numeric AS total_overtime_minutes
+            FROM hr_time_records tr
+            JOIN params p ON tr.record_date >= p.date_from AND tr.record_date <= p.date_to
+            GROUP BY tr.staff_id
+        ),
+        task_stats AS (
+            SELECT ep.staff_id,
+                   COUNT(t.id)::int AS tasks_assigned,
+                   COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done', 'completed'))::int AS tasks_done,
+                   COUNT(t.id) FILTER (
+                       WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+                         AND t.deadline IS NOT NULL
+                         AND t.deadline < NOW()
+                   )::int AS tasks_overdue
+            FROM tasks t
+            JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
+            JOIN params p ON (
+                t.created_at::date BETWEEN p.date_from AND p.date_to
+                OR t.completed_at::date BETWEEN p.date_from AND p.date_to
+            )
+            WHERE t.owner_user_id IS NOT NULL
+            GROUP BY ep.staff_id
+        ),
+        onboarding_stats AS (
+            SELECT op.staff_id,
+                   COUNT(*)::int AS onboarding_total,
+                   COUNT(*) FILTER (WHERE op.status = 'completed')::int AS onboarding_completed,
+                   COUNT(*) FILTER (WHERE op.status <> 'completed')::int AS onboarding_active,
+                   COALESCE(SUM(op.total_items), 0)::int AS onboarding_total_items,
+                   COALESCE(SUM(op.completed_items), 0)::int AS onboarding_completed_items
+            FROM onboarding_progress op
+            GROUP BY op.staff_id
+        ),
+        contribution_stats AS (
+            SELECT s.id AS staff_id,
+                   COUNT(DISTINCT b.id)::int AS events_period
+            FROM active_staff s
+            CROSS JOIN params p
+            LEFT JOIN bookings b ON (
+                b.line_id = s.id::text
+                OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(s.name))
+                OR BTRIM(COALESCE(b.second_animator, '')) = s.id::text
+            )
+                AND b.status IN ('completed', 'confirmed')
+                AND b.date::date >= p.date_from AND b.date::date <= p.date_to
+            GROUP BY s.id
+        ),
+        base_metrics AS (
+            SELECT s.id AS staff_id,
+                   s.name AS staff_name,
+                   s.department,
+                   s.role_type,
+                   s.color,
+                   s.photo_url,
+                   COALESCE(ss.days_scheduled, 0)::int AS days_scheduled,
+                   COALESCE(ts.days_worked, 0)::int AS days_worked,
+                   COALESCE(ts.late_count, 0)::int AS late_count,
+                   COALESCE(ts.days_absent, 0)::int AS days_absent,
+                   COALESCE(ts.total_late_minutes, 0)::int AS total_late_minutes,
+                   ROUND(COALESCE(ts.total_worked_minutes, 0) / 60.0, 1)::numeric AS total_worked_hours,
+                   ROUND(COALESCE(ts.total_overtime_minutes, 0) / 60.0, 1)::numeric AS total_overtime_hours,
+                   COALESCE(tks.tasks_assigned, 0)::int AS tasks_assigned,
+                   COALESCE(tks.tasks_done, 0)::int AS tasks_done,
+                   COALESCE(tks.tasks_overdue, 0)::int AS tasks_overdue,
+                   COALESCE(os.onboarding_total, 0)::int AS onboarding_total,
+                   COALESCE(os.onboarding_completed, 0)::int AS onboarding_completed,
+                   COALESCE(os.onboarding_active, 0)::int AS onboarding_active,
+                   COALESCE(os.onboarding_total_items, 0)::int AS onboarding_total_items,
+                   COALESCE(os.onboarding_completed_items, 0)::int AS onboarding_completed_items,
+                   COALESCE(cs.events_period, 0)::int AS events_period,
+                   s.avg_rating,
+                   s.total_ratings
+            FROM active_staff s
+            LEFT JOIN shift_stats ss ON ss.staff_id = s.id
+            LEFT JOIN time_stats ts ON ts.staff_id = s.id
+            LEFT JOIN task_stats tks ON tks.staff_id = s.id
+            LEFT JOIN onboarding_stats os ON os.staff_id = s.id
+            LEFT JOIN contribution_stats cs ON cs.staff_id = s.id
+        ),
+        scored AS (
+            SELECT *,
+                   CASE WHEN days_scheduled > 0 THEN ROUND(days_worked::numeric / days_scheduled * 100)::int ELSE NULL END AS attendance_rate,
+                   CASE WHEN days_scheduled > 0 OR days_worked > 0 THEN GREATEST(0, 100 - (late_count * 10) - (days_absent * 25))::int ELSE NULL END AS reliability_score,
+                   CASE WHEN tasks_assigned > 0 THEN ROUND(tasks_done::numeric / tasks_assigned * 100)::int ELSE NULL END AS task_completion_rate,
+                   CASE
+                       WHEN onboarding_total_items > 0 THEN ROUND(onboarding_completed_items::numeric / onboarding_total_items * 100)::int
+                       WHEN onboarding_total > 0 THEN ROUND(onboarding_completed::numeric / onboarding_total * 100)::int
+                       ELSE NULL
+                   END AS development_rate,
+                   CASE WHEN events_period > 0 THEN LEAST(100, events_period * 10)::int ELSE NULL END AS contribution_score
+            FROM base_metrics
+        )
+        SELECT *,
+               COALESCE((
+                   SELECT ROUND(AVG(value))::int
+                   FROM unnest(ARRAY[attendance_rate, reliability_score, task_completion_rate, development_rate, contribution_score]) AS metric(value)
+                   WHERE value IS NOT NULL
+               ), 0)::int AS kpi_score
+        FROM scored
+        ORDER BY kpi_score DESC, staff_name
+    `, [month]);
+    const data = result.rows.map(row => ({
+        staff_id: Number(row.staff_id),
+        staff_name: row.staff_name,
+        department: row.department,
+        role_type: row.role_type,
+        color: row.color,
+        photo_url: row.photo_url,
+        days_scheduled: Number(row.days_scheduled || 0),
+        days_worked: Number(row.days_worked || 0),
+        late_count: Number(row.late_count || 0),
+        days_absent: Number(row.days_absent || 0),
+        total_late_minutes: Number(row.total_late_minutes || 0),
+        total_worked_hours: Number(row.total_worked_hours || 0),
+        total_overtime_hours: Number(row.total_overtime_hours || 0),
+        attendance_rate: row.attendance_rate === null ? null : Number(row.attendance_rate),
+        reliability_score: row.reliability_score === null ? null : Number(row.reliability_score),
+        task_kpi: {
+            tasks_assigned: Number(row.tasks_assigned || 0),
+            tasks_done: Number(row.tasks_done || 0),
+            tasks_overdue: Number(row.tasks_overdue || 0)
+        },
+        task_completion_rate: row.task_completion_rate === null ? null : Number(row.task_completion_rate),
+        development_kpi: {
+            total: Number(row.onboarding_total || 0),
+            completed: Number(row.onboarding_completed || 0),
+            active: Number(row.onboarding_active || 0),
+            total_items: Number(row.onboarding_total_items || 0),
+            completed_items: Number(row.onboarding_completed_items || 0),
+            percent: row.development_rate === null ? null : Number(row.development_rate)
+        },
+        contribution_kpi: {
+            events_period: Number(row.events_period || 0),
+            score: row.contribution_score === null ? null : Number(row.contribution_score),
+            avg_rating: Number(row.avg_rating || 0),
+            total_ratings: Number(row.total_ratings || 0)
+        },
+        kpi_score: Number(row.kpi_score || 0)
+    }));
+    return {
+        month,
+        data,
+        sources: {
+            staffRows: data.length,
+            scheduleRows: data.filter(row => row.days_scheduled > 0).length,
+            taskRows: data.filter(row => row.task_kpi.tasks_assigned > 0).length,
+            onboardingRows: data.filter(row => row.development_kpi.total > 0).length,
+            contributionRows: data.filter(row => row.contribution_kpi.events_period > 0 || row.contribution_kpi.total_ratings > 0).length
+        }
+    };
+}
+
 function normalizeAuditValue(value) {
     if (value instanceof Date) return value.toISOString();
     if (Array.isArray(value)) return value.map(item => String(item)).sort();
@@ -2094,6 +2408,17 @@ router.get('/report/monthly', async (req, res) => {
     }
 });
 
+// GET /api/hr/kpi — single backend-owned KPI snapshot
+router.get('/kpi', async (req, res) => {
+    try {
+        const snapshot = await loadKpiSnapshot(req.query.month);
+        res.json({ success: true, ...snapshot });
+    } catch (err) {
+        log.error('GET /hr/kpi error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 // GET /api/hr/report/daily
 router.get('/report/daily', async (req, res) => {
     try {
@@ -2555,132 +2880,8 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 // GET /api/hr/salary — full salary calculation
 router.get('/salary', async (req, res) => {
     try {
-        const month = req.query.month || (() => {
-            const now = nowKyiv();
-            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        })();
-        const dateFrom = `${month}-01`;
-        const d = new Date(dateFrom);
-        d.setMonth(d.getMonth() + 1);
-        d.setDate(0);
-        const dateTo = d.toISOString().split('T')[0];
-
-        // Get staff with hours — v32.1: safe fallback if tables don't exist
-        let staffList;
-        try {
-            staffList = await pool.query(
-                'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name'
-            );
-        } catch (staffErr) {
-            log.warn('staff query failed:', staffErr.message);
-            return res.json({ success: true, data: [], totals: { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 }, month });
-        }
-        const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
-        const staffById = new Map(staffList.rows.map(st => [Number(st.id), st]));
-
-        const recordMap = {};
-        try {
-            const records = await pool.query(
-                `SELECT tr.staff_id,
-                        COALESCE(hs.profession_key, s.role_type) AS profession_key,
-                        SUM(tr.total_worked_minutes) AS total_minutes,
-                        SUM(tr.overtime_minutes) AS overtime_minutes,
-                        COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
-                 FROM hr_time_records tr
-                 JOIN staff s ON s.id = tr.staff_id
-                 LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
-                 WHERE tr.record_date >= $1 AND tr.record_date <= $2
-                 GROUP BY tr.staff_id, COALESCE(hs.profession_key, s.role_type)`,
-                [dateFrom, dateTo]
-            );
-            for (const r of records.rows) {
-                const staff = staffById.get(Number(r.staff_id)) || { id: r.staff_id };
-                const professionKey = normalizeProfessionKey(r.profession_key || staff.role_type);
-                const rate = rateForStaffProfession(staff, professionKey, professionRateMap);
-                const totalMinutes = parseInt(r.total_minutes) || 0;
-                const overtimeMinutes = parseInt(r.overtime_minutes) || 0;
-                if (!recordMap[r.staff_id]) {
-                    recordMap[r.staff_id] = {
-                        total_minutes: 0,
-                        overtime_minutes: 0,
-                        days_worked: 0,
-                        base_salary: 0,
-                        overtime_pay: 0,
-                        profession_rates: []
-                    };
-                }
-                recordMap[r.staff_id].total_minutes += totalMinutes;
-                recordMap[r.staff_id].overtime_minutes += overtimeMinutes;
-                recordMap[r.staff_id].days_worked += parseInt(r.days_worked) || 0;
-                recordMap[r.staff_id].base_salary += (totalMinutes / 60) * rate;
-                recordMap[r.staff_id].overtime_pay += (overtimeMinutes / 60) * rate * 1.5;
-                recordMap[r.staff_id].profession_rates.push({
-                    profession_key: professionKey,
-                    rate,
-                    hours: Math.round(totalMinutes / 60 * 10) / 10
-                });
-            }
-        } catch (recErr) {
-            log.warn('hr_time_records query failed:', recErr.message);
-        }
-
-        // Get adjustments — v32.1: safe fallback if table doesn't exist yet
-        const adjMap = {};
-        try {
-            const adjustments = await pool.query(
-                `SELECT staff_id, type, SUM(amount) AS total
-                 FROM salary_adjustments WHERE month = $1 GROUP BY staff_id, type`,
-                [month]
-            );
-            for (const a of adjustments.rows) {
-                if (!adjMap[a.staff_id]) adjMap[a.staff_id] = { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
-                adjMap[a.staff_id][a.type] = parseInt(a.total);
-            }
-        } catch (adjErr) {
-            log.warn('salary_adjustments query failed (table may not exist):', adjErr.message);
-        }
-
-        const data = staffList.rows.map(st => {
-            const rec = recordMap[st.id] || { total_minutes: 0, overtime_minutes: 0, days_worked: 0, base_salary: 0, overtime_pay: 0, profession_rates: [] };
-            const adj = adjMap[st.id] || { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
-            const rate = parseFloat(st.hourly_rate) || 0;
-            const hours = Math.round((parseInt(rec.total_minutes) || 0) / 60 * 10) / 10;
-            const overtimeHours = Math.round((parseInt(rec.overtime_minutes) || 0) / 60 * 10) / 10;
-            const baseSalary = Math.round(rec.base_salary || hours * rate);
-            const overtimePay = Math.round(rec.overtime_pay || overtimeHours * rate * 1.5);
-            const totalBonuses = adj.bonus + adj.tip;
-            const totalDeductions = adj.deduction + adj.penalty;
-            const totalSalary = baseSalary + overtimePay + totalBonuses - totalDeductions;
-
-            return {
-                staff_id: st.id,
-                staff_name: st.name,
-                role_type: st.role_type,
-                department: st.department,
-                hourly_rate: rate,
-                profession_rate_summary: rec.profession_rates,
-                days_worked: parseInt(rec.days_worked) || 0,
-                hours_worked: hours,
-                overtime_hours: overtimeHours,
-                base_salary: baseSalary,
-                overtime_pay: overtimePay,
-                bonuses: adj.bonus,
-                tips: adj.tip,
-                deductions: adj.deduction,
-                penalties: adj.penalty,
-                total_salary: totalSalary
-            };
-        });
-
-        const totals = data.reduce((acc, d) => ({
-            total_base: acc.total_base + d.base_salary,
-            total_overtime: acc.total_overtime + d.overtime_pay,
-            total_bonuses: acc.total_bonuses + d.bonuses + d.tips,
-            total_deductions: acc.total_deductions + d.deductions + d.penalties,
-            total_salary: acc.total_salary + d.total_salary
-        }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 });
-
-        res.json({ success: true, data, totals, month });
+        const calculation = await loadPayrollCalculation(req.query.month);
+        res.json({ success: true, ...calculation });
     } catch (err) {
         log.error('GET /hr/salary error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2801,11 +3002,19 @@ router.get('/salary/adjustments', async (req, res) => {
 // COSTUMES (#8)
 // ==========================================
 
+// LEGACY /api/hr/costumes — deprecated read/write compatibility.
+// Current UI entry point is /warehouse#costumes and /api/warehouse/costumes.
+function markLegacyCostumeResponse(res) {
+    res.set('X-EventGenix-Deprecated', 'hr-costumes');
+    res.set('X-EventGenix-Replacement', '/api/warehouse/costumes');
+}
+
 // GET /api/hr/costumes
 router.get('/costumes', async (req, res) => {
     try {
+        markLegacyCostumeResponse(res);
         const data = await costumeInventory.listCostumes();
-        res.json({ success: true, data });
+        res.json({ success: true, data, deprecated: true, replacement: '/api/warehouse/costumes' });
     } catch (err) {
         log.error('GET /hr/costumes error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2815,8 +3024,9 @@ router.get('/costumes', async (req, res) => {
 // POST /api/hr/costumes
 router.post('/costumes', requireHrManage, async (req, res) => {
     try {
+        markLegacyCostumeResponse(res);
         const data = await costumeInventory.createCostume(req.body);
-        res.json({ success: true, data });
+        res.json({ success: true, data, deprecated: true, replacement: '/api/warehouse/costumes' });
     } catch (err) {
         log.error('POST /hr/costumes error', err);
         res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
@@ -2826,8 +3036,9 @@ router.post('/costumes', requireHrManage, async (req, res) => {
 // PUT /api/hr/costumes/:id
 router.put('/costumes/:id', requireHrManage, async (req, res) => {
     try {
+        markLegacyCostumeResponse(res);
         const data = await costumeInventory.updateCostume(req.params.id, req.body);
-        res.json({ success: true, data });
+        res.json({ success: true, data, deprecated: true, replacement: '/api/warehouse/costumes' });
     } catch (err) {
         log.error('PUT /hr/costumes/:id error', err);
         res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
@@ -2837,8 +3048,9 @@ router.put('/costumes/:id', requireHrManage, async (req, res) => {
 // DELETE /api/hr/costumes/:id
 router.delete('/costumes/:id', requireHrManage, async (req, res) => {
     try {
+        markLegacyCostumeResponse(res);
         await costumeInventory.deleteCostume(req.params.id);
-        res.json({ success: true });
+        res.json({ success: true, deprecated: true, replacement: '/api/warehouse/costumes' });
     } catch (err) {
         log.error('DELETE /hr/costumes/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2987,100 +3199,114 @@ router.get('/shifts-summary', async (req, res) => {
 
 // POST /api/hr/salary/commit — record calculated salaries as finance transactions
 router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { month } = req.body;
-        if (!month || !/^\d{4}-\d{2}$/.test(month))
-            return res.status(400).json({ error: 'month required (YYYY-MM)' });
+        const month = requirePayrollMonth(req.body?.month);
+        if (!month) return res.status(400).json({ success: false, error: 'month required (YYYY-MM)' });
+        const actor = req.user?.username || req.user?.name || 'crm';
+
+        await client.query('BEGIN');
 
         // Check if already committed
-        const already = await pool.query(
+        const already = await client.query(
             `SELECT COUNT(*)::int AS c FROM finance_transactions
-             WHERE payment_method = 'salary' AND date LIKE $1`,
-            [`${month}%`]
-        );
-        if (parseInt(already.rows[0].c) > 0) {
-            return res.status(409).json({ error: `Зарплати за ${month} вже нараховано (${already.rows[0].c} транзакцій)` });
-        }
-
-        // Calculate salaries based on time records
-        const salaryResp = await pool.query(
-            `SELECT
-                s.id AS staff_id, s.name, s.role_type, s.hourly_rate,
-                COALESCE(hs.profession_key, s.role_type) AS profession_key,
-                COALESCE(SUM(tr.total_worked_minutes), 0)::int AS total_minutes
-             FROM staff s
-             LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
-                AND tr.record_date >= $1::date AND tr.record_date <= ($1::date + INTERVAL '1 month - 1 day')
-             LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = tr.record_date
-             WHERE s.is_active = true
-             GROUP BY s.id, s.name, s.role_type, s.hourly_rate, COALESCE(hs.profession_key, s.role_type)
-             HAVING COALESCE(SUM(tr.total_worked_minutes), 0) > 0`,
+             WHERE payment_method = 'salary'
+               AND date >= $1::date
+               AND date <= ($1::date + INTERVAL '1 month - 1 day')`,
             [`${month}-01`]
         );
-        const professionRateMap = await loadStaffProfessionRateMap(salaryResp.rows.map(row => row.staff_id));
+        if (parseInt(already.rows[0].c) > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: `Зарплати за ${month} вже нараховано (${already.rows[0].c} транзакцій)` });
+        }
+
+        const calculation = await loadPayrollCalculation(month, client);
 
         // Find salary expense category
-        const salCat = await pool.query(
+        const salCat = await client.query(
             `SELECT id FROM finance_categories WHERE name ILIKE '%зарплат%' AND type = 'expense' LIMIT 1`
         );
         const catId = salCat.rows[0]?.id || null;
 
-        const salaryByStaff = new Map();
-        for (const row of salaryResp.rows) {
-            const existing = salaryByStaff.get(Number(row.staff_id)) || {
-                staff_id: Number(row.staff_id),
-                name: row.name,
-                hourly_rate: Number(row.hourly_rate || 0),
-                total_minutes: 0,
-                base_salary: 0,
-                segments: []
-            };
-            const professionKey = normalizeProfessionKey(row.profession_key || row.role_type);
-            const rate = rateForStaffProfession(row, professionKey, professionRateMap);
-            const totalMinutes = Number(row.total_minutes || 0);
-            existing.total_minutes += totalMinutes;
-            existing.base_salary += (totalMinutes / 60) * rate;
-            existing.segments.push({ profession_key: professionKey, rate, hours: Math.round(totalMinutes / 60 * 10) / 10 });
-            salaryByStaff.set(existing.staff_id, existing);
-        }
-
         const inserted = [];
-        for (const s of salaryByStaff.values()) {
-            const workedH = s.total_minutes / 60;
-            const baseSal = Math.round(s.base_salary);
+        for (const row of calculation.data) {
+            const totalSalary = Number(row.total_salary || 0);
+            if (totalSalary <= 0) continue;
+            const grossAmount = Number(row.base_salary || 0) + Number(row.overtime_pay || 0) + Number(row.bonuses || 0) + Number(row.tips || 0);
+            const deductionsAmount = Number(row.deductions || 0) + Number(row.penalties || 0);
+            const breakdown = {
+                base_salary: row.base_salary,
+                overtime_pay: row.overtime_pay,
+                bonuses: row.bonuses,
+                tips: row.tips,
+                deductions: row.deductions,
+                penalties: row.penalties,
+                hours_worked: row.hours_worked,
+                overtime_hours: row.overtime_hours,
+                profession_rates: row.profession_rate_summary
+            };
 
-            // Bonuses/deductions from salary_adjustments
-            let bonuses = 0, deductions = 0;
-            try {
-                const adj = await pool.query(
-                    `SELECT type, SUM(amount)::int AS total
-                     FROM salary_adjustments WHERE staff_id = $1 AND month = $2 GROUP BY type`,
-                    [s.staff_id, month]
+            await client.query(
+                `INSERT INTO payroll_reports
+                    (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status, breakdown_json, generated_at, created_by, updated_by, updated_at)
+                 VALUES ($1, $2, $3, $4, 0, $5, 'paid', $6::jsonb, NOW(), $7, $7, NOW())
+                 ON CONFLICT (period_month, staff_id) DO UPDATE SET
+                    gross_amount = EXCLUDED.gross_amount,
+                    deductions_amount = EXCLUDED.deductions_amount,
+                    advances_amount = 0,
+                    net_amount = EXCLUDED.net_amount,
+                    status = 'paid',
+                    breakdown_json = EXCLUDED.breakdown_json,
+                    generated_at = NOW(),
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()`,
+                [month, row.staff_id, grossAmount, deductionsAmount, totalSalary, JSON.stringify(breakdown), actor]
+            );
+
+            await client.query('DELETE FROM payroll_entries WHERE staff_id = $1 AND period_month = $2', [row.staff_id, month]);
+            const entryRows = [
+                { type: 'base', label: 'Базова зарплата', amount: row.base_salary, quantity: row.hours_worked, meta: { profession_rates: row.profession_rate_summary } },
+                { type: 'adjustment', label: 'Переробка', amount: row.overtime_pay, quantity: row.overtime_hours },
+                { type: 'bonus', label: 'Бонуси', amount: row.bonuses },
+                { type: 'bonus', label: 'Чайові', amount: row.tips },
+                { type: 'deduction', label: 'Вирахування', amount: row.deductions },
+                { type: 'deduction', label: 'Депреміювання', amount: row.penalties }
+            ].filter(entry => Number(entry.amount || 0) !== 0);
+            for (const entry of entryRows) {
+                await client.query(
+                    `INSERT INTO payroll_entries
+                        (staff_id, period_month, line_type, label, amount, quantity, rate, meta_json, created_by)
+                     VALUES ($1, $2, $3, $4, $5, $6, NULL, $7::jsonb, $8)`,
+                    [row.staff_id, month, entry.type, entry.label, Number(entry.amount || 0), entry.quantity || null, JSON.stringify(entry.meta || {}), actor]
                 );
-                bonuses = adj.rows.filter(a => a.type === 'bonus').reduce((sum, a) => sum + a.total, 0);
-                deductions = adj.rows.filter(a => ['deduction', 'penalty'].includes(a.type)).reduce((sum, a) => sum + a.total, 0);
-            } catch { /* salary_adjustments may not have data */ }
+            }
 
-            const totalSal = baseSal + bonuses - deductions;
-            if (totalSal <= 0) continue;
-
-            const r = await pool.query(
+            const r = await client.query(
                 `INSERT INTO finance_transactions
                     (type, category_id, amount, description, date, payment_method, staff_id, created_by)
                  VALUES ('expense', $1, $2, $3, $4, 'salary', $5, $6)
                  RETURNING id`,
-                [catId, totalSal,
-                 `Зарплата ${s.name} за ${month} (${Math.round(workedH)}г, ставки: ${s.segments.map(segment => `${segment.profession_key} ${segment.rate} грн/г`).join(', ')})`,
-                 new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().slice(0, 10), s.staff_id, req.user.username]
+                [
+                    catId,
+                    totalSalary,
+                    `Зарплата ${row.staff_name} за ${month} (${Math.round(Number(row.hours_worked || 0))}г, ставки: ${(row.profession_rate_summary || []).map(segment => `${segment.profession_key} ${segment.rate} грн/г`).join(', ') || `${row.hourly_rate} грн/г`})`,
+                    new Date(parseInt(month.split('-')[0], 10), parseInt(month.split('-')[1], 10), 0).toISOString().slice(0, 10),
+                    row.staff_id,
+                    actor
+                ]
             );
-            inserted.push({ staffId: s.staff_id, name: s.name, amount: totalSal, transactionId: r.rows[0].id });
+            inserted.push({ staffId: row.staff_id, name: row.staff_name, amount: totalSalary, transactionId: r.rows[0].id });
         }
 
+        await client.query('COMMIT');
         log.info(`[SalaryCommit] Committed ${inserted.length} salaries for ${month}`);
-        res.json({ success: true, committed: inserted.length, transactions: inserted });
+        res.json({ success: true, count: inserted.length, committed: inserted.length, transactions: inserted, totals: calculation.totals });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('[SalaryCommit] Error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

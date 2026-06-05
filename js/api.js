@@ -2899,6 +2899,68 @@ async function apiGetWarehouseLocationsSummary() {
     }
 }
 
+async function apiGetWarehouseCostumes() {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/costumes`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, data: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouseCostumes error:', err);
+        return { success: false, data: [], error: err.message };
+    }
+}
+
+async function apiCreateWarehouseCostume(costume) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/costumes`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(costume || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API createWarehouseCostume error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateWarehouseCostume(id, costume) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/costumes/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(costume || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API updateWarehouseCostume error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiDeleteWarehouseCostume(id) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/costumes/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error' };
+        return body;
+    } catch (err) {
+        console.error('API deleteWarehouseCostume error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiCreateWarehouseLocation(location) {
     try {
         const response = await fetch(`${API_BASE}/warehouse/locations`, {

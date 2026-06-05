@@ -47,6 +47,7 @@ let warehouseLocations = [];
 let warehouseContractors = [];
 let warehousePhotoIntakes = [];
 let warehouseIntakeStatus = null;
+let warehouseCostumes = [];
 let locationSaveInFlight = false;
 let itemSaveInFlight = false;
 
@@ -54,6 +55,14 @@ let itemSaveInFlight = false;
 let qtyModalMode = null; // 'use' or 'restock'
 let qtyModalItemId = null;
 let qtyModalInitialState = '';
+
+const WAREHOUSE_COSTUME_CONDITIONS = {
+    new: 'Новий',
+    good: 'Добрий',
+    worn: 'Потертий',
+    damaged: 'Пошкоджений',
+    retired: 'Списаний'
+};
 
 // ==========================================
 // PAGE AUTH & INIT
@@ -99,6 +108,8 @@ async function initPage() {
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
     const addLocationBtn = document.getElementById('addLocationBtn');
     if (addLocationBtn) addLocationBtn.style.display = canManage ? '' : 'none';
+    const addCostumeBtn = document.getElementById('addCostumeBtn');
+    if (addCostumeBtn) addCostumeBtn.hidden = !canManage;
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -118,6 +129,7 @@ function setupEventListeners() {
     document.getElementById('saveLocationBtn')?.addEventListener('click', saveLocation);
     document.getElementById('cancelLocationBtn')?.addEventListener('click', closeLocationForm);
     document.getElementById('deleteLocationBtn')?.addEventListener('click', archiveCurrentLocation);
+    document.getElementById('addCostumeBtn')?.addEventListener('click', () => openWarehouseCostumeForm());
 
     // Search with debounce
     let searchTimer;
@@ -1052,6 +1064,100 @@ function renderHistory(items) {
 }
 
 // ==========================================
+// COSTUMES
+// ==========================================
+
+function costumeConditionLabel(condition) {
+    return WAREHOUSE_COSTUME_CONDITIONS[condition] || condition || WAREHOUSE_COSTUME_CONDITIONS.good;
+}
+
+async function loadWarehouseCostumes() {
+    const list = document.getElementById('warehouseCostumesList');
+    if (!list) return;
+    list.innerHTML = '<div class="wh-costume-empty">Завантаження костюмів...</div>';
+    const data = await apiGetWarehouseCostumes();
+    if (!data?.success) {
+        list.innerHTML = '<div class="wh-costume-empty">Не вдалося завантажити костюми</div>';
+        return;
+    }
+    warehouseCostumes = Array.isArray(data.data) ? data.data : [];
+    renderWarehouseCostumes();
+}
+
+function renderWarehouseCostumes() {
+    const list = document.getElementById('warehouseCostumesList');
+    if (!list) return;
+    if (!warehouseCostumes.length) {
+        list.innerHTML = '<div class="wh-costume-empty">Костюми ще не додані</div>';
+        return;
+    }
+    list.innerHTML = warehouseCostumes.map(item => {
+        const condition = String(item.condition || 'good');
+        return `<article class="wh-costume-card" data-costume-id="${escapeHtml(item.id)}">
+            <div class="wh-costume-card-head">
+                <strong>${escapeHtml(item.name)}</strong>
+                <span class="wh-costume-condition" data-condition="${escapeHtml(condition)}">${escapeHtml(costumeConditionLabel(condition))}</span>
+            </div>
+            <div class="wh-costume-meta">
+                ${item.category ? `<span>Категорія: <b>${escapeHtml(item.category)}</b></span>` : ''}
+                ${item.size ? `<span>Розмір: <b>${escapeHtml(item.size)}</b></span>` : ''}
+                <span>${item.assigned_name ? `Призначено: <b>${escapeHtml(item.assigned_name)}</b>` : 'Не призначено'}</span>
+            </div>
+            ${item.notes ? `<p class="wh-costume-note">${escapeHtml(item.notes)}</p>` : ''}
+            ${canManage ? `<div class="wh-costume-actions">
+                <button type="button" class="wh-mini-btn" onclick="openWarehouseCostumeForm(${Number(item.id)})">Редагувати</button>
+                <button type="button" class="wh-mini-btn" onclick="archiveWarehouseCostume(${Number(item.id)})">Прибрати</button>
+            </div>` : ''}
+        </article>`;
+    }).join('');
+}
+
+window.openWarehouseCostumeForm = async function(costumeId = null) {
+    const existing = costumeId ? warehouseCostumes.find(item => Number(item.id) === Number(costumeId)) : null;
+    const result = await formModal(existing ? 'Редагувати костюм' : 'Додати костюм', [
+        { key: 'name', label: 'Назва костюму', required: true, defaultValue: existing?.name || '', placeholder: 'Наприклад: Пірат Джек' },
+        { key: 'category', label: 'Категорія', defaultValue: existing?.category || 'general', placeholder: 'піратський, казковий, спортивний' },
+        { key: 'size', label: 'Розмір', defaultValue: existing?.size || '', placeholder: 'S / M / L або 42-44' },
+        { key: 'condition', label: 'Стан', type: 'select', defaultValue: existing?.condition || 'good', options: Object.entries(WAREHOUSE_COSTUME_CONDITIONS).map(([value, label]) => ({ value, label })) },
+        { key: 'notes', label: 'Нотатки', type: 'textarea', defaultValue: existing?.notes || '', placeholder: 'Де лежить, що треба полагодити, комплектність...' }
+    ], { icon: '🧵' });
+    if (!result) return;
+    const payload = {
+        name: result.name,
+        category: result.category || 'general',
+        size: result.size || '',
+        condition: result.condition || 'good',
+        notes: result.notes || null
+    };
+    const data = existing
+        ? await apiUpdateWarehouseCostume(existing.id, payload)
+        : await apiCreateWarehouseCostume(payload);
+    if (data?.success) {
+        showNotification(existing ? 'Костюм оновлено' : 'Костюм додано', 'success');
+        await loadWarehouseCostumes();
+    } else {
+        showNotification(data?.error || 'Не вдалося зберегти костюм', 'error');
+    }
+};
+
+window.archiveWarehouseCostume = async function(costumeId) {
+    const item = warehouseCostumes.find(row => Number(row.id) === Number(costumeId));
+    if (typeof confirmModal !== 'function') {
+        showNotification('Модальне підтвердження ще не завантажилось. Оновіть сторінку і спробуйте ще раз.', 'error');
+        return;
+    }
+    const confirmed = await confirmModal(`Прибрати костюм "${item?.name || costumeId}"?`, { type: 'danger', okText: 'Прибрати' });
+    if (!confirmed) return;
+    const data = await apiDeleteWarehouseCostume(costumeId);
+    if (data?.success) {
+        showNotification('Костюм прибрано', 'success');
+        await loadWarehouseCostumes();
+    } else {
+        showNotification(data?.error || 'Не вдалося прибрати костюм', 'error');
+    }
+};
+
+// ==========================================
 // v17.0: PAGE TABS (Stock / Procurement)
 // ==========================================
 
@@ -1061,6 +1167,8 @@ function switchPageTab(tab) {
     document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
     const contractorsEl = document.getElementById('contractorsTab');
     if (contractorsEl) contractorsEl.style.display = tab === 'contractors' ? '' : 'none';
+    const costumesEl = document.getElementById('costumesTab');
+    if (costumesEl) costumesEl.hidden = tab !== 'costumes';
     var pinataEl = document.getElementById('pinataTab');
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement') {
@@ -1068,16 +1176,17 @@ function switchPageTab(tab) {
         loadProcurementKitchenDemand();
     }
     if (tab === 'contractors') loadWarehouseContractors();
+    if (tab === 'costumes') loadWarehouseCostumes();
 }
 // Hash-based tab switch (from alerts: /warehouse#procurement)
 (function() {
     var hash = window.location.hash.replace('#', '');
-    if (hash === 'procurement' || hash === 'pinata' || hash === 'contractors') {
+    if (hash === 'procurement' || hash === 'pinata' || hash === 'contractors' || hash === 'costumes') {
         document.addEventListener('DOMContentLoaded', function() { setTimeout(function() { switchPageTab(hash); }, 100); });
     }
     window.addEventListener('hashchange', function() {
         var h = window.location.hash.replace('#', '');
-        if (h === 'procurement' || h === 'pinata' || h === 'stock' || h === 'contractors') switchPageTab(h);
+        if (h === 'procurement' || h === 'pinata' || h === 'stock' || h === 'contractors' || h === 'costumes') switchPageTab(h);
     });
 })();
 

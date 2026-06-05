@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.45",
+  "version": "0.73.49",
   "eventGenix": {
-    "releaseLabel": "ЗП та KPI українська мова"
+    "releaseLabel": "HR критичні хвости закрито"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

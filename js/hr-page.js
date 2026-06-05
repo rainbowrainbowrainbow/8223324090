@@ -94,8 +94,7 @@ const HR_NAV_GROUPS = [
         note: 'нерозподілені HR-розділи',
         items: [
             { id: 'onboarding', label: 'Онбординг' },
-            { id: 'vacancies', label: 'Вакансії' },
-            { id: 'costumes', label: 'Костюми', href: '/art?tab=costumes' }
+            { id: 'vacancies', label: 'Вакансії' }
         ]
     }
 ];
@@ -739,6 +738,7 @@ function initNewTabs() {
     document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
     document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
+    document.getElementById('btnCommitSalary')?.addEventListener('click', () => window.commitSalaries?.());
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
     document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionEditor());
@@ -919,7 +919,7 @@ function requestedHrTarget() {
 function resolveHrTabTarget(rawTarget) {
     const requested = String(rawTarget || 'today').trim() || 'today';
     if (requested === 'costumes') {
-        return { tab: 'today', href: '/art?tab=costumes', alias: true };
+        return { tab: 'today', href: '/warehouse#costumes', alias: true };
     }
     const mapped = HR_TAB_ALIASES[requested] || { tab: requested };
     const target = mapped.tab || 'today';
@@ -939,7 +939,7 @@ function resolveHrTabTarget(rawTarget) {
 function getInitialHrTab() {
     const target = requestedHrTarget();
     if (target === 'costumes') {
-        window.location.replace('/art?tab=costumes');
+        window.location.replace('/warehouse#costumes');
         return 'today';
     }
     const resolved = resolveHrTabTarget(target);
@@ -5262,13 +5262,16 @@ function renderKpiSourceLabel(label, value) {
     return `<span class="hr-kpi-source"><strong>${escapeHtml(label)}</strong>: ${escapeHtml(value)}</span>`;
 }
 
-function renderKpiSources({ rows = [], onboarding = [], ratings = [] } = {}) {
-    const sources = document.getElementById('kpiSources');
-    if (!sources) return;
-    sources.innerHTML = [
-        renderKpiSourceLabel('Місячний звіт', rows.length ? `${rows.length} рядків працівників` : 'даних ще немає'),
-        renderKpiSourceLabel('Онбординг', onboarding.length ? `${onboarding.length} записів` : 'даних ще немає'),
-        renderKpiSourceLabel('Контекст оцінок', ratings.length ? `${ratings.length} записів` : 'даних ще немає')
+function renderKpiSources({ rows = [], sources: sourceCounts = {} } = {}) {
+    const root = document.getElementById('kpiSources');
+    if (!root) return;
+    const countText = (count, label) => Number(count || 0) > 0 ? `${Number(count)} ${label}` : 'даних ще немає';
+    root.innerHTML = [
+        renderKpiSourceLabel('HR-зріз', countText(sourceCounts.staffRows || rows.length, 'працівників')),
+        renderKpiSourceLabel('Графік / присутність', countText(sourceCounts.scheduleRows, 'активних рядків')),
+        renderKpiSourceLabel('Задачі', countText(sourceCounts.taskRows, 'працівників із задачами')),
+        renderKpiSourceLabel('Онбординг', countText(sourceCounts.onboardingRows, 'процесів')),
+        renderKpiSourceLabel('Події / внесок', countText(sourceCounts.contributionRows, 'працівників із подіями'))
     ].join('');
 }
 
@@ -5303,26 +5306,17 @@ function buildOnboardingKpiMap(list = []) {
 async function loadKpi() {
     const sel = ensureKpiMonthOptions();
     const month = sel?.value || '';
-    const [monthly, onboarding, ratings] = await Promise.all([
-        hrFetch(`/report/monthly?month=${month}`),
-        hrFetch('/onboarding'),
-        hrFetch('/ratings')
-    ]);
-    if (!monthly?.success) {
+    const snapshot = await hrFetch(`/kpi?month=${month}`);
+    if (!snapshot?.success) {
         const body = document.getElementById('kpiBody');
-        renderKpiSources({
-            rows: [],
-            onboarding: onboarding?.success ? onboarding.data || [] : [],
-            ratings: ratings?.success ? ratings.data || [] : []
-        });
-        if (body) body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Не вдалося завантажити KPI-зріз</td></tr>';
+        renderKpiSources({ rows: [], sources: {} });
+        if (body) body.innerHTML = '<tr><td colspan="7" class="kpi-muted">Не вдалося завантажити KPI-зріз</td></tr>';
         return;
     }
     renderKpi({
-        month,
-        rows: monthly.data || [],
-        onboarding: onboarding?.success ? onboarding.data || [] : [],
-        ratings: ratings?.success ? ratings.data || [] : []
+        month: snapshot.month || month,
+        rows: snapshot.data || [],
+        sources: snapshot.sources || {}
     });
 }
 
@@ -5330,12 +5324,12 @@ async function loadRatings() {
     return loadKpi();
 }
 
-function renderKpi({ rows, onboarding, ratings }) {
+function renderKpi({ rows = [], sources = {} }) {
     const summary = document.getElementById('kpiSummary');
     const head = document.getElementById('kpiHead');
     const body = document.getElementById('kpiBody');
     if (!summary || !head || !body) return;
-    renderKpiSources({ rows, onboarding, ratings });
+    renderKpiSources({ rows, sources });
 
     const totals = rows.reduce((acc, row) => {
         acc.scheduled += num(row.days_scheduled);
@@ -5346,15 +5340,18 @@ function renderKpi({ rows, onboarding, ratings }) {
         acc.tasksAssigned += num(row.task_kpi?.tasks_assigned);
         acc.tasksDone += num(row.task_kpi?.tasks_done);
         acc.tasksOverdue += num(row.task_kpi?.tasks_overdue);
+        acc.eventsPeriod += num(row.contribution_kpi?.events_period);
+        acc.onboardingActive += num(row.development_kpi?.active);
+        acc.onboardingTotal += num(row.development_kpi?.total);
+        acc.onboardingTotalItems += num(row.development_kpi?.total_items);
+        acc.onboardingDoneItems += num(row.development_kpi?.completed_items);
+        acc.kpiScoreSum += num(row.kpi_score);
         return acc;
-    }, { scheduled: 0, worked: 0, late: 0, absent: 0, overtime: 0, tasksAssigned: 0, tasksDone: 0, tasksOverdue: 0 });
+    }, { scheduled: 0, worked: 0, late: 0, absent: 0, overtime: 0, tasksAssigned: 0, tasksDone: 0, tasksOverdue: 0, eventsPeriod: 0, onboardingActive: 0, onboardingTotal: 0, onboardingTotalItems: 0, onboardingDoneItems: 0, kpiScoreSum: 0 });
     const attendance = kpiPercent(totals.worked, totals.scheduled);
     const taskRate = kpiPercent(totals.tasksDone, totals.tasksAssigned);
-    const events30d = ratings.reduce((acc, row) => acc + num(row.events_30d), 0);
-    const onboardingActive = onboarding.filter(item => item.status !== 'completed').length;
-    const onboardingTotalItems = onboarding.reduce((acc, item) => acc + num(item.total_items), 0);
-    const onboardingDoneItems = onboarding.reduce((acc, item) => acc + num(item.completed_items), 0);
-    const onboardingRate = kpiPercent(onboardingDoneItems, onboardingTotalItems);
+    const onboardingRate = kpiPercent(totals.onboardingDoneItems, totals.onboardingTotalItems);
+    const averageScore = rows.length ? Math.round(totals.kpiScoreSum / rows.length) : null;
 
     summary.innerHTML = [
         attendance !== null
@@ -5366,20 +5363,20 @@ function renderKpi({ rows, onboarding, ratings }) {
         taskRate !== null
             ? renderKpiCard('Активність / виконання', `${taskRate}%`, `${totals.tasksDone}/${totals.tasksAssigned} задач виконано · ${totals.tasksOverdue} прострочено`)
             : renderKpiCard('Активність / виконання', 'даних ще немає', 'Немає привʼязаних задач за період', { placeholder: true }),
-        ratings.length
-            ? renderKpiCard('Звіти / внесок', String(events30d), 'Події за 30 днів з існуючого контексту подій')
+        sources.contributionRows
+            ? renderKpiCard('Звіти / внесок', String(totals.eventsPeriod), 'Події за вибраний місяць з календаря бронювань')
             : renderKpiCard('Звіти / внесок', 'даних ще немає', 'Потрібен джерельний сигнал внеску або звітів', { placeholder: true }),
-        onboarding.length
-            ? renderKpiCard('Статус розвитку', onboardingRate !== null ? `${onboardingRate}%` : `${onboardingActive} активн.`, `${onboardingActive} активних процесів онбордингу`)
-            : renderKpiCard('Статус розвитку', 'даних ще немає', 'Немає активних або завершених процесів онбордингу', { placeholder: true })
+        sources.onboardingRows
+            ? renderKpiCard('Статус розвитку', onboardingRate !== null ? `${onboardingRate}%` : `${totals.onboardingActive} активн.`, `${totals.onboardingActive} активних процесів онбордингу`)
+            : renderKpiCard('Статус розвитку', 'даних ще немає', 'Немає активних або завершених процесів онбордингу', { placeholder: true }),
+        averageScore !== null
+            ? renderKpiCard('Підсумковий KPI', `${averageScore}%`, 'Середній бал по доступних KPI-сигналах')
+            : renderKpiCard('Підсумковий KPI', 'даних ще немає', 'Потрібен хоча б один KPI-сигнал', { placeholder: true })
     ].join('');
-
-    const ratingMap = {};
-    ratings.forEach(row => { ratingMap[Number(row.id)] = row; });
-    const onboardingMap = buildOnboardingKpiMap(onboarding);
 
     head.innerHTML = `<tr>
         <th>Працівник</th>
+        <th>Бал</th>
         <th>Зміни / присутність</th>
         <th>Надійність</th>
         <th>Активність</th>
@@ -5388,19 +5385,19 @@ function renderKpi({ rows, onboarding, ratings }) {
     </tr>`;
 
     if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Немає KPI-даних працівників за вибраний період</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" class="kpi-muted">Немає KPI-даних працівників за вибраний період</td></tr>';
         return;
     }
 
     body.innerHTML = rows.map(row => {
-        const staffId = Number(row.staff_id);
         const attendanceRate = num(row.days_scheduled) > 0 ? num(row.attendance_rate) : null;
         const taskAssigned = num(row.task_kpi?.tasks_assigned);
         const taskDone = num(row.task_kpi?.tasks_done);
         const taskDoneRate = taskAssigned > 0 ? num(row.task_completion_rate) : null;
         const reliabilityIssues = num(row.late_count) + num(row.days_absent);
-        const contribution = ratingMap[staffId];
-        const development = onboardingMap[staffId];
+        const contribution = row.contribution_kpi || {};
+        const development = row.development_kpi || {};
+        const kpiScore = num(row.kpi_score);
         const roleLabel = ROLE_LABELS[row.role_type] || row.role_type || '';
 
         return `<tr>
@@ -5408,11 +5405,12 @@ function renderKpi({ rows, onboarding, ratings }) {
                 <strong>${escapeHtml(row.staff_name)}</strong>
                 <div class="kpi-muted">${escapeHtml(roleLabel)}</div>
             </td>
+            <td>${kpiSignal(`${kpiScore}%`, toneForPercent(kpiScore, 85, 65))}</td>
             <td>${attendanceRate !== null ? `${kpiSignal(`${attendanceRate}%`, toneForPercent(attendanceRate))}<div class="kpi-muted">${num(row.days_worked)}/${num(row.days_scheduled)} змін</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
             <td>${rows.length ? `${kpiSignal(reliabilityIssues ? `${reliabilityIssues} сигналів` : 'без сигналів', reliabilityIssues === 0 ? 'good' : reliabilityIssues <= 2 ? 'warn' : 'bad')}<div class="kpi-muted">${num(row.late_count)} запізн. · ${num(row.days_absent)} відсутн.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
             <td>${taskDoneRate !== null ? `${kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65))}<div class="kpi-muted">${taskDone}/${taskAssigned} задач · ${num(row.task_kpi?.tasks_overdue)} простр.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${contribution ? `${kpiSignal(`${num(contribution.events_30d)} за 30 дн`, num(contribution.events_30d) > 0 ? 'good' : '')}<div class="kpi-muted">${num(contribution.total_events)} подій всього</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${development ? `${kpiSignal(development.percent !== null ? `${development.percent}%` : `${development.active} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${development.completed}/${development.total} завершено в онбордингу</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${num(contribution.events_period) > 0 || num(contribution.total_ratings) > 0 ? `${kpiSignal(`${num(contribution.events_period)} за місяць`, num(contribution.events_period) > 0 ? 'good' : '')}<div class="kpi-muted">${num(contribution.total_ratings)} оцінок · ${num(contribution.avg_rating).toFixed(1)} сер.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${num(development.total) > 0 ? `${kpiSignal(development.percent !== null && development.percent !== undefined ? `${num(development.percent)}%` : `${num(development.active)} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${num(development.completed)}/${num(development.total)} завершено в онбордингу</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
         </tr>`;
     }).join('');
 }
@@ -5483,14 +5481,14 @@ window.showStartOnboarding = async function() {
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
 
-// v39.8: commitSalaries — was missing, button existed but function didn't
-window.commitSalaries = async function() {
+// Salary commit uses the same backend payroll calculation as the salary preview.
+window.commitSalaries = async function commitSalaries() {
     const month = document.getElementById('salaryMonth')?.value;
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
     if (!await confirmModal(`Нарахувати зарплати за ${month}?`, { type: 'danger', okText: 'Нарахувати' })) return;
     const data = await hrFetch('/salary/commit', 'POST', { month });
     if (data?.success) {
-        showNotification(`Зарплати нараховано (${data.count || 0} транзакцій)`, 'success');
+        showNotification(`Зарплати нараховано (${data.committed ?? data.count ?? 0} транзакцій)`, 'success');
         loadSalary();
     } else {
         showNotification(data?.error || 'Помилка нарахування', 'error');

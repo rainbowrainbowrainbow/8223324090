@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.45">
+    <link rel="stylesheet" href="css/base.css?v=0.73.49">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.49">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.49">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.49">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.49">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -38,6 +38,7 @@
         }
         .artdir-tab:hover { background: rgba(255,255,255,0.6); }
         .artdir-tab.active { background: var(--primary); color: #fff; }
+        .artdir-tab--legacy-hidden { display: none !important; }
         .artdir-tab-content { display: none; }
         .artdir-tab-content.active { display: block; }
         .artdir-embed-frame { width: 100%; min-height: calc(100vh - 160px); border: none; border-radius: 12px; background: rgba(255,255,255,0.2); }
@@ -360,7 +361,7 @@
                     <button type="button" class="artdir-tab" id="art-tab-pipeline" data-tab="pipeline" role="tab" aria-selected="false" aria-controls="tab-pipeline">Конвеєр</button>
                     <button type="button" class="artdir-tab" id="art-tab-templates" data-tab="templates" role="tab" aria-selected="false" aria-controls="tab-templates">Шаблони</button>
                     <button type="button" class="artdir-tab" id="art-tab-brand" data-tab="brand" role="tab" aria-selected="false" aria-controls="tab-brand">Brand Book</button>
-                    <button type="button" class="artdir-tab" id="art-tab-costumes" data-tab="costumes" role="tab" aria-selected="false" aria-controls="tab-costumes">Костюмерна</button>
+                    <button type="button" class="artdir-tab artdir-tab--legacy-hidden" id="art-tab-costumes" data-tab="costumes" data-legacy-tab="costumes" role="tab" aria-selected="false" aria-controls="tab-costumes">Костюмерна</button>
                     <button type="button" class="artdir-tab" id="art-tab-designs" data-tab="designs" role="tab" aria-selected="false" aria-controls="tab-designs">Дизайни</button>
                     <button type="button" class="artdir-tab" id="art-tab-graduation" data-tab="graduation" role="tab" aria-selected="false" aria-controls="tab-graduation">Випускний</button>
                 </nav>
@@ -376,7 +377,7 @@
                 </div>
 
                 <!-- Tab: Costumes -->
-                <div class="artdir-tab-content" id="tab-costumes" role="tabpanel" aria-labelledby="art-tab-costumes" tabindex="0">
+                <div class="artdir-tab-content" id="tab-costumes" data-legacy-surface="costumes" role="tabpanel" aria-labelledby="art-tab-costumes" tabindex="0">
                     <div class="artdir-section art-costumes-section">
                         <div class="artdir-section-head">
                             <div>
@@ -595,13 +596,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.45"></script>
-    <script src="js/config.js?v=0.73.45"></script>
-    <script src="js/notification.js?v=0.73.45"></script>
-    <script src="js/api.js?v=0.73.45"></script>
-    <script src="js/auth.js?v=0.73.45"></script>
-    <script src="js/components/sidebar.js?v=0.73.45"></script>
+    <script src="js/ui.js?v=0.73.49"></script>
+    <script src="js/config.js?v=0.73.49"></script>
+    <script src="js/notification.js?v=0.73.49"></script>
+    <script src="js/api.js?v=0.73.49"></script>
+    <script src="js/auth.js?v=0.73.49"></script>
+    <script src="js/components/sidebar.js?v=0.73.49"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/art-director-page.js?v=0.73.45"></script><script src="js/alerts.js?v=0.73.45"></script>
+    <script src="js/art-director-page.js?v=0.73.49"></script><script src="js/alerts.js?v=0.73.49"></script>
 </body>
 </html>

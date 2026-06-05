@@ -97,19 +97,26 @@ test('HR people accordion keeps aria, bucket, count, and state contracts', () =>
     assert.equal(HR_JS.includes('Нікого не знайдено'), false);
 });
 
-test('HR KPI surface labels existing API sources explicitly', () => {
+test('HR KPI surface labels backend snapshot sources explicitly', () => {
     for (const token of [
         'id="kpiSources"',
         'class="hr-kpi-sources"',
         'class="hr-kpi-refresh"',
         'renderKpiSources',
-        'Місячний звіт',
+        'HR-зріз',
+        'Графік / присутність',
+        'Задачі',
         'Онбординг',
-        'Контекст оцінок',
+        'Події / внесок',
+        'Підсумковий KPI',
+        'hrFetch(`/kpi?month=${month}`)',
         'даних ще немає'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
+    const loadKpiBlock = HR_JS.slice(HR_JS.indexOf('async function loadKpi'), HR_JS.indexOf('async function loadRatings'));
+    assert.equal(loadKpiBlock.includes('hrFetch(`/report/monthly?month=${month}`)'), false);
+    assert.equal(loadKpiBlock.includes("hrFetch('/ratings')"), false);
     assert.equal(HR_JS.includes('monthly report'), false);
     assert.equal(HR_JS.includes('ratings context'), false);
 });

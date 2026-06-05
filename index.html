@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.45">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.45">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.45">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.45">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.45">
-    <link rel="stylesheet" href="css/features.css?v=0.73.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.45">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.45">
+    <link rel="stylesheet" href="css/base.css?v=0.73.49">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.49">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.49">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.49">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.49">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.49">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.49">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.49">
+    <link rel="stylesheet" href="css/features.css?v=0.73.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.49">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.49">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.49">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.45">✨ 0.73.45</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.49">✨ 0.73.49</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.45 — ЗП та KPI українська мова</p>
+                <p class="tagline">AI First CRM v0.73.49 — HR критичні хвости закрито</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.45</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.49</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,6 +1658,51 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.49 — HR критичні хвости закрито</h4>
+                    <ul>
+                        <li><b>Зарплату зведено до одного backend-розрахунку</b> — preview і commit тепер використовують спільний <code>loadPayrollCalculation</code>, а фінансове списання не розʼїжджається з переглядом.</li>
+                        <li><b>Дубль <code>commitSalaries</code> прибрано</b> — кнопка <code>Нарахувати зарплати</code> працює через один DOM listener у <code>js/hr-page.js</code>, без inline-скрипта в <code>hr.html</code>.</li>
+                        <li><b>KPI дороблено як backend-owned зріз</b> — вкладка <code>ЗП та KPI</code> тягне <code>/api/hr/kpi</code>, а не склеює <code>monthly/onboarding/ratings</code> на фронті.</li>
+                        <li><b>KPI SQL виправлено технічно</b> — підсумковий бал рахується коректно через <code>unnest(... AS metric(value))</code>, задачі враховують <code>done/completed</code>, а <code>hosts</code> не використовується як staff-ідентичність.</li>
+                        <li><b>Костюми стали реально складською поверхнею</b> — <code>/warehouse#costumes</code> відкриває власний tab без редиректа в Art, а актуальний API живе на <code>/api/warehouse/costumes</code>.</li>
+                        <li><b>Legacy costume surfaces сховано та промарковано</b> — Art-костюмерна лишилась hidden legacy для прямого перегляду, а <code>/api/hr/costumes</code> повертає deprecated/replacement markers.</li>
+                        <li><b>Оновлено guardrails</b> — UI smoke, HR button contract, route-smoke і booking-hosts semantics фіксують новий KPI API, складський ownership костюмів і відсутність native <code>confirm</code> fallback.</li>
+                        <li><b>Версію піднято до <code>0.73.49</code></b> — cache tags і Service Worker синхронізовані під deploy.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.48 — Склад костюми зафіксовано</h4>
+                    <ul>
+                        <li><b>Першу сторінку з модалкою <code>Що нового</code> звірено з <code>CHANGELOG.md</code></b> — актуальний верхній запис відповідає версії <code>0.73.48</code>.</li>
+                        <li><b>Останню зміну про <code>Костюми</code> зафіксовано у видимій історії</b> — перенос із HR <code>Тимчасове</code> у <code>Склад</code> лишився окремо розписаний у релізі <code>0.73.47</code>.</li>
+                        <li><b>Ланцюжок видимих версій не пропускає останні патчі</b> — <code>v0.73.48</code>, <code>v0.73.47</code>, <code>v0.73.46</code>, <code>v0.73.45</code> та старіші записи показуються послідовно.</li>
+                        <li><b>Оновлено release markers</b> — версію піднято до <code>0.73.48</code>, cache tags і Service Worker синхронізовані під release.</li>
+                        <li><b>Перевірено changelog guardrail</b> — тест контролює, що <code>CHANGELOG.md</code> і видима модалка не розʼїжджаються по поточній release train.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.47 — Склад костюми без HR</h4>
+                    <ul>
+                        <li><b>Кнопку <code>Костюми</code> прибрано з HR <code>Тимчасове</code></b> — тимчасовий HR-workspace більше не показує костюми як HR-розділ.</li>
+                        <li><b>HR sidebar очищено від костюмів</b> — опис і active state пункту <code>Тимчасове</code> лишили тільки onboarding і вакансії.</li>
+                        <li><b>У <code>Склад</code> додано окрему кнопку <code>Костюми</code></b> — entry-point стоїть у верхній навігації складу поряд зі складом, закупками, підрядниками й піньятами.</li>
+                        <li><b>Старі HR-посилання не ламаються</b> — <code>/hr#costumes</code> і <code>?tab=costumes</code> переводять користувача на <code>/warehouse#costumes</code>.</li>
+                        <li><b>Оновлено guardrails</b> — UI smoke і backoffice foundation фіксують, що костюми більше не повертаються в HR-навігацію.</li>
+                        <li><b>Версію піднято до <code>0.73.47</code></b> — cache tags і Service Worker синхронізовані під release.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.46 — Sidebar профіль і меню</h4>
+                    <ul>
+                        <li><b>Ім'я та роль у профільній картці sidebar зібрано ближче</b> — роль більше не стоїть окремо в правому краї, а акуратно читається поруч з ім'ям.</li>
+                        <li><b>Між ім'ям і роллю додано тонкий вертикальний розділювач</b> — <code>CREATOR</code> більше не виглядає як зайва капсула.</li>
+                        <li><b>Порожні проміжки між пунктами лівого меню стиснуто</b> — групи меню стали щільнішими, без відчуття втраченої площі.</li>
+                        <li><b>Згорнутий sidebar rail також ущільнено</b> — секції ближчі одна до одної, а кнопки лишаються зручними й центрованими.</li>
+                        <li><b>Оновлено UI guardrail</b> — smoke test фіксує новий profile header, gaps у меню та висоту rail-кнопок.</li>
+                        <li><b>Версію піднято до <code>0.73.46</code></b> — cache tags і Service Worker синхронізовані під release.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.45 — ЗП та KPI українська мова</h4>
                     <ul>
@@ -11388,29 +11433,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.45"></script>
-    <script src="js/timeline-visibility.js?v=0.73.45"></script>
-    <script src="js/config.js?v=0.73.45"></script>
-    <script src="js/api.js?v=0.73.45"></script>
-    <script src="js/ui.js?v=0.73.45"></script>
-    <script src="js/auth.js?v=0.73.45"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.45"></script>
-    <script src="js/timeline.js?v=0.73.45"></script>
-    <script src="js/booking.js?v=0.73.45"></script>
-    <script src="js/settings.js?v=0.73.45"></script>
-    <script src="js/booking-form.js?v=0.73.45"></script>
-    <script src="js/booking-linked.js?v=0.73.45"></script>
-    <script src="js/settings-dashboard.js?v=0.73.45"></script>
-    <script src="js/settings-history.js?v=0.73.45"></script>
-    <script src="js/settings-afisha.js?v=0.73.45"></script>
-    <script src="js/settings-certificates.js?v=0.73.45"></script>
-    <script src="js/offline.js?v=0.73.45"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.45"></script>
-    <script src="js/search.js?v=0.73.45"></script>
-    <script src="js/ws.js?v=0.73.45"></script>
-    <script src="js/app.js?v=0.73.45"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.45"></script>
-    <script src="js/components/sidebar.js?v=0.73.45"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.45"></script>
+    <script src="js/timeline-context.js?v=0.73.49"></script>
+    <script src="js/timeline-visibility.js?v=0.73.49"></script>
+    <script src="js/config.js?v=0.73.49"></script>
+    <script src="js/api.js?v=0.73.49"></script>
+    <script src="js/ui.js?v=0.73.49"></script>
+    <script src="js/auth.js?v=0.73.49"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.49"></script>
+    <script src="js/timeline.js?v=0.73.49"></script>
+    <script src="js/booking.js?v=0.73.49"></script>
+    <script src="js/settings.js?v=0.73.49"></script>
+    <script src="js/booking-form.js?v=0.73.49"></script>
+    <script src="js/booking-linked.js?v=0.73.49"></script>
+    <script src="js/settings-dashboard.js?v=0.73.49"></script>
+    <script src="js/settings-history.js?v=0.73.49"></script>
+    <script src="js/settings-afisha.js?v=0.73.49"></script>
+    <script src="js/settings-certificates.js?v=0.73.49"></script>
+    <script src="js/offline.js?v=0.73.49"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.49"></script>
+    <script src="js/search.js?v=0.73.49"></script>
+    <script src="js/ws.js?v=0.73.49"></script>
+    <script src="js/app.js?v=0.73.49"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.49"></script>
+    <script src="js/components/sidebar.js?v=0.73.49"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.49"></script>
 </body>
 </html>

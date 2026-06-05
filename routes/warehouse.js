@@ -5,6 +5,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const costumeInventory = require('../services/costumeInventory');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -726,6 +727,47 @@ router.post('/photo-intake/:id/cancel', requireRole(...MANAGE_ROLES), async (req
     } catch (err) {
         log.error('Warehouse photo intake cancel error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// COSTUMES — warehouse-owned entry point backed by the shared costume inventory.
+router.get('/costumes', async (req, res) => {
+    try {
+        const data = await costumeInventory.listCostumes();
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('Warehouse costumes list error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження костюмів' });
+    }
+});
+
+router.post('/costumes', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const data = await costumeInventory.createCostume(req.body);
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('Warehouse costume create error', err);
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка створення костюму' });
+    }
+});
+
+router.put('/costumes/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        const data = await costumeInventory.updateCostume(req.params.id, req.body);
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('Warehouse costume update error', err);
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка оновлення костюму' });
+    }
+});
+
+router.delete('/costumes/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+    try {
+        await costumeInventory.deleteCostume(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Warehouse costume delete error', err);
+        res.status(500).json({ success: false, error: 'Помилка видалення костюму' });
     }
 });
 

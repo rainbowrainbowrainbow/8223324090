@@ -110,6 +110,7 @@ function clearModules() {
         '../routes/users',
         '../routes/designs',
         '../routes/art-director',
+        '../routes/warehouse',
         '../routes/hr',
         '../routes/music',
         '../routes/reports',
@@ -787,6 +788,7 @@ describe('route-level API safety smoke', () => {
         app.use('/api/users', require('../routes/users'));
         app.use('/api/designs', require('../routes/designs'));
         app.use('/api/art-director', require('../routes/art-director'));
+        app.use('/api/warehouse', require('../routes/warehouse'));
         app.use('/api/hr', require('../routes/hr'));
         app.use('/api/music', require('../routes/music'));
         app.use('/api/reports', require('../routes/reports'));
@@ -1254,9 +1256,15 @@ describe('route-level API safety smoke', () => {
         const createdCostume = await request('POST', '/api/art-director/costumes', { name: 'Космонавт', category: 'sci-fi', size: 'L' }, withAuth({}, 'art_director'));
         assert.equal(createdCostume.status, 200, JSON.stringify(createdCostume.data));
         assert.equal(createdCostume.data.data.name, 'Космонавт');
-        const hrCostumesCompatibility = await request('GET', '/api/hr/costumes', undefined, withAuth({}, 'art_director'));
+        const hrCostumesCompatibility = await request('GET', '/api/hr/costumes', undefined, withAuth({}, 'manager'));
         assert.equal(hrCostumesCompatibility.status, 200, JSON.stringify(hrCostumesCompatibility.data));
         assert.equal(hrCostumesCompatibility.data.data[0].name, 'Пірат Джек');
+        assert.equal(hrCostumesCompatibility.data.deprecated, true);
+        assert.equal(hrCostumesCompatibility.data.replacement, '/api/warehouse/costumes');
+        const warehouseCostumes = await request('GET', '/api/warehouse/costumes', undefined, withAuth({}, 'manager'));
+        assert.equal(warehouseCostumes.status, 200, JSON.stringify(warehouseCostumes.data));
+        assert.equal(warehouseCostumes.data.success, true);
+        assert.equal(warehouseCostumes.data.data[0].name, 'Пірат Джек');
 
         const waiterMusic = await request('GET', '/api/music/overview', undefined, withAuth({}, 'waiter'));
         assert.equal(waiterMusic.status, 403, JSON.stringify(waiterMusic.data));

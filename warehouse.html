@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.45">
+    <link rel="stylesheet" href="css/base.css?v=0.73.49">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.49">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.49">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.49">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.49">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -873,10 +873,26 @@
             color: var(--gray-800);
             background: var(--white);
         }
+        .wh-costume-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+        .wh-costume-title { margin: 0; color: var(--gray-800); }
+        .wh-costume-subtitle,
+        .wh-costume-meta,
+        .wh-costume-note,
+        .wh-costume-empty { color: var(--gray-500); }
+        .wh-costume-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+        .wh-costume-card,
+        .wh-costume-empty { border: 1px solid var(--gray-100); border-radius: 12px; background: var(--white); padding: 16px; }
+        .wh-costume-card { display: grid; gap: 10px; }
+        .wh-costume-card-head,
+        .wh-costume-actions { display: flex; justify-content: space-between; gap: 8px; }
+        .wh-costume-actions { flex-wrap: wrap; }
+        .wh-costume-note { margin: 0; }
+        .wh-costume-empty { text-align: center; font-weight: 700; }
         body.dark-mode .wh-stock-mode-switcher,
         body.dark-mode .warehouse-location-card,
         body.dark-mode .warehouse-location-form,
         body.dark-mode .contractor-card,
+        body.dark-mode .wh-costume-card,
         body.dark-mode .proc-demand-card,
         body.dark-mode .wh-mini-btn {
             background: rgba(15,23,42,.72);
@@ -993,6 +1009,7 @@
                 <button type="button" class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">Склад</button>
                 <button type="button" class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">Закупки</button>
                 <button type="button" class="wh-page-tab" data-page-tab="contractors" onclick="switchPageTab('contractors')">Підрядники</button>
+                <button type="button" class="wh-page-tab" data-page-tab="costumes" onclick="switchPageTab('costumes')">Костюми</button>
                 <button type="button" class="wh-page-tab" data-page-tab="pinata" onclick="switchPageTab('pinata');loadPinataTab()">🪅 Піньяти</button>
             </div>
 
@@ -1495,6 +1512,20 @@
         </div>
     </div>
 
+    <!-- ============ COSTUMES TAB ============ -->
+    <div id="costumesTab" hidden>
+        <div class="wh-costume-head">
+            <div>
+                <h2 class="wh-costume-title">Костюми</h2>
+                <p class="wh-costume-subtitle">Складський облік костюмів, розмірів, стану і призначення. Це актуальна поверхня костюмерної без переходу в HR або Art.</p>
+            </div>
+            <button type="button" id="addCostumeBtn" class="btn-page-primary" hidden>+ Додати костюм</button>
+        </div>
+        <div id="warehouseCostumesList" class="wh-costume-grid">
+            <div class="wh-costume-empty">Завантаження костюмів...</div>
+        </div>
+    </div>
+
     <!-- ============ PINATA TAB (v33.5) ============ -->
     <div id="pinataTab" style="display:none">
       <div id="pinataAlertBanner" style="display:none; padding:12px 16px; border-radius:10px; margin-bottom:16px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; color:#ef4444; font-weight:600;"></div>
@@ -1520,14 +1551,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.73.45"></script>
-    <script src="js/notification.js?v=0.73.45"></script>
-    <script src="js/api.js?v=0.73.45"></script>
-    <script src="js/auth.js?v=0.73.45"></script>
-    <script src="js/components/sidebar.js?v=0.73.45"></script>
+    <script src="js/config.js?v=0.73.49"></script>
+    <script src="js/notification.js?v=0.73.49"></script>
+    <script src="js/api.js?v=0.73.49"></script>
+    <script src="js/auth.js?v=0.73.49"></script>
+    <script src="js/components/sidebar.js?v=0.73.49"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/warehouse-page.js?v=0.73.45"></script>
-    <script src="js/alerts.js?v=0.73.45"></script><script>
+    <script src="js/warehouse-page.js?v=0.73.49"></script>
+    <script src="js/alerts.js?v=0.73.49"></script><script>
     // ─── Pinata Tab (v33.5) ──────────────────
     async function loadPinataTab() {
         try {
@@ -1607,6 +1638,6 @@
         loadPinataTab();
     }
     </script>
-    <script src="js/ui.js?v=0.73.45"></script>
+    <script src="js/ui.js?v=0.73.49"></script>
 </body>
 </html>

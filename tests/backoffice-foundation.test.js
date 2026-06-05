@@ -67,7 +67,9 @@ describe('backoffice foundation v1 contracts', () => {
         assert.doesNotMatch(sidebar, /href: '\/hr#reserve'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#blacklist'/);
         assert.match(sidebar, /HR_TEAM_BUCKET_VISIBILITY[\s\S]*admin: \['workers', 'interns'\]/);
-        assert.match(sidebar, /href: '\/hr#other'[\s\S]*label: 'Тимчасове'[\s\S]*activeHashes: \['other', 'onboarding', 'vacancies', 'costumes'\]/);
+        assert.match(sidebar, /href: '\/hr#other'[\s\S]*label: 'Тимчасове'[\s\S]*activeHashes: \['other', 'onboarding', 'vacancies'\]/);
+        assert.doesNotMatch(sidebar, /href: '\/hr#other'[\s\S]*costumes/);
+        assert.match(hrPage, /window\.location\.replace\('\/warehouse#costumes'\)/);
         assert.doesNotMatch(sidebar, /href: '\/hr#team'[\s\S]*label: 'HR'[\s\S]*navLegacy: true/);
         assert.doesNotMatch(sidebar, /staffView: 'team'/);
         assert.match(hrPage, /function getInitialHrTab/);

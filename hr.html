@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.45">
+    <link rel="stylesheet" href="css/base.css?v=0.73.49">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.49">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.49">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.49">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.49">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3667,7 +3667,7 @@
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
                     <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
                     <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус / Депреміювання</button>
-                    <button type="button" id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
+                    <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">💰 Нарахувати зарплати</button>
                 </div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
                 <div class="hr-report-table-wrap">
@@ -3683,7 +3683,7 @@
                 <div class="hr-kpi-toolbar">
                     <div>
                         <h3 class="hr-kpi-title">KPI команди</h3>
-                        <p class="hr-kpi-subtitle">Перший зріз продуктивності без штучного рейтингу: присутність, надійність, задачі, внесок і розвиток.</p>
+                        <p class="hr-kpi-subtitle">Продуктивність команди з єдиного HR-зрізу: присутність, надійність, задачі, внесок, розвиток і підсумковий бал.</p>
                     </div>
                     <div class="hr-kpi-actions">
                         <select id="kpiMonth" class="hr-team-select"></select>
@@ -3963,38 +3963,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.45"></script>
-    <script src="js/config.js?v=0.73.45"></script>
-    <script src="js/notification.js?v=0.73.45"></script>
-    <script src="js/api.js?v=0.73.45"></script>
-    <script src="js/auth.js?v=0.73.45"></script>
-    <script src="js/components/sidebar.js?v=0.73.45"></script>
+    <script src="js/ui.js?v=0.73.49"></script>
+    <script src="js/config.js?v=0.73.49"></script>
+    <script src="js/notification.js?v=0.73.49"></script>
+    <script src="js/api.js?v=0.73.49"></script>
+    <script src="js/auth.js?v=0.73.49"></script>
+    <script src="js/components/sidebar.js?v=0.73.49"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.45"></script>
-    <script src="js/alerts.js?v=0.73.45"></script><script>
-    // v33.8.0: Salary commit to finance
-    async function commitSalaries() {
-        var monthEl = document.getElementById('salaryMonth');
-        var month = monthEl ? monthEl.value : null;
-        if (!month) { if (typeof showToast === 'function') showToast('Оберіть місяць', 'error'); return; }
-        if (!confirm('Нарахувати зарплати за ' + month + '? Це запише транзакції у фінанси.')) return;
-        var token = localStorage.getItem('pzp_token');
-        try {
-            var resp = await fetch('/api/hr/salary/commit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ month: month })
-            });
-            var data = await resp.json();
-            if (resp.ok && data.success) {
-                if (typeof showToast === 'function') showToast('Нараховано ' + data.committed + ' зарплат за ' + month + '!', 'success');
-            } else {
-                if (typeof showToast === 'function') showToast(data.error || 'Помилка', 'error');
-            }
-        } catch (e) {
-            if (typeof showToast === 'function') showToast('Помилка: ' + e.message, 'error');
-        }
-    }
-    </script>
+    <script src="js/hr-page.js?v=0.73.49"></script>
+    <script src="js/alerts.js?v=0.73.49"></script>
 </body>
 </html>

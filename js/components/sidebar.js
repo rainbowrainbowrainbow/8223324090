@@ -19,7 +19,9 @@ const Sidebar = (() => {
         railCloseTimer: null,
         railActiveAnchor: null,
         railPinned: false,
-        businessSwitching: false
+        businessSwitching: false,
+        businessSettingsOpen: false,
+        businessSettingsDocumentBound: false
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const EXTRA_MENU_HREFS = ['/', '/staff', '/chat', '/certificates'];
@@ -2011,6 +2013,7 @@ const Sidebar = (() => {
         const host = document.getElementById('sidebarBusinessContextHost');
         const api = window.CrmBusinessContext;
         if (!host || !api?.options || !api?.current) return;
+        _bindSidebarBusinessSettingsDismiss();
         const businessState = api.state?.(user) || null;
         const options = businessState?.availableBusinesses?.length
             ? businessState.availableBusinesses.map(ctx => ({
@@ -2023,6 +2026,7 @@ const Sidebar = (() => {
         if (!options.length) {
             host.innerHTML = '';
             host.hidden = true;
+            _state.businessSettingsOpen = false;
             return;
         }
         host.hidden = false;
@@ -2044,8 +2048,8 @@ const Sidebar = (() => {
             ? (ctx.shortLabel || ctx.label || ctx.key)
             : (ctx.label || ctx.shortLabel || ctx.key);
         host.dataset.activeBusiness = currentContext.key || current;
-        host.dataset.businessScope = scope.mode || 'single';
         if (options.length <= 1) {
+            _state.businessSettingsOpen = false;
             host.innerHTML = `
                 <span class="sidebar-business-chip" title="${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
@@ -2059,16 +2063,25 @@ const Sidebar = (() => {
             ? scope.selectedContexts
             : [currentContext.key || current];
         const selectedSet = new Set(selectedContexts);
-        const activeMode = scope.mode || 'single';
+        const activeMode = aggregateAllowed ? (scope.mode || 'single') : 'single';
+        host.dataset.businessScope = activeMode;
         const scopeLabels = {
             single: 'Один',
             multi: 'Кілька',
             all: 'Усі'
         };
+        const settingsOpen = Boolean(_state.businessSettingsOpen);
+        const scopeSummary = activeMode === 'all'
+            ? 'Усі бізнеси'
+            : (activeMode === 'multi' ? `${selectedContexts.length} бізнеси` : 'Один бізнес');
         const readOnlyNote = scope.readOnly
             ? '<span class="sidebar-business-readonly-note">Огляд без змін</span>'
             : '';
         const modeControls = aggregateAllowed ? `
+            <span class="sidebar-business-settings-summary">
+                <span>Режим огляду</span>
+                <strong>${_escAttr(scopeSummary)}</strong>
+            </span>
             <span class="sidebar-business-scope" role="group" aria-label="Режим бізнес-огляду" data-sidebar-business-scope="true">
                 ${['single', 'multi', 'all'].map(mode => `<button type="button" class="sidebar-business-scope-btn${mode === activeMode ? ' active' : ''}" data-business-scope-mode="${mode}" aria-pressed="${mode === activeMode ? 'true' : 'false'}"${_state.businessSwitching ? ' disabled' : ''}>${scopeLabels[mode]}</button>`).join('')}
             </span>
@@ -2079,12 +2092,25 @@ const Sidebar = (() => {
                     <span>${_escAttr(ctx.shortLabel || ctx.label || ctx.key)}</span>
                 </label>`).join('')}
             </span>` : ''}
-        ` : '';
+        ` : `
+            <span class="sidebar-business-settings-summary">
+                <span>Режим огляду</span>
+                <strong>Один бізнес</strong>
+            </span>
+            <span class="sidebar-business-unavailable">Кілька бізнесів доступні на сторінках огляду: Дашборд, Продукти, Ліди, Клієнти та Звіти.</span>
+        `;
         host.innerHTML = `
-            <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
-                ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
-            </select>
-            ${modeControls}`;
+            <span class="sidebar-business-control-row">
+                <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
+                    ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
+                </select>
+                <button type="button" class="sidebar-business-settings-btn${settingsOpen ? ' active' : ''}" data-sidebar-business-settings-toggle aria-expanded="${settingsOpen ? 'true' : 'false'}" aria-controls="sidebarBusinessSettingsPanel" aria-label="Налаштування бізнес-огляду" title="Налаштування бізнес-огляду"${_state.businessSwitching ? ' disabled' : ''}>
+                    <span aria-hidden="true">⚙</span>
+                </button>
+            </span>
+            <span class="sidebar-business-settings-panel${settingsOpen ? ' open' : ''}" id="sidebarBusinessSettingsPanel" role="group" aria-label="Налаштування бізнес-огляду" aria-hidden="${settingsOpen ? 'false' : 'true'}"${settingsOpen ? '' : ' inert'}>
+                ${modeControls}
+            </span>`;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
         select.title = currentContext.label || currentContext.shortLabel || currentContext.key;
@@ -2119,6 +2145,29 @@ const Sidebar = (() => {
                 }
             }
         };
+        const settingsToggle = host.querySelector('[data-sidebar-business-settings-toggle]');
+        if (settingsToggle) {
+            settingsToggle.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (_state.businessSwitching) return;
+                _state.businessSettingsOpen = !_state.businessSettingsOpen;
+                _syncSidebarBusinessSwitcher(user);
+            });
+            settingsToggle.addEventListener('keydown', event => event.stopPropagation());
+        }
+        const settingsPanel = host.querySelector('#sidebarBusinessSettingsPanel');
+        if (settingsPanel) {
+            settingsPanel.addEventListener('click', event => event.stopPropagation());
+            settingsPanel.addEventListener('keydown', event => {
+                event.stopPropagation();
+                if (event.key === 'Escape') {
+                    _state.businessSettingsOpen = false;
+                    _syncSidebarBusinessSwitcher(user);
+                    settingsToggle?.focus?.();
+                }
+            });
+        }
         select.addEventListener('click', event => event.stopPropagation());
         select.addEventListener('keydown', event => event.stopPropagation());
         select.addEventListener('change', async event => {
@@ -2183,6 +2232,23 @@ const Sidebar = (() => {
                     navigate: false
                 }));
             });
+        });
+    }
+
+    function _bindSidebarBusinessSettingsDismiss() {
+        if (_state.businessSettingsDocumentBound || typeof document === 'undefined') return;
+        _state.businessSettingsDocumentBound = true;
+        document.addEventListener('click', event => {
+            if (!_state.businessSettingsOpen) return;
+            const host = document.getElementById('sidebarBusinessContextHost');
+            if (host?.contains(event.target)) return;
+            _state.businessSettingsOpen = false;
+            _syncSidebarBusinessSwitcher();
+        }, true);
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || !_state.businessSettingsOpen) return;
+            _state.businessSettingsOpen = false;
+            _syncSidebarBusinessSwitcher();
         });
     }
 

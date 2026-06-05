@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.44 - Згорнутий sidebar rail без збоїв
+
+### Sidebar / Collapsed Rail / Flyout Scroll / Icon Alignment / UI Guardrails / (Клешня, 05.06.2026) [codex]
+- **Згорнутий сайдбар вирівняно візуально** - іконки у rail-картках тепер центровані всередині своїх квадратів і не з'їжджають убік.
+- **Контекстне меню `Меню` стало скрольованим** - wheel/scroll всередині flyout більше не закриває панель одразу після руху.
+- **Іконки у flyout приведено до єдиного розміру** - групи та посилання мають однакові 32px icon-box, стабільні відступи і акуратні SVG.
+- **Закриття flyout залишилось контрольованим** - зовнішній scroll сторінки, click outside, `Escape` і resize все ще закривають панель, але внутрішній scroll меню не вважається виходом із rail.
+- **Оновлено UI smoke guardrail** - тест фіксує окремий scroll-handler, власний scroll-body меню і центрування SVG у mini rail/flyout.
+- **Оновлено релізні маркери** - версію піднято до `0.73.44`, cache tags і Service Worker синхронізовано під release.
+
+---
+
 ## v0.73.43 - Sidebar бізнес-режим через gear
 
 ### Sidebar / Profile Card / Business Scope / Gear Panel / UI Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

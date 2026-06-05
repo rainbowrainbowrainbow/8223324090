@@ -1667,6 +1667,17 @@ const Sidebar = (() => {
         }
     }
 
+    function _handleRailFloatDocumentScroll(event) {
+        const panel = document.getElementById('sidebarRailFloat');
+        if (!panel || panel.hidden) return;
+        const target = event.target;
+        if (panel.contains(target)) return;
+        if (_state.railActiveAnchor?.contains?.(target)) return;
+        const sidebar = document.getElementById('sidebarNav');
+        if (sidebar?.contains?.(target)) return;
+        _closeRailFloat();
+    }
+
     function _initCollapsedRailInteractions(sidebar) {
         if (!sidebar || sidebar.dataset.sidebarRailBound === 'true') return;
         sidebar.dataset.sidebarRailBound = 'true';
@@ -1749,7 +1760,7 @@ const Sidebar = (() => {
             if (event.key === 'Escape') _closeRailFloat();
         });
         window.addEventListener('resize', _closeRailFloat);
-        window.addEventListener('scroll', _closeRailFloat, true);
+        window.addEventListener('scroll', _handleRailFloatDocumentScroll, true);
     }
 
     // ═══ LIVE BADGES ═══

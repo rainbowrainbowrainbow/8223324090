@@ -10523,3 +10523,264 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-v,
   white-space: nowrap !important;
   font-variant-numeric: tabular-nums !important;
 }
+
+/* v0.73.36: polished profile card composition.
+   Name and role get the full first row; avatar/time/date and USD/alert form a balanced lower grid. */
+@keyframes sidebarIdentityAlertPulse {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, #ff5f7e 34%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #ff5f7e 14%, transparent), 0 0 0 rgba(255, 95, 126, 0);
+  }
+  50% {
+    border-color: color-mix(in srgb, #ffb24d 58%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb24d 22%, transparent), 0 0 18px color-mix(in srgb, #ff7a5c 20%, transparent);
+  }
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 78px minmax(0, 1fr) !important;
+  grid-template-areas:
+    "identity-title identity-title"
+    "identity-portrait identity-main" !important;
+  align-items: start !important;
+  gap: 9px 10px !important;
+  padding: 10px !important;
+  overflow: hidden !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-area: identity-title !important;
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 0 0 8px !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 72%, transparent) !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+.sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  display: block !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 17px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.05 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  overflow-wrap: anywhere !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  display: inline-grid !important;
+  place-items: center !important;
+  justify-self: end !important;
+  min-width: 0 !important;
+  max-width: 82px !important;
+  padding: 4px 6px !important;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-accent) 30%, transparent) !important;
+  border-radius: 7px !important;
+  background: color-mix(in srgb, var(--sb-enterprise-panel) 84%, transparent) !important;
+  color: color-mix(in srgb, var(--sb-enterprise-text) 76%, transparent) !important;
+  font-size: 7.4px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.07em !important;
+  line-height: 1 !important;
+  overflow: hidden !important;
+  overflow-wrap: normal !important;
+  text-align: center !important;
+  text-overflow: ellipsis !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-portrait,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-portrait,
+.sidebar-nav:not(.collapsed) .sidebar-identity-portrait {
+  width: 78px !important;
+  min-width: 78px !important;
+  max-width: 78px !important;
+  gap: 7px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+.sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+  width: 56px !important;
+  min-width: 56px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 28%, transparent), 0 10px 22px color-mix(in srgb, #020617 36%, transparent) !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux {
+  width: 100% !important;
+  max-width: 78px !important;
+  padding: 6px 7px !important;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 78%, transparent) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sb-enterprise-panel) 88%, transparent), color-mix(in srgb, #071017 76%, transparent)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent) !important;
+  gap: 0 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-item {
+  position: relative !important;
+  padding: 4px 0 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item {
+  border-top: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 70%, transparent) !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item::before,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item::before,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-item + .sidebar-identity-aux-item::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 6px !important;
+  right: 6px !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--sb-enterprise-accent) 52%, transparent), transparent) !important;
+  pointer-events: none !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-k,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-k {
+  font-size: 6.6px !important;
+  letter-spacing: 0.08em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-v,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-v,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-v {
+  font-size: 10.8px !important;
+  line-height: 1.05 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  grid-template-areas:
+    "identity-summary"
+    "identity-meta"
+    "identity-business" !important;
+  gap: 8px !important;
+  align-content: start !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 40px !important;
+  padding: 8px 9px !important;
+  border: 1px solid color-mix(in srgb, var(--sb-enterprise-line) 70%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, var(--sb-enterprise-panel) 72%, transparent) !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  line-height: 1.18 !important;
+  overflow: visible !important;
+}
+
+.sidebar-command-deck[data-tone="critical"] .sidebar-identity-summary {
+  animation: sidebarIdentityAlertPulse 1.55s ease-in-out infinite !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #ff5f7e 18%, transparent), color-mix(in srgb, #ffb24d 10%, transparent)),
+    color-mix(in srgb, var(--sb-enterprise-panel) 82%, transparent) !important;
+  color: #fff7ed !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-meta,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item[data-sidebar-meta="currency"],
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"],
+body[data-page-group] .sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item[data-sidebar-meta="currency"],
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"],
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item[data-sidebar-meta="currency"],
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  justify-items: start !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 38px !important;
+  padding: 8px 9px !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sb-enterprise-accent) 18%, transparent), color-mix(in srgb, #0f172a 12%, transparent)),
+    color-mix(in srgb, var(--sb-enterprise-panel) 78%, transparent) !important;
+  gap: 8px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-k,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-k {
+  width: auto !important;
+  color: color-mix(in srgb, var(--sb-enterprise-muted) 88%, transparent) !important;
+  font-size: 7.4px !important;
+  letter-spacing: 0.08em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] .sidebar-identity-meta-v {
+  justify-self: end !important;
+  width: auto !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 12.2px !important;
+  font-weight: 950 !important;
+  text-align: right !important;
+}
+
+.sidebar-nav.collapsed .sidebar-identity-title-row,
+.sidebar-nav.collapsed:hover .sidebar-identity-title-row {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-command-deck[data-tone="critical"] .sidebar-identity-summary {
+    animation: none !important;
+  }
+}

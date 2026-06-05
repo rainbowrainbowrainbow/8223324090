@@ -1844,6 +1844,12 @@ const Sidebar = (() => {
             deck.innerHTML = `
                 <span class="sidebar-command-kicker">Помічник · операційний стан</span>
                 <div class="sidebar-identity-card" id="sidebarIdentityCard" aria-label="Відкрити профіль">
+                    <span class="sidebar-identity-title-row">
+                        <span class="sidebar-identity-title-line">
+                            <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
+                        </span>
+                        <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
+                    </span>
                     <span class="sidebar-identity-portrait">
                         <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
                         <span class="sidebar-identity-aux" id="sidebarIdentityAux" data-sidebar-stop-profile="true" aria-label="Час і дата">
@@ -1858,12 +1864,6 @@ const Sidebar = (() => {
                         </span>
                     </span>
                     <span class="sidebar-identity-main">
-                        <span class="sidebar-identity-title-row">
-                            <span class="sidebar-identity-title-line">
-                                <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
-                            </span>
-                            <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
-                        </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
                         <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Курс USD">
                             <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют у фінансах" title="Відкрити курси валют у фінансах"${currencySignalEnabled ? '' : ' hidden'}>

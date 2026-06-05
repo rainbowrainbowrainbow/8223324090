@@ -10409,3 +10409,117 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 .sidebar-nav.collapsed:hover .sidebar-identity-aux {
   display: none !important;
 }
+
+/* v0.73.35: profile time/day stack belongs under the avatar, not below USD. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 62px minmax(0, 1fr) !important;
+  grid-template-areas: "identity-portrait identity-main" !important;
+  align-items: start !important;
+  column-gap: 8px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-portrait,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-portrait,
+.sidebar-nav:not(.collapsed) .sidebar-identity-portrait {
+  grid-area: identity-portrait !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: center !important;
+  align-content: start !important;
+  gap: 6px !important;
+  width: 62px !important;
+  min-width: 62px !important;
+  max-width: 62px !important;
+  overflow: visible !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+.sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  grid-area: identity-main !important;
+  grid-template-areas:
+    "identity-title"
+    "identity-summary"
+    "identity-meta"
+    "identity-business" !important;
+  min-width: 0 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux {
+  grid-area: auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: center !important;
+  align-items: start !important;
+  justify-content: center !important;
+  align-self: start !important;
+  gap: 3px !important;
+  width: 62px !important;
+  min-width: 0 !important;
+  max-width: 62px !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  color: var(--sb-enterprise-muted) !important;
+  overflow: visible !important;
+  flex-wrap: nowrap !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-item {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: center !important;
+  gap: 1px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  line-height: 1 !important;
+  white-space: normal !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-k,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-k,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-k {
+  display: block !important;
+  width: 100% !important;
+  color: color-mix(in srgb, var(--sb-enterprise-muted) 76%, transparent) !important;
+  font-size: 6.8px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  text-transform: uppercase !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-aux-v,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux-v,
+.sidebar-nav:not(.collapsed) .sidebar-identity-aux-v {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  color: var(--sb-enterprise-text) !important;
+  font-size: 9.8px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.05 !important;
+  overflow: visible !important;
+  text-align: center !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}

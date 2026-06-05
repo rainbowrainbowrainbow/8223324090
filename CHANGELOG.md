@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.35 - Sidebar: час і день під аватаром
+
+### Sidebar / Profile Card / Avatar Stack / Time Date / USD / Layout Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **`Час` і `День` перенесені саме під аватар профілю** - блок `sidebarIdentityAux` тепер живе в окремій лівій колонці `.sidebar-identity-portrait`, а не в правій `.sidebar-identity-main` під `USD`.
+- **Сигнали зроблено вертикальним стеком під картинкою** - окремо показується label `Час`, нижче значення часу, потім label `День` і нижче поточна дата на кшталт `пт, 05`.
+- **`USD` лишився окремою квадратною плиткою** - курс валют більше не ділить простір із часом і днем, тому повний формат `₴41.20` не обрізається.
+- **Додано фінальний CSS-контракт для портретної колонки** - sidebar явно задає області `identity-portrait` і `identity-main`, щоб старі grid rules не переносили time/date назад у праву колонку.
+- **Оновлено UI smoke і browser-preview guardrails** - перевірка фіксує, що time/date розташовані під аватаром, лівіше `USD`, і йдуть вертикально.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.35`, cache tags і Service Worker синхронізовано для deploy.
+
+---
+
 ## v0.73.34 - Sidebar: USD без тісних плиток
 
 ### Sidebar / Profile Card / USD / Time Date / Layout Split / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

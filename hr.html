@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.44">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.44">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.44">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.44">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.44">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.44">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.44">
+    <link rel="stylesheet" href="css/base.css?v=0.73.45">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.45">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.45">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.45">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.45">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.45">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.45">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3450,7 +3450,7 @@
                 <h2 id="hrPageTitle">HR</h2>
             </div>
 
-            <div id="hrNav" class="hr-nav" aria-label="HR navigation"></div>
+            <div id="hrNav" class="hr-nav" aria-label="Навігація HR"></div>
 
             <!-- TAB 1: TODAY -->
             <div id="tab-today" class="hr-tab-content active">
@@ -3685,9 +3685,9 @@
                         <h3 class="hr-kpi-title">KPI команди</h3>
                         <p class="hr-kpi-subtitle">Перший зріз продуктивності без штучного рейтингу: присутність, надійність, задачі, внесок і розвиток.</p>
                     </div>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <select id="kpiMonth" class="hr-team-select" style="min-width:160px;"></select>
-                        <button type="button" class="btn-secondary" onclick="loadKpi()">Оновити KPI</button>
+                    <div class="hr-kpi-actions">
+                        <select id="kpiMonth" class="hr-team-select"></select>
+                        <button type="button" class="hr-kpi-refresh" onclick="loadKpi()">Оновити KPI</button>
                     </div>
                 </div>
                 <div id="kpiSources" class="hr-kpi-sources" aria-label="Джерела KPI"></div>
@@ -3963,15 +3963,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.44"></script>
-    <script src="js/config.js?v=0.73.44"></script>
-    <script src="js/notification.js?v=0.73.44"></script>
-    <script src="js/api.js?v=0.73.44"></script>
-    <script src="js/auth.js?v=0.73.44"></script>
-    <script src="js/components/sidebar.js?v=0.73.44"></script>
+    <script src="js/ui.js?v=0.73.45"></script>
+    <script src="js/config.js?v=0.73.45"></script>
+    <script src="js/notification.js?v=0.73.45"></script>
+    <script src="js/api.js?v=0.73.45"></script>
+    <script src="js/auth.js?v=0.73.45"></script>
+    <script src="js/components/sidebar.js?v=0.73.45"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.44"></script>
-    <script src="js/alerts.js?v=0.73.44"></script><script>
+    <script src="js/hr-page.js?v=0.73.45"></script>
+    <script src="js/alerts.js?v=0.73.45"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

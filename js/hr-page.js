@@ -93,7 +93,7 @@ const HR_NAV_GROUPS = [
         label: 'Тимчасове',
         note: 'нерозподілені HR-розділи',
         items: [
-            { id: 'onboarding', label: 'Onboarding' },
+            { id: 'onboarding', label: 'Онбординг' },
             { id: 'vacancies', label: 'Вакансії' },
             { id: 'costumes', label: 'Костюми', href: '/art?tab=costumes' }
         ]
@@ -840,7 +840,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     const pulseMode = !workspaceMode && isHrPulseWorkspaceTab(target);
     nav.classList.toggle('hr-nav--structure-only', workspaceMode);
     nav.classList.toggle('hr-nav--pulse', pulseMode);
-    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'HR navigation');
+    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
     const groups = HR_NAV_GROUPS
         .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
@@ -1985,7 +1985,7 @@ function accountCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
-function showOneTimeCredentialModal(credential, title = 'One-time credentials', payload = {}) {
+function showOneTimeCredentialModal(credential, title = 'Одноразові облікові дані', payload = {}) {
     if (!credential) return;
     const username = credential.username || '';
     const password = accountCredentialPassword(credential);
@@ -2007,7 +2007,7 @@ function showOneTimeCredentialModal(credential, title = 'One-time credentials', 
             cancelText: 'Закрити'
         }).then(ok => {
             if (ok && navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => showNotification('One-time credentials скопійовано', 'success'));
+                navigator.clipboard.writeText(text).then(() => showNotification('Одноразові облікові дані скопійовано', 'success'));
             }
         });
         return;
@@ -5266,9 +5266,9 @@ function renderKpiSources({ rows = [], onboarding = [], ratings = [] } = {}) {
     const sources = document.getElementById('kpiSources');
     if (!sources) return;
     sources.innerHTML = [
-        renderKpiSourceLabel('monthly report', rows.length ? `${rows.length} staff rows` : 'даних ще немає'),
-        renderKpiSourceLabel('onboarding', onboarding.length ? `${onboarding.length} records` : 'даних ще немає'),
-        renderKpiSourceLabel('ratings context', ratings.length ? `${ratings.length} records` : 'даних ще немає')
+        renderKpiSourceLabel('Місячний звіт', rows.length ? `${rows.length} рядків працівників` : 'даних ще немає'),
+        renderKpiSourceLabel('Онбординг', onboarding.length ? `${onboarding.length} записів` : 'даних ще немає'),
+        renderKpiSourceLabel('Контекст оцінок', ratings.length ? `${ratings.length} записів` : 'даних ще немає')
     ].join('');
 }
 
@@ -5367,11 +5367,11 @@ function renderKpi({ rows, onboarding, ratings }) {
             ? renderKpiCard('Активність / виконання', `${taskRate}%`, `${totals.tasksDone}/${totals.tasksAssigned} задач виконано · ${totals.tasksOverdue} прострочено`)
             : renderKpiCard('Активність / виконання', 'даних ще немає', 'Немає привʼязаних задач за період', { placeholder: true }),
         ratings.length
-            ? renderKpiCard('Звіти / внесок', String(events30d), 'Події за 30 днів з існуючого event-контексту')
+            ? renderKpiCard('Звіти / внесок', String(events30d), 'Події за 30 днів з існуючого контексту подій')
             : renderKpiCard('Звіти / внесок', 'даних ще немає', 'Потрібен джерельний сигнал внеску або звітів', { placeholder: true }),
         onboarding.length
-            ? renderKpiCard('Статус розвитку', onboardingRate !== null ? `${onboardingRate}%` : `${onboardingActive} активн.`, `${onboardingActive} активних onboarding-процесів`)
-            : renderKpiCard('Статус розвитку', 'даних ще немає', 'Немає активних або завершених onboarding-процесів', { placeholder: true })
+            ? renderKpiCard('Статус розвитку', onboardingRate !== null ? `${onboardingRate}%` : `${onboardingActive} активн.`, `${onboardingActive} активних процесів онбордингу`)
+            : renderKpiCard('Статус розвитку', 'даних ще немає', 'Немає активних або завершених процесів онбордингу', { placeholder: true })
     ].join('');
 
     const ratingMap = {};
@@ -5388,7 +5388,7 @@ function renderKpi({ rows, onboarding, ratings }) {
     </tr>`;
 
     if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Немає staff KPI-даних за вибраний період</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" class="kpi-muted">Немає KPI-даних працівників за вибраний період</td></tr>';
         return;
     }
 
@@ -5412,7 +5412,7 @@ function renderKpi({ rows, onboarding, ratings }) {
             <td>${rows.length ? `${kpiSignal(reliabilityIssues ? `${reliabilityIssues} сигналів` : 'без сигналів', reliabilityIssues === 0 ? 'good' : reliabilityIssues <= 2 ? 'warn' : 'bad')}<div class="kpi-muted">${num(row.late_count)} запізн. · ${num(row.days_absent)} відсутн.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
             <td>${taskDoneRate !== null ? `${kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65))}<div class="kpi-muted">${taskDone}/${taskAssigned} задач · ${num(row.task_kpi?.tasks_overdue)} простр.</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
             <td>${contribution ? `${kpiSignal(`${num(contribution.events_30d)} за 30 дн`, num(contribution.events_30d) > 0 ? 'good' : '')}<div class="kpi-muted">${num(contribution.total_events)} подій всього</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
-            <td>${development ? `${kpiSignal(development.percent !== null ? `${development.percent}%` : `${development.active} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${development.completed}/${development.total} onboarding завершено</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
+            <td>${development ? `${kpiSignal(development.percent !== null ? `${development.percent}%` : `${development.active} активн.`, toneForPercent(development.percent, 90, 60))}<div class="kpi-muted">${development.completed}/${development.total} завершено в онбордингу</div>` : '<span class="kpi-muted">даних ще немає</span>'}</td>
         </tr>`;
     }).join('');
 }

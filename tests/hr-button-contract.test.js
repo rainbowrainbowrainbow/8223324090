@@ -101,14 +101,17 @@ test('HR KPI surface labels existing API sources explicitly', () => {
     for (const token of [
         'id="kpiSources"',
         'class="hr-kpi-sources"',
+        'class="hr-kpi-refresh"',
         'renderKpiSources',
-        'monthly report',
-        'onboarding',
-        'ratings context',
+        'Місячний звіт',
+        'Онбординг',
+        'Контекст оцінок',
         'даних ще немає'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
     }
+    assert.equal(HR_JS.includes('monthly report'), false);
+    assert.equal(HR_JS.includes('ratings context'), false);
 });
 
 test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap targets', () => {

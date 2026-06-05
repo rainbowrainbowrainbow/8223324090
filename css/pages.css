@@ -5777,3 +5777,101 @@ body.dark-mode .afisha-material-item a {
         flex: 1 1 140px;
     }
 }
+
+/* v0.73.45: HR payroll/KPI toolbar polish without growing inline HR styles. */
+.hr-kpi-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.hr-kpi-actions .hr-team-select {
+    min-width: 160px;
+}
+
+.hr-kpi-refresh {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+    border-radius: 12px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 16%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 12%, transparent)
+    );
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 950;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth);
+}
+
+.hr-kpi-refresh::before {
+    content: "↻";
+    width: 18px;
+    height: 18px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: currentColor;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.hr-kpi-refresh:hover,
+.hr-kpi-refresh:focus-visible {
+    outline: none;
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+body.dark-mode .hr-kpi-refresh {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 38%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode .hr-kpi-refresh::before {
+    background: color-mix(in srgb, var(--primary-light, var(--primary)) 16%, transparent);
+}
+
+body.dark-mode .hr-kpi-refresh:hover,
+body.dark-mode .hr-kpi-refresh:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 52%, transparent);
+    color: var(--white);
+}
+
+@media (max-width: 768px) {
+    .hr-kpi-actions {
+        width: 100%;
+    }
+
+    .hr-kpi-actions .hr-team-select,
+    .hr-kpi-actions .hr-kpi-refresh {
+        width: 100%;
+    }
+}

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.39",
+  "version": "0.73.40",
   "eventGenix": {
-    "releaseLabel": "Безпека та theme guardrails"
+    "releaseLabel": "Upload та Kie.ai guardrails"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -65,5 +65,8 @@
   },
   "devDependencies": {
     "jsdom": "^29.1.1"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
   }
 }

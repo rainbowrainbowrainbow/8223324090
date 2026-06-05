@@ -15,24 +15,76 @@ const { getDashboardAssistantReply } = dashboardAssistant;
 const normalizeAssistantReply = dashboardAssistant.normalizeAssistantReply || ((reply) => reply);
 const ASSISTANT_AUDIO_ALLOWED_MIME_TYPES = new Set([
     'audio/aac',
+    'audio/aiff',
     'audio/flac',
     'audio/m4a',
     'audio/mp3',
     'audio/mpeg',
+    'audio/mpga',
     'audio/mp4',
     'audio/ogg',
+    'audio/vnd.wave',
     'audio/wav',
     'audio/webm',
+    'audio/wave',
+    'audio/x-aiff',
+    'audio/x-m4a',
+    'audio/x-mp3',
+    'audio/x-pn-wav',
+    'audio/x-wav',
+    'application/ogg',
     'video/mp4',
     'video/webm'
 ]);
-const ASSISTANT_AUDIO_ALLOWED_EXTENSIONS = new Set(['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.oga', '.ogg', '.wav', '.webm']);
+const ASSISTANT_AUDIO_ALLOWED_EXTENSIONS = new Set(['.aac', '.aiff', '.flac', '.m4a', '.mp3', '.mp4', '.mpga', '.oga', '.ogg', '.wav', '.webm']);
+const ASSISTANT_AUDIO_EXTENSION_BY_MIME = new Map([
+    ['audio/aac', '.aac'],
+    ['audio/aiff', '.aiff'],
+    ['audio/flac', '.flac'],
+    ['audio/m4a', '.m4a'],
+    ['audio/mp3', '.mp3'],
+    ['audio/mpeg', '.mp3'],
+    ['audio/mpga', '.mpga'],
+    ['audio/mp4', '.mp4'],
+    ['audio/ogg', '.ogg'],
+    ['audio/vnd.wave', '.wav'],
+    ['audio/wav', '.wav'],
+    ['audio/webm', '.webm'],
+    ['audio/wave', '.wav'],
+    ['audio/x-aiff', '.aiff'],
+    ['audio/x-m4a', '.m4a'],
+    ['audio/x-mp3', '.mp3'],
+    ['audio/x-pn-wav', '.wav'],
+    ['audio/x-wav', '.wav'],
+    ['application/ogg', '.ogg'],
+    ['video/mp4', '.mp4'],
+    ['video/webm', '.webm']
+]);
+
+function normalizeAssistantAudioMimeType(value) {
+    return String(value || '').toLowerCase().split(';')[0].trim();
+}
+
+function assistantAudioExtensionOf(value) {
+    const name = String(value || '').toLowerCase();
+    const dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.slice(dot) : '';
+}
+
+function assistantAudioFilenameForTranscription(file) {
+    const originalName = String(file?.originalname || 'crm-assistant').trim() || 'crm-assistant';
+    const dot = originalName.lastIndexOf('.');
+    const stem = dot > 0 ? originalName.slice(0, dot) : originalName;
+    const ext = assistantAudioExtensionOf(originalName);
+    const mimeExt = ASSISTANT_AUDIO_EXTENSION_BY_MIME.get(normalizeAssistantAudioMimeType(file?.mimetype));
+    if (mimeExt && (!ext || (ext === '.webm' && mimeExt !== '.webm'))) return `${stem}${mimeExt}`;
+    return originalName;
+}
 
 function validateAssistantAudioFile(file) {
     const name = String(file?.originalname || '').toLowerCase();
-    const dot = name.lastIndexOf('.');
-    const ext = dot >= 0 ? name.slice(dot) : '';
-    const mime = String(file?.mimetype || '').toLowerCase();
+    const ext = assistantAudioExtensionOf(name);
+    const mime = normalizeAssistantAudioMimeType(file?.mimetype);
     if (ext && !ASSISTANT_AUDIO_ALLOWED_EXTENSIONS.has(ext)) {
         const err = new Error('Непідтримуваний формат аудіо');
         err.statusCode = 400;
@@ -175,8 +227,8 @@ router.post('/transcribe', handleAssistantAudioUpload, async (req, res) => {
         if (!req.file?.buffer) return res.status(400).json({ success: false, error: 'audio_required' });
         const text = await transcribeDashboardAudio({
             buffer: req.file.buffer,
-            filename: req.file.originalname || 'crm-assistant.webm',
-            mimetype: req.file.mimetype || 'audio/webm'
+            filename: assistantAudioFilenameForTranscription(req.file),
+            mimetype: normalizeAssistantAudioMimeType(req.file.mimetype) || 'audio/webm'
         });
         res.json({ success: true, text });
     } catch (error) {

@@ -1566,9 +1566,19 @@ const DashboardPage = (() => {
         return data.reply;
     }
 
+    function dashboardAssistantAudioFilename(blob) {
+        const mime = String(blob?.type || '').toLowerCase().split(';')[0].trim();
+        if (mime === 'audio/mp4' || mime === 'video/mp4') return 'dashboard-assistant.mp4';
+        if (mime === 'audio/m4a' || mime === 'audio/x-m4a') return 'dashboard-assistant.m4a';
+        if (mime === 'audio/wav' || mime === 'audio/wave' || mime === 'audio/x-wav') return 'dashboard-assistant.wav';
+        if (mime === 'audio/ogg' || mime === 'application/ogg') return 'dashboard-assistant.ogg';
+        if (mime === 'audio/mpeg' || mime === 'audio/mp3') return 'dashboard-assistant.mp3';
+        return 'dashboard-assistant.webm';
+    }
+
     async function transcribeAssistantAudioBlob(blob) {
         const formData = new FormData();
-        formData.append('audio', blob, 'dashboard-assistant.webm');
+        formData.append('audio', blob, dashboardAssistantAudioFilename(blob));
         const resp = await fetch('/api/crm-assistant/transcribe', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },

@@ -104,6 +104,15 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffHtml, /hover[\s\S]*color:\s*#FFFFFF/);
     });
 
+    it('keeps staff Excel import extension-first and parser-backed', () => {
+        assert.match(staffRoute, /STAFF_IMPORT_ALLOWED_EXTENSIONS = new Set\(\['\.xlsx', '\.xlsm'\]\)/);
+        assert.match(staffRoute, /STAFF_IMPORT_BLOCKED_MIME_TYPES/);
+        assert.match(staffRoute, /normalizeStaffImportMimeType/);
+        assert.match(staffRoute, /workbook\.xlsx\.load\(req\.file\.buffer\)/);
+        assert.doesNotMatch(staffRoute, /STAFF_IMPORT_ALLOWED_MIME_TYPES/);
+        assert.doesNotMatch(staffRoute, /!STAFF_IMPORT_ALLOWED_MIME_TYPES\.has/);
+    });
+
     it('opens the staff schedule on yesterday, today, and upcoming days', () => {
         assert.match(staffPage, /const STAFF_SCHEDULE_WINDOW_DAYS = 9/);
         assert.match(staffPage, /const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1/);

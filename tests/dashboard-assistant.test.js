@@ -75,6 +75,17 @@ async function postJson(baseUrl, path, body, role = 'manager') {
     return { status: res.status, data: await res.json() };
 }
 
+async function postAudio(baseUrl, path, blobType, filename, role = 'manager') {
+    const body = new FormData();
+    body.append('audio', new Blob([Buffer.from('audio-bytes')], { type: blobType }), filename);
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenFor(role)}` },
+        body
+    });
+    return { status: res.status, data: await res.json() };
+}
+
 afterEach(restoreEnv);
 
 describe('dashboard assistant service contract', () => {
@@ -631,6 +642,84 @@ describe('dashboard assistant route context', () => {
             assert.equal(calls[1].username, 'creator-user');
             assert.equal(calls[1].scenePreset, 'director');
             assert.equal(calls[1].recentState.previewRole, 'director');
+        } finally {
+            await close(server);
+        }
+    });
+
+    it('accepts browser voice multipart uploads with parameterized webm MIME', async () => {
+        process.env.JWT_SECRET = TEST_JWT_SECRET;
+        clearAssistantModules();
+
+        let transcriptionInput = null;
+        installMock('../db', {
+            pool: { query: async () => ({ rows: [] }) },
+            query: async () => ({ rows: [] })
+        });
+        installMock('../services/dashboardAssistant', {
+            getDashboardAssistantReply: async () => ({ text: 'ok' }),
+            normalizeAssistantReply: reply => reply
+        });
+        installMock('../services/dashboardAssistantAudio', {
+            transcribeDashboardAudio: async input => {
+                transcriptionInput = input;
+                return 'voice text';
+            },
+            synthesizeDashboardSpeech: async () => Buffer.from('mp3')
+        });
+
+        const app = express();
+        app.use('/api/crm-assistant', require('../routes/crm-assistant'));
+        const { server, baseUrl } = await listen(app);
+
+        try {
+            const res = await postAudio(baseUrl, '/api/crm-assistant/transcribe', 'audio/webm;codecs=opus', 'clip.webm');
+
+            assert.equal(res.status, 200);
+            assert.equal(res.data.text, 'voice text');
+            assert.equal(transcriptionInput.filename, 'clip.webm');
+            assert.equal(transcriptionInput.mimetype, 'audio/webm');
+            assert.ok(Buffer.isBuffer(transcriptionInput.buffer));
+        } finally {
+            await close(server);
+        }
+    });
+
+    it('normalizes mp4 voice filenames and rejects non-audio uploads', async () => {
+        process.env.JWT_SECRET = TEST_JWT_SECRET;
+        clearAssistantModules();
+
+        const transcriptions = [];
+        installMock('../db', {
+            pool: { query: async () => ({ rows: [] }) },
+            query: async () => ({ rows: [] })
+        });
+        installMock('../services/dashboardAssistant', {
+            getDashboardAssistantReply: async () => ({ text: 'ok' }),
+            normalizeAssistantReply: reply => reply
+        });
+        installMock('../services/dashboardAssistantAudio', {
+            transcribeDashboardAudio: async input => {
+                transcriptions.push(input);
+                return 'voice text';
+            },
+            synthesizeDashboardSpeech: async () => Buffer.from('mp3')
+        });
+
+        const app = express();
+        app.use('/api/crm-assistant', require('../routes/crm-assistant'));
+        const { server, baseUrl } = await listen(app);
+
+        try {
+            const accepted = await postAudio(baseUrl, '/api/crm-assistant/transcribe', 'audio/mp4', 'dashboard-assistant.webm');
+            const rejected = await postAudio(baseUrl, '/api/crm-assistant/transcribe', 'application/pdf', 'voice.pdf');
+
+            assert.equal(accepted.status, 200);
+            assert.equal(transcriptions[0].filename, 'dashboard-assistant.mp4');
+            assert.equal(transcriptions[0].mimetype, 'audio/mp4');
+            assert.equal(rejected.status, 400);
+            assert.equal(rejected.data.success, false);
+            assert.equal(transcriptions.length, 1);
         } finally {
             await close(server);
         }

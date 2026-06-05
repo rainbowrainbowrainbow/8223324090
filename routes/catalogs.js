@@ -52,6 +52,20 @@ function parseKieImageUrl(data) {
     } catch { return null; }
 }
 
+function normalizeKieTaskId(value) {
+    return String(value || '').trim();
+}
+
+function getKieJobRecord(taskId) {
+    const normalizedTaskId = normalizeKieTaskId(taskId);
+    if (!normalizedTaskId) {
+        const err = new Error('taskId required');
+        err.statusCode = 400;
+        throw err;
+    }
+    return kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(normalizedTaskId)}`);
+}
+
 // ─── Catalog definitions ─────────────────────────────────────
 router.get('/definitions', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
@@ -260,10 +274,10 @@ router.post('/generate-image', requireRole('admin', 'creator', 'director', 'art_
     }
 });
 
-router.get('/generate-image/:taskId', async (req, res) => {
+router.get('/generate-image/:taskId', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
-        const taskId = String(req.params.taskId || '').trim();
-        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`);
+        const taskId = normalizeKieTaskId(req.params.taskId);
+        const r = await getKieJobRecord(taskId);
         const data   = r?.data || {};
         const state  = data.state || null;
         const imgUrl = parseKieImageUrl(data);
@@ -346,8 +360,9 @@ router.post('/batch-generate', requireRole('admin', 'creator', 'director', 'art_
 router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { itemId, taskId } = req.body;
-        if (!itemId || !taskId) return res.status(400).json({ error: 'itemId і taskId required' });
-        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskId}`);
+        const normalizedTaskId = normalizeKieTaskId(taskId);
+        if (!itemId || !normalizedTaskId) return res.status(400).json({ error: 'itemId і taskId required' });
+        const r = await getKieJobRecord(normalizedTaskId);
         const kieUrl = parseKieImageUrl(r?.data);
         if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
 
@@ -410,8 +425,9 @@ router.post('/:catalogId/apply-cover', requireRole('admin', 'creator', 'director
     try {
         const { catalogId } = req.params;
         const { taskId } = req.body;
-        if (!taskId) return res.status(400).json({ error: 'taskId required' });
-        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskId}`);
+        const normalizedTaskId = normalizeKieTaskId(taskId);
+        if (!normalizedTaskId) return res.status(400).json({ error: 'taskId required' });
+        const r = await getKieJobRecord(normalizedTaskId);
         const kieUrl = parseKieImageUrl(r?.data);
         if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
 

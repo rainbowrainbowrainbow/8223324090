@@ -1997,7 +1997,7 @@ async function checkStaleCatalogImages() {
                 const taskData = await kieHttpRequest('POST', '/api/v1/jobs/createTask', body);
                 if (!taskData?.data?.taskId) continue;
                 await new Promise(r => setTimeout(r, 20000));
-                const pollData = await kieHttpRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskData.data.taskId}`);
+                const pollData = await kieHttpRequest('GET', `/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskData.data.taskId)}`);
                 const rj = pollData?.data?.resultJson;
                 let url = null;
                 try { url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null; } catch { /* ignore */ }

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.73.40 - Upload та Kie.ai guardrails
+
+### Upload / Kie.ai / Staff Import / Voice Assistant / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **Kie.ai lookup винесено в єдиний безпечний helper** - catalog image poll, apply image і apply cover тепер кодують `taskId` через `encodeURIComponent` одним шляхом, без сирого складання provider URL.
+- **Catalog image poll вирівняно з create/apply доступом** - `/api/catalogs/generate-image/:taskId` тепер має той самий manager/art/admin role guard, що й генерація та застосування зображень.
+- **Scheduler Kie.ai polling також закодовано** - фоновий refresh catalog image jobs більше не підставляє provider `taskId` у URL без escaping.
+- **Voice upload помічника став суміснішим із браузерами** - `/api/crm-assistant/transcribe` приймає параметризовані MIME на кшталт `audio/webm;codecs=opus`, mobile audio MIME і нормалізує filename для `audio/mp4`.
+- **Frontend voice blobs більше не маскуються під `.webm`** - shared assistant rail і dashboard assistant підбирають filename за `blob.type`, щоб transcribe API бачив правильний контейнер.
+- **Staff Excel import переведено на extension-first policy** - `.xlsx`/`.xlsm` залишаються обов'язковими, явно не-Excel MIME блокуються, а фінальну валідність підтверджує `ExcelJS`.
+- **Додано focused guardrails** - multipart route tests для assistant voice upload, static guard для Kie.ai taskId encoding і static guard проти повернення staff import до крихкого MIME-only whitelist.
+- **Оновлено релізні маркери і changelog** - версію піднято до `0.73.40`, cache tags і Service Worker синхронізовано для deploy.
+
+---
+
 ## v0.73.39 - Безпека та theme guardrails
 
 ### Dependencies / Upload / Backend Hygiene / Light-Dark Theme / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

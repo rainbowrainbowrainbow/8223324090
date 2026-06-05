@@ -1934,9 +1934,19 @@
             .find(type => MediaRecorder.isTypeSupported(type)) || '';
     }
 
+    function assistantAudioBlobFilename(blob) {
+        const mime = String(blob?.type || '').toLowerCase().split(';')[0].trim();
+        if (mime === 'audio/mp4' || mime === 'video/mp4') return 'crm-assistant.mp4';
+        if (mime === 'audio/m4a' || mime === 'audio/x-m4a') return 'crm-assistant.m4a';
+        if (mime === 'audio/wav' || mime === 'audio/wave' || mime === 'audio/x-wav') return 'crm-assistant.wav';
+        if (mime === 'audio/ogg' || mime === 'application/ogg') return 'crm-assistant.ogg';
+        if (mime === 'audio/mpeg' || mime === 'audio/mp3') return 'crm-assistant.mp3';
+        return 'crm-assistant.webm';
+    }
+
     async function transcribeAudioBlob(blob) {
         const formData = new FormData();
-        formData.append('audio', blob, 'crm-assistant.webm');
+        formData.append('audio', blob, assistantAudioBlobFilename(blob));
         const resp = await fetch('/api/crm-assistant/transcribe', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },

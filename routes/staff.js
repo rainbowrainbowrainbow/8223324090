@@ -907,23 +907,34 @@ router.post('/bulk-pdf', requireRole('creator', 'director'), async (req, res) =>
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const STAFF_IMPORT_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xlsm']);
-const STAFF_IMPORT_ALLOWED_MIME_TYPES = new Set([
-    'application/octet-stream',
-    'application/vnd.ms-excel.sheet.macroenabled.12',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const STAFF_IMPORT_BLOCKED_MIME_TYPES = new Set([
+    'application/json',
+    'application/pdf',
+    'application/x-msdownload',
+    'image/gif',
+    'image/jpeg',
+    'image/png',
+    'image/svg+xml',
+    'text/csv',
+    'text/html',
+    'text/plain'
 ]);
+
+function normalizeStaffImportMimeType(value) {
+    return String(value || '').toLowerCase().split(';')[0].trim();
+}
 
 function validateStaffImportFile(file) {
     const name = String(file?.originalname || '').toLowerCase();
     const dot = name.lastIndexOf('.');
     const ext = dot >= 0 ? name.slice(dot) : '';
-    const mime = String(file?.mimetype || '').toLowerCase();
+    const mime = normalizeStaffImportMimeType(file?.mimetype);
     if (!STAFF_IMPORT_ALLOWED_EXTENSIONS.has(ext)) {
         const err = new Error('Підтримуються тільки .xlsx або .xlsm файли');
         err.statusCode = 400;
         throw err;
     }
-    if (mime && !STAFF_IMPORT_ALLOWED_MIME_TYPES.has(mime)) {
+    if (mime && (STAFF_IMPORT_BLOCKED_MIME_TYPES.has(mime) || mime.startsWith('image/') || mime.startsWith('audio/') || mime.startsWith('video/'))) {
         const err = new Error('Непідтримуваний MIME-тип Excel файлу');
         err.statusCode = 400;
         throw err;

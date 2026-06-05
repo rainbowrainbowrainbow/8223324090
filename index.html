@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.37">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.37">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.37">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.37">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.37">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.37">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.37">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.37">
-    <link rel="stylesheet" href="css/features.css?v=0.73.37">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.37">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.37">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.37">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.37">
+    <link rel="stylesheet" href="css/base.css?v=0.73.38">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.38">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.38">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.38">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.38">
+    <link rel="stylesheet" href="css/features.css?v=0.73.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.38">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.37">✨ 0.73.37</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.38">✨ 0.73.38</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.37 — Sidebar: бізнес на всю строку</p>
+                <p class="tagline">AI First CRM v0.73.38 — HR: фільтри сьогоднішнього пульсу</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.37</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.38</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,6 +1658,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.38 — HR: фільтри сьогоднішнього пульсу</h4>
+                    <ul>
+                        <li><b>У <code>Пульс компанії -> Сьогодні</code> додано пошук</b> — можна швидко фільтрувати людей по ПІБ, професії, посаді, відділу, статусу або часу зміни.</li>
+                        <li><b>Додано сегменти відділів</b> — кнопки будуються з актуальних staff-даних і показують кількість співробітників у кожному зрізі.</li>
+                        <li><b>Статистика дня реагує на фільтри</b> — картки <code>На роботі</code>, <code>Запізнились</code>, <code>Відсутні</code> і <code>Хвороба / відпустка</code> показують обраний зріз.</li>
+                        <li><b>API Today розширено</b> — <code>/api/hr/today</code> повертає <code>department</code> і <code>position</code>, а <code>unscheduled</code>-прихід рахується як присутність.</li>
+                        <li><b>Оновлено UI smoke guardrail</b> — перевірка фіксує пошук, відділи, client filtering, dark/mobile styles і нові API-поля.</li>
+                        <li><b>Версію піднято до <code>0.73.38</code></b> — cache tags і Service Worker синхронізовані під deploy.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.37 — Sidebar: бізнес на всю строку</h4>
                     <ul>
@@ -11302,29 +11313,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.37"></script>
-    <script src="js/timeline-visibility.js?v=0.73.37"></script>
-    <script src="js/config.js?v=0.73.37"></script>
-    <script src="js/api.js?v=0.73.37"></script>
-    <script src="js/ui.js?v=0.73.37"></script>
-    <script src="js/auth.js?v=0.73.37"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.37"></script>
-    <script src="js/timeline.js?v=0.73.37"></script>
-    <script src="js/booking.js?v=0.73.37"></script>
-    <script src="js/settings.js?v=0.73.37"></script>
-    <script src="js/booking-form.js?v=0.73.37"></script>
-    <script src="js/booking-linked.js?v=0.73.37"></script>
-    <script src="js/settings-dashboard.js?v=0.73.37"></script>
-    <script src="js/settings-history.js?v=0.73.37"></script>
-    <script src="js/settings-afisha.js?v=0.73.37"></script>
-    <script src="js/settings-certificates.js?v=0.73.37"></script>
-    <script src="js/offline.js?v=0.73.37"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.37"></script>
-    <script src="js/search.js?v=0.73.37"></script>
-    <script src="js/ws.js?v=0.73.37"></script>
-    <script src="js/app.js?v=0.73.37"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.37"></script>
-    <script src="js/components/sidebar.js?v=0.73.37"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.37"></script>
+    <script src="js/timeline-context.js?v=0.73.38"></script>
+    <script src="js/timeline-visibility.js?v=0.73.38"></script>
+    <script src="js/config.js?v=0.73.38"></script>
+    <script src="js/api.js?v=0.73.38"></script>
+    <script src="js/ui.js?v=0.73.38"></script>
+    <script src="js/auth.js?v=0.73.38"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.38"></script>
+    <script src="js/timeline.js?v=0.73.38"></script>
+    <script src="js/booking.js?v=0.73.38"></script>
+    <script src="js/settings.js?v=0.73.38"></script>
+    <script src="js/booking-form.js?v=0.73.38"></script>
+    <script src="js/booking-linked.js?v=0.73.38"></script>
+    <script src="js/settings-dashboard.js?v=0.73.38"></script>
+    <script src="js/settings-history.js?v=0.73.38"></script>
+    <script src="js/settings-afisha.js?v=0.73.38"></script>
+    <script src="js/settings-certificates.js?v=0.73.38"></script>
+    <script src="js/offline.js?v=0.73.38"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.38"></script>
+    <script src="js/search.js?v=0.73.38"></script>
+    <script src="js/ws.js?v=0.73.38"></script>
+    <script src="js/app.js?v=0.73.38"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.38"></script>
+    <script src="js/components/sidebar.js?v=0.73.38"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.38"></script>
 </body>
 </html>

@@ -1653,7 +1653,7 @@ router.get('/today', async (req, res) => {
     try {
         const today = todayKyiv();
         const staff = await pool.query(
-            `SELECT id, name, color, role_type, photo_url FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name`
+            `SELECT id, name, department, position, color, role_type, photo_url FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY department, name`
         );
 
         const shifts = await pool.query(
@@ -1674,7 +1674,7 @@ router.get('/today', async (req, res) => {
             const record = recordMap[s.id] || null;
 
             if (record) {
-                if (record.status === 'late' || record.status === 'present' || record.status === 'clocked_in') present++;
+                if (record.status === 'late' || record.status === 'present' || record.status === 'clocked_in' || record.status === 'unscheduled') present++;
                 else if (record.status === 'vacation') onVacation++;
                 else if (record.status === 'sick') sick++;
                 else if (record.status === 'early_leave' || record.status === 'auto_closed') present++;
@@ -1686,6 +1686,8 @@ router.get('/today', async (req, res) => {
             return {
                 staff_id: s.id,
                 staff_name: s.name,
+                department: s.department,
+                position: s.position,
                 staff_color: s.color,
                 role_type: s.role_type,
                 photo_url: s.photo_url,

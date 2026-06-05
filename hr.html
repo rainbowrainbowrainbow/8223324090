@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.37">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.37">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.37">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.37">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.37">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.37">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.37">
+    <link rel="stylesheet" href="css/base.css?v=0.73.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1025,6 +1025,89 @@
             line-height: 1.2;
             margin: 0 0 16px;
             box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+        }
+
+        .hr-today-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 0 0 16px;
+            padding: 12px;
+            border: 1px solid rgba(99,102,241,0.14);
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(248,250,252,0.84));
+            box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+        }
+        .hr-today-filter-row {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+        }
+        .hr-today-search {
+            width: 100%;
+            min-height: 42px;
+            padding: 0 14px;
+            border: 1px solid rgba(148,163,184,0.34);
+            border-radius: 12px;
+            background: var(--white);
+            color: var(--gray-800);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            font-weight: 700;
+            outline: none;
+        }
+        .hr-today-search:focus {
+            border-color: rgba(20,184,166,0.54);
+            box-shadow: 0 0 0 3px rgba(20,184,166,0.12);
+        }
+        .hr-today-filter-info {
+            justify-self: end;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .hr-today-segments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .hr-today-segment {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 34px;
+            padding: 7px 11px;
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.76);
+            color: var(--gray-600);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+            transition: transform var(--speed-fast) var(--ease-smooth), border-color var(--speed-fast) var(--ease-smooth), background var(--speed-fast) var(--ease-smooth);
+        }
+        .hr-today-segment:hover {
+            transform: translateY(-1px);
+            border-color: rgba(20,184,166,0.42);
+            color: var(--gray-800);
+        }
+        .hr-today-segment.active {
+            border-color: rgba(20,184,166,0.66);
+            background: linear-gradient(135deg, rgba(20,184,166,0.18), rgba(99,102,241,0.16));
+            color: var(--gray-900);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.58);
+        }
+        .hr-today-segment strong {
+            min-width: 22px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(15,23,42,0.08);
+            color: inherit;
+            text-align: center;
         }
 
         .hr-staff-list {
@@ -2601,6 +2684,32 @@
             background: rgba(20,184,166,0.16);
             color: #5EEAD4;
         }
+        body.dark-mode .hr-today-controls {
+            background: linear-gradient(135deg, rgba(30,30,56,0.88), rgba(22,24,44,0.82));
+            border-color: rgba(148,163,184,0.14);
+            box-shadow: 0 18px 42px rgba(0,0,0,0.20);
+        }
+        body.dark-mode .hr-today-filter-info {
+            color: #94A3B8;
+        }
+        body.dark-mode .hr-today-segment {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(148,163,184,0.16);
+            color: #CBD5E1;
+        }
+        body.dark-mode .hr-today-segment:hover {
+            border-color: rgba(94,234,212,0.36);
+            color: #F8FAFC;
+        }
+        body.dark-mode .hr-today-segment.active {
+            background: linear-gradient(135deg, rgba(20,184,166,0.18), rgba(99,102,241,0.20));
+            border-color: rgba(94,234,212,0.42);
+            color: #F8FAFC;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+        body.dark-mode .hr-today-segment strong {
+            background: rgba(255,255,255,0.08);
+        }
         body.dark-mode .hr-modal .form-group input,
         body.dark-mode .hr-modal .form-group select,
         body.dark-mode .hr-modal .form-group textarea {
@@ -2662,6 +2771,7 @@
         body.dark-mode #scheduleTemplate label { color: #CBD5E1 !important; }
         body.dark-mode #templateSelect,
         body.dark-mode .hr-team-select,
+        body.dark-mode .hr-today-search,
         body.dark-mode .hr-team-search {
             background: #1E1E38;
             border-color: #4A4A6A;
@@ -2871,6 +2981,27 @@
                 border-radius: 14px;
                 font-size: 13px;
                 margin-bottom: 12px;
+            }
+            .hr-today-controls {
+                padding: 10px;
+                border-radius: 14px;
+            }
+            .hr-today-filter-row {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 8px;
+            }
+            .hr-today-filter-info {
+                justify-self: start;
+                white-space: normal;
+            }
+            .hr-today-segments {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 7px;
+            }
+            .hr-today-segment {
+                width: 100%;
+                padding: 7px 8px;
             }
             .hr-schedule-controls { flex-direction: column; align-items: stretch; }
             .hr-schedule-actions { margin-left: 0; }
@@ -3324,6 +3455,13 @@
             <!-- TAB 1: TODAY -->
             <div id="tab-today" class="hr-tab-content active">
                 <div id="todayDate" class="hr-today-date"></div>
+                <div class="hr-today-controls" aria-label="Фільтри сьогоднішнього пульсу">
+                    <div class="hr-today-filter-row">
+                        <input type="search" id="todaySearch" class="hr-today-search" aria-label="Пошук у сьогоднішньому пульсі" placeholder="Пошук: ПІБ, професія, відділ, статус...">
+                        <div id="todayFilterInfo" class="hr-today-filter-info"></div>
+                    </div>
+                    <div id="todayDepartmentSegments" class="hr-today-segments" aria-label="Відділи"></div>
+                </div>
                 <div id="todaySummary" class="hr-summary"></div>
                 <div id="todayList" class="hr-staff-list"></div>
             </div>
@@ -3825,15 +3963,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.37"></script>
-    <script src="js/config.js?v=0.73.37"></script>
-    <script src="js/notification.js?v=0.73.37"></script>
-    <script src="js/api.js?v=0.73.37"></script>
-    <script src="js/auth.js?v=0.73.37"></script>
-    <script src="js/components/sidebar.js?v=0.73.37"></script>
+    <script src="js/ui.js?v=0.73.38"></script>
+    <script src="js/config.js?v=0.73.38"></script>
+    <script src="js/notification.js?v=0.73.38"></script>
+    <script src="js/api.js?v=0.73.38"></script>
+    <script src="js/auth.js?v=0.73.38"></script>
+    <script src="js/components/sidebar.js?v=0.73.38"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.37"></script>
-    <script src="js/alerts.js?v=0.73.37"></script><script>
+    <script src="js/hr-page.js?v=0.73.38"></script>
+    <script src="js/alerts.js?v=0.73.38"></script><script>
     // v33.8.0: Salary commit to finance
     async function commitSalaries() {
         var monthEl = document.getElementById('salaryMonth');

@@ -43,6 +43,16 @@ const HR_POOL_LABELS = {
     blacklisted: 'Чорний список'
 };
 
+const STAFF_DEPARTMENT_LABELS = {
+    animators: 'Аніматори',
+    trampoline: 'Батутисти',
+    admin: 'Адміністрація',
+    cafe: 'Кафе',
+    tech: 'Технічний відділ',
+    cleaning: 'Прибирання',
+    security: 'Охорона'
+};
+
 const HR_NAV_GROUPS = [
     {
         id: 'pulse',
@@ -199,6 +209,7 @@ function normalizeVisiblePeopleBucket(bucketId, user = getHrCurrentUser()) {
 
 let canManage = false;
 let todayData = null;
+let todayFilters = { query: '', department: 'all' };
 let scheduleWeekStart = null;
 let scheduleView = 'week'; // week | month
 let scheduleShifts = [];
@@ -302,6 +313,23 @@ function normalizeSearchText(value) {
         .replace(/['`\u2019\u02bc]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function normalizeDepartmentKey(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return normalized ? normalized.slice(0, 80) : 'none';
+}
+
+function departmentLabel(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 'Без відділу';
+    const key = normalizeDepartmentKey(raw);
+    if (STAFF_DEPARTMENT_LABELS[key]) return STAFF_DEPARTMENT_LABELS[key];
+    return raw
+        .split(/[_-]+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
 }
 
 function companyStructureSelectOptions(current = '') {
@@ -972,6 +1000,120 @@ async function activateHrTab(target, options = {}) {
 // TAB 1: TODAY
 // ==========================================
 
+function isTodayFilterActive() {
+    return !!normalizeSearchText(todayFilters.query) || todayFilters.department !== 'all';
+}
+
+function todayDepartmentOptions(items = []) {
+    const departments = new Map();
+    items.forEach(item => {
+        const key = normalizeDepartmentKey(item.department);
+        if (!departments.has(key)) {
+            departments.set(key, {
+                key,
+                label: departmentLabel(item.department),
+                count: 0
+            });
+        }
+        departments.get(key).count++;
+    });
+    return Array.from(departments.values())
+        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+}
+
+function summarizeTodayItems(items = []) {
+    const summary = { total_staff: items.length, present: 0, late: 0, absent: 0, on_vacation: 0, sick: 0 };
+    items.forEach(item => {
+        const rec = item.record;
+        if (rec) {
+            const status = rec.status;
+            if (['late', 'present', 'clocked_in', 'early_leave', 'auto_closed', 'unscheduled'].includes(status)) {
+                summary.present++;
+            } else if (status === 'vacation') {
+                summary.on_vacation++;
+            } else if (status === 'sick') {
+                summary.sick++;
+            }
+            if (status === 'late') summary.late++;
+        } else if (item.shift) {
+            summary.absent++;
+        }
+    });
+    return summary;
+}
+
+function todaySearchHaystack(item = {}) {
+    const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+    const status = item.record?.status || (item.shift ? 'absent' : '');
+    const statusLabel = STATUS_LABELS[status] || status;
+    const shiftText = item.shift
+        ? `${fmtTime(item.shift.planned_start)} ${fmtTime(item.shift.planned_end)}`
+        : '';
+    return normalizeSearchText([
+        item.staff_name,
+        item.position,
+        item.role_type,
+        roleLabel,
+        item.department,
+        departmentLabel(item.department),
+        statusLabel,
+        shiftText
+    ].filter(Boolean).join(' '));
+}
+
+function filteredTodayItems(items = []) {
+    const query = normalizeSearchText(todayFilters.query);
+    const department = todayFilters.department;
+    return items.filter(item => {
+        if (department !== 'all' && normalizeDepartmentKey(item.department) !== department) return false;
+        if (query && !todaySearchHaystack(item).includes(query)) return false;
+        return true;
+    });
+}
+
+function bindTodayFilterControls() {
+    const search = document.getElementById('todaySearch');
+    if (search) {
+        if (search.value !== todayFilters.query) search.value = todayFilters.query;
+        search.oninput = () => {
+            todayFilters.query = search.value;
+            if (todayData) renderToday(todayData);
+        };
+    }
+}
+
+function renderTodayDepartmentSegments(items = []) {
+    const root = document.getElementById('todayDepartmentSegments');
+    if (!root) return;
+    const departments = todayDepartmentOptions(items);
+    if (todayFilters.department !== 'all' && !departments.some(dep => dep.key === todayFilters.department)) {
+        todayFilters.department = 'all';
+    }
+    const segments = [{ key: 'all', label: 'Всі', count: items.length }, ...departments];
+    root.innerHTML = segments.map(segment => {
+        const active = todayFilters.department === segment.key;
+        return `<button type="button" class="hr-today-segment${active ? ' active' : ''}" data-department="${escapeHtml(segment.key)}" aria-pressed="${active ? 'true' : 'false'}">
+            <span>${escapeHtml(segment.label)}</span>
+            <strong>${segment.count}</strong>
+        </button>`;
+    }).join('');
+    root.querySelectorAll('[data-department]').forEach(button => {
+        button.onclick = () => {
+            todayFilters.department = button.dataset.department || 'all';
+            if (todayData) renderToday(todayData);
+        };
+    });
+}
+
+function renderTodayFilterInfo(allItems = [], filteredItems = []) {
+    const info = document.getElementById('todayFilterInfo');
+    if (!info) return;
+    const active = isTodayFilterActive();
+    info.textContent = active
+        ? `Показано ${filteredItems.length} з ${allItems.length}`
+        : `${allItems.length} співробітників у пульсі`;
+}
+
 async function loadToday() {
     if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const data = await hrFetch('/today');
@@ -985,7 +1127,13 @@ function renderToday(data) {
     const dayName = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота'][today.getDay()];
     document.getElementById('todayDate').textContent =         `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
 
-    const s = data.summary;
+    const allItems = Array.isArray(data.data) ? data.data : [];
+    bindTodayFilterControls();
+    renderTodayDepartmentSegments(allItems);
+    const visibleItems = filteredTodayItems(allItems);
+    renderTodayFilterInfo(allItems, visibleItems);
+
+    const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     document.getElementById('todaySummary').innerHTML = `
         <div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>
         <div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>
@@ -994,12 +1142,16 @@ function renderToday(data) {
     `;
 
     const list = document.getElementById('todayList');
-    if (data.data.length === 0) {
+    if (allItems.length === 0) {
         list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає активних співробітників</div>';
         return;
     }
+    if (visibleItems.length === 0) {
+        list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Нічого не знайдено за цим фільтром</div>';
+        return;
+    }
 
-    list.innerHTML = data.data.map(item => {
+    list.innerHTML = visibleItems.map(item => {
         const rec = item.record;
         const shift = item.shift;
         let indicator = 'absent';
@@ -1072,12 +1224,17 @@ function renderToday(data) {
         }
 
         const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+        const roleMeta = [
+            roleLabel,
+            item.position && item.position !== roleLabel ? item.position : '',
+            item.department ? departmentLabel(item.department) : ''
+        ].filter(Boolean).join(' · ');
 
         return `<div class="hr-staff-row" data-staff-id="${item.staff_id}" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
                 <div class="hr-staff-name">${escapeHtml(item.staff_name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(item.staff_id, {compact:true}) : ''} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
-                <div class="hr-staff-meta">${roleLabel}${meta ? ' · ' + meta : ''}</div>
+                <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button type="button" class="hr-clock-btn ${btnClass}" ${disabled}
                 onclick="handleClock(${item.staff_id}, '${rec && rec.clock_in && !rec.clock_out ? 'out' : 'in'}', '${escapeHtml(item.staff_name)}', ${rec ? rec.total_worked_minutes || 0 : 0})"

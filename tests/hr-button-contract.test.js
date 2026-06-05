@@ -34,18 +34,24 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         "id: 'pulse'",
         "label: 'Пульс компанії'",
         "{ id: 'schedule', label: 'Графік', href: '/staff' }",
-        "{ id: 'team', label: 'Команда', tab: 'team' }",
+        "{ id: 'workers', label: 'Робітники', tab: 'team', bucket: 'workers', visible: () => canSeeHrTeamBucket('workers') }",
+        "{ id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') }",
+        "{ id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: () => canSeeHrTeamBucket('blacklist') }",
+        "{ id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: () => canSeeHrTeamBucket('reserve') }",
         "other: { tab: 'onboarding' }",
         'const HR_OTHER_WORKSPACE_TABS',
         'function isHrOtherWorkspaceTab',
         'const HR_PULSE_WORKSPACE_TABS',
         'function isHrPulseWorkspaceTab',
+        'const HR_PEOPLE_WORKSPACE_TABS',
+        'function isHrPeopleWorkspaceTab',
         "payroll: { tab: 'salary' }",
         'const HR_PAYROLL_WORKSPACE_TABS',
         'function isHrPayrollWorkspaceTab',
         "nav.classList.toggle('hr-nav--pulse'",
-        "workspaceMode || pulseMode ? ' hidden' : ''",
-        "if (header) header.hidden = pulseMode",
+        "nav.classList.toggle('hr-nav--people'",
+        "workspaceMode && !peopleMode",
+        "if (header) header.hidden = pulseMode || peopleMode",
         'visible: () => canManageAccountSecurity()',
         'data-nav-id=',
         'data-tab=',
@@ -55,8 +61,7 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
     ]) {
         assert.ok(HR_JS.includes(token), `missing ${token}`);
     }
-    assert.equal(HR_JS.includes("label: 'Робітники', tab: 'team', bucket: 'workers'"), false, 'people buckets must not render as top HR nav buttons');
-    assert.equal(HR_JS.includes("label: 'Стажери', tab: 'team', bucket: 'interns'"), false, 'people buckets must not render as top HR nav buttons');
+    assert.equal(HR_JS.includes("{ id: 'team', label: 'Команда', tab: 'team' }"), false, 'team workspace must use concrete people bucket tabs');
 });
 
 test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
@@ -84,9 +89,11 @@ test('HR people accordion keeps aria, bucket, count, and state contracts', () =>
         'data-people-bucket=',
         'aria-expanded=',
         'hr-people-bucket-count',
+        'hr-team-controls',
+        'teamFilterInfo',
         'totalCount',
         'let activePeopleBucket = null',
-        'activePeopleBucket === nextBucket ? null : nextBucket',
+        'activePeopleBucket = nextBucket',
         'updatePeopleNavCounts(grouped)',
         'renderPeopleBucketState',
         'hr-people-empty--loading',

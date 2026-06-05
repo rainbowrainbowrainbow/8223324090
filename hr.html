@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.52">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.52">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.52">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.52">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.52">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.52">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.52">
+    <link rel="stylesheet" href="css/base.css?v=0.73.53">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.53">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.53">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.53">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.53">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.53">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.53">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1506,19 +1506,6 @@
             flex-direction: column;
             gap: 12px;
         }
-        .hr-team-section-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-        .hr-team-section-head h3 {
-            margin: 0;
-            color: var(--gray-800);
-            font-size: var(--font-xl);
-            font-weight: 900;
-        }
         .hr-people-bucket {
             background: var(--white);
             border: 1px solid var(--gray-100);
@@ -2655,7 +2642,6 @@
         body.dark-mode .hr-summary-card .hr-summary-label { color: #9CA3AF; }
         body.dark-mode .hr-staff-name,
         body.dark-mode .hr-team-name,
-        body.dark-mode .hr-team-section-head h3,
         body.dark-mode .hr-people-bucket-title,
         body.dark-mode .hr-people-bucket-toggle,
         body.dark-mode .hr-kpi-title,
@@ -3015,10 +3001,6 @@
             .hr-schedule-controls { flex-direction: column; align-items: stretch; }
             .hr-schedule-actions { margin-left: 0; }
             .hr-team-grid { grid-template-columns: 1fr; }
-            .hr-team-section-head {
-                align-items: flex-start;
-                flex-direction: column;
-            }
             .hr-people-bucket-toggle { grid-template-columns: minmax(0, 1fr) auto auto; padding: 12px; }
             .hr-people-bucket-body { padding: 0 12px 12px; }
             .hr-people-bucket-grid { grid-template-columns: 1fr; }
@@ -3521,11 +3503,8 @@
 
             <!-- TAB 3: TEAM -->
             <div id="tab-team" class="hr-tab-content">
-                <div class="hr-team-section-head">
-                    <h3>Команда</h3>
-                </div>
-                <div id="teamMissingBanner"></div>
-                <div class="hr-team-filters">
+                <div class="hr-team-controls" aria-label="Фільтри команди">
+                    <div class="hr-team-filter-row">
                     <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук по ПІБ, професії, телефону або структурі" placeholder="Пошук: ПІБ, професія, телефон, структура...">
                     <select id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true">
                         <option value="">Всі ролі</option>
@@ -3553,10 +3532,13 @@
                             <option value="cleaner">Прибиральник</option>
                         </optgroup>
                     </select>
-                    <label style="font-size:var(--font-xs);display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <label class="hr-team-active-toggle">
                         <input type="checkbox" id="teamActiveOnly" checked> Тільки активні
                     </label>
+                        <div id="teamFilterInfo" class="hr-team-filter-info" aria-live="polite"></div>
+                    </div>
                 </div>
+                <div id="teamMissingBanner"></div>
                 <div id="teamGrid" class="hr-team-grid"></div>
             </div>
 
@@ -3979,14 +3961,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.52"></script>
-    <script src="js/config.js?v=0.73.52"></script>
-    <script src="js/notification.js?v=0.73.52"></script>
-    <script src="js/api.js?v=0.73.52"></script>
-    <script src="js/auth.js?v=0.73.52"></script>
-    <script src="js/components/sidebar.js?v=0.73.52"></script>
+    <script src="js/ui.js?v=0.73.53"></script>
+    <script src="js/config.js?v=0.73.53"></script>
+    <script src="js/notification.js?v=0.73.53"></script>
+    <script src="js/api.js?v=0.73.53"></script>
+    <script src="js/auth.js?v=0.73.53"></script>
+    <script src="js/components/sidebar.js?v=0.73.53"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.52"></script>
-    <script src="js/alerts.js?v=0.73.52"></script>
+    <script src="js/hr-page.js?v=0.73.53"></script>
+    <script src="js/alerts.js?v=0.73.53"></script>
 </body>
 </html>

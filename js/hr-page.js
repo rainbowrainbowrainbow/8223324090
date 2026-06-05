@@ -67,7 +67,10 @@ const HR_NAV_GROUPS = [
         id: 'people',
         label: 'Команда',
         items: [
-            { id: 'team', label: 'Команда', tab: 'team' }
+            { id: 'workers', label: 'Робітники', tab: 'team', bucket: 'workers', visible: () => canSeeHrTeamBucket('workers') },
+            { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') },
+            { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: () => canSeeHrTeamBucket('blacklist') },
+            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: () => canSeeHrTeamBucket('reserve') }
         ]
     },
     {
@@ -103,6 +106,7 @@ const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checkl
 const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
 const HR_OTHER_WORKSPACE_TABS = new Set(['onboarding', 'vacancies']);
 const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
+const HR_PEOPLE_WORKSPACE_TABS = new Set(['team']);
 
 const HR_TAB_ALIASES = {
     other: { tab: 'onboarding' },
@@ -792,7 +796,12 @@ function isHrPulseWorkspaceTab(target) {
     return HR_PULSE_WORKSPACE_TABS.has(target);
 }
 
+function isHrPeopleWorkspaceTab(target) {
+    return HR_PEOPLE_WORKSPACE_TABS.has(target);
+}
+
 function hrWorkspaceGroupId(target) {
+    if (isHrPeopleWorkspaceTab(target)) return 'people';
     if (isHrStructureWorkspaceTab(target)) return 'structure';
     if (isHrPayrollWorkspaceTab(target)) return 'payroll';
     if (isHrOtherWorkspaceTab(target)) return 'other';
@@ -804,8 +813,9 @@ function updateHrPageTitle(target) {
     if (!title) return;
     const header = title.closest('.page-header');
     const pulseMode = isHrPulseWorkspaceTab(target);
-    if (header) header.hidden = pulseMode;
-    if (pulseMode) {
+    const peopleMode = isHrPeopleWorkspaceTab(target);
+    if (header) header.hidden = pulseMode || peopleMode;
+    if (pulseMode || peopleMode) {
         title.textContent = '';
         return;
     }
@@ -841,10 +851,12 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     const target = resolved.tab || activeTarget;
     const workspaceGroupId = hrWorkspaceGroupId(target);
     const workspaceMode = Boolean(workspaceGroupId);
+    const peopleMode = workspaceGroupId === 'people';
     const pulseMode = !workspaceMode && isHrPulseWorkspaceTab(target);
-    nav.classList.toggle('hr-nav--structure-only', workspaceMode);
+    nav.classList.toggle('hr-nav--structure-only', workspaceMode && !peopleMode);
     nav.classList.toggle('hr-nav--pulse', pulseMode);
-    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
+    nav.classList.toggle('hr-nav--people', peopleMode);
+    nav.setAttribute('aria-label', workspaceGroupId === 'people' ? 'Навігація команди' : workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
     const groups = HR_NAV_GROUPS
         .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
@@ -888,9 +900,11 @@ function cssEscapeValue(value) {
 
 function syncHrNavActive(target, bucket = null) {
     document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
-    if (target === 'team') return;
+    const effectiveBucket = target === 'team'
+        ? (bucket || activePeopleBucket || firstVisiblePeopleBucketId())
+        : bucket;
     const tabSelector = cssEscapeValue(target);
-    const bucketSelector = bucket ? `[data-bucket="${cssEscapeValue(bucket)}"]` : ':not([data-bucket])';
+    const bucketSelector = effectiveBucket ? `[data-bucket="${cssEscapeValue(effectiveBucket)}"]` : ':not([data-bucket])';
     const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
         || document.querySelector(`.hr-tab[data-tab="${tabSelector}"]`);
     tab?.classList.add('active');
@@ -900,9 +914,10 @@ function setHrNavTeamMode(target) {
     const nav = document.getElementById('hrNav');
     if (!nav) return;
     const isTeam = target === 'team';
-    nav.hidden = isTeam;
-    nav.setAttribute('aria-hidden', isTeam ? 'true' : 'false');
-    nav.classList.toggle('hr-nav--team-hidden', isTeam);
+    nav.hidden = false;
+    nav.setAttribute('aria-hidden', 'false');
+    nav.classList.toggle('hr-nav--team-hidden', false);
+    nav.dataset.teamWorkspace = isTeam ? 'true' : 'false';
 }
 
 function updatePeopleNavCounts(grouped = []) {
@@ -2165,7 +2180,24 @@ function filterAndRenderTeam() {
         filtered = filtered.filter(s => staffHasProfession(s, role));
     }
 
+    updateTeamFilterInfo(filtered.length, teamStaff.length);
     renderTeam(filtered);
+}
+
+function updateTeamFilterInfo(filteredCount = 0, totalCount = 0) {
+    const info = document.getElementById('teamFilterInfo');
+    if (!info) return;
+    const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
+    const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
+    if (!totalCount) {
+        info.textContent = 'Список порожній';
+        return;
+    }
+    if (query || filteredCount !== totalCount) {
+        info.textContent = `${filteredCount} з ${totalCount}`;
+        return;
+    }
+    info.textContent = activeOnly ? `${totalCount} активних` : `${totalCount} у базі`;
 }
 
 function renderTeam(staff) {
@@ -2185,8 +2217,9 @@ function renderTeam(staff) {
         pendingPeopleBucket = null;
     }
     if (!forcedBucket && !buckets.some(bucket => bucket.id === activePeopleBucket)) {
-        activePeopleBucket = null;
+        activePeopleBucket = firstVisiblePeopleBucketId();
     }
+    if (!activePeopleBucket) activePeopleBucket = firstVisiblePeopleBucketId();
     const totalCounts = new Map(buckets.map(bucket => [
         bucket.id,
         teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
@@ -2230,7 +2263,8 @@ function renderPeopleBucketState(message, state = 'empty') {
     }
     const grouped = buckets.map(bucket => ({ ...bucket, staff: [] }));
     updatePeopleNavCounts(grouped);
-    if (!buckets.some(bucket => bucket.id === activePeopleBucket)) activePeopleBucket = null;
+    if (!buckets.some(bucket => bucket.id === activePeopleBucket)) activePeopleBucket = firstVisiblePeopleBucketId();
+    if (!activePeopleBucket) activePeopleBucket = firstVisiblePeopleBucketId();
     grid.innerHTML = grouped.map(bucket => {
         const isOpen = bucket.id === activePeopleBucket;
         return `<section class="hr-people-bucket ${isOpen ? 'is-open' : ''}" data-people-bucket="${escapeHtml(bucket.id)}">
@@ -2252,7 +2286,7 @@ function renderPeopleBucketState(message, state = 'empty') {
 
 window.setPeopleBucket = function(bucketId) {
     const nextBucket = normalizeVisiblePeopleBucket(bucketId);
-    activePeopleBucket = activePeopleBucket === nextBucket ? null : nextBucket;
+    activePeopleBucket = nextBucket;
     const hashTarget = activePeopleBucket ? hashForHrTarget('team', activePeopleBucket) : 'team';
     history.replaceState(null, '', hashTarget === 'team' ? window.location.pathname + '#team' : `${window.location.pathname}#${hashTarget}`);
     filterAndRenderTeam();

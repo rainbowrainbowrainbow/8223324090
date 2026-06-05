@@ -6087,6 +6087,226 @@ body.dark-mode[data-page-group="hr"] .summary-chip,
     );
 }
 
+/* v0.73.53: HR Team uses the same segmented rhythm as HR Pulse without growing hr.html inline CSS. */
+.page-container .hr-nav.hr-nav--people {
+    position: relative;
+    top: auto;
+    z-index: 2;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 18px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--gray-900) 4%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+    overflow: visible;
+}
+
+.page-container .hr-nav.hr-nav--people + #tab-team.active {
+    position: relative;
+    z-index: 1;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-group {
+    padding: 0;
+    background: transparent;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-group-title {
+    display: none;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-items {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab {
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    padding: 13px 16px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--white) 42%, transparent);
+    color: var(--gray-600);
+    font-size: 14px;
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab:hover,
+.page-container .hr-nav.hr-nav--people .hr-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-800);
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab.active {
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 18%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    color: var(--primary);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--white) 50%, transparent);
+}
+
+.page-container .hr-team-controls {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 88%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+.page-container .hr-team-filter-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.page-container .hr-team-controls .hr-team-search {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 42%, transparent);
+}
+
+.page-container .hr-team-active-toggle {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--gray-400) 18%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 58%, transparent);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-active-toggle input {
+    accent-color: var(--primary);
+}
+
+.page-container .hr-team-filter-info {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-900) 5%, transparent);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.page-container .hr-people-bucket {
+    border: 1px solid color-mix(in srgb, var(--gray-400) 16%, transparent);
+    border-radius: 18px;
+    box-shadow: var(--shadow-md);
+}
+
+.page-container .hr-people-bucket-toggle:hover {
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+.page-container .hr-people-bucket.is-open .hr-people-bucket-toggle {
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 8%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 96%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 86%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-nav-group,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-nav-group {
+    background: transparent;
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab:hover,
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab:focus-visible,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab:hover,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab.active,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab.active {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 32%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode .page-container .hr-team-controls,
+[data-theme="dark"] .page-container .hr-team-controls {
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 88%, transparent),
+        color-mix(in srgb, var(--bg-primary, #1A1A2E) 82%, transparent)
+    );
+    border-color: color-mix(in srgb, var(--gray-400) 14%, transparent);
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .page-container .hr-team-active-toggle,
+body.dark-mode .page-container .hr-team-filter-info,
+[data-theme="dark"] .page-container .hr-team-active-toggle,
+[data-theme="dark"] .page-container .hr-team-filter-info {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
 @media (max-width: 768px) {
     .hr-kpi-actions {
         width: 100%;
@@ -6119,5 +6339,38 @@ body.dark-mode[data-page-group="hr"] .summary-chip,
 
     .staff-pulse-nav + .page-header h2 {
         font-size: 22px;
+    }
+
+    .page-container .hr-nav.hr-nav--people {
+        top: auto;
+        align-items: stretch;
+        padding: 6px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-nav-group {
+        flex-direction: row;
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-nav-items {
+        gap: 6px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-tab {
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .page-container .hr-team-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .page-container .hr-team-active-toggle,
+    .page-container .hr-team-filter-info {
+        width: 100%;
     }
 }

@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.57">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.57">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.57">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.57">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.57">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.57">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.57">
+    <link rel="stylesheet" href="css/base.css?v=0.73.58">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.58">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.58">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.58">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.58">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.58">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.58">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3651,6 +3651,22 @@
                         <tbody id="reportBody"></tbody>
                     </table>
                 </div>
+                <section class="hr-role-report" aria-label="Звіт по ролях, допусках і стажуваннях">
+                    <div class="hr-report-section-head">
+                        <div>
+                            <h3>Ролі, допуски, стажування</h3>
+                            <p>Окремий HR-зріз по поточних ролях команди без дублювання зарплатної логіки.</p>
+                        </div>
+                        <button type="button" class="hr-kpi-refresh" onclick="loadRoleAssignmentsReport()">Оновити</button>
+                    </div>
+                    <div id="roleReportSummary" class="hr-report-summary"></div>
+                    <div class="hr-report-table-wrap">
+                        <table class="hr-report-table hr-role-report-table">
+                            <thead id="roleReportHead"></thead>
+                            <tbody id="roleReportBody"></tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
 
             <!-- TAB 7: SALARY -->
@@ -3892,6 +3908,59 @@
                     <div class="form-group">
                         <label id="editPayrollSchemeAmountLabel">Ставка</label>
                         <input type="number" id="editPayrollSchemeAmount" min="0" step="1" value="0">
+                    </div>
+                    <div class="form-group is-wide hr-payroll-hybrid-config" id="editPayrollHybridConfig" hidden>
+                        <div class="hr-payroll-hybrid-head">
+                            <strong>Гібридна схема</strong>
+                            <span>База, бонуси, відсоток, утримання й аванс зберігаються в одній payroll-конфігурації.</span>
+                        </div>
+                        <div class="hr-payroll-hybrid-grid">
+                            <div>
+                                <label>Тип бази</label>
+                                <select id="editPayrollBaseKind">
+                                    <option value="hourly">Погодинна</option>
+                                    <option value="per_shift">За вихід</option>
+                                    <option value="monthly_fixed">Фікс</option>
+                                    <option value="manual">Ручна сума</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Кількість для preview</label>
+                                <input type="number" id="editPayrollBaseQuantity" min="0" step="0.5" placeholder="години / виходи">
+                            </div>
+                            <div>
+                                <label>Бонус</label>
+                                <input type="text" id="editPayrollBonusLabel" maxlength="80" placeholder="Премія">
+                            </div>
+                            <div>
+                                <label>Сума бонусу</label>
+                                <input type="number" id="editPayrollBonusAmount" min="0" step="1" placeholder="0">
+                            </div>
+                            <div>
+                                <label>Відсоток</label>
+                                <input type="number" id="editPayrollHybridPercentRate" min="0" step="0.1" placeholder="%">
+                            </div>
+                            <div>
+                                <label>База відсотка</label>
+                                <input type="number" id="editPayrollHybridPercentBase" min="0" step="1" placeholder="0">
+                            </div>
+                            <div>
+                                <label>Утримання</label>
+                                <input type="text" id="editPayrollDeductionLabel" maxlength="80" placeholder="Утримання">
+                            </div>
+                            <div>
+                                <label>Сума утримання</label>
+                                <input type="number" id="editPayrollDeductionAmount" min="0" step="1" placeholder="0">
+                            </div>
+                            <div>
+                                <label>Аванс</label>
+                                <input type="text" id="editPayrollAdvanceLabel" maxlength="80" placeholder="Аванс">
+                            </div>
+                            <div>
+                                <label>Сума авансу</label>
+                                <input type="number" id="editPayrollAdvanceAmount" min="0" step="1" placeholder="0">
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Назва</label>
@@ -4164,14 +4233,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.57"></script>
-    <script src="js/config.js?v=0.73.57"></script>
-    <script src="js/notification.js?v=0.73.57"></script>
-    <script src="js/api.js?v=0.73.57"></script>
-    <script src="js/auth.js?v=0.73.57"></script>
-    <script src="js/components/sidebar.js?v=0.73.57"></script>
+    <script src="js/ui.js?v=0.73.58"></script>
+    <script src="js/config.js?v=0.73.58"></script>
+    <script src="js/notification.js?v=0.73.58"></script>
+    <script src="js/api.js?v=0.73.58"></script>
+    <script src="js/auth.js?v=0.73.58"></script>
+    <script src="js/components/sidebar.js?v=0.73.58"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.57"></script>
-    <script src="js/alerts.js?v=0.73.57"></script>
+    <script src="js/hr-page.js?v=0.73.58"></script>
+    <script src="js/alerts.js?v=0.73.58"></script>
 </body>
 </html>

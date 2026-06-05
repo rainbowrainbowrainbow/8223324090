@@ -377,6 +377,8 @@ function staffResourceAssignmentMeta(row) {
         notes: row.notes,
         issued_by: row.issued_by,
         returned_by: row.returned_by,
+        warehouse_issue_movement_id: row.warehouse_issue_movement_id || null,
+        warehouse_return_movement_id: row.warehouse_return_movement_id || null,
         created_at: row.created_at,
         updated_at: row.updated_at
     };
@@ -412,6 +414,26 @@ function normalizePayrollSchemeType(value) {
     return PAYROLL_SCHEME_TYPES.includes(type) ? type : 'hourly';
 }
 
+function normalizePayrollBaseKind(value) {
+    const kind = cleanStaffText(value, 32) || 'hourly';
+    return ['hourly', 'per_shift', 'monthly_fixed', 'manual'].includes(kind) ? kind : 'hourly';
+}
+
+function positivePayrollNumber(value, fallback = 0) {
+    const number = numberOrNull(value);
+    if (number === null) return Math.max(0, Number(fallback || 0));
+    return Math.max(0, number);
+}
+
+function replaceSinglePayrollRule(sourceRules, body, amountKeys, labelKeys, defaultLabel) {
+    const hasAmount = amountKeys.some(key => body[key] !== undefined);
+    if (!hasAmount) return Array.isArray(sourceRules) ? sourceRules : [];
+    const amount = positivePayrollNumber(amountKeys.map(key => body[key]).find(value => value !== undefined), 0);
+    if (!amount) return [];
+    const label = cleanStaffText(labelKeys.map(key => body[key]).find(value => value !== undefined), 80) || defaultLabel;
+    return [{ kind: 'fixed', label, amount }];
+}
+
 function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
     const source = parseJsonObject(body.config || body.config_json);
     const amount = numberOrNull(body.amount ?? body.rate ?? body.value);
@@ -421,13 +443,54 @@ function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
     if (type === 'percent') return { ...source, percentRate: rate, sourceMetric: source.sourceMetric || 'manual' };
     if (type === 'manual') return { ...source, manualAmount: rate };
     if (type === 'hybrid') {
+        const sourceBase = parseJsonObject(source.base);
+        const baseRate = positivePayrollNumber(
+            body.base_rate ?? body.baseRate ?? body.amount ?? body.rate ?? sourceBase.rate ?? sourceBase.amount ?? source.baseRate,
+            fallbackRate
+        );
+        const baseQuantity = positivePayrollNumber(body.base_quantity ?? body.baseQuantity ?? sourceBase.quantity ?? source.baseQuantity, 0);
+        const percentRate = positivePayrollNumber(body.percent_rate ?? body.percentRate, 0);
+        const percentBase = positivePayrollNumber(body.percent_base ?? body.percentBase ?? body.base_amount ?? body.baseAmount, 0);
+        const percentRules = body.percent_rate !== undefined || body.percentRate !== undefined
+            ? (percentRate ? [{
+                kind: 'percent',
+                label: cleanStaffText(body.percent_label ?? body.percentLabel, 80) || 'Відсоток',
+                rate: percentRate,
+                baseAmount: percentBase,
+                sourceMetric: cleanStaffText(body.percent_source_metric ?? body.percentSourceMetric, 40) || 'manual'
+            }] : [])
+            : (Array.isArray(source.percentRules) ? source.percentRules : []);
         return {
             ...source,
             base: {
-                ...(source.base && typeof source.base === 'object' ? source.base : {}),
-                kind: source.base?.kind || 'hourly',
-                rate
-            }
+                ...sourceBase,
+                kind: normalizePayrollBaseKind(body.base_kind ?? body.baseKind ?? sourceBase.kind ?? source.baseKind),
+                rate: baseRate,
+                amount: baseRate,
+                ...(baseQuantity ? { quantity: baseQuantity } : {})
+            },
+            bonusRules: replaceSinglePayrollRule(
+                source.bonusRules,
+                body,
+                ['bonus_amount', 'bonusAmount'],
+                ['bonus_label', 'bonusLabel'],
+                'Премія'
+            ),
+            percentRules,
+            deductions: replaceSinglePayrollRule(
+                source.deductions,
+                body,
+                ['deduction_amount', 'deductionAmount'],
+                ['deduction_label', 'deductionLabel'],
+                'Утримання'
+            ),
+            advances: replaceSinglePayrollRule(
+                source.advances,
+                body,
+                ['advance_amount', 'advanceAmount'],
+                ['advance_label', 'advanceLabel'],
+                'Аванс'
+            )
         };
     }
     return { ...source, hourlyRate: rate };
@@ -2233,92 +2296,262 @@ router.get('/resource-options', requireHrManage, async (req, res) => {
 });
 
 router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const staff = await loadStaffRowOrNull(req.params.id);
-        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const resourceKind = normalizeStaffResourceKind(req.body.resource_kind || req.body.resourceKind);
         const warehouseStockId = resourceKind === 'warehouse_stock' ? numberOrNull(req.body.warehouse_stock_id || req.body.warehouseStockId) : null;
         const costumeId = resourceKind === 'costume' ? numberOrNull(req.body.costume_id || req.body.costumeId) : null;
-        let title = cleanStaffText(req.body.title, 160);
-        if (warehouseStockId) {
-            const stock = await pool.query('SELECT name FROM warehouse_stock WHERE id = $1', [warehouseStockId]);
-            if (!stock.rows[0]) return res.status(404).json({ success: false, error: 'Складську позицію не знайдено' });
-            if (!title) title = stock.rows[0].name || null;
-        }
-        if (costumeId) {
-            const costume = await pool.query('SELECT name, assigned_to FROM costumes WHERE id = $1', [costumeId]);
-            if (!costume.rows[0]) return res.status(404).json({ success: false, error: 'Костюм не знайдено' });
-            const assignedTo = Number(costume.rows[0]?.assigned_to || 0);
-            if (assignedTo && assignedTo !== Number(req.params.id)) {
-                return res.status(409).json({ success: false, error: 'Костюм вже закріплено за іншим співробітником' });
-            }
-            if (!title) title = costume.rows[0]?.name || null;
-        }
-        if (!title) return res.status(400).json({ success: false, error: 'Назва ресурсу обовʼязкова' });
-        const quantity = Math.max(0.01, numberOrNull(req.body.quantity) || 1);
+        const requestedQuantity = numberOrNull(req.body.quantity);
+        const quantity = requestedQuantity === null ? 1 : requestedQuantity;
         const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt) || todayKyiv();
         const dueReturnAt = cleanStaffDate(req.body.due_return_at || req.body.dueReturnAt);
         const notes = cleanStaffText(req.body.notes, 2000);
-        const result = await pool.query(
+        const actor = req.user?.username || null;
+        const businessContext = hrBusinessContextFromRequest(req);
+        let title = cleanStaffText(req.body.title, 160);
+
+        await client.query('BEGIN');
+        const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true });
+        if (!staff) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        }
+        if (resourceKind === 'warehouse_stock' && !warehouseStockId) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Виберіть складську позицію' });
+        }
+        if (resourceKind === 'costume' && !costumeId) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Виберіть костюм' });
+        }
+        if (quantity <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Кількість має бути більшою за нуль' });
+        }
+        if (resourceKind === 'warehouse_stock' && !Number.isInteger(quantity)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Кількість складського ресурсу має бути цілим числом' });
+        }
+
+        let warehouseStock = null;
+        if (warehouseStockId) {
+            const stock = await client.query(
+                `SELECT id, name, quantity, unit, location_id, business_context
+                 FROM warehouse_stock
+                 WHERE id = $1
+                   AND is_active = true
+                   AND COALESCE(business_context, $2) = $3
+                 FOR UPDATE`,
+                [warehouseStockId, DEFAULT_BUSINESS_CONTEXT, businessContext]
+            );
+            warehouseStock = stock.rows[0] || null;
+            if (!warehouseStock) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Складську позицію не знайдено' });
+            }
+            if (Number(warehouseStock.quantity || 0) < quantity) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: `Недостатньо на складі: доступно ${Number(warehouseStock.quantity || 0)} ${warehouseStock.unit || 'шт.'}` });
+            }
+            if (!title) title = warehouseStock.name || null;
+        }
+        let costume = null;
+        if (costumeId) {
+            const costumeResult = await client.query('SELECT name, assigned_to FROM costumes WHERE id = $1 FOR UPDATE', [costumeId]);
+            costume = costumeResult.rows[0] || null;
+            if (!costume) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Костюм не знайдено' });
+            }
+            const assignedTo = Number(costume.assigned_to || 0);
+            if (assignedTo && assignedTo !== Number(req.params.id)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: 'Костюм вже закріплено за іншим співробітником' });
+            }
+            if (!title) title = costume.name || null;
+        }
+        if (!title) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Назва ресурсу обовʼязкова' });
+        }
+        const result = await client.query(
             `INSERT INTO staff_resource_assignments
                 (staff_id, resource_kind, warehouse_stock_id, costume_id, title, quantity,
                  issued_at, due_return_at, notes, issued_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
              RETURNING *`,
-            [req.params.id, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, req.user?.username || null]
+            [req.params.id, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, actor]
         );
+        let assignment = result.rows[0];
+
+        if (warehouseStockId && warehouseStock) {
+            const reason = `HR-видача співробітнику: ${staff.name || `#${req.params.id}`}`;
+            await client.query(
+                `UPDATE warehouse_stock
+                 SET quantity = quantity - $1, updated_at = NOW(), updated_by = $2
+                 WHERE id = $3`,
+                [quantity, actor, warehouseStockId]
+            );
+            await client.query(
+                `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [warehouseStockId, -quantity, reason, actor, businessContext]
+            );
+            const movement = await client.query(
+                `INSERT INTO warehouse_stock_movements (
+                    warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                    quantity, reason, created_by, business_context
+                 )
+                 VALUES ($1, 'issue', $2, NULL, $3, $4, $5, $6)
+                 RETURNING id`,
+                [warehouseStockId, warehouseStock.location_id || null, quantity, reason, actor, businessContext]
+            );
+            const linked = await client.query(
+                `UPDATE staff_resource_assignments
+                 SET warehouse_issue_movement_id = $2, updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING *`,
+                [assignment.id, movement.rows[0].id]
+            );
+            assignment = linked.rows[0];
+            assignment.warehouse_stock_name = warehouseStock.name;
+        }
         if (costumeId) {
-            await pool.query(
+            await client.query(
                 `UPDATE costumes
                  SET assigned_to = $2, assigned_at = NOW()
                  WHERE id = $1 AND (assigned_to IS NULL OR assigned_to = $2)`,
                 [costumeId, req.params.id]
             );
+            assignment.costume_name = costume?.name || null;
         }
-        await auditLog('staff_resource_issue', parseInt(req.params.id), req.user?.username, {
-            assignment_id: result.rows[0].id,
+        await client.query('COMMIT');
+        await auditLog('staff_resource_issue', parseInt(req.params.id), actor, {
+            assignment_id: assignment.id,
             resource_kind: resourceKind,
+            warehouse_stock_id: warehouseStockId,
+            costume_id: costumeId,
+            warehouse_issue_movement_id: assignment.warehouse_issue_movement_id || null,
+            quantity,
             title,
             due_return_at: dueReturnAt
         }, req.ip);
-        res.json({ success: true, data: staffResourceAssignmentMeta(result.rows[0]) });
+        res.json({ success: true, data: staffResourceAssignmentMeta(assignment) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/staff/:id/resources error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
 router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
         if (!/^[0-9]+$/.test(String(req.params.assignmentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid assignment ID' });
         }
         const returnedAt = cleanStaffDate(req.body.returned_at || req.body.returnedAt) || todayKyiv();
-        const result = await pool.query(
+        const actor = req.user?.username || null;
+        await client.query('BEGIN');
+        const assignmentResult = await client.query(
+            `SELECT sra.*, ws.name AS warehouse_stock_name, ws.location_id AS warehouse_location_id,
+                    ws.business_context AS warehouse_business_context, c.name AS costume_name
+             FROM staff_resource_assignments sra
+             LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
+             LEFT JOIN costumes c ON c.id = sra.costume_id
+             WHERE sra.id = $1 AND sra.staff_id = $2
+             FOR UPDATE OF sra`,
+            [req.params.assignmentId, req.params.id]
+        );
+        const existing = assignmentResult.rows[0] || null;
+        if (!existing) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Ресурс не знайдено' });
+        }
+        if (existing.status !== 'issued') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Ресурс вже не має статусу “видано”' });
+        }
+
+        let returnMovementId = null;
+        if (existing.warehouse_stock_id) {
+            const stock = await client.query(
+                `SELECT id, location_id, business_context
+                 FROM warehouse_stock
+                 WHERE id = $1
+                 FOR UPDATE`,
+                [existing.warehouse_stock_id]
+            );
+            if (stock.rows[0]) {
+                const stockRow = stock.rows[0];
+                const businessContext = stockRow.business_context || DEFAULT_BUSINESS_CONTEXT;
+                const reason = `HR-повернення від співробітника #${req.params.id}`;
+                await client.query(
+                    `UPDATE warehouse_stock
+                     SET quantity = quantity + $1, updated_at = NOW(), updated_by = $2
+                     WHERE id = $3`,
+                    [existing.quantity, actor, existing.warehouse_stock_id]
+                );
+                await client.query(
+                    `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [existing.warehouse_stock_id, existing.quantity, reason, actor, businessContext]
+                );
+                const movement = await client.query(
+                    `INSERT INTO warehouse_stock_movements (
+                        warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                        quantity, reason, created_by, business_context
+                     )
+                     VALUES ($1, 'return', NULL, $2, $3, $4, $5, $6)
+                     RETURNING id`,
+                    [existing.warehouse_stock_id, stockRow.location_id || null, existing.quantity, reason, actor, businessContext]
+                );
+                returnMovementId = movement.rows[0].id;
+            }
+        }
+
+        const result = await client.query(
             `UPDATE staff_resource_assignments
-             SET status = 'returned', returned_at = $3, returned_by = $4, updated_at = NOW()
+             SET status = 'returned',
+                 returned_at = $3,
+                 returned_by = $4,
+                 warehouse_return_movement_id = $5,
+                 updated_at = NOW()
              WHERE id = $1 AND staff_id = $2
              RETURNING *`,
-            [req.params.assignmentId, req.params.id, returnedAt, req.user?.username || null]
+            [req.params.assignmentId, req.params.id, returnedAt, actor, returnMovementId]
         );
-        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Ресурс не знайдено' });
         if (result.rows[0].costume_id) {
-            await pool.query(
+            await client.query(
                 `UPDATE costumes
                  SET assigned_to = NULL, assigned_at = NULL
                  WHERE id = $1 AND assigned_to = $2`,
                 [result.rows[0].costume_id, req.params.id]
             );
         }
-        await auditLog('staff_resource_return', parseInt(req.params.id), req.user?.username, {
+        await client.query('COMMIT');
+        const assignment = {
+            ...result.rows[0],
+            warehouse_stock_name: existing.warehouse_stock_name || null,
+            costume_name: existing.costume_name || null
+        };
+        await auditLog('staff_resource_return', parseInt(req.params.id), actor, {
             assignment_id: result.rows[0].id,
             title: result.rows[0].title,
+            warehouse_stock_id: result.rows[0].warehouse_stock_id || null,
+            costume_id: result.rows[0].costume_id || null,
+            warehouse_return_movement_id: returnMovementId,
             returned_at: returnedAt
         }, req.ip);
-        res.json({ success: true, data: staffResourceAssignmentMeta(result.rows[0]) });
+        res.json({ success: true, data: staffResourceAssignmentMeta(assignment) });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/resources/:assignmentId/return error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -2380,6 +2613,71 @@ router.get('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
     } catch (err) {
         log.error('GET /hr/staff/:id/role-assignments error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження ролей' });
+    }
+});
+
+router.get('/role-assignments/report', async (req, res) => {
+    try {
+        const includeInactive = req.query.include_inactive === 'true';
+        const whereSql = includeInactive ? '' : 'WHERE COALESCE(s.is_active, true) = true';
+        const summary = await pool.query(
+            `SELECT
+                COUNT(DISTINCT s.id)::int AS staff_count,
+                COUNT(*)::int AS role_count,
+                COUNT(*) FILTER (WHERE sra.status = 'active')::int AS active_roles,
+                COUNT(*) FILTER (WHERE sra.status = 'suspended')::int AS suspended_roles,
+                COUNT(*) FILTER (WHERE sra.status = 'inactive')::int AS inactive_roles,
+                COUNT(*) FILTER (WHERE sra.admission_status = 'approved')::int AS approved_admissions,
+                COUNT(*) FILTER (WHERE sra.admission_status = 'pending')::int AS pending_admissions,
+                COUNT(*) FILTER (WHERE sra.admission_status = 'blocked')::int AS blocked_admissions,
+                COUNT(*) FILTER (WHERE sra.internship_status = 'in_progress')::int AS internships_in_progress,
+                COUNT(*) FILTER (WHERE sra.internship_status = 'completed')::int AS internships_completed
+             FROM staff_role_assignments sra
+             JOIN staff s ON s.id = sra.staff_id
+             ${whereSql}`
+        );
+        const rows = await pool.query(
+            `SELECT sra.id, sra.staff_id, s.name AS staff_name, s.position, s.department, s.is_active,
+                    sra.profession_key, COALESCE(hp.title, sra.profession_key) AS profession_title,
+                    sra.is_primary, sra.status, sra.admission_status, sra.internship_status,
+                    sra.updated_at
+             FROM staff_role_assignments sra
+             JOIN staff s ON s.id = sra.staff_id
+             LEFT JOIN hr_professions hp ON hp.key = sra.profession_key
+             ${whereSql}
+             ORDER BY
+                CASE
+                    WHEN sra.status = 'suspended' OR sra.admission_status = 'blocked' THEN 0
+                    WHEN sra.admission_status = 'pending' OR sra.internship_status = 'in_progress' THEN 1
+                    ELSE 2
+                END,
+                s.name,
+                sra.is_primary DESC,
+                sra.profession_key
+             LIMIT 500`
+        );
+        res.json({
+            success: true,
+            summary: summary.rows[0] || {},
+            data: rows.rows.map(row => ({
+                id: row.id,
+                staff_id: row.staff_id,
+                staff_name: row.staff_name,
+                position: row.position,
+                department: row.department,
+                is_active: row.is_active === true,
+                profession_key: normalizeProfessionKey(row.profession_key),
+                profession_title: row.profession_title || row.profession_key,
+                is_primary: row.is_primary === true,
+                status: row.status || 'active',
+                admission_status: row.admission_status || 'pending',
+                internship_status: row.internship_status || 'none',
+                updated_at: row.updated_at
+            }))
+        });
+    } catch (err) {
+        log.error('GET /hr/role-assignments/report error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження звіту по ролях' });
     }
 });
 

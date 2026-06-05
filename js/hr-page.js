@@ -830,7 +830,7 @@ function initNewTabs() {
         loadStaffResourceOptions(event.target?.value || 'custom');
     });
     document.getElementById('editResourceSourceId')?.addEventListener('change', syncResourceTitleFromOption);
-    document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollSchemeAmountLabel);
+    document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollAdvancedVisibility);
     const autoLayoutButton = document.getElementById('hrOrgAutoLayoutBtn');
     if (autoLayoutButton) autoLayoutButton.onclick = autoArrangeCompanyOrgChart;
     initCompanyOrgChart();
@@ -3579,6 +3579,67 @@ function updatePayrollSchemeAmountLabel() {
     if (label) label.textContent = payrollSchemeAmountLabel(type);
 }
 
+function updatePayrollAdvancedVisibility() {
+    updatePayrollSchemeAmountLabel();
+    const type = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
+    const hybridConfig = document.getElementById('editPayrollHybridConfig');
+    if (hybridConfig) hybridConfig.hidden = type !== 'hybrid';
+}
+
+function numberFromInput(id, fallback = 0) {
+    const value = Number(document.getElementById(id)?.value || fallback || 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function textFromInput(id, fallback = '') {
+    return (document.getElementById(id)?.value || fallback || '').trim();
+}
+
+function setInputValue(id, value = '') {
+    const el = document.getElementById(id);
+    if (el) el.value = value === null || value === undefined ? '' : String(value);
+}
+
+function setPayrollHybridForm(config = {}, fallbackRate = 0) {
+    const base = config.base || {};
+    const bonus = (Array.isArray(config.bonusRules) && config.bonusRules[0]) || {};
+    const percent = (Array.isArray(config.percentRules) && config.percentRules[0]) || {};
+    const deduction = (Array.isArray(config.deductions) && config.deductions[0]) || {};
+    const advance = (Array.isArray(config.advances) && config.advances[0]) || {};
+    setInputValue('editPayrollBaseKind', base.kind || config.baseKind || 'hourly');
+    setInputValue('editPayrollBaseQuantity', base.quantity ?? config.baseQuantity ?? '');
+    setInputValue('editPayrollHybridPercentRate', percent.rate ?? percent.percentRate ?? '');
+    setInputValue('editPayrollHybridPercentBase', percent.baseAmount ?? percent.percentBase ?? '');
+    setInputValue('editPayrollBonusLabel', bonus.label || 'Премія');
+    setInputValue('editPayrollBonusAmount', bonus.amount ?? config.bonusAmount ?? '');
+    setInputValue('editPayrollDeductionLabel', deduction.label || 'Утримання');
+    setInputValue('editPayrollDeductionAmount', deduction.amount ?? config.deductionAmount ?? '');
+    setInputValue('editPayrollAdvanceLabel', advance.label || 'Аванс');
+    setInputValue('editPayrollAdvanceAmount', advance.amount ?? config.advanceAmount ?? '');
+    const amount = document.getElementById('editPayrollSchemeAmount');
+    if (amount && amount.value === '') amount.value = String(base.rate ?? base.amount ?? config.baseRate ?? fallbackRate ?? 0);
+}
+
+function collectPayrollSchemeConfigFromForm(type, amount) {
+    if (type !== 'hybrid') return {};
+    const bonusAmount = numberFromInput('editPayrollBonusAmount');
+    const percentRate = numberFromInput('editPayrollHybridPercentRate');
+    const deductionAmount = numberFromInput('editPayrollDeductionAmount');
+    const advanceAmount = numberFromInput('editPayrollAdvanceAmount');
+    return {
+        base: {
+            kind: document.getElementById('editPayrollBaseKind')?.value || 'hourly',
+            rate: amount,
+            amount,
+            quantity: numberFromInput('editPayrollBaseQuantity')
+        },
+        bonusRules: bonusAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollBonusLabel', 'Премія'), amount: bonusAmount }] : [],
+        percentRules: percentRate ? [{ kind: 'percent', label: 'Відсоток', rate: percentRate, baseAmount: numberFromInput('editPayrollHybridPercentBase') }] : [],
+        deductions: deductionAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollDeductionLabel', 'Утримання'), amount: deductionAmount }] : [],
+        advances: advanceAmount ? [{ kind: 'fixed', label: textFromInput('editPayrollAdvanceLabel', 'Аванс'), amount: advanceAmount }] : []
+    };
+}
+
 function renderStaffRoleAssignments(rows = []) {
     if (!rows.length) return renderStaffFoundationEmpty('Ролі ще не синхронізовані.');
     const optionHtml = (labels, selected) => Object.entries(labels).map(([value, label]) =>
@@ -3718,10 +3779,12 @@ function renderStaffResources(rows = []) {
         const status = STAFF_RESOURCE_STATUS_LABELS[item.status] || item.status || '';
         const due = item.due_return_at ? ` · повернути до ${formatStaffDateValue(item.due_return_at)}` : '';
         const note = item.notes ? ` · ${item.notes}` : '';
+        const movementId = item.status === 'returned' ? item.warehouse_return_movement_id : item.warehouse_issue_movement_id;
+        const movement = movementId ? ` · рух складу #${movementId}` : '';
         return `<article class="hr-staff-foundation-item ${item.status === 'issued' ? staffDateTone(item.due_return_at) : ''}">
             <div>
                 <b>${escapeHtml(item.title || 'Ресурс')}</b>
-                <span>${escapeHtml(kind)} · ${escapeHtml(status)} · ${escapeHtml(item.quantity || 1)} шт.${escapeHtml(due)}${escapeHtml(note)}</span>
+                <span>${escapeHtml(kind)} · ${escapeHtml(status)} · ${escapeHtml(item.quantity || 1)} шт.${escapeHtml(due)}${escapeHtml(movement)}${escapeHtml(note)}</span>
             </div>
             <div class="hr-staff-foundation-actions">
                 ${item.status === 'issued' ? `<button type="button" class="btn-secondary" onclick="returnStaffResource(${Number(item.id)})">Повернуто</button>` : ''}
@@ -3835,8 +3898,9 @@ function setPayrollSchemeForm(payload = {}) {
     const toInput = document.getElementById('editPayrollSchemeEffectiveTo');
     const summary = document.getElementById('editPayrollSchemeSummary');
     if (typeSelect) typeSelect.value = type;
-    updatePayrollSchemeAmountLabel();
+    updatePayrollAdvancedVisibility();
     if (amountInput) amountInput.value = String(payrollSchemeAmount(scheme || { scheme_type: type, config: {} }, fallbackRate) || 0);
+    setPayrollHybridForm(scheme?.config || {}, fallbackRate);
     if (titleInput) titleInput.value = scheme?.title || PAYROLL_SCHEME_LABELS[type] || '';
     if (fromInput) fromInput.value = staffDateInputValue(scheme?.effective_from || scheme?.effectiveFrom);
     if (toInput) toInput.value = staffDateInputValue(scheme?.effective_to || scheme?.effectiveTo);
@@ -3866,11 +3930,13 @@ async function saveStaffPayrollScheme() {
     if (!staffId) return;
     const schemeType = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
     const amount = Number(document.getElementById('editPayrollSchemeAmount')?.value || 0);
+    const config = collectPayrollSchemeConfigFromForm(schemeType, amount);
     const data = await hrFetch(`/staff/${staffId}/payroll-scheme`, {
         method: 'PUT',
         body: {
             scheme_type: schemeType,
             amount,
+            config,
             title: document.getElementById('editPayrollSchemeTitle')?.value || PAYROLL_SCHEME_LABELS[schemeType] || schemeType,
             effective_from: document.getElementById('editPayrollSchemeEffectiveFrom')?.value || null,
             effective_to: document.getElementById('editPayrollSchemeEffectiveTo')?.value || null
@@ -4025,6 +4091,7 @@ async function issueStaffResource() {
     const quantity = document.getElementById('editResourceQuantity');
     if (quantity) quantity.value = '1';
     showNotification('Ресурс видано', 'success');
+    if (resourceKind !== 'custom') loadStaffResourceOptions(resourceKind);
     loadStaffFoundation(staffId);
 }
 
@@ -4037,6 +4104,7 @@ async function returnStaffResource(assignmentId) {
         return;
     }
     showNotification('Ресурс позначено як повернутий', 'success');
+    loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom');
     loadStaffFoundation(staffId);
 }
 
@@ -4107,9 +4175,10 @@ async function openStaffEdit(staffId) {
     updateResourcePickerVisibility();
     const payrollType = document.getElementById('editPayrollSchemeType');
     if (payrollType) payrollType.value = 'hourly';
-    updatePayrollSchemeAmountLabel();
+    updatePayrollAdvancedVisibility();
     const payrollAmount = document.getElementById('editPayrollSchemeAmount');
     if (payrollAmount) payrollAmount.value = String(s.hourly_rate || 0);
+    setPayrollHybridForm({}, s.hourly_rate || 0);
     const payrollTitle = document.getElementById('editPayrollSchemeTitle');
     if (payrollTitle) payrollTitle.value = '';
     ['editPayrollSchemeEffectiveFrom', 'editPayrollSchemeEffectiveTo'].forEach(id => {
@@ -5473,9 +5542,13 @@ async function loadReports() {
 
     const month = sel.value;
     const data = await hrFetch(`/report/monthly?month=${month}`);
-    if (!data || !data.success) return;
+    if (!data || !data.success) {
+        await loadRoleAssignmentsReport();
+        return;
+    }
 
     renderReports(data);
+    await loadRoleAssignmentsReport();
 }
 
 function renderReports(data) {
@@ -5522,6 +5595,53 @@ function renderReports(data) {
         <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>
         <td class="num">${r.task_completion_rate || 0}%</td>
     </tr>`).join('');
+}
+
+function roleReportPillClass(value = '') {
+    if (['active', 'approved', 'completed'].includes(value)) return 'good';
+    if (['pending', 'in_progress'].includes(value)) return 'warn';
+    if (['suspended', 'inactive', 'blocked'].includes(value)) return 'bad';
+    return 'muted';
+}
+
+async function loadRoleAssignmentsReport() {
+    const summaryRoot = document.getElementById('roleReportSummary');
+    const head = document.getElementById('roleReportHead');
+    const body = document.getElementById('roleReportBody');
+    if (!summaryRoot || !head || !body) return;
+    summaryRoot.innerHTML = '<div class="hr-report-stat"><div class="stat-value">...</div><div class="stat-label">Ролі</div></div>';
+    const data = await hrFetch('/role-assignments/report').catch(() => null);
+    if (!data?.success) {
+        summaryRoot.innerHTML = `<div class="hr-report-stat"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(data?.error || 'Не вдалося завантажити ролі')}</div></div>`;
+        head.innerHTML = '';
+        body.innerHTML = '';
+        return;
+    }
+    const s = data.summary || {};
+    const rows = data.data || [];
+    summaryRoot.innerHTML = `
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.staff_count || 0)}</div><div class="stat-label">Працівників</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.role_count || 0)}</div><div class="stat-label">Ролей</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.pending_admissions || 0)}</div><div class="stat-label">Очікують допуск</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.blocked_admissions || 0)}</div><div class="stat-label">Заблоковані</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.internships_in_progress || 0)}</div><div class="stat-label">Стажування</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${Number(s.suspended_roles || 0)}</div><div class="stat-label">Призупинені</div></div>
+    `;
+    head.innerHTML = `<tr>
+        <th>Працівник</th><th>Роль</th><th>Тип</th><th>Статус</th><th>Допуск</th><th>Стажування</th></tr>`;
+    body.innerHTML = rows.length ? rows.map(row => `
+        <tr>
+            <td>
+                <b>${escapeHtml(row.staff_name || 'Без імені')}</b>
+                <span class="hr-role-report-sub">${escapeHtml(row.position || row.department || '')}</span>
+            </td>
+            <td>${escapeHtml(row.profession_title || professionTitle(row.profession_key))}</td>
+            <td>${row.is_primary ? 'Основна' : 'Додаткова'}</td>
+            <td><span class="hr-role-pill ${roleReportPillClass(row.status)}">${escapeHtml(STAFF_ROLE_STATUS_LABELS[row.status] || row.status || '—')}</span></td>
+            <td><span class="hr-role-pill ${roleReportPillClass(row.admission_status)}">${escapeHtml(STAFF_ROLE_ADMISSION_LABELS[row.admission_status] || row.admission_status || '—')}</span></td>
+            <td><span class="hr-role-pill ${roleReportPillClass(row.internship_status)}">${escapeHtml(STAFF_ROLE_INTERNSHIP_LABELS[row.internship_status] || row.internship_status || '—')}</span></td>
+        </tr>
+    `).join('') : `<tr><td colspan="6">Рольові призначення ще не синхронізовані.</td></tr>`;
 }
 
 async function exportCSV() {

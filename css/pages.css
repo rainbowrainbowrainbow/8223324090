@@ -5865,6 +5865,98 @@ body.dark-mode .hr-kpi-refresh:focus-visible {
     color: var(--white);
 }
 
+.hr-role-report {
+    margin-top: 18px;
+}
+
+.hr-report-section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 4px 0 12px;
+}
+
+.hr-report-section-head h3 {
+    margin: 0;
+    color: var(--gray-800);
+    font-size: 18px;
+    font-weight: 950;
+}
+
+.hr-report-section-head p {
+    margin: 4px 0 0;
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.hr-role-report-sub {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.hr-role-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 11px;
+    font-weight: 950;
+    white-space: nowrap;
+}
+
+.hr-role-pill.good {
+    background: rgba(16,185,129,0.14);
+    color: #047857;
+}
+
+.hr-role-pill.warn {
+    background: rgba(245,158,11,0.16);
+    color: #B45309;
+}
+
+.hr-role-pill.bad {
+    background: rgba(239,68,68,0.14);
+    color: #B91C1C;
+}
+
+body.dark-mode .hr-report-section-head h3 {
+    color: #F8FAFC;
+}
+
+body.dark-mode .hr-report-section-head p,
+body.dark-mode .hr-role-report-sub {
+    color: #94A3B8;
+}
+
+body.dark-mode .hr-role-pill {
+    background: rgba(148,163,184,0.12);
+    color: #CBD5E1;
+}
+
+body.dark-mode .hr-role-pill.good {
+    background: rgba(16,185,129,0.18);
+    color: #6EE7B7;
+}
+
+body.dark-mode .hr-role-pill.warn {
+    background: rgba(245,158,11,0.18);
+    color: #FCD34D;
+}
+
+body.dark-mode .hr-role-pill.bad {
+    background: rgba(239,68,68,0.18);
+    color: #FCA5A5;
+}
+
 /* v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm. */
 .staff-pulse-nav {
     position: relative;
@@ -6467,6 +6559,15 @@ body.dark-mode .page-container .hr-team-filter-info,
         width: 100%;
     }
 
+    .hr-report-section-head {
+        display: grid;
+        align-items: stretch;
+    }
+
+    .hr-report-section-head .hr-kpi-refresh {
+        width: 100%;
+    }
+
     .staff-pulse-nav {
         padding: 6px;
         margin-bottom: 20px;
@@ -6660,6 +6761,65 @@ body.dark-mode .page-container .hr-team-filter-info,
     line-height: 1.4;
 }
 
+.hr-payroll-hybrid-config {
+    border: 1px solid rgba(20,184,166,0.20);
+    border-radius: 10px;
+    background: rgba(20,184,166,0.04);
+    padding: 10px;
+}
+
+.hr-payroll-hybrid-config[hidden] {
+    display: none;
+}
+
+.hr-payroll-hybrid-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.hr-payroll-hybrid-head strong {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.hr-payroll-hybrid-head span {
+    color: var(--gray-500);
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+}
+
+.hr-payroll-hybrid-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.hr-payroll-hybrid-grid label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.hr-payroll-hybrid-grid input,
+.hr-payroll-hybrid-grid select {
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 9px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 800;
+}
+
 .hr-resource-source-group[hidden],
 .hr-resource-title-group[hidden] {
     display: none;
@@ -6718,6 +6878,28 @@ body.dark-mode .hr-payroll-summary {
     color: #CBD5E1;
 }
 
+body.dark-mode .hr-payroll-hybrid-config {
+    background: rgba(20,184,166,0.08);
+    border-color: rgba(20,184,166,0.20);
+}
+
+body.dark-mode .hr-payroll-hybrid-head strong,
+body.dark-mode .hr-payroll-hybrid-grid input,
+body.dark-mode .hr-payroll-hybrid-grid select {
+    color: #F8FAFC;
+}
+
+body.dark-mode .hr-payroll-hybrid-head span,
+body.dark-mode .hr-payroll-hybrid-grid label {
+    color: #94A3B8;
+}
+
+body.dark-mode .hr-payroll-hybrid-grid input,
+body.dark-mode .hr-payroll-hybrid-grid select {
+    background: rgba(15,23,42,0.55);
+    border-color: rgba(148,163,184,0.18);
+}
+
 body.dark-mode .hr-staff-foundation-empty {
     border-color: rgba(148,163,184,0.22);
 }
@@ -6734,6 +6916,18 @@ body.dark-mode .hr-staff-foundation-danger {
 
 @media (max-width: 768px) {
     .hr-staff-foundation-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-payroll-hybrid-head {
+        display: grid;
+    }
+
+    .hr-payroll-hybrid-head span {
+        text-align: left;
+    }
+
+    .hr-payroll-hybrid-grid {
         grid-template-columns: 1fr;
     }
 

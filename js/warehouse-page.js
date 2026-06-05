@@ -28,6 +28,13 @@ const OWNER_LABELS = {
     shared: 'Спільне'
 };
 
+const WAREHOUSE_MOVEMENT_LABELS = {
+    issue: 'Видача',
+    return: 'Повернення',
+    transfer: 'Переміщення',
+    manual_adjustment: 'Корекція'
+};
+
 function getOwnerLabel(owner) {
     return OWNER_LABELS[owner] || owner || OWNER_LABELS.park;
 }
@@ -886,8 +893,9 @@ async function openMovementModal(itemId) {
     } else {
         list.innerHTML = rows.map(m => {
             const time = new Date(m.created_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            const movementType = WAREHOUSE_MOVEMENT_LABELS[m.movement_type] || m.movement_type;
             return `<div class="wh-history-item">
-                <span class="wh-history-change plus">${escapeHtml(m.movement_type)}</span>
+                <span class="wh-history-change plus">${escapeHtml(movementType)}</span>
                 <span class="wh-history-name">${escapeHtml(m.from_location_name || '—')} → ${escapeHtml(m.to_location_name || '—')}</span>
                 <span class="wh-history-reason">${Number(m.quantity || 0)} · ${escapeHtml(m.reason || '')}</span>
                 <span class="wh-history-meta">${escapeHtml(m.created_by || '')} · ${time}</span>

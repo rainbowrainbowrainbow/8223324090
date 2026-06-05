@@ -30,6 +30,7 @@ const StaffState = {
     showHours: false,
     showLoadView: false,
     showLinkView: false,    // v39.1: account linking overlay
+    canManage: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
     allUsers: [],           // v39.1: all users for linking
@@ -586,6 +587,10 @@ function renderSchedule() {
 
     // Cell click handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
+        if (!StaffState.canManage) {
+            cell.setAttribute('aria-readonly', 'true');
+            return;
+        }
         cell.addEventListener('click', () => {
             openEditModal(parseInt(cell.dataset.staff), cell.dataset.date);
         });
@@ -1667,6 +1672,7 @@ async function initPage() {
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
     const canManage = MANAGE_ROLES.includes(user.role);
+    StaffState.canManage = canManage;
     const ADMIN_ROLES = ['creator', 'director'];
     const isAdmin = ADMIN_ROLES.includes(user.role);
     const addBtn = document.getElementById('addStaffBtn');

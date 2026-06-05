@@ -80,8 +80,8 @@ const HR_NAV_GROUPS = [
     },
     {
         id: 'other',
-        label: 'Інше',
-        note: 'тимчасово',
+        label: 'Тимчасове',
+        note: 'нерозподілені HR-розділи',
         items: [
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'vacancies', label: 'Вакансії' },
@@ -92,8 +92,10 @@ const HR_NAV_GROUPS = [
 
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
 const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
+const HR_OTHER_WORKSPACE_TABS = new Set(['onboarding', 'vacancies']);
 
 const HR_TAB_ALIASES = {
+    other: { tab: 'onboarding' },
     payroll: { tab: 'salary' },
     workers: { tab: 'team', bucket: 'workers' },
     rating: { tab: 'kpi' },
@@ -749,9 +751,14 @@ function isHrPayrollWorkspaceTab(target) {
     return HR_PAYROLL_WORKSPACE_TABS.has(target);
 }
 
+function isHrOtherWorkspaceTab(target) {
+    return HR_OTHER_WORKSPACE_TABS.has(target);
+}
+
 function hrWorkspaceGroupId(target) {
     if (isHrStructureWorkspaceTab(target)) return 'structure';
     if (isHrPayrollWorkspaceTab(target)) return 'payroll';
+    if (isHrOtherWorkspaceTab(target)) return 'other';
     return '';
 }
 
@@ -760,6 +767,7 @@ function updateHrPageTitle(target) {
     if (!title) return;
     if (isHrStructureWorkspaceTab(target)) title.textContent = 'Структура';
     else if (isHrPayrollWorkspaceTab(target)) title.textContent = 'ЗП та KPI';
+    else if (isHrOtherWorkspaceTab(target)) title.textContent = 'Тимчасове';
     else title.textContent = 'HR';
 }
 
@@ -789,9 +797,9 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     const workspaceGroupId = hrWorkspaceGroupId(target);
     const workspaceMode = Boolean(workspaceGroupId);
     nav.classList.toggle('hr-nav--structure-only', workspaceMode);
-    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : 'HR navigation');
+    nav.setAttribute('aria-label', workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : 'HR navigation');
     const groups = HR_NAV_GROUPS
-        .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id !== 'payroll')
+        .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
             ...group,
             items: group.items.filter(isHrNavItemVisible)

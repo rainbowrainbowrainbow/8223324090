@@ -22,14 +22,14 @@ const Sidebar = (() => {
         businessSwitching: false
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
-    const EXTRA_MENU_HREFS = ['/dashboard', '/afisha', '/', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
-    const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v2';
+    const EXTRA_MENU_HREFS = ['/', '/staff', '/chat', '/certificates'];
+    const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v3';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
     const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
-    const UTILITY_RAIL_MAX_FAVORITES = 2;
+    const UTILITY_RAIL_MAX_FAVORITES = 4;
     const UTILITY_RAIL_MAX_GROUP_LINKS = 5;
     const RAIL_SHORT_LABEL_BY_HREF = new Map([
         ['/dashboard', 'Даш'],
@@ -49,6 +49,7 @@ const Sidebar = (() => {
         ['/hr#team', 'Команда'],
         ['/hr#structure', 'Структ'],
         ['/hr#payroll', 'ЗП/KPI'],
+        ['/hr#other', 'Інше'],
         ['/training', 'Навч'],
         ['/checkin', 'Check'],
         ['/programs', 'Прод'],
@@ -124,6 +125,7 @@ const Sidebar = (() => {
         { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
+        { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'today', quickAccessOnly: true },
 
         { type: 'group', key: 'sales', label: 'Продажі', icon: '🔥', priority: 2, defaultOpen: true },
         { href: '/customers',    icon: '👥', label: 'Клієнти',       access: 'customers',      group: 'sales' },
@@ -140,7 +142,7 @@ const Sidebar = (() => {
         { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
         { href: '/hr#payroll',   icon: '📊', label: 'ЗП та KPI',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'зарплата, KPI', activeHashes: ['payroll', 'salary', 'kpi'] },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
-        { href: '/hr#team',      icon: '🤝', label: 'HR',            access: 'hr_page',        group: 'team', pageAccess: '/hr', navLegacy: true, noActive: true, description: 'службовий розділ' },
+        { href: '/hr#other',     icon: '🧭', label: 'Тимчасове',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'onboarding, вакансії, костюми', activeHashes: ['other', 'onboarding', 'vacancies', 'costumes'] },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
@@ -207,7 +209,7 @@ const Sidebar = (() => {
         demo:           _MGR_UP,
         settings:       ['creator','director'],
         guardian_ops:   ['creator','director','admin','security'],
-        schedule_daily: [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
+        schedule_daily: _ALL_STAFF,
         customers:      [..._ADMIN_UP, 'reception'],
         warehouse:      [..._MGR_UP, 'admin'],
         training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
@@ -644,8 +646,10 @@ const Sidebar = (() => {
     }
 
     function _getExtraMenuItems(role, includeHidden = false) {
-        const selected = new Set(_getSelectedExtraMenuHrefs(role));
-        return _getSelectableExtraMenuItems(role).filter(item => selected.has(item.href) && (includeHidden || !item.hidden));
+        const byHref = new Map(_getSelectableExtraMenuItems(role).map(item => [item.href, item]));
+        return _getSelectedExtraMenuHrefs(role)
+            .map(href => byHref.get(href))
+            .filter(item => item && (includeHidden || !item.hidden));
     }
 
     function _railKeyForItem(item) {

@@ -608,7 +608,7 @@ const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
 const _LEADS_ACCESS = [..._MANAGER_UP, 'marketer'];
 const _ART_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer'];
 const _PROGRAMS_ACCESS = [..._MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
-const _STAFF_PAGE_ACCESS = [..._MANAGER_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'];
+const _STAFF_PAGE_ACCESS = _ALL_STAFF;
 const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
 const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
@@ -676,123 +676,124 @@ const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
 const ROLE_PREVIEW_SESSION_KEY = 'testRole';
 const ROLE_WORKING_STORAGE_KEY = 'pzp_working_role';
 const ROLE_WORKING_OWNER_KEY = 'pzp_working_role_owner';
+const ROLE_QUICK_ACCESS_BASE = ['/', '/staff', '/chat', '/certificates'];
 
 const ROLE_SHELL_DEFAULT = {
     startPage: '/dashboard',
     dashboardPreset: '_default',
-    quickAccess: ['/dashboard', '/afisha', '/tasks', '/chat', '/certificates/new']
+    quickAccess: ROLE_QUICK_ACCESS_BASE
 };
 
 const ROLE_SHELL_CONFIG = {
     creator: {
         startPage: '/dashboard',
         dashboardPreset: 'creator',
-        quickAccess: ['/dashboard', '/', '/certificates/new', '/center', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     director: {
         startPage: '/dashboard',
         dashboardPreset: 'director',
-        quickAccess: ['/dashboard', '/certificates/new', '/center', '/reports', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     vice_director: {
         startPage: '/dashboard',
         dashboardPreset: 'vice_director',
-        quickAccess: ['/dashboard', '/certificates/new', '/', '/center', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     senior_manager: {
         startPage: '/dashboard',
         dashboardPreset: 'senior_manager',
-        quickAccess: ['/dashboard', '/certificates/new', '/', '/sales-funnel', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     manager: {
         startPage: '/dashboard',
         dashboardPreset: 'manager',
-        quickAccess: ['/dashboard', '/certificates/new', '/', '/sales-funnel', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     admin: {
         startPage: '/',
         dashboardPreset: 'admin',
-        quickAccess: ['/', '/tasks', '/staff', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     reception: {
         startPage: '/',
         dashboardPreset: 'reception',
-        quickAccess: ['/', '/tasks', '/customers', '/certificates/new', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     animator: {
         startPage: '/tasks',
         dashboardPreset: 'animator',
-        quickAccess: ['/afisha', '/', '/tasks', '/chat', '/training']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     instructor: {
         startPage: '/tasks',
         dashboardPreset: 'instructor',
-        quickAccess: ['/tasks', '/', '/training', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     senior_instructor: {
         startPage: '/tasks',
         dashboardPreset: 'senior_instructor',
-        quickAccess: ['/tasks', '/', '/training', '/staff', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     art_director: {
         startPage: '/art',
         dashboardPreset: 'art_director',
-        quickAccess: ['/dashboard', '/art', '/designs', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     marketer: {
         startPage: '/sales-funnel',
         dashboardPreset: 'marketer',
-        quickAccess: ['/dashboard', '/sales-funnel', '/content', '/afisha', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     accountant: {
         startPage: '/finance',
         dashboardPreset: 'accountant',
-        quickAccess: ['/dashboard', '/finance', '/analytics', '/reports', '/tasks']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     hr: {
         startPage: '/hr',
         dashboardPreset: 'hr',
-        quickAccess: ['/dashboard', '/hr', '/staff', '/training', '/tasks']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     security: {
         startPage: '/guardian-ops',
         dashboardPreset: 'security',
-        quickAccess: ['/guardian-ops', '/staff', '/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     head_chef: {
         startPage: '/tasks',
         dashboardPreset: 'head_chef',
-        quickAccess: ['/tasks', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     cook: {
         startPage: '/tasks',
         dashboardPreset: 'cook',
-        quickAccess: ['/tasks', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     head_pastry: {
         startPage: '/tasks',
         dashboardPreset: 'head_pastry',
-        quickAccess: ['/tasks', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     pastry_chef: {
         startPage: '/tasks',
         dashboardPreset: 'pastry_chef',
-        quickAccess: ['/tasks', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     barista: {
         startPage: '/tasks',
         dashboardPreset: 'barista',
-        quickAccess: ['/tasks', '/', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     cleaning: {
         startPage: '/tasks',
         dashboardPreset: 'cleaning',
-        quickAccess: ['/tasks', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     },
     maintenance: {
         startPage: '/tasks',
         dashboardPreset: 'maintenance',
-        quickAccess: ['/tasks', '/warehouse', '/chat']
+        quickAccess: ROLE_QUICK_ACCESS_BASE
     }
 };
 

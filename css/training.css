@@ -400,6 +400,24 @@
     font-weight: 900;
 }
 
+.training-onboarding-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin: -2px 0 12px;
+}
+
+.training-onboarding-meta span {
+    border: 1px solid rgba(103, 232, 249, 0.16);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.30);
+    color: var(--training-muted);
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
 .training-onboarding-meter {
     height: 8px;
     overflow: hidden;
@@ -532,6 +550,11 @@ body:not(.dark-mode) .role-pill.active,
 body:not(.dark-mode) .role-pill:hover {
     color: #0f766e !important;
     background: rgba(20, 184, 166, 0.12) !important;
+}
+
+body:not(.dark-mode) .training-onboarding-meta span {
+    background: rgba(20, 184, 166, 0.08);
+    border-color: rgba(13, 139, 112, 0.18);
 }
 
 body:not(.dark-mode) .leaderboard-table td {

@@ -6487,6 +6487,106 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     );
 }
 
+/* v0.73.61: HR Team onboarding owner summary lives in shared CSS, not inline HR debt. */
+.page-container .hr-team-onboarding-assignment {
+    width: 100%;
+    display: grid;
+    gap: 7px;
+    padding: 9px 10px;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.page-container .hr-team-onboarding-assignment-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head b {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head span {
+    min-width: 0;
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-onboarding-assignment-head button {
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-onboarding-assignment-head button:hover {
+    border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.page-container .hr-team-onboarding-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.page-container .hr-team-onboarding-meta span {
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--gray-400) 18%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-400) 8%, transparent);
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 900;
+}
+
+.page-container .hr-team-onboarding-meter {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-400) 20%, transparent);
+}
+
+.page-container .hr-team-onboarding-meter i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), var(--primary-light, var(--primary)));
+    transition: width 0.25s ease;
+}
+
+.page-container .hr-team-onboarding-assignment.is-ok .hr-team-onboarding-meter i {
+    background: var(--success);
+}
+
+.page-container .hr-team-onboarding-assignment.is-empty {
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    background: color-mix(in srgb, var(--gray-400) 6%, transparent);
+}
+
 body.dark-mode .page-container .hr-nav.hr-nav--people,
 [data-theme="dark"] .page-container .hr-nav.hr-nav--people {
     border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
@@ -6547,6 +6647,42 @@ body.dark-mode .page-container .hr-team-filter-info,
     background: color-mix(in srgb, var(--white) 5%, transparent);
     border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
     color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment {
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 20%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment.is-empty,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment.is-empty {
+    background: color-mix(in srgb, var(--white) 4%, transparent);
+    border-color: color-mix(in srgb, var(--white) 8%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head b,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head b {
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head span,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head span {
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-meta span,
+[data-theme="dark"] .page-container .hr-team-onboarding-meta span {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    border-color: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--gray-400);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head button {
+    color: var(--primary-light, var(--primary));
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
 }
 
 @media (max-width: 768px) {

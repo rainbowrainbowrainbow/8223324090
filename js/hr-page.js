@@ -597,6 +597,141 @@ function renderStaffTrainingReadiness(staff = {}) {
     </button>`;
 }
 
+function onboardingStatusLabel(status) {
+    const labels = {
+        not_started: 'не стартував',
+        in_progress: 'у процесі',
+        blocked: 'блок',
+        ready: 'готовий',
+        completed: 'завершено'
+    };
+    return labels[status] || labels.in_progress;
+}
+
+function staffOnboardingAssignment(staff = {}) {
+    const assignment = staff.onboarding_assignment || staff.onboardingAssignment || null;
+    if (!assignment || typeof assignment !== 'object') return null;
+    const taskSummary = assignment.task_summary || assignment.taskSummary || {};
+    const total = Number(assignment.total_items || assignment.totalItems || 0);
+    const completed = Number(assignment.completed_items || assignment.completedItems || 0);
+    const percent = total > 0
+        ? Math.max(0, Math.min(100, Number(assignment.percent || Math.round((completed / total) * 100))))
+        : 0;
+    return {
+        ...assignment,
+        responsibleUserId: Number(assignment.responsible_user_id || assignment.responsibleUserId || 0) || null,
+        responsibleName: assignment.responsible_name
+            || assignment.responsibleName
+            || assignment.responsible?.name
+            || assignment.responsible_username
+            || assignment.responsible?.username
+            || null,
+        trainingStatus: assignment.training_status || assignment.trainingStatus || assignment.status || 'in_progress',
+        total,
+        completed,
+        percent,
+        taskSummary: {
+            total: Number(taskSummary.total || assignment.generated_task_count || 0),
+            active: Number(taskSummary.active || assignment.active_task_count || 0),
+            completed: Number(taskSummary.completed || assignment.completed_task_count || 0)
+        }
+    };
+}
+
+function renderStaffOnboardingAssignment(staff = {}) {
+    const assignment = staffOnboardingAssignment(staff);
+    const hasResponsible = Boolean(assignment?.responsibleUserId);
+    const tone = !assignment ? 'is-empty' : (assignment.trainingStatus === 'completed' ? 'is-ok' : (hasResponsible ? 'is-active' : 'is-empty'));
+    const status = assignment ? onboardingStatusLabel(assignment.trainingStatus) : 'не призначено';
+    const responsible = hasResponsible ? assignment.responsibleName : 'Відповідального немає';
+    const percent = assignment ? assignment.percent : 0;
+    const taskText = assignment
+        ? `${assignment.taskSummary.active}/${assignment.taskSummary.total} активних задач`
+        : 'задачі не створені';
+    const action = hasResponsible ? 'Змінити' : 'Призначити';
+    return `<div class="hr-team-onboarding-assignment ${tone}">
+        <div class="hr-team-onboarding-assignment-head">
+            <div>
+                <b>Onboarding</b>
+                <span>${escapeHtml(responsible)}</span>
+            </div>
+            ${canManage ? `<button type="button" onclick="openStaffOnboardingAssignment(${Number(staff.id)})">${action}</button>` : ''}
+        </div>
+        <div class="hr-team-onboarding-meta">
+            <span>${escapeHtml(status)}</span>
+            <span>${assignment ? `${assignment.completed}/${assignment.total} чек-лист` : 'чек-лист не стартував'}</span>
+            <span>${escapeHtml(taskText)}</span>
+        </div>
+        <div class="hr-team-onboarding-meter" aria-hidden="true"><i style="width:${percent}%"></i></div>
+    </div>`;
+}
+
+async function ensureOnboardingResponsibleCandidates(force = false) {
+    if (Array.isArray(onboardingResponsibleCandidates) && !force) return onboardingResponsibleCandidates;
+    const data = await hrFetch('/onboarding/responsible-candidates');
+    onboardingResponsibleCandidates = Array.isArray(data?.data) ? data.data : [];
+    return onboardingResponsibleCandidates;
+}
+
+function responsibleCandidateOptions(currentId = null) {
+    const current = currentId ? String(currentId) : '';
+    return (onboardingResponsibleCandidates || []).map(user => ({
+        value: String(user.id),
+        label: `${user.label || user.name || user.username || `User #${user.id}`}${user.role ? ` · ${ROLE_LABELS[user.role] || user.role}` : ''}`,
+        selected: current && String(user.id) === current
+    }));
+}
+
+window.openStaffOnboardingAssignment = async function(staffId) {
+    if (!canManage) {
+        showNotification('Призначати відповідальних можуть тільки HR/керівники', 'error');
+        return;
+    }
+    const id = Number(staffId);
+    const staff = teamStaff.find(item => Number(item.id) === id);
+    try {
+        const [candidates, current] = await Promise.all([
+            ensureOnboardingResponsibleCandidates(true),
+            hrFetch(`/staff/${id}/onboarding-assignment`)
+        ]);
+        if (!candidates.length) {
+            showNotification('Немає активних користувачів, яких можна призначити відповідальними', 'warning');
+            return;
+        }
+        const assignment = current?.data || staffOnboardingAssignment(staff) || {};
+        const options = responsibleCandidateOptions(assignment.responsible_user_id || assignment.responsibleUserId || candidates[0]?.id);
+        const result = await formModal(`Відповідальний за onboarding${staff?.name ? ` · ${staff.name}` : ''}`, [
+            {
+                key: 'responsibleUserId',
+                label: 'Відповідальний',
+                type: 'select',
+                options,
+                defaultValue: String(assignment.responsible_user_id || assignment.responsibleUserId || candidates[0]?.id || ''),
+                required: true,
+                hint: 'CRM створить або оновить задачі навчання для цього відповідального без дублів.'
+            }
+        ], { icon: '🎯', okText: 'Зберегти', type: 'info' });
+        if (!result) return;
+        const ownerId = Number(result.responsibleUserId);
+        if (!Number.isInteger(ownerId) || ownerId <= 0) {
+            showNotification('Оберіть відповідального', 'error');
+            return;
+        }
+        const saved = await hrFetch(`/staff/${id}/onboarding-assignment`, 'PUT', { responsible_user_id: ownerId });
+        if (!saved?.success) {
+            showNotification(saved?.error || 'Не вдалося призначити відповідального', 'error');
+            return;
+        }
+        showNotification(saved.action === 'reassigned' ? 'Відповідального оновлено' : 'Відповідального призначено', 'success');
+        await loadTeam();
+        const onboardingPanel = document.getElementById('onboardingList');
+        if (onboardingPanel) loadOnboarding();
+    } catch (error) {
+        console.error('Onboarding assignment error', error);
+        showNotification(error.message || 'Не вдалося оновити відповідального', 'error');
+    }
+};
+
 function selectedSecondaryProfessionKeys() {
     const picker = document.getElementById('editSecondaryProfessionPicker');
     if (!picker) return [];
@@ -1881,6 +2016,7 @@ async function openProfessionEditor(professionId = null) {
 
 let teamStaff = [];
 let staffDocumentNameById = new Map();
+let onboardingResponsibleCandidates = null;
 let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
@@ -2438,6 +2574,7 @@ function renderTeamCards(staff) {
                 ${poolBadge}
             </div>
             ${renderStaffTrainingReadiness(s)}
+            ${renderStaffOnboardingAssignment(s)}
             ${contactRows ? `<div class="hr-team-contact-grid">${contactRows}</div>` : '<div class="hr-team-contact-grid is-empty">Контакти не заповнені</div>'}
             ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-warning-note">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
             <div class="hr-team-actions">
@@ -6425,12 +6562,22 @@ function renderOnboarding(list) {
     el.innerHTML = list.map(o => {
         const pct = o.total_items > 0 ? Math.round(o.completed_items / o.total_items * 100) : 0;
         const items = o.items || [];
+        const status = onboardingStatusLabel(o.training_status || o.status);
+        const responsible = o.responsible_name || o.responsible_username || 'відповідального не призначено';
+        const totalTasks = Number(o.generated_task_count || o.task_summary?.total || 0);
+        const activeTasks = Number(o.active_task_count || o.task_summary?.active || 0);
+        const completedTasks = Number(o.completed_task_count || o.task_summary?.completed || 0);
         return `
         <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;">
                 <div>
                     <strong>${escapeHtml(o.staff_name)}</strong>
-                    <span style="font-size:12px;color:var(--gray-500);margin-left:8px;">${escapeHtml(o.template_name || '')}</span>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px;color:var(--gray-500);font-weight:800;">
+                        <span>${escapeHtml(o.template_name || 'Onboarding')}</span>
+                        <span>Відповідальний: ${escapeHtml(responsible)}</span>
+                        <span>${escapeHtml(status)}</span>
+                        <span>Задачі: ${activeTasks}/${totalTasks} активні · ${completedTasks} виконано</span>
+                    </div>
                 </div>
                 <span style="font-weight:800;color:${pct === 100 ? '#10B981' : '#6366F1'};">${pct}%</span>
             </div>
@@ -6455,19 +6602,31 @@ window.toggleOnboardingItem = async function(progressId, itemId, done) {
 };
 
 window.showStartOnboarding = async function() {
-    const [staff, templates] = await Promise.all([
+    const [staff, templates, candidates] = await Promise.all([
         hrFetch('/staff?active=true'),
-        hrFetch('/onboarding/templates')
+        hrFetch('/onboarding/templates'),
+        hrFetch('/onboarding/responsible-candidates')
     ]);
     if (!staff?.success || !templates?.success) return;
+    onboardingResponsibleCandidates = Array.isArray(candidates?.data) ? candidates.data : [];
     const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
     const templateOptions = templates.data.map(t => ({ value: String(t.id), label: `${t.name}` }));
+    const responsibleOptions = responsibleCandidateOptions(onboardingResponsibleCandidates[0]?.id);
+    if (!responsibleOptions.length) {
+        showNotification('Немає активних користувачів для призначення відповідального', 'warning');
+        return;
+    }
     const result = await formModal('Запустити онбординг', [
         { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
-        { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true }
+        { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true },
+        { key: 'responsibleUserId', label: 'Відповідальний', type: 'select', options: responsibleOptions, required: true }
     ], { icon: '🚀' });
     if (!result) return;
-    const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(result.staffId), template_id: parseInt(result.templateId) });
+    const data = await hrFetch('/onboarding/start', 'POST', {
+        staff_id: parseInt(result.staffId),
+        template_id: parseInt(result.templateId),
+        responsible_user_id: parseInt(result.responsibleUserId)
+    });
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
 

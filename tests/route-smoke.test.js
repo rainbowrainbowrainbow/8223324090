@@ -151,6 +151,17 @@ function createFakePool() {
                 hr_pool_status: 'core',
                 blacklist_reason: null,
                 notes: ''
+            }],
+            [45, {
+                id: 45,
+                name: 'HR Onboarding Newbie',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: '',
+                department: 'Operations',
+                position: 'Trainee',
+                role_type: 'animator'
             }]
         ]),
         resourcesByStaff: new Map([
@@ -201,6 +212,28 @@ function createFakePool() {
                 profile_active: true
             }]]
         ]),
+        users: new Map([
+            [1, { id: 1, username: 'route-smoke', name: 'Route Smoke', role: 'creator', is_active: true }],
+            [2, { id: 2, username: 'dasha', name: 'Dasha', role: 'manager', is_active: true }],
+            [3, { id: 3, username: 'mentor', name: 'Mentor HR', role: 'hr', is_active: true }]
+        ]),
+        onboardingTemplates: new Map([
+            [11, {
+                id: 11,
+                name: 'Відповідальний онбординг',
+                department: null,
+                items: [
+                    { key: 'role_intro', title: 'Вступ у роль' },
+                    { key: 'access_tools', title: 'Доступи та інструменти' },
+                    { key: 'readiness', title: 'Підтвердження готовності' }
+                ]
+            }]
+        ]),
+        onboardingProgress: new Map(),
+        tasks: [],
+        nextOnboardingTemplateId: 12,
+        nextOnboardingProgressId: 1001,
+        nextTaskId: 880,
         documentAlertsByStaff: new Map([
             [42, [{
                 source: 'document',
@@ -214,6 +247,33 @@ function createFakePool() {
         ]),
         nextOffboardingEventId: 900
     };
+    const activeTaskStatuses = new Set(['done', 'completed', 'archived', 'cancelled']);
+    const ownerRows = () => Array.from(hrState.users.values())
+        .filter(user => user.is_active !== false)
+        .map(({ id, username, name, role }) => ({ id, username, name, role }));
+    const taskRowsForProgress = progressId => hrState.tasks.filter(task =>
+        task.source_type === 'onboarding'
+        && String(task.source_id || '').startsWith(`${progressId}:`)
+    );
+    const onboardingRow = progress => {
+        const staff = hrState.staff.get(Number(progress.staff_id)) || {};
+        const template = hrState.onboardingTemplates.get(Number(progress.template_id)) || {};
+        const responsible = hrState.users.get(Number(progress.responsible_user_id)) || {};
+        const tasks = taskRowsForProgress(progress.id);
+        return {
+            ...progress,
+            staff_name: staff.name || null,
+            department: staff.department || null,
+            template_name: template.name || null,
+            responsible_name: responsible.name || null,
+            responsible_username: responsible.username || null,
+            responsible_role: responsible.role || null,
+            generated_task_count: tasks.length,
+            active_task_count: tasks.filter(task => !activeTaskStatuses.has(task.status || 'todo')).length,
+            completed_task_count: tasks.filter(task => ['done', 'completed'].includes(task.status || 'todo')).length
+        };
+    };
+
     return {
         totalCount: 1,
         idleCount: 1,
@@ -240,9 +300,152 @@ function createFakePool() {
             if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(text)) {
                 return { rows: [{ is_active: true, session_revoked_at: null }] };
             }
+            if (/SELECT id, username, name FROM users WHERE id = \$1 AND COALESCE\(is_active, true\) = true LIMIT 1/i.test(text)) {
+                const user = hrState.users.get(Number(params[0]));
+                return { rows: user ? [{ id: user.id, username: user.username, name: user.name }] : [] };
+            }
+            if (/SELECT id, username, name FROM users WHERE COALESCE\(is_active, true\) = true AND \(LOWER\(username\) = LOWER\(\$1\) OR LOWER\(COALESCE\(name, ''\)\) = LOWER\(\$1\)\)/i.test(text)) {
+                const needle = String(params[0] || '').toLowerCase();
+                const user = Array.from(hrState.users.values()).find(row =>
+                    String(row.username || '').toLowerCase() === needle
+                    || String(row.name || '').toLowerCase() === needle
+                );
+                return { rows: user ? [{ id: user.id, username: user.username, name: user.name }] : [] };
+            }
             if (/SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes FROM staff WHERE id = \$1/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [staff] : [] };
+            }
+            if (/SELECT id, name, department, position, role_type, is_active FROM staff WHERE id = \$1/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [{
+                    id: staff.id,
+                    name: staff.name,
+                    department: staff.department || 'HR',
+                    position: staff.position || 'Animator',
+                    role_type: staff.role_type || 'animator',
+                    is_active: staff.is_active
+                }] : [] };
+            }
+            if (/SELECT \* FROM onboarding_templates ORDER BY name/i.test(text)) {
+                return { rows: Array.from(hrState.onboardingTemplates.values()) };
+            }
+            if (/SELECT \* FROM onboarding_templates WHERE id = \$1/i.test(text)) {
+                const template = hrState.onboardingTemplates.get(Number(params[0]));
+                return { rows: template ? [template] : [] };
+            }
+            if (/SELECT id, name, items FROM onboarding_templates WHERE id = \$1/i.test(text)) {
+                const template = hrState.onboardingTemplates.get(Number(params[0]));
+                return { rows: template ? [template] : [] };
+            }
+            if (/SELECT id, name, items FROM onboarding_templates WHERE name = \$1/i.test(text)) {
+                const template = Array.from(hrState.onboardingTemplates.values()).find(row => row.name === params[0]);
+                return { rows: template ? [template] : [] };
+            }
+            if (/INSERT INTO onboarding_templates \(name, department, items\)/i.test(text)) {
+                const id = hrState.nextOnboardingTemplateId++;
+                const template = {
+                    id,
+                    name: params[0],
+                    department: params[1] || null,
+                    items: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2]
+                };
+                hrState.onboardingTemplates.set(id, template);
+                return { rows: [template], rowCount: 1 };
+            }
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1 AND op\.status <> 'completed'/i.test(text)) {
+                const progress = Array.from(hrState.onboardingProgress.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.status !== 'completed')
+                    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+                return { rows: progress ? [onboardingRow(progress)] : [] };
+            }
+            if (/INSERT INTO onboarding_progress/i.test(text)) {
+                const id = hrState.nextOnboardingProgressId++;
+                const hasResponsible = text.includes('responsible_user_id');
+                const row = hasResponsible ? {
+                    id,
+                    staff_id: Number(params[0]),
+                    template_id: Number(params[1]),
+                    items: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
+                    total_items: Number(params[3]),
+                    completed_items: 0,
+                    status: 'in_progress',
+                    started_at: '2099-06-06T12:00:00Z',
+                    completed_at: null,
+                    responsible_user_id: Number(params[4]),
+                    assigned_by_user_id: params[5],
+                    assigned_by_username: params[6],
+                    assigned_at: '2099-06-06T12:00:00Z',
+                    reassigned_at: null,
+                    training_status: 'not_started',
+                    assignment_history: typeof params[7] === 'string' ? JSON.parse(params[7]) : params[7],
+                    checklist_template_key: params[8],
+                    last_task_sync_at: null
+                } : {
+                    id,
+                    staff_id: Number(params[0]),
+                    template_id: Number(params[1]),
+                    items: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
+                    total_items: Number(params[3]),
+                    completed_items: 0,
+                    status: 'in_progress',
+                    started_at: '2099-06-06T12:00:00Z',
+                    completed_at: null,
+                    training_status: params[4] || 'not_started',
+                    checklist_template_key: params[4] || null,
+                    assignment_history: []
+                };
+                hrState.onboardingProgress.set(id, row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/UPDATE onboarding_progress SET responsible_user_id = \$2/i.test(text)) {
+                const row = hrState.onboardingProgress.get(Number(params[0]));
+                if (!row) return { rows: [], rowCount: 0 };
+                Object.assign(row, {
+                    responsible_user_id: Number(params[1]),
+                    assigned_by_user_id: params[2],
+                    assigned_by_username: params[3],
+                    reassigned_at: params[4] ? '2099-06-06T12:10:00Z' : row.reassigned_at,
+                    training_status: params[5],
+                    status: params[6],
+                    assignment_history: typeof params[7] === 'string' ? JSON.parse(params[7]) : params[7],
+                    checklist_template_key: row.checklist_template_key || params[8],
+                    total_items: row.total_items || Number(params[9]),
+                    completed_items: Number(params[10])
+                });
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/UPDATE onboarding_progress SET last_task_sync_at = NOW\(\) WHERE id = \$1/i.test(text)) {
+                const row = hrState.onboardingProgress.get(Number(params[0]));
+                if (row) row.last_task_sync_at = '2099-06-06T12:05:00Z';
+                return { rows: [], rowCount: row ? 1 : 0 };
+            }
+            if (/SELECT op\.\*, s\.name AS staff_name, s\.department, ot\.name AS template_name/i.test(text) && /FROM onboarding_progress op JOIN staff s ON s\.id = op\.staff_id/i.test(text)) {
+                return { rows: Array.from(hrState.onboardingProgress.values()).map(onboardingRow) };
+            }
+            if (/SELECT \* FROM tasks WHERE source_type = \$1 AND source_id = \$2/i.test(text)) {
+                const row = hrState.tasks.find(task => task.source_type === params[0] && String(task.source_id) === String(params[1]));
+                return { rows: row ? [row] : [] };
+            }
+            if (/SELECT t\.\* FROM tasks t WHERE COALESCE\(t\.status, 'todo'\) NOT IN \('done','archived','cancelled'\)/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/UPDATE tasks SET title = \$2,/i.test(text) && /WHERE id = \$1 RETURNING \*/i.test(text)) {
+                const row = hrState.tasks.find(task => Number(task.id) === Number(params[0]));
+                if (!row) return { rows: [], rowCount: 0 };
+                Object.assign(row, {
+                    title: params[1],
+                    description: params[2],
+                    priority: params[3],
+                    assigned_to: params[4],
+                    owner: params[4],
+                    owner_user_id: params[5],
+                    related_entity_id: params[6],
+                    checklist_template_key: params[7],
+                    updated_at: '2099-06-06T12:10:00Z',
+                    version: Number(row.version || 1) + 1
+                });
+                return { rows: [row], rowCount: 1 };
             }
             if (/FROM staff_resource_assignments sra LEFT JOIN warehouse_stock ws ON ws\.id = sra\.warehouse_stock_id LEFT JOIN costumes c ON c\.id = sra\.costume_id WHERE sra\.staff_id = \$1 AND sra\.status = 'issued'/i.test(text)) {
                 return { rows: hrState.resourcesByStaff.get(Number(params[0])) || [] };
@@ -388,26 +591,17 @@ function createFakePool() {
             }
             if (/SELECT id, username, name, role FROM users WHERE is_active = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
-                    rows: [
-                        { id: 2, username: 'dasha', name: 'Даша', role: 'manager' },
-                        { id: 3, username: 'marketing', name: 'Маркетинг', role: 'marketer' }
-                    ]
+                    rows: ownerRows().filter(user => user.id !== 1)
                 };
             }
             if (/SELECT id, username, name, role FROM users WHERE COALESCE\(is_active, true\) = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
-                    rows: [
-                        { id: 2, username: 'dasha', name: 'Даша', role: 'manager' },
-                        { id: 3, username: 'marketing', name: 'Маркетинг', role: 'marketer' }
-                    ]
+                    rows: ownerRows().filter(user => user.id !== 1)
                 };
             }
             if (/SELECT id, username, name, role FROM users WHERE users\.id = \$1 AND COALESCE\(is_active, true\) = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
-                const users = {
-                    1: { id: 1, username: 'route-smoke', name: 'Route Smoke', role: 'creator' },
-                    2: { id: 2, username: 'dasha', name: 'Dasha', role: 'manager' }
-                };
-                return { rows: users[params[0]] ? [users[params[0]]] : [] };
+                const user = hrState.users.get(Number(params[0]));
+                return { rows: user ? [{ id: user.id, username: user.username, name: user.name, role: user.role }] : [] };
             }
             if (/FROM task_action_history/i.test(text)) {
                 return { rows: [{
@@ -609,25 +803,36 @@ function createFakePool() {
             }
             if (/INSERT INTO tasks \((?:business_context, )?title, description, date, priority, assigned_to, owner, owner_user_id, created_by,/i.test(text)) {
                 const offset = /^INSERT INTO tasks \(business_context,/i.test(text.trim()) ? 1 : 0;
+                const task = {
+                    id: hrState.nextTaskId++,
+                    business_context: offset ? params[0] : 'event_genix',
+                    title: params[offset + 0],
+                    description: params[offset + 1],
+                    date: params[offset + 2],
+                    priority: params[offset + 3],
+                    assigned_to: params[offset + 4],
+                    owner: params[offset + 5],
+                    owner_user_id: params[offset + 6],
+                    created_by: params[offset + 7],
+                    task_type: params[offset + 8],
+                    deadline: params[offset + 9],
+                    source_type: params[offset + 14],
+                    source_id: params[offset + 15],
+                    category: params[offset + 16],
+                    checklist_template_key: params[offset + 18] || null,
+                    related_entity_type: params[offset + 39] || null,
+                    related_entity_id: params[offset + 40] || null,
+                    source_module: params[offset + 41] || null,
+                    control_meta: params[offset + 43] ? JSON.parse(params[offset + 43]) : {},
+                    created_by_user_id: params[offset + 44] || null,
+                    status: 'todo',
+                    workflow_state: params[offset + 32] || 'todo',
+                    version: 1,
+                    created_at: '2099-06-06T12:00:00Z'
+                };
+                hrState.tasks.push(task);
                 return {
-                    rows: [{
-                        id: 880,
-                        business_context: offset ? params[0] : 'event_genix',
-                        title: params[offset + 0],
-                        description: params[offset + 1],
-                        date: params[offset + 2],
-                        priority: params[offset + 3],
-                        assigned_to: params[offset + 4],
-                        owner: params[offset + 5],
-                        owner_user_id: params[offset + 6],
-                        created_by: params[offset + 7],
-                        task_type: params[offset + 8],
-                        deadline: params[offset + 9],
-                        source_type: params[offset + 14],
-                        source_id: params[offset + 15],
-                        category: params[offset + 16],
-                        status: 'todo'
-                    }]
+                    rows: [task]
                 };
             }
             if (/INSERT INTO task_logs \(task_id, action, old_value, new_value, actor\)/i.test(text)) {
@@ -791,6 +996,9 @@ function createFakePool() {
                         })
                     }]
                 };
+            }
+            if (/SELECT value FROM settings WHERE key = 'telegram_chat_id'/i.test(text)) {
+                return { rows: [], rowCount: 0 };
             }
             if (/INSERT INTO settings \(key, value\) VALUES \('hr_company_structure', \$1\)/i.test(text)) {
                 return { rows: [], rowCount: 1 };
@@ -1228,6 +1436,59 @@ describe('route-level API safety smoke', () => {
         assert.match(currentUser.data.error, /власний CRM-акаунт/);
         assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
         assert.equal(queries.some(q => /INSERT INTO staff_offboarding_events/i.test(q.text)), false);
+    });
+
+    it('assigns HR onboarding responsible owners and syncs canonical tasks without duplicates', async () => {
+        const owners = await request('GET', '/api/hr/onboarding/responsible-candidates', undefined, withAuth());
+        assert.equal(owners.status, 200, JSON.stringify(owners.data));
+        assert.equal(owners.data.success, true);
+        assert.deepEqual(owners.data.data.map(user => user.id), [2, 3]);
+        assert.equal(owners.data.meta.canonicalOwnerField, 'tasks.owner_user_id');
+
+        queries.length = 0;
+        const assigned = await request('PUT', '/api/hr/staff/45/onboarding-assignment', {
+            responsible_user_id: 2,
+            template_id: 11
+        }, withAuth());
+        assert.equal(assigned.status, 200, JSON.stringify(assigned.data));
+        assert.equal(assigned.data.success, true);
+        assert.equal(assigned.data.progress.responsible_user_id, 2);
+        assert.equal(assigned.data.taskSync.created_count, 4);
+        assert.equal(assigned.data.progress.active_task_count, 4);
+        assert.ok(queries.some(q => /INSERT INTO onboarding_progress/i.test(q.text)));
+        assert.equal(queries.filter(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)).length, 4);
+
+        queries.length = 0;
+        const repeated = await request('PUT', '/api/hr/staff/45/onboarding-assignment', {
+            responsible_user_id: 2,
+            template_id: 11
+        }, withAuth());
+        assert.equal(repeated.status, 200, JSON.stringify(repeated.data));
+        assert.equal(repeated.data.success, true);
+        assert.equal(repeated.data.action, 'confirmed');
+        assert.equal(repeated.data.taskSync.created_count, 0);
+        assert.equal(repeated.data.taskSync.updated_count, 4);
+        assert.equal(queries.filter(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)).length, 0);
+
+        queries.length = 0;
+        const reassigned = await request('PUT', '/api/hr/staff/45/onboarding-assignment', {
+            responsible_user_id: 3,
+            template_id: 11
+        }, withAuth());
+        assert.equal(reassigned.status, 200, JSON.stringify(reassigned.data));
+        assert.equal(reassigned.data.success, true);
+        assert.equal(reassigned.data.action, 'reassigned');
+        assert.equal(reassigned.data.progress.responsible_user_id, 3);
+        assert.equal(reassigned.data.taskSync.created_count, 0);
+        assert.equal(reassigned.data.taskSync.updated_count, 4);
+        assert.ok(queries.some(q => /UPDATE tasks SET title = \$2,/i.test(q.text)));
+
+        const list = await request('GET', '/api/hr/onboarding', undefined, withAuth());
+        assert.equal(list.status, 200, JSON.stringify(list.data));
+        assert.equal(list.data.success, true);
+        assert.equal(list.data.data[0].responsible_username, 'mentor');
+        assert.equal(list.data.data[0].generated_task_count, 4);
+        assert.equal(list.data.data[0].active_task_count, 4);
     });
 
     it('exposes typed task operations endpoints behind object visibility', async () => {

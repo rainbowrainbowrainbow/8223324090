@@ -580,6 +580,17 @@
         return item?.title || item?.name || item?.label || 'Пункт онбордингу';
     }
 
+    function onboardingStatusLabel(status) {
+        const labels = {
+            not_started: 'не стартував',
+            in_progress: 'у процесі',
+            blocked: 'блок',
+            ready: 'готовий',
+            completed: 'завершено'
+        };
+        return labels[status] || labels.in_progress;
+    }
+
     function renderOnboarding(processes) {
         const list = document.getElementById('trainingOnboardingList');
         if (!list) return;
@@ -594,7 +605,11 @@
             const total = Number(process.total_items || items.length || 0);
             const completed = Number(process.completed_items || items.filter(item => item?.done).length || 0);
             const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-            const statusText = process.status === 'completed' ? 'завершено' : 'у процесі';
+            const statusText = onboardingStatusLabel(process.training_status || process.status);
+            const responsible = process.responsible_name || process.responsible_username || 'відповідального не призначено';
+            const totalTasks = Number(process.generated_task_count || process.task_summary?.total || 0);
+            const activeTasks = Number(process.active_task_count || process.task_summary?.active || 0);
+            const completedTasks = Number(process.completed_task_count || process.task_summary?.completed || 0);
             return `<article class="training-onboarding-card">
                 <div class="training-onboarding-card-head">
                     <div class="training-onboarding-card-title">
@@ -602,6 +617,11 @@
                         <span>${esc(process.template_name || 'Онбординг')} · ${esc(statusText)}</span>
                     </div>
                     <div class="training-onboarding-percent">${percent}%</div>
+                </div>
+                <div class="training-onboarding-meta">
+                    <span>Відповідальний: ${esc(responsible)}</span>
+                    <span>Чек-лист: ${completed}/${total}</span>
+                    <span>Задачі: ${activeTasks}/${totalTasks} активні · ${completedTasks} виконано</span>
                 </div>
                 <div class="training-onboarding-meter" aria-hidden="true"><i style="width:${percent}%"></i></div>
                 <div class="training-onboarding-checklist">
@@ -653,9 +673,10 @@
             return;
         }
         try {
-            const [staff, templates] = await Promise.all([
+            const [staff, templates, responsible] = await Promise.all([
                 trainingJson('/api/hr/staff?active=true'),
-                trainingJson('/api/hr/onboarding/templates')
+                trainingJson('/api/hr/onboarding/templates'),
+                trainingJson('/api/hr/onboarding/responsible-candidates')
             ]);
             const staffOptions = (staff.data || []).map(person => ({
                 value: String(person.id),
@@ -665,20 +686,26 @@
                 value: String(template.id),
                 label: template.name || `Шаблон ${template.id}`
             }));
-            if (!staffOptions.length || !templateOptions.length) {
-                if (typeof showNotification === 'function') showNotification('Потрібні активні працівники і шаблони онбордингу', 'warning');
+            const responsibleOptions = (responsible.data || []).map(user => ({
+                value: String(user.id),
+                label: `${user.label || user.name || user.username || `User #${user.id}`}${user.role ? ` · ${user.role}` : ''}`
+            }));
+            if (!staffOptions.length || !templateOptions.length || !responsibleOptions.length) {
+                if (typeof showNotification === 'function') showNotification('Потрібні активні працівники, шаблони і відповідальні для онбордингу', 'warning');
                 return;
             }
             const result = await formModal('Запустити онбординг', [
                 { key: 'staffId', label: 'Працівник', type: 'select', options: staffOptions, required: true },
-                { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true }
+                { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true },
+                { key: 'responsibleUserId', label: 'Відповідальний', type: 'select', options: responsibleOptions, required: true }
             ], { icon: '🚀' });
             if (!result) return;
             await trainingJson('/api/hr/onboarding/start', {
                 method: 'POST',
                 body: JSON.stringify({
                     staff_id: Number(result.staffId),
-                    template_id: Number(result.templateId)
+                    template_id: Number(result.templateId),
+                    responsible_user_id: Number(result.responsibleUserId)
                 })
             });
             onboardingLoaded = false;

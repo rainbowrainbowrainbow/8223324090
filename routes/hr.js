@@ -14,6 +14,7 @@ const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const costumeInventory = require('../services/costumeInventory');
 const { requireRole } = require('../middleware/auth');
+const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest
@@ -569,6 +570,124 @@ async function loadStaffRoleAssignments(staffId, db = pool) {
         [staffId]
     ).catch(() => ({ rows: [] }));
     return compatibilityRoleAssignmentsFromStaff(staff.rows[0] || {}, rates.rows);
+}
+
+function accountHasCreatorRole(account = {}) {
+    const extraRoles = Array.isArray(account.extra_roles) ? account.extra_roles : [];
+    return [account.role, ...extraRoles].filter(Boolean).includes('creator');
+}
+
+function staffOffboardingAccountMeta(row = {}, currentUserId = null) {
+    const userId = Number(row.id);
+    return {
+        id: userId,
+        username: row.username || '',
+        name: row.name || row.full_name || '',
+        role: row.role || '',
+        profile_id: row.profile_id ? Number(row.profile_id) : null,
+        is_current_user: Number.isFinite(currentUserId) && currentUserId > 0 && userId === currentUserId,
+        is_protected: accountHasCreatorRole(row)
+    };
+}
+
+function staffOffboardingResourceMeta(row = {}) {
+    return {
+        id: Number(row.id),
+        resource_kind: row.resource_kind || 'custom',
+        title: row.warehouse_stock_name || row.costume_name || row.title || 'Ресурс',
+        quantity: row.quantity,
+        issued_at: row.issued_at || null,
+        due_return_at: row.due_return_at || null,
+        source_title: row.title || null
+    };
+}
+
+function staffOffboardingDocumentAlertMeta(row = {}) {
+    const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+    return {
+        id: Number(row.id),
+        source: row.source || 'document',
+        type: row.type || 'other',
+        title: row.title || 'Документ',
+        status: row.status || 'active',
+        expires_at: row.expires_at || null,
+        tone: expiresAt && Number.isFinite(expiresAt.getTime()) && expiresAt < new Date() ? 'expired' : 'expiring'
+    };
+}
+
+async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
+    const currentUserId = Number(options.currentUserId || 0);
+    const openResources = await db.query(
+        `SELECT sra.id, sra.resource_kind, sra.title, sra.quantity, sra.issued_at, sra.due_return_at,
+                ws.name AS warehouse_stock_name,
+                c.name AS costume_name,
+                COUNT(*) OVER()::int AS total_count
+         FROM staff_resource_assignments sra
+         LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
+         LEFT JOIN costumes c ON c.id = sra.costume_id
+         WHERE sra.staff_id = $1 AND sra.status = 'issued'
+         ORDER BY sra.due_return_at ASC NULLS LAST, sra.created_at DESC, sra.id DESC
+         LIMIT 10`,
+        [staffId]
+    );
+    const activeAccounts = await db.query(
+        `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id, ep.full_name
+         FROM employee_profiles ep
+         JOIN users u ON u.id = ep.user_id
+         WHERE ep.staff_id = $1
+           AND COALESCE(ep.is_active, true) = true
+           AND COALESCE(u.is_active, true) = true
+         ORDER BY u.id ASC`,
+        [staffId]
+    );
+    const documentAlerts = await db.query(
+        `SELECT source, id, type, title, expires_at, status, COUNT(*) OVER()::int AS total_count
+         FROM (
+            SELECT 'document'::text AS source,
+                   sd.id,
+                   sd.document_type AS type,
+                   sd.title,
+                   sd.expires_at,
+                   sd.status
+            FROM staff_documents sd
+            WHERE sd.staff_id = $1
+              AND sd.status = 'active'
+              AND sd.expires_at IS NOT NULL
+              AND sd.expires_at <= CURRENT_DATE + INTERVAL '30 days'
+            UNION ALL
+            SELECT 'certification'::text AS source,
+                   sc.id,
+                   sc.category AS type,
+                   sc.name AS title,
+                   sc.expires_at,
+                   sc.status
+            FROM staff_certifications sc
+            WHERE sc.staff_id = $1
+              AND sc.status IN ('active', 'expired')
+              AND sc.expires_at IS NOT NULL
+              AND sc.expires_at <= CURRENT_DATE + INTERVAL '30 days'
+         ) alerts
+         ORDER BY expires_at ASC NULLS LAST, source ASC, id DESC
+         LIMIT 10`,
+        [staffId]
+    );
+
+    const accounts = activeAccounts.rows.map(row => staffOffboardingAccountMeta(row, currentUserId));
+    const openResourceCount = openResources.rows[0]?.total_count || 0;
+    const documentAlertCount = documentAlerts.rows[0]?.total_count || 0;
+    const blockedAccounts = accounts.filter(account => account.is_current_user || account.is_protected);
+    return {
+        staff_id: Number(staffId),
+        open_resource_count: openResourceCount,
+        open_resources: openResources.rows.map(staffOffboardingResourceMeta),
+        active_account_count: accounts.length,
+        active_accounts: accounts,
+        document_alert_count: documentAlertCount,
+        document_alerts: documentAlerts.rows.map(staffOffboardingDocumentAlertMeta),
+        disable_available: blockedAccounts.length === 0,
+        disable_blockers: blockedAccounts,
+        ready_for_closure: openResourceCount === 0 && documentAlertCount === 0
+    };
 }
 
 function normalizeRoleAssignmentInputRows(rows = [], primaryRole = '') {
@@ -2774,6 +2893,18 @@ router.get('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     }
 });
 
+router.get('/staff/:id/offboarding-readiness', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const data = await loadStaffOffboardingReadiness(req.params.id, pool, { currentUserId: req.user?.id });
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/offboarding-readiness error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -2790,13 +2921,20 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         }
-        const openResources = await client.query(
-            `SELECT COUNT(*)::int AS count
-             FROM staff_resource_assignments
-             WHERE staff_id = $1 AND status = 'issued'`,
-            [req.params.id]
-        );
-        const openResourceCount = openResources.rows[0]?.count || 0;
+        const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id });
+        const openResourceCount = readiness.open_resource_count || 0;
+        if (accountAction === 'disable' && !readiness.disable_available) {
+            await client.query('ROLLBACK');
+            const blockers = readiness.disable_blockers || [];
+            const currentUserBlocked = blockers.some(account => account.is_current_user);
+            return res.status(409).json({
+                success: false,
+                error: currentUserBlocked
+                    ? 'Не можна вимкнути власний CRM-акаунт через offboarding'
+                    : 'Creator-акаунт не можна вимкнути через HR offboarding',
+                blockers
+            });
+        }
         const event = await client.query(
             `INSERT INTO staff_offboarding_events
                 (staff_id, status, effective_date, reason, target_pool_status, account_action,
@@ -2824,26 +2962,76 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
                  termination_reason = $3,
                  termination_recorded_at = NOW(),
                  termination_recorded_by = $5
-             WHERE id = $1
+            WHERE id = $1
              RETURNING *`,
             [req.params.id, targetPoolStatus, reason, effectiveDate, req.user?.username || null]
         );
         let disabledAccounts = 0;
+        let disabledAccountRows = [];
         if (accountAction === 'disable') {
-            const disabledProfiles = await client.query(
-                `UPDATE employee_profiles
-                 SET is_active = false
-                 WHERE staff_id = $1 AND is_active = true
-                 RETURNING user_id`,
+            const targetAccounts = await client.query(
+                `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id
+                 FROM employee_profiles ep
+                 JOIN users u ON u.id = ep.user_id
+                 WHERE ep.staff_id = $1
+                   AND COALESCE(ep.is_active, true) = true
+                   AND COALESCE(u.is_active, true) = true
+                 FOR UPDATE OF ep, u`,
                 [req.params.id]
             );
-            const userIds = disabledProfiles.rows.map(row => Number(row.user_id)).filter(Number.isFinite);
+            const blocker = targetAccounts.rows.find(row => Number(row.id) === Number(req.user?.id) || accountHasCreatorRole(row));
+            if (blocker) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    error: Number(blocker.id) === Number(req.user?.id)
+                        ? 'Не можна вимкнути власний CRM-акаунт через offboarding'
+                        : 'Creator-акаунт не можна вимкнути через HR offboarding',
+                    blocker: staffOffboardingAccountMeta(blocker, req.user?.id)
+                });
+            }
+            const userIds = targetAccounts.rows.map(row => Number(row.id)).filter(Number.isFinite);
             if (userIds.length) {
                 const disabledUsers = await client.query(
-                    `UPDATE users SET is_active = false WHERE id = ANY($1::int[]) RETURNING id`,
+                    `UPDATE users
+                     SET is_active = false,
+                         session_revoked_at = NOW()
+                     WHERE id = ANY($1::int[])
+                     RETURNING id, username, name, role`,
                     [userIds]
                 );
+                disabledAccountRows = disabledUsers.rows;
                 disabledAccounts = disabledUsers.rowCount || 0;
+                const disabledUserIds = disabledUsers.rows.map(row => Number(row.id)).filter(Number.isFinite);
+                if (disabledUserIds.length) {
+                    await client.query(
+                        `UPDATE employee_profiles
+                         SET is_active = false
+                         WHERE staff_id = $1 AND user_id = ANY($2::int[])`,
+                        [req.params.id, disabledUserIds]
+                    );
+                    await client.query(
+                        `UPDATE refresh_tokens
+                         SET revoked_at = NOW()
+                         WHERE user_id = ANY($1::int[]) AND revoked_at IS NULL`,
+                        [disabledUserIds]
+                    ).catch(err => log.warn(`HR offboarding token revoke skipped: ${err.message}`));
+                    for (const target of disabledUsers.rows) {
+                        await recordAccountSecurityEvent({
+                            actor: req.user,
+                            target,
+                            eventType: 'account_deactivated',
+                            reason: 'hr_offboarding',
+                            details: {
+                                staffId: Number(req.params.id),
+                                offboardingEventId: event.rows[0].id,
+                                sessionsRevoked: true
+                            },
+                            req,
+                            client
+                        });
+                    }
+                }
             }
         }
         await client.query('COMMIT');
@@ -2853,6 +3041,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             target_pool_status: targetPoolStatus,
             account_action: accountAction,
             disabled_accounts: disabledAccounts,
+            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean),
             open_resource_count: openResourceCount
         }, req.ip);
         res.json({
@@ -2860,7 +3049,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             data: event.rows[0],
             staff: staffUpdate.rows[0],
             open_resource_count: openResourceCount,
-            disabled_accounts: disabledAccounts
+            disabled_accounts: disabledAccounts,
+            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean)
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

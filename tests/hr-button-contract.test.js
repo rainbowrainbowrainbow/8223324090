@@ -7,6 +7,7 @@ const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const PAGES_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
 
 function lineNumber(source, index) {
@@ -188,6 +189,40 @@ test('HR salary backend owns payroll period lock, reconciliation, and reversal A
         'idx_payroll_period_events_month_created'
     ]) {
         assert.ok(PAYROLL_EVENTS_MIGRATION.includes(token), `missing migration token ${token}`);
+    }
+});
+
+test('HR offboarding readiness owns account/resource/document closure guardrails', () => {
+    for (const token of [
+        "router.get('/staff/:id/offboarding-readiness'",
+        'async function loadStaffOffboardingReadiness',
+        'staff_resource_assignments sra',
+        'JOIN users u ON u.id = ep.user_id',
+        'staff_documents sd',
+        'staff_certifications sc',
+        'session_revoked_at = NOW()',
+        'UPDATE refresh_tokens',
+        "eventType: 'account_deactivated'",
+        'accountHasCreatorRole',
+        'Не можна вимкнути власний CRM-акаунт через offboarding'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
+    }
+    for (const token of [
+        'id="editOffboardingReadiness"',
+        'function renderStaffOffboardingReadiness',
+        "hrFetch(`/staff/${staffId}/offboarding-readiness`)",
+        'staffOffboardingReadiness?.disable_available === false',
+        'Перевірка готовності завантажується'
+    ]) {
+        assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing UI token ${token}`);
+    }
+    for (const token of [
+        '.hr-offboarding-readiness-card',
+        'body.dark-mode .hr-offboarding-readiness-card',
+        '.hr-offboarding-readiness-grid'
+    ]) {
+        assert.ok(PAGES_CSS.includes(token), `missing CSS token ${token}`);
     }
 });
 

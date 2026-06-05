@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.58">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.58">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.58">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.58">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.58">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.58">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.58">
+    <link rel="stylesheet" href="css/base.css?v=0.73.59">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.59">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.59">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.59">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.59">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.59">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.59">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -4136,10 +4136,11 @@
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Завершення співпраці</strong>
-                        <span>Фіксує причину, дату, цільовий HR-статус і неповернуті ресурси.</span>
+                        <span>Фіксує причину, дату, цільовий HR-статус, акаунт і чек-лист закриття.</span>
                     </div>
                     <button type="button" id="editOffboardingComplete" class="btn-danger" onclick="completeStaffOffboarding()">Завершити</button>
                 </div>
+                <div id="editOffboardingReadiness" class="hr-offboarding-readiness">Перевірка готовності завантажується...</div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
                         <label>Дата</label>
@@ -4170,7 +4171,7 @@
                         <textarea id="editOffboardingNotes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
                     </div>
                 </div>
-                <div id="editStaffOffboarding" class="hr-staff-foundation-list">Offboarding завантажується...</div>
+                <div id="editStaffOffboarding" class="hr-staff-foundation-list">Завершення співпраці завантажується...</div>
             </section>
             <section class="hr-staff-history-panel" aria-label="Історія змін профілю">
                 <div class="hr-staff-history-head">
@@ -4233,14 +4234,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.58"></script>
-    <script src="js/config.js?v=0.73.58"></script>
-    <script src="js/notification.js?v=0.73.58"></script>
-    <script src="js/api.js?v=0.73.58"></script>
-    <script src="js/auth.js?v=0.73.58"></script>
-    <script src="js/components/sidebar.js?v=0.73.58"></script>
+    <script src="js/ui.js?v=0.73.59"></script>
+    <script src="js/config.js?v=0.73.59"></script>
+    <script src="js/notification.js?v=0.73.59"></script>
+    <script src="js/api.js?v=0.73.59"></script>
+    <script src="js/auth.js?v=0.73.59"></script>
+    <script src="js/components/sidebar.js?v=0.73.59"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.58"></script>
-    <script src="js/alerts.js?v=0.73.58"></script>
+    <script src="js/hr-page.js?v=0.73.59"></script>
+    <script src="js/alerts.js?v=0.73.59"></script>
 </body>
 </html>

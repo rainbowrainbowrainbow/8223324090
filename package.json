@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.58",
+  "version": "0.73.59",
   "eventGenix": {
-    "releaseLabel": "HR Stage 2: склад, зарплата, ролі"
+    "releaseLabel": "HR Stage 3: offboarding контроль"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

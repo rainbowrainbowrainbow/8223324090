@@ -99,6 +99,11 @@ const STAFF_OFFBOARDING_ACCOUNT_LABELS = {
     disable: 'CRM-акаунт вимкнено'
 };
 
+const STAFF_OFFBOARDING_DOC_SOURCE_LABELS = {
+    document: 'Документ',
+    certification: 'Сертифікація'
+};
+
 const STAFF_DEPARTMENT_LABELS = {
     animators: 'Аніматори',
     trampoline: 'Батутисти',
@@ -284,6 +289,7 @@ let staffFoundationLoadSeq = 0;
 let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
 let staffPayrollSchemeLoadSeq = 0;
+let staffOffboardingReadiness = null;
 
 // ==========================================
 // HELPERS
@@ -3808,17 +3814,55 @@ function renderStaffOffboarding(rows = []) {
     }).join('');
 }
 
+function renderStaffOffboardingReadiness(payload = {}) {
+    const openResources = Number(payload.open_resource_count || 0);
+    const activeAccounts = Number(payload.active_account_count || 0);
+    const documentAlerts = Number(payload.document_alert_count || 0);
+    const hasBlockers = Array.isArray(payload.disable_blockers) && payload.disable_blockers.length > 0;
+    const summaryTone = openResources || documentAlerts || hasBlockers ? 'is-warning' : 'is-ok';
+    const resourceList = (payload.open_resources || []).slice(0, 3).map(item => {
+        const due = item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
+        return `<span>${escapeHtml(item.title || 'Ресурс')} · ${escapeHtml(String(item.quantity || 1))} шт.${escapeHtml(due)}</span>`;
+    }).join('');
+    const accountList = (payload.active_accounts || []).slice(0, 3).map(account => {
+        const role = ROLE_LABELS[account.role] || account.role || 'роль не вказана';
+        const flags = account.is_current_user ? ' · поточний акаунт' : (account.is_protected ? ' · protected' : '');
+        return `<span>${escapeHtml(account.username || account.name || 'CRM-акаунт')} · ${escapeHtml(role)}${escapeHtml(flags)}</span>`;
+    }).join('');
+    const documentList = (payload.document_alerts || []).slice(0, 3).map(item => {
+        const source = STAFF_OFFBOARDING_DOC_SOURCE_LABELS[item.source] || item.source || 'Документ';
+        const expires = item.expires_at ? ` · до ${formatStaffDateValue(item.expires_at)}` : '';
+        return `<span>${escapeHtml(source)}: ${escapeHtml(item.title || 'без назви')}${escapeHtml(expires)}</span>`;
+    }).join('');
+    const details = [
+        resourceList || '<span>Неповернутих ресурсів немає.</span>',
+        accountList || '<span>Активного CRM-акаунта не знайдено.</span>',
+        documentList || '<span>Критичних строків документів на 30 днів немає.</span>'
+    ].join('');
+    return `<div class="hr-offboarding-readiness-card ${summaryTone}">
+        <div class="hr-offboarding-readiness-grid">
+            <div class="${openResources ? 'is-warning' : 'is-ok'}"><b>${openResources}</b><span>ресурси</span></div>
+            <div class="${activeAccounts ? 'is-info' : 'is-muted'}"><b>${activeAccounts}</b><span>акаунти</span></div>
+            <div class="${documentAlerts ? 'is-warning' : 'is-ok'}"><b>${documentAlerts}</b><span>документи</span></div>
+        </div>
+        <div class="hr-offboarding-readiness-detail">${details}</div>
+        ${hasBlockers ? '<div class="hr-offboarding-readiness-alert">Автоматичне вимкнення акаунта заблоковано для поточного або creator-акаунта.</div>' : ''}
+    </div>`;
+}
+
 function setStaffFoundationLoading() {
     const docs = document.getElementById('editStaffDocuments');
     const medical = document.getElementById('editMedicalBookList');
     const resources = document.getElementById('editStaffResources');
     const offboarding = document.getElementById('editStaffOffboarding');
+    const readiness = document.getElementById('editOffboardingReadiness');
     const roles = document.getElementById('editStaffRoleAssignments');
     const payroll = document.getElementById('editPayrollSchemeSummary');
     if (docs) docs.innerHTML = 'Документи завантажуються...';
     if (medical) medical.innerHTML = 'Медкнижка завантажується...';
     if (resources) resources.innerHTML = 'Ресурси завантажуються...';
-    if (offboarding) offboarding.innerHTML = 'Offboarding завантажується...';
+    if (offboarding) offboarding.innerHTML = 'Завершення співпраці завантажується...';
+    if (readiness) readiness.innerHTML = 'Перевірка готовності завантажується...';
     if (roles) roles.innerHTML = 'Ролі завантажуються...';
     if (payroll) payroll.textContent = 'Зарплатна схема завантажується...';
 }
@@ -3828,7 +3872,8 @@ async function loadStaffFoundation(staffId) {
     const medicalRoot = document.getElementById('editMedicalBookList');
     const resourcesRoot = document.getElementById('editStaffResources');
     const offboardingRoot = document.getElementById('editStaffOffboarding');
-    if (!docsRoot && !medicalRoot && !resourcesRoot && !offboardingRoot) return;
+    const readinessRoot = document.getElementById('editOffboardingReadiness');
+    if (!docsRoot && !medicalRoot && !resourcesRoot && !offboardingRoot && !readinessRoot) return;
     const seq = ++staffFoundationLoadSeq;
     if (!canManage) {
         const restricted = renderStaffFoundationEmpty('Доступ до HR-документів і offboarding має тільки HR/керівник.');
@@ -3836,20 +3881,24 @@ async function loadStaffFoundation(staffId) {
         if (medicalRoot) medicalRoot.innerHTML = restricted;
         if (resourcesRoot) resourcesRoot.innerHTML = restricted;
         if (offboardingRoot) offboardingRoot.innerHTML = restricted;
+        if (readinessRoot) readinessRoot.innerHTML = restricted;
         return;
     }
     setStaffFoundationLoading();
-    const [docs, medical, resources, offboarding] = await Promise.all([
+    const [docs, medical, resources, offboarding, readiness] = await Promise.all([
         hrFetch(`/staff/${staffId}/documents`).catch(() => null),
         hrFetch(`/staff/${staffId}/medical-book`).catch(() => null),
         hrFetch(`/staff/${staffId}/resources`).catch(() => null),
-        hrFetch(`/staff/${staffId}/offboarding`).catch(() => null)
+        hrFetch(`/staff/${staffId}/offboarding`).catch(() => null),
+        hrFetch(`/staff/${staffId}/offboarding-readiness`).catch(() => null)
     ]);
     if (seq !== staffFoundationLoadSeq) return;
+    staffOffboardingReadiness = readiness?.success ? (readiness.data || null) : null;
     if (docsRoot) docsRoot.innerHTML = docs?.success ? renderStaffDocuments(docs.data || []) : renderStaffFoundationEmpty(docs?.error || 'Не вдалося завантажити документи.');
     if (medicalRoot) medicalRoot.innerHTML = medical?.success ? renderStaffMedicalBook(medical.data || []) : renderStaffFoundationEmpty(medical?.error || 'Не вдалося завантажити медкнижку.');
     if (resourcesRoot) resourcesRoot.innerHTML = resources?.success ? renderStaffResources(resources.data || []) : renderStaffFoundationEmpty(resources?.error || 'Не вдалося завантажити ресурси.');
     if (offboardingRoot) offboardingRoot.innerHTML = offboarding?.success ? renderStaffOffboarding(offboarding.data || []) : renderStaffFoundationEmpty(offboarding?.error || 'Не вдалося завантажити offboarding.');
+    if (readinessRoot) readinessRoot.innerHTML = readiness?.success ? renderStaffOffboardingReadiness(readiness.data || {}) : renderStaffFoundationEmpty(readiness?.error || 'Не вдалося завантажити перевірку готовності.');
 }
 
 async function loadStaffRoleAssignments(staffId) {
@@ -4116,12 +4165,22 @@ async function completeStaffOffboarding() {
         showNotification('Вкажіть причину завершення співпраці', 'error');
         return;
     }
-    const ok = await confirmHrAction('Завершити співпрацю з цим співробітником? Профіль стане неактивним.');
+    const accountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
+    if (accountAction === 'disable' && staffOffboardingReadiness?.disable_available === false) {
+        showNotification('CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
+        return;
+    }
+    const openResources = Number(staffOffboardingReadiness?.open_resource_count || 0);
+    const documentAlerts = Number(staffOffboardingReadiness?.document_alert_count || 0);
+    const readinessNote = openResources || documentAlerts
+        ? ` Є хвости: ресурси ${openResources}, документи ${documentAlerts}.`
+        : '';
+    const ok = await confirmHrAction(`Завершити співпрацю з цим співробітником? Профіль стане неактивним.${readinessNote}`);
     if (!ok) return;
     const body = {
         effective_date: document.getElementById('editOffboardingDate')?.value || todayStr(),
         target_pool_status: document.getElementById('editOffboardingPoolStatus')?.value || 'reserve',
-        account_action: document.getElementById('editOffboardingAccountAction')?.value || 'review',
+        account_action: accountAction,
         reason,
         notes: document.getElementById('editOffboardingNotes')?.value || null
     };
@@ -4131,7 +4190,8 @@ async function completeStaffOffboarding() {
         return;
     }
     const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
-    showNotification(`Співпрацю завершено.${resourceNote}`, data.open_resource_count ? 'warning' : 'success');
+    const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
+    showNotification(`Співпрацю завершено.${resourceNote}${accountNote}`, data.open_resource_count ? 'warning' : 'success');
     await closeHrEditableModal('staffEditModal', true);
     await loadTeam();
 }
@@ -4193,6 +4253,7 @@ async function openStaffEdit(staffId) {
     if (offboardingPool) offboardingPool.value = 'reserve';
     const offboardingAccount = document.getElementById('editOffboardingAccountAction');
     if (offboardingAccount) offboardingAccount.value = 'review';
+    staffOffboardingReadiness = null;
 
     showHrEditableModal('staffEditModal');
     loadStaffProfileHistory(staffId);

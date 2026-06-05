@@ -27,6 +27,10 @@ function currentReleasePrefix() {
     return `${major}.${minor}.`;
 }
 
+function currentPackageVersion() {
+    return String(JSON.parse(read('package.json')).version || '');
+}
+
 function isVisibleContinuityTrain(version) {
     return version.startsWith(currentReleasePrefix())
         || version.startsWith('0.61.')
@@ -59,6 +63,21 @@ describe('visible changelog version continuity', () => {
             if (!prev || version === '0.60.0') continue;
             if (!sourceActive.has(prev)) continue;
             assert.ok(visible.has(prev), `visible changelog skips ${prev} before ${version}`);
+        }
+    });
+
+    it('keeps the latest current release train patches present in source and visible changelog', () => {
+        const [major, minor, patch] = versionParts(currentPackageVersion());
+        assert.ok(Number.isInteger(patch), 'package.json version must include a numeric patch');
+
+        const source = new Set(changelogVersions());
+        const visible = new Set(indexModalVersions());
+        const oldestPatch = Math.max(0, patch - 5);
+
+        for (let currentPatch = patch; currentPatch >= oldestPatch; currentPatch -= 1) {
+            const version = `${major}.${minor}.${currentPatch}`;
+            assert.ok(source.has(version), `CHANGELOG.md missing ${version}`);
+            assert.ok(visible.has(version), `index.html modal missing ${version}`);
         }
     });
 });

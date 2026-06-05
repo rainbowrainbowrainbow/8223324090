@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.51">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.51">
+    <link rel="stylesheet" href="css/base.css?v=0.73.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.52">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1231,7 +1231,7 @@
 
         /* Print styles */
         @media print {
-            .sidebar-nav, .sidebar-overlay, .header, .schedule-controls,
+            .sidebar-nav, .sidebar-overlay, .header, .staff-pulse-nav, .schedule-controls,
             .schedule-summary, .link-stats-bar, .skip-link,
             .btn-page-primary, .btn-page-secondary,
             #loginOverlay, #profileModal, #notification,
@@ -1336,6 +1336,14 @@
         </header>
 
         <main id="main-content" class="page-container">
+            <nav class="staff-pulse-nav" aria-label="Навігація пульсу компанії">
+                <div class="staff-pulse-nav-items">
+                    <a class="staff-pulse-tab" href="/hr#today">Сьогодні</a>
+                    <a class="staff-pulse-tab active" href="/staff" aria-current="page">Графік</a>
+                    <a class="staff-pulse-tab" href="/hr#reports">Звіти</a>
+                </div>
+            </nav>
+
             <div class="page-header">
                 <h2>Графік роботи</h2>
                 <button type="button" id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
@@ -1523,13 +1531,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.51"></script>
-    <script src="js/config.js?v=0.73.51"></script>
-    <script src="js/notification.js?v=0.73.51"></script>
-    <script src="js/api.js?v=0.73.51"></script>
-    <script src="js/auth.js?v=0.73.51"></script>
-    <script src="js/components/sidebar.js?v=0.73.51"></script>
+    <script src="js/ui.js?v=0.73.52"></script>
+    <script src="js/config.js?v=0.73.52"></script>
+    <script src="js/notification.js?v=0.73.52"></script>
+    <script src="js/api.js?v=0.73.52"></script>
+    <script src="js/auth.js?v=0.73.52"></script>
+    <script src="js/components/sidebar.js?v=0.73.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.73.51"></script><script src="js/alerts.js?v=0.73.51"></script>
+    <script src="js/staff-page.js?v=0.73.52"></script><script src="js/alerts.js?v=0.73.52"></script>
 </body>
 </html>

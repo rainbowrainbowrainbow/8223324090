@@ -5865,6 +5865,228 @@ body.dark-mode .hr-kpi-refresh:focus-visible {
     color: var(--white);
 }
 
+/* v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm. */
+.staff-pulse-nav {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 18px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--gray-900) 4%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+.staff-pulse-nav-items {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.staff-pulse-tab {
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 16px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--white) 42%, transparent);
+    color: var(--gray-600);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.staff-pulse-tab:hover,
+.staff-pulse-tab:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-800);
+}
+
+.staff-pulse-tab.active,
+.staff-pulse-tab[aria-current="page"] {
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 18%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    color: var(--primary);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--white) 50%, transparent);
+}
+
+.staff-pulse-nav + .page-header {
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.staff-pulse-nav + .page-header h2 {
+    margin: 0;
+    color: var(--gray-900);
+    font-size: 24px;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .schedule-controls {
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 84%, transparent),
+        color-mix(in srgb, var(--gray-100) 74%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+body[data-page-group="hr"] .schedule-controls .week-nav {
+    padding: 4px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--gray-900) 4%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-controls .week-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 66%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 42%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-toolbar .btn-page-secondary {
+    border: 1px solid color-mix(in srgb, var(--gray-400) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-700);
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+}
+
+body[data-page-group="hr"] .dept-filter {
+    width: 100%;
+    padding-top: 2px;
+}
+
+body[data-page-group="hr"] .dept-chip {
+    min-height: 34px;
+    border-radius: 12px;
+    font-weight: 900;
+}
+
+body[data-page-group="hr"] .summary-chip {
+    min-height: 42px;
+    border-radius: 14px;
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 88%, transparent),
+        color-mix(in srgb, var(--gray-100) 76%, transparent)
+    );
+}
+
+body[data-page-group="hr"] .schedule-wrapper {
+    border-radius: 18px;
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    box-shadow: var(--shadow-md);
+}
+
+body.dark-mode .staff-pulse-nav,
+[data-theme="dark"] .staff-pulse-nav {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 96%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 86%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .staff-pulse-tab,
+[data-theme="dark"] .staff-pulse-tab {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .staff-pulse-tab:hover,
+body.dark-mode .staff-pulse-tab:focus-visible,
+[data-theme="dark"] .staff-pulse-tab:hover,
+[data-theme="dark"] .staff-pulse-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--text, var(--white));
+}
+
+body.dark-mode .staff-pulse-tab.active,
+body.dark-mode .staff-pulse-tab[aria-current="page"],
+[data-theme="dark"] .staff-pulse-tab.active,
+[data-theme="dark"] .staff-pulse-tab[aria-current="page"] {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 32%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 84%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls .week-nav,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls .week-nav {
+    background: color-mix(in srgb, var(--white) 4%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls .week-label,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls .week-label {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: color-mix(in srgb, var(--bg-primary, #1A1A2E) 72%, transparent);
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode[data-page-group="hr"] .summary-chip,
+[data-theme="dark"] body[data-page-group="hr"] .summary-chip {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 14%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 82%, transparent)
+    );
+}
+
 @media (max-width: 768px) {
     .hr-kpi-actions {
         width: 100%;
@@ -5873,5 +6095,29 @@ body.dark-mode .hr-kpi-refresh:focus-visible {
     .hr-kpi-actions .hr-team-select,
     .hr-kpi-actions .hr-kpi-refresh {
         width: 100%;
+    }
+
+    .staff-pulse-nav {
+        padding: 6px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+    }
+
+    .staff-pulse-nav-items {
+        gap: 6px;
+    }
+
+    .staff-pulse-tab {
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .staff-pulse-nav + .page-header {
+        align-items: stretch;
+    }
+
+    .staff-pulse-nav + .page-header h2 {
+        font-size: 22px;
     }
 }

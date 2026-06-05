@@ -15,6 +15,14 @@ const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const costumeInventory = require('../services/costumeInventory');
 const { requireRole } = require('../middleware/auth');
 const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextFromRequest
+} = require('../services/businessContext');
+const {
+    SCHEME_TYPES: PAYROLL_SCHEME_TYPES,
+    createPayrollScheme
+} = require('../services/payroll');
+const {
     parseTextList,
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
@@ -88,6 +96,9 @@ const STAFF_DOCUMENT_ALLOWED_MIME_TYPES = new Set([
 ]);
 const STAFF_RESOURCE_KINDS = new Set(['warehouse_stock', 'costume', 'custom']);
 const STAFF_RESOURCE_STATUSES = new Set(['issued', 'returned', 'lost', 'written_off']);
+const STAFF_ROLE_ASSIGNMENT_STATUSES = new Set(['active', 'inactive', 'suspended']);
+const STAFF_ROLE_ADMISSION_STATUSES = new Set(['pending', 'approved', 'blocked']);
+const STAFF_ROLE_INTERNSHIP_STATUSES = new Set(['none', 'in_progress', 'completed']);
 const STAFF_OFFBOARDING_POOL_STATUSES = new Set(['core', 'reserve', 'blacklisted']);
 const STAFF_OFFBOARDING_ACCOUNT_ACTIONS = new Set(['none', 'review', 'disable']);
 
@@ -219,6 +230,21 @@ function normalizeStaffResourceStatus(value) {
     return STAFF_RESOURCE_STATUSES.has(status) ? status : 'issued';
 }
 
+function normalizeStaffRoleAssignmentStatus(value) {
+    const status = cleanStaffText(value, 32) || 'active';
+    return STAFF_ROLE_ASSIGNMENT_STATUSES.has(status) ? status : 'active';
+}
+
+function normalizeStaffRoleAdmissionStatus(value) {
+    const status = cleanStaffText(value, 32) || 'pending';
+    return STAFF_ROLE_ADMISSION_STATUSES.has(status) ? status : 'pending';
+}
+
+function normalizeStaffRoleInternshipStatus(value) {
+    const status = cleanStaffText(value, 32) || 'none';
+    return STAFF_ROLE_INTERNSHIP_STATUSES.has(status) ? status : 'none';
+}
+
 function normalizeStaffOffboardingPoolStatus(value) {
     const status = cleanStaffText(value, 32) || 'reserve';
     return STAFF_OFFBOARDING_POOL_STATUSES.has(status) ? status : 'reserve';
@@ -233,6 +259,73 @@ function numberOrNull(value) {
     if (value === null || value === undefined || value === '') return null;
     const normalized = Number(value);
     return Number.isFinite(normalized) ? normalized : null;
+}
+
+function parseJsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(String(value));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function payrollSchemeMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        staff_id: row.staff_id,
+        staffId: row.staff_id,
+        scheme_type: row.scheme_type,
+        schemeType: row.scheme_type,
+        title: row.title || '',
+        is_active: row.is_active === true,
+        isActive: row.is_active === true,
+        config: parseJsonObject(row.config_json),
+        effective_from: row.effective_from,
+        effectiveFrom: row.effective_from,
+        effective_to: row.effective_to,
+        effectiveTo: row.effective_to,
+        created_at: row.created_at,
+        createdAt: row.created_at,
+        updated_at: row.updated_at,
+        updatedAt: row.updated_at
+    };
+}
+
+function staffRoleAssignmentMeta(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        staff_id: row.staff_id,
+        staffId: row.staff_id,
+        profession_key: normalizeProfessionKey(row.profession_key),
+        professionKey: normalizeProfessionKey(row.profession_key),
+        profession_title: row.profession_title || row.profession_key,
+        professionTitle: row.profession_title || row.profession_key,
+        is_primary: row.is_primary === true,
+        isPrimary: row.is_primary === true,
+        status: row.status || 'active',
+        admission_status: row.admission_status || 'pending',
+        admissionStatus: row.admission_status || 'pending',
+        internship_status: row.internship_status || 'none',
+        internshipStatus: row.internship_status || 'none',
+        hourly_rate: row.hourly_rate === null || row.hourly_rate === undefined ? null : Number(row.hourly_rate),
+        hourlyRate: row.hourly_rate === null || row.hourly_rate === undefined ? null : Number(row.hourly_rate),
+        payroll_scheme_id: row.payroll_scheme_id || null,
+        payrollSchemeId: row.payroll_scheme_id || null,
+        payroll_scheme_title: row.payroll_scheme_title || null,
+        payrollSchemeTitle: row.payroll_scheme_title || null,
+        payroll_scheme_type: row.payroll_scheme_type || null,
+        payrollSchemeType: row.payroll_scheme_type || null,
+        notes: row.notes || null,
+        created_at: row.created_at,
+        createdAt: row.created_at,
+        updated_at: row.updated_at,
+        updatedAt: row.updated_at
+    };
 }
 
 function safeDownloadFilename(value, fallback = 'staff-document') {
@@ -297,6 +390,211 @@ async function loadStaffRowOrNull(staffId, db = pool, { lock = false } = {}) {
         [staffId]
     );
     return result.rows[0] || null;
+}
+
+function hrBusinessContextFromRequest(req) {
+    return businessContextFromRequest(req) || DEFAULT_BUSINESS_CONTEXT;
+}
+
+function payrollSchemeTypeTitle(type) {
+    return {
+        per_shift: 'Сума за вихід',
+        hourly: 'Погодинна',
+        monthly_fixed: 'Фікс за місяць',
+        percent: 'Відсоток',
+        hybrid: 'Гібридна',
+        manual: 'Ручна'
+    }[type] || 'Погодинна';
+}
+
+function normalizePayrollSchemeType(value) {
+    const type = cleanStaffText(value, 32) || 'hourly';
+    return PAYROLL_SCHEME_TYPES.includes(type) ? type : 'hourly';
+}
+
+function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
+    const source = parseJsonObject(body.config || body.config_json);
+    const amount = numberOrNull(body.amount ?? body.rate ?? body.value);
+    const rate = amount === null ? Math.max(0, Number(fallbackRate || 0)) : Math.max(0, amount);
+    if (type === 'per_shift') return { ...source, perShiftRate: rate };
+    if (type === 'monthly_fixed') return { ...source, monthlyAmount: rate };
+    if (type === 'percent') return { ...source, percentRate: rate, sourceMetric: source.sourceMetric || 'manual' };
+    if (type === 'manual') return { ...source, manualAmount: rate };
+    if (type === 'hybrid') {
+        return {
+            ...source,
+            base: {
+                ...(source.base && typeof source.base === 'object' ? source.base : {}),
+                kind: source.base?.kind || 'hourly',
+                rate
+            }
+        };
+    }
+    return { ...source, hourlyRate: rate };
+}
+
+async function loadPayrollSchemesForStaff(staffId, db = pool) {
+    const result = await db.query(
+        `SELECT *
+         FROM payroll_schemes
+         WHERE staff_id = $1
+         ORDER BY is_active DESC, effective_from DESC NULLS LAST, updated_at DESC, id DESC`,
+        [staffId]
+    ).catch(err => {
+        log.warn('payroll scheme lookup failed:', err.message);
+        return { rows: [] };
+    });
+    return result.rows.map(payrollSchemeMeta);
+}
+
+function roleKeysFromStaffRecord(staff = {}) {
+    return staffProfessionKeys({
+        role_type: staff.role_type,
+        secondary_professions: staff.secondary_professions || []
+    });
+}
+
+function compatibilityRoleAssignmentsFromStaff(staff = {}, professionRates = []) {
+    const rateMap = new Map((professionRates || []).map(row => [
+        normalizeProfessionKey(row.profession_key),
+        Number(row.hourly_rate || 0)
+    ]));
+    const primary = normalizeProfessionKey(staff.role_type);
+    return roleKeysFromStaffRecord(staff).map(key => staffRoleAssignmentMeta({
+        id: null,
+        staff_id: staff.id,
+        profession_key: key,
+        profession_title: null,
+        is_primary: key === primary,
+        status: staff.is_active === false ? 'inactive' : 'active',
+        admission_status: key === primary ? 'approved' : 'pending',
+        internship_status: key === 'intern' ? 'in_progress' : 'none',
+        hourly_rate: rateMap.get(key) || (key === primary ? Number(staff.hourly_rate || 0) : null),
+        payroll_scheme_id: null,
+        notes: null
+    }));
+}
+
+async function loadStaffRoleAssignments(staffId, db = pool) {
+    const result = await db.query(
+        `SELECT sra.*,
+                hp.title AS profession_title,
+                ps.title AS payroll_scheme_title,
+                ps.scheme_type AS payroll_scheme_type
+         FROM staff_role_assignments sra
+         LEFT JOIN hr_professions hp ON hp.key = sra.profession_key
+         LEFT JOIN payroll_schemes ps ON ps.id = sra.payroll_scheme_id
+         WHERE sra.staff_id = $1
+         ORDER BY sra.is_primary DESC, hp.sort_order ASC NULLS LAST, sra.profession_key`,
+        [staffId]
+    ).catch(err => {
+        log.warn('staff_role_assignments lookup failed:', err.message);
+        return { rows: [] };
+    });
+    if (result.rows.length) return result.rows.map(staffRoleAssignmentMeta);
+
+    const staff = await db.query(
+        `SELECT id, role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                is_active, hourly_rate
+         FROM staff WHERE id = $1`,
+        [staffId]
+    );
+    const rates = await db.query(
+        `SELECT profession_key, hourly_rate
+         FROM staff_profession_rates
+         WHERE staff_id = $1`,
+        [staffId]
+    ).catch(() => ({ rows: [] }));
+    return compatibilityRoleAssignmentsFromStaff(staff.rows[0] || {}, rates.rows);
+}
+
+function normalizeRoleAssignmentInputRows(rows = [], primaryRole = '') {
+    const primaryKey = normalizeProfessionKey(primaryRole);
+    const seen = new Set();
+    const result = [];
+    for (const item of Array.isArray(rows) ? rows : []) {
+        const professionKey = normalizeProfessionKey(item.profession_key || item.professionKey || item.key);
+        if (!professionKey || seen.has(professionKey)) continue;
+        seen.add(professionKey);
+        result.push({
+            profession_key: professionKey,
+            is_primary: item.is_primary === true || item.isPrimary === true || professionKey === primaryKey,
+            status: normalizeStaffRoleAssignmentStatus(item.status),
+            admission_status: normalizeStaffRoleAdmissionStatus(item.admission_status || item.admissionStatus),
+            internship_status: normalizeStaffRoleInternshipStatus(item.internship_status || item.internshipStatus),
+            hourly_rate: numberOrNull(item.hourly_rate ?? item.hourlyRate),
+            payroll_scheme_id: numberOrNull(item.payroll_scheme_id ?? item.payrollSchemeId),
+            notes: cleanStaffText(item.notes, 1000)
+        });
+    }
+    if (primaryKey && !result.some(row => row.profession_key === primaryKey)) {
+        result.unshift({
+            profession_key: primaryKey,
+            is_primary: true,
+            status: 'active',
+            admission_status: 'approved',
+            internship_status: primaryKey === 'intern' ? 'in_progress' : 'none',
+            hourly_rate: null,
+            payroll_scheme_id: null,
+            notes: null
+        });
+    }
+    if (result.length && !result.some(row => row.is_primary)) result[0].is_primary = true;
+    const finalPrimaryKey = primaryKey || result.find(row => row.is_primary)?.profession_key || result[0]?.profession_key || '';
+    return result.map(row => ({ ...row, is_primary: row.profession_key === finalPrimaryKey }));
+}
+
+async function replaceStaffRoleAssignments(db, staffId, rows = [], actor = null) {
+    const id = Number(staffId);
+    if (!Number.isFinite(id) || id <= 0) return [];
+    await db.query('DELETE FROM staff_role_assignments WHERE staff_id = $1', [id]);
+    const saved = [];
+    for (const row of rows) {
+        const result = await db.query(
+            `INSERT INTO staff_role_assignments
+                (staff_id, profession_key, is_primary, status, admission_status, internship_status,
+                 hourly_rate, payroll_scheme_id, notes, created_by, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+             RETURNING *`,
+            [
+                id,
+                row.profession_key,
+                row.is_primary,
+                row.status,
+                row.admission_status,
+                row.internship_status,
+                row.hourly_rate,
+                row.payroll_scheme_id,
+                row.notes,
+                actor
+            ]
+        );
+        saved.push(staffRoleAssignmentMeta(result.rows[0]));
+    }
+    return saved;
+}
+
+async function syncStaffRoleAssignmentsFromStaff(db, staffId, staffRow = {}, professionRates = [], actor = null) {
+    const existing = await db.query(
+        `SELECT profession_key, status, admission_status, internship_status, payroll_scheme_id, notes
+         FROM staff_role_assignments
+         WHERE staff_id = $1`,
+        [staffId]
+    ).catch(() => ({ rows: [] }));
+    const existingByProfession = new Map(existing.rows.map(row => [normalizeProfessionKey(row.profession_key), row]));
+    const rows = compatibilityRoleAssignmentsFromStaff(staffRow, professionRates);
+    if (!rows.length) return [];
+    const normalized = rows.map(row => ({
+        profession_key: row.profession_key,
+        is_primary: row.is_primary,
+        status: existingByProfession.get(row.profession_key)?.status || row.status,
+        admission_status: existingByProfession.get(row.profession_key)?.admission_status || row.admission_status,
+        internship_status: existingByProfession.get(row.profession_key)?.internship_status || row.internship_status,
+        hourly_rate: row.hourly_rate,
+        payroll_scheme_id: existingByProfession.get(row.profession_key)?.payroll_scheme_id || null,
+        notes: existingByProfession.get(row.profession_key)?.notes || row.notes
+    }));
+    return replaceStaffRoleAssignments(db, staffId, normalized, actor);
 }
 
 function normalizeResumeText(text) {
@@ -1838,6 +2136,102 @@ router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
     }
 });
 
+router.get('/resource-options', requireHrManage, async (req, res) => {
+    try {
+        const kind = normalizeStaffResourceKind(req.query.kind);
+        const query = cleanStaffText(req.query.q || req.query.search, 80);
+        const limit = Math.max(1, Math.min(80, Number(req.query.limit || 50)));
+        if (kind === 'warehouse_stock') {
+            const businessContext = hrBusinessContextFromRequest(req);
+            const params = [businessContext];
+            const conditions = [
+                `COALESCE(ws.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+                'ws.is_active = true'
+            ];
+            if (query) {
+                params.push(`%${query}%`);
+                conditions.push(`(
+                    ws.name ILIKE $${params.length}
+                    OR COALESCE(ws.category, '') ILIKE $${params.length}
+                    OR COALESCE(ws.sku, '') ILIKE $${params.length}
+                    OR COALESCE(wl.name, '') ILIKE $${params.length}
+                )`);
+            }
+            params.push(limit);
+            const result = await pool.query(
+                `SELECT ws.id, ws.name, ws.category, ws.quantity, ws.unit, ws.owner,
+                        ws.location_id, wl.name AS location_name
+                 FROM warehouse_stock ws
+                 LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                 WHERE ${conditions.join(' AND ')}
+                 ORDER BY ws.quantity > 0 DESC, wl.sort_order NULLS LAST, ws.category, ws.name
+                 LIMIT $${params.length}`,
+                params
+            );
+            return res.json({
+                success: true,
+                kind,
+                data: result.rows.map(row => ({
+                    id: row.id,
+                    kind,
+                    label: row.name,
+                    subtitle: [row.category, row.location_name, `${Number(row.quantity || 0)} ${row.unit || 'шт'}`].filter(Boolean).join(' · '),
+                    category: row.category,
+                    quantity: Number(row.quantity || 0),
+                    unit: row.unit || 'шт',
+                    owner: row.owner || 'park',
+                    location_id: row.location_id,
+                    location_name: row.location_name
+                }))
+            });
+        }
+        if (kind === 'costume') {
+            const params = [];
+            const conditions = [];
+            if (query) {
+                params.push(`%${query}%`);
+                conditions.push(`(
+                    c.name ILIKE $${params.length}
+                    OR COALESCE(c.category, '') ILIKE $${params.length}
+                    OR COALESCE(c.size, '') ILIKE $${params.length}
+                    OR COALESCE(c.condition, '') ILIKE $${params.length}
+                    OR COALESCE(s.name, '') ILIKE $${params.length}
+                )`);
+            }
+            params.push(limit);
+            const result = await pool.query(
+                `SELECT c.id, c.name, c.category, c.size, c.condition, c.assigned_to, s.name AS assigned_name
+                 FROM costumes c
+                 LEFT JOIN staff s ON s.id = c.assigned_to
+                 ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+                 ORDER BY c.assigned_to IS NULL DESC, c.name
+                 LIMIT $${params.length}`,
+                params
+            );
+            return res.json({
+                success: true,
+                kind,
+                data: result.rows.map(row => ({
+                    id: row.id,
+                    kind,
+                    label: row.name,
+                    subtitle: [row.category, row.size, row.condition, row.assigned_name ? `закріплено: ${row.assigned_name}` : 'вільний'].filter(Boolean).join(' · '),
+                    category: row.category,
+                    size: row.size,
+                    condition: row.condition,
+                    assigned_to: row.assigned_to,
+                    assigned_name: row.assigned_name,
+                    is_available: !row.assigned_to
+                }))
+            });
+        }
+        res.json({ success: true, kind: 'custom', data: [] });
+    } catch (err) {
+        log.error('GET /hr/resource-options error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження ресурсів' });
+    }
+});
+
 router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
@@ -1846,13 +2240,19 @@ router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
         const warehouseStockId = resourceKind === 'warehouse_stock' ? numberOrNull(req.body.warehouse_stock_id || req.body.warehouseStockId) : null;
         const costumeId = resourceKind === 'costume' ? numberOrNull(req.body.costume_id || req.body.costumeId) : null;
         let title = cleanStaffText(req.body.title, 160);
-        if (!title && warehouseStockId) {
+        if (warehouseStockId) {
             const stock = await pool.query('SELECT name FROM warehouse_stock WHERE id = $1', [warehouseStockId]);
-            title = stock.rows[0]?.name || null;
+            if (!stock.rows[0]) return res.status(404).json({ success: false, error: 'Складську позицію не знайдено' });
+            if (!title) title = stock.rows[0].name || null;
         }
-        if (!title && costumeId) {
-            const costume = await pool.query('SELECT name FROM costumes WHERE id = $1', [costumeId]);
-            title = costume.rows[0]?.name || null;
+        if (costumeId) {
+            const costume = await pool.query('SELECT name, assigned_to FROM costumes WHERE id = $1', [costumeId]);
+            if (!costume.rows[0]) return res.status(404).json({ success: false, error: 'Костюм не знайдено' });
+            const assignedTo = Number(costume.rows[0]?.assigned_to || 0);
+            if (assignedTo && assignedTo !== Number(req.params.id)) {
+                return res.status(409).json({ success: false, error: 'Костюм вже закріплено за іншим співробітником' });
+            }
+            if (!title) title = costume.rows[0]?.name || null;
         }
         if (!title) return res.status(400).json({ success: false, error: 'Назва ресурсу обовʼязкова' });
         const quantity = Math.max(0.01, numberOrNull(req.body.quantity) || 1);
@@ -1867,6 +2267,14 @@ router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
              RETURNING *`,
             [req.params.id, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, req.user?.username || null]
         );
+        if (costumeId) {
+            await pool.query(
+                `UPDATE costumes
+                 SET assigned_to = $2, assigned_at = NOW()
+                 WHERE id = $1 AND (assigned_to IS NULL OR assigned_to = $2)`,
+                [costumeId, req.params.id]
+            );
+        }
         await auditLog('staff_resource_issue', parseInt(req.params.id), req.user?.username, {
             assignment_id: result.rows[0].id,
             resource_kind: resourceKind,
@@ -1894,6 +2302,14 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
             [req.params.assignmentId, req.params.id, returnedAt, req.user?.username || null]
         );
         if (!result.rows.length) return res.status(404).json({ success: false, error: 'Ресурс не знайдено' });
+        if (result.rows[0].costume_id) {
+            await pool.query(
+                `UPDATE costumes
+                 SET assigned_to = NULL, assigned_at = NULL
+                 WHERE id = $1 AND assigned_to = $2`,
+                [result.rows[0].costume_id, req.params.id]
+            );
+        }
         await auditLog('staff_resource_return', parseInt(req.params.id), req.user?.username, {
             assignment_id: result.rows[0].id,
             title: result.rows[0].title,
@@ -1903,6 +2319,141 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
     } catch (err) {
         log.error('PUT /hr/staff/:id/resources/:assignmentId/return error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
+    try {
+        const staff = await pool.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [req.params.id]);
+        if (!staff.rows.length) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const schemes = await loadPayrollSchemesForStaff(req.params.id);
+        res.json({
+            success: true,
+            data: {
+                staff_id: Number(req.params.id),
+                active_scheme: schemes.find(scheme => scheme.is_active) || null,
+                schemes,
+                scheme_types: PAYROLL_SCHEME_TYPES.map(type => ({ value: type, label: payrollSchemeTypeTitle(type) })),
+                fallback_hourly_rate: Number(staff.rows[0].hourly_rate || 0)
+            }
+        });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/payroll-scheme error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження зарплатної схеми' });
+    }
+});
+
+router.put('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
+    try {
+        const staff = await pool.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [req.params.id]);
+        if (!staff.rows.length) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const schemeType = normalizePayrollSchemeType(req.body.scheme_type || req.body.schemeType);
+        const config = payrollSchemeConfigFromRequest(schemeType, req.body || {}, staff.rows[0].hourly_rate);
+        const title = cleanStaffText(req.body.title, 160) || payrollSchemeTypeTitle(schemeType);
+        const scheme = await createPayrollScheme({
+            staffId: req.params.id,
+            schemeType,
+            title,
+            config,
+            effectiveFrom: cleanStaffDate(req.body.effective_from || req.body.effectiveFrom),
+            effectiveTo: cleanStaffDate(req.body.effective_to || req.body.effectiveTo),
+            isActive: true
+        }, req.user);
+        await auditLog('staff_payroll_scheme_update', parseInt(req.params.id), req.user?.username, {
+            scheme_id: scheme.id,
+            scheme_type: scheme.schemeType,
+            title: scheme.title
+        }, req.ip);
+        res.json({ success: true, data: scheme });
+    } catch (err) {
+        log.error('PUT /hr/staff/:id/payroll-scheme error', err);
+        res.status(err.status || 500).json({ success: false, error: err.status ? err.message : 'Помилка оновлення зарплатної схеми' });
+    }
+});
+
+router.get('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
+    try {
+        const staff = await loadStaffRowOrNull(req.params.id);
+        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        const data = await loadStaffRoleAssignments(req.params.id);
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/role-assignments error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження ролей' });
+    }
+});
+
+router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const rawRows = Array.isArray(req.body.assignments) ? req.body.assignments : (Array.isArray(req.body.data) ? req.body.data : []);
+        await client.query('BEGIN');
+        const staffResult = await client.query(
+            `SELECT id, role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    is_active, hourly_rate
+             FROM staff WHERE id = $1 FOR UPDATE`,
+            [req.params.id]
+        );
+        const staff = staffResult.rows[0];
+        if (!staff) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        }
+        const requestedPrimary = normalizeProfessionKey(
+            req.body.primary_role
+            || req.body.primaryRole
+            || (() => {
+                const primaryRow = rawRows.find(row => row?.is_primary === true || row?.isPrimary === true);
+                return primaryRow?.profession_key || primaryRow?.professionKey || primaryRow?.key;
+            })()
+            || staff.role_type
+        );
+        const rows = normalizeRoleAssignmentInputRows(rawRows, requestedPrimary);
+        const primaryRole = rows.find(row => row.is_primary)?.profession_key || normalizeProfessionKey(staff.role_type);
+        const secondaryRows = rows.filter(row => !row.is_primary).map(row => row.profession_key);
+        const validation = await validateStaffProfessionInput(primaryRole, secondaryRows, {
+            allowedExistingKeys: staffProfessionKeys(staff)
+        });
+        if (validation.error) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: validation.error });
+        }
+        const saved = await replaceStaffRoleAssignments(client, req.params.id, rows, req.user?.username || null);
+        await client.query(
+            `UPDATE staff
+             SET role_type = $2,
+                 secondary_professions = $3::jsonb,
+                 hourly_rate = COALESCE($4, hourly_rate)
+             WHERE id = $1`,
+            [
+                req.params.id,
+                primaryRole,
+                JSON.stringify(validation.secondaryProfessions || []),
+                rows.find(row => row.is_primary && row.hourly_rate !== null)?.hourly_rate ?? null
+            ]
+        );
+        const rateRows = rows
+            .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
+            .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
+        await replaceStaffProfessionRates(client, req.params.id, rateRows);
+        await client.query('COMMIT');
+        await auditLog('staff_role_assignments_update', parseInt(req.params.id), req.user?.username, {
+            primary_role: primaryRole,
+            secondary_professions: validation.secondaryProfessions || [],
+            roles: saved.map(row => ({
+                profession_key: row.profession_key,
+                status: row.status,
+                admission_status: row.admission_status,
+                internship_status: row.internship_status
+            }))
+        }, req.ip);
+        res.json({ success: true, data: saved });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('PUT /hr/staff/:id/role-assignments error', err);
+        res.status(500).json({ success: false, error: 'Помилка оновлення ролей' });
+    } finally {
+        client.release();
     }
 });
 
@@ -2167,6 +2718,21 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             if (hasProfessionRates) {
                 afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
+            }
+            if (fieldPresence.role_type || hasSecondaryProfessions || hasProfessionRates) {
+                if (!hasProfessionRates) {
+                    afterRateRows = (await client.query(
+                        `SELECT profession_key, hourly_rate
+                         FROM staff_profession_rates
+                         WHERE staff_id = $1
+                         ORDER BY profession_key`,
+                        [req.params.id]
+                    ).catch(() => ({ rows: [] }))).rows.map(row => ({
+                        profession_key: normalizeProfessionKey(row.profession_key),
+                        hourly_rate: Number(row.hourly_rate || 0)
+                    }));
+                }
+                await syncStaffRoleAssignmentsFromStaff(client, req.params.id, result.rows[0], afterRateRows, req.user?.username || null);
             }
             await client.query('COMMIT');
         } catch (txErr) {

@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.56">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.56">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.56">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.56">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.56">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.56">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.56">
+    <link rel="stylesheet" href="css/base.css?v=0.73.57">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.57">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.57">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.57">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.57">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.57">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.57">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3859,6 +3859,57 @@
                 <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
                 <small class="form-hint">Заповнюйте тільки ті ролі, де ставка відрізняється від базової.</small>
             </div>
+            <section class="hr-staff-foundation-panel" aria-label="Ролі та допуски">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Ролі та допуски</strong>
+                        <span>Статуси по кожній професії синхронізуються зі старими полями профілю, графіком і ставками.</span>
+                    </div>
+                    <button type="button" id="editRoleAssignmentsSave" class="btn-secondary" onclick="saveStaffRoleAssignments()">Оновити</button>
+                </div>
+                <div id="editStaffRoleAssignments" class="hr-staff-role-assignment-list">Ролі завантажуються...</div>
+            </section>
+            <section class="hr-staff-foundation-panel" aria-label="Зарплатна схема">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Зарплатна схема</strong>
+                        <span>Працює через загальний payroll service: нова активна схема замінює попередню.</span>
+                    </div>
+                    <button type="button" id="editPayrollSchemeSave" class="btn-secondary" onclick="saveStaffPayrollScheme()">Зберегти</button>
+                </div>
+                <div class="hr-staff-foundation-grid">
+                    <div class="form-group">
+                        <label>Тип схеми</label>
+                        <select id="editPayrollSchemeType">
+                            <option value="hourly">Погодинна</option>
+                            <option value="per_shift">Сума за вихід</option>
+                            <option value="monthly_fixed">Фікс за місяць</option>
+                            <option value="percent">Відсоток</option>
+                            <option value="hybrid">Гібридна</option>
+                            <option value="manual">Ручна</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="editPayrollSchemeAmountLabel">Ставка</label>
+                        <input type="number" id="editPayrollSchemeAmount" min="0" step="1" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Назва</label>
+                        <input type="text" id="editPayrollSchemeTitle" maxlength="160" placeholder="Напр. Погодинна основна">
+                    </div>
+                    <div class="form-group">
+                        <label>Діє з</label>
+                        <input type="date" id="editPayrollSchemeEffectiveFrom">
+                    </div>
+                    <div class="form-group">
+                        <label>Діє до</label>
+                        <input type="date" id="editPayrollSchemeEffectiveTo">
+                    </div>
+                    <div class="form-group is-wide">
+                        <div id="editPayrollSchemeSummary" class="hr-payroll-summary">Зарплатна схема завантажується...</div>
+                    </div>
+                </div>
+            </section>
             <div class="form-group">
                 <label>Вузол структури</label>
                 <select id="editCompanyStructureNode"></select>
@@ -3986,7 +4037,14 @@
                             <option value="costume">Костюм</option>
                         </select>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group hr-resource-source-group" id="editResourceSourceGroup" hidden>
+                        <label>Позиція</label>
+                        <select id="editResourceSourceId">
+                            <option value="">Спочатку виберіть тип</option>
+                        </select>
+                        <small class="form-hint" id="editResourceSourceHint">Вибір підтягується зі складу або костюмів.</small>
+                    </div>
+                    <div class="form-group hr-resource-title-group" id="editResourceTitleGroup">
                         <label>Назва</label>
                         <input type="text" id="editResourceTitle" maxlength="160" placeholder="Напр. Радіостанція / костюм">
                     </div>
@@ -4106,14 +4164,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.56"></script>
-    <script src="js/config.js?v=0.73.56"></script>
-    <script src="js/notification.js?v=0.73.56"></script>
-    <script src="js/api.js?v=0.73.56"></script>
-    <script src="js/auth.js?v=0.73.56"></script>
-    <script src="js/components/sidebar.js?v=0.73.56"></script>
+    <script src="js/ui.js?v=0.73.57"></script>
+    <script src="js/config.js?v=0.73.57"></script>
+    <script src="js/notification.js?v=0.73.57"></script>
+    <script src="js/api.js?v=0.73.57"></script>
+    <script src="js/auth.js?v=0.73.57"></script>
+    <script src="js/components/sidebar.js?v=0.73.57"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.56"></script>
-    <script src="js/alerts.js?v=0.73.56"></script>
+    <script src="js/hr-page.js?v=0.73.57"></script>
+    <script src="js/alerts.js?v=0.73.57"></script>
 </body>
 </html>

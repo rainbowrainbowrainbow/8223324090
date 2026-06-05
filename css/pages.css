@@ -6566,13 +6566,21 @@ body.dark-mode .page-container .hr-team-filter-info,
     grid-column: 1 / -1;
 }
 
-.hr-staff-foundation-list {
+.hr-staff-foundation-list,
+.hr-staff-role-assignment-list {
     display: grid;
     gap: 8px;
     margin-top: 10px;
+    color: var(--gray-500);
+    font-size: 12px;
 }
 
-.hr-staff-foundation-item {
+.hr-staff-foundation-grid .form-group {
+    margin-bottom: 0;
+}
+
+.hr-staff-foundation-item,
+.hr-staff-role-assignment-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -6608,6 +6616,55 @@ body.dark-mode .page-container .hr-team-filter-info,
     gap: 6px;
 }
 
+.hr-staff-role-assignment-row {
+    grid-template-columns: minmax(130px, 1.1fr) repeat(3, minmax(110px, 1fr));
+}
+
+.hr-staff-role-assignment-title {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.hr-staff-role-assignment-title b {
+    min-width: 0;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hr-staff-role-assignment-title small {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.hr-staff-role-assignment-row select {
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.hr-payroll-summary {
+    padding: 9px 10px;
+    border: 1px dashed rgba(20,184,166,0.32);
+    border-radius: 10px;
+    background: rgba(20,184,166,0.05);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.4;
+}
+
+.hr-resource-source-group[hidden],
+.hr-resource-title-group[hidden] {
+    display: none;
+}
+
 .hr-staff-foundation-actions button,
 .hr-staff-foundation-panel .btn-secondary,
 .hr-staff-foundation-panel .btn-primary,
@@ -6635,20 +6692,30 @@ body.dark-mode .page-container .hr-team-filter-info,
 }
 
 body.dark-mode .hr-staff-foundation-panel,
-body.dark-mode .hr-staff-foundation-item {
+body.dark-mode .hr-staff-foundation-item,
+body.dark-mode .hr-staff-role-assignment-row {
     background: rgba(255,255,255,0.04);
     border-color: rgba(255,255,255,0.08);
 }
 
 body.dark-mode .hr-staff-foundation-head strong,
-body.dark-mode .hr-staff-foundation-item b {
+body.dark-mode .hr-staff-foundation-item b,
+body.dark-mode .hr-staff-role-assignment-title b {
     color: #F8FAFC;
 }
 
 body.dark-mode .hr-staff-foundation-head span,
 body.dark-mode .hr-staff-foundation-item span,
-body.dark-mode .hr-staff-foundation-empty {
+body.dark-mode .hr-staff-foundation-empty,
+body.dark-mode .hr-staff-role-assignment-list,
+body.dark-mode .hr-staff-role-assignment-title small {
     color: #94A3B8;
+}
+
+body.dark-mode .hr-payroll-summary {
+    background: rgba(20,184,166,0.10);
+    border-color: rgba(20,184,166,0.26);
+    color: #CBD5E1;
 }
 
 body.dark-mode .hr-staff-foundation-empty {
@@ -6670,7 +6737,8 @@ body.dark-mode .hr-staff-foundation-danger {
         grid-template-columns: 1fr;
     }
 
-    .hr-staff-foundation-item {
+    .hr-staff-foundation-item,
+    .hr-staff-role-assignment-row {
         grid-template-columns: 1fr;
     }
 

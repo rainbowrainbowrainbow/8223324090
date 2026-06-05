@@ -66,6 +66,33 @@ const STAFF_RESOURCE_STATUS_LABELS = {
     written_off: 'Списано'
 };
 
+const STAFF_ROLE_STATUS_LABELS = {
+    active: 'Активна',
+    inactive: 'Неактивна',
+    suspended: 'Призупинена'
+};
+
+const STAFF_ROLE_ADMISSION_LABELS = {
+    pending: 'Очікує допуск',
+    approved: 'Допущено',
+    blocked: 'Заблоковано'
+};
+
+const STAFF_ROLE_INTERNSHIP_LABELS = {
+    none: 'Без стажування',
+    in_progress: 'Стажування',
+    completed: 'Завершено'
+};
+
+const PAYROLL_SCHEME_LABELS = {
+    per_shift: 'Сума за вихід',
+    hourly: 'Погодинна',
+    monthly_fixed: 'Фікс за місяць',
+    percent: 'Відсоток',
+    hybrid: 'Гібридна',
+    manual: 'Ручна'
+};
+
 const STAFF_OFFBOARDING_ACCOUNT_LABELS = {
     none: 'Акаунт не змінювався',
     review: 'Потрібна ручна перевірка акаунту',
@@ -253,6 +280,10 @@ let hrProfessions = [];
 let activePeopleBucket = null;
 let pendingPeopleBucket = null;
 let draggedTeamStaffId = null;
+let staffFoundationLoadSeq = 0;
+let staffResourceOptionsLoadSeq = 0;
+let staffRoleAssignmentsLoadSeq = 0;
+let staffPayrollSchemeLoadSeq = 0;
 
 // ==========================================
 // HELPERS
@@ -789,8 +820,17 @@ function initNewTabs() {
         const selected = readStaffSecondaryProfessionSelection();
         populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
         refreshStaffRateEditorFromCurrentForm();
+        refreshStaffRoleAssignmentsFromCurrentForm();
     });
-    document.getElementById('editHourlyRate')?.addEventListener('input', refreshStaffRateEditorFromCurrentForm);
+    document.getElementById('editHourlyRate')?.addEventListener('input', () => {
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffRoleAssignmentsFromCurrentForm();
+    });
+    document.getElementById('editResourceKind')?.addEventListener('change', event => {
+        loadStaffResourceOptions(event.target?.value || 'custom');
+    });
+    document.getElementById('editResourceSourceId')?.addEventListener('change', syncResourceTitleFromOption);
+    document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollSchemeAmountLabel);
     const autoLayoutButton = document.getElementById('hrOrgAutoLayoutBtn');
     if (autoLayoutButton) autoLayoutButton.onclick = autoArrangeCompanyOrgChart;
     initCompanyOrgChart();
@@ -1834,7 +1874,6 @@ async function openProfessionEditor(professionId = null) {
 }
 
 let teamStaff = [];
-let staffFoundationLoadSeq = 0;
 let staffDocumentNameById = new Map();
 let accountUsers = [];
 let accountRoleHierarchy = [];
@@ -3362,6 +3401,7 @@ function bindSecondaryProfessionPicker() {
         search.oninput = () => {
             populateSecondaryProfessionSelect(readStaffSecondaryProfessionSelection(), document.getElementById('editRoleType')?.value);
             refreshStaffRateEditorFromCurrentForm();
+            refreshStaffRoleAssignmentsFromCurrentForm();
         };
     }
     if (picker) {
@@ -3377,6 +3417,7 @@ function bindSecondaryProfessionPicker() {
             if (search && add) search.value = '';
             populateSecondaryProfessionSelect(next, primary);
             refreshStaffRateEditorFromCurrentForm();
+            refreshStaffRoleAssignmentsFromCurrentForm();
         };
     }
 }
@@ -3503,6 +3544,136 @@ function renderStaffFoundationEmpty(text) {
     return `<div class="hr-staff-foundation-empty">${escapeHtml(text)}</div>`;
 }
 
+function staffDateInputValue(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.slice(0, 10);
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function payrollSchemeAmount(scheme = {}, fallbackRate = 0) {
+    const config = scheme.config || {};
+    const type = scheme.scheme_type || scheme.schemeType || 'hourly';
+    if (type === 'per_shift') return Number(config.perShiftRate ?? config.rate ?? config.amount ?? 0);
+    if (type === 'monthly_fixed') return Number(config.monthlyAmount ?? config.fixedAmount ?? config.amount ?? 0);
+    if (type === 'percent') return Number(config.percentRate ?? config.rate ?? 0);
+    if (type === 'manual') return Number(config.manualAmount ?? config.amount ?? 0);
+    if (type === 'hybrid') return Number(config.base?.rate ?? config.baseRate ?? fallbackRate ?? 0);
+    return Number(config.hourlyRate ?? config.rate ?? fallbackRate ?? 0);
+}
+
+function payrollSchemeAmountLabel(type = 'hourly') {
+    return {
+        per_shift: 'Сума за вихід',
+        hourly: 'Ставка за годину',
+        monthly_fixed: 'Фікс за місяць',
+        percent: 'Відсоток',
+        hybrid: 'Базова ставка',
+        manual: 'Ручна сума'
+    }[type] || 'Ставка';
+}
+
+function updatePayrollSchemeAmountLabel() {
+    const type = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
+    const label = document.getElementById('editPayrollSchemeAmountLabel');
+    if (label) label.textContent = payrollSchemeAmountLabel(type);
+}
+
+function renderStaffRoleAssignments(rows = []) {
+    if (!rows.length) return renderStaffFoundationEmpty('Ролі ще не синхронізовані.');
+    const optionHtml = (labels, selected) => Object.entries(labels).map(([value, label]) =>
+        `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`
+    ).join('');
+    return rows.map(row => {
+        const key = normalizeProfessionKey(row.profession_key || row.professionKey);
+        const primary = row.is_primary || row.isPrimary;
+        const title = row.profession_title || row.professionTitle || professionTitle(key);
+        return `<article class="hr-staff-role-assignment-row" data-role-assignment="${escapeHtml(key)}" data-primary="${primary ? 'true' : 'false'}">
+            <div class="hr-staff-role-assignment-title">
+                <b>${escapeHtml(title)}</b>
+                <small>${primary ? 'Основна роль' : 'Додаткова роль'}</small>
+            </div>
+            <select data-role-field="status" aria-label="Статус ролі ${escapeHtml(title)}">${optionHtml(STAFF_ROLE_STATUS_LABELS, row.status || 'active')}</select>
+            <select data-role-field="admission_status" aria-label="Допуск ${escapeHtml(title)}">${optionHtml(STAFF_ROLE_ADMISSION_LABELS, row.admission_status || row.admissionStatus || 'pending')}</select>
+            <select data-role-field="internship_status" aria-label="Стажування ${escapeHtml(title)}">${optionHtml(STAFF_ROLE_INTERNSHIP_LABELS, row.internship_status || row.internshipStatus || 'none')}</select>
+        </article>`;
+    }).join('');
+}
+
+function readStaffRoleAssignmentRows() {
+    const explicitRates = new Map(readStaffProfessionRates().map(row => [normalizeProfessionKey(row.profession_key), Number(row.hourly_rate || 0)]));
+    const baseRate = Number(document.getElementById('editHourlyRate')?.value || 0);
+    return Array.from(document.querySelectorAll('[data-role-assignment]')).map(row => {
+        const key = normalizeProfessionKey(row.dataset.roleAssignment);
+        const isPrimary = row.dataset.primary === 'true';
+        return {
+            profession_key: key,
+            is_primary: isPrimary,
+            status: row.querySelector('[data-role-field="status"]')?.value || 'active',
+            admission_status: row.querySelector('[data-role-field="admission_status"]')?.value || 'pending',
+            internship_status: row.querySelector('[data-role-field="internship_status"]')?.value || 'none',
+            hourly_rate: explicitRates.get(key) || (isPrimary && baseRate > 0 ? baseRate : null)
+        };
+    }).filter(row => row.profession_key);
+}
+
+function refreshStaffRoleAssignmentsFromCurrentForm() {
+    const root = document.getElementById('editStaffRoleAssignments');
+    if (!root) return;
+    const existing = new Map(readStaffRoleAssignmentRows().map(row => [row.profession_key, row]));
+    const primary = normalizeProfessionKey(document.getElementById('editRoleType')?.value);
+    const keys = normalizeProfessionList([primary, ...readStaffSecondaryProfessionSelection()]);
+    if (!keys.length) {
+        root.innerHTML = renderStaffFoundationEmpty('Спочатку виберіть професію.');
+        return;
+    }
+    const rows = keys.map(key => ({
+        profession_key: key,
+        profession_title: professionTitle(key),
+        is_primary: key === primary,
+        status: existing.get(key)?.status || 'active',
+        admission_status: existing.get(key)?.admission_status || (key === primary ? 'approved' : 'pending'),
+        internship_status: existing.get(key)?.internship_status || (key === 'intern' ? 'in_progress' : 'none')
+    }));
+    root.innerHTML = renderStaffRoleAssignments(rows);
+}
+
+function renderStaffResourceOptions(items = [], selected = '') {
+    if (!items.length) return '<option value="">Немає доступних позицій</option>';
+    return [
+        '<option value="">Виберіть позицію</option>',
+        ...items.map(item => {
+            const label = item.subtitle ? `${item.label} · ${item.subtitle}` : item.label;
+            return `<option value="${escapeHtml(item.id)}" data-title="${escapeHtml(item.label || '')}"${String(item.id) === String(selected) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        })
+    ].join('');
+}
+
+function selectedStaffResourceOption() {
+    const select = document.getElementById('editResourceSourceId');
+    const option = select?.selectedOptions?.[0];
+    if (!select || !option || !option.value) return null;
+    return {
+        id: option.value,
+        title: option.dataset.title || option.textContent || ''
+    };
+}
+
+function syncResourceTitleFromOption() {
+    const kind = document.getElementById('editResourceKind')?.value || 'custom';
+    const title = document.getElementById('editResourceTitle');
+    const selected = selectedStaffResourceOption();
+    if (kind !== 'custom' && title && selected?.title) title.value = selected.title;
+}
+
+function updateResourcePickerVisibility() {
+    const kind = document.getElementById('editResourceKind')?.value || 'custom';
+    const sourceGroup = document.getElementById('editResourceSourceGroup');
+    const titleGroup = document.getElementById('editResourceTitleGroup');
+    if (sourceGroup) sourceGroup.hidden = kind === 'custom';
+    if (titleGroup) titleGroup.hidden = false;
+}
+
 function renderStaffDocuments(rows = []) {
     staffDocumentNameById = new Map(rows.map(doc => [Number(doc.id), doc.original_name || doc.title || 'staff-document']));
     if (!rows.length) return renderStaffFoundationEmpty('Документи ще не додані.');
@@ -3579,10 +3750,14 @@ function setStaffFoundationLoading() {
     const medical = document.getElementById('editMedicalBookList');
     const resources = document.getElementById('editStaffResources');
     const offboarding = document.getElementById('editStaffOffboarding');
+    const roles = document.getElementById('editStaffRoleAssignments');
+    const payroll = document.getElementById('editPayrollSchemeSummary');
     if (docs) docs.innerHTML = 'Документи завантажуються...';
     if (medical) medical.innerHTML = 'Медкнижка завантажується...';
     if (resources) resources.innerHTML = 'Ресурси завантажуються...';
     if (offboarding) offboarding.innerHTML = 'Offboarding завантажується...';
+    if (roles) roles.innerHTML = 'Ролі завантажуються...';
+    if (payroll) payroll.textContent = 'Зарплатна схема завантажується...';
 }
 
 async function loadStaffFoundation(staffId) {
@@ -3612,6 +3787,120 @@ async function loadStaffFoundation(staffId) {
     if (medicalRoot) medicalRoot.innerHTML = medical?.success ? renderStaffMedicalBook(medical.data || []) : renderStaffFoundationEmpty(medical?.error || 'Не вдалося завантажити медкнижку.');
     if (resourcesRoot) resourcesRoot.innerHTML = resources?.success ? renderStaffResources(resources.data || []) : renderStaffFoundationEmpty(resources?.error || 'Не вдалося завантажити ресурси.');
     if (offboardingRoot) offboardingRoot.innerHTML = offboarding?.success ? renderStaffOffboarding(offboarding.data || []) : renderStaffFoundationEmpty(offboarding?.error || 'Не вдалося завантажити offboarding.');
+}
+
+async function loadStaffRoleAssignments(staffId) {
+    const root = document.getElementById('editStaffRoleAssignments');
+    if (!root || !staffId) return;
+    const seq = ++staffRoleAssignmentsLoadSeq;
+    root.innerHTML = 'Ролі завантажуються...';
+    const data = await hrFetch(`/staff/${staffId}/role-assignments`).catch(() => null);
+    if (seq !== staffRoleAssignmentsLoadSeq) return;
+    root.innerHTML = data?.success
+        ? renderStaffRoleAssignments(data.data || [])
+        : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити ролі.');
+}
+
+async function saveStaffRoleAssignments() {
+    const staffId = activeEditStaffId();
+    if (!staffId) return;
+    const assignments = readStaffRoleAssignmentRows();
+    if (!assignments.length) {
+        showNotification('Немає ролей для збереження', 'error');
+        return;
+    }
+    const data = await hrFetch(`/staff/${staffId}/role-assignments`, {
+        method: 'PUT',
+        body: {
+            primary_role: document.getElementById('editRoleType')?.value || assignments[0].profession_key,
+            assignments
+        }
+    });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити ролі', 'error');
+        return;
+    }
+    showNotification('Ролі та допуски оновлено', 'success');
+    await loadStaffRoleAssignments(staffId);
+}
+
+function setPayrollSchemeForm(payload = {}) {
+    const scheme = payload.active_scheme || payload.activeScheme || null;
+    const fallbackRate = Number(payload.fallback_hourly_rate ?? payload.fallbackHourlyRate ?? document.getElementById('editHourlyRate')?.value ?? 0);
+    const type = scheme?.scheme_type || scheme?.schemeType || 'hourly';
+    const typeSelect = document.getElementById('editPayrollSchemeType');
+    const amountInput = document.getElementById('editPayrollSchemeAmount');
+    const titleInput = document.getElementById('editPayrollSchemeTitle');
+    const fromInput = document.getElementById('editPayrollSchemeEffectiveFrom');
+    const toInput = document.getElementById('editPayrollSchemeEffectiveTo');
+    const summary = document.getElementById('editPayrollSchemeSummary');
+    if (typeSelect) typeSelect.value = type;
+    updatePayrollSchemeAmountLabel();
+    if (amountInput) amountInput.value = String(payrollSchemeAmount(scheme || { scheme_type: type, config: {} }, fallbackRate) || 0);
+    if (titleInput) titleInput.value = scheme?.title || PAYROLL_SCHEME_LABELS[type] || '';
+    if (fromInput) fromInput.value = staffDateInputValue(scheme?.effective_from || scheme?.effectiveFrom);
+    if (toInput) toInput.value = staffDateInputValue(scheme?.effective_to || scheme?.effectiveTo);
+    if (summary) {
+        summary.textContent = scheme
+            ? `Активна: ${PAYROLL_SCHEME_LABELS[type] || type} · ${scheme.title || 'без назви'}${scheme.effective_from ? ` · з ${formatStaffDateValue(scheme.effective_from)}` : ''}${scheme.effective_to ? ` · до ${formatStaffDateValue(scheme.effective_to)}` : ''}`
+            : `Активної схеми немає. За замовченням використовується HR-ставка: ${fmtMoney(fallbackRate)} / год.`;
+    }
+}
+
+async function loadStaffPayrollScheme(staffId) {
+    const summary = document.getElementById('editPayrollSchemeSummary');
+    if (!summary || !staffId) return;
+    const seq = ++staffPayrollSchemeLoadSeq;
+    summary.textContent = 'Зарплатна схема завантажується...';
+    const data = await hrFetch(`/staff/${staffId}/payroll-scheme`).catch(() => null);
+    if (seq !== staffPayrollSchemeLoadSeq) return;
+    if (!data?.success) {
+        summary.textContent = data?.error || 'Не вдалося завантажити зарплатну схему.';
+        return;
+    }
+    setPayrollSchemeForm(data.data || {});
+}
+
+async function saveStaffPayrollScheme() {
+    const staffId = activeEditStaffId();
+    if (!staffId) return;
+    const schemeType = document.getElementById('editPayrollSchemeType')?.value || 'hourly';
+    const amount = Number(document.getElementById('editPayrollSchemeAmount')?.value || 0);
+    const data = await hrFetch(`/staff/${staffId}/payroll-scheme`, {
+        method: 'PUT',
+        body: {
+            scheme_type: schemeType,
+            amount,
+            title: document.getElementById('editPayrollSchemeTitle')?.value || PAYROLL_SCHEME_LABELS[schemeType] || schemeType,
+            effective_from: document.getElementById('editPayrollSchemeEffectiveFrom')?.value || null,
+            effective_to: document.getElementById('editPayrollSchemeEffectiveTo')?.value || null
+        }
+    });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося зберегти зарплатну схему', 'error');
+        return;
+    }
+    showNotification('Зарплатну схему оновлено', 'success');
+    await loadStaffPayrollScheme(staffId);
+}
+
+async function loadStaffResourceOptions(kind = document.getElementById('editResourceKind')?.value || 'custom') {
+    updateResourcePickerVisibility();
+    const sourceSelect = document.getElementById('editResourceSourceId');
+    const hint = document.getElementById('editResourceSourceHint');
+    if (!sourceSelect) return;
+    if (kind === 'custom') {
+        sourceSelect.innerHTML = '<option value="">Ручний запис</option>';
+        if (hint) hint.textContent = 'Для ручного ресурсу достатньо назви.';
+        return;
+    }
+    const seq = ++staffResourceOptionsLoadSeq;
+    sourceSelect.innerHTML = '<option value="">Завантаження...</option>';
+    if (hint) hint.textContent = kind === 'costume' ? 'Підтягується з розділу Склад → Костюми.' : 'Підтягується з активних складських позицій.';
+    const data = await hrFetch(`/resource-options?kind=${encodeURIComponent(kind)}&limit=80`).catch(() => null);
+    if (seq !== staffResourceOptionsLoadSeq) return;
+    sourceSelect.innerHTML = data?.success ? renderStaffResourceOptions(data.data || []) : '<option value="">Не вдалося завантажити</option>';
+    syncResourceTitleFromOption();
 }
 
 async function uploadStaffDocument() {
@@ -3703,13 +3992,21 @@ async function saveStaffMedicalBook() {
 async function issueStaffResource() {
     const staffId = activeEditStaffId();
     if (!staffId) return;
+    const resourceKind = document.getElementById('editResourceKind')?.value || 'custom';
+    const selectedResource = selectedStaffResourceOption();
     const body = {
-        resource_kind: document.getElementById('editResourceKind')?.value || 'custom',
-        title: document.getElementById('editResourceTitle')?.value || null,
+        resource_kind: resourceKind,
+        title: document.getElementById('editResourceTitle')?.value || selectedResource?.title || null,
         quantity: Number(document.getElementById('editResourceQuantity')?.value || 1),
         due_return_at: document.getElementById('editResourceDueReturnAt')?.value || null,
         notes: document.getElementById('editResourceNotes')?.value || null
     };
+    if (resourceKind === 'warehouse_stock') body.warehouse_stock_id = selectedResource?.id || null;
+    if (resourceKind === 'costume') body.costume_id = selectedResource?.id || null;
+    if (resourceKind !== 'custom' && !selectedResource?.id) {
+        showNotification('Виберіть позицію ресурсу', 'error');
+        return;
+    }
     if (!body.title) {
         showNotification('Вкажіть назву ресурсу', 'error');
         return;
@@ -3723,6 +4020,8 @@ async function issueStaffResource() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const source = document.getElementById('editResourceSourceId');
+    if (source) source.value = '';
     const quantity = document.getElementById('editResourceQuantity');
     if (quantity) quantity.value = '1';
     showNotification('Ресурс видано', 'success');
@@ -3803,6 +4102,20 @@ async function openStaffEdit(staffId) {
     if (documentType) documentType.value = 'other';
     const resourceKind = document.getElementById('editResourceKind');
     if (resourceKind) resourceKind.value = 'custom';
+    const resourceSource = document.getElementById('editResourceSourceId');
+    if (resourceSource) resourceSource.innerHTML = '<option value="">Ручний запис</option>';
+    updateResourcePickerVisibility();
+    const payrollType = document.getElementById('editPayrollSchemeType');
+    if (payrollType) payrollType.value = 'hourly';
+    updatePayrollSchemeAmountLabel();
+    const payrollAmount = document.getElementById('editPayrollSchemeAmount');
+    if (payrollAmount) payrollAmount.value = String(s.hourly_rate || 0);
+    const payrollTitle = document.getElementById('editPayrollSchemeTitle');
+    if (payrollTitle) payrollTitle.value = '';
+    ['editPayrollSchemeEffectiveFrom', 'editPayrollSchemeEffectiveTo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
     const resourceQuantity = document.getElementById('editResourceQuantity');
     if (resourceQuantity) resourceQuantity.value = '1';
     const offboardingDate = document.getElementById('editOffboardingDate');
@@ -3815,6 +4128,9 @@ async function openStaffEdit(staffId) {
     showHrEditableModal('staffEditModal');
     loadStaffProfileHistory(staffId);
     loadStaffFoundation(staffId);
+    loadStaffRoleAssignments(staffId);
+    loadStaffPayrollScheme(staffId);
+    loadStaffResourceOptions('custom');
 }
 
 async function saveStaffEdit() {

@@ -74,6 +74,83 @@ async function resolveScheduleProfession(staffId, status, payload = {}, db = poo
     return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
 }
 
+function normalizeScheduleDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
+}
+
+function staffScheduleStatusForShift(shiftType) {
+    return shiftType === 'remote' ? 'remote' : 'working';
+}
+
+function shiftTypeForScheduleStatus(status) {
+    return status === 'remote' ? 'remote' : 'regular';
+}
+
+function replacementNote(originalName, reason) {
+    const safeName = String(originalName || '').trim() || 'працівника';
+    const safeReason = String(reason || '').trim();
+    return `Заміна за ${safeName}${safeReason ? `: ${safeReason}` : ''}`;
+}
+
+async function loadEnrichedScheduleEntry(client, scheduleId) {
+    const result = await client.query(
+        `SELECT ss.*, ss.date::text AS date,
+                s.name, s.department, s.position, s.color, s.is_active,
+                s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                hs.id AS hr_shift_id,
+                hs.original_staff_id,
+                original_staff.name AS original_staff_name,
+                hs.replacement_reason,
+                hs.replaced_by,
+                hs.replaced_at
+         FROM staff_schedule ss
+         JOIN staff s ON s.id = ss.staff_id
+         LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+         LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
+         WHERE ss.id = $1`,
+        [scheduleId]
+    );
+    return result.rows[0] || null;
+}
+
+async function removeScheduleMirror(client, staffId, date) {
+    await client.query(
+        `DELETE FROM staff_schedule
+         WHERE staff_id = $1
+           AND date = $2
+           AND status IN ('working', 'remote')`,
+        [staffId, date]
+    );
+}
+
+async function upsertScheduleMirror(client, shift, note = null) {
+    const date = normalizeScheduleDate(shift?.shift_date);
+    if (!shift?.staff_id || !date) return null;
+    const result = await client.query(
+        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (staff_id, date)
+         DO UPDATE SET shift_start = EXCLUDED.shift_start,
+                       shift_end = EXCLUDED.shift_end,
+                       status = EXCLUDED.status,
+                       note = EXCLUDED.note,
+                       profession_key = EXCLUDED.profession_key
+         RETURNING id`,
+        [
+            shift.staff_id,
+            date,
+            shift.planned_start || null,
+            shift.planned_end || null,
+            staffScheduleStatusForShift(shift.shift_type),
+            note ?? shift.notes ?? null,
+            shift.profession_key || null
+        ]
+    );
+    return result.rows[0]?.id || null;
+}
+
 /**
  * Send Telegram notification when schedule changes.
  * Mentions employee by @telegram_username if set.
@@ -154,10 +231,19 @@ router.get('/schedule', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
         const result = await pool.query(
-            `SELECT ss.*, s.name, s.department, s.position, s.color, s.is_active,
-                    s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
+            `SELECT ss.*, ss.date::text AS date,
+                    s.name, s.department, s.position, s.color, s.is_active,
+                    s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    hs.id AS hr_shift_id,
+                    hs.original_staff_id,
+                    original_staff.name AS original_staff_name,
+                    hs.replacement_reason,
+                    hs.replaced_by,
+                    hs.replaced_at
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+             LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
              WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
@@ -171,17 +257,19 @@ router.get('/schedule', async (req, res) => {
 
 // PUT /api/staff/schedule — upsert a single schedule entry
 router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { staffId, date, shiftStart, shiftEnd, status, note } = req.body;
         if (!staffId || !date) {
             return res.status(400).json({ success: false, error: 'Потрібні staffId та date' });
         }
         const scheduleStatus = status || 'working';
-        const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body);
+        const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body, client);
         if (!profession.ok) {
             return res.status(profession.status || 400).json({ success: false, error: profession.error });
         }
-        const result = await pool.query(
+        await client.query('BEGIN');
+        const result = await client.query(
             `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (staff_id, date)
@@ -189,12 +277,38 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
              RETURNING *`,
             [staffId, date, shiftStart || null, shiftEnd || null, scheduleStatus, note || null, profession.professionKey]
         );
+        if (scheduleStatusNeedsProfession(scheduleStatus)) {
+            await client.query(
+                `UPDATE hr_shifts SET
+                    planned_start = $1,
+                    planned_end = $2,
+                    shift_type = $3,
+                    notes = $4,
+                    profession_key = $5,
+                    updated_at = NOW()
+                 WHERE staff_id = $6 AND shift_date = $7`,
+                [
+                    shiftStart || null,
+                    shiftEnd || null,
+                    shiftTypeForScheduleStatus(scheduleStatus),
+                    note || null,
+                    profession.professionKey,
+                    staffId,
+                    date
+                ]
+            );
+        }
+        const enriched = await loadEnrichedScheduleEntry(client, result.rows[0].id);
+        await client.query('COMMIT');
         // Fire-and-forget Telegram notification
         notifyScheduleChange(staffId, date, scheduleStatus, shiftStart, shiftEnd);
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: enriched || result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -204,6 +318,250 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
  * Example: set a whole week for one person, or one day for all animators.
  * Returns count of upserted entries.
  */
+// POST /api/staff/schedule/:id/replace — assign a live schedule slot to a replacement worker through HR shift truth
+router.post('/schedule/:id/replace', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const scheduleId = parseInt(req.params.id, 10);
+        const replacementStaffId = parseInt(req.body.replacement_staff_id ?? req.body.replacementStaffId, 10);
+        const reason = String(req.body.reason || '').trim() || null;
+        if (!scheduleId || !replacementStaffId) {
+            return res.status(400).json({ success: false, error: 'Потрібні schedule id та replacement_staff_id' });
+        }
+
+        await client.query('BEGIN');
+        const scheduleResult = await client.query(
+            `SELECT ss.*, ss.date::text AS date, s.name AS staff_name, s.role_type
+             FROM staff_schedule ss
+             JOIN staff s ON s.id = ss.staff_id
+             WHERE ss.id = $1
+             FOR UPDATE OF ss`,
+            [scheduleId]
+        );
+        if (!scheduleResult.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Слот графіка не знайдено' });
+        }
+        const schedule = scheduleResult.rows[0];
+        const date = normalizeScheduleDate(schedule.date);
+        const status = schedule.status || 'working';
+        if (!['working', 'remote'].includes(status) || !schedule.shift_start || !schedule.shift_end) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Підміну можна виставити тільки для робочого слота з часом' });
+        }
+        if (Number(schedule.staff_id) === replacementStaffId) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Підміна на того самого працівника не потрібна' });
+        }
+
+        const replacement = await client.query(
+            'SELECT id, name, role_type FROM staff WHERE id = $1 AND is_active = true',
+            [replacementStaffId]
+        );
+        if (!replacement.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Працівник для заміни неактивний або не існує' });
+        }
+
+        const sourceProfession = await resolveScheduleProfession(schedule.staff_id, status, {
+            profession_key: schedule.profession_key || schedule.role_type
+        }, client);
+        if (!sourceProfession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(sourceProfession.status || 400).json({ success: false, error: sourceProfession.error });
+        }
+        const replacementProfession = await resolveStaffProfessionAssignment(client, replacementStaffId, sourceProfession.professionKey);
+        if (!replacementProfession.ok) {
+            await client.query('ROLLBACK');
+            return res.status(replacementProfession.status || 400).json({ success: false, error: replacementProfession.error });
+        }
+
+        const hrShift = await client.query(
+            `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, shift_type, break_minutes, notes, created_by, profession_key)
+             VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+             ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                planned_start = EXCLUDED.planned_start,
+                planned_end = EXCLUDED.planned_end,
+                shift_type = EXCLUDED.shift_type,
+                notes = CASE
+                    WHEN hr_shifts.original_staff_id IS NULL THEN EXCLUDED.notes
+                    ELSE hr_shifts.notes
+                END,
+                profession_key = EXCLUDED.profession_key,
+                updated_at = NOW()
+             RETURNING *`,
+            [
+                schedule.staff_id,
+                date,
+                schedule.shift_start,
+                schedule.shift_end,
+                shiftTypeForScheduleStatus(status),
+                schedule.note || null,
+                req.user?.username || null,
+                sourceProfession.professionKey
+            ]
+        );
+        const currentShift = hrShift.rows[0];
+
+        const shiftConflict = await client.query(
+            `SELECT id FROM hr_shifts
+             WHERE staff_id = $1 AND shift_date = $2 AND id <> $3
+             LIMIT 1`,
+            [replacementStaffId, date, currentShift.id]
+        );
+        if (shiftConflict.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'У працівника для заміни вже є HR-зміна на цю дату' });
+        }
+
+        const scheduleConflict = await client.query(
+            `SELECT id, status FROM staff_schedule
+             WHERE staff_id = $1 AND date = $2 AND id <> $3
+               AND status IN ('working', 'remote', 'vacation', 'sick')
+             LIMIT 1`,
+            [replacementStaffId, date, scheduleId]
+        );
+        if (scheduleConflict.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'У працівника для заміни вже є активний слот графіка на цю дату' });
+        }
+
+        const originalStaffId = currentShift.original_staff_id || currentShift.staff_id;
+        const original = await client.query('SELECT id, name FROM staff WHERE id = $1', [originalStaffId]);
+        const updatedShift = await client.query(
+            `UPDATE hr_shifts SET
+                original_staff_id = COALESCE(original_staff_id, staff_id),
+                staff_id = $1,
+                replacement_reason = $2,
+                replaced_by = $3,
+                replaced_at = NOW(),
+                planned_start = $4,
+                planned_end = $5,
+                shift_type = $6,
+                profession_key = $7,
+                updated_at = NOW()
+             WHERE id = $8
+             RETURNING *`,
+            [
+                replacementStaffId,
+                reason,
+                req.user?.username || null,
+                schedule.shift_start,
+                schedule.shift_end,
+                shiftTypeForScheduleStatus(status),
+                replacementProfession.professionKey,
+                currentShift.id
+            ]
+        );
+
+        await client.query('DELETE FROM staff_schedule WHERE id = $1', [scheduleId]);
+        const replacementScheduleId = await upsertScheduleMirror(
+            client,
+            updatedShift.rows[0],
+            replacementNote(original.rows[0]?.name, reason)
+        );
+        const enriched = replacementScheduleId ? await loadEnrichedScheduleEntry(client, replacementScheduleId) : null;
+        await client.query('COMMIT');
+
+        notifyScheduleChange(replacementStaffId, date, status, schedule.shift_start, schedule.shift_end);
+        res.json({ success: true, data: enriched, replacement: replacement.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /staff/schedule/:id/replace error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/staff/schedule/:id/replacement-clear — return a replacement slot to the original worker
+router.post('/schedule/:id/replacement-clear', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const scheduleId = parseInt(req.params.id, 10);
+        if (!scheduleId) {
+            return res.status(400).json({ success: false, error: 'Потрібен schedule id' });
+        }
+
+        await client.query('BEGIN');
+        const scheduleResult = await client.query(
+            `SELECT ss.*, ss.date::text AS date, hs.id AS hr_shift_id, hs.original_staff_id,
+                    hs.planned_start, hs.planned_end, hs.shift_type, hs.notes, hs.profession_key
+             FROM staff_schedule ss
+             JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+             WHERE ss.id = $1
+             FOR UPDATE OF ss, hs`,
+            [scheduleId]
+        );
+        if (!scheduleResult.rows.length || !scheduleResult.rows[0].original_staff_id) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'У цьому слоті немає активної підміни' });
+        }
+        const schedule = scheduleResult.rows[0];
+        const date = normalizeScheduleDate(schedule.date);
+        const originalStaffId = Number(schedule.original_staff_id);
+
+        const original = await client.query(
+            'SELECT id, name, role_type FROM staff WHERE id = $1 AND is_active = true',
+            [originalStaffId]
+        );
+        if (!original.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Оригінальний працівник неактивний або не існує' });
+        }
+
+        const shiftConflict = await client.query(
+            `SELECT id FROM hr_shifts
+             WHERE staff_id = $1 AND shift_date = $2 AND id <> $3
+             LIMIT 1`,
+            [originalStaffId, date, schedule.hr_shift_id]
+        );
+        if (shiftConflict.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Оригінальний працівник вже має HR-зміну на цю дату' });
+        }
+
+        const scheduleConflict = await client.query(
+            `SELECT id, status FROM staff_schedule
+             WHERE staff_id = $1 AND date = $2 AND id <> $3
+               AND status IN ('working', 'remote', 'vacation', 'sick')
+             LIMIT 1`,
+            [originalStaffId, date, scheduleId]
+        );
+        if (scheduleConflict.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Оригінальний працівник вже має активний слот графіка на цю дату' });
+        }
+
+        const restoredShift = await client.query(
+            `UPDATE hr_shifts SET
+                staff_id = original_staff_id,
+                original_staff_id = NULL,
+                replacement_reason = NULL,
+                replaced_by = NULL,
+                replaced_at = NULL,
+                updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [schedule.hr_shift_id]
+        );
+
+        await client.query('DELETE FROM staff_schedule WHERE id = $1', [scheduleId]);
+        const restoredScheduleId = await upsertScheduleMirror(client, restoredShift.rows[0], restoredShift.rows[0].notes || null);
+        const enriched = restoredScheduleId ? await loadEnrichedScheduleEntry(client, restoredScheduleId) : null;
+        await client.query('COMMIT');
+
+        notifyScheduleChange(originalStaffId, date, staffScheduleStatusForShift(restoredShift.rows[0].shift_type), restoredShift.rows[0].planned_start, restoredShift.rows[0].planned_end);
+        res.json({ success: true, data: enriched, original: original.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /staff/schedule/:id/replacement-clear error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
+    }
+});
+
 router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { entries } = req.body;

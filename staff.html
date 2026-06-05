@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.54">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.54">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.54">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.54">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.54">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.54">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.54">
+    <link rel="stylesheet" href="css/base.css?v=0.73.55">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.55">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.55">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.55">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.55">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.55">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.55">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -650,7 +650,6 @@
             border-color: var(--gray-600);
             color: var(--gray-200);
         }
-
         /* Load table (Excel-like workload view) */
         .load-table td, .load-table th {
             text-align: center;
@@ -1426,6 +1425,11 @@
                 <label>Примітка</label>
                 <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
+            <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
+            <div class="modal-actions sch-replacement-actions">
+                <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
+                <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
+            </div>
             <div class="modal-actions">
                 <button type="button" id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
                 <button type="button" id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
@@ -1531,13 +1535,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.54"></script>
-    <script src="js/config.js?v=0.73.54"></script>
-    <script src="js/notification.js?v=0.73.54"></script>
-    <script src="js/api.js?v=0.73.54"></script>
-    <script src="js/auth.js?v=0.73.54"></script>
-    <script src="js/components/sidebar.js?v=0.73.54"></script>
+    <script src="js/ui.js?v=0.73.55"></script>
+    <script src="js/config.js?v=0.73.55"></script>
+    <script src="js/notification.js?v=0.73.55"></script>
+    <script src="js/api.js?v=0.73.55"></script>
+    <script src="js/auth.js?v=0.73.55"></script>
+    <script src="js/components/sidebar.js?v=0.73.55"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.73.54"></script><script src="js/alerts.js?v=0.73.54"></script>
+    <script src="js/staff-page.js?v=0.73.55"></script><script src="js/alerts.js?v=0.73.55"></script>
 </body>
 </html>

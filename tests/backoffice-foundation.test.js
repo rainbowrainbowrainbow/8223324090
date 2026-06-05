@@ -15,6 +15,8 @@ describe('backoffice foundation v1 contracts', () => {
     const staffRoute = readRepoFile('routes', 'staff.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
     const hrHtml = readRepoFile('hr.html');
+    const staffPage = readRepoFile('js', 'staff-page.js');
+    const staffHtml = readRepoFile('staff.html');
     const sidebar = readRepoFile('js', 'components', 'sidebar.js');
 
     it('keeps schema changes additive and explicitly governed', () => {
@@ -43,6 +45,18 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrPage, /async function replaceShift/);
         assert.match(hrPage, /document\.getElementById\('shiftReplace'\)\?\.addEventListener\('click', replaceShift\)/);
         assert.match(hrHtml, /id="shiftReplace"/);
+        assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replace'/);
+        assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replacement-clear'/);
+        assert.match(staffRoute, /original_staff\.name AS original_staff_name/);
+        assert.match(staffRoute, /function replacementNote/);
+        assert.match(staffRoute, /async function loadEnrichedScheduleEntry/);
+        assert.match(staffPage, /async function replaceScheduleEntry/);
+        assert.match(staffPage, /async function clearScheduleReplacement/);
+        assert.match(staffPage, /function scheduleReplacementCandidates/);
+        assert.match(staffPage, /sch-replacement-badge/);
+        assert.match(staffHtml, /id="schReplaceBtn"/);
+        assert.match(staffHtml, /id="schClearReplacementBtn"/);
+        assert.match(staffHtml, /id="schReplacementDetails"/);
     });
 
     it('adds HR-owned structure, reserve, blacklist, and task KPI without a new task engine', () => {

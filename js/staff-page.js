@@ -203,6 +203,69 @@ function staffProfessionOptions(staff = {}, current = '') {
     }));
 }
 
+function staffHasProfession(staff = {}, key = '') {
+    const normalized = normalizeProfessionKey(key);
+    if (!normalized) return false;
+    return normalizeProfessionKey(staff.role_type) === normalized
+        || staffSecondaryProfessions(staff).includes(normalized);
+}
+
+function isReplacementEntry(entry = {}) {
+    return Boolean(entry?.original_staff_id);
+}
+
+function scheduleEntryKey(entry = {}) {
+    if (!entry?.staff_id || !entry?.date) return '';
+    return `${entry.staff_id}_${entry.date}`;
+}
+
+function scheduleEntryTime(entry = {}) {
+    if (!entry?.shift_start || !entry?.shift_end) return '';
+    return `${String(entry.shift_start).slice(0, 5)}-${String(entry.shift_end).slice(0, 5)}`;
+}
+
+function scheduleHasBlockingConflict(staffId, date, exceptScheduleId = null) {
+    const entry = StaffState.schedule[`${staffId}_${date}`];
+    if (!entry) return false;
+    if (exceptScheduleId && Number(entry.id) === Number(exceptScheduleId)) return false;
+    return ['working', 'remote', 'vacation', 'sick'].includes(entry.status);
+}
+
+function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
+    const professionKey = normalizeProfessionKey(entry.profession_key || currentStaff.role_type);
+    return StaffState.staff
+        .filter(staff => staff.is_active !== false)
+        .filter(staff => Number(staff.id) !== Number(entry.staff_id))
+        .filter(staff => staffHasProfession(staff, professionKey))
+        .filter(staff => !scheduleHasBlockingConflict(staff.id, entry.date, entry.id))
+        .map(staff => ({
+            value: String(staff.id),
+            label: `${staff.name} - ${staff.position || professionLabel(staff.role_type)}`
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+}
+
+function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
+    const parts = [`${emp.name} - ${date}`];
+    if (shiftStart && shiftEnd) parts.push(`${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
+    if (isReplacementEntry(entry)) {
+        parts.push(`Заміна за: ${entry.original_staff_name || 'працівника'}`);
+        if (entry.replacement_reason) parts.push(`Причина: ${entry.replacement_reason}`);
+    }
+    return parts.join(' | ');
+}
+
+function replaceScheduleStateEntry(previousEntry, nextEntry) {
+    if (previousEntry) {
+        const oldKey = scheduleEntryKey(previousEntry);
+        if (oldKey) delete StaffState.schedule[oldKey];
+    }
+    if (nextEntry) {
+        const newKey = scheduleEntryKey(nextEntry);
+        if (newKey) StaffState.schedule[newKey] = nextEntry;
+    }
+}
+
 const LEGACY_DEPARTMENT_FALLBACK = {
     animators: 'Аніматори',
     trampoline: 'Батутисти',
@@ -353,6 +416,28 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
     return await res.json();
 }
 
+async function replaceScheduleEntry(scheduleId, replacementStaffId, reason) {
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch(`/api/staff/schedule/${scheduleId}/replace`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            replacement_staff_id: replacementStaffId,
+            reason: reason || null
+        })
+    });
+    return await res.json();
+}
+
+async function clearScheduleReplacement(scheduleId) {
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch(`/api/staff/schedule/${scheduleId}/replacement-clear`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+}
+
 async function bulkSaveSchedule(entries) {
     const token = localStorage.getItem('pzp_token');
     const res = await fetch('/api/staff/schedule/bulk', {
@@ -422,15 +507,18 @@ function renderSummary() {
         ? StaffState.staff
         : StaffState.staff.filter(s => s.department === StaffState.activeDept);
 
-    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0;
+    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0, replacements = 0;
     for (const s of filtered) {
         const entry = StaffState.schedule[`${s.id}_${today}`];
         if (!entry) unset++;
-        else if (entry.status === 'working') working++;
-        else if (entry.status === 'dayoff') dayoff++;
-        else if (entry.status === 'vacation') vacation++;
-        else if (entry.status === 'sick') sick++;
-        else if (entry.status === 'remote') remote++;
+        else {
+            if (isReplacementEntry(entry)) replacements++;
+            if (entry.status === 'working') working++;
+            else if (entry.status === 'dayoff') dayoff++;
+            else if (entry.status === 'vacation') vacation++;
+            else if (entry.status === 'sick') sick++;
+            else if (entry.status === 'remote') remote++;
+        }
     }
 
     container.innerHTML = `
@@ -439,6 +527,7 @@ function renderSummary() {
         <div class="summary-chip"><span class="chip-dot" style="background:#3B82F6"></span> Відпустка: <span class="chip-count">${vacation}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#EF4444"></span> Лікарняний: <span class="chip-count">${sick}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#F59E0B"></span> Віддалено: <span class="chip-count">${remote}</span></div>
+        ${replacements > 0 ? `<div class="summary-chip summary-chip-replacement"><span class="chip-dot" style="background:#F97316"></span> Заміни: <span class="chip-count">${replacements}</span></div>` : ''}
         ${unset > 0 ? `<div class="summary-chip"><span class="chip-dot" style="background:#CBD5E1"></span> Не заповнено: <span class="chip-count">${unset}</span></div>` : ''}
     `;
 }
@@ -476,12 +565,17 @@ function renderEmpRow(emp, dates, today) {
         const shiftStart = entry?.shift_start;
         const shiftEnd = entry?.shift_end;
         const icon = STATUS_ICONS[status] || '';
+        const isReplacement = isReplacementEntry(entry);
 
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
             const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
             if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
+            if (isReplacement) {
+                cellContent += `<span class="sch-replacement-badge">Заміна</span>`;
+                cellContent += `<span class="sch-replacement-from">за ${escapeHtml(entry.original_staff_name || 'працівника')}</span>`;
+            }
             if (status === 'remote') cellContent += `<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`;
         } else if (status === 'working') {
             cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
@@ -496,9 +590,10 @@ function renderEmpRow(emp, dates, today) {
         }
 
         html += `<td>
-            <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''}"
+            <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''}"
                  data-staff="${emp.id}" data-date="${ds}"
-                 title="${escapeHtml(emp.name)} — ${ds}${shiftStart ? ' (' + shiftStart.slice(0,5) + '–' + shiftEnd.slice(0,5) + ')' : ''}">
+                 data-schedule-id="${entry?.id || ''}" data-hr-shift="${entry?.hr_shift_id || ''}"
+                 title="${escapeHtml(scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd))}">
                 ${cellContent}
             </div>
         </td>`;
@@ -655,8 +750,8 @@ function openEditModal(staffId, date) {
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
 
-    StaffState.editingCell = { staffId, date };
     const entry = StaffState.schedule[`${staffId}_${date}`];
+    StaffState.editingCell = { staffId, date, entry };
 
     document.getElementById('schModalTitle').textContent = `${emp.name} — ${date}`;
     document.getElementById('schStatus').value = entry?.status || 'working';
@@ -670,6 +765,36 @@ function openEditModal(staffId, date) {
             ? options.map(option => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
             : '<option value="">Професія не задана</option>';
         professionSelect.disabled = !options.length;
+    }
+
+    const isReplacement = isReplacementEntry(entry);
+    const canReplace = StaffState.canManage
+        && entry?.id
+        && ['working', 'remote'].includes(entry.status)
+        && entry.shift_start
+        && entry.shift_end;
+    const replacementDetails = document.getElementById('schReplacementDetails');
+    if (replacementDetails) {
+        if (isReplacement) {
+            replacementDetails.hidden = false;
+            replacementDetails.innerHTML = `
+                <strong>Активна підміна</strong>
+                <span>Замість: ${escapeHtml(entry.original_staff_name || 'працівника')}</span>
+                ${entry.replacement_reason ? `<span>Причина: ${escapeHtml(entry.replacement_reason)}</span>` : ''}
+            `;
+        } else {
+            replacementDetails.hidden = true;
+            replacementDetails.innerHTML = '';
+        }
+    }
+    const replaceBtn = document.getElementById('schReplaceBtn');
+    if (replaceBtn) {
+        replaceBtn.hidden = !canReplace;
+        replaceBtn.textContent = isReplacement ? 'Змінити заміну' : 'Виставити заміну';
+    }
+    const clearReplacementBtn = document.getElementById('schClearReplacementBtn');
+    if (clearReplacementBtn) {
+        clearReplacementBtn.hidden = !(canReplace && isReplacement);
     }
 
     toggleTimeFields();
@@ -706,10 +831,18 @@ function toggleTimeFields() {
     document.getElementById('schTimeFields').style.display = visible ? '' : 'none';
     const professionGroup = document.getElementById('schProfessionGroup');
     if (professionGroup) professionGroup.style.display = visible ? '' : 'none';
+    const entry = getEditingScheduleEntry();
+    const isReplacement = isReplacementEntry(entry);
+    const canReplace = visible && StaffState.canManage && entry?.id && entry.shift_start && entry.shift_end;
+    const replaceBtn = document.getElementById('schReplaceBtn');
+    const clearReplacementBtn = document.getElementById('schClearReplacementBtn');
+    if (replaceBtn) replaceBtn.hidden = !canReplace;
+    if (clearReplacementBtn) clearReplacementBtn.hidden = !(canReplace && isReplacement);
 }
 
 async function handleSave() {
     const { staffId, date } = StaffState.editingCell;
+    const previousEntry = StaffState.editingCell?.entry || StaffState.schedule[`${staffId}_${date}`] || null;
     const status = document.getElementById('schStatus')?.value;
     const showTime = status === 'working' || status === 'remote';
     const shiftStart = showTime ? document.getElementById('schStart')?.value : null;
@@ -719,12 +852,85 @@ async function handleSave() {
 
     const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey);
     if (result.success) {
-        StaffState.schedule[`${staffId}_${date}`] = result.data;
+        replaceScheduleStateEntry(previousEntry, result.data);
         renderSchedule();
         closeEditModal(true);
         showNotification('Зміну збережено');
     } else {
         showNotification(result.error || 'Помилка збереження', 'error');
+    }
+}
+
+function getEditingScheduleEntry() {
+    const editing = StaffState.editingCell;
+    if (!editing) return null;
+    return StaffState.schedule[`${editing.staffId}_${editing.date}`] || editing.entry || null;
+}
+
+async function handleReplaceSchedule() {
+    const entry = getEditingScheduleEntry();
+    if (!entry?.id || typeof formModal !== 'function') {
+        showNotification('Спочатку збережіть робочий слот графіка', 'error');
+        return;
+    }
+    const currentStaff = StaffState.staff.find(staff => Number(staff.id) === Number(entry.staff_id));
+    const candidates = scheduleReplacementCandidates(entry, currentStaff);
+    if (!candidates.length) {
+        showNotification('Немає вільних кандидатів з потрібною професією на цю дату', 'error');
+        return;
+    }
+
+    const result = await formModal('Підміна зміни', [
+        {
+            key: 'replacementStaffId',
+            label: 'Кого поставити',
+            type: 'select',
+            options: candidates,
+            defaultValue: candidates[0].value,
+            required: true
+        },
+        {
+            key: 'reason',
+            label: 'Причина',
+            type: 'textarea',
+            placeholder: 'Хвороба, форс-мажор, домовленість...'
+        }
+    ], { icon: '↔', okText: isReplacementEntry(entry) ? 'Змінити заміну' : 'Виставити заміну', type: 'warning' });
+    if (!result) return;
+
+    const apiResult = await replaceScheduleEntry(entry.id, result.replacementStaffId, result.reason);
+    if (apiResult.success) {
+        replaceScheduleStateEntry(entry, apiResult.data);
+        renderSchedule();
+        closeEditModal(true);
+        showNotification('Підміну виставлено');
+    } else {
+        showNotification(apiResult.error || 'Помилка підміни', 'error');
+    }
+}
+
+async function handleClearReplacement() {
+    const entry = getEditingScheduleEntry();
+    if (!entry?.id || !isReplacementEntry(entry)) {
+        showNotification('У цьому слоті немає активної підміни', 'error');
+        return;
+    }
+    if (!await confirmModal('Скасувати підміну і повернути зміну оригінальному працівнику?', {
+        type: 'warning',
+        okText: 'Повернути',
+        cancelText: 'Не чіпати'
+    })) {
+        return;
+    }
+
+    const result = await clearScheduleReplacement(entry.id);
+    if (result.success) {
+        replaceScheduleStateEntry(entry, result.data);
+        renderSchedule();
+        closeEditModal(true);
+        showNotification('Підміну скасовано');
+    } else {
+        showNotification(result.error || 'Помилка скасування підміни', 'error');
     }
 }
 
@@ -1710,6 +1916,8 @@ async function initPage() {
     document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
     document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
     document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
+    document.getElementById('schReplaceBtn')?.addEventListener('click', handleReplaceSchedule);
+    document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
     document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
     document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
 

@@ -6009,6 +6009,102 @@ body[data-page-group="hr"] .summary-chip {
     );
 }
 
+/* v0.73.55: /staff replacement slots are visible without growing staff.html inline CSS. */
+body[data-page-group="hr"] .summary-chip-replacement {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 10%, var(--white));
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning) 10%, var(--white)),
+        color-mix(in srgb, var(--warning) 5%, transparent)
+    );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
+    box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--warning) 32%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    color: var(--warning-dark);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 3px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+    color: var(--warning-dark);
+    font-size: 8px;
+    font-weight: 900;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    display: block;
+    max-width: 90px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+body[data-page-group="hr"] .sch-replacement-details {
+    display: grid;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--warning) 10%, var(--white));
+    color: var(--warning-dark);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+body[data-page-group="hr"] .sch-replacement-details[hidden],
+body[data-page-group="hr"] .sch-replacement-action[hidden] {
+    display: none;
+}
+
+body[data-page-group="hr"] .sch-replacement-details strong {
+    color: var(--warning-dark);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .sch-replacement-actions {
+    margin-top: 8px;
+}
+
+body[data-page-group="hr"] .sch-replacement-action {
+    flex: 1;
+    min-height: 42px;
+}
+
+body[data-page-group="hr"] .sch-clear-replacement-btn {
+    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+    color: var(--danger-dark);
+}
+
 body[data-page-group="hr"] .schedule-wrapper {
     border-radius: 18px;
     border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
@@ -6085,6 +6181,60 @@ body.dark-mode[data-page-group="hr"] .summary-chip,
         color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent),
         color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 82%, transparent)
     );
+}
+
+body.dark-mode[data-page-group="hr"] .summary-chip-replacement,
+[data-theme="dark"] body[data-page-group="hr"] .summary-chip-replacement {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 12%, var(--surface, #1E1E38));
+    color: color-mix(in srgb, var(--warning) 58%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning) 20%, var(--surface, #1E1E38)),
+        color-mix(in srgb, var(--warning) 10%, var(--bg-primary, #1A1A2E))
+    );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
+    box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary-light, var(--primary)) 26%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    color: color-mix(in srgb, var(--warning) 64%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge {
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .sch-replacement-details,
+[data-theme="dark"] body[data-page-group="hr"] .sch-replacement-details {
+    background: color-mix(in srgb, var(--warning) 10%, var(--surface, #1E1E38));
+    border-color: color-mix(in srgb, var(--warning) 24%, transparent);
+    color: color-mix(in srgb, var(--warning) 58%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
+[data-theme="dark"] body[data-page-group="hr"] .sch-replacement-details strong {
+    color: color-mix(in srgb, var(--warning) 68%, var(--white));
 }
 
 /* v0.73.53: HR Team uses the same segmented rhythm as HR Pulse without growing hr.html inline CSS. */

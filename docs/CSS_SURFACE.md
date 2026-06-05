@@ -49,6 +49,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/responsive.css` | shared-ui | `shared` | active | Shared responsive overrides across authenticated CRM pages. |
 | `css/sound.css` | sound | `page-scoped` | active | Sound library page styles. |
 | `css/timeline.css` | timeline | `shell` | active | Root booking timeline styles. |
+| `css/training.css` | training | `page-scoped` | active | Training workspace styles for materials, tests, progress, leaderboard, and onboarding. |
 | `landing/style.css` | landing | `landing-scoped-large` | active-large | Public landing site styles outside the authenticated CRM CSS directory. |
 
 ## Service Worker App-Shell CSS

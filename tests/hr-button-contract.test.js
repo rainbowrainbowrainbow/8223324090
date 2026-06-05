@@ -38,7 +38,8 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         "{ id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') }",
         "{ id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: () => canSeeHrTeamBucket('blacklist') }",
         "{ id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: () => canSeeHrTeamBucket('reserve') }",
-        "other: { tab: 'onboarding' }",
+        "other: { tab: 'vacancies' }",
+        "href: '/training#onboarding'",
         'const HR_OTHER_WORKSPACE_TABS',
         'function isHrOtherWorkspaceTab',
         'const HR_PULSE_WORKSPACE_TABS',
@@ -70,7 +71,7 @@ test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
         "interns: { tab: 'team', bucket: 'interns' }",
         "blacklist: { tab: 'team', bucket: 'blacklist' }",
         "reserve: { tab: 'team', bucket: 'reserve' }",
-        "other: { tab: 'onboarding' }",
+        "other: { tab: 'vacancies' }",
         "payroll: { tab: 'salary' }",
         "rating: { tab: 'kpi' }",
         "ratings: { tab: 'kpi' }",
@@ -78,6 +79,7 @@ test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
         "'ai-team': { tab: 'today' }"
     ];
     for (const alias of aliases) assert.ok(HR_JS.includes(alias), `missing alias ${alias}`);
+    assert.ok(HR_JS.includes("window.location.replace('/training#onboarding')"));
     assert.ok(HR_HTML.includes('id="tab-team"'), '#team must keep a canonical rendered panel');
     assert.ok(HR_JS.includes("target === 'accounts' && !canManageAccountSecurity()"));
     assert.ok(HR_JS.includes('!document.getElementById(`tab-${target}`)'));

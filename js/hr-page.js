@@ -96,7 +96,6 @@ const HR_NAV_GROUPS = [
         label: 'Тимчасове',
         note: 'нерозподілені HR-розділи',
         items: [
-            { id: 'onboarding', label: 'Онбординг' },
             { id: 'vacancies', label: 'Вакансії' }
         ]
     }
@@ -104,12 +103,12 @@ const HR_NAV_GROUPS = [
 
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
 const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
-const HR_OTHER_WORKSPACE_TABS = new Set(['onboarding', 'vacancies']);
+const HR_OTHER_WORKSPACE_TABS = new Set(['vacancies']);
 const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
 const HR_PEOPLE_WORKSPACE_TABS = new Set(['team']);
 
 const HR_TAB_ALIASES = {
-    other: { tab: 'onboarding' },
+    other: { tab: 'vacancies' },
     payroll: { tab: 'salary' },
     workers: { tab: 'team', bucket: 'workers' },
     rating: { tab: 'kpi' },
@@ -940,6 +939,9 @@ function resolveHrTabTarget(rawTarget) {
     if (requested === 'costumes') {
         return { tab: 'today', href: '/warehouse#costumes', alias: true };
     }
+    if (requested === 'onboarding') {
+        return { tab: 'today', href: '/training#onboarding', alias: true };
+    }
     const mapped = HR_TAB_ALIASES[requested] || { tab: requested };
     const target = mapped.tab || 'today';
     if (target === 'accounts' && !canManageAccountSecurity()) {
@@ -959,6 +961,10 @@ function getInitialHrTab() {
     const target = requestedHrTarget();
     if (target === 'costumes') {
         window.location.replace('/warehouse#costumes');
+        return 'today';
+    }
+    if (target === 'onboarding') {
+        window.location.replace('/training#onboarding');
         return 'today';
     }
     const resolved = resolveHrTabTarget(target);

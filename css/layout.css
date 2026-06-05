@@ -3563,7 +3563,6 @@ body.training-shell-ready:not(.auth-screen) .sidebar-nav {
 body.training-shell-ready:not(.auth-screen) .header {
     display: block !important;
 }
-body.training-shell-ready:not(.auth-screen) #sidebarToggle,
 body.training-shell-ready:not(.auth-screen) #logoutBtn {
     display: inline-flex !important;
 }

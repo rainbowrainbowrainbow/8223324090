@@ -4,6 +4,19 @@
 
 ---
 
+## v0.73.54 - Навчання onboarding
+
+### HR / Навчання / Onboarding / Training Workspace / Sidebar IA / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]
+- **Онбординг перенесено з `HR -> Тимчасове` у `Навчання`** - у лівому HR-меню тимчасовий блок більше не тримає onboarding, а сторінка навчання має окрему вкладку `Онбординг`.
+- **Старі посилання `/hr#onboarding` не ламаються** - вони автоматично переводять користувача на `/training#onboarding`, щоб закладки й старі переходи відкривали правильний розділ.
+- **`/training#onboarding` отримав робочу поверхню для процесів** - список onboarding-процесів, чек-пункти, прогрес і запуск нового процесу працюють через наявні HR onboarding API.
+- **Сторінку `Навчання` приведено до спільного CRM-стилю** - матеріали, тести, прогрес, рейтинг і onboarding отримали єдиний segmented control, панелі, картки, темну й світлу тему без чужого візуалу.
+- **Зайву desktop-кнопку меню у `Навчанні` прибрано** - `#sidebarToggle` більше не примусово показується на десктопі тільки через training shell, мобільна поведінка меню лишилась штатною.
+- **Оновлено guardrails** - UI smoke, HR button contract, backoffice foundation і CSS surface фіксують нову IA, redirect на training, onboarding-вкладку та окремий `css/training.css`.
+- **Оновлено релізні маркери** - версію піднято до `0.73.54`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.53 - HR Команда стиль
 
 ### HR / Команда / People Buckets / Segment Navigation / Control Panel / Guardrails / Deploy / (Клешня, 05.06.2026) [codex]

@@ -67,7 +67,8 @@ describe('backoffice foundation v1 contracts', () => {
         assert.doesNotMatch(sidebar, /href: '\/hr#reserve'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#blacklist'/);
         assert.match(sidebar, /HR_TEAM_BUCKET_VISIBILITY[\s\S]*admin: \['workers', 'interns'\]/);
-        assert.match(sidebar, /href: '\/hr#other'[\s\S]*label: 'Тимчасове'[\s\S]*activeHashes: \['other', 'onboarding', 'vacancies'\]/);
+        assert.match(sidebar, /href: '\/hr#other'[\s\S]*label: 'Тимчасове'[\s\S]*activeHashes: \['other', 'vacancies'\]/);
+        assert.match(sidebar, /href: '\/training'[\s\S]*label: 'Навчання'[\s\S]*activeHashes: \['materials', 'tests', 'progress', 'leaderboard', 'onboarding'\]/);
         assert.doesNotMatch(sidebar, /href: '\/hr#other'[\s\S]*costumes/);
         assert.match(hrPage, /window\.location\.replace\('\/warehouse#costumes'\)/);
         assert.doesNotMatch(sidebar, /href: '\/hr#team'[\s\S]*label: 'HR'[\s\S]*navLegacy: true/);
@@ -75,7 +76,8 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrPage, /function getInitialHrTab/);
         assert.match(hrPage, /id: 'pulse'[\s\S]*label: 'Пульс компанії'/);
         assert.match(hrPage, /const HR_TAB_ALIASES[\s\S]*reserve: \{ tab: 'team', bucket: 'reserve' \}/);
-        assert.match(hrPage, /other: \{ tab: 'onboarding' \}/);
+        assert.match(hrPage, /other: \{ tab: 'vacancies' \}/);
+        assert.match(hrPage, /window\.location\.replace\('\/training#onboarding'\)/);
         assert.match(hrPage, /payroll: \{ tab: 'salary' \}/);
         assert.match(hrPage, /new URLSearchParams\(window\.location\.search\)\.get\('employee'\)/);
         assert.match(hrPage, /activateHrTab\('team'/);

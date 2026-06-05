@@ -212,6 +212,13 @@ const CSS_SURFACE = [
         reason: 'Root booking timeline styles.'
     },
     {
+        file: 'css/training.css',
+        owner: 'training',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Training workspace styles for materials, tests, progress, leaderboard, and onboarding.'
+    },
+    {
         file: 'landing/style.css',
         owner: 'landing',
         category: 'landing-scoped-large',

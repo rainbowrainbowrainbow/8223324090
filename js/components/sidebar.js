@@ -144,8 +144,8 @@ const Sidebar = (() => {
         { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
         { href: '/hr#payroll',   icon: '📊', label: 'ЗП та KPI',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'зарплата, KPI', activeHashes: ['payroll', 'salary', 'kpi'] },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
-        { href: '/hr#other',     icon: '🧭', label: 'Тимчасове',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'onboarding, вакансії', activeHashes: ['other', 'onboarding', 'vacancies'] },
-        { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
+        { href: '/hr#other',     icon: '🧭', label: 'Тимчасове',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'вакансії', activeHashes: ['other', 'vacancies'] },
+        { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team', description: 'матеріали, тести, онбординг', activeHashes: ['materials', 'tests', 'progress', 'leaderboard', 'onboarding'] },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
         { href: '/programs',     icon: '🧩', label: 'Продукти',       access: 'programs',       group: 'product' },

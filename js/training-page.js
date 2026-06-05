@@ -13,13 +13,19 @@
     let currentRole = 'all';
     let articlesData = [];
     let testsData = [];
+    let currentUser = null;
+    let onboardingLoaded = false;
+
+    const TRAINING_TABS = new Set(['materials', 'tests', 'progress', 'leaderboard', 'onboarding']);
+    const ONBOARDING_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
 
     // ═══ Init ═══
     initTrainingShell();
     initTabs();
     initRoleFilter();
+    initOnboarding();
     loadOverviewStats();
-    loadArticles();
+    activateTrainingTab(getInitialTrainingTab(), { updateHash: false });
 
     function restoreTrainingShellVisibility() {
         document.body.classList.remove('auth-screen', 'page-exiting', 'shell-baseline');
@@ -63,6 +69,7 @@
                     return;
                 }
                 if (typeof AppState !== 'undefined') AppState.currentUser = user;
+                currentUser = user;
                 try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
                 const userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = user.name || user.username || '';
@@ -72,10 +79,12 @@
         } finally {
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             restoreTrainingShellVisibility();
+            updateOnboardingAccess();
         }
     }
 
     window.addEventListener('pageshow', restoreTrainingShellVisibility);
+    window.addEventListener('hashchange', () => activateTrainingTab(getInitialTrainingTab(), { updateHash: false }));
     setTimeout(restoreTrainingShellVisibility, 250);
     setTimeout(restoreTrainingShellVisibility, 1000);
 
@@ -84,20 +93,43 @@
         document.getElementById('trainingTabs')?.addEventListener('click', e => {
             const tab = e.target.closest('.training-tab');
             if (!tab) return;
-            const tabName = tab.dataset.tab;
-
-            document.querySelectorAll('.training-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const target = document.getElementById('tab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
-            if (target) target.classList.add('active');
-
-            // Lazy load tab data
-            if (tabName === 'tests' && testsData.length === 0) loadTests();
-            if (tabName === 'progress') loadProgress();
-            if (tabName === 'leaderboard') loadLeaderboard();
+            activateTrainingTab(tab.dataset.tab, { updateHash: true });
         });
+    }
+
+    function normalizeTrainingTab(value) {
+        const tab = String(value || '').replace(/^#/, '').trim();
+        return TRAINING_TABS.has(tab) ? tab : 'materials';
+    }
+
+    function getInitialTrainingTab() {
+        const params = new URLSearchParams(window.location.search);
+        return normalizeTrainingTab(params.get('tab') || window.location.hash);
+    }
+
+    function trainingTabPanelId(tabName) {
+        return 'tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
+    }
+
+    function activateTrainingTab(rawTabName, options = {}) {
+        const tabName = normalizeTrainingTab(rawTabName);
+        document.querySelectorAll('.training-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.toggle('active', content.id === trainingTabPanelId(tabName));
+        });
+
+        if (options.updateHash) {
+            const nextUrl = tabName === 'materials' ? window.location.pathname : `${window.location.pathname}#${tabName}`;
+            history.replaceState(null, '', nextUrl);
+        }
+
+        if (tabName === 'materials' && articlesData.length === 0) loadArticles();
+        if (tabName === 'tests' && testsData.length === 0) loadTests();
+        if (tabName === 'progress') loadProgress();
+        if (tabName === 'leaderboard') loadLeaderboard();
+        if (tabName === 'onboarding') loadOnboarding();
     }
 
     // ═══ Role Filter ═══
@@ -110,6 +142,55 @@
             currentRole = pill.dataset.role;
             loadArticles();
         });
+    }
+
+    function initOnboarding() {
+        document.getElementById('trainingStartOnboarding')?.addEventListener('click', showStartOnboarding);
+        document.getElementById('trainingOnboardingList')?.addEventListener('change', event => {
+            const checkbox = event.target.closest('[data-onboarding-check]');
+            if (!checkbox) return;
+            toggleOnboardingItem(
+                Number(checkbox.dataset.progressId),
+                Number(checkbox.dataset.itemId),
+                checkbox.checked,
+                checkbox
+            );
+        });
+        updateOnboardingAccess();
+    }
+
+    function getStoredUser() {
+        if (currentUser) return currentUser;
+        if (typeof AppState !== 'undefined' && AppState.currentUser) return AppState.currentUser;
+        try {
+            return JSON.parse(localStorage.getItem('pzp_current_user') || 'null');
+        } catch {
+            return null;
+        }
+    }
+
+    function canManageOnboarding() {
+        return ONBOARDING_MANAGE_ROLES.includes(getStoredUser()?.role);
+    }
+
+    function updateOnboardingAccess() {
+        const button = document.getElementById('trainingStartOnboarding');
+        if (button) button.classList.toggle('hidden', !canManageOnboarding());
+    }
+
+    async function trainingJson(path, options = {}) {
+        const response = await fetch(API + path, {
+            ...options,
+            headers: {
+                ...headers,
+                ...(options.headers || {})
+            }
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || data?.success === false) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+        return data;
     }
 
     // ═══ Overview Stats ═══
@@ -185,7 +266,7 @@
             const hasTest = articlesData.find(a => a.id === id)?.test_count > 0;
 
             modal.innerHTML = `
-                <button class="modal-close" id="closeReadModal">✕</button>
+                <button type="button" class="modal-close" id="closeReadModal">✕</button>
                 <div class="article-view-icon">${esc(article.icon || '📄')}</div>
                 <div class="article-view-title">${esc(article.title)}</div>
                 <div class="article-view-meta">
@@ -195,8 +276,8 @@
                 </div>
                 <div class="article-view-content">${contentHtml}</div>
                 <div class="article-actions">
-                    <button class="btn-mark-read" data-id="${article.id}">✓ Прочитано</button>
-                    ${hasTest ? `<button class="btn-take-test" data-article-id="${article.id}">📝 Пройти тест</button>` : ''}
+                    <button type="button" class="btn-mark-read" data-id="${article.id}">✓ Прочитано</button>
+                    ${hasTest ? `<button type="button" class="btn-take-test" data-article-id="${article.id}">📝 Пройти тест</button>` : ''}
                 </div>
             `;
 
@@ -256,7 +337,7 @@
                         <span>🎯 ${t.passing_score}% для проходження</span>
                     </div>
                     ${scoreHtml}
-                    <button class="test-btn" data-article-id="${t.article_id}">Пройти тест</button>
+                    <button type="button" class="test-btn" data-article-id="${t.article_id}">Пройти тест</button>
                 </div>`;
             }).join('');
 
@@ -297,10 +378,10 @@
                     <div class="quiz-question-num">Питання ${currentQ + 1} з ${questions.length}</div>
                     <div class="quiz-question-text">${esc(q.question)}</div>
                     <div class="quiz-options">
-                        ${q.options.map((opt, i) => `<button class="quiz-option" data-idx="${i}">${esc(opt)}</button>`).join('')}
+                        ${q.options.map((opt, i) => `<button type="button" class="quiz-option" data-idx="${i}">${esc(opt)}</button>`).join('')}
                     </div>
                     <div class="quiz-explanation" id="quizExplanation"></div>
-                    <button class="quiz-btn-next" id="quizNext" disabled>Далі →</button>
+                    <button type="button" class="quiz-btn-next" id="quizNext" disabled>Далі →</button>
                 `;
 
                 overlay.classList.add('active');
@@ -369,7 +450,7 @@
                         Прохідний бал: ${result.passingScore}%<br>
                         Час: ${formatTime(timeSpent)}
                     </div>
-                    <button class="quiz-btn-next" id="quizClose">Закрити</button>
+                    <button type="button" class="quiz-btn-next" id="quizClose">Закрити</button>
                 </div>
             `;
 
@@ -478,6 +559,138 @@
     }
 
     // ═══ Helpers ═══
+    async function loadOnboarding(force = false) {
+        const list = document.getElementById('trainingOnboardingList');
+        if (!list) return;
+        updateOnboardingAccess();
+        if (onboardingLoaded && !force) return;
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon">🚀</div><div class="empty-text">Завантаження...</div></div>';
+        try {
+            const data = await trainingJson('/api/hr/onboarding');
+            onboardingLoaded = true;
+            renderOnboarding(data.data || []);
+        } catch (error) {
+            console.error('Onboarding error', error);
+            list.innerHTML = '<div class="training-onboarding-empty">Не вдалося завантажити онбординг. Перевірте доступ або повторіть пізніше.</div>';
+        }
+    }
+
+    function onboardingItemTitle(item) {
+        if (typeof item === 'string') return item;
+        return item?.title || item?.name || item?.label || 'Пункт онбордингу';
+    }
+
+    function renderOnboarding(processes) {
+        const list = document.getElementById('trainingOnboardingList');
+        if (!list) return;
+        const canManage = canManageOnboarding();
+        if (!Array.isArray(processes) || processes.length === 0) {
+            list.innerHTML = '<div class="training-onboarding-empty">Активних процесів онбордингу поки немає.</div>';
+            return;
+        }
+
+        list.innerHTML = processes.map(process => {
+            const items = Array.isArray(process.items) ? process.items : [];
+            const total = Number(process.total_items || items.length || 0);
+            const completed = Number(process.completed_items || items.filter(item => item?.done).length || 0);
+            const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+            const statusText = process.status === 'completed' ? 'завершено' : 'у процесі';
+            return `<article class="training-onboarding-card">
+                <div class="training-onboarding-card-head">
+                    <div class="training-onboarding-card-title">
+                        <strong>${esc(process.staff_name || 'Працівник')}</strong>
+                        <span>${esc(process.template_name || 'Онбординг')} · ${esc(statusText)}</span>
+                    </div>
+                    <div class="training-onboarding-percent">${percent}%</div>
+                </div>
+                <div class="training-onboarding-meter" aria-hidden="true"><i style="width:${percent}%"></i></div>
+                <div class="training-onboarding-checklist">
+                    ${items.length ? items.map((item, index) => {
+                        const done = !!item?.done;
+                        const itemId = Number(item?.id || index + 1);
+                        return `<label class="training-onboarding-check ${done ? 'is-done' : ''}">
+                            <input type="checkbox" data-onboarding-check data-progress-id="${Number(process.id)}" data-item-id="${itemId}" ${done ? 'checked' : ''} ${canManage ? '' : 'disabled'}>
+                            <span>${esc(onboardingItemTitle(item))}</span>
+                        </label>`;
+                    }).join('') : '<div class="training-onboarding-empty">У шаблоні ще немає чек-пунктів.</div>'}
+                </div>
+            </article>`;
+        }).join('');
+    }
+
+    async function toggleOnboardingItem(progressId, itemId, done, checkbox) {
+        if (!canManageOnboarding()) {
+            if (checkbox) checkbox.checked = !done;
+            if (typeof showNotification === 'function') showNotification('Змінювати онбординг можуть тільки HR або керівники', 'error');
+            return;
+        }
+        if (!progressId || !itemId) return;
+        if (checkbox) checkbox.disabled = true;
+        try {
+            await trainingJson(`/api/hr/onboarding/${progressId}/check`, {
+                method: 'PUT',
+                body: JSON.stringify({ item_id: itemId, done })
+            });
+            onboardingLoaded = false;
+            await loadOnboarding(true);
+            if (typeof showNotification === 'function') showNotification('Онбординг оновлено', 'success');
+        } catch (error) {
+            console.error('Toggle onboarding error', error);
+            if (checkbox) checkbox.checked = !done;
+            if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося оновити онбординг', 'error');
+        } finally {
+            if (checkbox && canManageOnboarding()) checkbox.disabled = false;
+        }
+    }
+
+    async function showStartOnboarding() {
+        if (!canManageOnboarding()) {
+            if (typeof showNotification === 'function') showNotification('Запускати онбординг можуть тільки HR або керівники', 'error');
+            return;
+        }
+        if (typeof formModal !== 'function') {
+            if (typeof showNotification === 'function') showNotification('Форма запуску тимчасово недоступна', 'error');
+            return;
+        }
+        try {
+            const [staff, templates] = await Promise.all([
+                trainingJson('/api/hr/staff?active=true'),
+                trainingJson('/api/hr/onboarding/templates')
+            ]);
+            const staffOptions = (staff.data || []).map(person => ({
+                value: String(person.id),
+                label: person.name || `ID ${person.id}`
+            }));
+            const templateOptions = (templates.data || []).map(template => ({
+                value: String(template.id),
+                label: template.name || `Шаблон ${template.id}`
+            }));
+            if (!staffOptions.length || !templateOptions.length) {
+                if (typeof showNotification === 'function') showNotification('Потрібні активні працівники і шаблони онбордингу', 'warning');
+                return;
+            }
+            const result = await formModal('Запустити онбординг', [
+                { key: 'staffId', label: 'Працівник', type: 'select', options: staffOptions, required: true },
+                { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true }
+            ], { icon: '🚀' });
+            if (!result) return;
+            await trainingJson('/api/hr/onboarding/start', {
+                method: 'POST',
+                body: JSON.stringify({
+                    staff_id: Number(result.staffId),
+                    template_id: Number(result.templateId)
+                })
+            });
+            onboardingLoaded = false;
+            await loadOnboarding(true);
+            loadOverviewStats();
+            if (typeof showNotification === 'function') showNotification('Онбординг запущено', 'success');
+        } catch (error) {
+            console.error('Start onboarding error', error);
+            if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося запустити онбординг', 'error');
+        }
+    }
+
     function esc(text) {
         const div = document.createElement('div');
         div.textContent = text || '';

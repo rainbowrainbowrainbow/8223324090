@@ -1240,6 +1240,65 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     };
 }
 
+const STAFF_DELETE_CONFIRMATION = 'ТАК';
+
+const STAFF_DELETE_BLOCKER_CHECKS = [
+    { key: 'accounts', label: 'CRM-профілі або акаунти', table: 'employee_profiles', where: 'staff_id = $1' },
+    { key: 'bookings', label: 'бронювання на таймлайні', table: 'bookings', where: '(line_id = $1::text OR second_animator = $1::text)' },
+    { key: 'legacy_schedule', label: 'legacy-графік staff_schedule', table: 'staff_schedule', where: 'staff_id = $1' },
+    { key: 'hr_shifts', label: 'HR-зміни', table: 'hr_shifts', where: 'staff_id = $1' },
+    { key: 'time_records', label: 'облік приходу/виходу', table: 'hr_time_records', where: 'staff_id = $1' },
+    { key: 'camera_checkins', label: 'camera/manual check-in записи', table: 'staff_checkins', where: 'staff_id = $1' },
+    { key: 'leave_requests', label: 'відпустки/лікарняні', table: 'leave_requests', where: 'staff_id = $1' },
+    { key: 'payroll_reports', label: 'payroll reports', table: 'payroll_reports', where: 'staff_id = $1' },
+    { key: 'salary_adjustments', label: 'ЗРС/штрафи/коригування зарплати', table: 'salary_adjustments', where: 'staff_id = $1' },
+    { key: 'documents', label: 'HR-документи', table: 'staff_documents', where: 'staff_id = $1' },
+    { key: 'certifications', label: 'сертифікації', table: 'staff_certifications', where: 'staff_id = $1' },
+    { key: 'resources', label: 'видані ресурси або костюми', table: 'staff_resource_assignments', where: 'staff_id = $1' },
+    { key: 'offboarding', label: 'історія offboarding', table: 'staff_offboarding_events', where: 'staff_id = $1' },
+    { key: 'training', label: 'проходження навчання', table: 'training_course_enrollment', where: 'staff_id = $1' },
+    { key: 'profession_progress', label: 'чеклісти професій', table: 'hr_staff_profession_checklist_progress', where: 'staff_id = $1' },
+    { key: 'reports_submitted', label: 'фінансові звіти submitter', table: 'reports', where: 'submitted_by_id = $1' },
+    { key: 'accountants', label: 'звʼязка бухгалтера', table: 'accountants', where: 'staff_id = $1' }
+];
+
+const STAFF_DELETE_CLEANUP_CHECKS = [
+    { key: 'face_descriptors', label: 'біометричні descriptors для камери', table: 'staff_face_descriptors', where: 'staff_id = $1' },
+    { key: 'role_assignments', label: 'рольові призначення HR', table: 'staff_role_assignments', where: 'staff_id = $1' },
+    { key: 'profession_rates', label: 'ставки по професіях', table: 'staff_profession_rates', where: 'staff_id = $1' },
+    { key: 'audit_entries', label: 'рядки HR audit log будуть відвʼязані від staff id', table: 'hr_audit_log', where: 'staff_id = $1' }
+];
+
+async function countStaffRowsIfTableExists(db, check, staffId) {
+    const exists = await db.query('SELECT to_regclass($1) AS rel', [`public.${check.table}`]);
+    if (!exists.rows[0]?.rel) return { ...check, count: 0, missing_table: true };
+    const result = await db.query(`SELECT COUNT(*)::int AS count FROM ${check.table} WHERE ${check.where}`, [staffId]);
+    return { ...check, count: Number(result.rows[0]?.count || 0), missing_table: false };
+}
+
+async function loadStaffDeleteReadiness(staffId, db = pool, options = {}) {
+    const staffResult = await db.query(
+        `SELECT id, name, department, position, role_type, is_active, hr_pool_status, created_at
+         FROM staff
+         WHERE id = $1
+         ${options.lock ? 'FOR UPDATE' : ''}`,
+        [staffId]
+    );
+    if (!staffResult.rows.length) return null;
+    const [blockers, cleanup] = await Promise.all([
+        Promise.all(STAFF_DELETE_BLOCKER_CHECKS.map(check => countStaffRowsIfTableExists(db, check, staffId))),
+        Promise.all(STAFF_DELETE_CLEANUP_CHECKS.map(check => countStaffRowsIfTableExists(db, check, staffId)))
+    ]);
+    const activeBlockers = blockers.filter(item => item.count > 0);
+    return {
+        staff: staffResult.rows[0],
+        can_delete: activeBlockers.length === 0,
+        required_confirmation: STAFF_DELETE_CONFIRMATION,
+        blockers: activeBlockers.map(({ key, label, count }) => ({ key, label, count })),
+        cleanup: cleanup.filter(item => item.count > 0).map(({ key, label, count }) => ({ key, label, count }))
+    };
+}
+
 function normalizeRoleAssignmentInputRows(rows = [], primaryRole = '') {
     const primaryKey = normalizeProfessionKey(primaryRole);
     const seen = new Set();
@@ -3531,6 +3590,17 @@ router.get('/staff/:id/offboarding-readiness', requireHrManage, async (req, res)
     }
 });
 
+router.get('/staff/:id/delete-readiness', requireHrManage, async (req, res) => {
+    try {
+        const data = await loadStaffDeleteReadiness(Number(req.params.id));
+        if (!data) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/delete-readiness error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -3877,6 +3947,65 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// DELETE /api/hr/staff/:id — permanent duplicate cleanup guarded by typed confirmation
+router.delete('/staff/:id', requireHrManage, async (req, res) => {
+    const confirmation = cleanStaffText(req.body?.confirmation, 20);
+    if (confirmation !== STAFF_DELETE_CONFIRMATION) {
+        return res.status(400).json({
+            success: false,
+            error: `Для видалення потрібно вручну ввести ${STAFF_DELETE_CONFIRMATION}`
+        });
+    }
+
+    const client = await pool.connect();
+    try {
+        const staffId = Number(req.params.id);
+        const reason = cleanStaffText(req.body?.reason, 1000) || 'duplicate_cleanup';
+        await client.query('BEGIN');
+        const readiness = await loadStaffDeleteReadiness(staffId, client, { lock: true });
+        if (!readiness) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
+        }
+        if (!readiness.can_delete) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Працівника не можна видалити, бо є звʼязані операційні записи',
+                data: readiness
+            });
+        }
+
+        await client.query('UPDATE hr_audit_log SET staff_id = NULL WHERE staff_id = $1', [staffId]);
+        await insertAuditLog('staff_delete_permanent', null, req.user?.username, {
+            deleted_staff: readiness.staff,
+            reason,
+            cleanup: readiness.cleanup
+        }, req.ip, client);
+        const deleted = await client.query('DELETE FROM staff WHERE id = $1 RETURNING id, name', [staffId]);
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            data: {
+                deleted: deleted.rows[0],
+                cleanup: readiness.cleanup
+            }
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('DELETE /hr/staff/:id error', err);
+        if (err.code === '23503') {
+            return res.status(409).json({
+                success: false,
+                error: 'Працівника не можна видалити: база знайшла додаткові звʼязані записи. Використайте offboarding або приберіть звʼязки вручну.'
+            });
+        }
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.76 - HR: видалення дублів працівників
+
+### HR / Команда / Видалення дублів / Guardrail / (Клешня, 06.06.2026) [codex]
+- **Додано hard delete для дублів працівників** - у картці HR Team зʼявилась кнопка `Видалити`, доступна тільки ролям, які вже мають HR manage.
+- **Перед видаленням обовʼязково потрібно вручну ввести `ТАК`** - frontend показує попередження через `formModal`, а backend повторно перевіряє `confirmation`.
+- **Backend блокує видалення профілів з операційними звʼязками** - `delete-readiness` рахує CRM-акаунти, бронювання, графік, time records, payroll, ЗРС, документи, ресурси, навчання та інші критичні таблиці.
+- **Audit не ламає hard delete** - старі `hr_audit_log.staff_id` відвʼязуються перед видаленням, а окрема подія `staff_delete_permanent` лишає слід із snapshot видаленого дубля.
+- **Додано guardrails** - HR contract і UI smoke фіксують `DELETE /api/hr/staff/:id`, typed-confirm `ТАК`, readiness-blockers, frontend кнопку та dark-mode styles.
+- **Оновлено релізні маркери** - версію піднято до `0.73.76`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.75 - HR: аудит зарплати і команди
 
 ### HR / Payroll / Звільнені / ЗРС / Camera check-in / Timeline / Guardrail / (Клешня, 06.06.2026) [codex]

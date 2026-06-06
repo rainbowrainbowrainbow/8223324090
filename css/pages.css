@@ -6415,6 +6415,21 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     filter: grayscale(0.25);
 }
 
+.page-container .hr-team-delete {
+    border: 1px solid rgba(220, 38, 38, 0.26);
+    border-radius: 8px;
+    background: rgba(220, 38, 38, 0.08);
+    color: #B91C1C;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.page-container .hr-team-delete:hover,
+.page-container .hr-team-delete:focus-visible {
+    background: rgba(220, 38, 38, 0.14);
+    border-color: rgba(220, 38, 38, 0.38);
+}
+
 .page-container .zrs-status-badge {
     display: inline-flex;
     align-items: center;
@@ -6679,6 +6694,21 @@ body.dark-mode .page-container .hr-team-card.inactive,
 [data-theme="dark"] .page-container .hr-team-card.inactive {
     border-color: rgba(148, 163, 184, 0.28);
     background: rgba(30, 41, 59, 0.72);
+}
+
+body.dark-mode .page-container .hr-team-delete,
+[data-theme="dark"] .page-container .hr-team-delete {
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(248, 113, 113, 0.12);
+    color: #FCA5A5;
+}
+
+body.dark-mode .page-container .hr-team-delete:hover,
+body.dark-mode .page-container .hr-team-delete:focus-visible,
+[data-theme="dark"] .page-container .hr-team-delete:hover,
+[data-theme="dark"] .page-container .hr-team-delete:focus-visible {
+    background: rgba(248, 113, 113, 0.18);
+    border-color: rgba(248, 113, 113, 0.42);
 }
 
 body.dark-mode .page-container .zrs-status-badge,

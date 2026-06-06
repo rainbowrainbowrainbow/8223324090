@@ -343,6 +343,48 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
     }
 });
 
+test('HR staff permanent delete is duplicate-only and typed-confirm guarded', () => {
+    for (const token of [
+        "const STAFF_DELETE_CONFIRMATION = 'ТАК'",
+        'STAFF_DELETE_BLOCKER_CHECKS',
+        'STAFF_DELETE_CLEANUP_CHECKS',
+        'async function loadStaffDeleteReadiness',
+        "router.get('/staff/:id/delete-readiness'",
+        "router.delete('/staff/:id'",
+        'confirmation !== STAFF_DELETE_CONFIRMATION',
+        'employee_profiles',
+        'bookings',
+        'hr_time_records',
+        'payroll_reports',
+        'salary_adjustments',
+        'staff_documents',
+        'staff_resource_assignments',
+        'training_course_enrollment',
+        'UPDATE hr_audit_log SET staff_id = NULL',
+        'staff_delete_permanent'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
+    }
+    for (const token of [
+        'class="hr-team-delete"',
+        'function deleteStaffProfile',
+        "hrFetch(`/staff/${staffId}/delete-readiness`)",
+        'Введіть ТАК для підтвердження',
+        "method: 'DELETE'",
+        "confirmation: 'ТАК'",
+        'window.deleteStaffProfile = deleteStaffProfile'
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing UI token ${token}`);
+    }
+    for (const token of [
+        '.hr-team-delete',
+        'body.dark-mode .page-container .hr-team-delete',
+        '[data-theme="dark"] .page-container .hr-team-delete'
+    ]) {
+        assert.ok(PAGES_CSS.includes(token), `missing CSS token ${token}`);
+    }
+});
+
 test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap targets', () => {
     assert.ok(HR_HTML.includes('body.dark-mode .hr-nav-count'));
     assert.ok(HR_HTML.includes('body.dark-mode .hr-kpi-source'));

@@ -2661,7 +2661,8 @@ function renderTeamCards(staff) {
             <div class="hr-team-actions">
                 ${accountActions}
                 ${canManage ? `<button type="button" class="hr-team-edit" onclick="openStaffEdit(${Number(s.id)})">Профіль</button>
-                    <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>` : ''}
+                    <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>
+                    <button type="button" class="hr-team-delete" onclick="deleteStaffProfile(${Number(s.id)})">Видалити</button>` : ''}
             </div>
         </article>`;
     }).join('');
@@ -2715,6 +2716,83 @@ async function setStaffProfileActive(staffId, isActive) {
     }
     return true;
 }
+
+function formatStaffDeleteItems(items = [], emptyText = 'немає') {
+    if (!Array.isArray(items) || !items.length) return emptyText;
+    return items.map(item => `${item.label}: ${Number(item.count || 0)}`).join('; ');
+}
+
+async function deleteStaffProfile(staffId) {
+    if (!canManage) {
+        showNotification('Видалення працівників доступне тільки HR/керівникам', 'error');
+        return;
+    }
+    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
+    if (!staff) return;
+
+    const readiness = await hrFetch(`/staff/${staffId}/delete-readiness`);
+    if (!readiness?.success) {
+        showNotification(readiness?.error || 'Не вдалося перевірити можливість видалення', 'error');
+        return;
+    }
+    const data = readiness.data || {};
+    if (!data.can_delete) {
+        const blockers = formatStaffDeleteItems(data.blockers, 'немає');
+        if (typeof confirmModal === 'function') {
+            await confirmModal(
+                `Працівника "${staff.name}" не можна видалити назавжди.\n\nЗнайдені звʼязані записи: ${blockers}.\n\nДля реальної людини використовуйте offboarding. Для дубля спершу приберіть або перенесіть звʼязки.`,
+                { type: 'warning', okText: 'Зрозуміло', cancelText: 'Закрити' }
+            );
+        } else {
+            showNotification('Є звʼязані записи. Видалення заблоковано.', 'warning');
+        }
+        return;
+    }
+
+    const cleanup = formatStaffDeleteItems(data.cleanup, 'службових записів немає');
+    const result = await formModal(`Видалити працівника · ${staff.name}`, [
+        {
+            key: 'confirmation',
+            label: 'Введіть ТАК для підтвердження',
+            placeholder: 'ТАК',
+            required: true,
+            hint: `Це hard delete для дублів. Після видалення картку не можна відновити з HR. Автоматично зачепить: ${cleanup}.`
+        },
+        {
+            key: 'reason',
+            label: 'Причина',
+            type: 'textarea',
+            placeholder: 'Наприклад: дубль картки працівника'
+        }
+    ], {
+        type: 'danger',
+        okText: 'Видалити назавжди',
+        cancelText: 'Скасувати',
+        closeOnBackdrop: false
+    });
+    if (!result) return;
+    if (String(result.confirmation || '').trim() !== 'ТАК') {
+        showNotification('Видалення скасовано: потрібно ввести рівно ТАК', 'warning');
+        return;
+    }
+
+    const response = await hrFetch(`/staff/${staffId}`, {
+        method: 'DELETE',
+        body: {
+            confirmation: 'ТАК',
+            reason: result.reason || 'duplicate_cleanup'
+        }
+    });
+    if (!response?.success) {
+        const blockers = response?.data?.blockers ? `: ${formatStaffDeleteItems(response.data.blockers)}` : '';
+        showNotification((response?.error || 'Не вдалося видалити працівника') + blockers, 'error');
+        return;
+    }
+    showNotification(`Працівника ${staff.name} видалено`, 'success');
+    await loadTeam();
+}
+
+window.deleteStaffProfile = deleteStaffProfile;
 
 async function openStaffMoveMenu(staffId, button) {
     if (!canManage) {

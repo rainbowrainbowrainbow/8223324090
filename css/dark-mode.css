@@ -3919,6 +3919,7 @@ body.dark-mode .guardian-stats-summary {
 }
 
 .timeline-dashboard-page .booking-block .subtitle,
+.timeline-dashboard-page .booking-block .costume-text,
 .timeline-dashboard-page .booking-block .note-text {
     color: var(--eg-text-secondary);
     opacity: 0.92;
@@ -3926,6 +3927,7 @@ body.dark-mode .guardian-stats-summary {
 }
 
 .timeline-dashboard-page.dark-mode .booking-block .subtitle,
+.timeline-dashboard-page.dark-mode .booking-block .costume-text,
 .timeline-dashboard-page.dark-mode .booking-block .note-text,
 .timeline-dashboard-page.dark-mode .mini-booking-text {
     color: rgba(255,255,255,0.90);

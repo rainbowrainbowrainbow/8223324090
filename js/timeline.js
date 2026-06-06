@@ -1026,6 +1026,11 @@ function getDefaultTimelineBookingTime(date = AppState.selectedDate) {
     return minutesToTime(candidate);
 }
 
+function bookingCostumeLabel(booking = {}) {
+    const costume = String(booking.costume || '').trim();
+    return costume ? `Костюм: ${costume}` : '';
+}
+
 async function openTimelineCreateBookingFromToolbar() {
     if (isViewer()) return false;
     const view = window.TimelineBusinessContext?.presentation?.();
@@ -1087,11 +1092,13 @@ function createBookingBlock(booking, startHour) {
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
     const closedSlotLabel = renderBooking.label || (resourceBlockExtra.resourceName ? 'Ресурс закрито' : 'Слот закрито');
-    block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}`);
+    const costumeLabel = isMaysternyaSlotClosed || isEducationLessonBlock ? '' : bookingCostumeLabel(renderBooking);
+    block.setAttribute('aria-label', `${isMaysternyaSlotClosed ? closedSlotLabel : (renderBooking.label || renderBooking.category)} ${renderBooking.time} ${renderBooking.room || ''}${costumeLabel ? ` ${costumeLabel}` : ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
     const userLetter = renderBooking.createdBy ? renderBooking.createdBy.charAt(0).toUpperCase() : '';
+    const costumeText = costumeLabel ? `<div class="costume-text">${escapeHtml(costumeLabel)}</div>` : '';
     const noteText = renderBooking.notes ? `<div class="note-text">${escapeHtml(renderBooking.notes)}</div>` : '';
     const graduationItemsHtml = !isLinked && renderBooking.category === 'graduation'
         ? graduationNestedHtml(renderBooking, graduationSegments)
@@ -1134,6 +1141,7 @@ function createBookingBlock(booking, startHour) {
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(bookingTitleText)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(renderBooking.time)}${isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : '')}</div>
+        ${costumeText}
         ${graduationItemsHtml}
         ${noteText}
     `;
@@ -3394,13 +3402,16 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         ].filter(Boolean).map(escapeHtml).join(' ');
 
         const bookingIdentity = timelineBookingResourceIdentity(b);
+        const costumeLabel = bookingCostumeLabel(b);
+        const miniTitleParts = [`${b.label || b.programCode}: ${b.room} (${b.time})`];
+        if (costumeLabel) miniTitleParts.push(costumeLabel);
         html += `
             <div class="${classes}"
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
                  data-resource-id="${escapeHtml(bookingIdentity.resourceId)}"
                  data-resource-type="${escapeHtml(bookingIdentity.resourceType)}"
-                 title="${escapeHtml((b.label || b.programCode) + ': ' + b.room + ' (' + b.time + ')')}">
+                 title="${escapeHtml(miniTitleParts.join(' · '))}">
                 <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
             </div>
         `;

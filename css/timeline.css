@@ -599,6 +599,17 @@ body.dark-mode .booking-banquet-unlink-btn {
     margin-top: 2px;
 }
 
+.booking-block .costume-text {
+    font-size: 9px;
+    line-height: 1.08;
+    opacity: 0.92;
+    margin-top: 2px;
+    padding-right: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .booking-block.graduation-parent {
     justify-content: flex-start;
     gap: 2px;
@@ -1371,9 +1382,15 @@ body.dragging-active {
 }
 
 .timeline-container.compact .booking-block .subtitle,
+.timeline-container.compact .booking-block .costume-text,
 .timeline-container.compact .booking-block .note-text {
     font-size: 8px;
     line-height: 1.05;
+}
+
+.timeline-container.compact .booking-block .costume-text {
+    margin-top: 1px;
+    padding-right: 14px;
 }
 
 .timeline-container.compact .booking-block .user-letter {

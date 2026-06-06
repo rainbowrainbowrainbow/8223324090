@@ -6366,7 +6366,7 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
 
 .page-container .hr-nav.hr-nav--people .hr-nav-items {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
 }

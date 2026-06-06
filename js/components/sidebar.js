@@ -140,7 +140,7 @@ const Sidebar = (() => {
 
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
         { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
-        { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist'] },
+        { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список, звільнені', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist', 'dismissed'] },
         { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
         { href: '/hr#payroll',   icon: '📊', label: 'ЗП та KPI',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'зарплата, ЗРС, KPI', activeHashes: ['payroll', 'salary', 'zrs', 'kpi'] },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
@@ -217,17 +217,17 @@ const Sidebar = (() => {
         training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
     };
 
-    const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist'];
+    const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist', 'dismissed'];
     const HR_TEAM_BUCKET_VISIBILITY_MANAGERS = ['creator', 'director', 'vice_director'];
     const HR_TEAM_BUCKET_VISIBILITY = {
         creator: HR_TEAM_BUCKET_IDS,
         director: HR_TEAM_BUCKET_IDS,
         vice_director: HR_TEAM_BUCKET_IDS,
-        senior_manager: ['workers', 'interns', 'reserve'],
-        manager: ['workers', 'interns', 'reserve'],
+        senior_manager: ['workers', 'interns', 'reserve', 'dismissed'],
+        manager: ['workers', 'interns', 'reserve', 'dismissed'],
         hr: HR_TEAM_BUCKET_IDS,
         hr_manager: HR_TEAM_BUCKET_IDS,
-        admin: ['workers', 'interns'],
+        admin: ['workers', 'interns', 'dismissed'],
         security: ['workers', 'blacklist'],
         it_specialist: ['workers', 'interns'],
         senior_instructor: ['workers', 'interns'],

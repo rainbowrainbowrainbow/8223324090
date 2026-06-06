@@ -74,13 +74,14 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(sidebar, /href: '\/hr'[\s\S]*label: 'Пульс компанії'[\s\S]*access: 'hr_page'/);
         assert.match(sidebar, /activeHashes: \['today', 'schedule', 'reports'\]/);
         assert.match(sidebar, /href: '\/hr#team',\s+icon: '👥', label: 'Команда'/);
-        assert.match(sidebar, /activeHashes: \['team', 'workers', 'interns', 'reserve', 'blacklist'\]/);
+        assert.match(sidebar, /activeHashes: \['team', 'workers', 'interns', 'reserve', 'blacklist', 'dismissed'\]/);
         assert.match(sidebar, /href: '\/hr#payroll'[\s\S]*label: 'ЗП та KPI'[\s\S]*activeHashes: \['payroll', 'salary', 'zrs', 'kpi'\]/);
         assert.doesNotMatch(sidebar, /href: '\/hr#workers'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#interns'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#reserve'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#blacklist'/);
-        assert.match(sidebar, /HR_TEAM_BUCKET_VISIBILITY[\s\S]*admin: \['workers', 'interns'\]/);
+        assert.doesNotMatch(sidebar, /href: '\/hr#dismissed'/);
+        assert.match(sidebar, /HR_TEAM_BUCKET_VISIBILITY[\s\S]*admin: \['workers', 'interns', 'dismissed'\]/);
         assert.match(sidebar, /href: '\/hr#other'[\s\S]*label: 'Вакансії'[\s\S]*activeHashes: \['other', 'vacancies'\]/);
         assert.match(sidebar, /href: '\/training'[\s\S]*label: 'Навчання'[\s\S]*activeHashes: \['materials', 'tests', 'progress', 'leaderboard', 'onboarding'\]/);
         assert.doesNotMatch(sidebar, /href: '\/hr#other'[\s\S]*costumes/);
@@ -98,6 +99,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrHtml, /id="tab-structure"/);
         assert.match(hrPage, /id: 'reserve'/);
         assert.match(hrPage, /id: 'blacklist'/);
+        assert.match(hrPage, /id: 'dismissed'/);
     });
 
     it('keeps employee and candidate profile data durable in existing routes and forms', () => {

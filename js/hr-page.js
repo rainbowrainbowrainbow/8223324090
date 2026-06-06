@@ -131,7 +131,8 @@ const HR_NAV_GROUPS = [
             { id: 'workers', label: 'Робітники', tab: 'team', bucket: 'workers', visible: () => canSeeHrTeamBucket('workers') },
             { id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') },
             { id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: () => canSeeHrTeamBucket('blacklist') },
-            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: () => canSeeHrTeamBucket('reserve') }
+            { id: 'reserve', label: 'Резерв', tab: 'team', bucket: 'reserve', visible: () => canSeeHrTeamBucket('reserve') },
+            { id: 'dismissed', label: 'Звільнені', tab: 'team', bucket: 'dismissed', visible: () => canSeeHrTeamBucket('dismissed') }
         ]
     },
     {
@@ -178,6 +179,9 @@ const HR_TAB_ALIASES = {
     leaves: { tab: 'schedule' },
     reserve: { tab: 'team', bucket: 'reserve' },
     blacklist: { tab: 'team', bucket: 'blacklist' },
+    dismissed: { tab: 'team', bucket: 'dismissed' },
+    fired: { tab: 'team', bucket: 'dismissed' },
+    terminated: { tab: 'team', bucket: 'dismissed' },
     interns: { tab: 'team', bucket: 'interns' },
     'ai-team': { tab: 'today' }
 };
@@ -202,6 +206,11 @@ const PEOPLE_BUCKETS = [
         id: 'reserve',
         title: 'Резерв',
         note: 'Кандидати та працівники резервного пулу'
+    },
+    {
+        id: 'dismissed',
+        title: 'Звільнені',
+        note: 'Архів неактивних профілів після offboarding'
     }
 ];
 
@@ -532,6 +541,7 @@ function isInternStaff(staff = {}) {
 }
 
 function bucketForStaff(staff = {}) {
+    if (staff.is_active === false) return 'dismissed';
     const pool = staffPoolStatus(staff);
     if (pool === 'blacklisted') return 'blacklist';
     if (pool === 'reserve') return 'reserve';
@@ -751,7 +761,7 @@ function setSelectedSecondaryProfessionKeys(keys = [], primaryRole = '') {
 
 function staffMoveTargetOptions(currentBucket = 'workers') {
     return HR_TEAM_MOVE_TARGETS
-        .filter(target => target.id !== currentBucket && canSeeHrTeamBucket(target.id))
+        .filter(target => target.id !== currentBucket && target.id !== 'dismissed' && canSeeHrTeamBucket(target.id))
         .map(target => ({
             value: target.id,
             label: `${target.label} - ${target.hint}`
@@ -1110,6 +1120,7 @@ function hashForHrTarget(target, bucket = null) {
         if (bucket === 'interns') return 'interns';
         if (bucket === 'blacklist') return 'blacklist';
         if (bucket === 'reserve') return 'reserve';
+        if (bucket === 'dismissed') return 'dismissed';
     }
     return target;
 }
@@ -2387,10 +2398,9 @@ function applyAccountDeepLinkFilters() {
 async function loadTeam() {
     await ensureProfessionsLoaded({ silent: true });
     await ensureCompanyStructureNodesLoaded({ silent: true });
-    const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
     if (grid) renderPeopleBucketState('Завантаження команди...', 'loading');
-    const data = await hrFetch(`/staff?active=${activeOnly}`);
+    const data = await hrFetch('/staff');
     if (!data) {
         if (grid) renderPeopleBucketState('Помилка завантаження. Оновіть сторінку.', 'error');
         return;
@@ -2423,14 +2433,18 @@ async function loadTeam() {
     const activeEl = document.getElementById('teamActiveOnly');
     if (searchEl) searchEl.oninput = filterAndRenderTeam;
     if (roleEl) roleEl.onchange = filterAndRenderTeam;
-    if (activeEl) activeEl.onchange = loadTeam;
+    if (activeEl) activeEl.onchange = filterAndRenderTeam;
 }
 
 function filterAndRenderTeam() {
     const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
     const role = document.getElementById('teamRoleFilter')?.value;
+    const showDismissed = document.getElementById('teamActiveOnly')?.checked ?? true;
 
     let filtered = teamStaff;
+    if (!showDismissed) {
+        filtered = filtered.filter(s => bucketForStaff(s) !== 'dismissed');
+    }
     if (query) {
         filtered = filtered.filter(s => teamSearchHaystack(s).includes(query));
     }
@@ -2446,23 +2460,30 @@ function updateTeamFilterInfo(filteredCount = 0, totalCount = 0) {
     const info = document.getElementById('teamFilterInfo');
     if (!info) return;
     const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
-    const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
+    const role = document.getElementById('teamRoleFilter')?.value;
+    const showDismissed = document.getElementById('teamActiveOnly')?.checked ?? true;
     if (!totalCount) {
         info.textContent = 'Список порожній';
         return;
     }
-    if (query || filteredCount !== totalCount) {
-        info.textContent = `${filteredCount} з ${totalCount}`;
+    const dismissedCount = teamStaff.filter(s => bucketForStaff(s) === 'dismissed').length;
+    const activeCount = Math.max(0, totalCount - dismissedCount);
+    const visibleTotal = showDismissed ? totalCount : activeCount;
+    if (query || role) {
+        info.textContent = `${filteredCount} з ${visibleTotal}`;
         return;
     }
-    info.textContent = activeOnly ? `${totalCount} активних` : `${totalCount} у базі`;
+    info.textContent = showDismissed
+        ? `${activeCount} активних · ${dismissedCount} звільнених`
+        : `${activeCount} активних`;
 }
 
 function renderTeam(staff) {
     const grid = document.getElementById('teamGrid');
     if (!grid) return;
     grid.className = 'hr-people-accordion';
-    const buckets = visiblePeopleBuckets();
+    const showDismissed = document.getElementById('teamActiveOnly')?.checked ?? true;
+    const buckets = visiblePeopleBuckets().filter(bucket => showDismissed || bucket.id !== 'dismissed');
     if (!buckets.length) {
         updatePeopleNavCounts([]);
         grid.innerHTML = '<div class="hr-people-empty">Немає доступних списків команди для цієї ролі</div>';
@@ -2478,9 +2499,10 @@ function renderTeam(staff) {
         activePeopleBucket = firstVisiblePeopleBucketId();
     }
     if (!activePeopleBucket) activePeopleBucket = firstVisiblePeopleBucketId();
+    const countSource = showDismissed ? teamStaff : teamStaff.filter(item => bucketForStaff(item) !== 'dismissed');
     const totalCounts = new Map(buckets.map(bucket => [
         bucket.id,
-        teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
+        countSource.filter(item => bucketForStaff(item) === bucket.id).length
     ]));
     const grouped = buckets.map(bucket => ({
         ...bucket,
@@ -2568,6 +2590,12 @@ function renderTeamCards(staff) {
         const poolBadge = poolStatus !== 'core'
             ? `<span class="hr-team-status-pill ${poolStatus === 'blacklisted' ? 'is-warn' : 'is-info'}">${HR_POOL_LABELS[poolStatus] || escapeHtml(poolStatus)}</span>`
             : '';
+        const dismissedMeta = s.is_active === false
+            ? [
+                s.termination_date ? `дата: ${formatStaffDateValue(s.termination_date)}` : '',
+                s.termination_reason ? `причина: ${escapeHtml(s.termination_reason)}` : ''
+            ].filter(Boolean).join(' · ')
+            : '';
         const accountActions = canLinkAccounts()
             ? (s.has_account
                 ? `<button type="button" class="hr-account-toggle" onclick="openAccountForStaff(${Number(s.id)}, this)">Акаунт</button>`
@@ -2610,6 +2638,7 @@ function renderTeamCards(staff) {
             ${renderStaffTrainingReadiness(s)}
             ${renderStaffOnboardingAssignment(s)}
             ${contactRows ? `<div class="hr-team-contact-grid">${contactRows}</div>` : '<div class="hr-team-contact-grid is-empty">Контакти не заповнені</div>'}
+            ${dismissedMeta ? `<div class="hr-team-warning-note">Звільнення: ${dismissedMeta}</div>` : ''}
             ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-warning-note">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
             <div class="hr-team-actions">
                 ${accountActions}
@@ -2655,6 +2684,18 @@ function buildStaffMovePayload(staff = {}, targetBucket = 'workers', targetRole 
         );
     }
     return body;
+}
+
+async function setStaffProfileActive(staffId, isActive) {
+    const data = await hrFetch(`/staff/${staffId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: Boolean(isActive) })
+    });
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося оновити активність профілю', 'error');
+        return false;
+    }
+    return true;
 }
 
 async function openStaffMoveMenu(staffId, button) {
@@ -2712,6 +2753,7 @@ async function openStaffMoveMenu(staffId, button) {
         return;
     }
     const body = buildStaffMovePayload(staff, targetBucket, result.targetRole, result.reason);
+    const reactivating = currentBucket === 'dismissed' && targetBucket !== 'dismissed';
     if (button) button.disabled = true;
     let data;
     try {
@@ -2719,6 +2761,10 @@ async function openStaffMoveMenu(staffId, button) {
             method: 'PUT',
             body: JSON.stringify(body)
         });
+        if (data?.success && reactivating) {
+            const activated = await setStaffProfileActive(staff.id, true);
+            if (!activated) return;
+        }
     } finally {
         if (button) button.disabled = false;
     }
@@ -2743,6 +2789,10 @@ async function moveStaffToBucket(staffId, targetBucket, options = {}) {
     const normalizedTarget = normalizeVisiblePeopleBucket(targetBucket);
     const currentBucket = bucketForStaff(staff);
     if (normalizedTarget === currentBucket) return false;
+    if (normalizedTarget === 'dismissed') {
+        showNotification('Для звільнення відкрийте профіль і завершіть співпрацю через offboarding.', 'warning');
+        return false;
+    }
     let reason = options.reason || '';
     if (normalizedTarget === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
         const result = await formModal('Причина чорного списку', [
@@ -2759,6 +2809,10 @@ async function moveStaffToBucket(staffId, targetBucket, options = {}) {
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
         return false;
+    }
+    if (currentBucket === 'dismissed') {
+        const activated = await setStaffProfileActive(staff.id, true);
+        if (!activated) return false;
     }
     activePeopleBucket = normalizedTarget;
     showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === normalizedTarget)?.label || normalizedTarget}"`, 'success');

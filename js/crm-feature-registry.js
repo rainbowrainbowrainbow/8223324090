@@ -183,6 +183,29 @@
             aliases: ['канбан задач', 'kanban задач', 'дошка задач', 'статуси задач']
         },
         {
+            id: 'hr.team.dismissed',
+            title: 'Звільнені співробітники',
+            href: '/hr#dismissed',
+            icon: '👥',
+            access: 'hr_page',
+            group: 'team',
+            breadcrumb: 'HR -> Команда -> Звільнені',
+            summary: 'Архів неактивних staff-профілів після offboarding із датою, причиною та можливістю повернення в активний bucket.',
+            primaryAction: 'Відкрити звільнених',
+            aliases: [
+                'звільнені',
+                'звільнені співробітники',
+                'звільнені працівники',
+                'архів співробітників',
+                'архів працівників',
+                'кого звільнили',
+                'неактивні працівники',
+                'terminated staff',
+                'dismissed staff',
+                'fired employees'
+            ]
+        },
+        {
             id: 'timeline.main',
             title: 'Таймлайн',
             href: '/',

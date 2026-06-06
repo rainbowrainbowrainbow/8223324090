@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.73 - HR: звільнені в команді
+
+### HR / Команда / Звільнені / Offboarding / Клешня / Guardrail / Deploy / (Клешня, 06.06.2026) [codex]
+- **У `HR -> Команда` додано вкладку `Звільнені`** - неактивні staff-профілі після offboarding більше не губляться серед резерву чи чорного списку.
+- **Архітектуру bucket-ів вирівняно** - `Звільнені` рахується від `staff.is_active = false`, а `hr_pool_status` лишається тільки для активних операційних пулів: `core`, `reserve`, `blacklisted`.
+- **Повернення зі звільнених має контрольований шлях** - переміщення зі `Звільнені` в активний bucket реактивує профіль через `/api/hr/staff/:id/status`; активну людину напряму в `Звільнені` перетягнути не можна, треба пройти offboarding у профілі.
+- **Клешня отримала карту логіки** - `docs/ai-context/pages/hr.md` і feature registry описують `/hr#dismissed`, aliases `звільнені`, `terminated`, `fired` та правильний offboarding source of truth.
+- **Додано guardrails** - HR contracts, UI smoke і feature locator тестують вкладку, доступи, hash aliases, reactivation/offboarding boundary і пошук для Клешні.
+- **Оновлено релізні маркери** - версію піднято до `0.73.73`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.72 - HR: облік відпрацьованих змін
 
 ### HR / Пульс / Зарплата / Check-out / Камера / Guardrail / Deploy / (Клешня, 06.06.2026) [codex]

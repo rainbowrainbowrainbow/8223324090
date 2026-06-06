@@ -29,3 +29,9 @@ test('feature registry exposes Afisha as standalone product page', () => {
     assert.equal(matches[0].href, '/afisha');
     assert.match(matches[0].summary, /Окрема сторінка/);
 });
+
+test('feature registry routes dismissed staff questions to HR Team archive', () => {
+    const matches = registry.searchCrmFeatures('де подивитися звільнених співробітників');
+    assert.equal(matches[0].href, '/hr#dismissed');
+    assert.match(matches[0].breadcrumb, /HR -> Команда -> Звільнені/);
+});

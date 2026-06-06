@@ -300,6 +300,7 @@ let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
 let staffPayrollSchemeLoadSeq = 0;
 let staffOffboardingReadiness = null;
+let hrRealtimeRefreshTimer = null;
 
 // ==========================================
 // HELPERS
@@ -934,6 +935,7 @@ async function initPage() {
         const tab = getInitialHrTab();
         activateHrTab(tab, { updateHash: false });
     });
+    initHrRealtime();
     startPolling();
     } catch (err) {
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -1554,6 +1556,22 @@ function startPolling() {
         const activeTab = document.querySelector('.hr-tab.active');
         if (activeTab && activeTab.dataset.tab === 'today') loadToday();
     }, 30000);
+}
+
+function initHrRealtime() {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('ws:hr-attendance', () => {
+        const activeTab = document.querySelector('.hr-tab.active');
+        if (!activeTab || activeTab.dataset.tab !== 'today') return;
+        if (hrRealtimeRefreshTimer) clearTimeout(hrRealtimeRefreshTimer);
+        hrRealtimeRefreshTimer = setTimeout(() => {
+            hrRealtimeRefreshTimer = null;
+            loadToday();
+        }, 150);
+    });
+    if (typeof ParkWS !== 'undefined' && ParkWS && typeof ParkWS.connect === 'function') {
+        ParkWS.connect();
+    }
 }
 
 // ==========================================
@@ -6312,12 +6330,28 @@ function formatZrsDate(value) {
     });
 }
 
+function zrsAdjustmentActive(row = {}) {
+    const status = String(row.status || 'applied');
+    return status === 'applied' || status === 'pending_review';
+}
+
+function zrsStatusLabel(status) {
+    const normalized = String(status || 'applied');
+    return {
+        applied: 'Застосовано',
+        pending_review: 'На погодженні',
+        voided: 'Скасовано',
+        rejected: 'Відхилено'
+    }[normalized] || normalized;
+}
+
 function renderZrs(adjustmentsData = {}, salaryData = {}) {
     const adjustments = Array.isArray(adjustmentsData.data) ? adjustmentsData.data : [];
+    const activeAdjustments = adjustments.filter(zrsAdjustmentActive);
     const salaryRows = Array.isArray(salaryData.data) ? salaryData.data : [];
     const zrsRows = salaryRows.filter(row => Number(row.advances || 0) > 0);
-    const totalZrs = Number(salaryData.totals?.total_advances || adjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0));
-    const affectedCount = zrsRows.length || new Set(adjustments.map(row => row.staff_id)).size;
+    const totalZrs = Number(salaryData.totals?.total_advances || activeAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+    const affectedCount = zrsRows.length || new Set(activeAdjustments.map(row => row.staff_id)).size;
     const netAfterZrs = salaryRows.reduce((sum, row) => sum + Number(row.total_salary || 0), 0);
     const lock = salaryData.period_lock || { is_locked: false };
     const isLocked = lock.is_locked === true;
@@ -6358,15 +6392,22 @@ function renderZrs(adjustmentsData = {}, salaryData = {}) {
     }).join('') : '<tr><td colspan="6" style="text-align:center;color:#94A3B8;">ЗРС за цей місяць ще немає</td></tr>';
 
     document.getElementById('zrsJournalHead').innerHTML = `<tr>
-        <th>Дата</th><th>Співробітник</th><th>Сума</th><th>Причина</th><th>Додав</th>
+        <th>Дата</th><th>Співробітник</th><th>Сума</th><th>Статус</th><th>Причина</th><th>Додав</th><th>Дія</th>
     </tr>`;
-    document.getElementById('zrsJournalBody').innerHTML = adjustments.length ? adjustments.map(row => `<tr>
-        <td>${formatZrsDate(row.created_at)}</td>
-        <td><strong>${escapeHtml(row.staff_name || '')}</strong></td>
-        <td style="color:#EF4444;">-${fmtMoney(Number(row.amount || 0))}</td>
-        <td>${escapeHtml(row.reason || 'ЗРС під зарплату')}</td>
-        <td>${escapeHtml(row.created_by || '—')}</td>
-    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#94A3B8;">Журнал ЗРС порожній</td></tr>';
+    document.getElementById('zrsJournalBody').innerHTML = adjustments.length ? adjustments.map(row => {
+        const status = String(row.status || 'applied');
+        const active = zrsAdjustmentActive(row);
+        const canVoid = !isLocked && active;
+        return `<tr class="${active ? '' : 'is-muted'}">
+            <td>${formatZrsDate(row.created_at)}</td>
+            <td><strong>${escapeHtml(row.staff_name || '')}</strong></td>
+            <td style="color:#EF4444;">${active ? '-' : ''}${fmtMoney(Number(row.amount || 0))}</td>
+            <td><span class="zrs-status-badge${active ? '' : ' is-muted'}">${escapeHtml(zrsStatusLabel(status))}</span></td>
+            <td>${escapeHtml(row.reason || 'ЗРС під зарплату')}</td>
+            <td>${escapeHtml(row.created_by || '—')}</td>
+            <td>${canVoid ? `<button type="button" class="zrs-action-btn" onclick="voidZrsAdjustment(${Number(row.id)})">Скасувати</button>` : '—'}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:#94A3B8;">Журнал ЗРС порожній</td></tr>';
 }
 
 async function loadZrs() {
@@ -6412,6 +6453,25 @@ async function showZrsForm() {
         showNotification(data?.error || 'Не вдалося додати ЗРС', 'error');
     }
 }
+
+async function voidZrsAdjustment(adjustmentId) {
+    const id = Number(adjustmentId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    const result = await formModal('Скасувати ЗРС', [
+        { key: 'reason', label: 'Причина', type: 'textarea', required: true, placeholder: 'Наприклад: помилково доданий аванс' }
+    ], { icon: '!', type: 'warning', okText: 'Скасувати ЗРС' });
+    if (!result?.reason?.trim()) return;
+    const data = await hrFetch(`/salary/adjustment/${id}/void`, 'PUT', { reason: result.reason.trim() });
+    if (data?.success) {
+        showNotification('ЗРС скасовано і прибрано з розрахунку зарплати', 'success');
+        await loadZrs();
+        await loadSalary();
+    } else {
+        showNotification(data?.error || 'Не вдалося скасувати ЗРС', 'error');
+    }
+}
+
+window.voidZrsAdjustment = voidZrsAdjustment;
 
 window.showAdjustmentForm = async function() {
     const staff = await hrFetch('/staff?active=true');

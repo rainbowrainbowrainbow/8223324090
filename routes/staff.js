@@ -38,6 +38,7 @@ const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegr
 const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { broadcast } = require('../services/websocket');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
@@ -1206,6 +1207,14 @@ router.post('/checkin', async (req, res) => {
         const staff = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
         const name = staff.rows[0]?.name || 'Unknown';
         log.info(`Check-in: ${name} (staff #${staffId}) via ${method || 'face'}`);
+        broadcast('hr:attendance-updated', {
+            date: today,
+            staffId: Number(staffId),
+            action: 'clock_in',
+            source: method || 'face',
+            staffName: name,
+            hrTimeRecord
+        }, null, today);
         res.json({ success: true, checkin: result.rows[0], staffName: name, hrTimeRecord });
         // Send check-in notification to chat channel (fire-and-forget after response)
         try {
@@ -1261,13 +1270,21 @@ router.post('/checkout', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'No check-in found for today' });
         }
+        const staffRes = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
+        const name = staffRes.rows[0]?.name || 'Unknown';
+        broadcast('hr:attendance-updated', {
+            date: today,
+            staffId: Number(staffId),
+            action: 'clock_out',
+            source: 'face',
+            staffName: name,
+            hrTimeRecord
+        }, null, today);
         res.json({ success: true, checkin: result.rows[0], hrTimeRecord });
         // Send checkout notification to chat channel (fire-and-forget after response)
         try {
             const { sendBotMessage } = require('../services/chatService');
             const { broadcastToChannel } = require('../services/websocket');
-            const staffRes = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
-            const name = staffRes.rows[0]?.name || 'Unknown';
             const ch = await pool.query("SELECT id FROM chat_channels WHERE slug = 'checkin-log' LIMIT 1");
             if (ch.rows[0]) {
                 const channelId = ch.rows[0].id;

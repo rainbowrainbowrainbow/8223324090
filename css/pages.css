@@ -6403,6 +6403,52 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--white) 50%, transparent);
 }
 
+/* v0.73.75: dismissed cards and ZRS controls stay out of hr.html inline budget. */
+.page-container .hr-team-card.inactive {
+    opacity: 1;
+    border-style: dashed;
+    border-color: rgba(148, 163, 184, 0.36);
+}
+
+.page-container .hr-team-card.inactive .hr-team-avatar {
+    opacity: 0.76;
+    filter: grayscale(0.25);
+}
+
+.page-container .zrs-status-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.page-container .zrs-status-badge.is-muted {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--gray-500);
+}
+
+.page-container .zrs-action-btn {
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #B91C1C;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.page-container .zrs-action-btn:hover {
+    background: rgba(239, 68, 68, 0.14);
+}
+
 .page-container .hr-team-controls {
     display: grid;
     gap: 10px;
@@ -6627,6 +6673,31 @@ body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab.active,
         color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
     );
     color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode .page-container .hr-team-card.inactive,
+[data-theme="dark"] .page-container .hr-team-card.inactive {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(30, 41, 59, 0.72);
+}
+
+body.dark-mode .page-container .zrs-status-badge,
+[data-theme="dark"] .page-container .zrs-status-badge {
+    background: rgba(16, 185, 129, 0.18);
+    color: #A7F3D0;
+}
+
+body.dark-mode .page-container .zrs-status-badge.is-muted,
+[data-theme="dark"] .page-container .zrs-status-badge.is-muted {
+    background: rgba(148, 163, 184, 0.14);
+    color: #CBD5E1;
+}
+
+body.dark-mode .page-container .zrs-action-btn,
+[data-theme="dark"] .page-container .zrs-action-btn {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(248, 113, 113, 0.36);
+    color: #FCA5A5;
 }
 
 body.dark-mode .page-container .hr-team-controls,

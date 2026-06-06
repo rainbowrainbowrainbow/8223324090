@@ -3053,9 +3053,25 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         // CRM: resolve customer_id for update
         const customerIdProvided = Object.prototype.hasOwnProperty.call(b, 'customerId')
             || Object.prototype.hasOwnProperty.call(b, 'customer_id');
+        const rawCustomerId = Object.prototype.hasOwnProperty.call(b, 'customerId') ? b.customerId : b.customer_id;
+        let providedCustomerId = null;
+        if (customerIdProvided) {
+            const rawText = rawCustomerId === null || rawCustomerId === undefined ? '' : String(rawCustomerId).trim();
+            if (rawCustomerId === null) {
+                providedCustomerId = null;
+            } else if (!rawText) {
+                providedCustomerId = oldBooking.customer_id || null;
+            } else {
+                providedCustomerId = parseInt(rawText, 10);
+                if (!Number.isFinite(providedCustomerId)) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, error: 'Invalid customerId' });
+                }
+            }
+        }
         let updateCustomerId = sideEffectsAllowedForContext(businessContext)
             ? (customerIdProvided
-                ? (b.customerId || b.customer_id ? parseInt(b.customerId || b.customer_id) : null)
+                ? providedCustomerId
                 : (b.customer && b.customer.name ? null : (oldBooking.customer_id || null)))
             : null;
         if (sideEffectsAllowedForContext(businessContext) && !updateCustomerId && b.customer && b.customer.name) {

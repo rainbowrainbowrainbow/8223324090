@@ -2081,10 +2081,40 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                    (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
         ),
         active_staff AS (
-            SELECT id, name, role_type, hourly_rate, department
-            FROM staff
-            WHERE is_active = true
-              AND (is_freelance = false OR is_freelance IS NULL)
+            SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, s.department
+            FROM staff s
+            CROSS JOIN params p
+            WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
+              AND (
+                  s.is_active = true
+                  OR EXISTS (
+                      SELECT 1
+                      FROM hr_time_records tr
+                      WHERE tr.staff_id = s.id
+                        AND tr.record_date >= p.date_from AND tr.record_date <= p.date_to
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM hr_shifts hs
+                      WHERE hs.staff_id = s.id
+                        AND hs.shift_date >= p.date_from AND hs.shift_date <= p.date_to
+                        AND hs.status IN ('working', 'remote')
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM salary_adjustments sa
+                      WHERE sa.staff_id = s.id
+                        AND sa.month = p.month
+                        AND COALESCE(sa.status, 'applied') = 'applied'
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM payroll_reports pr
+                      WHERE pr.staff_id = s.id
+                        AND pr.period_month = p.month
+                        AND pr.voided_at IS NULL
+                  )
+              )
         ),
         time_segments AS (
             SELECT s.id AS staff_id,
@@ -2131,6 +2161,7 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'advance'), 0)::numeric AS advances
             FROM salary_adjustments sa
             JOIN params p ON sa.month = p.month
+            WHERE COALESCE(sa.status, 'applied') = 'applied'
             GROUP BY sa.staff_id
         ),
         report_snapshots AS (
@@ -3851,18 +3882,97 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
 
 // PUT /api/hr/staff/:id/status — activate/deactivate
 router.put('/staff/:id/status', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { is_active } = req.body;
-        const result = await pool.query(
-            'UPDATE staff SET is_active = $1 WHERE id = $2 RETURNING *',
-            [is_active, req.params.id]
-        );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        await auditLog('status_change', parseInt(req.params.id), req.user?.username, { is_active }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        const isActive = req.body?.is_active === true || req.body?.isActive === true;
+        if (req.body?.is_active !== true && req.body?.is_active !== false && req.body?.isActive !== true && req.body?.isActive !== false) {
+            return res.status(400).json({ success: false, error: 'is_active required' });
+        }
+
+        await client.query('BEGIN');
+        const before = await client.query('SELECT * FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (!before.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+
+        const result = isActive
+            ? await client.query(
+                `UPDATE staff
+                 SET is_active = true,
+                     termination_date = NULL,
+                     termination_reason = NULL,
+                     termination_recorded_at = NULL,
+                     termination_recorded_by = NULL
+                 WHERE id = $1
+                 RETURNING *`,
+                [req.params.id]
+            )
+            : await client.query(
+                'UPDATE staff SET is_active = false WHERE id = $1 RETURNING *',
+                [req.params.id]
+            );
+
+        let reactivatedAccounts = [];
+        if (isActive) {
+            const profileRows = await client.query(
+                `UPDATE employee_profiles
+                 SET is_active = true
+                 WHERE staff_id = $1 AND user_id IS NOT NULL
+                 RETURNING user_id`,
+                [req.params.id]
+            ).catch(err => {
+                log.warn(`HR rehire profile activation skipped: ${err.message}`);
+                return { rows: [] };
+            });
+            const userIds = profileRows.rows.map(row => Number(row.user_id)).filter(Number.isFinite);
+            if (userIds.length) {
+                const activatedUsers = await client.query(
+                    `UPDATE users
+                     SET is_active = true
+                     WHERE id = ANY($1::int[])
+                     RETURNING id, username, name, role`,
+                    [userIds]
+                ).catch(err => {
+                    log.warn(`HR rehire account activation skipped: ${err.message}`);
+                    return { rows: [] };
+                });
+                reactivatedAccounts = activatedUsers.rows;
+                for (const target of activatedUsers.rows) {
+                    await recordAccountSecurityEvent({
+                        actor: req.user,
+                        target,
+                        eventType: 'account_activated',
+                        reason: 'hr_rehire',
+                        details: {
+                            staffId: Number(req.params.id),
+                            terminationCleared: true
+                        },
+                        req,
+                        client
+                    });
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+        await auditLog(isActive ? 'staff_rehire' : 'status_change', parseInt(req.params.id), req.user?.username, {
+            is_active: isActive,
+            reactivated_accounts: reactivatedAccounts.length,
+            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean)
+        }, req.ip);
+        res.json({
+            success: true,
+            data: result.rows[0],
+            reactivated_accounts: reactivatedAccounts.length,
+            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean)
+        });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/status error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -5549,6 +5659,75 @@ router.get('/salary/adjustments', async (req, res) => {
     } catch (err) {
         log.error('GET /hr/salary/adjustments error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/salary/adjustment/:id/void — cancel mistaken ZRS before payroll close
+router.put('/salary/adjustment/:id/void', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const reason = cleanStaffText(req.body?.reason, 500) || 'Скасовано вручну';
+        await client.query('BEGIN');
+        const current = await client.query(
+            `SELECT *
+             FROM salary_adjustments
+             WHERE id = $1
+             FOR UPDATE`,
+            [req.params.id]
+        );
+        const adjustment = current.rows[0];
+        if (!adjustment) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Коригування не знайдено' });
+        }
+        if (adjustment.type !== 'advance') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Цей сценарій скасування доступний тільки для ЗРС/авансу' });
+        }
+        if (!['applied', 'pending_review'].includes(adjustment.status || 'applied')) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Цей ЗРС вже оброблено або скасовано' });
+        }
+        await assertPayrollPeriodOpen(adjustment.month, client);
+        const result = await client.query(
+            `UPDATE salary_adjustments
+             SET status = 'voided',
+                 approved_by = $1,
+                 approved_at = NOW()
+             WHERE id = $2
+             RETURNING *`,
+            [req.user?.username || null, req.params.id]
+        );
+        await client.query(
+            `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
+             VALUES ($1,$2,'void',$3,$4,$5,$6)`,
+            [
+                result.rows[0].id,
+                result.rows[0].staff_id,
+                req.user?.username,
+                req.user?.role,
+                result.rows[0].template_id,
+                JSON.stringify({ reason, previousStatus: adjustment.status || 'applied', type: adjustment.type })
+            ]
+        ).catch(e => log.warn('Discipline void log failed:', e.message));
+        await client.query('COMMIT');
+        await auditLog('salary_adjustment_void', Number(result.rows[0].staff_id), req.user?.username, {
+            adjustment_id: Number(result.rows[0].id),
+            type: result.rows[0].type,
+            amount: Number(result.rows[0].amount || 0),
+            month: result.rows[0].month,
+            reason
+        }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('PUT /hr/salary/adjustment/:id/void error', err);
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({ success: false, error: err.message, period_lock: err.payrollLock || null });
+        }
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 

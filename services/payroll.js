@@ -329,14 +329,67 @@ function calculatePayroll(staff, scheme, metrics, adjustments = {}, entries = []
     return { scheme: activeScheme, lines, summary };
 }
 
-async function fetchStaffList() {
-    const result = await pool.query(`
-        SELECT id, name, department, position, role_type, hourly_rate
-        FROM staff
-        WHERE is_active = true
-        ORDER BY name
-    `);
-    return result.rows.map(mapStaff);
+async function fetchStaffList(month) {
+    const bounds = getMonthBounds(month);
+    const readStaff = async (withStatusFilter = true) => {
+        const statusFilter = withStatusFilter ? "AND COALESCE(sa.status, 'applied') = 'applied'" : '';
+        return pool.query(`
+            SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate
+            FROM staff s
+            WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
+              AND (
+                  s.is_active = true
+                  OR EXISTS (
+                      SELECT 1
+                      FROM hr_time_records tr
+                      WHERE tr.staff_id = s.id
+                        AND tr.record_date >= $2 AND tr.record_date <= $3
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM hr_shifts hs
+                      WHERE hs.staff_id = s.id
+                        AND hs.shift_date >= $2 AND hs.shift_date <= $3
+                        AND hs.status IN ('working', 'remote')
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM salary_adjustments sa
+                      WHERE sa.staff_id = s.id
+                        AND sa.month = $1
+                        ${statusFilter}
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM payroll_reports pr
+                      WHERE pr.staff_id = s.id
+                        AND pr.period_month = $1
+                        AND pr.voided_at IS NULL
+                  )
+              )
+            ORDER BY s.name
+        `, [month, bounds.from, bounds.to]);
+    };
+
+    try {
+        let result;
+        try {
+            result = await readStaff(true);
+        } catch (err) {
+            if (err.code !== '42703') throw err;
+            result = await readStaff(false);
+        }
+        return result.rows.map(mapStaff);
+    } catch (err) {
+        if (!isMissingTableError(err)) log.warn('payroll staff query failed:', err.message);
+        const fallback = await pool.query(`
+            SELECT id, name, department, position, role_type, hourly_rate
+            FROM staff
+            WHERE is_active = true
+            ORDER BY name
+        `);
+        return fallback.rows.map(mapStaff);
+    }
 }
 
 async function fetchTimeMetrics(month) {
@@ -508,7 +561,7 @@ function applyReportSnapshot(row, report) {
 
 async function buildPayrollContext(month) {
     const normalizedMonth = assertPayrollMonth(normalizePayrollMonth(month));
-    const staff = await fetchStaffList();
+    const staff = await fetchStaffList(normalizedMonth);
     const staffIds = staff.map(item => item.id);
     const [timeMap, adjustmentMap, entryMap, schemeMap, reportMap, periodIncome, allSchemes] = await Promise.all([
         fetchTimeMetrics(normalizedMonth),

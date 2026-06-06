@@ -3403,6 +3403,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
 
         const bookingIdentity = timelineBookingResourceIdentity(b);
         const costumeLabel = bookingCostumeLabel(b);
+        const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
         const miniTitleParts = [`${b.label || b.programCode}: ${b.room} (${b.time})`];
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         html += `
@@ -3413,6 +3414,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
                  data-resource-type="${escapeHtml(bookingIdentity.resourceType)}"
                  title="${escapeHtml(miniTitleParts.join(' · '))}">
                 <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
+                ${miniCostumeText}
             </div>
         `;
     }

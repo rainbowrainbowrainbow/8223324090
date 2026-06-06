@@ -8,6 +8,7 @@ const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
 const ZRS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '255_payroll_zrs_advances.sql'), 'utf8');
@@ -219,8 +220,13 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'async function loadZrs',
         'function renderZrs',
         'async function showZrsForm',
+        'async function voidZrsAdjustment',
+        'window.voidZrsAdjustment = voidZrsAdjustment',
         'hrFetch(`/salary/adjustments?month=${month}&type=advance`)',
+        'hrFetch(`/salary/adjustment/${id}/void`, \'PUT\'',
         "type: 'advance'",
+        'zrs-status-badge',
+        'zrs-action-btn',
         'ЗРС до вирахування',
         'Зарплата після ЗРС'
     ]) {
@@ -232,6 +238,8 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         '- COALESCE(at.advances, 0)',
         'total_advances',
         "requestedType === 'zrs' ? 'advance'",
+        "router.put('/salary/adjustment/:id/void'",
+        "SET status = 'voided'",
         "type: 'advance', label: 'ЗРС'",
         'advances_amount = EXCLUDED.advances_amount'
     ]) {
@@ -244,6 +252,27 @@ test('HR payroll workspace exposes ZRS salary advances and deducts them from pay
         'MIGRATION_KIND: schema'
     ]) {
         assert.ok(ZRS_MIGRATION.includes(token), `missing migration token ${token}`);
+    }
+});
+
+test('HR payroll keeps worked inactive staff and ignores unapplied salary adjustments', () => {
+    for (const token of [
+        'FROM hr_time_records tr',
+        'FROM hr_shifts hs',
+        'FROM payroll_reports pr',
+        "WHERE COALESCE(sa.status, 'applied') = 'applied'"
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing route payroll token ${token}`);
+    }
+
+    for (const token of [
+        'async function fetchStaffList(month)',
+        "AND COALESCE(sa.status, 'applied') = 'applied'",
+        'FROM hr_time_records tr',
+        'FROM payroll_reports pr',
+        'fetchStaffList(normalizedMonth)'
+    ]) {
+        assert.ok(PAYROLL_SERVICE.includes(token), `missing payroll service token ${token}`);
     }
 });
 

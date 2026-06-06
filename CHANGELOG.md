@@ -4,6 +4,22 @@
 
 ---
 
+## v0.73.75 - HR: аудит зарплати і команди
+
+### HR / Payroll / Звільнені / ЗРС / Camera check-in / Timeline / Guardrail / (Клешня, 06.06.2026) [codex]
+- **Payroll більше не викидає звільнених після відпрацьованої зміни** - `loadPayrollCalculation` і shared payroll service включають активних людей та всіх, у кого в періоді є `hr_time_records`, `hr_shifts`, applied `salary_adjustments` або active `payroll_reports`.
+- **Неапрувнуті коригування не впливають на salary preview/commit** - основний payroll SQL тепер фільтрує `salary_adjustments` через `COALESCE(status, 'applied') = 'applied'`.
+- **Повернення зі `Звільнених` реактивує повний профіль** - `/api/hr/staff/:id/status` очищає `termination_*`, активує linked `employee_profiles` і `users`, пише `staff_rehire` та `account_activated` audit.
+- **ЗРС отримав сценарій скасування помилки** - додано `PUT /api/hr/salary/adjustment/:id/void`, кнопку `Скасувати` у журналі ЗРС і виключення `voided` авансів із розрахунку.
+- **Camera check-in оновлює `HR -> Сьогодні` без очікування polling** - `/api/staff/checkin` і `/api/staff/checkout` broadcast-ять `hr:attendance-updated`, а HR page слухає `ws:hr-attendance`.
+- **Вкладка `Звільнені` стала читабельною в темній темі** - inactive-картки більше не затемнюються через `opacity: 0.5`, замість цього мають окремий dashed-state.
+- **Костюм видно у mini/week таймлайні** - блоки mini timeline показують `mini-booking-costume`, а не ховають костюм тільки в `title`.
+- **Редагування бронювання з клієнтом захищено від порожнього payload** - пустий `customerId` під час update більше не відвʼязує попереднього клієнта.
+- **Додано guardrails** - HR contract і UI smoke фіксують inactive payroll inclusion, applied-only adjustments, ZRS void, camera realtime refresh, rehire CRM activation і видимий costume badge.
+- **Оновлено релізні маркери** - версію піднято до `0.73.75`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.74 - HR: синхронізація графіка
 
 ### HR / Графік / staff_schedule / hr_shifts / Backfill / Guardrail / (Клешня, 06.06.2026) [codex]

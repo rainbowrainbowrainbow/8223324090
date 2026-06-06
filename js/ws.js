@@ -409,6 +409,12 @@ var ParkWS = (function () {
                 }));
                 break;
 
+            case 'hr:attendance-updated':
+                window.dispatchEvent(new CustomEvent('ws:hr-attendance', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
             case 'task:assigned':
                 window.dispatchEvent(new CustomEvent('ws:task', {
                     detail: { eventType: message.type, payload: message.payload }

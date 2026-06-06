@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 
 const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
@@ -28,6 +29,45 @@ test('HR static and rendered button tags declare an explicit type', () => {
     ];
     assert.deepEqual(offenders, []);
     assert.equal(/createElement\(['"]button['"]\)/.test(HR_JS), false, 'new dynamic button elements must set .type = "button"');
+});
+
+test('HR manual scheduled clock-out settles payroll from the planned shift', () => {
+    const payroll = calculateHrClockOutPayroll({
+        clock_in: '2026-06-06T14:55:00.000Z',
+        status: 'present',
+        planned_start: '10:00',
+        planned_end: '18:00'
+    }, {
+        clockOut: '2026-06-06T15:00:00.000Z',
+        breakMinutes: 30,
+        settlementMode: 'scheduled_shift',
+        kyivNow: new Date(2026, 5, 6, 18, 0)
+    });
+
+    assert.equal(payroll.actualWorkedMinutes, 0);
+    assert.equal(payroll.scheduledWorkedMinutes, 450);
+    assert.equal(payroll.totalWorkedMinutes, 450);
+    assert.equal(payroll.settlementMode, 'scheduled_shift');
+    assert.equal(payroll.status, 'present');
+});
+
+test('HR camera checkout keeps actual-time payroll through the shared clock-out helper', () => {
+    const payroll = calculateHrClockOutPayroll({
+        clock_in: '2026-06-06T06:00:00.000Z',
+        status: 'present',
+        planned_start: '09:00',
+        planned_end: '18:00'
+    }, {
+        clockOut: '2026-06-06T13:30:00.000Z',
+        breakMinutes: 30,
+        settlementMode: 'actual_time',
+        kyivNow: new Date(2026, 5, 6, 16, 30)
+    });
+
+    assert.equal(payroll.totalWorkedMinutes, 420);
+    assert.equal(payroll.settlementMode, 'actual_time');
+    assert.equal(payroll.earlyLeaveMinutes, 90);
+    assert.equal(payroll.status, 'early_leave');
 });
 
 test('HR grouped nav buttons expose routing and future visibility contract', () => {

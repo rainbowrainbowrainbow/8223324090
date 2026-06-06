@@ -1514,20 +1514,26 @@ function renderToday(data) {
 
 async function handleClock(staffId, action, name, workedMin) {
     if (action === 'out') {
-        const worked = fmtMinutes(workedMin) || 'невідомо';
-        if (!await confirmModal(`Завершити зміну для ${name}?\nВідпрацьовано: ${worked}`, { type: 'warning', okText: 'Завершити' })) return;
+        const message = `Завершити зміну для ${name}?\nУ зарплату буде зараховано планову зміну, якщо вона є; без графіка - фактичний час.`;
+        if (!await confirmModal(message, { type: 'warning', okText: 'Завершити' })) return;
     }
     const endpoint = action === 'out' ? '/clock-out' : '/clock-in';
+    const body = { staff_id: staffId };
+    if (action === 'out') body.settlement_mode = 'scheduled_shift';
     const data = await hrFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ staff_id: staffId })
+        body: JSON.stringify(body)
     });
     if (!data) return;
     if (!data.success) {
         showNotification(data.error || 'Помилка', 'error');
         return;
     }
-    showNotification(action === 'out' ? 'Зміну завершено' : 'Прихід відмічено', 'success');
+    const totalMinutes = Number(data.data?.total_worked_minutes);
+    const doneText = action === 'out' && Number.isFinite(totalMinutes)
+        ? `Зміну завершено: ${fmtMinutes(totalMinutes)}`
+        : 'Зміну завершено';
+    showNotification(action === 'out' ? doneText : 'Прихід відмічено', 'success');
     await loadToday();
 }
 

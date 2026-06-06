@@ -23,6 +23,7 @@ const {
     SCHEME_TYPES: PAYROLL_SCHEME_TYPES,
     createPayrollScheme
 } = require('../services/payroll');
+const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const { createTask } = require('../services/kleshnya');
 const {
     getAssignableTaskOwner,
@@ -4455,6 +4456,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
 
         const today = todayKyiv();
         const now = nowKyiv();
+        const businessContext = hrBusinessContextFromRequest(req);
 
         // Check existing
         const existing = await pool.query(
@@ -4487,15 +4489,16 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
             result = await pool.query(
                 `UPDATE hr_time_records SET
                     clock_in = $1, planned_start = $2, planned_end = $3,
-                    late_minutes = $4, status = $5, ip_address = $6, user_agent = $7, updated_at = NOW()
-                 WHERE id = $8 RETURNING *`,
-                [clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent'], existing.rows[0].id]
+                    late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
+                    business_context = COALESCE(business_context, $8), updated_at = NOW()
+                 WHERE id = $9 RETURNING *`,
+                [clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent'], businessContext, existing.rows[0].id]
             );
         } else {
             result = await pool.query(
-                `INSERT INTO hr_time_records (staff_id, record_date, clock_in, planned_start, planned_end, late_minutes, status, ip_address, user_agent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-                [staff_id, today, clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent']]
+                `INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in, planned_start, planned_end, late_minutes, status, ip_address, user_agent)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+                [businessContext, staff_id, today, clockIn, plannedStart, plannedEnd, lateMin, status, req.ip, req.headers['user-agent']]
             );
         }
 
@@ -4510,7 +4513,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
 // POST /api/hr/clock-out
 router.post('/clock-out', requireHrManage, async (req, res) => {
     try {
-        const { staff_id } = req.body;
+        const { staff_id, settlement_mode, settlementMode } = req.body;
         if (!staff_id) return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
 
         const today = todayKyiv();
@@ -4526,48 +4529,46 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
 
         const rec = record.rows[0];
         const clockOut = new Date().toISOString();
-        const clockInDate = new Date(rec.clock_in);
-        const clockOutDate = new Date(clockOut);
 
-        // Get break from shift
-        let breakMin = 0;
         const shift = await pool.query(
-            'SELECT break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2', [staff_id, today]
+            'SELECT planned_start, planned_end, break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+            [staff_id, today]
         );
-        if (shift.rows.length > 0) breakMin = shift.rows[0].break_minutes || 0;
-
-        const totalWorked = Math.round((clockOutDate - clockInDate) / 60000) - breakMin;
-        let earlyLeave = 0, overtime = 0;
-        let status = rec.status;
-
-        if (rec.planned_end) {
-            const now = nowKyiv();
-            const nowMin = now.getHours() * 60 + now.getMinutes();
-            const plannedEndMin = timeToMin(rec.planned_end);
-            const diff = plannedEndMin - nowMin;
-
-            if (diff > 15) {
-                earlyLeave = diff;
-                status = 'early_leave';
-            } else if (diff < -15) {
-                overtime = Math.abs(diff);
-            }
-        }
-
-        // Keep 'late' if was late
-        if (rec.status === 'late' && status !== 'early_leave') status = 'late';
-        if (status === 'present' || status === 'unscheduled' || status === 'clocked_in') status = 'present';
+        const shiftRow = shift.rows[0] || {};
+        const payroll = calculateHrClockOutPayroll(rec, {
+            clockOut,
+            breakMinutes: shiftRow.break_minutes || 0,
+            plannedStart: rec.planned_start || shiftRow.planned_start,
+            plannedEnd: rec.planned_end || shiftRow.planned_end,
+            settlementMode: settlement_mode || settlementMode,
+            kyivNow: nowKyiv()
+        });
 
         const result = await pool.query(
             `UPDATE hr_time_records SET
                 clock_out = $1, total_worked_minutes = $2, early_leave_minutes = $3,
                 overtime_minutes = $4, status = $5, updated_at = NOW()
              WHERE id = $6 RETURNING *`,
-            [clockOut, Math.max(0, totalWorked), earlyLeave, overtime, status, rec.id]
+            [
+                clockOut,
+                payroll.totalWorkedMinutes,
+                payroll.earlyLeaveMinutes,
+                payroll.overtimeMinutes,
+                payroll.status,
+                rec.id
+            ]
         );
 
         await auditLog('clock_out', staff_id, req.user?.username,
-            { clock_out: clockOut, total_worked_minutes: totalWorked, status }, req.ip);
+            {
+                clock_out: clockOut,
+                total_worked_minutes: payroll.totalWorkedMinutes,
+                actual_worked_minutes: payroll.actualWorkedMinutes,
+                scheduled_worked_minutes: payroll.scheduledWorkedMinutes,
+                settlement_mode: payroll.settlementMode,
+                requested_settlement_mode: payroll.requestedSettlementMode,
+                status: payroll.status
+            }, req.ip);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('POST /hr/clock-out error', err);

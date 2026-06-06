@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.72 - HR: облік відпрацьованих змін
+
+### HR / Пульс / Зарплата / Check-out / Камера / Guardrail / Deploy / (Клешня, 06.06.2026) [codex]
+- **Ручне закриття зміни зараховує планову зміну в зарплату** - кнопка `HR -> Сьогодні` надсилає settlement `scheduled_shift`, тому ретроспективний клік менеджера більше не лишає `total_worked_minutes = 0`.
+- **Camera checkout і ручний checkout використовують спільний payroll helper** - фактичний режим камери зберігається, а `early_leave`, `late`, overtime і break minutes рахуються одним шляхом.
+- **HR clock-in вирівняно з бізнес-контекстом** - ручні записи `hr_time_records` отримують `business_context`, як і записи, що приходять із camera check-in.
+- **UI більше не показує старі `0 хв` перед перерахунком** - підтвердження пояснює, що в зарплату піде планова зміна або фактичний час без графіка, а після закриття показує підсумкові хвилини.
+- **Додано guardrails** - HR button contract перевіряє scheduled/manual і actual/camera settlement, а UI smoke фіксує shared helper та ручний payload.
+- **Оновлено релізні маркери** - версію піднято до `0.73.72`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.71 - HR: ЗРС у payroll
 
 ### HR / ЗП та KPI / ЗРС / Payroll / Міграція / Guardrail / Deploy / (Клешня, 06.06.2026) [codex]

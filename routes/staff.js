@@ -40,6 +40,7 @@ const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
+const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
@@ -150,44 +151,54 @@ async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
     if (!rec?.clock_in || rec.clock_out) return rec || null;
 
     const shift = await db.query(
-        'SELECT break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+        'SELECT planned_start, planned_end, break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
         [staffId, today]
     );
-    const breakMinutes = shift.rows[0]?.break_minutes || 0;
+    const shiftRow = shift.rows[0] || {};
     const clockOut = new Date().toISOString();
-    const totalWorked = Math.round((new Date(clockOut) - new Date(rec.clock_in)) / 60000) - breakMinutes;
-    let earlyLeave = 0;
-    let overtime = 0;
-    let status = rec.status;
-
-    if (rec.planned_end) {
-        const now = getKyivDate();
-        const nowMinutes = now.getHours() * 60 + now.getMinutes();
-        const plannedEndMinutes = timeToMinutes(rec.planned_end);
-        const diff = plannedEndMinutes - nowMinutes;
-        if (diff > 15) {
-            earlyLeave = diff;
-            status = 'early_leave';
-        } else if (diff < -15) {
-            overtime = Math.abs(diff);
-        }
-    }
-
-    if (rec.status === 'late' && status !== 'early_leave') status = 'late';
-    if (status === 'present' || status === 'unscheduled' || status === 'clocked_in') status = 'present';
+    const payroll = calculateHrClockOutPayroll(rec, {
+        clockOut,
+        breakMinutes: shiftRow.break_minutes || 0,
+        plannedStart: rec.planned_start || shiftRow.planned_start,
+        plannedEnd: rec.planned_end || shiftRow.planned_end,
+        settlementMode: options.settlementMode,
+        kyivNow: getKyivDate()
+    });
 
     const result = await db.query(
         `UPDATE hr_time_records SET
             clock_out = $1, total_worked_minutes = $2, early_leave_minutes = $3,
             overtime_minutes = $4, status = $5, updated_at = NOW()
          WHERE id = $6 RETURNING *`,
-        [clockOut, Math.max(0, totalWorked), earlyLeave, overtime, status, rec.id]
+        [
+            clockOut,
+            payroll.totalWorkedMinutes,
+            payroll.earlyLeaveMinutes,
+            payroll.overtimeMinutes,
+            payroll.status,
+            rec.id
+        ]
     );
 
     await db.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
          VALUES ('clock_out', $1, $2, $3, $4)`,
-        [staffId, options.performedBy || options.method || 'face', JSON.stringify({ clock_out: clockOut, total_worked_minutes: totalWorked, status, method: options.method || 'face', source: 'staff_checkin' }), options.ip || null]
+        [
+            staffId,
+            options.performedBy || options.method || 'face',
+            JSON.stringify({
+                clock_out: clockOut,
+                total_worked_minutes: payroll.totalWorkedMinutes,
+                actual_worked_minutes: payroll.actualWorkedMinutes,
+                scheduled_worked_minutes: payroll.scheduledWorkedMinutes,
+                settlement_mode: payroll.settlementMode,
+                requested_settlement_mode: payroll.requestedSettlementMode,
+                status: payroll.status,
+                method: options.method || 'face',
+                source: 'staff_checkin'
+            }),
+            options.ip || null
+        ]
     );
 
     return result.rows[0] || null;

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.73.62 - HR onboarding: атомарні задачі
+
+### HR / Onboarding / Задачі / Клешня / Task History / Transaction / Route Smoke / Deploy / (Клешня, 06.06.2026) [codex]
+- **Onboarding-призначення стало атомарним** - `onboarding_progress`, створення/оновлення 4 задач, HR audit і task-sync тепер виконуються в одному `BEGIN/COMMIT`; при помилці сценарій відкочується без напівготового стану.
+- **Клешня отримала transaction-aware створення задач** - `createTask` приймає DB client і може працювати всередині HR-транзакції, не ламаючи старі виклики через глобальний pool.
+- **Сповіщення відкладено до commit** - websocket/Telegram-події по нових onboarding-задачах не відправляються до успішного завершення транзакції.
+- **Перепризначення відповідального пише повну історію задач** - активні onboarding-задачі отримують `task_owner_reassigned` у `task_action_history` з `onboardingProgressId`, `staffId` і `taskKey`.
+- **Onboarding без відповідального заблоковано на backend** - `/api/hr/onboarding/start` більше не створює progress без `responsible_user_id`.
+- **Route-smoke посилено під критичний flow** - тест перевіряє блокування старту без відповідального, transaction markers і 4 записи історії при перепризначенні.
+- **Оновлено релізні маркери** - версію піднято до `0.73.62`, cache tags і Service Worker синхронізовано під deploy.
+
+---
+
 ## v0.73.61 - HR onboarding: відповідальні та задачі
 
 ### HR / Onboarding / Навчання / Задачі / Відповідальні / SQL / Route Smoke / Deploy / (Клешня, 06.06.2026) [codex]

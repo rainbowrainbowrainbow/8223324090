@@ -62,7 +62,8 @@ function getCurrentMonth() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, created_by_user_id, created_by }) {
+async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, created_by_user_id, created_by }, options = {}) {
+    const query = options.pool || pool;
     const explicitId = Number(owner_user_id || 0);
     const initial = {
         assigned_to: assigned_to || null,
@@ -76,7 +77,7 @@ async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, cre
     try {
         let result = null;
         if (Number.isInteger(explicitId) && explicitId > 0) {
-            result = await pool.query(
+            result = await query.query(
                 `SELECT id, username, name
                  FROM users
                  WHERE id = $1 AND COALESCE(is_active, true) = true
@@ -84,7 +85,7 @@ async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, cre
                 [explicitId]
             );
         } else if (lookupText && !systemActors.has(lookupText.toLowerCase())) {
-            result = await pool.query(
+            result = await query.query(
                 `SELECT id, username, name
                  FROM users
                  WHERE COALESCE(is_active, true) = true
@@ -94,7 +95,7 @@ async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, cre
                 [lookupText]
             );
         } else if (Number.isInteger(createdById) && createdById > 0) {
-            result = await pool.query(
+            result = await query.query(
                 `SELECT id, username, name
                  FROM users
                  WHERE id = $1 AND COALESCE(is_active, true) = true
@@ -122,7 +123,10 @@ async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, cre
 /**
  * Create a task through Kleshnya (with logging + notification)
  */
-async function createTask(data) {
+async function createTask(data, options = {}) {
+    const query = options.pool || pool;
+    const afterCommit = Array.isArray(options.afterCommit) ? options.afterCommit : null;
+    const skipNotifications = options.skipNotifications === true;
     const {
         business_context,
         businessContext,
@@ -154,9 +158,9 @@ async function createTask(data) {
         owner_user_id,
         created_by_user_id,
         created_by
-    });
+    }, { pool: query });
     const policy = control_policy || { reminder_minutes: [60, 30, 10], escalation_after_minutes: 120 };
-    const duplicate = await findActiveDuplicateTask(pool, {
+    const duplicate = await findActiveDuplicateTask(query, {
         title,
         date,
         deadline,
@@ -186,7 +190,7 @@ async function createTask(data) {
         };
     }
 
-    const result = await pool.query(
+    const result = await query.query(
         `INSERT INTO tasks (business_context, title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
          task_type, deadline, time_window_start, time_window_end, dependency_ids,
          control_policy, source_type, source_id, category, subcategory, checklist_template_key,
@@ -214,15 +218,19 @@ async function createTask(data) {
     const task = result.rows[0];
 
     // Log creation
-    await logTaskAction(task.id, 'created', null, title, created_by);
+    await logTaskAction(task.id, 'created', null, title, created_by, { pool: query });
 
     // Notify assigned person (fire-and-forget — never block task creation)
-    if (task.assigned_to && task_type === 'human') {
-        notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
-        emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
-            assignmentEvent: 'created',
-            source: 'services/kleshnya.createTask'
-        });
+    if (!skipNotifications && task.assigned_to && task_type === 'human') {
+        const notifyCreatedTask = () => {
+            notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
+            emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
+                assignmentEvent: 'created',
+                source: 'services/kleshnya.createTask'
+            });
+        };
+        if (afterCommit) afterCommit.push(notifyCreatedTask);
+        else notifyCreatedTask();
     }
 
     log.info(`Task created: #${task.id} "${title}" [${task_type}] assigned=${task.assigned_to || '—'} owner=${task.owner || '—'}`);
@@ -442,9 +450,10 @@ async function awardPoints(username, points, type, reason, taskId = null) {
 /**
  * Log a task action
  */
-async function logTaskAction(taskId, action, oldValue, newValue, actor = 'system') {
+async function logTaskAction(taskId, action, oldValue, newValue, actor = 'system', options = {}) {
+    const query = options.pool || pool;
     try {
-        await pool.query(
+        await query.query(
             'INSERT INTO task_logs (task_id, action, old_value, new_value, actor) VALUES ($1,$2,$3,$4,$5)',
             [taskId, action, oldValue || null, newValue || null, actor]
         );

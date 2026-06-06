@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.61",
+  "version": "0.73.62",
   "eventGenix": {
-    "releaseLabel": "HR onboarding: відповідальні та задачі"
+    "releaseLabel": "HR onboarding: атомарні задачі"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

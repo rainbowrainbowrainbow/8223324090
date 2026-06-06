@@ -29,6 +29,8 @@ const {
     listTaskOwnerCandidates
 } = require('../services/taskExecution');
 const { normalizeUserId } = require('../services/taskPolicy');
+const { TASK_ACTION_TYPES, logTaskActionEvent } = require('../services/taskActionHistory');
+const { emitTaskAssignedToOwner } = require('../services/taskNotifications');
 const {
     parseTextList,
     normalizeProfessionKey,
@@ -561,8 +563,20 @@ async function ensureResponsibleOnboardingTemplate(db = pool) {
     return inserted.rows[0];
 }
 
-async function loadActiveOnboardingProgress(staffId) {
-    const result = await pool.query(
+async function loadActiveOnboardingProgressRecord(staffId, db = pool, { lock = false } = {}) {
+    const result = await db.query(
+        `SELECT *
+         FROM onboarding_progress
+         WHERE staff_id = $1 AND status <> 'completed'
+         ORDER BY started_at DESC, id DESC
+         LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+        [staffId]
+    );
+    return result.rows[0] || null;
+}
+
+async function loadActiveOnboardingProgress(staffId, db = pool) {
+    const result = await db.query(
         `SELECT op.*, ot.name AS template_name,
                 u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
                 COUNT(t.id)::int AS generated_task_count,
@@ -618,17 +632,46 @@ async function attachOnboardingAssignments(staffRows = []) {
     return staffRows;
 }
 
-async function loadStaffForOnboarding(staffId) {
-    const result = await pool.query(
+async function loadStaffForOnboarding(staffId, db = pool, { lock = false } = {}) {
+    const result = await db.query(
         `SELECT id, name, department, position, role_type, is_active
          FROM staff
-         WHERE id = $1`,
+         WHERE id = $1${lock ? ' FOR UPDATE' : ''}`,
         [staffId]
     );
     return result.rows[0] || null;
 }
 
-async function syncOnboardingTasks(progress, staff, responsible, actor) {
+async function withOnboardingTransaction(work) {
+    const client = await pool.connect();
+    const afterCommit = [];
+    try {
+        await client.query('BEGIN');
+        const result = await work(client, afterCommit);
+        await client.query('COMMIT');
+        for (const callback of afterCommit) {
+            try {
+                Promise.resolve(callback()).catch(err => log.warn(`Onboarding post-commit hook skipped: ${err.message}`));
+            } catch (err) {
+                log.warn(`Onboarding post-commit hook skipped: ${err.message}`);
+            }
+        }
+        return result;
+    } catch (err) {
+        try {
+            await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+            log.error(`Onboarding transaction rollback failed: ${rollbackErr.message}`);
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function syncOnboardingTasks(progress, staff, responsible, actor, options = {}) {
+    const db = options.pool || pool;
+    const afterCommit = Array.isArray(options.afterCommit) ? options.afterCommit : null;
     const created = [];
     const updated = [];
     const reused = [];
@@ -642,7 +685,7 @@ async function syncOnboardingTasks(progress, staff, responsible, actor) {
             `Onboarding #${progress.id}`,
             `Відповідальний: ${responsible.label}`
         ].join('\n');
-        const existing = await pool.query(
+        const existing = await db.query(
             `SELECT *
              FROM tasks
              WHERE source_type = $1 AND source_id = $2
@@ -652,7 +695,9 @@ async function syncOnboardingTasks(progress, staff, responsible, actor) {
         );
         const row = existing.rows[0];
         if (row && !['done', 'completed', 'archived', 'cancelled'].includes(row.status || 'todo')) {
-            const result = await pool.query(
+            const ownerChanged = Number(row.owner_user_id || 0) !== Number(responsible.id)
+                || String(row.assigned_to || '') !== String(responsible.label || '');
+            const result = await db.query(
                 `UPDATE tasks
                  SET title = $2,
                      description = $3,
@@ -674,7 +719,41 @@ async function syncOnboardingTasks(progress, staff, responsible, actor) {
                  RETURNING *`,
                 [row.id, title, description, spec.priority, responsible.label, responsible.id, String(progress.id), RESPONSIBLE_ONBOARDING_TEMPLATE_KEY]
             );
-            updated.push(result.rows[0]);
+            const updatedTask = result.rows[0];
+            if (ownerChanged) {
+                await logTaskActionEvent({
+                    taskId: updatedTask.id,
+                    actionType: TASK_ACTION_TYPES.OWNER_REASSIGNED,
+                    actor,
+                    sourceSurface: 'hr_onboarding',
+                    oldValue: {
+                        ownerUserId: row.owner_user_id || null,
+                        assignedTo: row.assigned_to || null,
+                        owner: row.owner || null
+                    },
+                    newValue: {
+                        ownerUserId: updatedTask.owner_user_id || null,
+                        assignedTo: updatedTask.assigned_to || null,
+                        owner: updatedTask.owner || null
+                    },
+                    meta: {
+                        route: 'hr_onboarding_task_sync',
+                        sourceModule: 'hr_onboarding',
+                        onboardingProgressId: progress.id,
+                        staffId: staff.id,
+                        taskKey: spec.key,
+                        canonicalField: 'tasks.owner_user_id',
+                        legacyDisplayFields: ['assigned_to', 'owner']
+                    }
+                }, { pool: db });
+                if (afterCommit) {
+                    afterCommit.push(() => emitTaskAssignedToOwner(updatedTask, actor, {
+                        assignmentEvent: 'reassigned',
+                        source: 'routes/hr.onboarding'
+                    }));
+                }
+            }
+            updated.push(updatedTask);
             continue;
         }
         if (row) {
@@ -707,11 +786,11 @@ async function syncOnboardingTasks(progress, staff, responsible, actor) {
                 staffId: staff.id,
                 taskKey: spec.key
             }
-        });
+        }, { pool: db, afterCommit });
         if (task.duplicateSkipped) reused.push(task);
         else created.push(task);
     }
-    await pool.query('UPDATE onboarding_progress SET last_task_sync_at = NOW() WHERE id = $1', [progress.id]);
+    await db.query('UPDATE onboarding_progress SET last_task_sync_at = NOW() WHERE id = $1', [progress.id]);
     return {
         created,
         updated,
@@ -724,7 +803,8 @@ async function syncOnboardingTasks(progress, staff, responsible, actor) {
 }
 
 async function assignOnboardingResponsible(staffId, responsibleUserId, actor, options = {}) {
-    const staff = await loadStaffForOnboarding(staffId);
+    return withOnboardingTransaction(async (db, afterCommit) => {
+    const staff = await loadStaffForOnboarding(staffId, db, { lock: true });
     if (!staff) {
         const err = new Error('Працівника не знайдено');
         err.statusCode = 404;
@@ -737,28 +817,28 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
     }
     let responsible;
     try {
-        responsible = await getAssignableTaskOwner(responsibleUserId, { actor });
+        responsible = await getAssignableTaskOwner(responsibleUserId, { pool: db, actor });
     } catch (err) {
         err.message = 'Відповідального не знайдено або його не можна призначити на задачі';
         throw err;
     }
     const template = options.templateId
-        ? (await pool.query('SELECT id, name, items FROM onboarding_templates WHERE id = $1', [options.templateId])).rows[0]
-        : await ensureResponsibleOnboardingTemplate(pool);
+        ? (await db.query('SELECT id, name, items FROM onboarding_templates WHERE id = $1', [options.templateId])).rows[0]
+        : await ensureResponsibleOnboardingTemplate(db);
     if (!template) {
         const err = new Error('Шаблон onboarding не знайдено');
         err.statusCode = 404;
         throw err;
     }
 
-    const current = await loadActiveOnboardingProgress(staff.id);
+    const current = await loadActiveOnboardingProgressRecord(staff.id, db, { lock: true });
     const actorId = normalizeUserId(actor);
     const actorUsername = actor?.username || null;
     let progress;
     let action = 'assigned';
     if (!current) {
         const items = normalizeOnboardingTemplateItems(template.items);
-        const inserted = await pool.query(
+        const inserted = await db.query(
             `INSERT INTO onboarding_progress
                 (staff_id, template_id, items, total_items, completed_items, status,
                  responsible_user_id, assigned_by_user_id, assigned_by_username, assigned_at,
@@ -804,7 +884,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
             ? 'completed'
             : normalizeTrainingStatus(current.training_status, completed > 0 ? 'in_progress' : 'not_started');
         const nextStatus = normalizeOnboardingStatus(current.status, nextTrainingStatus);
-        const updated = await pool.query(
+        const updated = await db.query(
             `UPDATE onboarding_progress
              SET responsible_user_id = $2,
                  assigned_by_user_id = $3,
@@ -836,8 +916,8 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         progress = updated.rows[0];
     }
 
-    const taskSync = await syncOnboardingTasks(progress, staff, responsible, actor);
-    await auditLog(action === 'reassigned' ? 'onboarding_responsible_reassigned' : 'onboarding_responsible_assigned', staff.id, actorUsername, {
+    const taskSync = await syncOnboardingTasks(progress, staff, responsible, actor, { pool: db, afterCommit });
+    await insertAuditLog(action === 'reassigned' ? 'onboarding_responsible_reassigned' : 'onboarding_responsible_assigned', staff.id, actorUsername, {
         onboarding_progress_id: progress.id,
         responsible_user_id: responsible.id,
         responsible_username: responsible.username,
@@ -847,9 +927,9 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
             updated: taskSync.updated_count,
             reused: taskSync.reused_count
         }
-    });
+    }, options.ipAddress, db);
 
-    const enriched = await loadActiveOnboardingProgress(staff.id);
+    const enriched = await loadActiveOnboardingProgress(staff.id, db);
     return {
         staff,
         responsible,
@@ -857,6 +937,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         taskSync,
         action
     };
+    });
 }
 
 function hrBusinessContextFromRequest(req) {
@@ -1425,13 +1506,17 @@ function minutesSincePlannedStart(plannedStart) {
 }
 
 // Helper: audit log entry
+async function insertAuditLog(action, staffId, performedBy, details, ipAddress, db = pool) {
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [action, staffId, performedBy, details ? JSON.stringify(details) : null, ipAddress]
+    );
+}
+
 async function auditLog(action, staffId, performedBy, details, ipAddress) {
     try {
-        await pool.query(
-            `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [action, staffId, performedBy, details ? JSON.stringify(details) : null, ipAddress]
-        );
+        await insertAuditLog(action, staffId, performedBy, details, ipAddress);
     } catch (err) {
         log.error('Audit log error', err);
     }
@@ -5112,7 +5197,8 @@ router.put('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
             return res.status(400).json({ success: false, error: 'Потрібен responsible_user_id' });
         }
         const result = await assignOnboardingResponsible(req.params.id, responsibleUserId, req.user, {
-            templateId: templateId ? Number(templateId) : null
+            templateId: templateId ? Number(templateId) : null,
+            ipAddress: req.ip
         });
         res.json({ success: true, ...result });
     } catch (err) {
@@ -5129,32 +5215,23 @@ router.post('/onboarding/start', requireHrManage, async (req, res) => {
     try {
         const { staff_id, template_id } = req.body;
         const responsibleUserId = Number((req.body.responsible_user_id ?? req.body.responsibleUserId) || 0);
+        if (!Number.isInteger(responsibleUserId) || responsibleUserId <= 0) {
+            return res.status(400).json({ success: false, error: 'Потрібен responsible_user_id' });
+        }
         if (!staff_id || !template_id) return res.status(400).json({ success: false, error: 'Потрібні staff_id та template_id' });
 
         const tpl = await pool.query('SELECT * FROM onboarding_templates WHERE id = $1', [template_id]);
         if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
 
-        if (responsibleUserId > 0) {
-            const assigned = await assignOnboardingResponsible(staff_id, responsibleUserId, req.user, { templateId: template_id });
-            return res.json({ success: true, data: assigned.progress, ...assigned, reused: assigned.action !== 'assigned' });
-        }
-
-        const active = await loadActiveOnboardingProgress(staff_id);
-        if (active) {
-            return res.json({ success: true, data: active, reused: true, meta: { idempotent: true } });
-        }
-
-        const items = (tpl.rows[0].items || []).map((it, i) => ({ ...it, id: i + 1, done: false, done_at: null }));
-        const result = await pool.query(
-            `INSERT INTO onboarding_progress (staff_id, template_id, items, total_items, training_status, checklist_template_key)
-             VALUES ($1, $2, $3, $4, 'not_started', $5) RETURNING *`,
-            [staff_id, template_id, JSON.stringify(items), items.length, RESPONSIBLE_ONBOARDING_TEMPLATE_KEY]
-        );
-        await auditLog('onboarding_start', staff_id, req.user?.username, { template_id }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        const assigned = await assignOnboardingResponsible(staff_id, responsibleUserId, req.user, { templateId: template_id, ipAddress: req.ip });
+        res.json({ success: true, data: assigned.progress, ...assigned, reused: assigned.action !== 'assigned' });
     } catch (err) {
         log.error('POST /hr/onboarding/start error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.message || 'Помилка сервера',
+            code: err.code || null
+        });
     }
 });
 

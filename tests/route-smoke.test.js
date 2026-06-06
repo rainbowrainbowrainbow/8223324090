@@ -359,6 +359,12 @@ function createFakePool() {
                     .sort((a, b) => Number(b.id) - Number(a.id))[0];
                 return { rows: progress ? [onboardingRow(progress)] : [] };
             }
+            if (/SELECT \* FROM onboarding_progress WHERE staff_id = \$1 AND status <> 'completed'/i.test(text)) {
+                const progress = Array.from(hrState.onboardingProgress.values())
+                    .filter(row => Number(row.staff_id) === Number(params[0]) && row.status !== 'completed')
+                    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+                return { rows: progress ? [progress] : [] };
+            }
             if (/INSERT INTO onboarding_progress/i.test(text)) {
                 const id = hrState.nextOnboardingProgressId++;
                 const hasResponsible = text.includes('responsible_user_id');
@@ -1446,6 +1452,16 @@ describe('route-level API safety smoke', () => {
         assert.equal(owners.data.meta.canonicalOwnerField, 'tasks.owner_user_id');
 
         queries.length = 0;
+        const rejectedStart = await request('POST', '/api/hr/onboarding/start', {
+            staff_id: 45,
+            template_id: 11
+        }, withAuth());
+        assert.equal(rejectedStart.status, 400, JSON.stringify(rejectedStart.data));
+        assert.match(rejectedStart.data.error, /responsible_user_id/);
+        assert.equal(queries.some(q => /INSERT INTO onboarding_progress/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)), false);
+
+        queries.length = 0;
         const assigned = await request('PUT', '/api/hr/staff/45/onboarding-assignment', {
             responsible_user_id: 2,
             template_id: 11
@@ -1455,6 +1471,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(assigned.data.progress.responsible_user_id, 2);
         assert.equal(assigned.data.taskSync.created_count, 4);
         assert.equal(assigned.data.progress.active_task_count, 4);
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO onboarding_progress/i.test(q.text)));
         assert.equal(queries.filter(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)).length, 4);
 
@@ -1482,6 +1500,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(reassigned.data.taskSync.created_count, 0);
         assert.equal(reassigned.data.taskSync.updated_count, 4);
         assert.ok(queries.some(q => /UPDATE tasks SET title = \$2,/i.test(q.text)));
+        assert.equal(queries.filter(q => /INSERT INTO task_action_history/i.test(q.text) && q.params[1] === 'task_owner_reassigned').length, 4);
 
         const list = await request('GET', '/api/hr/onboarding', undefined, withAuth());
         assert.equal(list.status, 200, JSON.stringify(list.data));

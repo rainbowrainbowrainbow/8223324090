@@ -1646,6 +1646,115 @@ function rememberSelectedCustomerSnapshot(customer = {}) {
     });
 }
 
+function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
+    const source = customer && typeof customer === 'object' ? customer : {};
+    const base = fallback && typeof fallback === 'object' ? fallback : {};
+    const id = source.id ?? source.customerId ?? source.customer_id ?? base.id ?? base.customerId ?? base.customer_id ?? '';
+    const birthday = source.childBirthday ?? source.child_birthday ?? base.childBirthday ?? base.child_birthday ?? '';
+    return {
+        id,
+        name: source.name ?? source.customerName ?? source.customer_name ?? base.name ?? base.customerName ?? base.customer_name ?? '',
+        phone: source.phone ?? source.customerPhone ?? source.customer_phone ?? base.phone ?? base.customerPhone ?? base.customer_phone ?? '',
+        instagram: source.instagram ?? base.instagram ?? '',
+        childName: source.childName ?? source.child_name ?? base.childName ?? base.child_name ?? '',
+        childBirthday: birthday ? String(birthday).split('T')[0] : '',
+        source: source.source ?? base.source ?? '',
+        totalBookings: Number(source.totalBookings ?? source.total_bookings ?? base.totalBookings ?? base.total_bookings ?? 0) || 0
+    };
+}
+
+function applySelectedCustomerToBookingForm(customer = {}, options = {}) {
+    const normalized = normalizeBookingCustomerSelection(customer, options.fallback || {});
+    const selectedId = document.getElementById('selectedCustomerId');
+    if (selectedId && normalized.id) selectedId.value = normalized.id;
+
+    const values = {
+        customerName: normalized.name || '',
+        customerPhone: normalized.phone || '',
+        customerInstagram: normalized.instagram || '',
+        customerChildName: normalized.childName || '',
+        customerChildBirthday: normalized.childBirthday || '',
+        customerSource: normalized.source || '',
+        customerSearch: normalized.name || ''
+    };
+    Object.entries(values).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    });
+
+    rememberSelectedCustomerSnapshot(normalized);
+    document.getElementById('customerSearchResults')?.classList.add('hidden');
+    const duplicateHint = document.getElementById('bookingCustomerDuplicateHint');
+    if (duplicateHint) {
+        duplicateHint.classList.add('hidden');
+        duplicateHint.innerHTML = '';
+    }
+    renderSelectedCustomerCard(normalized);
+    renderBookingCustomerSearchState('');
+    setBookingClientMode('existing');
+
+    const info = document.getElementById('customerInfo');
+    const badge = document.getElementById('customerVisitBadge');
+    if (info && badge && normalized.totalBookings > 0) {
+        badge.textContent = `${normalized.totalBookings} візит${normalized.totalBookings === 1 ? '' : normalized.totalBookings < 5 ? 'и' : 'ів'}`;
+        info.classList.remove('hidden');
+    } else {
+        info?.classList.add('hidden');
+    }
+
+    if (options.renderSummary !== false) renderBookingPackageSummary();
+    if (options.markDirty !== false && window.BookingForm) BookingForm._dirty = true;
+    return normalized;
+}
+
+function bookingCustomerFallback(booking = {}) {
+    const customerId = booking.customerId ?? booking.customer_id ?? booking.customer?.id ?? '';
+    if (!customerId) return null;
+    return normalizeBookingCustomerSelection({
+        id: customerId,
+        name: booking.customerName || booking.customer_name || booking.customer?.name || `Клієнт #${customerId}`,
+        phone: booking.customerPhone || booking.customer_phone || booking.customer?.phone || '',
+        instagram: booking.customerInstagram || booking.customer_instagram || booking.customer?.instagram || '',
+        childName: booking.customerChildName || booking.customer_child_name || booking.customer?.childName || '',
+        childBirthday: booking.customerChildBirthday || booking.customer_child_birthday || booking.customer?.childBirthday || '',
+        source: booking.customerSource || booking.customer_source || booking.customer?.source || ''
+    });
+}
+
+async function hydrateBookingCustomerSelection(booking = {}, options = {}) {
+    const fallback = bookingCustomerFallback(booking);
+    if (!fallback) {
+        setBookingClientMode(hasAnyNewBookingClientData() ? 'new' : 'search');
+        return null;
+    }
+
+    const customerToggle = document.getElementById('customerDataToggle');
+    if (customerToggle) customerToggle.checked = true;
+    document.getElementById('customerDataSection')?.classList.remove('hidden');
+
+    applySelectedCustomerToBookingForm(fallback, {
+        markDirty: false,
+        renderSummary: false
+    });
+
+    try {
+        const customer = await apiGetCustomer(fallback.id);
+        if (!customer) {
+            if (options.renderSummary !== false) renderBookingPackageSummary();
+            return fallback;
+        }
+        return applySelectedCustomerToBookingForm(customer, {
+            fallback,
+            markDirty: false,
+            renderSummary: options.renderSummary !== false
+        });
+    } catch (error) {
+        console.warn('[Booking] Не вдалося підтягнути клієнта бронювання', error);
+        if (options.renderSummary !== false) renderBookingPackageSummary();
+        return fallback;
+    }
+}
+
 function clearSelectedCustomerLink() {
     const hiddenId = document.getElementById('selectedCustomerId');
     if (hiddenId) hiddenId.value = '';
@@ -1715,32 +1824,7 @@ function clearLeadConversionContextAfterBooking(bookingId) {
 }
 
 function selectCustomerFromSearch(customer) {
-    document.getElementById('selectedCustomerId').value = customer.id;
-    document.getElementById('customerName').value = customer.name || '';
-    document.getElementById('customerPhone').value = customer.phone || '';
-    document.getElementById('customerInstagram').value = customer.instagram || '';
-    document.getElementById('customerChildName').value = customer.childName || '';
-    document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
-    document.getElementById('customerSource').value = customer.source || '';
-    document.getElementById('customerSearch').value = customer.name || '';
-    rememberSelectedCustomerSnapshot(customer);
-    document.getElementById('customerSearchResults')?.classList.add('hidden');
-    document.getElementById('bookingCustomerDuplicateHint')?.classList.add('hidden');
-    renderSelectedCustomerCard(customer);
-    renderBookingCustomerSearchState('');
-    setBookingClientMode('existing');
-
-    // Show visit badge
-    if (customer.totalBookings > 0) {
-        const info = document.getElementById('customerInfo');
-        const badge = document.getElementById('customerVisitBadge');
-        if (info && badge) {
-            badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
-            info.classList.remove('hidden');
-        }
-    }
-    renderBookingPackageSummary();
-    if (window.BookingForm) BookingForm._dirty = true;
+    applySelectedCustomerToBookingForm(customer);
 }
 
 function renderCustomerSearchResults(customers, options = {}) {
@@ -4360,35 +4444,7 @@ async function editBooking(bookingId) {
         }
     }
 
-    // v15.1: CRM — populate customer data if linked
-    if (booking.customerId) {
-        const customerToggle = document.getElementById('customerDataToggle');
-        if (customerToggle) {
-            customerToggle.checked = true;
-            document.getElementById('customerDataSection')?.classList.remove('hidden');
-        }
-        document.getElementById('selectedCustomerId').value = booking.customerId;
-        // Load customer data from API
-        apiGetCustomer(booking.customerId).then(customer => {
-            if (customer) {
-                document.getElementById('customerName').value = customer.name || '';
-                document.getElementById('customerPhone').value = customer.phone || '';
-                document.getElementById('customerInstagram').value = customer.instagram || '';
-                document.getElementById('customerChildName').value = customer.childName || '';
-                document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
-                document.getElementById('customerSource').value = customer.source || '';
-                document.getElementById('customerSearch').value = customer.name || '';
-                if (customer.totalBookings > 0) {
-                    const info = document.getElementById('customerInfo');
-                    const badge = document.getElementById('customerVisitBadge');
-                    if (info && badge) {
-                        badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
-                        info.classList.remove('hidden');
-                    }
-                }
-            }
-        });
-    }
+    await hydrateBookingCustomerSelection(booking, { renderSummary: false });
     hydrateBookingPackageWorkspace(booking);
 
     // Статус
@@ -4400,6 +4456,9 @@ async function editBooking(bookingId) {
         await populateSecondAnimatorSelect();
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
+
+    renderBookingPackageSummary();
+    if (window.BookingForm?.markClean) BookingForm.markClean();
 }
 
 // ==========================================
@@ -4483,20 +4542,7 @@ async function duplicateBooking(bookingId) {
         }
     }
 
-    if (booking.customerId) {
-        document.getElementById('selectedCustomerId').value = booking.customerId;
-        apiGetCustomer(booking.customerId).then(customer => {
-            if (!customer) return;
-            document.getElementById('customerName').value = customer.name || '';
-            document.getElementById('customerPhone').value = customer.phone || '';
-            document.getElementById('customerInstagram').value = customer.instagram || '';
-            document.getElementById('customerChildName').value = customer.childName || '';
-            document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
-            document.getElementById('customerSource').value = customer.source || '';
-            document.getElementById('customerSearch').value = customer.name || '';
-            renderBookingPackageSummary();
-        });
-    }
+    await hydrateBookingCustomerSelection(booking, { renderSummary: false });
     hydrateBookingPackageWorkspace(booking);
 
     const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
@@ -4507,6 +4553,8 @@ async function duplicateBooking(bookingId) {
         await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
 
+    renderBookingPackageSummary();
+    if (window.BookingForm?.markClean) BookingForm.markClean();
     showNotification('Форму заповнено — оберіть час та аніматора', 'info');
 }
 

@@ -1099,6 +1099,8 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const editBookingBlock = bookingCode.slice(bookingCode.indexOf('async function editBooking'), bookingCode.indexOf('// ==========================================\n// DUPLICATE BOOKING'));
+const duplicateBookingBlock = bookingCode.slice(bookingCode.indexOf('async function duplicateBooking'), bookingCode.indexOf('// ==========================================\n// INVITE HELPERS'));
 const telegramTemplatesCode = fs.readFileSync(path.join(ROOT, 'services/templates.js'), 'utf8');
 const demoPageCode = fs.readFileSync(path.join(ROOT, 'js/demo-page.js'), 'utf8');
 const timelineCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
@@ -1118,6 +1120,17 @@ const securityMiddlewareCode = fs.readFileSync(path.join(ROOT, 'middleware/secur
 const panelCss = fs.readFileSync(path.join(ROOT, 'css/panel.css'), 'utf8');
 const bookingFormJs = fs.readFileSync(path.join(ROOT, 'js/booking-form.js'), 'utf8');
 check('Booking lead conversion cleanup removes auto-open query hints', bookingCode.includes("url.searchParams.delete('leadId')") && bookingCode.includes("url.searchParams.delete('convert')") && bookingCode.includes("url.searchParams.delete('eventDate')") && bookingCode.includes("url.searchParams.delete('customerName')"));
+check('Booking edit keeps the existing customer selected without reselecting',
+    bookingCode.includes('function hydrateBookingCustomerSelection')
+    && bookingCode.includes('function applySelectedCustomerToBookingForm')
+    && bookingCode.includes('rememberSelectedCustomerSnapshot(normalized)')
+    && bookingCode.includes("setBookingClientMode('existing')")
+    && editBookingBlock.includes('await hydrateBookingCustomerSelection(booking, { renderSummary: false });')
+    && duplicateBookingBlock.includes('await hydrateBookingCustomerSelection(booking, { renderSummary: false });')
+    && editBookingBlock.includes('if (window.BookingForm?.markClean) BookingForm.markClean();')
+    && duplicateBookingBlock.includes('if (window.BookingForm?.markClean) BookingForm.markClean();')
+    && !editBookingBlock.includes('apiGetCustomer(booking.customerId).then')
+    && !duplicateBookingBlock.includes('apiGetCustomer(booking.customerId).then'));
 check('HR access editor describes extraRoles as real working-role grants', hrCode.includes('Це реальні extraRoles акаунта') && hrCode.includes('const extraRoles = normalizeAccountListInput(formResult.extraRoles)') && hrCode.includes('extraRoles: normalizeAccountListInput(result.extraRoles)'));
 check('Maysternya Doli uses the shared booking panel with configurable visibility', configCode.includes("const MAYSTERNYA_DOLI_PROGRAMS = [") && configCode.includes("id: 'md_demo_consult_15'") && configCode.includes("name: 'Демо консультація'") && configCode.includes('duration: 15') && configCode.includes("id: 'md_full_consult_40'") && configCode.includes("name: 'Повна консультація'") && configCode.includes('duration: 90') && configCode.includes('Повна консультація(90)') && !configCode.includes("id: 'md_consult_60'") && !configCode.includes("id: 'md_custom'") && configCode.includes("? ['custom']") && configCode.includes("custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги'") && configCode.includes('apiGetProducts(true, { businessContext })') && configCode.includes('Array.isArray(apiProducts)') && configCode.includes('timelineDisplayUsesApiProducts') && !configCode.includes('if (IS_MAYSTERNYA_DOLI_TIMELINE) {\n        AppState.products = PROGRAMS;') && bookingCode.includes("TIMELINE_DISPLAY_MODE !== 'park'") && bookingCode.includes('p.updatedAt') && bookingCode.includes('prepareMaysternyaBookingPanel') && bookingCode.includes('MAYSTERNYA_ONLINE_ROOM') && bookingFormJs.includes('isMaysternyaBookingContext') && htmlContains('index.html', 'maysternyaQuickBookingTools') && htmlContains('index.html', 'newBookingBtn') && timelineCode.includes('openTimelineCreateBookingFromToolbar') && timelineVisibilityCode.includes("key: 'createBooking'") && authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && !panelCss.includes('body.timeline-context-maysternya .booking-room-first-section') && !panelCss.includes('body.timeline-context-maysternya .booking-customer-search-section') && !panelCss.includes('body.timeline-mode-simple .booking-room-first-section') && !panelCss.includes('body.timeline-mode-simple .status-section'));
 check('Maysternya Doli booking can close busy slots', bookingCode.includes('closeMaysternyaTimelineSlot') && bookingCode.includes('slotClosed: true') && bookingCode.includes('MAYSTERNYA_CLOSED_ROOM') && timelineCode.includes('slot-closed') && timelineCode.includes('isMaysternyaSlotClosed') && timelineCss.includes('.booking-block.slot-closed') && htmlContains('index.html', 'maysternyaCloseSlotBtn'));

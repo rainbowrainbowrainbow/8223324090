@@ -154,8 +154,8 @@ const HR_NAV_GROUPS = [
     },
     {
         id: 'other',
-        label: 'Тимчасове',
-        note: 'нерозподілені HR-розділи',
+        label: 'Вакансії',
+        note: 'найм, відгуки, співбесіди, шаблони платформ',
         items: [
             { id: 'vacancies', label: 'Вакансії' }
         ]
@@ -954,6 +954,9 @@ function initNewTabs() {
     document.getElementById('btnUnlockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(false));
     document.getElementById('btnReverseSalary')?.addEventListener('click', reverseSalaryPeriod);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
+    document.getElementById('btnFormatVacancyPlatform')?.addEventListener('click', formatVacancyPlatformText);
+    document.getElementById('btnCopyVacancyTemplate')?.addEventListener('click', copyVacancyTemplateOutput);
+    document.getElementById('vacancyTemplateSource')?.addEventListener('change', renderVacancyTemplateStudio);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
     document.getElementById('btnAddProfession')?.addEventListener('click', () => openProfessionEditor());
     bindSecondaryProfessionPicker();
@@ -1036,7 +1039,7 @@ function updateHrPageTitle(target) {
     }
     if (isHrStructureWorkspaceTab(target)) title.textContent = 'Структура';
     else if (isHrPayrollWorkspaceTab(target)) title.textContent = 'ЗП та KPI';
-    else if (isHrOtherWorkspaceTab(target)) title.textContent = 'Тимчасове';
+    else if (isHrOtherWorkspaceTab(target)) title.textContent = 'Вакансії';
     else if (target === 'team') title.textContent = 'Команда';
     else title.textContent = 'HR';
 }
@@ -1071,7 +1074,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
     nav.classList.toggle('hr-nav--structure-only', workspaceMode && !peopleMode);
     nav.classList.toggle('hr-nav--pulse', pulseMode);
     nav.classList.toggle('hr-nav--people', peopleMode);
-    nav.setAttribute('aria-label', workspaceGroupId === 'people' ? 'Навігація команди' : workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація тимчасових HR-розділів' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
+    nav.setAttribute('aria-label', workspaceGroupId === 'people' ? 'Навігація команди' : workspaceGroupId === 'structure' ? 'Навігація структури' : workspaceGroupId === 'payroll' ? 'Навігація ЗП та KPI' : workspaceGroupId === 'other' ? 'Навігація вакансій' : pulseMode ? 'Навігація пульсу компанії' : 'Навігація HR');
     const groups = HR_NAV_GROUPS
         .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
@@ -6732,6 +6735,10 @@ function initDarkMode() {
 
 let currentVacancyId = null;
 let currentApplications = [];
+let currentVacancies = [];
+let activeVacancyWorkspaceTab = 'vacancies';
+let vacancyPlatformTemplates = [];
+let vacancyPlatformAiMeta = null;
 const VAC_STATUS_LABEL = {
     open: '🟢 Відкрита', paused: '⏸ Призупинена',
     filled: '✅ Заповнена', closed: '❌ Закрита'
@@ -6745,13 +6752,250 @@ const APP_STATUS_COLOR = {
     offer: '#F59E0B', hired: '#10B981', rejected: '#EF4444'
 };
 const RESUME_ACCEPT = '.txt,.md,.csv,.json,.pdf,.doc,.docx,.rtf,.odt';
+const FALLBACK_VACANCY_PLATFORM_TEMPLATES = [
+    { id: 'workua', label: 'Work.ua', maxChars: 2200, tone: 'структурований, професійний' },
+    { id: 'robota', label: 'Robota.ua', maxChars: 2400, tone: 'офіційний, конкретний' },
+    { id: 'olx', label: 'OLX Робота', maxChars: 1300, tone: 'короткий і прямий' },
+    { id: 'instagram', label: 'Instagram', maxChars: 1100, tone: 'живий, для соцмереж' },
+    { id: 'telegram', label: 'Telegram', maxChars: 1400, tone: 'лаконічний, сканований' },
+    { id: 'facebook', label: 'Facebook', maxChars: 1600, tone: 'теплий, репутаційний' }
+];
+
+function selectedVacancy() {
+    return currentVacancies.find(v => parseInt(v.id, 10) === parseInt(currentVacancyId, 10)) || null;
+}
+
+function setVacancyWorkspaceTab(tab) {
+    const next = ['vacancies', 'responses', 'interviews', 'templates'].includes(tab) ? tab : 'vacancies';
+    activeVacancyWorkspaceTab = next;
+    document.querySelectorAll('[data-vacancy-tab]').forEach(button => {
+        const active = button.dataset.vacancyTab === next;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-vacancy-panel]').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.vacancyPanel === next);
+    });
+    if (next === 'responses') renderVacancyResponses();
+    if (next === 'interviews') renderInterviewResults();
+    if (next === 'templates') renderVacancyTemplateStudio();
+}
+
+function initVacancyWorkspaceTabs() {
+    document.querySelectorAll('[data-vacancy-tab]').forEach(button => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+        button.addEventListener('click', () => setVacancyWorkspaceTab(button.dataset.vacancyTab));
+    });
+    const closeBtn = document.getElementById('btnCloseCandidates');
+    if (closeBtn && closeBtn.dataset.bound !== 'true') {
+        closeBtn.dataset.bound = 'true';
+        closeBtn.addEventListener('click', () => {
+            const section = document.getElementById('candidatesSection');
+            if (section) section.style.display = 'none';
+            currentVacancyId = null;
+            currentApplications = [];
+            renderVacancyResponses();
+            renderInterviewResults();
+            renderVacancyTemplateStudio();
+        });
+    }
+}
+
+async function loadVacancyPlatformTemplates() {
+    if (vacancyPlatformTemplates.length) return vacancyPlatformTemplates;
+    const data = await hrFetch('/vacancy-platforms').catch(() => null);
+    vacancyPlatformTemplates = Array.isArray(data?.templates) && data.templates.length
+        ? data.templates
+        : FALLBACK_VACANCY_PLATFORM_TEMPLATES;
+    vacancyPlatformAiMeta = data?.ai || null;
+    return vacancyPlatformTemplates;
+}
+
+function vacancyPlatformTemplateOptions(selected = '') {
+    const templates = vacancyPlatformTemplates.length ? vacancyPlatformTemplates : FALLBACK_VACANCY_PLATFORM_TEMPLATES;
+    return templates.map(template => {
+        const value = template.id;
+        return `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(template.label)}</option>`;
+    }).join('');
+}
+
+function vacancyTemplateSourceOptions(selectedId = '') {
+    const options = currentVacancies.map(v => {
+        const value = String(v.id);
+        const selected = selectedId ? value === String(selectedId) : value === String(currentVacancyId || '');
+        return `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(v.title || 'Вакансія')}</option>`;
+    }).join('');
+    return `<option value="">Вручну / без вакансії</option>${options}`;
+}
+
+function vacancySourcePayload() {
+    const sourceSelect = document.getElementById('vacancyTemplateSource');
+    const selectedId = sourceSelect?.value || currentVacancyId || '';
+    const vacancy = currentVacancies.find(v => String(v.id) === String(selectedId)) || selectedVacancy() || {};
+    return {
+        id: vacancy.id || null,
+        title: vacancy.title || '',
+        role_type: vacancy.role_type || '',
+        department: vacancy.department || '',
+        description: vacancy.description || '',
+        requirements: vacancy.requirements || '',
+        salary_from: vacancy.salary_from || null,
+        salary_to: vacancy.salary_to || null,
+        schedule: vacancy.schedule || '',
+        work_format: vacancy.work_format || ''
+    };
+}
+
+function renderVacancyTemplateStudio() {
+    const platformSelect = document.getElementById('vacancyPlatformSelect');
+    const sourceSelect = document.getElementById('vacancyTemplateSource');
+    const meta = document.getElementById('vacancyTemplateAiMeta');
+    if (!platformSelect || !sourceSelect) return;
+    const currentPlatform = platformSelect.value || vacancyPlatformTemplates[0]?.id || FALLBACK_VACANCY_PLATFORM_TEMPLATES[0].id;
+    platformSelect.innerHTML = vacancyPlatformTemplateOptions(currentPlatform);
+    sourceSelect.innerHTML = vacancyTemplateSourceOptions(sourceSelect.value);
+    if (meta) {
+        const configured = vacancyPlatformAiMeta?.configured ? 'AI підключений' : 'AI fallback активний до підключення ключа';
+        const model = vacancyPlatformAiMeta?.model || 'mini';
+        meta.textContent = `Каркас під форматування mini-моделлю: ${configured}, модель ${model}.`;
+    }
+}
+
+function selectedVacancyTitle() {
+    return selectedVacancy()?.title || 'оберіть вакансію';
+}
+
+function renderVacancyResponses() {
+    const root = document.getElementById('vacancyResponsesList');
+    const hint = document.getElementById('vacancyResponsesHint');
+    if (!root) return;
+    if (hint) hint.textContent = currentVacancyId
+        ? `Відгуки для вакансії: ${selectedVacancyTitle()}`
+        : 'Оберіть вакансію у вкладці "Вакансії", щоб бачити відгуки, резюме та джерело кандидата.';
+    if (!currentVacancyId) {
+        root.innerHTML = '<div class="vacancy-empty-state">Вакансія ще не вибрана. Відкрийте потрібну вакансію у списку.</div>';
+        return;
+    }
+    if (!currentApplications.length) {
+        root.innerHTML = '<div class="vacancy-empty-state">Відгуків по цій вакансії ще немає.</div>';
+        return;
+    }
+    root.innerHTML = currentApplications.map(candidate => {
+        const files = Array.isArray(candidate.resume_files) ? candidate.resume_files : [];
+        const responseText = candidate.raw_application_text || candidate.experience || candidate.notes || 'Текст відгуку ще не доданий.';
+        const source = candidate.source || 'manual';
+        return `
+            <article class="vacancy-response-row">
+                <div class="vacancy-response-head">
+                    <div>
+                        <h4>${escapeHtml(candidate.name || 'Кандидат')}</h4>
+                        <span>${escapeHtml(APP_STATUS_LABEL[candidate.status] || candidate.status || 'new')} · джерело: ${escapeHtml(source)}</span>
+                    </div>
+                    <span>${files.length ? `${files.length} файл(и)` : 'без файлів'}</span>
+                </div>
+                <p class="vacancy-response-text">${escapeHtml(responseText).slice(0, 700)}</p>
+                <div class="kc-actions">
+                    <button type="button" class="kc-btn" onclick="openCandidateDetail(${candidate.id})">Картка</button>
+                    <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'interview')">На співбесіду</button>
+                    <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+function renderInterviewResults() {
+    const root = document.getElementById('vacancyInterviewsList');
+    const hint = document.getElementById('vacancyInterviewsHint');
+    if (!root) return;
+    if (hint) hint.textContent = currentVacancyId
+        ? `Співбесіди для вакансії: ${selectedVacancyTitle()}`
+        : 'Оберіть вакансію у вкладці "Вакансії", щоб бачити результати співбесід.';
+    if (!currentVacancyId) {
+        root.innerHTML = '<div class="vacancy-empty-state">Вакансія ще не вибрана. Спершу відкрийте її у списку.</div>';
+        return;
+    }
+    const interviews = currentApplications.filter(candidate => (
+        ['interview', 'offer', 'hired', 'rejected'].includes(candidate.status)
+        || candidate.interview_notes
+        || candidate.interview_date
+    ));
+    if (!interviews.length) {
+        root.innerHTML = '<div class="vacancy-empty-state">Співбесіди по цій вакансії ще не зафіксовані.</div>';
+        return;
+    }
+    root.innerHTML = interviews.map(candidate => `
+        <article class="vacancy-interview-row">
+            <div class="vacancy-interview-head">
+                <div>
+                    <h4>${escapeHtml(candidate.name || 'Кандидат')}</h4>
+                    <span>${escapeHtml(APP_STATUS_LABEL[candidate.status] || candidate.status || 'new')}${candidate.interview_date ? ` · ${new Date(candidate.interview_date).toLocaleDateString('uk-UA')}` : ''}</span>
+                </div>
+                ${candidate.salary_expectation ? `<span>${escapeHtml(candidate.salary_expectation)} грн</span>` : ''}
+            </div>
+            <p class="vacancy-interview-notes">${escapeHtml(candidate.interview_notes || candidate.notes || 'Результат співбесіди ще не описаний.').slice(0, 700)}</p>
+            <div class="kc-actions">
+                <button type="button" class="kc-btn" onclick="openCandidateDetail(${candidate.id})">Картка</button>
+                <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'offer')">Оффер</button>
+                <button type="button" class="kc-btn success" onclick="hireCandidate(${candidate.id})">Найняти</button>
+                <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>
+            </div>
+        </article>
+    `).join('');
+}
+
+async function formatVacancyPlatformText() {
+    const platform = document.getElementById('vacancyPlatformSelect')?.value || 'workua';
+    const sourceText = document.getElementById('vacancyTemplateSourceText')?.value || '';
+    const output = document.getElementById('vacancyTemplateOutput');
+    const status = document.getElementById('vacancyTemplateStatus');
+    const button = document.getElementById('btnFormatVacancyPlatform');
+    if (status) status.textContent = 'Форматую текст...';
+    if (button) button.disabled = true;
+    try {
+        const data = await hrFetch('/vacancy-platforms/format-preview', {
+            method: 'POST',
+            body: {
+                platform,
+                vacancy: vacancySourcePayload(),
+                source_text: sourceText
+            }
+        });
+        if (!data?.success) throw new Error(data?.error || 'Не вдалося відформатувати');
+        if (output) output.value = data.formatted_text || '';
+        if (status) {
+            const mode = data.ai_used ? `AI ${data.ai_model || ''}`.trim() : 'шаблонний fallback';
+            status.textContent = `Готово: ${mode}, ${data.template?.label || platform}.`;
+        }
+    } catch (err) {
+        if (status) status.textContent = err.message || 'Помилка форматування';
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function copyVacancyTemplateOutput() {
+    const output = document.getElementById('vacancyTemplateOutput');
+    const text = output?.value || '';
+    if (!text) return;
+    await navigator.clipboard?.writeText(text);
+    showNotification('Текст вакансії скопійовано', 'success');
+}
 
 async function loadVacancies() {
+    initVacancyWorkspaceTabs();
+    await loadVacancyPlatformTemplates();
+    renderVacancyTemplateStudio();
     const status = document.getElementById('vacStatusFilter')?.value || 'open';
     const list = document.getElementById('vacanciesList');
     if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:24px">⏳</div>';
     const sec = document.getElementById('candidatesSection');
     if (sec) sec.style.display = 'none';
+    currentVacancyId = null;
+    currentApplications = [];
+    renderVacancyResponses();
+    renderInterviewResults();
 
     const data = await hrFetch(`/vacancies?status=${status}`);
     if (!data?.success) {
@@ -6759,6 +7003,8 @@ async function loadVacancies() {
         return;
     }
     const vacancies = data.vacancies || [];
+    currentVacancies = vacancies;
+    renderVacancyTemplateStudio();
 
     const urgent = vacancies.filter(v => v.priority === 'urgent' && v.status === 'open').length;
     const open = vacancies.filter(v => v.status === 'open').length;
@@ -6796,6 +7042,7 @@ async function loadVacancies() {
         </div>
     `).join('');
     document.getElementById('vacStatusFilter').onchange = loadVacancies;
+    setVacancyWorkspaceTab(activeVacancyWorkspaceTab);
 }
 
 async function patchVacancy(id, status) {
@@ -6810,6 +7057,7 @@ async function openCandidates(vacancyId, title) {
     document.getElementById('candidatesSection')?.scrollIntoView({ behavior: 'smooth' });
     await refreshCandidates();
     document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);
+    renderVacancyTemplateStudio();
 }
 
 async function refreshCandidates() {
@@ -6818,6 +7066,8 @@ async function refreshCandidates() {
     if (!data?.success) return;
     const apps = data.applications || [];
     currentApplications = apps;
+    renderVacancyResponses();
+    renderInterviewResults();
     const statuses = ['new', 'contacted', 'interview', 'offer'];
     const kanban = document.getElementById('candidatesKanban');
     if (!kanban) return;

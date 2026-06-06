@@ -40,6 +40,10 @@ const {
     staffProfessionKeys,
     resolveStaffProfessionAssignment
 } = require('../services/professions');
+const {
+    listVacancyPlatformTemplates,
+    formatVacancyForPlatform
+} = require('../services/hrVacancyPlatformFormatter');
 
 // RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
@@ -5967,6 +5971,46 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
 // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 // ВАКАНСІЇ — CRUD
 // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+
+router.get('/vacancy-platforms', (req, res) => {
+    res.json({
+        success: true,
+        templates: listVacancyPlatformTemplates(),
+        ai: {
+            provider: 'openai',
+            model: process.env.HR_VACANCY_AI_MODEL || process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
+            configured: Boolean(process.env.OPENAI_API_KEY)
+        }
+    });
+});
+
+router.post('/vacancy-platforms/format-preview', requireHrManage, async (req, res) => {
+    try {
+        const { platform, vacancy = {}, source_text, sourceText, tone } = req.body || {};
+        if (!platform) return res.status(400).json({ success: false, error: 'platform required' });
+        const result = await formatVacancyForPlatform({
+            platform,
+            vacancy,
+            sourceText: sourceText || source_text || '',
+            tone
+        });
+        res.json({
+            success: true,
+            platform: result.platform,
+            template: result.template,
+            formatted_text: result.formattedText,
+            prompt: result.prompt,
+            ai_provider: result.provider,
+            ai_model: result.model,
+            ai_configured: result.aiConfigured,
+            ai_used: result.aiUsed,
+            ai_error: result.aiError
+        });
+    } catch (err) {
+        log.error('POST /vacancy-platforms/format-preview', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
 
 router.get('/vacancies', async (req, res) => {
     try {

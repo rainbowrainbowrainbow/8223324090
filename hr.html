@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.66">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.66">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.66">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.66">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.66">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.66">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.66">
+    <link rel="stylesheet" href="css/base.css?v=0.73.70">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.70">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.70">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.70">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.70">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.70">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.70">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -3737,27 +3737,88 @@
 
             <!-- TAB 11: VACANCIES -->
             <div id="tab-vacancies" class="hr-tab-content">
-                <div class="hr-team-filters" style="justify-content:space-between">
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <select id="vacStatusFilter" class="hr-team-select">
-                            <option value="open">🟢 Відкриті</option>
-                            <option value="all">Всі</option>
-                            <option value="paused">⏸ Призупинені</option>
-                            <option value="filled">✅ Заповнені</option>
-                            <option value="closed">❌ Закриті</option>
-                        </select>
+                <div class="vacancy-workspace">
+                    <div class="vacancy-workspace-tabs" role="tablist" aria-label="Вкладки вакансій">
+                        <button type="button" class="vacancy-workspace-tab active" data-vacancy-tab="vacancies" role="tab" aria-selected="true">Вакансії</button>
+                        <button type="button" class="vacancy-workspace-tab" data-vacancy-tab="responses" role="tab" aria-selected="false">Відгуки</button>
+                        <button type="button" class="vacancy-workspace-tab" data-vacancy-tab="interviews" role="tab" aria-selected="false">Співбесіди</button>
+                        <button type="button" class="vacancy-workspace-tab" data-vacancy-tab="templates" role="tab" aria-selected="false">Шаблони платформ</button>
                     </div>
-                    <button type="button" id="btnAddVacancy" class="btn-add">+ Вакансія</button>
-                </div>
-                <div id="vacStats" class="vacancy-stats"></div>
-                <div id="vacanciesList"></div>
-                <div id="candidatesSection" style="display:none;margin-top:24px">
-                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-                        <h4 id="candidatesTitle" style="margin:0"></h4>
-                        <button type="button" id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
-                        <button type="button" onclick="document.getElementById('candidatesSection').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px">✕</button>
-                    </div>
-                    <div id="candidatesKanban" class="candidates-kanban"></div>
+
+                    <section id="vacancyPanelVacancies" class="vacancy-workspace-panel active" data-vacancy-panel="vacancies">
+                        <div class="hr-team-filters" style="justify-content:space-between">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                <select id="vacStatusFilter" class="hr-team-select">
+                                    <option value="open">🟢 Відкриті</option>
+                                    <option value="all">Всі</option>
+                                    <option value="paused">⏸ Призупинені</option>
+                                    <option value="filled">✅ Заповнені</option>
+                                    <option value="closed">❌ Закриті</option>
+                                </select>
+                            </div>
+                            <button type="button" id="btnAddVacancy" class="btn-add">+ Вакансія</button>
+                        </div>
+                        <div id="vacStats" class="vacancy-stats"></div>
+                        <div id="vacanciesList"></div>
+                        <div id="candidatesSection" style="display:none;margin-top:24px">
+                            <div class="vacancy-selected-head">
+                                <h4 id="candidatesTitle" style="margin:0"></h4>
+                                <button type="button" id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
+                                <button type="button" id="btnCloseCandidates" class="vacancy-close-btn" aria-label="Закрити кандидатів">✕</button>
+                            </div>
+                            <div id="candidatesKanban" class="candidates-kanban"></div>
+                        </div>
+                    </section>
+
+                    <section id="vacancyPanelResponses" class="vacancy-workspace-panel" data-vacancy-panel="responses">
+                        <div class="vacancy-section-head">
+                            <div>
+                                <h3>Відгуки кандидатів</h3>
+                                <p id="vacancyResponsesHint">Оберіть вакансію у вкладці "Вакансії", щоб бачити відгуки, резюме та джерело кандидата.</p>
+                            </div>
+                            <button type="button" class="btn-add btn-sm" onclick="setVacancyWorkspaceTab('vacancies')">До вакансій</button>
+                        </div>
+                        <div id="vacancyResponsesList" class="vacancy-response-list"></div>
+                    </section>
+
+                    <section id="vacancyPanelInterviews" class="vacancy-workspace-panel" data-vacancy-panel="interviews">
+                        <div class="vacancy-section-head">
+                            <div>
+                                <h3>Результати співбесід</h3>
+                                <p id="vacancyInterviewsHint">Після відкриття вакансії тут видно кандидатів у статусах співбесіди, офферу, найму або відхилення.</p>
+                            </div>
+                            <button type="button" class="btn-add btn-sm" onclick="setVacancyWorkspaceTab('vacancies')">Обрати вакансію</button>
+                        </div>
+                        <div id="vacancyInterviewsList" class="vacancy-interview-list"></div>
+                    </section>
+
+                    <section id="vacancyPanelTemplates" class="vacancy-workspace-panel" data-vacancy-panel="templates">
+                        <div class="vacancy-section-head">
+                            <div>
+                                <h3>Шаблони вакансій для платформ</h3>
+                                <p id="vacancyTemplateAiMeta">Каркас під AI-форматування mini-моделлю: Work.ua, Robota.ua, OLX, Instagram, Telegram, Facebook.</p>
+                            </div>
+                            <button type="button" class="btn-add btn-sm" id="btnFormatVacancyPlatform">AI форматування</button>
+                        </div>
+                        <div class="vacancy-template-grid">
+                            <label>Платформа
+                                <select id="vacancyPlatformSelect" class="hr-team-select"></select>
+                            </label>
+                            <label>Вакансія-джерело
+                                <select id="vacancyTemplateSource" class="hr-team-select"></select>
+                            </label>
+                            <label class="wide">Додатковий текст / уточнення
+                                <textarea id="vacancyTemplateSourceText" rows="7" placeholder="Додайте тон, важливі умови, контакти або сирий текст вакансії. AI не має вигадувати факти."></textarea>
+                            </label>
+                            <label class="wide">Готовий текст під платформу
+                                <textarea id="vacancyTemplateOutput" rows="10" readonly placeholder="Тут зʼявиться відформатований текст для обраної платформи."></textarea>
+                            </label>
+                        </div>
+                        <div class="vacancy-template-footer">
+                            <span id="vacancyTemplateStatus"></span>
+                            <button type="button" class="btn-secondary" id="btnCopyVacancyTemplate">Копіювати</button>
+                        </div>
+                    </section>
                 </div>
             </div>
 
@@ -4247,14 +4308,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.66"></script>
-    <script src="js/config.js?v=0.73.66"></script>
-    <script src="js/notification.js?v=0.73.66"></script>
-    <script src="js/api.js?v=0.73.66"></script>
-    <script src="js/auth.js?v=0.73.66"></script>
-    <script src="js/components/sidebar.js?v=0.73.66"></script>
+    <script src="js/ui.js?v=0.73.70"></script>
+    <script src="js/config.js?v=0.73.70"></script>
+    <script src="js/notification.js?v=0.73.70"></script>
+    <script src="js/api.js?v=0.73.70"></script>
+    <script src="js/auth.js?v=0.73.70"></script>
+    <script src="js/components/sidebar.js?v=0.73.70"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.66"></script>
-    <script src="js/alerts.js?v=0.73.66"></script>
+    <script src="js/hr-page.js?v=0.73.70"></script>
+    <script src="js/alerts.js?v=0.73.70"></script>
 </body>
 </html>

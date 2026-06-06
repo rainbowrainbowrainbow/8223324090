@@ -11,6 +11,7 @@ test('finance is the canonical unified finance and analytics surface', () => {
     const financeJs = read('js/finance-page.js');
     const analyticsJs = read('js/analytics-page.js');
     const analyticsHtml = read('analytics.html');
+    const pagesCss = read('css/pages.css');
     const sidebarJs = read('js/components/sidebar.js');
     const serverJs = read('server.js');
 
@@ -36,6 +37,11 @@ test('finance is the canonical unified finance and analytics surface', () => {
     assert.match(analyticsJs, /window\.CrmAnalyticsWidgets/);
     assert.match(analyticsJs, /initStandaloneAnalyticsPage/);
     assert.match(analyticsJs, /document\.getElementById\('kpiGrid'\)/);
+    assert.match(analyticsJs, /function renderChartReadout/);
+    assert.match(financeJs, /function renderFinanceChartReadout/);
+    assert.match(financeJs, /fin-chart-readout/);
+    assert.match(pagesCss, /\.an-chart-readout/);
+    assert.match(pagesCss, /\.fin-chart-readout/);
 
     assert.match(analyticsHtml, /window\.location\.replace\('\/finance\?mode=insights'\)/);
     assert.match(serverJs, /app\.get\('\/analytics'/);

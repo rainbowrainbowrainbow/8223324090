@@ -116,6 +116,33 @@ function formatDate(dateStr) {
     return dateStr;
 }
 
+function formatCompactMoney(amount) {
+    const value = Number(amount) || 0;
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return `${Math.round(value / 100000) / 10} млн ₴`;
+    if (abs >= 1000) return `${Math.round(value / 100) / 10} тис ₴`;
+    return `${value.toLocaleString('uk-UA')} ₴`;
+}
+
+function renderFinanceChartReadout(chartEl, chartId, items = []) {
+    if (!chartEl) return;
+    const container = chartEl.closest('.fin-chart') || chartEl.parentElement;
+    if (!container) return;
+    container.querySelector(`.fin-chart-readout[data-chart="${chartId}"]`)?.remove();
+    const visibleItems = items.filter(Boolean);
+    if (!visibleItems.length) return;
+    const readout = document.createElement('div');
+    readout.className = 'fin-chart-readout';
+    readout.dataset.chart = chartId;
+    readout.innerHTML = visibleItems.map(item => `
+        <span class="fin-chart-readout-item">
+            <b>${escapeHtml(item.label)}</b>
+            <span>${escapeHtml(item.value)}</span>
+        </span>
+    `).join('');
+    chartEl.insertAdjacentElement('afterend', readout);
+}
+
 // ==========================================
 // PERIOD HELPERS
 // ==========================================
@@ -379,6 +406,7 @@ function renderDailyChart(daily) {
     const el = document.getElementById('dailyChart');
     if (!daily || daily.length === 0) {
         el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Немає даних за період</div>';
+        renderFinanceChartReadout(el, 'dailyFinanceLegacy', []);
         return;
     }
 
@@ -398,6 +426,10 @@ function renderDailyChart(daily) {
             </div>
         `;
     }).join('');
+    renderFinanceChartReadout(el, 'dailyFinanceLegacy', daily.map(d => ({
+        label: String(d.date || '').substring(5, 10),
+        value: `+${formatCompactMoney(d.income)} / -${formatCompactMoney(d.expense)}`
+    })));
 }
 
 // ==========================================
@@ -667,6 +699,7 @@ function renderMonthlyChart(months) {
     const el = document.getElementById('monthlyChart');
     if (!months || months.length === 0) {
         el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Немає даних</div>';
+        renderFinanceChartReadout(el, 'monthlyFinance', []);
         return;
     }
 
@@ -686,6 +719,10 @@ function renderMonthlyChart(months) {
             </div>
         `;
     }).join('');
+    renderFinanceChartReadout(el, 'monthlyFinance', months.map((m, i) => ({
+        label: SHORT_MONTHS[i] || m.monthName || String(i + 1),
+        value: `+${formatCompactMoney(m.income)} / -${formatCompactMoney(m.expense)}`
+    })));
 }
 
 // ==========================================

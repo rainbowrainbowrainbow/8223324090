@@ -72,6 +72,33 @@ function fmtNum(n) {
     return n.toLocaleString('uk-UA');
 }
 
+function fmtCompactMoney(amount) {
+    const value = Number(amount) || 0;
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return `${Math.round(value / 100000) / 10} млн ₴`;
+    if (abs >= 1000) return `${Math.round(value / 100) / 10} тис ₴`;
+    return `${value.toLocaleString('uk-UA')} ₴`;
+}
+
+function renderChartReadout(chartEl, chartId, items = []) {
+    if (!chartEl) return;
+    const container = chartEl.closest('.an-chart-container') || chartEl.parentElement;
+    if (!container) return;
+    container.querySelector(`.an-chart-readout[data-chart="${chartId}"]`)?.remove();
+    const visibleItems = items.filter(Boolean);
+    if (!visibleItems.length) return;
+    const readout = document.createElement('div');
+    readout.className = 'an-chart-readout';
+    readout.dataset.chart = chartId;
+    readout.innerHTML = visibleItems.map(item => `
+        <span class="an-chart-readout-item">
+            <b>${escapeHtml(item.label)}</b>
+            <span>${escapeHtml(item.value)}</span>
+        </span>
+    `).join('');
+    chartEl.insertAdjacentElement('afterend', readout);
+}
+
 function safeCssAccent(value, fallback = '#6366F1') {
     const color = String(value || '').trim();
     return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color) ? color : fallback;
@@ -266,7 +293,11 @@ function renderCharts(data) {
 
 function renderDailyBookingsChart(daily) {
     const el = document.getElementById('dailyBookingsChart');
-    if (!daily.length) { el.innerHTML = '<div class="an-empty-state">Немає даних</div>'; return; }
+    if (!daily.length) {
+        el.innerHTML = '<div class="an-empty-state">Немає даних</div>';
+        renderChartReadout(el, 'dailyBookings', []);
+        return;
+    }
     const maxRev = Math.max(...daily.map(d => d.revenue), 1);
     const maxCnt = Math.max(...daily.map(d => d.count), 1);
     el.innerHTML = daily.map(d => {
@@ -280,11 +311,19 @@ function renderDailyBookingsChart(daily) {
             <div class="an-bar-label">${d.date.substring(8)}</div>
         </div>`;
     }).join('');
+    renderChartReadout(el, 'dailyBookings', daily.map(d => ({
+        label: String(d.date || '').substring(5, 10),
+        value: `${fmtCompactMoney(d.revenue)} / ${fmtNum(d.count)} бр.`
+    })));
 }
 
 function renderDailyFinanceChart(daily) {
     const el = document.getElementById('dailyFinanceChart');
-    if (!daily.length) { el.innerHTML = '<div class="an-empty-state">Немає даних</div>'; return; }
+    if (!daily.length) {
+        el.innerHTML = '<div class="an-empty-state">Немає даних</div>';
+        renderChartReadout(el, 'dailyFinance', []);
+        return;
+    }
     const maxVal = Math.max(...daily.map(d => Math.max(d.income, d.expense)), 1);
     el.innerHTML = daily.map(d => {
         const incH = Math.max((d.income / maxVal) * 140, 2);
@@ -297,6 +336,10 @@ function renderDailyFinanceChart(daily) {
             <div class="an-bar-label">${d.date.substring(8)}</div>
         </div>`;
     }).join('');
+    renderChartReadout(el, 'dailyFinance', daily.map(d => ({
+        label: String(d.date || '').substring(5, 10),
+        value: `+${fmtCompactMoney(d.income)} / -${fmtCompactMoney(d.expense)}`
+    })));
 }
 
 function renderTopPrograms(programs) {
@@ -316,7 +359,11 @@ function renderTopPrograms(programs) {
 
 function renderWeekdayChart(weekday) {
     const el = document.getElementById('weekdayChart');
-    if (!weekday.length) { el.innerHTML = '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'; return; }
+    if (!weekday.length) {
+        el.innerHTML = '<div class="an-empty-state an-empty-state--chart">Немає даних</div>';
+        renderChartReadout(el, 'weekdayLoad', []);
+        return;
+    }
     const maxCnt = Math.max(...weekday.map(w => w.count), 1);
     el.innerHTML = weekday.map(w => {
         const h = Math.max((w.count / maxCnt) * 100, 2);
@@ -327,6 +374,10 @@ function renderWeekdayChart(weekday) {
             <div class="an-bar-label">${escapeHtml(w.name)}</div>
         </div>`;
     }).join('');
+    renderChartReadout(el, 'weekdayLoad', weekday.map(w => ({
+        label: w.name || `День ${w.dow}`,
+        value: `${fmtNum(w.count)} бр. / ${fmtCompactMoney(w.revenue)}`
+    })));
 }
 
 function renderFinCategories(cats) {
@@ -406,6 +457,12 @@ function renderDealsLifecycle(data) {
                 <div class="an-chart-container">
                     <div class="an-chart-title">Динаміка за датами</div>
                     <div class="an-bar-chart an-bar-chart--deals">${bars || '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'}</div>
+                    ${(data.trend || []).length ? `<div class="an-chart-readout" data-chart="dealsLifecycle">${(data.trend || []).map(d => `
+                        <span class="an-chart-readout-item">
+                            <b>${escapeHtml(String(d.date || '').substring(5, 10))}</b>
+                            <span>${fmtNum(d.accepted || 0)} прийнято / ${fmtNum(d.closed || 0)} закрито</span>
+                        </span>
+                    `).join('')}</div>` : ''}
                     <div class="an-legend">
                         <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--info"></div> Прийнято</div>
                         <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--success"></div> Закрито</div>

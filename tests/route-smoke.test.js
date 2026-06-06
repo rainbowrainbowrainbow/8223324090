@@ -23,7 +23,9 @@ const originalEnv = {
     REPORT_WEBHOOK_SECRET: process.env.REPORT_WEBHOOK_SECRET,
     WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
     UNIVERSAL_WEBHOOK_TOKEN: process.env.UNIVERSAL_WEBHOOK_TOKEN,
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    HR_VACANCY_AI_MODEL: process.env.HR_VACANCY_AI_MODEL
 };
 
 function listen(app) {
@@ -1161,6 +1163,8 @@ describe('route-level API safety smoke', () => {
         process.env.WEBHOOK_SECRET = TEST_TELEGRAM_SECRET;
         process.env.UNIVERSAL_WEBHOOK_TOKEN = TEST_UNIVERSAL_WEBHOOK_TOKEN;
         delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.OPENAI_API_KEY;
+        process.env.HR_VACANCY_AI_MODEL = 'route-smoke-mini';
 
         clearModules();
         queries = [];
@@ -1736,6 +1740,36 @@ describe('route-level API safety smoke', () => {
         assert.equal(download.status, 200);
         assert.match(download.headers.get('content-disposition') || '', /filename=/);
         assert.equal(await download.text(), 'resume text content');
+    });
+
+    it('prepares HR vacancy platform templates and AI formatting preview', async () => {
+        const templates = await request('GET', '/api/hr/vacancy-platforms', undefined, withAuth());
+        assert.equal(templates.status, 200, JSON.stringify(templates.data));
+        assert.equal(templates.data.success, true);
+        assert.equal(templates.data.ai.model, 'route-smoke-mini');
+        assert.equal(templates.data.ai.configured, false);
+        assert.ok(templates.data.templates.some(template => template.id === 'workua'));
+        assert.ok(templates.data.templates.some(template => template.id === 'instagram'));
+
+        const preview = await request('POST', '/api/hr/vacancy-platforms/format-preview', {
+            platform: 'telegram',
+            vacancy: {
+                title: 'Офіціант',
+                role_type: 'waiter',
+                schedule: '4-8 год/день',
+                salary_from: 12000,
+                salary_to: 18000,
+                description: 'Гості, сервіс, робота в команді'
+            },
+            source_text: 'Потрібна людина на вихідні.'
+        }, withAuth());
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        assert.equal(preview.data.success, true);
+        assert.equal(preview.data.platform, 'telegram');
+        assert.equal(preview.data.ai_used, false);
+        assert.equal(preview.data.ai_model, 'deterministic-template');
+        assert.match(preview.data.formatted_text, /Офіціант/);
+        assert.match(preview.data.prompt, /Telegram/);
     });
 
     it('persists HR company structure as editable org chart nodes', async () => {

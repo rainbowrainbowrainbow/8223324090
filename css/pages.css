@@ -7173,6 +7173,288 @@ body.dark-mode .hr-offboarding-readiness-alert {
     color: #FCA5A5;
 }
 
+/* v0.73.69: visible chart readouts keep analytics graphs informative without hover-only data. */
+.an-chart-readout,
+.fin-chart-readout {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 2px 0 4px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.an-chart-readout-item,
+.fin-chart-readout-item {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    max-width: 190px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--gray-100);
+    background: var(--gray-50);
+    color: var(--gray-600);
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.an-chart-readout-item b,
+.fin-chart-readout-item b {
+    color: var(--gray-900);
+    font-weight: 900;
+}
+
+.an-chart-readout-item span,
+.fin-chart-readout-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.dark-mode .an-chart-readout-item,
+body.dark-mode .fin-chart-readout-item {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.10);
+    color: #CBD5E1;
+}
+
+body.dark-mode .an-chart-readout-item b,
+body.dark-mode .fin-chart-readout-item b {
+    color: #F8FAFC;
+}
+
+/* v0.73.67: HR vacancy workspace tabs and AI platform templates live outside inline HR debt. */
+.vacancy-workspace {
+    display: grid;
+    gap: 16px;
+}
+
+.vacancy-workspace-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.vacancy-workspace-tab {
+    min-height: 40px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-600);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.vacancy-workspace-tab:hover,
+.vacancy-workspace-tab:focus-visible {
+    border-color: var(--primary);
+    color: var(--primary);
+    outline: none;
+}
+
+.vacancy-workspace-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--white);
+}
+
+.vacancy-workspace-panel {
+    display: none;
+}
+
+.vacancy-workspace-panel.active {
+    display: block;
+}
+
+.vacancy-selected-head,
+.vacancy-section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.vacancy-section-head {
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.vacancy-section-head h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+}
+
+.vacancy-section-head p {
+    margin: 0;
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.vacancy-close-btn {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--gray-500);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 8px;
+}
+
+.vacancy-close-btn:hover,
+.vacancy-close-btn:focus-visible {
+    background: var(--gray-100);
+    outline: none;
+}
+
+.vacancy-response-list,
+.vacancy-interview-list {
+    display: grid;
+    gap: 10px;
+}
+
+.vacancy-response-row,
+.vacancy-interview-row {
+    border: 1px solid var(--gray-100);
+    border-radius: 8px;
+    background: var(--white);
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.vacancy-response-head,
+.vacancy-interview-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.vacancy-response-head h4,
+.vacancy-interview-head h4 {
+    margin: 0 0 2px;
+    font-size: 15px;
+}
+
+.vacancy-response-head span,
+.vacancy-interview-head span {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.vacancy-response-text,
+.vacancy-interview-notes {
+    margin: 0;
+    white-space: pre-wrap;
+    color: var(--gray-600);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.vacancy-empty-state {
+    border: 1px dashed var(--gray-200);
+    border-radius: 8px;
+    padding: 18px;
+    color: var(--gray-500);
+    background: var(--gray-50);
+    font-size: 13px;
+}
+
+.vacancy-template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.vacancy-template-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.vacancy-template-grid .wide {
+    grid-column: 1 / -1;
+}
+
+.vacancy-template-grid textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-900);
+    font: inherit;
+    padding: 10px 12px;
+    resize: vertical;
+}
+
+.vacancy-template-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.vacancy-template-footer span {
+    margin-right: auto;
+    color: var(--gray-500);
+    font-size: 13px;
+}
+
+body.dark-mode .vacancy-workspace-tab {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+    color: #CBD5E1;
+}
+
+body.dark-mode .vacancy-workspace-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--white);
+}
+
+body.dark-mode .vacancy-close-btn:hover,
+body.dark-mode .vacancy-close-btn:focus-visible {
+    background: rgba(255,255,255,0.08);
+}
+
+body.dark-mode .vacancy-response-row,
+body.dark-mode .vacancy-interview-row {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+}
+
+body.dark-mode .vacancy-empty-state {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.10);
+    color: #94A3B8;
+}
+
+body.dark-mode .vacancy-response-text,
+body.dark-mode .vacancy-interview-notes {
+    color: #CBD5E1;
+}
+
+body.dark-mode .vacancy-template-grid textarea {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.10);
+    color: #E2E8F0;
+}
+
 body.dark-mode .hr-staff-foundation-warning {
     background: rgba(245, 158, 11, 0.10);
     border-color: rgba(245, 158, 11, 0.30);
@@ -7211,5 +7493,26 @@ body.dark-mode .hr-staff-foundation-danger {
 
     .hr-staff-foundation-actions {
         justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .vacancy-workspace-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .vacancy-selected-head,
+    .vacancy-section-head,
+    .vacancy-template-footer {
+        flex-wrap: wrap;
+    }
+
+    .vacancy-section-head > .btn-add,
+    .vacancy-template-footer button {
+        width: 100%;
+    }
+
+    .vacancy-template-grid {
+        grid-template-columns: 1fr;
     }
 }

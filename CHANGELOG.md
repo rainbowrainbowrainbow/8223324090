@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.77 - HR: операційні списки без ЧС
+
+### HR / Пульс / Графік / Камера / Чорний список / Guardrail / (Клешня, 06.06.2026) [codex]
+- **Чорний список прибрано з live-операційних списків** - `HR -> Сьогодні`, availability, ratings, auto-assign, shift copy, schedule summary, `GET /api/staff?active=true`, account link/status і масове створення акаунтів більше не підтягують активні профілі з `hr_pool_status = blacklisted`.
+- **Резерв не засмічує пульс і камеру без запланованої роботи** - `HR Today`, `/api/hr/availability` і camera face descriptors показують reserve-працівника тільки якщо на сьогодні є `hr_shifts` або `hr_time_records`.
+- **Offboarding, ЧС і legacy archive чистять майбутній графік** - при завершенні співпраці, переміщенні в ЧС або старому `/api/staff/:id` archive backend видаляє майбутні `hr_shifts` і `staff_schedule`, але не чіпає дні з уже створеними `hr_time_records`.
+- **Заміни й копіювання графіка не призначають людей із ЧС** - HR/staff replacement routes та copy-week фільтрують працівників через спільний active/non-blacklisted scope.
+- **Додано guardrails** - HR contract і UI smoke перевіряють operational scope, camera descriptors, cleanup payload `schedule_cleanup` і нові live-фільтри.
+- **Оновлено релізні маркери** - версію піднято до `0.73.77`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.76 - HR: видалення дублів працівників
 
 ### HR / Команда / Видалення дублів / Guardrail / (Клешня, 06.06.2026) [codex]

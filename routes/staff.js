@@ -65,6 +65,53 @@ router.use(authenticateToken);
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
 
+function activeOperationalStaffWhere(alias = 's') {
+    return `${alias}.is_active = true
+        AND COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'`;
+}
+
+function activeOperationalStaffForDateWhere(alias = 's', shiftAlias = 'hs', recordAlias = 'tr') {
+    return `${activeOperationalStaffWhere(alias)}
+        AND (
+            COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'
+            OR ${shiftAlias}.id IS NOT NULL
+            OR ${recordAlias}.id IS NOT NULL
+        )`;
+}
+
+async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate = getKyivDateStr()) {
+    const id = Number(staffId);
+    const safeFrom = normalizeScheduleDate(fromDate) || getKyivDateStr();
+    if (!Number.isFinite(id) || id <= 0) return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom };
+    const shifts = await db.query(
+        `DELETE FROM hr_shifts hs
+         WHERE hs.staff_id = $1
+           AND hs.shift_date >= $2::date
+           AND NOT EXISTS (
+                SELECT 1 FROM hr_time_records tr
+                WHERE tr.staff_id = hs.staff_id
+                  AND tr.record_date = hs.shift_date
+           )`,
+        [id, safeFrom]
+    );
+    const schedule = await db.query(
+        `DELETE FROM staff_schedule ss
+         WHERE ss.staff_id = $1
+           AND LEFT(ss.date::text, 10) >= $2
+           AND NOT EXISTS (
+                SELECT 1 FROM hr_time_records tr
+                WHERE tr.staff_id = ss.staff_id
+                  AND tr.record_date::text = LEFT(ss.date::text, 10)
+           )`,
+        [id, safeFrom]
+    );
+    return {
+        hr_shifts: shifts.rowCount || 0,
+        staff_schedule: schedule.rowCount || 0,
+        from_date: safeFrom
+    };
+}
+
 function scheduleStatusNeedsProfession(status) {
     return ['working', 'remote'].includes(String(status || 'working'));
 }
@@ -439,7 +486,8 @@ router.get('/schedule', async (req, res) => {
              JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
              LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
-             WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
+             WHERE ss.date >= $1 AND ss.date <= $2
+               AND ${activeOperationalStaffWhere('s')}
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
@@ -545,7 +593,10 @@ router.post('/schedule/:id/replace', requireRole('creator', 'director', 'vice_di
         }
 
         const replacement = await client.query(
-            'SELECT id, name, role_type FROM staff WHERE id = $1 AND is_active = true',
+            `SELECT id, name, role_type
+             FROM staff
+             WHERE id = $1
+               AND ${activeOperationalStaffWhere('staff')}`,
             [replacementStaffId]
         );
         if (!replacement.rows.length) {
@@ -692,7 +743,10 @@ router.post('/schedule/:id/replacement-clear', requireRole('creator', 'director'
         const originalStaffId = Number(schedule.original_staff_id);
 
         const original = await client.query(
-            'SELECT id, name, role_type FROM staff WHERE id = $1 AND is_active = true',
+            `SELECT id, name, role_type
+             FROM staff
+             WHERE id = $1
+               AND ${activeOperationalStaffWhere('staff')}`,
             [originalStaffId]
         );
         if (!original.rows.length) {
@@ -848,7 +902,8 @@ router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_dire
 
         // Fetch source week schedule
         let sql = `SELECT ss.* FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
-                    WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true`;
+                    WHERE ss.date >= $1 AND ss.date <= $2
+                      AND ${activeOperationalStaffWhere('s')}`;
         const params = [fromDates[0], fromDates[6]];
         if (department) {
             params.push(department);
@@ -934,7 +989,8 @@ router.get('/schedule/hours', async (req, res) => {
                     ss.shift_start, ss.shift_end, ss.status
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
-             WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
+             WHERE ss.date >= $1 AND ss.date <= $2
+               AND ${activeOperationalStaffWhere('s')}
              ORDER BY s.department, s.name`,
             [from, to]
         );
@@ -987,7 +1043,9 @@ router.get('/schedule/check/:date', async (req, res) => {
             `SELECT ss.staff_id, ss.status, ss.shift_start, ss.shift_end, s.name, s.department
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
-             WHERE ss.date = $1 AND s.department = 'animators' AND s.is_active = true`,
+             WHERE ss.date = $1
+               AND s.department = 'animators'
+               AND ${activeOperationalStaffWhere('s')}`,
             [date]
         );
         const available = [];
@@ -1028,8 +1086,12 @@ router.get('/', async (req, res) => {
             conditions.push(`department = $${params.length}`);
         }
         if (active !== undefined) {
-            params.push(active === 'true');
+            const activeRequested = active === 'true';
+            params.push(activeRequested);
             conditions.push(`is_active = $${params.length}`);
+            if (activeRequested) {
+                conditions.push("COALESCE(hr_pool_status, 'core') <> 'blacklisted'");
+            }
         }
 
         if (conditions.length > 0) {
@@ -1105,8 +1167,10 @@ router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_m
 
 // DELETE /api/staff/:id — legacy soft archive. Do not physically delete staff history.
 router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
+        await client.query('BEGIN');
+        const result = await client.query(
             `UPDATE staff
              SET is_active = false,
                  hr_pool_status = CASE WHEN hr_pool_status = 'blacklisted' THEN 'blacklisted' ELSE 'reserve' END,
@@ -1117,11 +1181,19 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
              RETURNING id, name, is_active, hr_pool_status`,
             [req.params.id, req.user?.username || null]
         );
-        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        res.json({ success: true, archived: true, data: result.rows[0] });
+        if (!result.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        const scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, getKyivDateStr());
+        await client.query('COMMIT');
+        res.json({ success: true, archived: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1132,12 +1204,15 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
 // GET /api/staff/face-descriptors — all registered face descriptors
 router.get('/face-descriptors', async (req, res) => {
     try {
+        const today = getKyivDateStr();
         const result = await pool.query(`
             SELECT sfd.staff_id, s.name, sfd.descriptor
             FROM staff_face_descriptors sfd
             JOIN staff s ON s.id = sfd.staff_id
-            WHERE s.is_active = true
-        `);
+            LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
+            LEFT JOIN hr_time_records tr ON tr.staff_id = s.id AND tr.record_date = $1
+            WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}
+        `, [today]);
         res.json(result.rows.map(r => ({
             staffId: r.staff_id,
             name: r.name,
@@ -1374,7 +1449,7 @@ router.get('/link-status', async (req, res) => {
             FROM staff s
             LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
             LEFT JOIN users u ON u.id = ep.user_id
-            WHERE s.is_active = true
+            WHERE ${activeOperationalStaffWhere('s')}
             ORDER BY s.department, s.is_freelance, s.name
         `);
         const stats = {
@@ -1456,7 +1531,9 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
             SELECT s.id, s.name, s.department, s.role_type, s.unique_person_key
             FROM staff s
             LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true AND ep.user_id IS NOT NULL
-            WHERE s.is_active = true AND s.is_freelance = false AND ep.id IS NULL
+            WHERE ${activeOperationalStaffWhere('s')}
+              AND s.is_freelance = false
+              AND ep.id IS NULL
             ORDER BY s.department, s.name
         `);
 
@@ -1658,7 +1735,11 @@ router.post('/import-excel', requireRole('creator', 'director'), handleStaffImpo
         for (const entry of results.entries) {
             try {
                 const existing = await pool.query(
-                    'SELECT id FROM staff WHERE name = $1 AND department = $2 AND is_active = true',
+                    `SELECT id
+                     FROM staff
+                     WHERE name = $1
+                       AND department = $2
+                       AND ${activeOperationalStaffWhere('staff')}`,
                     [entry.name, entry.department]
                 );
                 if (existing.rows.length > 0) {
@@ -1690,10 +1771,10 @@ router.get('/account-stats', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
-                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance) as total_staff,
-                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance AND ep.user_id IS NOT NULL) as with_account,
-                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance AND ep.user_id IS NULL) as without_account,
-                COUNT(*) FILTER (WHERE s.is_active AND s.is_freelance) as freelance_slots
+                COUNT(*) FILTER (WHERE ${activeOperationalStaffWhere('s')} AND NOT s.is_freelance) as total_staff,
+                COUNT(*) FILTER (WHERE ${activeOperationalStaffWhere('s')} AND NOT s.is_freelance AND ep.user_id IS NOT NULL) as with_account,
+                COUNT(*) FILTER (WHERE ${activeOperationalStaffWhere('s')} AND NOT s.is_freelance AND ep.user_id IS NULL) as without_account,
+                COUNT(*) FILTER (WHERE ${activeOperationalStaffWhere('s')} AND s.is_freelance) as freelance_slots
             FROM staff s
             LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
         `);

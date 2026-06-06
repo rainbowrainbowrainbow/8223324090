@@ -1549,6 +1549,58 @@ function todayKyiv() {
     return getKyivDateStr();
 }
 
+function activeNonBlacklistedStaffWhere(alias = 's') {
+    return `COALESCE(${alias}.is_active, true) = true
+        AND COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'`;
+}
+
+function operationalStaffWhere(alias = 's') {
+    return `${activeNonBlacklistedStaffWhere(alias)}
+        AND COALESCE(${alias}.is_freelance, false) = false`;
+}
+
+function operationalStaffForDateWhere(alias = 's', shiftAlias = 'hs', recordAlias = 'tr') {
+    return `${operationalStaffWhere(alias)}
+        AND (
+            COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'
+            OR ${shiftAlias}.id IS NOT NULL
+            OR ${recordAlias}.id IS NOT NULL
+        )`;
+}
+
+async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate = todayKyiv()) {
+    const id = Number(staffId);
+    const safeFrom = cleanStaffDate(fromDate) || todayKyiv();
+    if (!Number.isFinite(id) || id <= 0) return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom };
+    const shifts = await db.query(
+        `DELETE FROM hr_shifts hs
+         WHERE hs.staff_id = $1
+           AND hs.shift_date >= $2::date
+           AND NOT EXISTS (
+                SELECT 1 FROM hr_time_records tr
+                WHERE tr.staff_id = hs.staff_id
+                  AND tr.record_date = hs.shift_date
+           )`,
+        [id, safeFrom]
+    );
+    const schedule = await db.query(
+        `DELETE FROM staff_schedule ss
+         WHERE ss.staff_id = $1
+           AND LEFT(ss.date::text, 10) >= $2
+           AND NOT EXISTS (
+                SELECT 1 FROM hr_time_records tr
+                WHERE tr.staff_id = ss.staff_id
+                  AND tr.record_date::text = LEFT(ss.date::text, 10)
+           )`,
+        [id, safeFrom]
+    );
+    return {
+        hr_shifts: shifts.rowCount || 0,
+        staff_schedule: schedule.rowCount || 0,
+        from_date: safeFrom
+    };
+}
+
 // Helper: get current Kyiv time as Date object
 function nowKyiv() {
     return getKyivDate();
@@ -3662,6 +3714,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
              RETURNING *`,
             [req.params.id, targetPoolStatus, reason, effectiveDate, req.user?.username || null]
         );
+        const scheduleCleanupFromDate = effectiveDate < todayKyiv() ? todayKyiv() : effectiveDate;
+        const scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, scheduleCleanupFromDate);
         let disabledAccounts = 0;
         let disabledAccountRows = [];
         if (accountAction === 'disable') {
@@ -3738,7 +3792,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             account_action: accountAction,
             disabled_accounts: disabledAccounts,
             disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean),
-            open_resource_count: openResourceCount
+            open_resource_count: openResourceCount,
+            schedule_cleanup: scheduleCleanup
         }, req.ip);
         res.json({
             success: true,
@@ -3746,7 +3801,8 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             staff: staffUpdate.rows[0],
             open_resource_count: openResourceCount,
             disabled_accounts: disabledAccounts,
-            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean)
+            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean),
+            schedule_cleanup: scheduleCleanup
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -3883,6 +3939,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
 
         let afterRateRows = beforeRateRows;
         let result;
+        let scheduleCleanup = null;
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -3902,6 +3959,9 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             if (hasProfessionRates) {
                 afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
+            }
+            if (fieldPresence.hr_pool_status && textOrNull(hr_pool_status) === 'blacklisted') {
+                scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv());
             }
             if (fieldPresence.role_type || hasSecondaryProfessions || hasProfessionRates) {
                 if (!hasProfessionRates) {
@@ -3941,9 +4001,10 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             source: 'hr_staff_profile',
             changed_fields: Object.keys(changes),
             changes,
-            requested_fields: Object.keys(req.body || {})
+            requested_fields: Object.keys(req.body || {}),
+            schedule_cleanup: scheduleCleanup
         }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4126,12 +4187,15 @@ router.get('/pool', async (req, res) => {
 
 // PUT /api/hr/staff/:id/pool-status — move staff between core/reserve/blacklist
 router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { status, reason } = req.body;
         if (!['core', 'reserve', 'blacklisted'].includes(status)) {
             return res.status(400).json({ success: false, error: 'Невалідний статус пулу' });
         }
-        const result = await pool.query(
+
+        await client.query('BEGIN');
+        const result = await client.query(
             `UPDATE staff SET
                 hr_pool_status = $1,
                 blacklist_reason = CASE WHEN $1 = 'blacklisted' THEN COALESCE($2, blacklist_reason) ELSE NULL END,
@@ -4140,12 +4204,26 @@ router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
              RETURNING id, name, department, role_type, hr_pool_status, blacklist_reason, blacklisted_at`,
             [status, reason || null, req.params.id]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        await auditLog('pool_status_update', parseInt(req.params.id), req.user?.username, { status, reason }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        const scheduleCleanup = status === 'blacklisted'
+            ? await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv())
+            : null;
+        await client.query('COMMIT');
+        await auditLog('pool_status_update', parseInt(req.params.id), req.user?.username, {
+            status,
+            reason,
+            schedule_cleanup: scheduleCleanup
+        }, req.ip);
+        res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/pool-status error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -4456,7 +4534,11 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
         }
 
         const replacement = await client.query(
-            'SELECT id, name FROM staff WHERE id = $1 AND is_active = true',
+            `SELECT id, name
+             FROM staff
+             WHERE id = $1
+               AND COALESCE(is_active, true) = true
+               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'`,
             [replacementStaffId]
         );
         if (!replacement.rows.length) {
@@ -4601,7 +4683,8 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
         const source = await pool.query(
             `SELECT hs.* FROM hr_shifts hs
              JOIN staff s ON s.id = hs.staff_id
-             WHERE hs.shift_date >= $1 AND hs.shift_date <= $2 AND s.is_active = true`,
+             WHERE hs.shift_date >= $1 AND hs.shift_date <= $2
+               AND ${activeNonBlacklistedStaffWhere('s')}`,
             [srcDates[0], srcDates[6]]
         );
 
@@ -4659,7 +4742,18 @@ router.get('/today', async (req, res) => {
     try {
         const today = todayKyiv();
         const staff = await pool.query(
-            `SELECT id, name, department, position, color, role_type, photo_url FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY department, name`
+            `SELECT id, name, department, position, color, role_type, photo_url
+             FROM staff
+             WHERE COALESCE(is_active, true) = true
+               AND COALESCE(is_freelance, false) = false
+               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'
+               AND (
+                    COALESCE(hr_pool_status, 'core') <> 'reserve'
+                    OR EXISTS (SELECT 1 FROM hr_shifts hs WHERE hs.staff_id = staff.id AND hs.shift_date = $1)
+                    OR EXISTS (SELECT 1 FROM hr_time_records tr WHERE tr.staff_id = staff.id AND tr.record_date = $1)
+               )
+             ORDER BY department, name`,
+            [today]
         );
 
         const shifts = await pool.query(
@@ -5290,7 +5384,7 @@ router.get('/ratings', async (req, res) => {
                 OR LOWER(BTRIM(COALESCE(b.second_animator, ''))) = LOWER(BTRIM(s.name))
             )
                 AND b.status IN ('completed', 'confirmed')
-            WHERE s.is_active = true AND s.role_type IN ('animator', 'host')
+            WHERE ${operationalStaffWhere('s')} AND s.role_type IN ('animator', 'host')
             GROUP BY s.id
             ORDER BY COALESCE(s.avg_rating, 0) DESC, COUNT(DISTINCT b.id) DESC
         `);
@@ -5347,7 +5441,7 @@ router.post('/auto-assign', requireHrManage, async (req, res) => {
             SELECT s.id, s.name, s.skills, s.avg_rating, s.total_events, s.color
             FROM staff s
             JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
-            WHERE s.is_active = true
+            WHERE ${operationalStaffWhere('s')}
               AND s.role_type IN ('animator', 'host')
               AND NOT EXISTS (
                 SELECT 1 FROM leave_requests lr
@@ -5936,7 +6030,7 @@ router.get('/availability', async (req, res) => {
             FROM staff s
             LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
             LEFT JOIN hr_time_records tr ON tr.staff_id = s.id AND tr.record_date = $1
-            WHERE s.is_active = true
+            WHERE ${operationalStaffForDateWhere('s', 'hs', 'tr')}
             ORDER BY
                 CASE COALESCE(s.availability_status, 'offline')
                     WHEN 'busy' THEN 1 WHEN 'online' THEN 2 WHEN 'break' THEN 3 ELSE 4
@@ -6020,7 +6114,10 @@ router.get('/shifts-summary', async (req, res) => {
         const dateTo   = new Date(yr, mo, 0).toISOString().slice(0, 10);
         const staffList = await pool.query(
             `SELECT id, name, display_name FROM staff
-             WHERE display_name IS NOT NULL AND display_name != '' AND is_active = true`
+             WHERE display_name IS NOT NULL
+               AND display_name != ''
+               AND is_active = true
+               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'`
         );
         if (!staffList.rowCount) return res.json({ success: true, summary: [], period: { from: dateFrom, to: dateTo } });
         const summary = [];

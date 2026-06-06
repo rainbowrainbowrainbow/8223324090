@@ -8,6 +8,7 @@ const ROOT = path.join(__dirname, '..');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
@@ -382,6 +383,36 @@ test('HR staff permanent delete is duplicate-only and typed-confirm guarded', ()
         '[data-theme="dark"] .page-container .hr-team-delete'
     ]) {
         assert.ok(PAGES_CSS.includes(token), `missing CSS token ${token}`);
+    }
+});
+
+test('HR operational staff scope removes blacklist and unscheduled reserve from live routes', () => {
+    for (const token of [
+        'function activeNonBlacklistedStaffWhere',
+        'function operationalStaffForDateWhere',
+        'async function cleanupFutureStaffOperationalSchedule',
+        "COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'",
+        "COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'",
+        "router.get('/today'",
+        "router.get('/availability'",
+        "router.put('/staff/:id/pool-status'",
+        'schedule_cleanup: scheduleCleanup',
+        'cleanupFutureStaffOperationalSchedule(client, req.params.id'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing HR route token ${token}`);
+    }
+    for (const token of [
+        'function activeOperationalStaffWhere',
+        'function activeOperationalStaffForDateWhere',
+        'async function cleanupFutureStaffOperationalSchedule',
+        "router.get('/face-descriptors'",
+        "LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1",
+        "WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}",
+        "router.delete('/:id'",
+        'schedule_cleanup: scheduleCleanup',
+        "COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'"
+    ]) {
+        assert.ok(STAFF_ROUTE.includes(token), `missing staff route token ${token}`);
     }
 });
 

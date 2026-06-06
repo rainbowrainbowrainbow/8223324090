@@ -514,6 +514,12 @@ function createFakePool() {
                 hrState.staff.set(id, updated);
                 return { rows: [updated], rowCount: 1 };
             }
+            if (/DELETE FROM hr_shifts hs WHERE hs\.staff_id = \$1/i.test(text)) {
+                return { rows: [], rowCount: 2 };
+            }
+            if (/DELETE FROM staff_schedule ss WHERE ss\.staff_id = \$1/i.test(text)) {
+                return { rows: [], rowCount: 3 };
+            }
             if (/UPDATE users SET is_active = false, session_revoked_at = NOW\(\) WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(Number) : [];
                 const rows = [];
@@ -1418,6 +1424,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.open_resource_count, 1);
         assert.equal(res.data.disabled_accounts, 1);
         assert.deepEqual(res.data.disabled_account_usernames, ['offboard.employee']);
+        assert.deepEqual(res.data.schedule_cleanup, { hr_shifts: 2, staff_schedule: 3, from_date: '2099-06-06' });
         assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = NOW\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\)/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE refresh_tokens SET revoked_at = NOW\(\)/i.test(q.text)));

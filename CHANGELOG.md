@@ -4,6 +4,30 @@
 
 ---
 
+## v0.73.79 - Доступ: парк і бронювання
+
+### Доступи / Ролі / Бізнес-контекст / Бронювання / Guardrail / (Клешня, 06.06.2026) [codex]
+- **Перемикання бізнесів заблоковано для всіх, окрім primary `creator`** - менеджери, адміністратори, директори та акаунти з `extraRoles` більше не можуть перейти з Парку Закревського в `dar`, `crm` або `maysternya_doli`.
+- **Для всіх не-creator акаунтів примусово лишився Парк Закревського** - backend, frontend policy, sidebar fallback і нова міграція `256_lock_non_creator_business_contexts.sql` тримають `business_contexts/default_business_context = event_genix`.
+- **Перемикання робочих ролей і role preview лишились тільки для primary `creator`** - старі `extraRoles` більше не відкривають role-switch UI або private timeline surface.
+- **Виправлено блокування створення бронювання після скасованого edit-state** - якщо форма застрягла на вже скасованому бронюванні, frontend скидає edit-state і створює нову бронь замість `PUT` у cancelled record.
+- **Backend повертає стабільний код для cancelled restore** - `PUT /api/bookings/:id` віддає `cancelled_booking_cannot_be_restored`, а frontend більше не лишає менеджера в самоблокуванні.
+- **Оновлено guardrails і релізні маркери** - додано regression tests для Park-only доступу, міграції, sidebar creator check і stale booking create fallback; версію піднято до `0.73.79`.
+
+---
+
+## v0.73.78 - HR: календарний період зарплати
+
+### HR / ЗП та KPI / Зарплата / Календарний період / Guardrail / (Клешня, 06.06.2026) [codex]
+- **У `HR -> ЗП та KPI -> Зарплата` додано календарний фільтр періоду** - поруч із вибором місяця зʼявилися поля `Дата від` і `Дата до`, кнопка `Показати` та швидке повернення до повного місяця.
+- **Salary preview рахується по точному range** - `/api/hr/salary` приймає `from/to`, а `hr_time_records` і `hr_shifts` фільтруються по обраних датах.
+- **Коригування зарплати не губляться на перетині місяців** - `salary_adjustments` і `payroll_reports` підтягуються по місяцях, які перетинає обраний календарний період.
+- **Місячні бухгалтерські дії захищені від custom range** - `Нарахувати`, `Закрити період`, `Відкрити період`, `Звірка`, `Сторно` і додавання коригувань блокуються, доки користувач не повернеться до повного місяця.
+- **Додано guardrails** - HR contract і UI smoke перевіряють date inputs, range API query, backend `payrollPeriodRange` і захист від commit/lock/reverse у кастомному періоді.
+- **Оновлено релізні маркери** - версію піднято до `0.73.78`, cache tags, Service Worker і `package-lock.json` синхронізовано під deploy.
+
+---
+
 ## v0.73.77 - HR: операційні списки без ЧС
 
 ### HR / Пульс / Графік / Камера / Чорний список / Guardrail / (Клешня, 06.06.2026) [codex]

@@ -3047,7 +3047,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         // Prevent cancelled → confirmed/preliminary (must create new booking)
         if (oldBooking.status === 'cancelled' && newStatus !== 'cancelled') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Скасоване бронювання не можна відновити. Створіть нове.' });
+            return res.status(400).json({
+                success: false,
+                code: 'cancelled_booking_cannot_be_restored',
+                currentStatus: 'cancelled',
+                error: 'Скасоване бронювання не можна відновити. Створіть нове.'
+            });
         }
 
         // CRM: resolve customer_id for update

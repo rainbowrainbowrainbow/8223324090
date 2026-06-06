@@ -30,7 +30,7 @@ test('timeline context can be resolved from request query, body, or header', () 
     assert.equal(timelineContextFromRequest({ headers: { 'x-business-context': 'maysternya_doli' } }), 'maysternya_doli');
     assert.equal(timelineContextFromRequest({ query: { businessContext: 'dar' } }), 'dar');
     assert.equal(canAccessTimelineContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
-    assert.equal(canAccessTimelineContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+    assert.equal(canAccessTimelineContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
 });
 
 test('timeline API calls do not inherit the global CRM business header', () => {
@@ -340,6 +340,8 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
     assert.match(sidebarCode, /function _sidebarUserHasCreator/);
+    assert.match(sidebarCode, /return String\(user\?\.role \|\| user\?\.account_role \|\| user\?\.accountRole \|\| ''\)\.trim\(\) === 'creator'/);
+    assert.match(sidebarCode, /if \(!_sidebarUserHasCreator\(user\)\) return false/);
     assert.match(sidebarCode, /const MAYSTERNYA_SIDEBAR_HREFS = new Set/);
     assert.match(sidebarCode, /'\/sales-funnel'/);
     assert.match(sidebarCode, /'\/customers'/);
@@ -349,6 +351,15 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
     assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return creatorSurface/);
     assert.match(sidebarCode, /if \(creatorSurface && current !== 'maysternya_doli'\) return true/);
+});
+
+test('non-creator account lock migration forces Park business context only', () => {
+    const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '256_lock_non_creator_business_contexts.sql'), 'utf8');
+
+    assert.match(migration, /MIGRATION_KIND: data-fix/);
+    assert.match(migration, /business_contexts = ARRAY\['event_genix'\]::text\[\]/);
+    assert.match(migration, /default_business_context = 'event_genix'/);
+    assert.match(migration, /WHERE COALESCE\(role, ''\) <> 'creator'/);
 });
 
 test('timeline root uses account default instead of stale stored business context', () => {
@@ -583,7 +594,7 @@ test('timeline load routes keep legacy default-context rows visible', () => {
 
 test('Maysternya Doli access is creator-only', () => {
     assert.equal(canAccessTimelineContext({ role: 'creator' }, 'maysternya_doli'), true);
-    assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), true);
+    assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), false);
     assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), false);
     assert.equal(canAccessTimelineContext({ role: 'manager' }, 'maysternya_doli'), false);
 });

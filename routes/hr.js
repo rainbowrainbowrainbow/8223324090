@@ -1956,6 +1956,14 @@ function requirePayrollMonth(value) {
     return /^\d{4}-\d{2}$/.test(month) ? month : null;
 }
 
+function normalizePayrollDate(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+    const date = new Date(`${text}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) return null;
+    return text;
+}
+
 function payrollTotals(rows = []) {
     return rows.reduce((acc, row) => ({
         total_base: acc.total_base + Number(row.base_salary || 0),
@@ -1978,6 +1986,24 @@ function payrollMonthRange(month) {
     return {
         from: `${month}-01`,
         to: `${month}-${String(lastDay).padStart(2, '0')}`
+    };
+}
+
+function payrollPeriodRange(month, fromValue, toValue) {
+    const defaultRange = payrollMonthRange(month);
+    const from = normalizePayrollDate(fromValue) || defaultRange.from;
+    const to = normalizePayrollDate(toValue) || defaultRange.to;
+    if (from > to) {
+        const err = new Error('Некоректний період: дата початку пізніше дати завершення');
+        err.statusCode = 400;
+        throw err;
+    }
+    return {
+        from,
+        to,
+        month_from: from.slice(0, 7),
+        month_to: to.slice(0, 7),
+        mode: from === defaultRange.from && to === defaultRange.to ? 'month' : 'range'
     };
 }
 
@@ -2183,13 +2209,16 @@ async function loadPayrollReconciliation(month, db = pool) {
     };
 }
 
-async function loadPayrollCalculation(monthValue, db = pool) {
+async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {}) {
     const month = normalizePayrollMonth(monthValue);
+    const period = payrollPeriodRange(month, periodOptions.from, periodOptions.to);
     const result = await db.query(`
         WITH params AS (
             SELECT $1::varchar(7) AS month,
-                   ($1 || '-01')::date AS date_from,
-                   (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
+                   $2::date AS date_from,
+                   $3::date AS date_to,
+                   $4::varchar(7) AS month_from,
+                   $5::varchar(7) AS month_to
         ),
         active_staff AS (
             SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, s.department
@@ -2215,14 +2244,14 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                       SELECT 1
                       FROM salary_adjustments sa
                       WHERE sa.staff_id = s.id
-                        AND sa.month = p.month
+                        AND sa.month >= p.month_from AND sa.month <= p.month_to
                         AND COALESCE(sa.status, 'applied') = 'applied'
                   )
                   OR EXISTS (
                       SELECT 1
                       FROM payroll_reports pr
                       WHERE pr.staff_id = s.id
-                        AND pr.period_month = p.month
+                        AND pr.period_month >= p.month_from AND pr.period_month <= p.month_to
                         AND pr.voided_at IS NULL
                   )
               )
@@ -2271,15 +2300,17 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'penalty'), 0)::numeric AS penalties,
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'advance'), 0)::numeric AS advances
             FROM salary_adjustments sa
-            JOIN params p ON sa.month = p.month
+            JOIN params p ON sa.month >= p.month_from AND sa.month <= p.month_to
             WHERE COALESCE(sa.status, 'applied') = 'applied'
             GROUP BY sa.staff_id
         ),
         report_snapshots AS (
-            SELECT pr.staff_id, pr.status AS payroll_status, pr.id AS payroll_report_id
+            SELECT DISTINCT ON (pr.staff_id)
+                   pr.staff_id, pr.status AS payroll_status, pr.id AS payroll_report_id
             FROM payroll_reports pr
-            JOIN params p ON pr.period_month = p.month
+            JOIN params p ON pr.period_month >= p.month_from AND pr.period_month <= p.month_to
             WHERE pr.voided_at IS NULL
+            ORDER BY pr.staff_id, pr.period_month DESC, pr.id DESC
         )
         SELECT s.id AS staff_id,
                s.name AS staff_name,
@@ -2305,7 +2336,7 @@ async function loadPayrollCalculation(monthValue, db = pool) {
         LEFT JOIN adjustment_totals at ON at.staff_id = s.id
         LEFT JOIN report_snapshots rs ON rs.staff_id = s.id
         ORDER BY s.name
-    `, [month]);
+    `, [month, period.from, period.to, period.month_from, period.month_to]);
     const data = result.rows.map(row => ({
         staff_id: Number(row.staff_id),
         staff_name: row.staff_name,
@@ -2327,7 +2358,7 @@ async function loadPayrollCalculation(monthValue, db = pool) {
         payroll_status: row.payroll_status || null,
         payroll_report_id: row.payroll_report_id || null
     }));
-    return { month, data, totals: payrollTotals(data) };
+    return { month, period, data, totals: payrollTotals(data) };
 }
 
 async function loadKpiSnapshot(monthValue, db = pool) {
@@ -5744,7 +5775,10 @@ router.delete('/certifications/:id', requireHrManage, async (req, res) => {
 // GET /api/hr/salary — full salary calculation
 router.get('/salary', async (req, res) => {
     try {
-        const calculation = await loadPayrollCalculation(req.query.month);
+        const calculation = await loadPayrollCalculation(req.query.month, pool, {
+            from: req.query.from,
+            to: req.query.to
+        });
         const [periodLock, reconciliation, events] = await Promise.all([
             loadPayrollPeriodLock(calculation.month),
             loadPayrollReconciliation(calculation.month),
@@ -5753,6 +5787,7 @@ router.get('/salary', async (req, res) => {
         res.json({ success: true, ...calculation, period_lock: periodLock, reconciliation, events });
     } catch (err) {
         log.error('GET /hr/salary error', err);
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });

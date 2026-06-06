@@ -1237,17 +1237,13 @@ const Sidebar = (() => {
     }
 
     function _sidebarUserHasCreator(user = _getCurrentSidebarUser()) {
-        const roles = new Set();
-        if (user?.role) roles.add(String(user.role));
-        if (Array.isArray(user?.roles)) user.roles.forEach(value => roles.add(String(value)));
-        if (Array.isArray(user?.extraRoles)) user.extraRoles.forEach(value => roles.add(String(value)));
-        if (Array.isArray(user?.extra_roles)) user.extra_roles.forEach(value => roles.add(String(value)));
-        return roles.has('creator');
+        return String(user?.role || user?.account_role || user?.accountRole || '').trim() === 'creator';
     }
 
     function _isMaysternyaSidebarContext(user = _getCurrentSidebarUser()) {
         const api = window.CrmBusinessContext;
         if (api?.current) return api.current(user) === 'maysternya_doli';
+        if (!_sidebarUserHasCreator(user)) return false;
         const rawDefault = user?.defaultBusinessContext || user?.default_business_context || '';
         return String(rawDefault).trim().toLowerCase() === 'maysternya_doli';
     }

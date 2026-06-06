@@ -423,7 +423,7 @@
     function canAccessContext(user, ctx = currentContext()) {
         if (!ctx?.isPrivateSurface) return Boolean(user);
         if (!user) return false;
-        return userRoles(user).includes('creator');
+        return String(user.role || '').trim() === 'creator';
     }
 
     function canUseAction(action, user, ctx = currentContext()) {

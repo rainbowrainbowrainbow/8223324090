@@ -162,6 +162,22 @@ test('timeline boot binds booking handlers through explicit window exports', () 
     assert.doesNotMatch(appJs, /addEventListener\('submit',\s*handleBookingSubmit\)/);
 });
 
+test('stale cancelled booking edit falls back to a fresh create flow', () => {
+    const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const apiJs = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
+
+    assert.match(bookingJs, /function resetBookingEditStateForCreate/);
+    assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(bookingJs, /delete booking\.id/);
+    assert.match(bookingJs, /Попереднє бронювання вже скасоване або недоступне\. Створюю нове бронювання\./);
+    assert.match(bookingJs, /cancelled_booking_cannot_be_restored/);
+    assert.match(apiJs, /code: body\.code \|\| null/);
+    assert.match(apiJs, /currentStatus: body\.currentStatus \|\| null/);
+    assert.match(bookingsRoute, /code: 'cancelled_booking_cannot_be_restored'/);
+    assert.match(bookingsRoute, /currentStatus: 'cancelled'/);
+});
+
 test('second animator repair audit is dry-run by default and inserts only missing linked rows with --fix', () => {
     const script = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-second-animator-links.js'), 'utf8');
     const pkg = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');

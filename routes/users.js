@@ -110,14 +110,20 @@ function normalizeStoredArray(value) {
     return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
 }
 
+function canSwitchBusinessContextsForRole(primaryRole = '') {
+    return primaryRole === 'creator';
+}
+
 function normalizeAccountBusinessContexts(value, primaryRole = '') {
+    if (!canSwitchBusinessContextsForRole(primaryRole)) return [DEFAULT_BUSINESS_CONTEXT];
     const fallback = ['creator', 'director', 'vice_director', 'senior_manager'].includes(primaryRole)
         ? Object.keys(BUSINESS_CONTEXTS)
-        : ['event_genix'];
+        : [DEFAULT_BUSINESS_CONTEXT];
     return normalizeBusinessContextList(value, fallback).slice(0, Object.keys(BUSINESS_CONTEXTS).length);
 }
 
 function defaultBusinessContextForSelection(value, contexts, primaryRole = '') {
+    if (!canSwitchBusinessContextsForRole(primaryRole)) return DEFAULT_BUSINESS_CONTEXT;
     const selected = normalizeAccountBusinessContexts(contexts, primaryRole);
     const requested = value === undefined || value === null || value === ''
         ? null
@@ -131,6 +137,7 @@ function defaultBusinessContextForSelection(value, contexts, primaryRole = '') {
 }
 
 function businessContextsWithDefault(contexts, defaultContext, primaryRole = '') {
+    if (!canSwitchBusinessContextsForRole(primaryRole)) return [DEFAULT_BUSINESS_CONTEXT];
     const selected = normalizeAccountBusinessContexts(contexts, primaryRole);
     const key = normalizeBusinessContext(defaultContext || defaultBusinessContextForSelection(null, selected, primaryRole));
     if (BUSINESS_CONTEXTS[key] && !selected.includes(key)) selected.push(key);

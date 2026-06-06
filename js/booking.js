@@ -2161,6 +2161,18 @@ async function closeBookingPanel(force = false) {
     return true;
 }
 
+function resetBookingEditStateForCreate() {
+    AppState.editingBookingId = null;
+    AppState.editingBookingUpdatedAt = null;
+    const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
+    const btnSubmit = document.querySelector('#bookingForm .btn-submit');
+    if (panelH3) panelH3.textContent = isMaysternyaBookingContext() ? getTimelineBookingPresentation().bookingTitle : 'Нове бронювання';
+    if (btnSubmit) {
+        btnSubmit.textContent = isMaysternyaBookingContext() ? getTimelineBookingPresentation().submitLabel : 'Додати бронювання';
+        delete btnSubmit.dataset.originalText;
+    }
+}
+
 let _programIconsHash = null;
 const PROGRAM_CATEGORY_FILTERS = [
     { id: 'all', label: 'Усі', categories: [] },
@@ -3765,24 +3777,41 @@ async function handleBookingSubmit(e) {
     try {
         const booking = buildBookingObject(formData, formData.program);
 
-        if (AppState.editingBookingId) {
+        const editingBookingId = AppState.editingBookingId || null;
+        let oldBooking = null;
+        let shouldUpdateExistingBooking = Boolean(editingBookingId);
+
+        if (editingBookingId) {
             // ===== РЕЖИМ РЕДАГУВАННЯ (v5.5) =====
-            booking.id = AppState.editingBookingId;
+            booking.id = editingBookingId;
 
             // Зберегти оригінального автора
-            const oldBookings = await getBookingsForDate(AppState.selectedDate);
-            const oldBooking = oldBookings.find(b => b.id === booking.id);
+            const oldBookings = await getBookingsForDate(AppState.selectedDate, { force: true });
+            oldBooking = oldBookings.find(b => b.id === booking.id);
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
                 // v8.3.2: Don't restore old extraData — respect user's choice to clear sizes
+            } else {
+                resetBookingEditStateForCreate();
+                delete booking.id;
+                shouldUpdateExistingBooking = false;
+                showNotification('Попереднє бронювання вже скасоване або недоступне. Створюю нове бронювання.', 'warning');
             }
+        }
 
+        if (shouldUpdateExistingBooking) {
             const updateResult = await apiUpdateBooking(booking.id, booking);
             if (updateResult && updateResult.success === false) {
                 // Optimistic locking: check if it's a version conflict
                 if (updateResult.conflict) {
                     await handleOptimisticLockConflict(updateResult, booking);
+                    unlockSubmitBtn();
+                    return;
+                }
+                if (updateResult.code === 'cancelled_booking_cannot_be_restored' || updateResult.currentStatus === 'cancelled') {
+                    resetBookingEditStateForCreate();
+                    showNotification('Це бронювання вже скасоване. Режим редагування скинуто, створіть нове бронювання.', 'warning');
                     unlockSubmitBtn();
                     return;
                 }
@@ -3807,6 +3836,14 @@ async function handleBookingSubmit(e) {
             await renderTimeline();
             showNotification('Бронювання оновлено!', 'success');
         } else {
+            if (editingBookingId) {
+                const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
+                if (bookingDateTime < new Date()) {
+                    showNotification('Неможливо створити нове бронювання в минулому. Оберіть майбутній час.', 'error');
+                    unlockSubmitBtn();
+                    return;
+                }
+            }
             // ===== РЕЖИМ СТВОРЕННЯ (v5.7: transactional with linked) =====
             let createResult;
 

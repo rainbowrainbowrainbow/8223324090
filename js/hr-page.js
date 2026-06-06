@@ -958,7 +958,17 @@ async function initPage() {
 function initNewTabs() {
     document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
     document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
-    document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
+    document.getElementById('salaryMonth')?.addEventListener('change', () => {
+        syncSalaryPeriodInputsToMonth();
+        loadSalary();
+    });
+    document.getElementById('salaryDateFrom')?.addEventListener('change', applySalaryPeriodFilter);
+    document.getElementById('salaryDateTo')?.addEventListener('change', applySalaryPeriodFilter);
+    document.getElementById('btnApplySalaryPeriod')?.addEventListener('click', applySalaryPeriodFilter);
+    document.getElementById('btnResetSalaryPeriod')?.addEventListener('click', () => {
+        syncSalaryPeriodInputsToMonth();
+        loadSalary();
+    });
     document.getElementById('zrsMonth')?.addEventListener('change', loadZrs);
     document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
@@ -6243,13 +6253,75 @@ function ensurePayrollMonthOptions(monthSelect, preferredValue = '') {
     }
 }
 
+function payrollMonthBounds(month) {
+    if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return { from: '', to: '' };
+    const [year, mon] = month.split('-').map(Number);
+    const lastDay = new Date(year, mon, 0).getDate();
+    return {
+        from: `${month}-01`,
+        to: `${month}-${String(lastDay).padStart(2, '0')}`
+    };
+}
+
+function syncSalaryPeriodInputsToMonth(month = currentSalaryMonth()) {
+    const bounds = payrollMonthBounds(month);
+    const fromInput = document.getElementById('salaryDateFrom');
+    const toInput = document.getElementById('salaryDateTo');
+    if (fromInput && bounds.from) fromInput.value = bounds.from;
+    if (toInput && bounds.to) toInput.value = bounds.to;
+}
+
+function ensureSalaryPeriodInputs(month = currentSalaryMonth()) {
+    const bounds = payrollMonthBounds(month);
+    const fromInput = document.getElementById('salaryDateFrom');
+    const toInput = document.getElementById('salaryDateTo');
+    if (fromInput && !fromInput.value && bounds.from) fromInput.value = bounds.from;
+    if (toInput && !toInput.value && bounds.to) toInput.value = bounds.to;
+}
+
+function currentSalaryPeriod() {
+    const month = currentSalaryMonth();
+    ensureSalaryPeriodInputs(month);
+    const from = document.getElementById('salaryDateFrom')?.value || '';
+    const to = document.getElementById('salaryDateTo')?.value || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+        showNotification('Оберіть коректний період дат', 'error');
+        return null;
+    }
+    if (from > to) {
+        showNotification('Дата початку не може бути пізніше дати завершення', 'error');
+        return null;
+    }
+    const bounds = payrollMonthBounds(month);
+    return {
+        month,
+        from,
+        to,
+        isCustom: from !== bounds.from || to !== bounds.to
+    };
+}
+
+function salaryPeriodQueryString() {
+    const period = currentSalaryPeriod();
+    if (!period) return '';
+    return new URLSearchParams({ month: period.month, from: period.from, to: period.to }).toString();
+}
+
+function applySalaryPeriodFilter() {
+    if (!currentSalaryPeriod()) return;
+    loadSalary();
+}
+
 async function loadSalary() {
     const monthSelect = document.getElementById('salaryMonth');
     ensurePayrollMonthOptions(monthSelect);
     const month = monthSelect?.value || '';
+    ensureSalaryPeriodInputs(month);
     const zrsMonth = document.getElementById('zrsMonth');
     if (zrsMonth) ensurePayrollMonthOptions(zrsMonth, month);
-    const data = await hrFetch(`/salary?month=${month}`);
+    const query = salaryPeriodQueryString();
+    if (!query) return;
+    const data = await hrFetch(`/salary?${query}`);
     if (!data || !data.success) return;
     renderSalary(data);
 }
@@ -6275,6 +6347,12 @@ function currentSalaryMonth() {
 
 function currentZrsMonth() {
     return document.getElementById('zrsMonth')?.value || currentSalaryMonth();
+}
+
+function formatSalaryPeriodDate(value) {
+    if (!value) return '';
+    const [year, month, day] = String(value).split('-');
+    return [day, month, year].filter(Boolean).join('.');
 }
 
 function formatPayrollEventTime(value) {
@@ -6318,11 +6396,17 @@ function renderSalaryPeriodControls(data = {}) {
     const lock = data.period_lock || { is_locked: false };
     const reconciliation = data.reconciliation || {};
     const events = Array.isArray(data.events) ? data.events : [];
+    const period = data.period || {};
+    const isCustomPeriod = period.mode === 'range';
+    const periodLabel = period.from && period.to
+        ? `${formatSalaryPeriodDate(period.from)} – ${formatSalaryPeriodDate(period.to)}`
+        : '';
     const statusEl = document.getElementById('salaryPeriodStatus');
     const reconciliationEl = document.getElementById('salaryReconciliation');
     const eventsEl = document.getElementById('salaryPeriodEvents');
     const commitBtn = document.getElementById('btnCommitSalary');
     const adjustmentBtn = document.getElementById('btnAddAdjustment');
+    const refreshBtn = document.getElementById('btnRefreshSalaryReconciliation');
     const lockBtn = document.getElementById('btnLockSalaryPeriod');
     const unlockBtn = document.getElementById('btnUnlockSalaryPeriod');
     const reverseBtn = document.getElementById('btnReverseSalary');
@@ -6331,18 +6415,26 @@ function renderSalaryPeriodControls(data = {}) {
     if (statusEl) {
         statusEl.classList.toggle('is-locked', isLocked);
         const actor = isLocked && lock.locked_by ? ` · ${escapeHtml(lock.locked_by)}` : '';
-        statusEl.innerHTML = isLocked
+        statusEl.innerHTML = isCustomPeriod
+            ? `Фільтр періоду: ${escapeHtml(periodLabel)} · дії з нарахуванням доступні для повного місяця`
+            : isLocked
             ? `Період закрито${actor}${lock.note ? ` · ${escapeHtml(lock.note)}` : ''}`
             : `Період відкрито${lock.unlocked_by ? ` · ${escapeHtml(lock.unlocked_by)}` : ''}`;
     }
 
-    if (commitBtn) commitBtn.disabled = isLocked;
-    if (adjustmentBtn) adjustmentBtn.disabled = isLocked;
+    if (commitBtn) commitBtn.disabled = isLocked || isCustomPeriod;
+    if (adjustmentBtn) adjustmentBtn.disabled = isLocked || isCustomPeriod;
+    if (refreshBtn) refreshBtn.disabled = isCustomPeriod;
     if (lockBtn) lockBtn.hidden = isLocked;
     if (unlockBtn) unlockBtn.hidden = !isLocked;
-    if (reverseBtn) reverseBtn.disabled = Number(reconciliation.finance_salary_count || 0) === 0 && Number(reconciliation.payroll_count || 0) === 0;
+    if (lockBtn) lockBtn.disabled = isCustomPeriod;
+    if (unlockBtn) unlockBtn.disabled = isCustomPeriod;
+    if (reverseBtn) reverseBtn.disabled = isCustomPeriod || (Number(reconciliation.finance_salary_count || 0) === 0 && Number(reconciliation.payroll_count || 0) === 0);
 
     if (reconciliationEl) {
+        if (isCustomPeriod) {
+            reconciliationEl.innerHTML = `<div class="hr-salary-period-note">Показано розрахунок за обраний календарний період. Звірка, закриття, сторно і нарахування лишаються привʼязаними до місяця ${escapeHtml(data.month || '')}.</div>`;
+        } else {
         const variance = Number(reconciliation.variance || 0);
         const statusClass = reconciliation.status === 'ok' ? 'green' : 'yellow';
         reconciliationEl.innerHTML = `
@@ -6354,10 +6446,11 @@ function renderSalaryPeriodControls(data = {}) {
                 <div class="hr-summary-card"><div class="value">${Number(reconciliation.orphan_salary_count || 0) + Number(reconciliation.missing_finance_count || 0)}</div><div class="label">Хвости</div></div>
             </div>
         `;
+        }
     }
 
     if (eventsEl) {
-        eventsEl.innerHTML = renderSalaryPeriodEvents(events);
+        eventsEl.innerHTML = isCustomPeriod ? '' : renderSalaryPeriodEvents(events);
     }
 }
 
@@ -6988,6 +7081,11 @@ window.showStartOnboarding = async function() {
 async function refreshSalaryReconciliation() {
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const period = currentSalaryPeriod();
+    if (period?.isCustom) {
+        showNotification('Звірка доступна для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
     const data = await hrFetch(`/salary/reconciliation?month=${month}`);
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося оновити звірку', 'error');
@@ -7000,6 +7098,11 @@ async function refreshSalaryReconciliation() {
 async function setSalaryPeriodLock(locked) {
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const period = currentSalaryPeriod();
+    if (period?.isCustom) {
+        showNotification('Закриття періоду доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
     const okText = locked ? 'Закрити' : 'Відкрити';
     const message = locked
         ? `Закрити зарплатний період ${month}? Після цього коригування і повторне нарахування будуть заблоковані.`
@@ -7018,6 +7121,11 @@ async function setSalaryPeriodLock(locked) {
 async function reverseSalaryPeriod() {
     const month = currentSalaryMonth();
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const period = currentSalaryPeriod();
+    if (period?.isCustom) {
+        showNotification('Сторно доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
     const reason = await promptModal(`Причина сторно зарплати за ${month}`, {
         placeholder: 'Наприклад: виправлення ставок або помилкове нарахування',
         defaultValue: 'Корекція зарплатного періоду'
@@ -7037,6 +7145,11 @@ async function reverseSalaryPeriod() {
 window.commitSalaries = async function commitSalaries() {
     const month = document.getElementById('salaryMonth')?.value;
     if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const period = currentSalaryPeriod();
+    if (period?.isCustom) {
+        showNotification('Нарахування зарплати доступне тільки для повного місяця. Натисніть «Місяць».', 'warning');
+        return;
+    }
     if (!await confirmModal(`Нарахувати зарплати за ${month}?`, { type: 'danger', okText: 'Нарахувати' })) return;
     const data = await hrFetch('/salary/commit', 'POST', { month });
     if (data?.success) {

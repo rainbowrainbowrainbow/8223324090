@@ -566,7 +566,8 @@ test('account security journal records semantic account, password, role, login, 
             defaultBusinessContext: 'dar'
         }, creatorToken());
         assert.equal(create.status, 200);
-        assert.equal(create.data.user.default_business_context, 'dar');
+        assert.deepEqual(create.data.user.business_contexts, ['event_genix']);
+        assert.equal(create.data.user.default_business_context, 'event_genix');
         const userId = create.data.user.id;
 
         const wrongPassword = await request(baseUrl, 'POST', '/api/auth/login', {
@@ -601,8 +602,8 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(accessUpdate.data.pageAllowlist, ['/reports', '/tasks']);
         assert.deepEqual(accessUpdate.data.actionAllowlist, ['delete_booking']);
         assert.deepEqual(accessUpdate.data.actionDenylist, []);
-        assert.deepEqual(accessUpdate.data.businessContexts, ['dar', 'crm']);
-        assert.equal(accessUpdate.data.defaultBusinessContext, 'crm');
+        assert.deepEqual(accessUpdate.data.businessContexts, ['event_genix']);
+        assert.equal(accessUpdate.data.defaultBusinessContext, 'event_genix');
 
         const revokedRefresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
         assert.equal(revokedRefresh.status, 401);
@@ -615,8 +616,8 @@ test('account security journal records semantic account, password, role, login, 
 
         const updatedAccessProtected = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, accessLogin.data.accessToken);
         assert.equal(updatedAccessProtected.status, 200);
-        assert.deepEqual(updatedAccessProtected.data.user.businessContexts, ['dar', 'crm']);
-        assert.equal(updatedAccessProtected.data.user.defaultBusinessContext, 'crm');
+        assert.deepEqual(updatedAccessProtected.data.user.businessContexts, ['event_genix']);
+        assert.equal(updatedAccessProtected.data.user.defaultBusinessContext, 'event_genix');
         assert.deepEqual(updatedAccessProtected.data.user.extraRoles, ['manager']);
 
         const impersonate = await request(baseUrl, 'POST', '/api/auth/impersonate', {
@@ -694,14 +695,14 @@ test('account security journal records semantic account, password, role, login, 
         assert.deepEqual(roleEvent.details.newActionAllowlist, ['delete_booking']);
         assert.deepEqual(roleEvent.details.oldActionDenylist, []);
         assert.deepEqual(roleEvent.details.newActionDenylist, []);
-        assert.deepEqual(roleEvent.details.oldBusinessContexts, ['event_genix', 'dar']);
-        assert.deepEqual(roleEvent.details.newBusinessContexts, ['dar', 'crm']);
-        assert.equal(roleEvent.details.oldDefaultBusinessContext, 'dar');
-        assert.equal(roleEvent.details.newDefaultBusinessContext, 'crm');
+        assert.deepEqual(roleEvent.details.oldBusinessContexts, ['event_genix']);
+        assert.deepEqual(roleEvent.details.newBusinessContexts, ['event_genix']);
+        assert.equal(roleEvent.details.oldDefaultBusinessContext, 'event_genix');
+        assert.equal(roleEvent.details.newDefaultBusinessContext, 'event_genix');
         assert.equal(roleEvent.details.changed.pageAllowlist, true);
         assert.equal(roleEvent.details.changed.actionAllowlist, true);
-        assert.equal(roleEvent.details.changed.businessContexts, true);
-        assert.equal(roleEvent.details.changed.defaultBusinessContext, true);
+        assert.equal(roleEvent.details.changed.businessContexts, false);
+        assert.equal(roleEvent.details.changed.defaultBusinessContext, false);
 
         const missingLoginEvent = fakePool.state.securityEvents.find(event => event.event_type === 'login_failed' && event.reason === 'user_not_found');
         assert.ok(missingLoginEvent, 'nonexistent login attempt must be recorded without a subject account');

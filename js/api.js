@@ -123,10 +123,7 @@ const CRM_BUSINESS_CONTEXT_ALIASES = Object.freeze({
     'срм': 'crm'
 });
 const CRM_BUSINESS_SWITCH_ROLES = Object.freeze([
-    'creator',
-    'director',
-    'vice_director',
-    'senior_manager'
+    'creator'
 ]);
 const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
     dashboard: { id: 'dashboard', label: 'Dashboard', paths: ['/dashboard'] },
@@ -356,8 +353,7 @@ function crmBusinessAssignedContexts(user) {
 }
 
 function crmBusinessUserCanSwitch(user) {
-    const roles = crmBusinessRoles(user);
-    return CRM_BUSINESS_SWITCH_ROLES.some(role => roles.includes(role));
+    return String(user?.role || '').trim() === 'creator';
 }
 
 function crmBusinessExplicitForcedContext(user) {
@@ -380,6 +376,7 @@ function crmBusinessExplicitDefaultContext(user) {
 
 function crmBusinessAllowedContexts(user) {
     if (!user) return [CRM_BUSINESS_DEFAULT_CONTEXT];
+    if (!crmBusinessUserCanSwitch(user)) return [CRM_BUSINESS_DEFAULT_CONTEXT];
     const assigned = crmBusinessAssignedContexts(user);
     if (assigned.length) return assigned;
     if (crmBusinessUserCanSwitch(user)) return Object.keys(CRM_BUSINESS_CONTEXTS);
@@ -413,6 +410,14 @@ function resolveCrmBusinessDefaultContext(user, allowed = crmBusinessAllowedCont
 }
 
 function resolveCrmBusinessPolicy(user) {
+    if (user && !crmBusinessUserCanSwitch(user)) {
+        return {
+            canSwitch: false,
+            forced: CRM_BUSINESS_DEFAULT_CONTEXT,
+            allowed: [CRM_BUSINESS_DEFAULT_CONTEXT],
+            defaultContext: CRM_BUSINESS_DEFAULT_CONTEXT
+        };
+    }
     const allowed = crmBusinessAllowedContexts(user);
     const serverPolicy = user?.businessContextPolicy || user?.business_context_policy || null;
     if (serverPolicy && Array.isArray(serverPolicy.allowed)) {
@@ -1515,7 +1520,13 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
         }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return {
+                success: false,
+                error: body.error || 'API error',
+                code: body.code || null,
+                status: response.status,
+                currentStatus: body.currentStatus || null
+            };
         }
         return await response.json();
     } catch (err) {

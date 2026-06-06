@@ -87,7 +87,7 @@ function canAccessTimelineContext(user, context) {
     if (!VALID_TIMELINE_CONTEXTS.has(normalized)) return false;
     if (!canAccessBusinessContext(user, normalized)) return false;
     if (!PRIVATE_TIMELINE_CONTEXTS.has(normalized)) return true;
-    return userRoles(user).includes('creator');
+    return String(user.role || '').trim() === 'creator';
 }
 
 function canUseTimelineAction(user, context, action) {

@@ -59,10 +59,7 @@ const BUSINESS_CONTEXT_ALIASES = Object.freeze({
   'срм': 'crm'
 });
 const BUSINESS_CONTEXT_SWITCH_ROLES = Object.freeze([
-  'creator',
-  'director',
-  'vice_director',
-  'senior_manager'
+  'creator'
 ]);
 const BUSINESS_SCOPE_SINGLE = 'single';
 const BUSINESS_SCOPE_MULTI = 'multi';
@@ -186,8 +183,7 @@ function businessContextWasRequested(req) {
 }
 
 function isBusinessContextSwitchRole(user) {
-  const roles = roleList(user);
-  return BUSINESS_CONTEXT_SWITCH_ROLES.some(role => roles.includes(role));
+  return String(user?.role || '').trim() === 'creator';
 }
 
 function explicitForcedBusinessContext(user) {
@@ -210,6 +206,7 @@ function explicitDefaultBusinessContext(user) {
 
 function allowedBusinessContextsForUser(user) {
   if (!user) return [];
+  if (!isBusinessContextSwitchRole(user)) return [DEFAULT_BUSINESS_CONTEXT];
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
   if (assigned.length) return assigned;
   if (isBusinessContextSwitchRole(user)) return Object.keys(BUSINESS_CONTEXTS);
@@ -242,6 +239,7 @@ function resolveDefaultBusinessContext(user, allowed = allowedBusinessContextsFo
 
 function resolveForcedBusinessContext(user) {
   if (!user) return null;
+  if (!isBusinessContextSwitchRole(user)) return DEFAULT_BUSINESS_CONTEXT;
   const allowed = allowedBusinessContextsForUser(user);
   const explicit = explicitForcedBusinessContext(user);
   if (explicit) return normalizeBusinessContext(explicit);

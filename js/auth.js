@@ -821,7 +821,9 @@ function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
     if (typeof window !== 'undefined' && window.CrmBusinessContext?.defaultTimelineRouteForUser) {
         return window.CrmBusinessContext.defaultTimelineRouteForUser(user);
     }
-    const rawDefault = String(user?.defaultBusinessContext || user?.default_business_context || '').trim().toLowerCase();
+    const rawDefault = getRealUserRole(user) === 'creator'
+        ? String(user?.defaultBusinessContext || user?.default_business_context || '').trim().toLowerCase()
+        : '';
     const business = rawDefault === 'maysternya_doli'
         ? 'maysternya_doli'
         : (rawDefault === 'dar' ? 'dar' : 'event_genix');
@@ -888,8 +890,13 @@ function getGrantedExtraRoles(user = AppState.currentUser) {
         .filter(role => role && role !== primary)));
 }
 
+function canSwitchWorkingRoles(user = AppState.currentUser) {
+    return getRealUserRole(user) === 'creator';
+}
+
 function getAvailableWorkingRoles(user = AppState.currentUser) {
     const primary = getRealUserRole(user);
+    if (!canSwitchWorkingRoles(user)) return primary ? [primary] : [];
     return Array.from(new Set([primary, ...getGrantedExtraRoles(user)].filter(Boolean)));
 }
 
@@ -920,7 +927,7 @@ function getActiveWorkingRole(user = AppState.currentUser) {
 }
 
 function canPreviewRoles(user = AppState.currentUser) {
-    return ['creator', 'director'].includes(getRealUserRole(user));
+    return getRealUserRole(user) === 'creator';
 }
 
 function getPreviewableRoles(user = AppState.currentUser) {

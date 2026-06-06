@@ -7566,6 +7566,64 @@ body.dark-mode .hr-staff-foundation-danger {
     border-color: rgba(239, 68, 68, 0.32);
 }
 
+/* v0.73.78: HR salary calendar period picker lives in shared CSS, not inline HR debt. */
+.hr-salary-period-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.04);
+}
+
+.hr-salary-date-input {
+    min-width: 142px;
+    height: 40px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 8px;
+    padding: 0 10px;
+    background: var(--surface);
+    color: var(--gray-800);
+    font-weight: 800;
+}
+
+.hr-salary-date-separator {
+    color: var(--gray-500);
+    font-weight: 900;
+}
+
+.hr-salary-period-note {
+    padding: 10px 12px;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    border-radius: 8px;
+    background: rgba(20, 184, 166, 0.08);
+    color: var(--gray-700);
+    font-weight: 800;
+}
+
+body.dark-mode .hr-salary-period-picker,
+[data-theme="dark"] .hr-salary-period-picker {
+    background: rgba(15, 23, 42, 0.58);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.dark-mode .hr-salary-date-input,
+[data-theme="dark"] .hr-salary-date-input {
+    background: var(--gray-900);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: var(--gray-100);
+    color-scheme: dark;
+}
+
+body.dark-mode .hr-salary-period-note,
+[data-theme="dark"] .hr-salary-period-note {
+    background: rgba(20, 184, 166, 0.12);
+    border-color: rgba(45, 212, 191, 0.25);
+    color: var(--success-light);
+}
+
 @media (max-width: 768px) {
     .hr-staff-foundation-grid {
         grid-template-columns: 1fr;

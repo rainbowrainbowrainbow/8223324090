@@ -62,26 +62,38 @@ test('business scope request contract supports single, multi, and all-business m
   );
 });
 
-test('switch policy is centralized for director-like roles', () => {
+test('business switch policy is creator-only and locks director-like roles to Park', () => {
   assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('creator'));
-  assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'));
-  const policy = resolveBusinessContextPolicy({ role: 'director' });
-  assert.equal(policy.canSwitch, true);
-  assert.deepEqual(policy.allowed.sort(), ['crm', 'dar', 'event_genix', 'maysternya_doli'].sort());
-  assert.equal(canAccessBusinessContext({ role: 'director' }, 'maysternya_doli'), true);
+  assert.equal(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'), false);
+
+  const creatorPolicy = resolveBusinessContextPolicy({ role: 'creator' });
+  assert.equal(creatorPolicy.canSwitch, true);
+  assert.deepEqual(creatorPolicy.allowed.sort(), ['crm', 'dar', 'event_genix', 'maysternya_doli'].sort());
+  assert.equal(canAccessBusinessContext({ role: 'creator' }, 'maysternya_doli'), true);
+
+  const directorPolicy = resolveBusinessContextPolicy({ role: 'director', business_contexts: ['event_genix', 'dar'] });
+  assert.equal(directorPolicy.canSwitch, false);
+  assert.deepEqual(directorPolicy.allowed, ['event_genix']);
+  assert.equal(canAccessBusinessContext({ role: 'director', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
 });
 
-test('account business_contexts limit switchers to assigned businesses', () => {
+test('account business_contexts only limit creator switchers; non-creators stay on Park', () => {
+  const creatorPolicy = resolveBusinessContextPolicy({ role: 'creator', business_contexts: ['event_genix', 'dar'] });
+  assert.equal(creatorPolicy.canSwitch, true);
+  assert.deepEqual(creatorPolicy.allowed, ['event_genix', 'dar']);
+  assert.equal(canAccessBusinessContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+  assert.equal(canAccessBusinessContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'crm'), false);
+
   const policy = resolveBusinessContextPolicy({ role: 'manager', business_contexts: ['event_genix', 'dar'] });
-  assert.equal(policy.canSwitch, true);
-  assert.deepEqual(policy.allowed, ['event_genix', 'dar']);
-  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
-  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'crm'), false);
+  assert.equal(policy.canSwitch, false);
+  assert.deepEqual(policy.allowed, ['event_genix']);
+  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
+  assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'event_genix'), true);
 });
 
-test('default_business_context chooses the initial switcher value without narrowing access', () => {
+test('default_business_context is honored only for creator switchers', () => {
   const user = {
-    role: 'manager',
+    role: 'creator',
     business_contexts: ['event_genix', 'maysternya_doli'],
     default_business_context: 'maysternya_doli'
   };
@@ -91,11 +103,18 @@ test('default_business_context chooses the initial switcher value without narrow
   assert.equal(policy.defaultContext, 'maysternya_doli');
   assert.equal(canAccessBusinessContext(user, 'event_genix'), true);
   assert.equal(canAccessBusinessContext(user, 'maysternya_doli'), true);
+
+  const manager = { ...user, role: 'manager' };
+  const managerPolicy = resolveBusinessContextPolicy(manager);
+  assert.equal(managerPolicy.canSwitch, false);
+  assert.deepEqual(managerPolicy.allowed, ['event_genix']);
+  assert.equal(managerPolicy.defaultContext, 'event_genix');
+  assert.equal(canAccessBusinessContext(manager, 'maysternya_doli'), false);
 });
 
 test('all-business and multi-business scopes are read-only and sanitize to allowed contexts', () => {
   const user = {
-    role: 'manager',
+    role: 'creator',
     business_contexts: ['event_genix', 'maysternya_doli', 'crm'],
     default_business_context: 'maysternya_doli'
   };
@@ -128,7 +147,7 @@ test('all-business and multi-business scopes are read-only and sanitize to allow
 
 test('global write guard blocks aggregate business scope mutations before routes run', async () => {
   const user = {
-    role: 'manager',
+    role: 'creator',
     business_contexts: ['event_genix', 'maysternya_doli']
   };
   const allResult = await runBusinessScopeWriteGuard({
@@ -170,7 +189,7 @@ test('global write guard allows single-business writes and scope switch audit lo
     method: 'POST',
     path: '/tasks',
     user,
-    headers: { 'x-business-scope': BUSINESS_SCOPE_SINGLE, 'x-business-context': 'maysternya_doli' },
+    headers: { 'x-business-scope': BUSINESS_SCOPE_SINGLE, 'x-business-context': 'event_genix' },
     query: {},
     body: {}
   });
@@ -216,17 +235,17 @@ test('business scope refuses disallowed aggregate or explicit tenant requests', 
   assert.equal(disallowed.reason, 'business_context_unavailable');
 });
 
-test('locked roles are forced to explicit or allowlisted business context', () => {
+test('locked roles ignore explicit or allowlisted business context and stay on Park', () => {
   const forced = resolveBusinessContextPolicy({ role: 'manager', forcedBusinessContext: 'maysternya_doli' });
   assert.equal(forced.canSwitch, false);
-  assert.equal(forced.defaultContext, 'maysternya_doli');
-  assert.deepEqual(forced.allowed, ['maysternya_doli']);
-  assert.equal(canAccessBusinessContext({ role: 'manager', forcedBusinessContext: 'maysternya_doli' }, 'maysternya_doli'), true);
-  assert.equal(canAccessBusinessContext({ role: 'manager', forcedBusinessContext: 'maysternya_doli' }, 'event_genix'), false);
+  assert.equal(forced.defaultContext, 'event_genix');
+  assert.deepEqual(forced.allowed, ['event_genix']);
+  assert.equal(canAccessBusinessContext({ role: 'manager', forcedBusinessContext: 'maysternya_doli' }, 'maysternya_doli'), false);
+  assert.equal(canAccessBusinessContext({ role: 'manager', forcedBusinessContext: 'maysternya_doli' }, 'event_genix'), true);
 
   const allowlisted = resolveBusinessContextPolicy({ role: 'manager', pageAllowlist: ['/maysternya-doli'] });
-  assert.equal(allowlisted.defaultContext, 'maysternya_doli');
-  assert.deepEqual(allowlisted.allowed, ['maysternya_doli']);
+  assert.equal(allowlisted.defaultContext, 'event_genix');
+  assert.deepEqual(allowlisted.allowed, ['event_genix']);
 });
 
 test('ordinary locked roles stay in the default business context', () => {

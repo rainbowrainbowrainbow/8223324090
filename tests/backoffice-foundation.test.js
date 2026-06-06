@@ -75,7 +75,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(sidebar, /activeHashes: \['today', 'schedule', 'reports'\]/);
         assert.match(sidebar, /href: '\/hr#team',\s+icon: '👥', label: 'Команда'/);
         assert.match(sidebar, /activeHashes: \['team', 'workers', 'interns', 'reserve', 'blacklist'\]/);
-        assert.match(sidebar, /href: '\/hr#payroll'[\s\S]*label: 'ЗП та KPI'[\s\S]*activeHashes: \['payroll', 'salary', 'kpi'\]/);
+        assert.match(sidebar, /href: '\/hr#payroll'[\s\S]*label: 'ЗП та KPI'[\s\S]*activeHashes: \['payroll', 'salary', 'zrs', 'kpi'\]/);
         assert.doesNotMatch(sidebar, /href: '\/hr#workers'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#interns'/);
         assert.doesNotMatch(sidebar, /href: '\/hr#reserve'/);

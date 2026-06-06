@@ -261,11 +261,13 @@ function buildAdjustmentLines(adjustments) {
     const tip = toNumber(adjustments.tip, 0);
     const deduction = toNumber(adjustments.deduction, 0);
     const penalty = toNumber(adjustments.penalty, 0);
+    const advance = toNumber(adjustments.advance, 0);
 
     if (bonus) result.push(line('bonus', 'adjustment', 'Бонуси з HR', bonus, { source: 'salary_adjustments' }));
     if (tip) result.push(line('bonus', 'adjustment', 'Чайові з HR', tip, { source: 'salary_adjustments' }));
     if (deduction) result.push(line('deduction', 'adjustment', 'Утримання з HR', deduction, { source: 'salary_adjustments' }));
     if (penalty) result.push(line('deduction', 'adjustment', 'Депреміювання з HR', penalty, { source: 'salary_adjustments' }));
+    if (advance) result.push(line('advance', 'adjustment', 'ЗРС з HR', advance, { source: 'salary_adjustments' }));
     return result;
 }
 
@@ -386,7 +388,7 @@ async function fetchAdjustments(month) {
         }
         const map = new Map();
         for (const row of result.rows) {
-            if (!map.has(row.staff_id)) map.set(row.staff_id, { bonus: 0, tip: 0, deduction: 0, penalty: 0 });
+            if (!map.has(row.staff_id)) map.set(row.staff_id, { bonus: 0, tip: 0, deduction: 0, penalty: 0, advance: 0 });
             map.get(row.staff_id)[row.type] = toNumber(row.total, 0);
         }
         return map;

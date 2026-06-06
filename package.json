@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.70",
+  "version": "0.73.71",
   "eventGenix": {
-    "releaseLabel": "Deploy: графіки з даними"
+    "releaseLabel": "HR: ЗРС у payroll"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

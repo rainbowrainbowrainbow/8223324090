@@ -1850,8 +1850,9 @@ function payrollTotals(rows = []) {
         total_overtime: acc.total_overtime + Number(row.overtime_pay || 0),
         total_bonuses: acc.total_bonuses + Number(row.bonuses || 0) + Number(row.tips || 0),
         total_deductions: acc.total_deductions + Number(row.deductions || 0) + Number(row.penalties || 0),
+        total_advances: acc.total_advances + Number(row.advances || 0),
         total_salary: acc.total_salary + Number(row.total_salary || 0)
-    }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 });
+    }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_advances: 0, total_salary: 0 });
 }
 
 function payrollActor(user = {}) {
@@ -2125,7 +2126,8 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'bonus'), 0)::numeric AS bonuses,
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'tip'), 0)::numeric AS tips,
                    COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'deduction'), 0)::numeric AS deductions,
-                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'penalty'), 0)::numeric AS penalties
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'penalty'), 0)::numeric AS penalties,
+                   COALESCE(SUM(sa.amount) FILTER (WHERE sa.type = 'advance'), 0)::numeric AS advances
             FROM salary_adjustments sa
             JOIN params p ON sa.month = p.month
             GROUP BY sa.staff_id
@@ -2151,7 +2153,8 @@ async function loadPayrollCalculation(monthValue, db = pool) {
                ROUND(COALESCE(at.tips, 0))::int AS tips,
                ROUND(COALESCE(at.deductions, 0))::int AS deductions,
                ROUND(COALESCE(at.penalties, 0))::int AS penalties,
-               ROUND(COALESCE(tt.base_salary, 0) + COALESCE(tt.overtime_pay, 0) + COALESCE(at.bonuses, 0) + COALESCE(at.tips, 0) - COALESCE(at.deductions, 0) - COALESCE(at.penalties, 0))::int AS total_salary,
+               ROUND(COALESCE(at.advances, 0))::int AS advances,
+               ROUND(COALESCE(tt.base_salary, 0) + COALESCE(tt.overtime_pay, 0) + COALESCE(at.bonuses, 0) + COALESCE(at.tips, 0) - COALESCE(at.deductions, 0) - COALESCE(at.penalties, 0) - COALESCE(at.advances, 0))::int AS total_salary,
                rs.payroll_status,
                rs.payroll_report_id
         FROM active_staff s
@@ -2176,6 +2179,7 @@ async function loadPayrollCalculation(monthValue, db = pool) {
         tips: Number(row.tips || 0),
         deductions: Number(row.deductions || 0),
         penalties: Number(row.penalties || 0),
+        advances: Number(row.advances || 0),
         total_salary: Number(row.total_salary || 0),
         payroll_status: row.payroll_status || null,
         payroll_report_id: row.payroll_report_id || null
@@ -5386,8 +5390,13 @@ router.get('/salary', async (req, res) => {
 router.post('/salary/adjustment', requireHrManage, async (req, res) => {
     try {
         const { staff_id, month, type, amount, reason, template_id, violation_date, evidence_note, evidence_url } = req.body;
-        if (!staff_id || !month || !type || amount === undefined) {
+        const rawType = String(type || '').trim().toLowerCase();
+        const adjustmentType = rawType === 'zrs' ? 'advance' : rawType;
+        if (!staff_id || !month || !adjustmentType || amount === undefined) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
+        }
+        if (!['bonus', 'deduction', 'penalty', 'tip', 'advance'].includes(adjustmentType)) {
+            return res.status(400).json({ success: false, error: 'Невідомий тип коригування зарплати' });
         }
 
         const payrollMonth = requirePayrollMonth(month);
@@ -5395,13 +5404,16 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
         await assertPayrollPeriodOpen(payrollMonth);
 
         let finalReason = reason;
-        let finalAmount = Number(amount);
+        let finalAmount = Math.abs(Number(amount));
+        if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+            return res.status(400).json({ success: false, error: 'Сума має бути більшою за 0' });
+        }
         let ruleCode = null, disciplineCategory = null, severity = null;
         let repeatIndex = 0, decisionMode = 'custom', needsReview = false;
-        let tplId = template_id || null;
+        let tplId = adjustmentType === 'advance' ? null : template_id || null;
 
         // Template-based depremium flow
-        if ((type === 'penalty' || type === 'deduction') && tplId) {
+        if ((adjustmentType === 'penalty' || adjustmentType === 'deduction') && tplId) {
             const tplRes = await pool.query('SELECT * FROM depremium_templates WHERE id = $1 AND active = true', [tplId]);
             if (!tplRes.rows.length) return res.status(400).json({ success: false, error: 'Шаблон не знайдено' });
             const tpl = tplRes.rows[0];
@@ -5435,7 +5447,7 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
              template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
              violation_date, evidence_note, evidence_url)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-            [staff_id, payrollMonth, type, finalAmount, finalReason, req.user?.username,
+            [staff_id, payrollMonth, adjustmentType, finalAmount, finalReason, req.user?.username,
              tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status,
              violation_date || null, evidence_note || null, evidence_url || null]
         );
@@ -5449,10 +5461,10 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
              JSON.stringify({ amount: finalAmount, reason: finalReason, severity, repeatIndex, needsReview })]
         ).catch(e => log.warn('Discipline log failed:', e.message));
 
-        await auditLog('salary_adjustment', staff_id, req.user?.username, { type, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
+        await auditLog('salary_adjustment', staff_id, req.user?.username, { type: adjustmentType, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
 
         // Dry notification to staff (fire-and-forget, no word "штраф")
-        if ((type === 'penalty' || type === 'deduction') && status === 'applied') {
+        if ((adjustmentType === 'penalty' || adjustmentType === 'deduction') && status === 'applied') {
             setImmediate(async () => {
                 try {
                     const staffRow = await pool.query('SELECT telegram_id FROM staff WHERE id = $1', [staff_id]);
@@ -5483,12 +5495,15 @@ router.post('/salary/adjustment', requireHrManage, async (req, res) => {
 router.get('/salary/adjustments', async (req, res) => {
     try {
         const { staff_id, month } = req.query;
+        const requestedType = String(req.query.type || '').trim().toLowerCase();
+        const adjustmentType = requestedType === 'zrs' ? 'advance' : requestedType;
         let sql = `SELECT sa.*, s.name AS staff_name FROM salary_adjustments sa
                    JOIN staff s ON s.id = sa.staff_id`;
         const params = [];
         const conds = [];
         if (staff_id) { params.push(parseInt(staff_id)); conds.push(`sa.staff_id = $${params.length}`); }
         if (month) { params.push(month); conds.push(`sa.month = $${params.length}`); }
+        if (adjustmentType) { params.push(adjustmentType); conds.push(`sa.type = $${params.length}`); }
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
         sql += ' ORDER BY sa.created_at DESC';
         const result = await pool.query(sql, params);
@@ -5867,6 +5882,7 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
             if (totalSalary <= 0) continue;
             const grossAmount = Number(row.base_salary || 0) + Number(row.overtime_pay || 0) + Number(row.bonuses || 0) + Number(row.tips || 0);
             const deductionsAmount = Number(row.deductions || 0) + Number(row.penalties || 0);
+            const advancesAmount = Number(row.advances || 0);
             const breakdown = {
                 base_salary: row.base_salary,
                 overtime_pay: row.overtime_pay,
@@ -5874,6 +5890,7 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 tips: row.tips,
                 deductions: row.deductions,
                 penalties: row.penalties,
+                advances: row.advances,
                 hours_worked: row.hours_worked,
                 overtime_hours: row.overtime_hours,
                 profession_rates: row.profession_rate_summary
@@ -5883,11 +5900,11 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 `INSERT INTO payroll_reports
                     (period_month, staff_id, gross_amount, deductions_amount, advances_amount, net_amount, status,
                      breakdown_json, generated_at, committed_at, committed_by, created_by, updated_by, updated_at)
-                 VALUES ($1, $2, $3, $4, 0, $5, 'paid', $6::jsonb, NOW(), NOW(), $7, $7, $7, NOW())
+                 VALUES ($1, $2, $3, $4, $5, $6, 'paid', $7::jsonb, NOW(), NOW(), $8, $8, $8, NOW())
                  ON CONFLICT (period_month, staff_id) DO UPDATE SET
                     gross_amount = EXCLUDED.gross_amount,
                     deductions_amount = EXCLUDED.deductions_amount,
-                    advances_amount = 0,
+                    advances_amount = EXCLUDED.advances_amount,
                     net_amount = EXCLUDED.net_amount,
                     status = 'paid',
                     breakdown_json = EXCLUDED.breakdown_json,
@@ -5902,7 +5919,7 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                     updated_by = EXCLUDED.updated_by,
                     updated_at = NOW()
                  RETURNING id`,
-                [month, row.staff_id, grossAmount, deductionsAmount, totalSalary, JSON.stringify(breakdown), actor]
+                [month, row.staff_id, grossAmount, deductionsAmount, advancesAmount, totalSalary, JSON.stringify(breakdown), actor]
             );
 
             await client.query('DELETE FROM payroll_entries WHERE staff_id = $1 AND period_month = $2', [row.staff_id, month]);
@@ -5912,7 +5929,8 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 { type: 'bonus', label: 'Бонуси', amount: row.bonuses },
                 { type: 'bonus', label: 'Чайові', amount: row.tips },
                 { type: 'deduction', label: 'Вирахування', amount: row.deductions },
-                { type: 'deduction', label: 'Депреміювання', amount: row.penalties }
+                { type: 'deduction', label: 'Депреміювання', amount: row.penalties },
+                { type: 'advance', label: 'ЗРС', amount: row.advances }
             ].filter(entry => Number(entry.amount || 0) !== 0);
             for (const entry of entryRows) {
                 await client.query(

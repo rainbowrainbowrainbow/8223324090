@@ -9,6 +9,7 @@ const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const PAGES_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
+const ZRS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '255_payroll_zrs_advances.sql'), 'utf8');
 
 function lineNumber(source, index) {
     return source.slice(0, index).split(/\r?\n/).length;
@@ -48,6 +49,7 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         'const HR_PEOPLE_WORKSPACE_TABS',
         'function isHrPeopleWorkspaceTab',
         "payroll: { tab: 'salary' }",
+        "{ id: 'zrs', label: 'ЗРС' }",
         'const HR_PAYROLL_WORKSPACE_TABS',
         'function isHrPayrollWorkspaceTab',
         "nav.classList.toggle('hr-nav--pulse'",
@@ -156,6 +158,43 @@ test('HR salary surface exposes payroll lock, reconciliation, and reversal contr
         'Finance salary'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
+    }
+});
+
+test('HR payroll workspace exposes ZRS salary advances and deducts them from payroll', () => {
+    for (const token of [
+        'id="tab-zrs"',
+        'id="btnAddZrs"',
+        'id="zrsMonth"',
+        'id="zrsSummary"',
+        'async function loadZrs',
+        'function renderZrs',
+        'async function showZrsForm',
+        'hrFetch(`/salary/adjustments?month=${month}&type=advance`)',
+        "type: 'advance'",
+        'ЗРС до вирахування',
+        'Зарплата після ЗРС'
+    ]) {
+        assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing ${token}`);
+    }
+
+    for (const token of [
+        "FILTER (WHERE sa.type = 'advance')",
+        '- COALESCE(at.advances, 0)',
+        'total_advances',
+        "requestedType === 'zrs' ? 'advance'",
+        "type: 'advance', label: 'ЗРС'",
+        'advances_amount = EXCLUDED.advances_amount'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
+    }
+
+    for (const token of [
+        "CHECK (type IN ('bonus', 'deduction', 'penalty', 'tip', 'advance'))",
+        'idx_salary_adj_advance_month_staff',
+        'MIGRATION_KIND: schema'
+    ]) {
+        assert.ok(ZRS_MIGRATION.includes(token), `missing migration token ${token}`);
     }
 });
 

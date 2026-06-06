@@ -149,6 +149,7 @@ const HR_NAV_GROUPS = [
         label: 'ЗП та KPI',
         items: [
             { id: 'salary', label: 'Зарплата' },
+            { id: 'zrs', label: 'ЗРС' },
             { id: 'kpi', label: 'KPI' }
         ]
     },
@@ -163,7 +164,7 @@ const HR_NAV_GROUPS = [
 ];
 
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
-const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'kpi']);
+const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'zrs', 'kpi']);
 const HR_OTHER_WORKSPACE_TABS = new Set(['vacancies']);
 const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
 const HR_PEOPLE_WORKSPACE_TABS = new Set(['team']);
@@ -946,8 +947,10 @@ function initNewTabs() {
     document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
     document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
     document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
+    document.getElementById('zrsMonth')?.addEventListener('change', loadZrs);
     document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
+    document.getElementById('btnAddZrs')?.addEventListener('click', showZrsForm);
     document.getElementById('btnCommitSalary')?.addEventListener('click', () => window.commitSalaries?.());
     document.getElementById('btnRefreshSalaryReconciliation')?.addEventListener('click', refreshSalaryReconciliation);
     document.getElementById('btnLockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(true));
@@ -1233,7 +1236,7 @@ async function activateHrTab(target, options = {}) {
     const loaders = {
         today: loadToday, schedule: loadSchedule, team: loadTeam, structure: loadCompanyStructure,
         professions: loadProfessions, checklists: loadProfessionChecklists,
-        reports: loadReports, salary: loadSalary, kpi: loadKpi, onboarding: loadOnboarding,
+        reports: loadReports, salary: loadSalary, zrs: loadZrs, kpi: loadKpi, onboarding: loadOnboarding,
         vacancies: loadVacancies, accounts: loadAccountCenter
     };
     await loaders[target]?.();
@@ -6069,8 +6072,7 @@ window.showNewLeaveForm = async function() {
 // TAB 7: SALARY (#7)
 // ==========================================
 
-async function loadSalary() {
-    const monthSelect = document.getElementById('salaryMonth');
+function ensurePayrollMonthOptions(monthSelect, preferredValue = '') {
     if (monthSelect && !monthSelect.options.length) {
         const now = new Date();
         for (let i = 0; i < 12; i++) {
@@ -6080,7 +6082,17 @@ async function loadSalary() {
             monthSelect.add(new Option(label, val));
         }
     }
+    if (monthSelect && preferredValue && Array.from(monthSelect.options).some(option => option.value === preferredValue)) {
+        monthSelect.value = preferredValue;
+    }
+}
+
+async function loadSalary() {
+    const monthSelect = document.getElementById('salaryMonth');
+    ensurePayrollMonthOptions(monthSelect);
     const month = monthSelect?.value || '';
+    const zrsMonth = document.getElementById('zrsMonth');
+    if (zrsMonth) ensurePayrollMonthOptions(zrsMonth, month);
     const data = await hrFetch(`/salary?month=${month}`);
     if (!data || !data.success) return;
     renderSalary(data);
@@ -6103,6 +6115,10 @@ function renderSalaryRateSummary(row = {}) {
 
 function currentSalaryMonth() {
     return document.getElementById('salaryMonth')?.value || '';
+}
+
+function currentZrsMonth() {
+    return document.getElementById('zrsMonth')?.value || currentSalaryMonth();
 }
 
 function formatPayrollEventTime(value) {
@@ -6199,12 +6215,13 @@ function renderSalary(data) {
             <div class="hr-summary-card"><div class="value">${(totals.total_overtime || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Переробки</div></div>
             <div class="hr-summary-card green"><div class="value">${(totals.total_bonuses || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Бонуси</div></div>
             <div class="hr-summary-card red"><div class="value">${(totals.total_deductions || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Утримання</div></div>
+            <div class="hr-summary-card red"><div class="value">${(totals.total_advances || 0).toLocaleString('uk-UA')} ₴</div><div class="label">ЗРС</div></div>
         </div>
     `;
 
     document.getElementById('salaryHead').innerHTML = `<tr>
         <th>Співробітник</th><th>Роль</th><th>Ставка</th><th>Днів</th><th>Годин</th>
-        <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>Всього</th>
+        <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>ЗРС</th><th>Всього</th>
     </tr>`;
 
     document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
@@ -6217,8 +6234,123 @@ function renderSalary(data) {
         <td>${s.overtime_pay ? s.overtime_pay.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
         <td style="color:#10B981;">${(s.bonuses + s.tips) ? '+' + (s.bonuses + s.tips).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
         <td style="color:#EF4444;">${(s.deductions + s.penalties) ? '-' + (s.deductions + s.penalties).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td style="color:#EF4444;">${s.advances ? '-' + s.advances.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
         <td><strong>${s.total_salary.toLocaleString('uk-UA')} ₴</strong></td>
     </tr>`).join('');
+}
+
+function formatZrsDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Kyiv'
+    });
+}
+
+function renderZrs(adjustmentsData = {}, salaryData = {}) {
+    const adjustments = Array.isArray(adjustmentsData.data) ? adjustmentsData.data : [];
+    const salaryRows = Array.isArray(salaryData.data) ? salaryData.data : [];
+    const zrsRows = salaryRows.filter(row => Number(row.advances || 0) > 0);
+    const totalZrs = Number(salaryData.totals?.total_advances || adjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+    const affectedCount = zrsRows.length || new Set(adjustments.map(row => row.staff_id)).size;
+    const netAfterZrs = salaryRows.reduce((sum, row) => sum + Number(row.total_salary || 0), 0);
+    const lock = salaryData.period_lock || { is_locked: false };
+    const isLocked = lock.is_locked === true;
+    const addBtn = document.getElementById('btnAddZrs');
+    const statusEl = document.getElementById('zrsStatus');
+
+    if (addBtn) addBtn.disabled = isLocked;
+    if (statusEl) {
+        statusEl.classList.toggle('is-locked', isLocked);
+        statusEl.textContent = isLocked
+            ? `Період закрито${lock.locked_by ? ` · ${lock.locked_by}` : ''}`
+            : 'Період відкрито: ЗРС можна додавати до нарахування зарплати.';
+    }
+
+    document.getElementById('zrsSummary').innerHTML = `
+        <div class="hr-summary">
+            <div class="hr-summary-card red"><div class="value">${fmtMoney(totalZrs)}</div><div class="label">ЗРС до вирахування</div></div>
+            <div class="hr-summary-card"><div class="value">${affectedCount}</div><div class="label">Співробітників</div></div>
+            <div class="hr-summary-card green"><div class="value">${fmtMoney(netAfterZrs)}</div><div class="label">Зарплата після ЗРС</div></div>
+        </div>
+    `;
+
+    document.getElementById('zrsHead').innerHTML = `<tr>
+        <th>Співробітник</th><th>Роль</th><th>ЗРС</th><th>Інші утримання</th><th>Було до ЗРС</th><th>До виплати</th>
+    </tr>`;
+    document.getElementById('zrsBody').innerHTML = zrsRows.length ? zrsRows.map(row => {
+        const advances = Number(row.advances || 0);
+        const otherDeductions = Number(row.deductions || 0) + Number(row.penalties || 0);
+        const beforeZrs = Number(row.total_salary || 0) + advances;
+        return `<tr>
+            <td><strong>${escapeHtml(row.staff_name)}</strong></td>
+            <td>${ROLE_LABELS[row.role_type] || row.role_type || ''}</td>
+            <td style="color:#EF4444;">-${fmtMoney(advances)}</td>
+            <td>${otherDeductions ? '-' + fmtMoney(otherDeductions) : '—'}</td>
+            <td>${fmtMoney(beforeZrs)}</td>
+            <td><strong>${fmtMoney(Number(row.total_salary || 0))}</strong></td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="6" style="text-align:center;color:#94A3B8;">ЗРС за цей місяць ще немає</td></tr>';
+
+    document.getElementById('zrsJournalHead').innerHTML = `<tr>
+        <th>Дата</th><th>Співробітник</th><th>Сума</th><th>Причина</th><th>Додав</th>
+    </tr>`;
+    document.getElementById('zrsJournalBody').innerHTML = adjustments.length ? adjustments.map(row => `<tr>
+        <td>${formatZrsDate(row.created_at)}</td>
+        <td><strong>${escapeHtml(row.staff_name || '')}</strong></td>
+        <td style="color:#EF4444;">-${fmtMoney(Number(row.amount || 0))}</td>
+        <td>${escapeHtml(row.reason || 'ЗРС під зарплату')}</td>
+        <td>${escapeHtml(row.created_by || '—')}</td>
+    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#94A3B8;">Журнал ЗРС порожній</td></tr>';
+}
+
+async function loadZrs() {
+    const monthSelect = document.getElementById('zrsMonth');
+    ensurePayrollMonthOptions(monthSelect, currentSalaryMonth());
+    const month = monthSelect?.value || currentSalaryMonth();
+    const salaryMonth = document.getElementById('salaryMonth');
+    if (salaryMonth) ensurePayrollMonthOptions(salaryMonth, month);
+    const [adjustments, salary] = await Promise.all([
+        hrFetch(`/salary/adjustments?month=${month}&type=advance`),
+        hrFetch(`/salary?month=${month}`)
+    ]);
+    if (!adjustments?.success || !salary?.success) return;
+    renderZrs(adjustments, salary);
+}
+
+async function showZrsForm() {
+    const month = currentZrsMonth();
+    if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    const staff = await hrFetch('/staff?active=true');
+    if (!staff?.success) return;
+    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const result = await formModal('ЗРС під зарплату', [
+        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
+        { key: 'amount', label: 'Сума ЗРС (₴)', type: 'number', required: true, placeholder: '1000' },
+        { key: 'reason', label: 'Коментар', placeholder: 'Наприклад: ЗРС під зарплату' }
+    ], { icon: '💸' });
+    if (!result) return;
+    const amount = Math.abs(parseInt(result.amount, 10));
+    if (!amount) { showNotification('Вкажіть суму ЗРС', 'error'); return; }
+    const data = await hrFetch('/salary/adjustment', 'POST', {
+        staff_id: parseInt(result.staffId, 10),
+        month,
+        type: 'advance',
+        amount,
+        reason: result.reason || 'ЗРС під зарплату'
+    });
+    if (data?.success) {
+        showNotification('ЗРС додано і буде вирахувано із зарплати', 'success');
+        loadZrs();
+        loadSalary();
+    } else {
+        showNotification(data?.error || 'Не вдалося додати ЗРС', 'error');
+    }
 }
 
 window.showAdjustmentForm = async function() {

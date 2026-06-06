@@ -142,7 +142,7 @@ const Sidebar = (() => {
         { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
         { href: '/hr#team',      icon: '👥', label: 'Команда',       access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'робітники, стажери, резерв, чорний список', activeHashes: ['team', 'workers', 'interns', 'reserve', 'blacklist'] },
         { href: '/hr#structure', icon: 'center', label: 'Структура', access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'структура, професії, чек-листи, акаунти', activeHashes: ['structure', 'professions', 'checklists', 'accounts'] },
-        { href: '/hr#payroll',   icon: '📊', label: 'ЗП та KPI',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'зарплата, KPI', activeHashes: ['payroll', 'salary', 'kpi'] },
+        { href: '/hr#payroll',   icon: '📊', label: 'ЗП та KPI',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'зарплата, ЗРС, KPI', activeHashes: ['payroll', 'salary', 'zrs', 'kpi'] },
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
         { href: '/hr#other',     icon: '🧭', label: 'Вакансії',     access: 'hr_page',        group: 'team', pageAccess: '/hr', description: 'вакансії, відгуки, співбесіди, шаблони', activeHashes: ['other', 'vacancies'] },
         { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team', description: 'матеріали, тести, онбординг', activeHashes: ['materials', 'tests', 'progress', 'leaderboard', 'onboarding'] },

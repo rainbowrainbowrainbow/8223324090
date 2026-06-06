@@ -1283,6 +1283,26 @@ function summarizeTodayItems(items = []) {
     return summary;
 }
 
+const TODAY_ARRIVED_STATUSES = new Set(['present', 'clocked_in', 'late', 'unscheduled', 'early_leave', 'auto_closed']);
+
+function isTodayItemArrived(item = {}) {
+    const rec = item.record;
+    if (!rec) return false;
+    if (rec.clock_in) return true;
+    return TODAY_ARRIVED_STATUSES.has(String(rec.status || ''));
+}
+
+function sortTodayItemsForReview(items = []) {
+    return items
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+            const arrivedDiff = Number(isTodayItemArrived(a.item)) - Number(isTodayItemArrived(b.item));
+            if (arrivedDiff !== 0) return arrivedDiff;
+            return a.index - b.index;
+        })
+        .map(entry => entry.item);
+}
+
 function todaySearchHaystack(item = {}) {
     const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
     const status = item.record?.status || (item.shift ? 'absent' : '');
@@ -1305,11 +1325,12 @@ function todaySearchHaystack(item = {}) {
 function filteredTodayItems(items = []) {
     const query = normalizeSearchText(todayFilters.query);
     const department = todayFilters.department;
-    return items.filter(item => {
+    const filtered = items.filter(item => {
         if (department !== 'all' && normalizeDepartmentKey(item.department) !== department) return false;
         if (query && !todaySearchHaystack(item).includes(query)) return false;
         return true;
     });
+    return sortTodayItemsForReview(filtered);
 }
 
 function bindTodayFilterControls() {
@@ -1464,6 +1485,7 @@ function renderToday(data) {
             }
         }
 
+        const arrived = isTodayItemArrived(item);
         const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
         const roleMeta = [
             roleLabel,
@@ -1471,7 +1493,7 @@ function renderToday(data) {
             item.department ? departmentLabel(item.department) : ''
         ].filter(Boolean).join(' · ');
 
-        return `<div class="hr-staff-row" data-staff-id="${item.staff_id}" oncontextmenu="showContext(event, ${item.staff_id})">
+        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
                 <div class="hr-staff-name">${escapeHtml(item.staff_name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(item.staff_id, {compact:true}) : ''} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>

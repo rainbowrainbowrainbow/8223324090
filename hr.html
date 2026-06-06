@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.73.63">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.63">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.63">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.63">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.63">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.63">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.63">
+    <link rel="stylesheet" href="css/base.css?v=0.73.64">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.64">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.64">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.64">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.64">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.64">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.64">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1137,6 +1137,14 @@
             transition: box-shadow var(--speed-fast) var(--ease-smooth);
         }
         .hr-staff-row:hover { box-shadow: var(--shadow-sm); }
+        .hr-staff-row--arrived {
+            border-color: rgba(16,185,129,0.38);
+            background: linear-gradient(90deg, rgba(16,185,129,0.14), rgba(255,255,255,0.96));
+            box-shadow: 0 8px 22px rgba(16,185,129,0.10);
+        }
+        .hr-staff-row--arrived:hover {
+            box-shadow: 0 12px 28px rgba(16,185,129,0.16);
+        }
 
         .hr-staff-indicator {
             width: 12px;
@@ -2741,6 +2749,11 @@
             background: rgba(15,23,42,0.38);
             color: #CBD5E1;
         }
+        body.dark-mode .hr-staff-row.hr-staff-row--arrived {
+            background: linear-gradient(90deg, rgba(16,185,129,0.18), rgba(42,42,74,0.92));
+            border-color: rgba(52,211,153,0.36);
+            box-shadow: 0 12px 28px rgba(16,185,129,0.12);
+        }
         body.dark-mode .hr-clock-btn { background: #3D3D5C; color: #E2E8F0; border-color: #4A4A6A; }
         body.dark-mode .hr-clock-btn:hover { background: #4A4A6A; }
         body.dark-mode .hr-view-btn,
@@ -4234,14 +4247,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.73.63"></script>
-    <script src="js/config.js?v=0.73.63"></script>
-    <script src="js/notification.js?v=0.73.63"></script>
-    <script src="js/api.js?v=0.73.63"></script>
-    <script src="js/auth.js?v=0.73.63"></script>
-    <script src="js/components/sidebar.js?v=0.73.63"></script>
+    <script src="js/ui.js?v=0.73.64"></script>
+    <script src="js/config.js?v=0.73.64"></script>
+    <script src="js/notification.js?v=0.73.64"></script>
+    <script src="js/api.js?v=0.73.64"></script>
+    <script src="js/auth.js?v=0.73.64"></script>
+    <script src="js/components/sidebar.js?v=0.73.64"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.73.63"></script>
-    <script src="js/alerts.js?v=0.73.63"></script>
+    <script src="js/hr-page.js?v=0.73.64"></script>
+    <script src="js/alerts.js?v=0.73.64"></script>
 </body>
 </html>

@@ -38,6 +38,8 @@ const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegr
 const { createLogger } = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
+const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
@@ -78,6 +80,117 @@ function normalizeScheduleDate(value) {
     if (!value) return null;
     if (value instanceof Date) return value.toISOString().slice(0, 10);
     return String(value).slice(0, 10);
+}
+
+function timeToMinutes(value) {
+    if (!value) return 0;
+    const parts = String(value).split(':');
+    return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+}
+
+function minutesSinceKyivPlannedStart(plannedStart) {
+    const now = getKyivDate();
+    return (now.getHours() * 60 + now.getMinutes()) - timeToMinutes(plannedStart);
+}
+
+async function syncHrClockInFromStaffCheckin(db, staffId, options = {}) {
+    const today = options.today || getKyivDateStr();
+    const method = options.method || 'face';
+    const existing = await db.query(
+        'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2',
+        [staffId, today]
+    );
+    if (existing.rows[0]?.clock_in) return existing.rows[0];
+
+    const shift = await db.query(
+        'SELECT * FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+        [staffId, today]
+    );
+    const currentShift = shift.rows[0] || null;
+    const plannedStart = currentShift?.planned_start || null;
+    const plannedEnd = currentShift?.planned_end || null;
+    const lateMinutes = currentShift ? Math.max(0, minutesSinceKyivPlannedStart(plannedStart)) : 0;
+    const status = currentShift ? (lateMinutes > 5 ? 'late' : 'present') : 'unscheduled';
+    const clockIn = new Date().toISOString();
+
+    let result;
+    if (existing.rows[0]) {
+        result = await db.query(
+            `UPDATE hr_time_records SET
+                clock_in = $1, planned_start = $2, planned_end = $3,
+                late_minutes = $4, status = $5, ip_address = $6, user_agent = $7,
+                business_context = COALESCE(business_context, $8), updated_at = NOW()
+             WHERE id = $9 RETURNING *`,
+            [clockIn, plannedStart, plannedEnd, lateMinutes, status, options.ip || null, options.userAgent || null, DEFAULT_BUSINESS_CONTEXT, existing.rows[0].id]
+        );
+    } else {
+        result = await db.query(
+            `INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in, planned_start, planned_end, late_minutes, status, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [DEFAULT_BUSINESS_CONTEXT, staffId, today, clockIn, plannedStart, plannedEnd, lateMinutes, status, options.ip || null, options.userAgent || null]
+        );
+    }
+
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('clock_in', $1, $2, $3, $4)`,
+        [staffId, options.performedBy || method, JSON.stringify({ clock_in: clockIn, late_minutes: lateMinutes, status, method, source: 'staff_checkin' }), options.ip || null]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function syncHrClockOutFromStaffCheckout(db, staffId, options = {}) {
+    const today = options.today || getKyivDateStr();
+    const record = await db.query(
+        'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2',
+        [staffId, today]
+    );
+    const rec = record.rows[0];
+    if (!rec?.clock_in || rec.clock_out) return rec || null;
+
+    const shift = await db.query(
+        'SELECT break_minutes FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+        [staffId, today]
+    );
+    const breakMinutes = shift.rows[0]?.break_minutes || 0;
+    const clockOut = new Date().toISOString();
+    const totalWorked = Math.round((new Date(clockOut) - new Date(rec.clock_in)) / 60000) - breakMinutes;
+    let earlyLeave = 0;
+    let overtime = 0;
+    let status = rec.status;
+
+    if (rec.planned_end) {
+        const now = getKyivDate();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const plannedEndMinutes = timeToMinutes(rec.planned_end);
+        const diff = plannedEndMinutes - nowMinutes;
+        if (diff > 15) {
+            earlyLeave = diff;
+            status = 'early_leave';
+        } else if (diff < -15) {
+            overtime = Math.abs(diff);
+        }
+    }
+
+    if (rec.status === 'late' && status !== 'early_leave') status = 'late';
+    if (status === 'present' || status === 'unscheduled' || status === 'clocked_in') status = 'present';
+
+    const result = await db.query(
+        `UPDATE hr_time_records SET
+            clock_out = $1, total_worked_minutes = $2, early_leave_minutes = $3,
+            overtime_minutes = $4, status = $5, updated_at = NOW()
+         WHERE id = $6 RETURNING *`,
+        [clockOut, Math.max(0, totalWorked), earlyLeave, overtime, status, rec.id]
+    );
+
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('clock_out', $1, $2, $3, $4)`,
+        [staffId, options.performedBy || options.method || 'face', JSON.stringify({ clock_out: clockOut, total_worked_minutes: totalWorked, status, method: options.method || 'face', source: 'staff_checkin' }), options.ip || null]
+    );
+
+    return result.rows[0] || null;
 }
 
 function staffScheduleStatusForShift(shiftType) {
@@ -951,17 +1064,37 @@ router.post('/checkin', async (req, res) => {
         const { staffId, method } = req.body;
         if (!staffId) return res.status(400).json({ error: 'staffId required' });
 
-        const result = await pool.query(
-            `INSERT INTO staff_checkins (staff_id, date, check_in, method)
-             VALUES ($1, CURRENT_DATE, NOW(), $2)
-             ON CONFLICT (staff_id, date) DO UPDATE SET check_in = COALESCE(staff_checkins.check_in, NOW())
-             RETURNING *`,
-            [staffId, method || 'face']
-        );
+        const today = getKyivDateStr();
+        let result;
+        let hrTimeRecord = null;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            result = await client.query(
+                `INSERT INTO staff_checkins (staff_id, date, check_in, method)
+                 VALUES ($1, $2, NOW(), $3)
+                 ON CONFLICT (staff_id, date) DO UPDATE SET check_in = COALESCE(staff_checkins.check_in, NOW())
+                 RETURNING *`,
+                [staffId, today, method || 'face']
+            );
+            hrTimeRecord = await syncHrClockInFromStaffCheckin(client, staffId, {
+                today,
+                method: method || 'face',
+                performedBy: req.user?.username || method || 'face',
+                ip: req.ip,
+                userAgent: req.headers['user-agent']
+            });
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
+        }
         const staff = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
         const name = staff.rows[0]?.name || 'Unknown';
         log.info(`Check-in: ${name} (staff #${staffId}) via ${method || 'face'}`);
-        res.json({ success: true, checkin: result.rows[0], staffName: name });
+        res.json({ success: true, checkin: result.rows[0], staffName: name, hrTimeRecord });
         // Send check-in notification to chat channel (fire-and-forget after response)
         try {
             const { sendBotMessage } = require('../services/chatService');
@@ -986,16 +1119,37 @@ router.post('/checkout', async (req, res) => {
         const { staffId } = req.body;
         if (!staffId) return res.status(400).json({ error: 'staffId required' });
 
-        const result = await pool.query(
-            `UPDATE staff_checkins SET check_out = NOW()
-             WHERE staff_id = $1 AND date = CURRENT_DATE
-             RETURNING *`,
-            [staffId]
-        );
+        const today = getKyivDateStr();
+        let result;
+        let hrTimeRecord = null;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            result = await client.query(
+                `UPDATE staff_checkins SET check_out = NOW()
+                 WHERE staff_id = $1 AND date = $2
+                 RETURNING *`,
+                [staffId, today]
+            );
+            if (result.rows.length > 0) {
+                hrTimeRecord = await syncHrClockOutFromStaffCheckout(client, staffId, {
+                    today,
+                    method: 'face',
+                    performedBy: req.user?.username || 'face',
+                    ip: req.ip
+                });
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw txErr;
+        } finally {
+            client.release();
+        }
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'No check-in found for today' });
         }
-        res.json({ success: true, checkin: result.rows[0] });
+        res.json({ success: true, checkin: result.rows[0], hrTimeRecord });
         // Send checkout notification to chat channel (fire-and-forget after response)
         try {
             const { sendBotMessage } = require('../services/chatService');
@@ -1019,7 +1173,7 @@ router.post('/checkout', async (req, res) => {
 // GET /api/staff/checkins — today's check-ins
 router.get('/checkins', async (req, res) => {
     try {
-        const date = req.query.date || new Date().toISOString().split('T')[0];
+        const date = req.query.date || getKyivDateStr();
         const result = await pool.query(`
             SELECT sc.*, s.name AS staff_name
             FROM staff_checkins sc

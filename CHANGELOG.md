@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.74 - HR: синхронізація графіка
+
+### HR / Графік / staff_schedule / hr_shifts / Backfill / Guardrail / (Клешня, 06.06.2026) [codex]
+- **Старі зміни знову видно у графіку** - `GET /api/hr/shifts` перед читанням діапазону підтягує робочі та remote записи зі `staff_schedule` у `hr_shifts`, якщо HR-зміни ще не існує.
+- **Нові зміни більше не лишаються тільки у legacy-сітці** - `PUT /api/staff/schedule`, bulk-заповнення і копіювання тижня створюють або оновлюють `hr_shifts` через `ON CONFLICT (staff_id, shift_date)`.
+- **Live-графік `/staff` не губить HR-зміни** - читання графіка, підрахунок годин і перевірка аніматорів для таймлайну backfill-ять відсутні записи зі `hr_shifts` назад у `staff_schedule`.
+- **Типи дат вирівняно без падіння PostgreSQL** - join-и між `staff_schedule.date` і `hr_shifts.shift_date` нормалізовано через `LEFT(ss.date::text, 10)`, щоб `DATE` і legacy `VARCHAR` не давали server error.
+- **Додано guardrail** - backoffice contract фіксує двосторонню синхронізацію графіка, backfill старих записів і створення HR-змін при збереженні через live-графік.
+- **Оновлено релізні маркери** - версію піднято до `0.73.74`, cache tags, Service Worker і `package-lock.json` синхронізовано під виправлення графіка.
+
+---
+
 ## v0.73.73 - HR: звільнені в команді
 
 ### HR / Команда / Звільнені / Offboarding / Клешня / Guardrail / Deploy / (Клешня, 06.06.2026) [codex]

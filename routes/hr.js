@@ -2441,6 +2441,41 @@ async function removeMirroredStaffSchedule(staffId, shiftDate, db = pool) {
     );
 }
 
+async function backfillHrShiftsFromStaffSchedule(dateFrom, dateTo, db = pool) {
+    if (!dateFrom || !dateTo) return;
+    await db.query(
+        `INSERT INTO hr_shifts (
+            staff_id, shift_date, planned_start, planned_end, shift_type,
+            break_minutes, notes, created_by, profession_key
+         )
+         SELECT
+            ss.staff_id,
+            LEFT(ss.date::text, 10)::date,
+            LEFT(ss.shift_start::text, 5)::time,
+            LEFT(ss.shift_end::text, 5)::time,
+            CASE WHEN ss.status = 'remote' THEN 'remote' ELSE 'regular' END,
+            0,
+            ss.note,
+            'staff_schedule_backfill',
+            COALESCE(NULLIF(ss.profession_key, ''), NULLIF(s.role_type, ''))
+         FROM staff_schedule ss
+         JOIN staff s ON s.id = ss.staff_id
+         LEFT JOIN hr_shifts hs
+           ON hs.staff_id = ss.staff_id
+          AND hs.shift_date::text = LEFT(ss.date::text, 10)
+         WHERE LEFT(ss.date::text, 10) >= $1
+           AND LEFT(ss.date::text, 10) <= $2
+           AND ss.status IN ('working', 'remote')
+           AND LEFT(ss.date::text, 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
+           AND LEFT(ss.shift_start::text, 5) ~ '^\\d{2}:\\d{2}$'
+           AND LEFT(ss.shift_end::text, 5) ~ '^\\d{2}:\\d{2}$'
+           AND COALESCE(s.is_active, true) = true
+           AND hs.id IS NULL
+         ON CONFLICT (staff_id, shift_date) DO NOTHING`,
+        [dateFrom, dateTo]
+    );
+}
+
 // ==========================================
 // PROFESSIONS CATALOG
 // ==========================================
@@ -4026,6 +4061,8 @@ router.get('/shifts', async (req, res) => {
             dateFrom = mon.toISOString().split('T')[0];
             dateTo = new Date(mon.setDate(mon.getDate() + 6)).toISOString().split('T')[0];
         }
+
+        await backfillHrShiftsFromStaffSchedule(dateFrom, dateTo);
 
         let sql = `SELECT hs.*, s.name AS staff_name, s.color AS staff_color, s.role_type,
                     COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions

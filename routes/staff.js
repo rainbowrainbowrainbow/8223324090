@@ -231,7 +231,7 @@ async function loadEnrichedScheduleEntry(client, scheduleId) {
                 hs.replaced_at
          FROM staff_schedule ss
          JOIN staff s ON s.id = ss.staff_id
-         LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+         LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
          LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
          WHERE ss.id = $1`,
         [scheduleId]
@@ -273,6 +273,75 @@ async function upsertScheduleMirror(client, shift, note = null) {
         ]
     );
     return result.rows[0]?.id || null;
+}
+
+async function syncHrShiftFromScheduleEntry(client, entry, actor = null) {
+    const staffId = Number(entry?.staffId ?? entry?.staff_id);
+    const date = normalizeScheduleDate(entry?.date);
+    const status = entry?.status || 'working';
+    if (!staffId || !date) return null;
+    if (!scheduleStatusNeedsProfession(status)) {
+        await client.query(
+            'DELETE FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
+            [staffId, date]
+        );
+        return { ok: true, shift: null };
+    }
+    const shiftStart = entry?.shiftStart ?? entry?.shift_start ?? null;
+    const shiftEnd = entry?.shiftEnd ?? entry?.shift_end ?? null;
+    if (!shiftStart || !shiftEnd) {
+        return { ok: false, status: 400, error: 'Для робочої зміни потрібен час початку та завершення' };
+    }
+    const professionKey = entry?.professionKey ?? entry?.profession_key ?? null;
+    const result = await client.query(
+        `INSERT INTO hr_shifts (
+            staff_id, shift_date, planned_start, planned_end, shift_type,
+            break_minutes, notes, created_by, profession_key
+         )
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+         ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+            planned_start = EXCLUDED.planned_start,
+            planned_end = EXCLUDED.planned_end,
+            shift_type = EXCLUDED.shift_type,
+            notes = CASE
+                WHEN hr_shifts.original_staff_id IS NULL THEN EXCLUDED.notes
+                ELSE hr_shifts.notes
+            END,
+            profession_key = EXCLUDED.profession_key,
+            updated_at = NOW()
+         RETURNING *`,
+        [
+            staffId,
+            date,
+            shiftStart,
+            shiftEnd,
+            shiftTypeForScheduleStatus(status),
+            entry?.note || null,
+            actor || null,
+            professionKey || null
+        ]
+    );
+    return { ok: true, shift: result.rows[0] || null };
+}
+
+async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
+    if (!from || !to) return;
+    const result = await db.query(
+        `SELECT hs.*
+         FROM hr_shifts hs
+         JOIN staff s ON s.id = hs.staff_id
+         LEFT JOIN staff_schedule ss
+           ON ss.staff_id = hs.staff_id
+          AND LEFT(ss.date::text, 10) = hs.shift_date::text
+         WHERE hs.shift_date >= $1
+           AND hs.shift_date <= $2
+           AND COALESCE(s.is_active, true) = true
+           AND ss.id IS NULL`,
+        [from, to]
+    );
+    for (const shift of result.rows) {
+        await upsertScheduleMirror(db, shift);
+    }
 }
 
 /**
@@ -354,6 +423,7 @@ router.get('/schedule', async (req, res) => {
         if (!from || !to) {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
+        await backfillStaffScheduleFromHrShifts(from, to);
         const result = await pool.query(
             `SELECT ss.*, ss.date::text AS date,
                     s.name, s.department, s.position, s.color, s.is_active,
@@ -366,7 +436,7 @@ router.get('/schedule', async (req, res) => {
                     hs.replaced_at
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
-             LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+             LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
              LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
              WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
              ORDER BY s.department, s.name, ss.date`,
@@ -388,6 +458,9 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
             return res.status(400).json({ success: false, error: 'Потрібні staffId та date' });
         }
         const scheduleStatus = status || 'working';
+        if (scheduleStatusNeedsProfession(scheduleStatus) && (!shiftStart || !shiftEnd)) {
+            return res.status(400).json({ success: false, error: 'Для робочої зміни потрібен час початку та завершення' });
+        }
         const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body, client);
         if (!profession.ok) {
             return res.status(profession.status || 400).json({ success: false, error: profession.error });
@@ -398,29 +471,21 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (staff_id, date)
              DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7
-             RETURNING *`,
+            RETURNING *`,
             [staffId, date, shiftStart || null, shiftEnd || null, scheduleStatus, note || null, profession.professionKey]
         );
-        if (scheduleStatusNeedsProfession(scheduleStatus)) {
-            await client.query(
-                `UPDATE hr_shifts SET
-                    planned_start = $1,
-                    planned_end = $2,
-                    shift_type = $3,
-                    notes = $4,
-                    profession_key = $5,
-                    updated_at = NOW()
-                 WHERE staff_id = $6 AND shift_date = $7`,
-                [
-                    shiftStart || null,
-                    shiftEnd || null,
-                    shiftTypeForScheduleStatus(scheduleStatus),
-                    note || null,
-                    profession.professionKey,
-                    staffId,
-                    date
-                ]
-            );
+        const hrSync = await syncHrShiftFromScheduleEntry(client, {
+            staffId,
+            date,
+            shiftStart,
+            shiftEnd,
+            status: scheduleStatus,
+            note,
+            professionKey: profession.professionKey
+        }, req.user?.username || null);
+        if (hrSync?.ok === false) {
+            await client.query('ROLLBACK');
+            return res.status(hrSync.status || 400).json({ success: false, error: hrSync.error });
         }
         const enriched = await loadEnrichedScheduleEntry(client, result.rows[0].id);
         await client.query('COMMIT');
@@ -612,7 +677,7 @@ router.post('/schedule/:id/replacement-clear', requireRole('creator', 'director'
             `SELECT ss.*, ss.date::text AS date, hs.id AS hr_shift_id, hs.original_staff_id,
                     hs.planned_start, hs.planned_end, hs.shift_type, hs.notes, hs.profession_key
              FROM staff_schedule ss
-             JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date = ss.date
+             JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
              WHERE ss.id = $1
              FOR UPDATE OF ss, hs`,
             [scheduleId]
@@ -719,6 +784,23 @@ router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director'
                      DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7`,
                     [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, entryStatus, e.note || null, profession.professionKey]
                 );
+                const hrSync = await syncHrShiftFromScheduleEntry(client, {
+                    staffId: e.staffId,
+                    date: e.date,
+                    shiftStart: e.shiftStart || null,
+                    shiftEnd: e.shiftEnd || null,
+                    status: entryStatus,
+                    note: e.note || null,
+                    professionKey: profession.professionKey
+                }, req.user?.username || null);
+                if (hrSync?.ok === false) {
+                    await client.query('ROLLBACK');
+                    return res.status(hrSync.status || 400).json({
+                        success: false,
+                        error: hrSync.error,
+                        entry: { staffId: e.staffId, date: e.date }
+                    });
+                }
                 affectedStaff.add(e.staffId);
                 count++;
             }
@@ -799,6 +881,23 @@ router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_dire
                      DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6, profession_key=$7`,
                     [row.staff_id, targetDate, row.shift_start, row.shift_end, row.status, row.note, profession.professionKey]
                 );
+                const hrSync = await syncHrShiftFromScheduleEntry(client, {
+                    staffId: row.staff_id,
+                    date: targetDate,
+                    shiftStart: row.shift_start,
+                    shiftEnd: row.shift_end,
+                    status: row.status,
+                    note: row.note,
+                    professionKey: profession.professionKey
+                }, req.user?.username || null);
+                if (hrSync?.ok === false) {
+                    await client.query('ROLLBACK');
+                    return res.status(hrSync.status || 400).json({
+                        success: false,
+                        error: hrSync.error,
+                        entry: { staffId: row.staff_id, date: targetDate }
+                    });
+                }
                 affectedStaff.add(row.staff_id);
                 count++;
             }
@@ -828,6 +927,7 @@ router.get('/schedule/hours', async (req, res) => {
         if (!from || !to) {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
+        await backfillStaffScheduleFromHrShifts(from, to);
         const result = await pool.query(
             `SELECT ss.staff_id, s.name, s.department, s.position,
                     ss.shift_start, ss.shift_end, ss.status
@@ -881,6 +981,7 @@ router.get('/schedule/hours', async (req, res) => {
 router.get('/schedule/check/:date', async (req, res) => {
     try {
         const { date } = req.params;
+        await backfillStaffScheduleFromHrShifts(date, date);
         const result = await pool.query(
             `SELECT ss.staff_id, ss.status, ss.shift_start, ss.shift_end, s.name, s.department
              FROM staff_schedule ss

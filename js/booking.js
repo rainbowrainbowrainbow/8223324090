@@ -2698,7 +2698,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
         if (secondLine) {
             // v5.5: При редагуванні виключити linked бронювання цього ж запису
             const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
-            const linkedId = allBookings.find(b => b.linkedTo === excludeId && b.lineId === secondLine.id)?.id || null;
+            const linkedId = allBookings.find(b => String(b.linkedTo || '') === String(excludeId || '') && b.lineId === secondLine.id)?.id || null;
             const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
                 const cw2 = secondConflict.conflictWith;
@@ -2717,6 +2717,45 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     return true;
 }
 
+function normalizeBookingIdentity(value) {
+    return value === null || value === undefined ? '' : String(value);
+}
+
+function collectDuplicateProgramExclusionIds(bookings, excludeId = null) {
+    const targetId = normalizeBookingIdentity(excludeId);
+    const excludedIds = new Set();
+    if (!targetId) return excludedIds;
+
+    const list = Array.isArray(bookings) ? bookings : [];
+    const target = list.find(b => normalizeBookingIdentity(b.id) === targetId);
+    const rootId = normalizeBookingIdentity(target?.linkedTo) || targetId;
+
+    excludedIds.add(targetId);
+    if (rootId) excludedIds.add(rootId);
+
+    for (const booking of list) {
+        const bookingId = normalizeBookingIdentity(booking?.id);
+        if (!bookingId) continue;
+        const linkedTo = normalizeBookingIdentity(booking?.linkedTo);
+        if (bookingId === targetId || bookingId === rootId || linkedTo === targetId || linkedTo === rootId) {
+            excludedIds.add(bookingId);
+        }
+    }
+
+    return excludedIds;
+}
+
+function isDuplicateProgramRelevantEdit(bookings, excludeId, programId, time, duration) {
+    const targetId = normalizeBookingIdentity(excludeId);
+    if (!targetId) return true;
+    const list = Array.isArray(bookings) ? bookings : [];
+    const target = list.find(b => normalizeBookingIdentity(b.id) === targetId);
+    if (!target) return true;
+    return normalizeBookingIdentity(target.programId) !== normalizeBookingIdentity(programId)
+        || normalizeBookingIdentity(target.time) !== normalizeBookingIdentity(time)
+        || Number(target.duration || 0) !== Number(duration || 0);
+}
+
 async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
     if (!programId || !program) return true;
     // v43.10.0: skip duplicate check for animation extras AND custom "Інше" programs.
@@ -2725,12 +2764,14 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     if (program.category === 'animation' || program.category === 'custom' || program.isCustom || programId === 'anim_extra' || programId === 'custom') return true;
 
     const allBookings = await getBookingsForDate(AppState.selectedDate);
+    if (!isDuplicateProgramRelevantEdit(allBookings, excludeId, programId, time, duration)) return true;
+    const excludedBookingIds = collectDuplicateProgramExclusionIds(allBookings, excludeId);
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
 
     const duplicate = allBookings.find(b => {
-        if (b.id === excludeId) return false;
-        if (b.programId !== programId) return false;
+        if (excludedBookingIds.has(normalizeBookingIdentity(b.id))) return false;
+        if (normalizeBookingIdentity(b.programId) !== normalizeBookingIdentity(programId)) return false;
         const start = timeToMinutes(b.time);
         const end = start + b.duration;
         return newStart < end && newEnd > start;

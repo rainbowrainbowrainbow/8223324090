@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -23,6 +24,21 @@ function stripLineComments(source) {
         .split(/\r?\n/)
         .filter(line => !line.trim().startsWith('//'))
         .join('\n');
+}
+
+function extractFunction(source, name) {
+    const start = source.indexOf(`function ${name}`);
+    assert.notEqual(start, -1, `${name} exists`);
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    for (let i = bodyStart; i < source.length; i += 1) {
+        if (source[i] === '{') depth += 1;
+        if (source[i] === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(start, i + 1);
+        }
+    }
+    assert.fail(`${name} has a complete function body`);
 }
 
 test('booking hosts remains a host-count field, never a staff identity in runtime queries', () => {
@@ -83,6 +99,45 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.doesNotMatch(bookingsRoute, /lb\.extraData\s*\?\s*JSON\.stringify\(lb\.extraData\)\s*:\s*\(main\.extraData/);
     assert.match(bookingsRoute, /Number\(main\.hosts \|\| 0\) > 1 && main\.secondAnimator/);
     assert.match(bookingsRoute, /Number\(b\.hosts \|\| 0\) > 1 && newSecond && linkedResult\.rows\.length === 0/);
+});
+
+test('booking duplicate guard excludes the linked edit group from self-conflicts', () => {
+    const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    assert.match(bookingJs, /function collectDuplicateProgramExclusionIds/);
+    assert.match(bookingJs, /function isDuplicateProgramRelevantEdit/);
+    assert.match(bookingJs, /isDuplicateProgramRelevantEdit\(allBookings, excludeId, programId, time, duration\)/);
+    assert.match(bookingJs, /const excludedBookingIds = collectDuplicateProgramExclusionIds\(allBookings, excludeId\)/);
+    assert.match(bookingJs, /excludedBookingIds\.has\(normalizeBookingIdentity\(b\.id\)\)/);
+
+    const code = [
+        extractFunction(bookingJs, 'normalizeBookingIdentity'),
+        extractFunction(bookingJs, 'collectDuplicateProgramExclusionIds'),
+        extractFunction(bookingJs, 'isDuplicateProgramRelevantEdit')
+    ].join('\n');
+    const context = {
+        bookings: [
+            { id: 'BK-MAIN', programId: 'quest', time: '14:30', duration: 60 },
+            { id: 'BK-LINK', linkedTo: 'BK-MAIN', programId: 'quest', time: '14:30', duration: 60 },
+            { id: 'BK-LINK-2', linkedTo: 'BK-MAIN', programId: 'quest', time: '14:30', duration: 60 },
+            { id: 'BK-OTHER', programId: 'quest', time: '14:30', duration: 60 }
+        ]
+    };
+    vm.runInNewContext(`
+        ${code}
+        globalThis.mainEdit = [...collectDuplicateProgramExclusionIds(bookings, 'BK-MAIN')].sort();
+        globalThis.linkEdit = [...collectDuplicateProgramExclusionIds(bookings, 'BK-LINK')].sort();
+        globalThis.createMode = [...collectDuplicateProgramExclusionIds(bookings, null)].sort();
+        globalThis.detailOnlyEditRelevant = isDuplicateProgramRelevantEdit(bookings, 'BK-MAIN', 'quest', '14:30', 60);
+        globalThis.changedTimeRelevant = isDuplicateProgramRelevantEdit(bookings, 'BK-MAIN', 'quest', '15:00', 60);
+        globalThis.createRelevant = isDuplicateProgramRelevantEdit(bookings, null, 'quest', '14:30', 60);
+    `, context);
+
+    assert.deepEqual(Array.from(context.mainEdit), ['BK-LINK', 'BK-LINK-2', 'BK-MAIN']);
+    assert.deepEqual(Array.from(context.linkEdit), ['BK-LINK', 'BK-LINK-2', 'BK-MAIN']);
+    assert.deepEqual(Array.from(context.createMode), []);
+    assert.equal(context.detailOnlyEditRelevant, false);
+    assert.equal(context.changedTimeRelevant, true);
+    assert.equal(context.createRelevant, true);
 });
 
 test('timeline delete controls use the shared delete permission contract', () => {

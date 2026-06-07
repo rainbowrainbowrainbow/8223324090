@@ -671,10 +671,7 @@ const featuresCss = fs.readFileSync(path.join(ROOT, 'css/features.css'), 'utf8')
 const searchCode = fs.readFileSync(path.join(ROOT, 'js/search.js'), 'utf8');
 const searchRoutes = fs.readFileSync(path.join(ROOT, 'routes/search.js'), 'utf8');
 const featureRegistryCode = fs.readFileSync(path.join(ROOT, 'js/crm-feature-registry.js'), 'utf8');
-const sidebarAuroraCss = [
-    fileText('css/sidebar-aurora.css'),
-    fileText('css/sidebar-aurora-shell.css')
-].join('\n');
+const sidebarAuroraCss = cssTextWithImports('css/sidebar-aurora.css');
 const warehouseCode = fs.readFileSync(path.join(ROOT, 'js/warehouse-page.js'), 'utf8');
 const responsiveCss = fs.readFileSync(path.join(ROOT, 'css/responsive.css'), 'utf8');
 const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');

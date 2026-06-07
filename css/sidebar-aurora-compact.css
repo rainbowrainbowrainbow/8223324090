@@ -1,0 +1,915 @@
+/* v0.55.28: system shell geometry source of truth.
+   The sidebar is wider than the legacy 220px shell, so every shared surface
+   must reserve the same width even before page-specific shell-ready handoff. */
+@media (min-width: 1024px) {
+  :root {
+    --eg-shell-sidebar-offset: var(--eg-claude-sidebar-w);
+  }
+
+  body[data-page-group] .sidebar-nav:not(.collapsed) {
+    width: var(--eg-shell-sidebar-offset) !important;
+    min-width: var(--eg-shell-sidebar-offset) !important;
+    max-width: var(--eg-shell-sidebar-offset) !important;
+  }
+
+  body[data-page-group] .header,
+  body[data-page-group] .page-container,
+  body[data-page-group] .main-content {
+    margin-left: var(--eg-shell-sidebar-offset) !important;
+    width: calc(100vw - var(--eg-shell-sidebar-offset)) !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  body[data-page-group] .main-content.panel-open {
+    width: calc(100vw - var(--eg-shell-sidebar-offset) - 340px) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+    width: calc(100vw - var(--eg-sidebar-collapsed-w)) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .main-content.panel-open,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content.panel-open {
+    width: calc(100vw - var(--eg-sidebar-collapsed-w) - 340px) !important;
+  }
+
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .header + .crm-assistant-rail-host,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header + .crm-assistant-rail-host {
+    margin-left: var(--eg-shell-sidebar-offset) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header + .crm-assistant-rail-host,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header + .crm-assistant-rail-host {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+  }
+}
+
+/* v0.55.30: compact sidebar density.
+   The shared menu should reserve less horizontal and vertical space while
+   still driving the global shell offset from the same width token. */
+:root {
+  --eg-claude-sidebar-w: clamp(248px, 14vw, 300px);
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed),
+body[data-page-group] .sidebar-nav:not(.collapsed) {
+  width: var(--eg-claude-sidebar-w) !important;
+  min-width: var(--eg-claude-sidebar-w) !important;
+  max-width: var(--eg-claude-sidebar-w) !important;
+}
+
+/* v0.55.42: smaller sidebar shell on laptop widths so the timeline remains visible. */
+@media (min-width: 1024px) and (max-width: 1366px) {
+  :root {
+    --eg-claude-sidebar-w: clamp(224px, 18vw, 260px);
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-command-deck {
+    margin: 8px 8px 10px !important;
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip {
+    min-height: 30px !important;
+    padding: 4px 5px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-links .nav-link,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-links .nav-link {
+    min-height: 38px !important;
+  }
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-brand {
+  min-height: 64px !important;
+  padding: 10px 14px !important;
+  gap: 10px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-brand .logo-img-small,
+.sidebar-nav:not(.collapsed) .sidebar-brand-logo {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 13px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-brand .em-logo-title,
+.sidebar-nav:not(.collapsed) .sidebar-logo-text strong {
+  font-size: clamp(18px, 1.25vw, 21px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-brand .em-logo-sub,
+.sidebar-nav:not(.collapsed) .sidebar-logo-text small {
+  font-size: 9.5px !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0.18em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-command-deck {
+  margin: 10px 12px 12px !important;
+  padding: 10px !important;
+  border-radius: 16px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-command-kicker {
+  padding: 0 4px !important;
+  margin-bottom: 7px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 40px minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 9px !important;
+  padding: 9px 10px !important;
+  margin-bottom: 9px !important;
+  border-radius: 14px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+.sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 12px !important;
+  margin-top: 1px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  gap: 5px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  gap: 4px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 7px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+.sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  font-size: clamp(17px, 1.2vw, 21px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.02em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  max-width: 86px !important;
+  min-height: 20px !important;
+  padding: 4px 6px !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.11em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  font-size: 9.5px !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0.11em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-focus-deck {
+  gap: 6px !important;
+  margin-top: 7px !important;
+  margin-bottom: 8px !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip {
+  min-height: 34px !important;
+  padding: 5px 6px !important;
+  border-radius: 10px !important;
+  gap: 2px 5px !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-value {
+  font-size: 15px !important;
+  line-height: 1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-label {
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+  min-height: 0 !important;
+  padding: 10px !important;
+  border-radius: 14px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-head {
+  gap: 8px !important;
+  margin-bottom: 7px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-kicker {
+  min-height: 21px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.07em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-progress {
+  font-size: 11px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-title {
+  margin-top: 0 !important;
+  font-size: clamp(16px, 1.08vw, 19px) !important;
+  line-height: 1.12 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-meta {
+  margin-top: 6px !important;
+  font-size: 12px !important;
+  line-height: 1.24 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-actions {
+  margin-top: 9px !important;
+  gap: 6px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-alert-primary,
+.sidebar-nav:not(.collapsed) .sidebar-alert-secondary,
+.sidebar-nav:not(.collapsed) .sidebar-alert-next {
+  min-height: 34px !important;
+  padding: 0 10px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras {
+  margin-left: 12px !important;
+  margin-right: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-head {
+  min-height: 24px !important;
+  padding: 0 2px !important;
+  gap: 7px !important;
+  font-size: 8.5px !important;
+  letter-spacing: 0.18em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras-list,
+.sidebar-nav:not(.collapsed) .sidebar-group-items.open > .sidebar-group-inner {
+  gap: 5px !important;
+  margin-top: 6px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-link {
+  min-height: 42px !important;
+  grid-template-columns: 30px minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  padding: 6px 7px !important;
+  border-radius: 11px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-icon {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 9px !important;
+  font-size: 13px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-label {
+  font-size: 15px !important;
+  line-height: 1.08 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-desc {
+  font-size: 10.5px !important;
+  line-height: 1.12 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-open {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-links .nav-link {
+  min-height: 42px !important;
+  grid-template-columns: 30px minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  padding: 6px 7px !important;
+  border-radius: 11px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-links .nav-link .nav-icon {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 9px !important;
+}
+
+.sidebar-nav:not(.collapsed) .nav-label,
+.sidebar-nav:not(.collapsed) .nav-text {
+  font-size: 15px !important;
+  line-height: 1.1 !important;
+}
+
+.sidebar-nav:not(.collapsed) .nav-subtitle,
+.sidebar-nav:not(.collapsed) .nav-status {
+  font-size: 10.5px !important;
+  line-height: 1.12 !important;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --eg-claude-sidebar-w: min(82vw, 300px);
+  }
+}
+
+/* v0.55.31: light theme sidebar completion + stable identity layout.
+   Health badges must not steal horizontal space from the profile name. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  align-items: start !important;
+  gap: 5px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  width: 100% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  hyphens: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-health,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  justify-self: start !important;
+  max-width: 100% !important;
+}
+
+body:not(.dark-mode) .sidebar-nav {
+  --sb-design-bg: #f7fbfa;
+  --sb-design-panel: #ffffff;
+  --sb-design-panel-2: #f3f8f7;
+  --sb-design-line: rgba(15,23,42,0.10);
+  --sb-design-line-2: rgba(15,23,42,0.14);
+  --sb-design-text: #0f172a;
+  --sb-design-text-2: #334155;
+  --sb-design-dim: rgba(51,65,85,0.72);
+  --sb-design-mute: rgba(71,85,105,0.58);
+  --sb-design-green: #059669;
+  --sb-design-red: #dc2626;
+  --sb-design-amber: #b45309;
+  background:
+    radial-gradient(220px 180px at 0% 0%, rgba(16,185,129,0.13), transparent 72%),
+    linear-gradient(180deg, #ffffff 0%, #f4faf8 58%, #eef6f4 100%) !important;
+  border-right-color: rgba(15,23,42,0.10) !important;
+  box-shadow: inset -1px 0 0 rgba(15,23,42,0.045), 12px 0 34px rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-brand {
+  border-bottom-color: rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-brand .em-logo-title {
+  color: #0f172a !important;
+}
+
+body:not(.dark-mode) .sidebar-brand .em-logo-sub {
+  color: #64748b !important;
+}
+
+body:not(.dark-mode) .sidebar-command-deck {
+  background:
+    radial-gradient(210px 150px at 0% 0%, rgba(16,185,129,0.12), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92)) !important;
+  border-color: rgba(15,23,42,0.10) !important;
+  box-shadow: 0 14px 28px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.90) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-card {
+  background:
+    radial-gradient(160px 90px at 0% 0%, rgba(16,185,129,0.12), transparent 74%),
+    linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.86)) !important;
+  border-color: rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-name {
+  color: #0f172a !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-role {
+  color: rgba(71,85,105,0.74) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-summary {
+  color: rgba(30,41,59,0.86) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-health {
+  background: rgba(239,68,68,0.10) !important;
+  border-color: rgba(239,68,68,0.20) !important;
+  color: #b91c1c !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-health[data-tone="ok"],
+body:not(.dark-mode) .sidebar-identity-health[data-tone="ready"] {
+  background: rgba(16,185,129,0.12) !important;
+  border-color: rgba(16,185,129,0.22) !important;
+  color: #047857 !important;
+}
+
+body:not(.dark-mode) .focus-chip,
+body:not(.dark-mode) .sidebar-design-extra-link,
+body:not(.dark-mode) .sidebar-links .nav-link {
+  background: rgba(255,255,255,0.76) !important;
+  border-color: rgba(15,23,42,0.09) !important;
+  color: #1e293b !important;
+}
+
+body:not(.dark-mode) .focus-chip:hover,
+body:not(.dark-mode) .sidebar-design-extra-link:hover,
+body:not(.dark-mode) .sidebar-links .nav-link:hover {
+  background: rgba(236,253,245,0.86) !important;
+  border-color: rgba(16,185,129,0.20) !important;
+}
+
+body:not(.dark-mode) .sidebar-design-extra-link.active,
+body:not(.dark-mode) .sidebar-links .nav-link.active {
+  background: rgba(16,185,129,0.13) !important;
+  border-color: rgba(16,185,129,0.28) !important;
+  color: #064e3b !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-hero {
+  background:
+    radial-gradient(180px 110px at 0% 0%, rgba(239,68,68,0.10), transparent 72%),
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,247,247,0.86)) !important;
+  border-color: rgba(239,68,68,0.18) !important;
+  color: #111827 !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-title {
+  color: #111827 !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-meta,
+body:not(.dark-mode) .sidebar-design-extra-desc,
+body:not(.dark-mode) .nav-status,
+body:not(.dark-mode) .nav-subtitle {
+  color: rgba(71,85,105,0.76) !important;
+}
+
+body:not(.dark-mode) .sidebar-design-extras-head,
+body:not(.dark-mode) .sidebar-group-label {
+  color: rgba(71,85,105,0.72) !important;
+}
+
+/* v0.55.39: stable sidebar section order after removing duplicated day menu.
+   Additional is the single quick CRM section before the full nav list. */
+.sidebar-command-deck,
+.sidebar-design-extras,
+.sidebar-links {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+}
+
+.sidebar-command-deck {
+  order: 10 !important;
+}
+
+.sidebar-design-extras {
+  order: 20 !important;
+  z-index: 2 !important;
+}
+
+.sidebar-links {
+  order: 30 !important;
+}
+
+.sidebar-design-extras-head {
+  cursor: pointer !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extra-list,
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-list,
+.sidebar-design-extras.is-collapsed .sidebar-extra-editor {
+  display: none !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-chevron {
+  transform: none !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-manage {
+  opacity: 0.72 !important;
+}
+
+/* v0.55.32: dark profile card cleanup after the light-theme pass. */
+body.dark-mode .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  background:
+    radial-gradient(180px 110px at 0% 0%, rgba(34,211,160,0.16), transparent 74%),
+    linear-gradient(135deg, rgba(22,39,47,0.96), rgba(12,25,31,0.92)) !important;
+  border-color: rgba(248,113,113,0.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 28px rgba(0,0,0,0.24) !important;
+}
+
+body.dark-mode .sidebar-identity-name,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  color: #f8fafc !important;
+  text-shadow: none !important;
+}
+
+body.dark-mode .sidebar-identity-role,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  color: rgba(203,213,225,0.76) !important;
+}
+
+body.dark-mode .sidebar-identity-summary,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  color: rgba(226,232,240,0.86) !important;
+}
+
+body.dark-mode .sidebar-identity-health,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  background: rgba(248,113,113,0.14) !important;
+  border-color: rgba(248,113,113,0.30) !important;
+  color: #fecaca !important;
+}
+
+body.dark-mode .sidebar-identity-health[data-tone="ok"],
+body.dark-mode .sidebar-identity-health[data-tone="ready"],
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health[data-tone="ok"],
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health[data-tone="ready"] {
+  background: rgba(34,211,160,0.16) !important;
+  border-color: rgba(34,211,160,0.32) !important;
+  color: #a7f3d0 !important;
+}
+
+/* v0.55.35: compact sidebar command deck.
+   This final density pass keeps the profile readable but stops the upper
+   command block from consuming the whole first screen of the sidebar. */
+:root {
+  --sb-command-compact-avatar: 38px;
+  --sb-command-compact-alert-min: 126px;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+.sidebar-nav:not(.collapsed) .sidebar-command-deck {
+  margin: 8px 10px 10px !important;
+  padding: 8px !important;
+  border-radius: 15px !important;
+}
+
+/* v0.73.46: tighter sidebar identity header and denser navigation rhythm. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: var(--sb-command-compact-avatar) minmax(0, 1fr) !important;
+  gap: 9px !important;
+  padding: 8px 9px !important;
+  margin-bottom: 8px !important;
+  border-radius: 13px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+.sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+  width: var(--sb-command-compact-avatar) !important;
+  height: var(--sb-command-compact-avatar) !important;
+  min-width: var(--sb-command-compact-avatar) !important;
+  border-radius: 11px !important;
+  margin-top: 1px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  gap: 4px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: wrap !important;
+  column-gap: 6px !important;
+  row-gap: 3px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+.sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  max-width: 100% !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  font-size: clamp(18px, 1.05vw, 20px) !important;
+  line-height: 1.02 !important;
+  letter-spacing: -0.02em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-health,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  max-width: min(100%, 112px) !important;
+  min-height: 19px !important;
+  padding: 3px 7px !important;
+  border-radius: 999px !important;
+  gap: 5px !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.10em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health-dot,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-health-dot,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health-dot {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  margin-top: 1px !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0.13em !important;
+  overflow-wrap: anywhere !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-focus-deck,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-focus-deck,
+.sidebar-nav:not(.collapsed) .sidebar-focus-deck {
+  gap: 6px !important;
+  margin-top: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip,
+.sidebar-nav:not(.collapsed) .focus-chip {
+  min-height: 34px !important;
+  padding: 5px 6px !important;
+  border-radius: 10px !important;
+  gap: 2px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip-value,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip-value,
+.sidebar-nav:not(.collapsed) .focus-chip-value {
+  font-size: 16px !important;
+  line-height: 0.95 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip-label,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip-label,
+.sidebar-nav:not(.collapsed) .focus-chip-label {
+  font-size: 8px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.10em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+  min-height: var(--sb-command-compact-alert-min) !important;
+  padding: 11px 12px !important;
+  border-radius: 14px !important;
+  gap: 5px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-head,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-head,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-head {
+  gap: 8px !important;
+  margin-bottom: 3px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker {
+  min-height: 22px !important;
+  padding: 0 9px !important;
+  border-radius: 8px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-index,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-index,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-index {
+  font-size: 10px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label {
+  font-size: clamp(18px, 1.08vw, 21px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.025em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta {
+  font-size: 13px !important;
+  line-height: 1.18 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions {
+  min-height: 38px !important;
+  margin-top: 5px !important;
+  padding: 0 12px !important;
+  border-radius: 11px !important;
+  font-size: 14px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack {
+  left: 16px !important;
+  right: 16px !important;
+  bottom: -5px !important;
+  height: 7px !important;
+}
+
+/* v0.55.37: alert hero carousel.
+   The `1 / N` counter is now an actual pager, not a static label. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+  cursor: default !important;
+}
+
+.sidebar-alert-hero-nav {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.sidebar-alert-nav-btn {
+  width: 23px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 23px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: currentColor;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+
+.sidebar-alert-nav-btn:hover,
+.sidebar-alert-nav-btn:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, currentColor 42%, transparent);
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  transform: translateY(-1px);
+}
+
+.sidebar-alert-nav-btn:disabled,
+.sidebar-alert-hero:not(.has-alert-carousel) .sidebar-alert-nav-btn {
+  display: none !important;
+}
+
+.sidebar-alert-hero-open {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-alert-hero-open:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 34%, transparent);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-index {
+  min-width: 40px;
+  text-align: center;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-head {
+  align-items: center !important;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-actions {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, currentColor 12%, transparent), color-mix(in srgb, #ffffff 4%, transparent));
+}
+
+@media (max-width: 768px) {
+  .sidebar-alert-nav-btn {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed .sidebar-alert-hero-nav,
+  .sidebar-nav.collapsed .sidebar-alert-hero-open {
+    display: none !important;
+  }
+
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-nav,
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-open {
+    display: grid !important;
+  }
+
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-nav {
+    display: inline-flex !important;
+  }
+}

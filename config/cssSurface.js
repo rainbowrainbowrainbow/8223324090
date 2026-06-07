@@ -6,6 +6,16 @@ const CSS_APP_SHELL_PRECACHE = [
     'css/layout.css',
     'css/sidebar-aurora.css',
     'css/sidebar-aurora-shell.css',
+    'css/sidebar-aurora-cockpit.css',
+    'css/sidebar-aurora-design-system.css',
+    'css/sidebar-aurora-today.css',
+    'css/sidebar-aurora-legacy-shell.css',
+    'css/sidebar-aurora-compact.css',
+    'css/sidebar-aurora-identity.css',
+    'css/sidebar-aurora-enterprise.css',
+    'css/sidebar-aurora-rail.css',
+    'css/sidebar-aurora-rhythm.css',
+    'css/sidebar-aurora-profile.css',
     'css/timeline.css',
     'css/panel.css',
     'css/modals.css',
@@ -281,6 +291,76 @@ const CSS_SURFACE = [
         category: 'shared-large',
         status: 'active-large',
         reason: 'Sidebar base shell, brand, quick counters, groups, and mobile rail styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-cockpit.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Sidebar AI cockpit, focus deck, navigation group, and mobile base override styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-design-system.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Sidebar Claude-design system layer, brand shell, design extras, and navigation restyle imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-today.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Sidebar today dock, quick day menu, extra badges, and related responsive rules imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-legacy-shell.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Legacy sidebar shell geometry, logo restoration, collapsed rail, profile typography, and Additional editor styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-compact.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Compact sidebar density, laptop width, light theme, alert carousel, and collapse button styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-identity.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Sidebar identity card, status rail, quick access submenu, and profile signal styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-enterprise.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Enterprise sidebar redesign, passive time widgets, refreshed theme, and role identity styles imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-rail.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Collapsed sidebar utility rail, contextual flyout, and compact business controls imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-rhythm.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Sidebar rhythm, spacing, visual density, and nav readability polish imported by sidebar-aurora.css.'
+    },
+    {
+        file: 'css/sidebar-aurora-profile.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Sidebar profile readability, mobile entry reliability, identity meta, and business selector polish imported by sidebar-aurora.css.'
     },
     {
         file: 'css/sidebar-smart-menu.css',

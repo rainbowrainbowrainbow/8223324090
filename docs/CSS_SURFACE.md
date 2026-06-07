@@ -59,6 +59,16 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |
 | `css/sidebar-aurora.css` | shared-ui | `shared` | active | Sidebar Aurora aggregate entrypoint for shared CRM menu styles. |
 | `css/sidebar-aurora-shell.css` | shared-ui | `shared-large` | active-large | Sidebar base shell, brand, quick counters, groups, and mobile rail styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-cockpit.css` | shared-ui | `shared` | active | Sidebar AI cockpit, focus deck, navigation group, and mobile base override styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-design-system.css` | shared-ui | `shared-large` | active-large | Sidebar Claude-design system layer, brand shell, design extras, and navigation restyle imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-today.css` | shared-ui | `shared` | active | Sidebar today dock, quick day menu, extra badges, and related responsive rules imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-legacy-shell.css` | shared-ui | `shared-large` | active-large | Legacy sidebar shell geometry, logo restoration, collapsed rail, profile typography, and Additional editor styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-compact.css` | shared-ui | `shared-large` | active-large | Compact sidebar density, laptop width, light theme, alert carousel, and collapse button styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-identity.css` | shared-ui | `shared-large` | active-large | Sidebar identity card, status rail, quick access submenu, and profile signal styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-enterprise.css` | shared-ui | `shared-large` | active-large | Enterprise sidebar redesign, passive time widgets, refreshed theme, and role identity styles imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-rail.css` | shared-ui | `shared` | active | Collapsed sidebar utility rail, contextual flyout, and compact business controls imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-rhythm.css` | shared-ui | `shared` | active | Sidebar rhythm, spacing, visual density, and nav readability polish imported by `sidebar-aurora.css`. |
+| `css/sidebar-aurora-profile.css` | shared-ui | `shared-large` | active-large | Sidebar profile readability, mobile entry reliability, identity meta, and business selector polish imported by `sidebar-aurora.css`. |
 | `css/sidebar-smart-menu.css` | shared-ui | `shared` | active | Optional smart sidebar menu customizer styles for compact dashboard shortcuts. |
 | `css/minigame.css` | game | `page-scoped-large` | active-large | Gamification game styles; large-file consolidation candidate. |
 | `css/modals.css` | shared-ui | `shared-large` | active-large | Shared modal and profile modal styles across CRM pages. |
@@ -75,8 +85,14 @@ this document, and `npm run test:ui` coverage in the same pack.
 The Service Worker currently pre-caches this CSS subset from `sw.js`:
 
 `css/base.css`, `css/auth.css`, `css/layout.css`, `css/sidebar-aurora.css`,
-`css/sidebar-aurora-shell.css`, `css/timeline.css`, `css/panel.css`, `css/modals.css`, `css/controls.css`,
-`css/features.css`, `css/dark-mode.css`, and `css/responsive.css`.
+`css/sidebar-aurora-shell.css`, `css/sidebar-aurora-cockpit.css`,
+`css/sidebar-aurora-design-system.css`, `css/sidebar-aurora-today.css`,
+`css/sidebar-aurora-legacy-shell.css`, `css/sidebar-aurora-compact.css`,
+`css/sidebar-aurora-identity.css`, `css/sidebar-aurora-enterprise.css`,
+`css/sidebar-aurora-rail.css`, `css/sidebar-aurora-rhythm.css`,
+`css/sidebar-aurora-profile.css`, `css/timeline.css`, `css/panel.css`,
+`css/modals.css`, `css/controls.css`, `css/features.css`,
+`css/dark-mode.css`, and `css/responsive.css`.
 
 Changing that list is a cache behavior change. Update
 `config/cssSurface.js`, this document, and focused verification in the same
@@ -87,7 +103,8 @@ commit.
 The current high-value CSS consolidation candidates are `css/chat-core.css`,
 `css/chat-effects.css`, `css/hr-page.css`, `landing/style.css`,
 `css/features.css`, `css/dark-mode.css`, `css/minigame.css`,
-`css/modals.css`, `css/layout.css`, and `css/graduation.css`.
+`css/modals.css`, `css/layout.css`, `css/sidebar-aurora-enterprise.css`,
+`css/sidebar-aurora-identity.css`, and `css/graduation.css`.
 
 Do not start with a broad reformat. Prefer page-scoped extraction or removal
 with `npm run check:css-surface`, `npm run test:ui`, and browser smoke for the

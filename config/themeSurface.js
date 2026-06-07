@@ -52,7 +52,18 @@ const THEME_CSS_DEBT_BUDGETS = {
     'css/assistant-rail-presence.css': { owner: 'assistant', maxImportant: 199, maxHardColors: 156 },
     'css/assistant-rail-timeline.css': { owner: 'assistant', maxImportant: 292, maxHardColors: 18 },
     'css/assistant-rail-topbar.css': { owner: 'assistant', maxImportant: 497, maxHardColors: 194 },
-    'css/sidebar-aurora.css': { owner: 'sidebar', maxImportant: 3682, maxHardColors: 1030 },
+    'css/sidebar-aurora.css': { owner: 'sidebar', maxImportant: 0, maxHardColors: 0 },
+    'css/sidebar-aurora-cockpit.css': { owner: 'sidebar', maxImportant: 77, maxHardColors: 8 },
+    'css/sidebar-aurora-compact.css': { owner: 'sidebar', maxImportant: 318, maxHardColors: 73 },
+    'css/sidebar-aurora-design-system.css': { owner: 'sidebar', maxImportant: 250, maxHardColors: 105 },
+    'css/sidebar-aurora-enterprise.css': { owner: 'sidebar', maxImportant: 753, maxHardColors: 139 },
+    'css/sidebar-aurora-identity.css': { owner: 'sidebar', maxImportant: 614, maxHardColors: 331 },
+    'css/sidebar-aurora-legacy-shell.css': { owner: 'sidebar', maxImportant: 428, maxHardColors: 93 },
+    'css/sidebar-aurora-profile.css': { owner: 'sidebar', maxImportant: 638, maxHardColors: 20 },
+    'css/sidebar-aurora-rail.css': { owner: 'sidebar', maxImportant: 78, maxHardColors: 82 },
+    'css/sidebar-aurora-rhythm.css': { owner: 'sidebar', maxImportant: 309, maxHardColors: 1 },
+    'css/sidebar-aurora-shell.css': { owner: 'sidebar', maxImportant: 110, maxHardColors: 144 },
+    'css/sidebar-aurora-today.css': { owner: 'sidebar', maxImportant: 104, maxHardColors: 27 },
     'css/dark-mode.css': { owner: 'theme', maxImportant: 276, maxHardColors: 1340 }
 };
 

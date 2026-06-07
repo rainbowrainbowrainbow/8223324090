@@ -9,6 +9,28 @@ function readRepoFile(...parts) {
     return fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
 }
 
+function readCssWithImports(file, seen = new Set()) {
+    const normalized = file.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = readRepoFile(...normalized.split('/'));
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 describe('backoffice foundation v2 contracts', () => {
     const centerRoute = readRepoFile('routes', 'center.js');
     const centerPage = readRepoFile('js', 'center-page.js');
@@ -23,7 +45,7 @@ describe('backoffice foundation v2 contracts', () => {
     const timelinePage = readRepoFile('js', 'timeline.js');
     const settingsPage = readRepoFile('js', 'settings.js');
     const sidebar = readRepoFile('js', 'components', 'sidebar.js');
-    const sidebarAurora = `${readRepoFile('css', 'sidebar-aurora.css')}\n${readRepoFile('css', 'sidebar-aurora-shell.css')}`;
+    const sidebarAurora = readCssWithImports('css/sidebar-aurora.css');
     const ui = readRepoFile('js', 'ui.js');
     const warehouseRoute = readRepoFile('routes', 'warehouse.js');
     const warehousePage = readRepoFile('js', 'warehouse-page.js');

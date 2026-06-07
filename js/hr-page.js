@@ -2094,6 +2094,9 @@ let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
 let accountActionDefinitions = [];
+let accountRolePresets = {};
+let accountPageAccessMatrix = {};
+let accountActionPermissionsMatrix = {};
 let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
@@ -2102,6 +2105,17 @@ const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
 const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
 const ACCOUNT_BUSINESS_SWITCH_ROLES = new Set(['creator', 'director']);
+const ACCOUNT_ROLE_PRESET_LABELS = {
+    executive: 'Керівництво',
+    management: 'Менеджмент',
+    operations: 'Операційний блок',
+    creative: 'Креатив / арт',
+    finance: 'Фінанси',
+    programs: 'Програми / анімація',
+    maysternyaDoli: 'Майстерня долі',
+    support: 'Сервіс / підтримка'
+};
+const ACCOUNT_ROLE_PRESET_ORDER = ['management', 'operations', 'programs', 'creative', 'finance', 'support', 'maysternyaDoli', 'executive'];
 const ACCOUNT_ACTION_LABELS = {
     create_booking: 'Створювати бронювання',
     edit_booking: 'Редагувати бронювання',
@@ -2115,6 +2129,46 @@ const ACCOUNT_ACTION_LABELS = {
     manage_settings: 'Керувати налаштуваннями',
     export_data: 'Експорт даних',
     manage_staff: 'Керувати персоналом'
+};
+const ACCOUNT_PAGE_LABELS = {
+    '/': 'Таймлайн',
+    '/dashboard': 'Dashboard',
+    '/tasks': 'Задачі',
+    '/chat': 'Чат',
+    '/chat-settings': 'Налаштування чату',
+    '/center': 'Центр цін',
+    '/art': 'Арт',
+    '/art-director': 'Арт-директор',
+    '/content': 'Контент',
+    '/designer': 'Дизайнер',
+    '/designs': 'Дизайни',
+    '/graduation': 'Випускні',
+    '/customers': 'Клієнти',
+    '/staff': 'Staff',
+    '/warehouse': 'Склад',
+    '/training': 'Навчання',
+    '/settings': 'Налаштування',
+    '/programs': 'Програми',
+    '/hr': 'HR',
+    '/checkin': 'Check-in',
+    '/finance': 'Фінанси',
+    '/analytics': 'Аналітика',
+    '/status': 'Статус',
+    '/guardian-ops': 'Охорона',
+    '/omni': 'Omni',
+    '/copilot': 'Клешня',
+    '/sound': 'Звук',
+    '/afisha': 'Афіша',
+    '/certificates': 'Сертифікати',
+    '/sales-funnel': 'Воронка',
+    '/leads': 'Ліди',
+    '/report-agent': 'Звіт-агент',
+    '/reports': 'Звіти',
+    '/game': 'Гра',
+    '/profile': 'Профіль',
+    '/quiz': 'Квіз',
+    '/room': 'Кімната',
+    '/shop': 'Магазин'
 };
 
 function canManageAccountSecurity() {
@@ -2241,6 +2295,69 @@ function getAccountExtraRoleOptions(primaryRole = 'animator', selected = []) {
         }));
 }
 
+function accountRoleLevel(role = '') {
+    const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
+    const index = roles.indexOf(String(role || '').trim());
+    return index >= 0 ? index : -1;
+}
+
+function accountMaxRoleLevel(user = {}) {
+    return normalizeAccountRoleSelection(user.role, user.extra_roles || user.extraRoles)
+        .reduce((max, role) => Math.max(max, accountRoleLevel(role)), -1);
+}
+
+function currentAccountCanManageRoleSet(primaryRole = 'animator', extraRoles = []) {
+    const actorRole = AppState.currentUser?.role;
+    if (!ACCOUNT_SECURITY_ROLES.includes(actorRole)) return false;
+    if (actorRole === 'creator') return true;
+    const directorLevel = accountRoleLevel('director');
+    const maxTargetLevel = normalizeAccountRoleSelection(primaryRole, extraRoles)
+        .reduce((max, role) => Math.max(max, accountRoleLevel(role)), -1);
+    return maxTargetLevel >= 0 && maxTargetLevel < directorLevel;
+}
+
+function currentAccountCanMutateTarget(user = {}) {
+    const actorRole = AppState.currentUser?.role;
+    if (!ACCOUNT_SECURITY_ROLES.includes(actorRole)) return false;
+    if (actorRole === 'creator') return true;
+    const directorLevel = accountRoleLevel('director');
+    const targetLevel = accountMaxRoleLevel(user);
+    return targetLevel >= 0 && targetLevel < directorLevel;
+}
+
+function currentAccountCanToggleTarget(user = {}) {
+    if (!currentAccountCanMutateTarget(user)) return false;
+    return Number(user.id) !== Number(AppState.currentUser?.id);
+}
+
+function getAccountRolePresetButtons(currentRole = 'animator') {
+    const allowedRoleValues = new Set(getAccountRoleOptions(currentRole).map(option => option.value));
+    return ACCOUNT_ROLE_PRESET_ORDER
+        .map(key => {
+            const presetRoles = Array.isArray(accountRolePresets[key]) ? accountRolePresets[key] : [];
+            const roles = presetRoles
+                .filter(role => role !== 'creator')
+                .filter(role => allowedRoleValues.has(role));
+            if (!roles.length) return null;
+            const sorted = roles.slice().sort((a, b) => accountRoleLevel(b) - accountRoleLevel(a));
+            const primary = sorted[0];
+            const extraRoles = sorted.filter(role => role !== primary).slice(0, 3);
+            if (!currentAccountCanManageRoleSet(primary, extraRoles)) return null;
+            const roleNames = [primary, ...extraRoles]
+                .map(role => ROLE_LABELS[role] || role)
+                .join(', ');
+            return {
+                label: ACCOUNT_ROLE_PRESET_LABELS[key] || key,
+                hint: roleNames,
+                values: {
+                    role: primary,
+                    extraRoles
+                }
+            };
+        })
+        .filter(Boolean);
+}
+
 function getAccountActionOptions(selected = [], options = {}) {
     const includeNonDelegable = options.includeNonDelegable !== false;
     const current = new Set(normalizeAccountListInput(Array.isArray(selected) ? selected.join(',') : selected));
@@ -2257,11 +2374,79 @@ function getAccountActionOptions(selected = [], options = {}) {
         }));
 }
 
+function normalizeAccountRoleSelection(primaryRole = 'animator', extraRoles = []) {
+    const roles = [];
+    const primary = String(primaryRole || '').trim();
+    if (primary) roles.push(primary);
+    normalizeAccountArray(extraRoles).forEach(role => {
+        if (role && !roles.includes(role)) roles.push(role);
+    });
+    return roles.filter(role => (accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS)).includes(role));
+}
+
+function accessMatrixAllowsRole(allowedRoles, role) {
+    if (allowedRoles === null) return true;
+    if (!Array.isArray(allowedRoles)) return false;
+    return role === 'creator' || allowedRoles.includes(role);
+}
+
+function accessMatrixAllowsAnyRole(allowedRoles, roles = []) {
+    return roles.some(role => accessMatrixAllowsRole(allowedRoles, role));
+}
+
+function formatAccountRoleAccessPack(primaryRole = 'animator', extraRoles = [], manualAllow = [], manualDeny = [], manualPages = []) {
+    const roles = normalizeAccountRoleSelection(primaryRole, extraRoles);
+    const roleNames = roles.map(role => ROLE_LABELS[role] || role).join(', ') || 'роль не вибрано';
+    const pageEntries = Object.entries(accountPageAccessMatrix || {})
+        .filter(([, allowedRoles]) => accessMatrixAllowsAnyRole(allowedRoles, roles))
+        .map(([page]) => ACCOUNT_PAGE_LABELS[page] || page)
+        .filter(Boolean);
+    const actionEntries = Object.entries(accountActionPermissionsMatrix || {})
+        .filter(([, allowedRoles]) => accessMatrixAllowsAnyRole(allowedRoles, roles))
+        .map(([action]) => ACCOUNT_ACTION_LABELS[action] || action)
+        .filter(Boolean);
+    const allowEntries = normalizeAccountArray(manualAllow)
+        .filter(action => !ACCOUNT_NON_DELEGABLE_ACTIONS.has(action))
+        .map(action => ACCOUNT_ACTION_LABELS[action] || action);
+    const denyEntries = normalizeAccountArray(manualDeny)
+        .map(action => ACCOUNT_ACTION_LABELS[action] || action);
+    const pageAllowEntries = normalizeAccountArray(manualPages)
+        .map(page => ACCOUNT_PAGE_LABELS[page] || page);
+    const shortList = (items, empty = 'немає') => {
+        const unique = Array.from(new Set(items));
+        if (!unique.length) return empty;
+        const visible = unique.slice(0, 10).join(', ');
+        return unique.length > 10 ? `${visible} +${unique.length - 10}` : visible;
+    };
+    return [
+        `Пакет ролей: ${roleNames}`,
+        `Сторінки: ${shortList(pageEntries)}`,
+        `Дії: ${shortList(actionEntries)}`,
+        `Ручні сторінки: ${shortList(pageAllowEntries)}`,
+        `Ручний allow: ${shortList(allowEntries)}`,
+        `Ручний deny: ${shortList(denyEntries)}`,
+        'Пакет ролі застосовується автоматично після нового входу. Allow/Deny нижче потрібні тільки для точкових винятків.'
+    ].join('\n');
+}
+
+function renderAccountRolePackFromForm(values = {}, fallback = {}) {
+    return formatAccountRoleAccessPack(
+        values.role || fallback.role || 'animator',
+        Array.isArray(values.extraRoles) ? values.extraRoles : (fallback.extraRoles || []),
+        Array.isArray(values.actionAllowlist) ? values.actionAllowlist : (fallback.actionAllowlist || []),
+        Array.isArray(values.actionDenylist) ? values.actionDenylist : (fallback.actionDenylist || []),
+        values.pageAllowlist !== undefined ? normalizeAccountListInput(values.pageAllowlist) : (fallback.pageAllowlist || [])
+    );
+}
+
 async function loadAccountRoleDefinitions() {
-    if (accountRoleHierarchy.length && accountBusinessContexts.length) return;
+    if (accountRoleHierarchy.length && accountBusinessContexts.length && Object.keys(accountRolePresets).length && Object.keys(accountPageAccessMatrix).length && Object.keys(accountActionPermissionsMatrix).length) return;
     const data = await crmApiFetch('/api/users/roles');
     if (Array.isArray(data?.hierarchy)) {
         accountRoleHierarchy = data.hierarchy.filter(role => ROLE_LABELS[role] || role);
+    }
+    if (data?.rolePresets && typeof data.rolePresets === 'object') {
+        accountRolePresets = data.rolePresets;
     }
     if (Array.isArray(data?.businessContexts)) {
         accountBusinessContexts = data.businessContexts;
@@ -2270,6 +2455,14 @@ async function loadAccountRoleDefinitions() {
         accountActionDefinitions = data.actions;
     } else if (data?.actionPermissions && typeof data.actionPermissions === 'object') {
         accountActionDefinitions = Object.keys(data.actionPermissions).map(key => ({ key, roles: data.actionPermissions[key] || [] }));
+    }
+    if (data?.pageAccess && typeof data.pageAccess === 'object') {
+        accountPageAccessMatrix = data.pageAccess;
+    }
+    if (data?.actionPermissions && typeof data.actionPermissions === 'object') {
+        accountActionPermissionsMatrix = data.actionPermissions;
+    } else if (Array.isArray(data?.actions)) {
+        accountActionPermissionsMatrix = Object.fromEntries(data.actions.map(action => [action.key, action.roles || []]).filter(([key]) => key));
     }
 }
 
@@ -3269,6 +3462,9 @@ function renderAccountCenter() {
         const staff = u.staff_name ? `${escapeHtml(u.staff_name)}${u.staff_department ? ' · ' + escapeHtml(u.staff_department) : ''}` : 'не привʼязано до staff';
         const role = formatAccountAccess(u);
         const recentlyUpdated = Number(accountCenterLastUpdatedId) === Number(u.id);
+        const canMutateTarget = currentAccountCanMutateTarget(u);
+        const canToggleTarget = currentAccountCanToggleTarget(u);
+        const targetProtected = canManageSecurity && !canMutateTarget;
         return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${recentlyUpdated ? 'is-recently-updated' : ''}">
             <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
             <div class="hr-account-main">
@@ -3281,10 +3477,11 @@ function renderAccountCenter() {
             <div class="hr-account-actions">
                 <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
                 ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
-                ${canManageProfile ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
-                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
-                ${canManageAccess ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
-                <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
+                ${canManageProfile && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
+                ${canManageSecurity && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
+                ${canManageAccess && canMutateTarget ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
+                ${canToggleTarget ? `<button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>` : ''}
+                ${targetProtected ? '<span class="hr-account-state off" title="Цей рівень акаунта змінює тільки creator">захищено</span>' : ''}
             </div>
         </article>`;
     }).join('');
@@ -3310,9 +3507,11 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
         { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
         { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
+        { key: 'rolePreset', label: 'Швидка пачка доступу', type: 'presetButtons', presets: getAccountRolePresetButtons(defaultRole), hint: 'Пачка виставляє основну роль і додаткові ролі. Creator не видається швидкою пачкою.' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
-        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: [], options: getAccountExtraRoleOptions(defaultRole, []), hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
+        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: [], dependsOn: 'role', options: getAccountExtraRoleOptions(defaultRole, []), optionsFor: (role, values) => getAccountExtraRoleOptions(role, values.extraRoles || []), hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
+        { key: 'roleAccessPack', type: 'dynamicNote', render: values => renderAccountRolePackFromForm(values, { role: defaultRole }) },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' },
         { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([], { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Deny має пріоритет над роллю і allow.' }
@@ -3461,6 +3660,10 @@ async function openAccountProfileModal(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
+    if (!currentAccountCanMutateTarget(user)) {
+        showNotification('Цей акаунт не можна редагувати з поточного рівня доступу', 'error');
+        return;
+    }
     await loadAccountStaffOptions();
     const result = await formModal(`Профіль акаунта · ${user.username}`, [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: user.name || user.username || '' },
@@ -3505,6 +3708,10 @@ async function openAccountPasswordModal(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
+    if (!currentAccountCanMutateTarget(user)) {
+        showNotification('Пароль цього акаунта не можна змінити з поточного рівня доступу', 'error');
+        return;
+    }
     const fields = [
         { key: 'mode', label: 'Режим', type: 'select', defaultValue: 'issue', options: [
             { value: 'issue', label: 'Згенерувати одноразовий пароль' },
@@ -3569,6 +3776,10 @@ async function openAccountAccessEditor(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
+    if (!currentAccountCanMutateTarget(user)) {
+        showNotification('Доступ цього акаунта не можна змінити з поточного рівня доступу', 'error');
+        return;
+    }
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
     const currentActionAllowlist = normalizeAccountArray(user.action_allowlist || user.actionAllowlist);
     const currentActionDenylist = normalizeAccountArray(user.action_denylist || user.actionDenylist);
@@ -3578,8 +3789,10 @@ async function openAccountAccessEditor(userId, button) {
     const canEditBusiness = canEditAccountBusinessContexts() && accountRoleCanSwitchBusinessContext(user.role);
     const accessFields = [
         { key: 'accessPolicyNote', type: 'note', text: AppState.currentUser?.role === 'director' ? 'Директор може редагувати ролі, сторінки й дії для акаунтів нижче директорського рівня. Creator/director акаунти змінює тільки creator.' : 'Creator має повний контроль доступів і не може випадково забрати власне керування акаунтами.' },
+        { key: 'rolePreset', label: 'Швидка пачка доступу', type: 'presetButtons', presets: getAccountRolePresetButtons(user.role || 'animator'), hint: 'Пачка виставляє основну роль і додаткові ролі. Creator не видається швидкою пачкою.' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
-        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: normalizeAccountArray(user.extra_roles || user.extraRoles), options: getAccountExtraRoleOptions(user.role || 'animator', user.extra_roles || user.extraRoles), hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
+        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: normalizeAccountArray(user.extra_roles || user.extraRoles), dependsOn: 'role', options: getAccountExtraRoleOptions(user.role || 'animator', user.extra_roles || user.extraRoles), optionsFor: (role, values) => getAccountExtraRoleOptions(role, values.extraRoles || []), hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
+        { key: 'roleAccessPack', type: 'dynamicNote', render: values => renderAccountRolePackFromForm(values, { role: user.role || 'animator', extraRoles: user.extra_roles || user.extraRoles, pageAllowlist: normalizeAccountListInput(currentPages), actionAllowlist: currentActionAllowlist, actionDenylist: currentActionDenylist }) },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' },
         { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist, { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: currentActionDenylist, options: getAccountActionOptions(currentActionDenylist), hint: 'Deny має пріоритет над роллю і allow.' }
@@ -3630,6 +3843,11 @@ async function openAccountAccessEditor(userId, button) {
 
 async function toggleAccountActive(userId, isActive, button) {
     if (!Number.isFinite(Number(userId))) return;
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!user || !currentAccountCanToggleTarget(user)) {
+        showNotification('Цей акаунт не можна активувати або вимкнути з поточного рівня доступу', 'error');
+        return;
+    }
     const label = isActive ? 'активувати акаунт' : 'вимкнути акаунт';
     let ok = false;
     if (typeof confirmModal === 'function') {

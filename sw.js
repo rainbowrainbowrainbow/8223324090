@@ -19,8 +19,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v0.73.85';
-const API_CACHE_NAME = 'event-genix-api-v0.73.85';
+const CACHE_NAME = 'event-genix-v0.73.86';
+const API_CACHE_NAME = 'event-genix-api-v0.73.86';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [

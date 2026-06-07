@@ -230,7 +230,10 @@ test('HR org canvas lets the same port click cancel pending link mode', async ()
 });
 
 test('HR staff edit modal uses the shared modal layer and viewport-safe scrolling', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const html = [
+        fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8'),
+        fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
+    ].join('\n');
     const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
     const overlayCss = html.match(/\.hr-modal-overlay\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
     const dialogCss = html.match(/\.hr-modal\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';

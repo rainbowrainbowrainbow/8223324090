@@ -16,8 +16,17 @@ function check(label, condition) {
     else { failed++; console.log(`  ❌ ${label}`); }
 }
 
+function fileText(filename) {
+    return fs.readFileSync(path.join(ROOT, filename), 'utf8');
+}
+
+function hrSurfaceText() {
+    return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
+}
+
 function htmlContains(filename, text) {
-    return fs.readFileSync(path.join(ROOT, filename), 'utf8').includes(text);
+    if (filename === 'hr.html') return hrSurfaceText().includes(text);
+    return fileText(filename).includes(text);
 }
 
 function checkPage(filename, checks) {
@@ -171,6 +180,7 @@ checkPage('art-director.html', (doc, html) => {
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
     const artCode = fs.readFileSync(path.join(ROOT, 'js', 'art-director-page.js'), 'utf8');
     const hrHtml = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+    const hrSurface = `${hrHtml}\n${fileText('css/hr-page.css')}`;
     const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
     const hrRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
     const warehouseHtml = fs.readFileSync(path.join(ROOT, 'warehouse.html'), 'utf8');
@@ -192,13 +202,13 @@ checkPage('art-director.html', (doc, html) => {
     check('Costume module is Warehouse-owned without Art redirect', warehouseHtml.includes('id="costumesTab"') && warehouseHtml.includes('id="warehouseCostumesList"') && warehouseHtml.includes('data-page-tab="costumes"') && warehouseCode.includes('loadWarehouseCostumes') && warehouseCode.includes('apiGetWarehouseCostumes') && warehouseCode.includes('apiCreateWarehouseCostume') && warehouseRouteCode.includes("router.get('/costumes'") && warehouseRouteCode.includes("router.post('/costumes'") && !warehouseCode.includes("window.location.href = '/art?tab=costumes'"));
     check('HR no longer exposes costumes as a visible owned tab', !hrHtml.includes('data-tab="costumes"') && !hrHtml.includes('id="tab-costumes"') && !hrHtml.includes('id="btnAddCostume"') && !hrHtml.includes('id="costumesList"'));
     check('Old HR costume deep link hands off to Warehouse costume entry', hrCode.includes("target === 'costumes'") && hrCode.includes("window.location.replace('/warehouse#costumes')") && !hrCode.includes('costumes: loadCostumes') && !hrCode.includes('window.showAddCostume'));
-    check('HR vacancy candidate intake supports resume text and file upload', hrCode.includes('candidateResumeFiles') && hrCode.includes('raw_application_text') && hrCode.includes('/resume-files') && hrCode.includes('downloadResumeFile') && hrCode.includes('candidateResumeBadgeHtml') && hrHtml.includes('candidate-upload-card'));
+    check('HR vacancy candidate intake supports resume text and file upload', hrCode.includes('candidateResumeFiles') && hrCode.includes('raw_application_text') && hrCode.includes('/resume-files') && hrCode.includes('downloadResumeFile') && hrCode.includes('candidateResumeBadgeHtml') && hrSurface.includes('candidate-upload-card'));
     check('HR structure renders editable org chart nodes without crown markup', hrHtml.includes('id="companyOrgChart"') && hrHtml.includes('hrOrgEditSelectedBtn') && !hrHtml.includes('hr-org-crown') && !hrHtml.includes('♛'));
     check('HR structure frontend persists editable node model', hrCode.includes('DEFAULT_COMPANY_STRUCTURE_NODES') && hrCode.includes('openCompanyOrgNodeEditor') && hrCode.includes('nodes: normalizeCompanyStructureNodes(companyStructureNodes)') && hrCode.includes('schemaVersion: 1'));
     check('HR structure role editor ignores backdrop misclicks and uses guarded explicit close', hrCode.includes('function requestCloseCompanyOrgNodeEditor') && hrCode.includes('nudgeCompanyOrgNodeEditor(overlay)') && !hrCode.includes('if (event.target === overlay) closeCompanyOrgNodeEditor();') && hrCode.includes('UnsafeDismissGuard.attemptCloseEditableSurface(overlay') && fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8').includes('tests/hr-org-node-modal-dismiss.test.js'));
 check('HR structure supports movable nodes and direct port connector lines', hrCode.includes('DEFAULT_COMPANY_STRUCTURE_POSITIONS') && hrCode.includes('startCompanyOrgDrag') && hrCode.includes('renderCompanyOrgLinks') && hrCode.includes('handleCompanyOrgPortClick') && hrHtml.includes('id="hrOrgAutoLayoutBtn"') && !hrHtml.includes('id="hrOrgRelinkSelectedBtn"') && !hrHtml.includes('id="hrOrgLineToolBtn"') && hrCode.includes('data-org-link-parent-port') && hrCode.includes('data-org-link-child-port') && hrCode.includes('hr-org-link-preview') && hrCode.includes('snapCompanyOrgCoord') && hrCode.includes('class="hr-org-link-layer"') && hrCode.includes('inferCompanyOrgAutoLayoutParents') && hrCode.includes('primaryCompanyOrgRoot') && !hrCode.includes('companyOrgFocusedLinkSet'));
-check('HR structure canvas uses visible grid workspace and richer node editor', hrHtml.includes('--hr-org-grid-cell: 120px') && hrHtml.includes('.hr-org-node-editor-summary') && hrCode.includes('name="x"') && hrCode.includes('name="y"') && hrCode.includes('autoArrangeTreeCompanyOrgNodes') && hrCode.includes('resolveCompanyOrgNodeOverlaps'));
-check('HR structure keeps the org chart compact enough for one desktop screen', hrCode.includes('const ORG_CANVAS_MIN_WIDTH = 1180') && hrCode.includes('const ORG_NODE_WIDTH = 142') && hrCode.includes('const ORG_ONE_SCREEN_MAX_HEIGHT = 760') && hrCode.includes('function compactCompanyOrgNodesForOneScreen') && hrCode.includes('companyOrgNeedsOneScreenLayout(normalized)') && hrCode.includes('companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes)') && hrHtml.includes('grid-template-columns: minmax(0, 1fr);') && hrHtml.includes('height: clamp(560px, calc(100dvh - 285px), 760px)') && hrHtml.includes('.hr-org-node-description') && hrHtml.includes('display: none;') && hrHtml.includes('.hr-org-detail-edit {') && hrHtml.includes('grid-column: 2;'));
+check('HR structure canvas uses visible grid workspace and richer node editor', hrSurface.includes('--hr-org-grid-cell: 120px') && hrSurface.includes('.hr-org-node-editor-summary') && hrCode.includes('name="x"') && hrCode.includes('name="y"') && hrCode.includes('autoArrangeTreeCompanyOrgNodes') && hrCode.includes('resolveCompanyOrgNodeOverlaps'));
+check('HR structure keeps the org chart compact enough for one desktop screen', hrCode.includes('const ORG_CANVAS_MIN_WIDTH = 1180') && hrCode.includes('const ORG_NODE_WIDTH = 142') && hrCode.includes('const ORG_ONE_SCREEN_MAX_HEIGHT = 760') && hrCode.includes('function compactCompanyOrgNodesForOneScreen') && hrCode.includes('companyOrgNeedsOneScreenLayout(normalized)') && hrCode.includes('companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes)') && hrSurface.includes('grid-template-columns: minmax(0, 1fr);') && hrSurface.includes('height: clamp(560px, calc(100dvh - 285px), 760px)') && hrSurface.includes('.hr-org-node-description') && hrSurface.includes('display: none;') && hrSurface.includes('.hr-org-detail-edit {') && hrSurface.includes('grid-column: 2;'));
 check('HR structure route sanitizes structured node payloads', hrRouteCode.includes('sanitizeCompanyStructureNodes') && hrRouteCode.includes('COMPANY_STRUCTURE_ALLOWED_TONES') && hrRouteCode.includes('schemaVersion: COMPANY_STRUCTURE_SCHEMA_VERSION') && hrRouteCode.includes('source.x') && hrRouteCode.includes('source.y'));
     check('HR structure no longer leaks legacy animator shift summary below tabs', !hrHtml.includes('shiftsSummarySection') && !hrHtml.includes('loadShiftsSummary') && !hrHtml.includes('shiftsSummaryContainer') && hrCode.includes('function removeLegacyAnimatorShiftSummary') && hrCode.includes('removeLegacyAnimatorShiftSummary();'));
     check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
@@ -1127,7 +1137,7 @@ const hrCode = fs.readFileSync(path.join(ROOT, 'js/hr-page.js'), 'utf8');
 const hrRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const staffRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const hrAttendanceServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrAttendance.js'), 'utf8');
-const hrHtmlForContracts = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+const hrHtmlForContracts = hrSurfaceText();
 const hrImplicitButtons = [...`${hrHtmlForContracts}\n${hrCode}`.matchAll(/<button\b[^>]*>/g)]
     .filter(match => !/\btype\s*=/.test(match[0]));
 const contentCode = fs.readFileSync(path.join(ROOT, 'js/content-page.js'), 'utf8');

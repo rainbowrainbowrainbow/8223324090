@@ -22,7 +22,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const hrRoute = readRepoFile('routes', 'hr.js');
     const staffRoute = readRepoFile('routes', 'staff.js');
     const hrPage = readRepoFile('js', 'hr-page.js');
-    const hrHtml = readRepoFile('hr.html');
+    const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
 

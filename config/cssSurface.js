@@ -135,6 +135,13 @@ const CSS_SURFACE = [
         reason: 'Graduation event builder and embedded view styles.'
     },
     {
+        file: 'css/hr-page.css',
+        owner: 'hr',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'HR workspace styles extracted from hr.html; large-file consolidation candidate.'
+    },
+    {
         file: 'css/kleshnya-widget.css',
         owner: 'kleshnya',
         category: 'feature-shared',

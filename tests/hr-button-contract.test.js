@@ -5,7 +5,10 @@ const test = require('node:test');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 
 const ROOT = path.join(__dirname, '..');
-const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+const HR_HTML = [
+    fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
+].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');

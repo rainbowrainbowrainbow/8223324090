@@ -48,7 +48,14 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/controls.css` | shared-ui | `shared` | active | Shared form controls, buttons, and toolbar patterns. |
 | `css/copilot.css` | copilot | `page-scoped` | active | Sales/copilot workspace styles. |
 | `css/dark-mode.css` | shared-ui | `shared-large` | active-large | Shared dark-mode overrides across authenticated CRM pages. |
-| `css/dashboard.css` | dashboard | `page-scoped` | active | Dashboard widget and onboarding styles. |
+| `css/dashboard.css` | dashboard | `page-scoped` | active | Aggregate entrypoint for Dashboard page styles. |
+| `css/dashboard-board.css` | dashboard | `page-scoped-large` | active-large | Dashboard whiteboard canvas, planner, geometry, connector, dark-mode, and compact tool dock styles imported by `dashboard.css`. |
+| `css/dashboard-legacy.css` | dashboard | `page-scoped` | active | Dashboard devtools, legacy assistant fallback, and final patch styles imported by `dashboard.css`. |
+| `css/dashboard-scene.css` | dashboard | `page-scoped` | active | Dashboard mixed-scene and writing-zone layout styles imported by `dashboard.css`. |
+| `css/dashboard-settings.css` | dashboard | `page-scoped-large` | active-large | Dashboard settings modal, widget manager, task widget rows, and dark-mode settings styles imported by `dashboard.css`. |
+| `css/dashboard-shell.css` | dashboard | `page-scoped-large` | active-large | Dashboard page shell, assistant fallback rail, role preview, action toolbar, and workspace controls imported by `dashboard.css`. |
+| `css/dashboard-widgets.css` | dashboard | `page-scoped-large` | active-large | Dashboard widget grid, cards, task previews, booking, team, weather, currency, onboarding, and widget dark-mode styles imported by `dashboard.css`. |
+| `css/dashboard-work-queue.css` | dashboard | `page-scoped-large` | active-large | Dashboard Work Queue triage, reply operations, buckets, bulk actions, and responsive queue styles imported by `dashboard.css`. |
 | `css/decision-screen.css` | dashboard | `feature-shared` | active | Decision overlay styles mounted from the dashboard page. |
 | `css/designs.css` | designs | `page-scoped` | active | Design catalog workspace styles. |
 | `css/entity-card.css` | leads-customers | `feature-shared` | active | Shared lead/customer entity workspace card shell and safe visual contract. |
@@ -72,7 +79,17 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/sidebar-smart-menu.css` | shared-ui | `shared` | active | Optional smart sidebar menu customizer styles for compact dashboard shortcuts. |
 | `css/minigame.css` | game | `page-scoped-large` | active-large | Gamification game styles; large-file consolidation candidate. |
 | `css/modals.css` | shared-ui | `shared-large` | active-large | Shared modal and profile modal styles across CRM pages. |
-| `css/pages.css` | shared-ui | `shared` | active | Shared page-level layout helpers for static CRM pages. |
+| `css/pages.css` | shared-ui | `shared` | active | Aggregate entrypoint for shared static CRM page styles. |
+| `css/pages-afisha.css` | shared-ui | `shared` | active | Afisha event workspace, material folder, event card, and dark-mode styles imported by `pages.css`. |
+| `css/pages-analytics-vacancy.css` | shared-ui | `shared` | active | Analytics chart readout, HR vacancy workspace, and salary period picker styles imported by `pages.css`. |
+| `css/pages-art.css` | shared-ui | `shared` | active | Art standalone shell, tabs, boards, kanban, recent work, and responsive styles imported by `pages.css`. |
+| `css/pages-cabinet.css` | shared-ui | `shared-large` | active-large | Personal cabinet task composer, quick metrics, completion strips, task cards, subtasks, and dark-mode styles imported by `pages.css`. |
+| `css/pages-certificates.css` | shared-ui | `shared` | active | Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by `pages.css`. |
+| `css/pages-core.css` | shared-ui | `shared` | active | Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by `pages.css`. |
+| `css/pages-hr-foundation.css` | shared-ui | `shared` | active | HR employee-card foundation, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by `pages.css`. |
+| `css/pages-hr-staff.css` | shared-ui | `shared-large` | active-large | HR payroll toolbar, staff pulse navigation, schedule replacement controls, HR team tabs, team filters, and onboarding assignment styles imported by `pages.css`. |
+| `css/pages-task-taxonomy.css` | shared-ui | `shared` | active | Task print rules, taxonomy chips, operations summary, operational packs, and dark-mode taxonomy styles imported by `pages.css`. |
+| `css/pages-tasks.css` | shared-ui | `shared-large` | active-large | Task cards, task action surfaces, filters, work rows, dark-mode task controls, and responsive task shell styles imported by `pages.css`. |
 | `css/panel.css` | timeline | `shell` | active | Root shell side panel styles. |
 | `css/responsive.css` | shared-ui | `shared` | active | Shared responsive overrides across authenticated CRM pages. |
 | `css/sound.css` | sound | `page-scoped` | active | Sound library page styles. |
@@ -102,8 +119,9 @@ commit.
 
 The current high-value CSS consolidation candidates are `css/chat-core.css`,
 `css/chat-effects.css`, `css/hr-page.css`, `landing/style.css`,
-`css/features.css`, `css/dark-mode.css`, `css/minigame.css`,
-`css/modals.css`, `css/layout.css`, `css/sidebar-aurora-enterprise.css`,
+`css/features.css`, `css/dark-mode.css`, `css/pages-cabinet.css`,
+`css/dashboard-board.css`, `css/minigame.css`, `css/modals.css`,
+`css/layout.css`, `css/sidebar-aurora-enterprise.css`,
 `css/sidebar-aurora-identity.css`, and `css/graduation.css`.
 
 Do not start with a broad reformat. Prefer page-scoped extraction or removal

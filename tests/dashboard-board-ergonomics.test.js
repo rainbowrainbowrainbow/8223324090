@@ -11,9 +11,31 @@ function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 }
 
+function readCssWithImports(relPath, seen = new Set()) {
+    const normalized = relPath.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = read(normalized);
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 test('dashboard board has direct manipulation, pan, and geometry endpoint contracts', () => {
     const pageJs = read('js/dashboard-page.js');
-    const css = read('css/dashboard.css');
+    const css = readCssWithImports('css/dashboard.css');
 
     assert.match(pageJs, /function canStartDirectBoardDrag/);
     assert.match(pageJs, /function isBoardDragBlockedTarget/);
@@ -37,7 +59,7 @@ test('dashboard board has direct manipulation, pan, and geometry endpoint contra
 test('dashboard board uses one unified interaction mode instead of forced view/edit', () => {
     const pageJs = read('js/dashboard-page.js');
     const html = read('dashboard.html');
-    const css = read('css/dashboard.css');
+    const css = readCssWithImports('css/dashboard.css');
 
     assert.match(pageJs, /const BOARD_INTERACTION_MODE = 'unified'/);
     assert.match(pageJs, /let _boardInteractionMode = BOARD_INTERACTION_MODE/);
@@ -52,7 +74,7 @@ test('dashboard board uses one unified interaction mode instead of forced view/e
 
 test('dashboard board Android openability has guarded init, viewport, and touch fallbacks', () => {
     const pageJs = read('js/dashboard-page.js');
-    const css = read('css/dashboard.css');
+    const css = readCssWithImports('css/dashboard.css');
 
     assert.match(pageJs, /let _dashboardInitPromise = null/);
     assert.match(pageJs, /if \(_dashboardInitPromise\) return _dashboardInitPromise/);
@@ -372,7 +394,7 @@ test('dashboard shape allow-lists and sanitizer preserve legacy rect/ellipse whi
     const pageJs = read('js/dashboard-page.js');
     const routeJs = read('routes/dashboard.js');
     const html = read('dashboard.html');
-    const css = read('css/dashboard.css');
+    const css = readCssWithImports('css/dashboard.css');
 
     assert.match(pageJs, /BOARD_SHAPE_TOOLS = new Set\(\[[^\]]*'rect'[^\]]*'square'[^\]]*'circle'[^\]]*'ellipse'/);
     assert.doesNotMatch(pageJs, /BOARD_SHAPE_TOOLS = new Set\(\[[^\]]*'arrow'/);

@@ -1,0 +1,1084 @@
+/* v0.73.45: HR payroll/KPI toolbar polish without growing inline HR styles. */
+.hr-kpi-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.hr-kpi-actions .hr-team-select {
+    min-width: 160px;
+}
+
+.hr-kpi-refresh {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+    border-radius: 12px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 16%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 12%, transparent)
+    );
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 950;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth);
+}
+
+.hr-kpi-refresh::before {
+    content: "↻";
+    width: 18px;
+    height: 18px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: currentColor;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.hr-kpi-refresh:hover,
+.hr-kpi-refresh:focus-visible {
+    outline: none;
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+body.dark-mode .hr-kpi-refresh {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 38%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode .hr-kpi-refresh::before {
+    background: color-mix(in srgb, var(--primary-light, var(--primary)) 16%, transparent);
+}
+
+body.dark-mode .hr-kpi-refresh:hover,
+body.dark-mode .hr-kpi-refresh:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 52%, transparent);
+    color: var(--white);
+}
+
+.hr-role-report {
+    margin-top: 18px;
+}
+
+.hr-report-section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 4px 0 12px;
+}
+
+.hr-report-section-head h3 {
+    margin: 0;
+    color: var(--gray-800);
+    font-size: 18px;
+    font-weight: 950;
+}
+
+.hr-report-section-head p {
+    margin: 4px 0 0;
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.hr-role-report-sub {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.hr-role-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 11px;
+    font-weight: 950;
+    white-space: nowrap;
+}
+
+.hr-role-pill.good {
+    background: rgba(16,185,129,0.14);
+    color: #047857;
+}
+
+.hr-role-pill.warn {
+    background: rgba(245,158,11,0.16);
+    color: #B45309;
+}
+
+.hr-role-pill.bad {
+    background: rgba(239,68,68,0.14);
+    color: #B91C1C;
+}
+
+body.dark-mode .hr-report-section-head h3 {
+    color: #F8FAFC;
+}
+
+body.dark-mode .hr-report-section-head p,
+body.dark-mode .hr-role-report-sub {
+    color: #94A3B8;
+}
+
+body.dark-mode .hr-role-pill {
+    background: rgba(148,163,184,0.12);
+    color: #CBD5E1;
+}
+
+body.dark-mode .hr-role-pill.good {
+    background: rgba(16,185,129,0.18);
+    color: #6EE7B7;
+}
+
+body.dark-mode .hr-role-pill.warn {
+    background: rgba(245,158,11,0.18);
+    color: #FCD34D;
+}
+
+body.dark-mode .hr-role-pill.bad {
+    background: rgba(239,68,68,0.18);
+    color: #FCA5A5;
+}
+
+/* v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm. */
+.staff-pulse-nav {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 18px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--gray-900) 4%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+.staff-pulse-nav-items {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.staff-pulse-tab {
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 16px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--white) 42%, transparent);
+    color: var(--gray-600);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.staff-pulse-tab:hover,
+.staff-pulse-tab:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-800);
+}
+
+.staff-pulse-tab.active,
+.staff-pulse-tab[aria-current="page"] {
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 18%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    color: var(--primary);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--white) 50%, transparent);
+}
+
+.staff-pulse-nav + .page-header {
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.staff-pulse-nav + .page-header h2 {
+    margin: 0;
+    color: var(--gray-900);
+    font-size: 24px;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .schedule-controls {
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 84%, transparent),
+        color-mix(in srgb, var(--gray-100) 74%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+body[data-page-group="hr"] .schedule-controls .week-nav {
+    padding: 4px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--gray-900) 4%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-controls .week-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 66%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 42%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-toolbar .btn-page-secondary {
+    border: 1px solid color-mix(in srgb, var(--gray-400) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-700);
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+}
+
+body[data-page-group="hr"] .dept-filter {
+    width: 100%;
+    padding-top: 2px;
+}
+
+body[data-page-group="hr"] .dept-chip {
+    min-height: 34px;
+    border-radius: 12px;
+    font-weight: 900;
+}
+
+body[data-page-group="hr"] .summary-chip {
+    min-height: 42px;
+    border-radius: 14px;
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 88%, transparent),
+        color-mix(in srgb, var(--gray-100) 76%, transparent)
+    );
+}
+
+/* v0.73.55: /staff replacement slots are visible without growing staff.html inline CSS. */
+body[data-page-group="hr"] .summary-chip-replacement {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 10%, var(--white));
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning) 10%, var(--white)),
+        color-mix(in srgb, var(--warning) 5%, transparent)
+    );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 28%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
+    box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--warning) 32%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    color: var(--warning-dark);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 3px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+    color: var(--warning-dark);
+    font-size: 8px;
+    font-weight: 900;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    display: block;
+    max-width: 90px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+body[data-page-group="hr"] .sch-replacement-details {
+    display: grid;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--warning) 10%, var(--white));
+    color: var(--warning-dark);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+body[data-page-group="hr"] .sch-replacement-details[hidden],
+body[data-page-group="hr"] .sch-replacement-action[hidden] {
+    display: none;
+}
+
+body[data-page-group="hr"] .sch-replacement-details strong {
+    color: var(--warning-dark);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+body[data-page-group="hr"] .sch-replacement-actions {
+    margin-top: 8px;
+}
+
+body[data-page-group="hr"] .sch-replacement-action {
+    flex: 1;
+    min-height: 42px;
+}
+
+body[data-page-group="hr"] .sch-clear-replacement-btn {
+    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+    color: var(--danger-dark);
+}
+
+body[data-page-group="hr"] .schedule-wrapper {
+    border-radius: 18px;
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    box-shadow: var(--shadow-md);
+}
+
+body.dark-mode .staff-pulse-nav,
+[data-theme="dark"] .staff-pulse-nav {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 96%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 86%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .staff-pulse-tab,
+[data-theme="dark"] .staff-pulse-tab {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .staff-pulse-tab:hover,
+body.dark-mode .staff-pulse-tab:focus-visible,
+[data-theme="dark"] .staff-pulse-tab:hover,
+[data-theme="dark"] .staff-pulse-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--text, var(--white));
+}
+
+body.dark-mode .staff-pulse-tab.active,
+body.dark-mode .staff-pulse-tab[aria-current="page"],
+[data-theme="dark"] .staff-pulse-tab.active,
+[data-theme="dark"] .staff-pulse-tab[aria-current="page"] {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 32%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 84%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls .week-nav,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls .week-nav {
+    background: color-mix(in srgb, var(--white) 4%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-controls .week-label,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-controls .week-label {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: color-mix(in srgb, var(--bg-primary, #1A1A2E) 72%, transparent);
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode[data-page-group="hr"] .summary-chip,
+[data-theme="dark"] body[data-page-group="hr"] .summary-chip {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 14%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 92%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 82%, transparent)
+    );
+}
+
+body.dark-mode[data-page-group="hr"] .summary-chip-replacement,
+[data-theme="dark"] body[data-page-group="hr"] .summary-chip-replacement {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 12%, var(--surface, #1E1E38));
+    color: color-mix(in srgb, var(--warning) 58%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-working,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.status-remote {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning) 20%, var(--surface, #1E1E38)),
+        color-mix(in srgb, var(--warning) 10%, var(--bg-primary, #1A1A2E))
+    );
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement.today-col {
+    box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary-light, var(--primary)) 26%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.is-replacement .sch-time,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
+    color: color-mix(in srgb, var(--warning) 64%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge {
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
+body.dark-mode[data-page-group="hr"] .sch-replacement-details,
+[data-theme="dark"] body[data-page-group="hr"] .sch-replacement-details {
+    background: color-mix(in srgb, var(--warning) 10%, var(--surface, #1E1E38));
+    border-color: color-mix(in srgb, var(--warning) 24%, transparent);
+    color: color-mix(in srgb, var(--warning) 58%, var(--white));
+}
+
+body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
+[data-theme="dark"] body[data-page-group="hr"] .sch-replacement-details strong {
+    color: color-mix(in srgb, var(--warning) 68%, var(--white));
+}
+
+/* v0.73.53: HR Team uses the same segmented rhythm as HR Pulse without growing hr.html inline CSS. */
+.page-container .hr-nav.hr-nav--people {
+    position: relative;
+    top: auto;
+    z-index: 2;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 18px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--gray-900) 4%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+    overflow: visible;
+}
+
+.page-container .hr-nav.hr-nav--people + #tab-team.active {
+    position: relative;
+    z-index: 1;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-group {
+    padding: 0;
+    background: transparent;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-group-title {
+    display: none;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-nav-items {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab {
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    padding: 13px 16px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--white) 42%, transparent);
+    color: var(--gray-600);
+    font-size: 14px;
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab:hover,
+.page-container .hr-nav.hr-nav--people .hr-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    color: var(--gray-800);
+}
+
+.page-container .hr-nav.hr-nav--people .hr-tab.active {
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 18%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 16%, transparent)
+    );
+    color: var(--primary);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--white) 50%, transparent);
+}
+
+/* v0.73.75: dismissed cards and ZRS controls stay out of hr.html inline budget. */
+.page-container .hr-team-card.inactive {
+    opacity: 1;
+    border-style: dashed;
+    border-color: rgba(148, 163, 184, 0.36);
+}
+
+.page-container .hr-team-card.inactive .hr-team-avatar {
+    opacity: 0.76;
+    filter: grayscale(0.25);
+}
+
+.page-container .hr-team-delete {
+    border: 1px solid rgba(220, 38, 38, 0.26);
+    border-radius: 8px;
+    background: rgba(220, 38, 38, 0.08);
+    color: #B91C1C;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.page-container .hr-team-delete:hover,
+.page-container .hr-team-delete:focus-visible {
+    background: rgba(220, 38, 38, 0.14);
+    border-color: rgba(220, 38, 38, 0.38);
+}
+
+.page-container .zrs-status-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.page-container .zrs-status-badge.is-muted {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--gray-500);
+}
+
+.page-container .zrs-action-btn {
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #B91C1C;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.page-container .zrs-action-btn:hover {
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.page-container .hr-team-controls {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    border-radius: 18px;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--white) 88%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+    box-shadow: var(--shadow-md);
+}
+
+.page-container .hr-team-filter-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.page-container .hr-team-controls .hr-team-search {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 72%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 42%, transparent);
+}
+
+.page-container .hr-team-active-toggle {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--gray-400) 18%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 58%, transparent);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-active-toggle input {
+    accent-color: var(--primary);
+}
+
+.page-container .hr-team-filter-info {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-900) 5%, transparent);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.page-container .hr-people-bucket {
+    border: 1px solid color-mix(in srgb, var(--gray-400) 16%, transparent);
+    border-radius: 18px;
+    box-shadow: var(--shadow-md);
+}
+
+.page-container .hr-people-bucket-toggle:hover {
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+.page-container .hr-people-bucket.is-open .hr-people-bucket-toggle {
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 8%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
+    );
+}
+
+/* v0.73.61: HR Team onboarding owner summary lives in shared CSS, not inline HR debt. */
+.page-container .hr-team-onboarding-assignment {
+    width: 100%;
+    display: grid;
+    gap: 7px;
+    padding: 9px 10px;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.page-container .hr-team-onboarding-assignment-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head b {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.page-container .hr-team-onboarding-assignment-head span {
+    min-width: 0;
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-onboarding-assignment-head button {
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.page-container .hr-team-onboarding-assignment-head button:hover {
+    border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.page-container .hr-team-onboarding-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.page-container .hr-team-onboarding-meta span {
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--gray-400) 18%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-400) 8%, transparent);
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 900;
+}
+
+.page-container .hr-team-onboarding-meter {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray-400) 20%, transparent);
+}
+
+.page-container .hr-team-onboarding-meter i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), var(--primary-light, var(--primary)));
+    transition: width 0.25s ease;
+}
+
+.page-container .hr-team-onboarding-assignment.is-ok .hr-team-onboarding-meter i {
+    background: var(--success);
+}
+
+.page-container .hr-team-onboarding-assignment.is-empty {
+    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
+    background: color-mix(in srgb, var(--gray-400) 6%, transparent);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 96%, transparent),
+        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 86%, transparent)
+    );
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-nav-group,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-nav-group {
+    background: transparent;
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab:hover,
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab:focus-visible,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab:hover,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+    background: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode .page-container .hr-nav.hr-nav--people .hr-tab.active,
+[data-theme="dark"] .page-container .hr-nav.hr-nav--people .hr-tab.active {
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 32%, transparent);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 22%, transparent),
+        color-mix(in srgb, var(--secondary, var(--primary)) 18%, transparent)
+    );
+    color: var(--primary-light, var(--primary));
+}
+
+body.dark-mode .page-container .hr-team-card.inactive,
+[data-theme="dark"] .page-container .hr-team-card.inactive {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(30, 41, 59, 0.72);
+}
+
+body.dark-mode .page-container .hr-team-delete,
+[data-theme="dark"] .page-container .hr-team-delete {
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(248, 113, 113, 0.12);
+    color: #FCA5A5;
+}
+
+body.dark-mode .page-container .hr-team-delete:hover,
+body.dark-mode .page-container .hr-team-delete:focus-visible,
+[data-theme="dark"] .page-container .hr-team-delete:hover,
+[data-theme="dark"] .page-container .hr-team-delete:focus-visible {
+    background: rgba(248, 113, 113, 0.18);
+    border-color: rgba(248, 113, 113, 0.42);
+}
+
+body.dark-mode .page-container .zrs-status-badge,
+[data-theme="dark"] .page-container .zrs-status-badge {
+    background: rgba(16, 185, 129, 0.18);
+    color: #A7F3D0;
+}
+
+body.dark-mode .page-container .zrs-status-badge.is-muted,
+[data-theme="dark"] .page-container .zrs-status-badge.is-muted {
+    background: rgba(148, 163, 184, 0.14);
+    color: #CBD5E1;
+}
+
+body.dark-mode .page-container .zrs-action-btn,
+[data-theme="dark"] .page-container .zrs-action-btn {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(248, 113, 113, 0.36);
+    color: #FCA5A5;
+}
+
+body.dark-mode .page-container .hr-team-controls,
+[data-theme="dark"] .page-container .hr-team-controls {
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--surface, #1E1E38) 88%, transparent),
+        color-mix(in srgb, var(--bg-primary, #1A1A2E) 82%, transparent)
+    );
+    border-color: color-mix(in srgb, var(--gray-400) 14%, transparent);
+    box-shadow: var(--shadow-lg);
+}
+
+body.dark-mode .page-container .hr-team-active-toggle,
+body.dark-mode .page-container .hr-team-filter-info,
+[data-theme="dark"] .page-container .hr-team-active-toggle,
+[data-theme="dark"] .page-container .hr-team-filter-info {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment {
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 20%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment.is-empty,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment.is-empty {
+    background: color-mix(in srgb, var(--white) 4%, transparent);
+    border-color: color-mix(in srgb, var(--white) 8%, transparent);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head b,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head b {
+    color: var(--text, #F8FAFC);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head span,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head span {
+    color: var(--text-secondary, #CBD5E1);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-meta span,
+[data-theme="dark"] .page-container .hr-team-onboarding-meta span {
+    background: color-mix(in srgb, var(--white) 5%, transparent);
+    border-color: color-mix(in srgb, var(--white) 8%, transparent);
+    color: var(--gray-400);
+}
+
+body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
+[data-theme="dark"] .page-container .hr-team-onboarding-assignment-head button {
+    color: var(--primary-light, var(--primary));
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
+}
+
+@media (max-width: 768px) {
+    .hr-kpi-actions {
+        width: 100%;
+    }
+
+    .hr-kpi-actions .hr-team-select,
+    .hr-kpi-actions .hr-kpi-refresh {
+        width: 100%;
+    }
+
+    .hr-report-section-head {
+        display: grid;
+        align-items: stretch;
+    }
+
+    .hr-report-section-head .hr-kpi-refresh {
+        width: 100%;
+    }
+
+    .staff-pulse-nav {
+        padding: 6px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+    }
+
+    .staff-pulse-nav-items {
+        gap: 6px;
+    }
+
+    .staff-pulse-tab {
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .staff-pulse-nav + .page-header {
+        align-items: stretch;
+    }
+
+    .staff-pulse-nav + .page-header h2 {
+        font-size: 22px;
+    }
+
+    .page-container .hr-nav.hr-nav--people {
+        top: auto;
+        align-items: stretch;
+        padding: 6px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-nav-group {
+        flex-direction: row;
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-nav-items {
+        gap: 6px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .page-container .hr-nav.hr-nav--people .hr-tab {
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .page-container .hr-team-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .page-container .hr-team-active-toggle,
+    .page-container .hr-team-filter-info {
+        width: 100%;
+    }
+}

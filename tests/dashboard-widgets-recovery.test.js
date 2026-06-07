@@ -9,12 +9,34 @@ function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 }
 
+function readCssWithImports(relPath, seen = new Set()) {
+    const normalized = relPath.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = read(normalized);
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 test('dashboard restores widget manager, full registry, and creator tasker contracts', () => {
     const pageJs = read('js/dashboard-page.js');
     const dashboardHtml = read('dashboard.html');
     const routes = read('routes/dashboard.js');
     const roles = read('config/roles.js');
-    const css = read('css/dashboard.css');
+    const css = readCssWithImports('css/dashboard.css');
 
     assert.match(pageJs, /const DASHBOARD_RETIRED_WIDGETS = new Set\(\)/);
     assert.match(pageJs, /const BOARD_LIVE_WIDGET_CAP = 18/);

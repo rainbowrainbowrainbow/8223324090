@@ -16,6 +16,29 @@ let queries;
 
 const originalJwtSecret = process.env.JWT_SECRET;
 
+function readCssWithImports(file, seen = new Set()) {
+    const repoRoot = path.resolve(__dirname, '..');
+    const normalized = file.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = fs.readFileSync(path.join(repoRoot, normalized), 'utf8');
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
     require.cache[id] = { id, filename: id, loaded: true, exports };
@@ -1651,7 +1674,7 @@ describe('work queue endpoint', () => {
     it('wires dashboard waiting-reply rendering without unread heuristics', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const dashboardJs = fs.readFileSync(path.join(repoRoot, 'js/dashboard-page.js'), 'utf8');
-        const dashboardCss = fs.readFileSync(path.join(repoRoot, 'css/dashboard.css'), 'utf8');
+        const dashboardCss = readCssWithImports('css/dashboard.css');
 
         assert.match(dashboardJs, /item\.bucket === 'waiting_reply'/);
         assert.match(dashboardJs, /replyScope: _workQueueReplyScope/);

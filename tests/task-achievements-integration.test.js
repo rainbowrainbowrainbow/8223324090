@@ -5,6 +5,28 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 
+function readCssWithImports(file, seen = new Set()) {
+    const normalized = file.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = fs.readFileSync(path.join(ROOT, normalized), 'utf8');
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 test('task decomposition milestones use the canonical achievements route', () => {
     const route = fs.readFileSync(path.join(ROOT, 'routes', 'achievements.js'), 'utf8');
     const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '213_task_decomposition_achievements.sql'), 'utf8');
@@ -36,7 +58,7 @@ test('task decomposition milestones use the canonical achievements route', () =>
 
 test('profile keeps the existing achievements tab instead of a separate productivity panel', () => {
     const profileCode = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
-    const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const profileCss = readCssWithImports('css/pages.css');
 
     assert.match(profileCode, /function renderAchievements/);
     assert.match(profileCode, /apiGet\('\/achievements'\)/);

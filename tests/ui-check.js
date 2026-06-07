@@ -198,7 +198,7 @@ checkPage('designs.html', (doc, html) => {
 });
 
 checkPage('art-director.html', (doc, html) => {
-    const pagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const pagesCss = cssTextWithImports('css/pages.css');
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
     const artCode = fs.readFileSync(path.join(ROOT, 'js', 'art-director-page.js'), 'utf8');
     const hrHtml = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
@@ -311,7 +311,7 @@ checkPage('certificates.html', (doc, html) => {
     const certificatePageCode = fs.readFileSync(path.join(ROOT, 'js', 'certificates-page.js'), 'utf8');
     const certificateRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'certificates.js'), 'utf8');
     const certificateServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'certificates.js'), 'utf8');
-    const pagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const pagesCss = cssTextWithImports('css/pages.css');
     const certQtyInputRule = pagesCss.match(/\.cert-quantity-option input\s*\{([\s\S]*?)\}/)?.[1] || '';
     const certQtyCheckedRule = pagesCss.match(/\.cert-quantity-option input:checked \+ span\s*\{([\s\S]*?)\}/)?.[1] || '';
     const certNavLinks = [...doc.querySelectorAll('.cert-page-actions [data-cert-mode]')];
@@ -342,7 +342,7 @@ checkPage('certificates.html', (doc, html) => {
 checkPage('staff.html', (doc, html) => {
     const baseCss = fs.readFileSync(path.join(ROOT, 'css', 'base.css'), 'utf8');
     const modalCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
-    const staffPagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+    const staffPagesCss = cssTextWithImports('css/pages.css');
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const staffCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
     check('Staff schedule edit modal exists', !!doc.getElementById('schModalOverlay'));
@@ -500,7 +500,7 @@ const taskCreateCode = fs.readFileSync(path.join(ROOT, 'js', 'task-create.js'), 
 const tasksPageCodeForProfileChecks = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const tasksHtmlForProfileChecks = fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8');
 const soundEngineCodeForProfileChecks = fs.readFileSync(path.join(ROOT, 'js', 'sound-engine.js'), 'utf8');
-const profilePagesCss = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+const profilePagesCss = cssTextWithImports('css/pages.css');
 const questsRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'quests.js'), 'utf8');
 const renderMyTasksBody = profileCode.match(/function renderMyTasksTab\(\) \{[\s\S]*?\n\}/)?.[0] || '';
 const renderMyDayBody = profileCode.match(/function renderMyDayTab\(\) \{[\s\S]*?\n\}/)?.[0] || '';
@@ -846,7 +846,7 @@ const minigameCode = fs.readFileSync(path.join(ROOT, 'js', 'minigame-match3.js')
 const minigameCss = fs.readFileSync(path.join(ROOT, 'css', 'minigame.css'), 'utf8');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
-const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8');
+const dashboardCss = cssTextWithImports('css/dashboard.css');
 const assistantRailCode = fs.readFileSync(path.join(ROOT, 'js/assistant-rail.js'), 'utf8');
 const assistantFoundationCode = fs.readFileSync(path.join(ROOT, 'js/assistant-foundation.js'), 'utf8');
 const kleshnyaWidgetCode = fs.readFileSync(path.join(ROOT, 'js/kleshnya-widget.js'), 'utf8');
@@ -1024,7 +1024,7 @@ const customersRouteCode = fs.readFileSync(path.join(ROOT, 'routes/customers.js'
 const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');
 const centerCode = fs.readFileSync(path.join(ROOT, 'js/center-page.js'), 'utf8');
 const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
-const pagesCss = fs.readFileSync(path.join(ROOT, 'css/pages.css'), 'utf8');
+const pagesCss = cssTextWithImports('css/pages.css');
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
 check('Customers page no longer exposes duplicate journey funnel UI', !customersCode.includes('JOURNEY_STAGES') && !customersCode.includes('data-journey-stage') && !customersCode.includes('handleJourneyStageAction') && !htmlContains('customers.html', 'data-tab="journey"') && !htmlContains('customers.html', 'tabJourney') && htmlContains('customers.html', "params.get('tab') === 'journey'") && htmlContains('customers.html', "target.searchParams.set('view', 'kanban')"));
 check('Customers keeps lifecycle segment deep links as list filters only', customersCode.includes('CUSTOMER_LIFECYCLE_SEGMENTS') && customersCode.includes("id: 'prospects'") && customersCode.includes('maxVisits: 0') && customersCode.includes('getCustomerLifecycleSegment') && customersRouteCode.includes('parseCustomerVisitBound') && customersRouteCode.includes('maxVisits !== null') && customersRouteCode.includes('COALESCE(b_agg.booking_count, c.total_bookings, 0)'));

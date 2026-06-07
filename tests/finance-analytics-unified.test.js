@@ -6,12 +6,34 @@ const test = require('node:test');
 const ROOT = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 
+function readCssWithImports(file, seen = new Set()) {
+    const normalized = file.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = read(normalized);
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 test('finance is the canonical unified finance and analytics surface', () => {
     const financeHtml = read('finance.html');
     const financeJs = read('js/finance-page.js');
     const analyticsJs = read('js/analytics-page.js');
     const analyticsHtml = read('analytics.html');
-    const pagesCss = read('css/pages.css');
+    const pagesCss = readCssWithImports('css/pages.css');
     const sidebarJs = read('js/components/sidebar.js');
     const serverJs = read('server.js');
 

@@ -5,6 +5,28 @@ const test = require('node:test');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 
 const ROOT = path.join(__dirname, '..');
+function readCssWithImports(file, seen = new Set()) {
+    const normalized = file.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = fs.readFileSync(path.join(ROOT, normalized), 'utf8');
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(readCssWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 const HR_HTML = [
     fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
@@ -13,7 +35,7 @@ const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
-const PAGES_CSS = fs.readFileSync(path.join(ROOT, 'css', 'pages.css'), 'utf8');
+const PAGES_CSS = readCssWithImports('css/pages.css');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
 const ZRS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '255_payroll_zrs_advances.sql'), 'utf8');
 

@@ -220,7 +220,56 @@ const CSS_SURFACE = [
         owner: 'dashboard',
         category: 'page-scoped',
         status: 'active',
-        reason: 'Dashboard widget and onboarding styles.'
+        reason: 'Aggregate entrypoint for Dashboard page styles.'
+    },
+    {
+        file: 'css/dashboard-board.css',
+        owner: 'dashboard',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Dashboard whiteboard canvas, planner, geometry, connector, dark-mode, and compact tool dock styles imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-legacy.css',
+        owner: 'dashboard',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Dashboard devtools, legacy assistant fallback, and final patch styles imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-scene.css',
+        owner: 'dashboard',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Dashboard mixed-scene and writing-zone layout styles imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-settings.css',
+        owner: 'dashboard',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Dashboard settings modal, widget manager, task widget rows, and dark-mode settings styles imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-shell.css',
+        owner: 'dashboard',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Dashboard page shell, assistant fallback rail, role preview, action toolbar, and workspace controls imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-widgets.css',
+        owner: 'dashboard',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Dashboard widget grid, cards, task previews, booking, team, weather, currency, onboarding, and widget dark-mode styles imported by dashboard.css.'
+    },
+    {
+        file: 'css/dashboard-work-queue.css',
+        owner: 'dashboard',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Dashboard Work Queue triage, reply operations, buckets, bulk actions, and responsive queue styles imported by dashboard.css.'
     },
     {
         file: 'css/entity-card.css',
@@ -388,7 +437,77 @@ const CSS_SURFACE = [
         owner: 'shared-ui',
         category: 'shared',
         status: 'active',
-        reason: 'Shared page-level layout helpers for static CRM pages.'
+        reason: 'Aggregate entrypoint for shared static CRM page styles.'
+    },
+    {
+        file: 'css/pages-afisha.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Afisha event workspace, material folder, event card, and dark-mode styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-analytics-vacancy.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Analytics chart readout, HR vacancy workspace, and salary period picker styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-art.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Art standalone shell, tabs, boards, kanban, recent work, and responsive styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-cabinet.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Personal cabinet task composer, quick metrics, completion strips, task cards, subtasks, and dark-mode styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-certificates.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-core.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-hr-foundation.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'HR employee-card foundation, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-hr-staff.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'HR payroll toolbar, staff pulse navigation, schedule replacement controls, HR team tabs, team filters, and onboarding assignment styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-task-taxonomy.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Task print rules, taxonomy chips, operations summary, operational packs, and dark-mode taxonomy styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-tasks.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Task cards, task action surfaces, filters, work rows, dark-mode task controls, and responsive task shell styles imported by pages.css.'
     },
     {
         file: 'css/panel.css',

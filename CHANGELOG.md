@@ -4,6 +4,17 @@
 
 ---
 
+## v0.73.81 - Таймлайн: броні на iPhone 11
+
+### Таймлайн / Mobile Safari / Геометрія броней / Guardrail / (Клешня, 07.06.2026) [codex]
+- **Виправлено зникнення броней на другій лінії iPhone 11** - денний таймлайн тепер вставляє рядок у DOM до створення `.booking-block`, щоб Safari міряв реальні `.grid-cell`, а не глобальний fallback.
+- **Позиції броней рахуються від конкретної `.line-grid`** - `createBookingBlock()` отримує grid anchor і використовує measured cell width для `left/width`, тому блоки не зʼїжджають за межі рядка після mobile paint або зміни viewport.
+- **Потенційно такий самий drift закрито для Афіші та now-line** - assigned Afisha blocks, birthday blocks і червона лінія “зараз” також використовують measured timeline geometry.
+- **Додано UI guardrail** - smoke check фіксує, що phone day-view позиціонує second-line bookings через measured line grid.
+- **Оновлено релізні маркери** - версію піднято до `0.73.81`, синхронізовано cache tags, Service Worker і `package-lock.json` під deploy.
+
+---
+
 ## v0.73.80 - Таймлайн: лінії на iPhone 11
 
 ### Таймлайн / Mobile Safari / iPhone 11 / Guardrail / (Клешня, 07.06.2026) [codex]

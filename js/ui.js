@@ -1104,7 +1104,11 @@ function renderNowLine() {
     const startMin = start * 60;
     if (nowMin < startMin || nowMin > end * 60) return;
 
-    const left = ((nowMin - startMin) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+    const gridAnchor = document.querySelector('.line-grid[data-line-id]:not([data-line-id="afisha"])')
+        || document.querySelector('.line-grid[data-line-id]');
+    const left = typeof timelineMinutesToPixels === 'function'
+        ? timelineMinutesToPixels(nowMin - startMin, gridAnchor)
+        : ((nowMin - startMin) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
 
     // v5.18.1: Single continuous semi-transparent line spanning entire timeline
     const timelineScroll = document.getElementById('timelineScroll');

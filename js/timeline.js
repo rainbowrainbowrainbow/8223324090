@@ -697,19 +697,21 @@ async function renderTimeline() {
         `;
 
         const lineGrid = lineEl.querySelector('.line-grid');
-        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
+        container.appendChild(lineEl);
+
+        // v0.73.81: iOS/Safari can paint mobile grid cells after the row is attached.
+        // Measure booking geometry from the actual line grid so second-line blocks do not drift or disappear.
+        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start, lineGrid)));
 
         // v8.6: Render assigned afisha events on this animator's line
         const lineAfisha = assignedAfishaMap[line.id] || [];
         lineAfisha.forEach(ev => {
-            const block = createAfishaBlock(ev, start);
+            const block = createAfishaBlock(ev, start, lineGrid);
             if (block) {
                 block.classList.add('afisha-on-line');
                 lineGrid.appendChild(block);
             }
         });
-
-        container.appendChild(lineEl);
 
         lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
@@ -1065,7 +1067,7 @@ async function openTimelineCreateBookingFromToolbar() {
 
 window.openTimelineCreateBookingFromToolbar = openTimelineCreateBookingFromToolbar;
 
-function createBookingBlock(booking, startHour) {
+function createBookingBlock(booking, startHour, anchor) {
     const block = document.createElement('div');
     const graduationSegments = normalizeGraduationSegments(booking);
     const effectiveDuration = effectiveGraduationDuration(booking, graduationSegments);
@@ -1073,8 +1075,8 @@ function createBookingBlock(booking, startHour) {
         ? { ...booking, duration: effectiveDuration }
         : booking;
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
-    const left = timelineMinutesToPixels(startMin);
-    const width = Math.max(18, timelineDurationWidth(effectiveDuration));
+    const left = timelineMinutesToPixels(startMin, anchor);
+    const width = Math.max(18, timelineDurationWidth(effectiveDuration, anchor));
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
@@ -1471,21 +1473,20 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     `;
 
     const grid = lineEl.querySelector('.line-grid');
+    container.appendChild(lineEl);
 
     events.forEach(ev => {
         if (ev.type === 'birthday') {
             // Birthday greetings: show at 14:00 and 18:00, 15 min each
-            const block14 = createAfishaBlock({ ...ev, time: '14:00', duration: 15 }, startHour);
-            const block18 = createAfishaBlock({ ...ev, time: '18:00', duration: 15 }, startHour);
+            const block14 = createAfishaBlock({ ...ev, time: '14:00', duration: 15 }, startHour, grid);
+            const block18 = createAfishaBlock({ ...ev, time: '18:00', duration: 15 }, startHour, grid);
             if (block14) grid.appendChild(block14);
             if (block18) grid.appendChild(block18);
         } else {
-            const block = createAfishaBlock(ev, startHour);
+            const block = createAfishaBlock(ev, startHour, grid);
             if (block) grid.appendChild(block);
         }
     });
-
-    container.appendChild(lineEl);
 
     // v8.6: Distribute/undistribute button handler
     const distBtn = lineEl.querySelector('.afisha-dist-btn');
@@ -1525,14 +1526,14 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     // Afisha management is owned by the sidebar route, not the timeline action menu.
 }
 
-function createAfishaBlock(event, startHour) {
+function createAfishaBlock(event, startHour, anchor) {
     const startMin = timeToMinutes(event.time) - startHour * 60;
     if (startMin < 0) return null;
 
     const block = document.createElement('div');
-    const left = timelineMinutesToPixels(startMin);
+    const left = timelineMinutesToPixels(startMin, anchor);
     const duration = event.duration || (event.type === 'birthday' ? 15 : 60);
-    const width = timelineDurationWidth(duration);
+    const width = timelineDurationWidth(duration, anchor);
 
     const typeClass = event.type || 'event';
     const isBirthday = event.type === 'birthday';

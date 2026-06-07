@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.73.79",
+  "version": "0.73.80",
   "eventGenix": {
-    "releaseLabel": "Доступ: парк і бронювання"
+    "releaseLabel": "Таймлайн: лінії на iPhone 11"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

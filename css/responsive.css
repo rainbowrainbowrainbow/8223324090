@@ -1884,16 +1884,24 @@
     body.timeline-dashboard-page .timeline-container {
         width: 100% !important;
         max-width: 100% !important;
+        height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 250px), 58dvh) !important;
         max-height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 250px), 58dvh) !important;
         overflow: hidden !important;
     }
 
+    /* v0.73.80: iPhone 11/Safari needs a definite container height;
+       max-height-only flex containers can clip the second timeline line. */
     body.timeline-dashboard-page .timeline-container[data-fit-screen="scroll"] .timeline-scroll,
     body.timeline-dashboard-page .timeline-scroll {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        height: 100% !important;
+        max-height: none !important;
         overflow-x: auto !important;
         overflow-y: auto !important;
         padding: var(--timeline-scroll-pad, 8px) !important;
         scrollbar-gutter: auto !important;
+        -webkit-overflow-scrolling: touch !important;
     }
 
     body.timeline-dashboard-page .time-scale {

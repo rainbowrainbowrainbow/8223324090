@@ -1250,7 +1250,7 @@ function _timelineResponsiveHeaderWidth() {
     const viewportWidth = _timelineViewportWidth();
     if (viewportWidth <= 360) return 56;
     if (viewportWidth <= 390) return 62;
-    if (viewportWidth <= 480) return 72;
+    if (viewportWidth <= 480) return 84;
     if (viewportWidth <= 768) return 90;
     if (viewportWidth <= 1180) return 88;
     if (viewportWidth <= 1366) return 96;
@@ -1272,7 +1272,7 @@ function applyTimelineResponsiveDensity() {
             : viewportWidth <= 390
                 ? 62
             : viewportWidth <= 480
-                ? 72
+                ? 84
                 : viewportWidth <= 768
                     ? 84
                     : viewportWidth <= 1180

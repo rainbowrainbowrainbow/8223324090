@@ -5,6 +5,7 @@ const CSS_APP_SHELL_PRECACHE = [
     'css/auth.css',
     'css/layout.css',
     'css/sidebar-aurora.css',
+    'css/sidebar-aurora-shell.css',
     'css/timeline.css',
     'css/panel.css',
     'css/modals.css',
@@ -160,7 +161,14 @@ const CSS_SURFACE = [
         owner: 'shared-ui',
         category: 'shared',
         status: 'active',
-        reason: 'Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu.'
+        reason: 'Sidebar Aurora aggregate entrypoint for shared CRM menu styles.'
+    },
+    {
+        file: 'css/sidebar-aurora-shell.css',
+        owner: 'shared-ui',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Sidebar base shell, brand, quick counters, groups, and mobile rail styles imported by sidebar-aurora.css.'
     },
     {
         file: 'css/sidebar-smart-menu.css',

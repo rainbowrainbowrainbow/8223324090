@@ -27,11 +27,12 @@ const APP_SHELL = [
     '/',
     '/index.html',
     '/manifest.json',
-    // CSS modules (11 files)
+    // CSS modules (12 files)
     '/css/base.css',
     '/css/auth.css',
     '/css/layout.css',
     '/css/sidebar-aurora.css',
+    '/css/sidebar-aurora-shell.css',
     '/css/timeline.css',
     '/css/panel.css',
     '/css/modals.css',

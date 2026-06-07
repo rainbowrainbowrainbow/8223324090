@@ -41,7 +41,8 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |
-| `css/sidebar-aurora.css` | shared-ui | `shared` | active | Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu. |
+| `css/sidebar-aurora.css` | shared-ui | `shared` | active | Sidebar Aurora aggregate entrypoint for shared CRM menu styles. |
+| `css/sidebar-aurora-shell.css` | shared-ui | `shared-large` | active-large | Sidebar base shell, brand, quick counters, groups, and mobile rail styles imported by `sidebar-aurora.css`. |
 | `css/sidebar-smart-menu.css` | shared-ui | `shared` | active | Optional smart sidebar menu customizer styles for compact dashboard shortcuts. |
 | `css/minigame.css` | game | `page-scoped-large` | active-large | Gamification game styles; large-file consolidation candidate. |
 | `css/modals.css` | shared-ui | `shared-large` | active-large | Shared modal and profile modal styles across CRM pages. |
@@ -58,7 +59,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 The Service Worker currently pre-caches this CSS subset from `sw.js`:
 
 `css/base.css`, `css/auth.css`, `css/layout.css`, `css/sidebar-aurora.css`,
-`css/timeline.css`, `css/panel.css`, `css/modals.css`, `css/controls.css`,
+`css/sidebar-aurora-shell.css`, `css/timeline.css`, `css/panel.css`, `css/modals.css`, `css/controls.css`,
 `css/features.css`, `css/dark-mode.css`, and `css/responsive.css`.
 
 Changing that list is a cache behavior change. Update

@@ -132,12 +132,13 @@ function normalizeCssRef(rawRef, sourceFile) {
 function collectCssReferences() {
     const refs = new Map();
     const patterns = [
+        /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?/g,
         /\b(?:href|src)\s*=\s*["']([^"']+\.css(?:\?[^"']*)?)["']/g,
         /["'`]([^"'`]*\/?css\/[^"'`]+\.css(?:\?[^"'`]*)?)["'`]/g,
         /["'`](style\.css(?:\?[^"'`]*)?)["'`]/g
     ];
 
-    for (const file of collectSourceFiles()) {
+    for (const file of [...collectSourceFiles(), ...collectCssFiles()]) {
         const content = read(file);
         for (const pattern of patterns) {
             pattern.lastIndex = 0;

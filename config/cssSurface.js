@@ -42,7 +42,70 @@ const CSS_SURFACE = [
         owner: 'shared-crm-assistant',
         category: 'shared',
         status: 'active',
-        reason: 'Shared global CRM assistant rail, proactive help panel, voice controls, and dark/mobile states.'
+        reason: 'Aggregate entrypoint for shared CRM assistant rail styles.'
+    },
+    {
+        file: 'css/assistant-rail-base.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared',
+        status: 'active',
+        reason: 'Base shared CRM assistant rail, state tokens, ticker, panel, voice controls, and responsive shell styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-command.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Assistant cockpit, command bar, avatar button, and stable global docking styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-dashboard.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared',
+        status: 'active',
+        reason: 'Dashboard-scoped assistant shell repair styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-handoff.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Legacy Claude Design handoff layers for assistant topbar and embedded panel parity imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-motion.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Assistant motion spectrum, expandable stage, product topbar, and geometry guard styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-panel.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Expanded assistant panel, action cards, teaching runner, voice comfort, and CRM chat bridge styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-presence.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Assistant presence constellation, compact top assistant, avatar guard, and light window contrast styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-timeline.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared',
+        status: 'active',
+        reason: 'Timeline-specific assistant parity and dark composer contrast styles imported by assistant-rail.css.'
+    },
+    {
+        file: 'css/assistant-rail-topbar.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared-large',
+        status: 'active-large',
+        reason: 'Assistant top menu docking, readable animated output, full rethink, and mini-window styles imported by assistant-rail.css.'
     },
     {
         file: 'css/base.css',
@@ -61,9 +124,58 @@ const CSS_SURFACE = [
     {
         file: 'css/chat.css',
         owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Aggregate entrypoint for Team messenger styles.'
+    },
+    {
+        file: 'css/chat-core.css',
+        owner: 'chat',
         category: 'page-scoped-large',
         status: 'active-large',
-        reason: 'Main chat page styles; large-file consolidation candidate.'
+        reason: 'Core Team messenger layout, sidebar, messages, panels, modals, and input styles imported by chat.css.'
+    },
+    {
+        file: 'css/chat-effects.css',
+        owner: 'chat',
+        category: 'page-scoped-large',
+        status: 'active-large',
+        reason: 'Chat emoji, reaction, voice, pinned, avatar, and dino effect styles imported by chat.css.'
+    },
+    {
+        file: 'css/chat-guardian.css',
+        owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Guardian bot, security panel, analytics, commands, and moderation styles imported by chat.css.'
+    },
+    {
+        file: 'css/chat-modern.css',
+        owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Messenger improvement, sound settings, channel management, animated wallpaper, and supplemental chat styles imported by chat.css.'
+    },
+    {
+        file: 'css/chat-omni.css',
+        owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Omni workspace rebuild and omnichannel health/account mode styles imported by chat.css.'
+    },
+    {
+        file: 'css/chat-polish.css',
+        owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Chat dashboard-surface polish and adjacent override layer imported by chat.css.'
+    },
+    {
+        file: 'css/chat-settings.css',
+        owner: 'chat',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Chat settings control-plane and AI provider configuration styles imported by chat.css.'
     },
     {
         file: 'css/content.css',

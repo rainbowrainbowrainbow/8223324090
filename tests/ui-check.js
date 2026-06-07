@@ -20,6 +20,28 @@ function fileText(filename) {
     return fs.readFileSync(path.join(ROOT, filename), 'utf8');
 }
 
+function cssTextWithImports(filename, seen = new Set()) {
+    const normalized = filename.replace(/\\/g, '/');
+    if (seen.has(normalized)) return '';
+    seen.add(normalized);
+
+    const css = fileText(normalized);
+    const dir = path.posix.dirname(normalized);
+    const imports = [];
+    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
+    let match;
+
+    while ((match = importPattern.exec(css)) !== null) {
+        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
+        const imported = rawRef.startsWith('css/')
+            ? rawRef
+            : path.posix.normalize(path.posix.join(dir, rawRef));
+        imports.push(cssTextWithImports(imported, seen));
+    }
+
+    return [css, ...imports].filter(Boolean).join('\n');
+}
+
 function hrSurfaceText() {
     return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
 }
@@ -822,7 +844,7 @@ const trainingHtml = fs.readFileSync(path.join(ROOT, 'training.html'), 'utf8');
 const trainingCss = fs.readFileSync(path.join(ROOT, 'css', 'training.css'), 'utf8');
 const chatPageCode = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8');
 const chatHtml = fs.readFileSync(path.join(ROOT, 'chat.html'), 'utf8');
-const chatCss = fs.readFileSync(path.join(ROOT, 'css', 'chat.css'), 'utf8');
+const chatCss = cssTextWithImports('css/chat.css');
 const minigameCode = fs.readFileSync(path.join(ROOT, 'js', 'minigame-match3.js'), 'utf8');
 const minigameCss = fs.readFileSync(path.join(ROOT, 'css', 'minigame.css'), 'utf8');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
@@ -831,7 +853,7 @@ const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8
 const assistantRailCode = fs.readFileSync(path.join(ROOT, 'js/assistant-rail.js'), 'utf8');
 const assistantFoundationCode = fs.readFileSync(path.join(ROOT, 'js/assistant-foundation.js'), 'utf8');
 const kleshnyaWidgetCode = fs.readFileSync(path.join(ROOT, 'js/kleshnya-widget.js'), 'utf8');
-const assistantRailCss = fs.readFileSync(path.join(ROOT, 'css/assistant-rail.css'), 'utf8');
+const assistantRailCss = cssTextWithImports('css/assistant-rail.css');
 const dashboardAssistantServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'dashboardAssistant.js'), 'utf8');
 const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
 const tasksRouteCode = fs.readFileSync(path.join(ROOT, 'routes/tasks.js'), 'utf8');

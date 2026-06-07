@@ -42,7 +42,16 @@ const THEME_INLINE_DEBT_BUDGETS = {
 };
 
 const THEME_CSS_DEBT_BUDGETS = {
-    'css/assistant-rail.css': { owner: 'assistant', maxImportant: 2854, maxHardColors: 1320 },
+    'css/assistant-rail.css': { owner: 'assistant', maxImportant: 0, maxHardColors: 0 },
+    'css/assistant-rail-base.css': { owner: 'assistant', maxImportant: 7, maxHardColors: 151 },
+    'css/assistant-rail-command.css': { owner: 'assistant', maxImportant: 634, maxHardColors: 201 },
+    'css/assistant-rail-dashboard.css': { owner: 'assistant', maxImportant: 209, maxHardColors: 65 },
+    'css/assistant-rail-handoff.css': { owner: 'assistant', maxImportant: 255, maxHardColors: 150 },
+    'css/assistant-rail-motion.css': { owner: 'assistant', maxImportant: 459, maxHardColors: 147 },
+    'css/assistant-rail-panel.css': { owner: 'assistant', maxImportant: 302, maxHardColors: 232 },
+    'css/assistant-rail-presence.css': { owner: 'assistant', maxImportant: 199, maxHardColors: 156 },
+    'css/assistant-rail-timeline.css': { owner: 'assistant', maxImportant: 292, maxHardColors: 18 },
+    'css/assistant-rail-topbar.css': { owner: 'assistant', maxImportant: 497, maxHardColors: 194 },
     'css/sidebar-aurora.css': { owner: 'sidebar', maxImportant: 3682, maxHardColors: 1030 },
     'css/dark-mode.css': { owner: 'theme', maxImportant: 276, maxHardColors: 1340 }
 };

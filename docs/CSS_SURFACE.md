@@ -24,10 +24,26 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/achievements.css` | shop | `page-scoped` | active | Gamification achievements and shop presentation styles. |
 | `css/agents.css` | chat | `page-scoped` | active | Chat assistant and agent panel styles. |
 | `css/auth.css` | shared-auth | `shared` | active | Login and authentication shell styles used by root, dashboard, and sound pages. |
-| `css/assistant-rail.css` | shared-crm-assistant | `shared` | active | Shared global CRM assistant rail, proactive help panel, voice controls, and dark/mobile states. |
+| `css/assistant-rail.css` | shared-crm-assistant | `shared` | active | Aggregate entrypoint for shared CRM assistant rail styles. |
+| `css/assistant-rail-base.css` | shared-crm-assistant | `shared` | active | Base shared CRM assistant rail, state tokens, ticker, panel, voice controls, and responsive shell styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-command.css` | shared-crm-assistant | `shared-large` | active-large | Assistant cockpit, command bar, avatar button, and stable global docking styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-dashboard.css` | shared-crm-assistant | `shared` | active | Dashboard-scoped assistant shell repair styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-handoff.css` | shared-crm-assistant | `shared-large` | active-large | Legacy Claude Design handoff layers for assistant topbar and embedded panel parity imported by `assistant-rail.css`. |
+| `css/assistant-rail-motion.css` | shared-crm-assistant | `shared-large` | active-large | Assistant motion spectrum, expandable stage, product topbar, and geometry guard styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-panel.css` | shared-crm-assistant | `shared-large` | active-large | Expanded assistant panel, action cards, teaching runner, voice comfort, and CRM chat bridge styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-presence.css` | shared-crm-assistant | `shared-large` | active-large | Assistant presence constellation, compact top assistant, avatar guard, and light window contrast styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-timeline.css` | shared-crm-assistant | `shared` | active | Timeline-specific assistant parity and dark composer contrast styles imported by `assistant-rail.css`. |
+| `css/assistant-rail-topbar.css` | shared-crm-assistant | `shared-large` | active-large | Assistant top menu docking, readable animated output, full rethink, and mini-window styles imported by `assistant-rail.css`. |
 | `css/base.css` | shared-ui | `shared` | active | Global variables, reset, typography, and shared primitives. |
 | `css/catalog.css` | catalogs | `feature-shared` | active | Catalog viewer and print/public catalog styles used by designs and catalog routes. |
-| `css/chat.css` | chat | `page-scoped-large` | active-large | Main chat page styles; large-file consolidation candidate. |
+| `css/chat.css` | chat | `page-scoped` | active | Aggregate entrypoint for Team messenger styles. |
+| `css/chat-core.css` | chat | `page-scoped-large` | active-large | Core Team messenger layout, sidebar, messages, panels, modals, and input styles imported by `chat.css`. |
+| `css/chat-effects.css` | chat | `page-scoped-large` | active-large | Chat emoji, reaction, voice, pinned, avatar, and dino effect styles imported by `chat.css`. |
+| `css/chat-guardian.css` | chat | `page-scoped` | active | Guardian bot, security panel, analytics, commands, and moderation styles imported by `chat.css`. |
+| `css/chat-modern.css` | chat | `page-scoped` | active | Messenger improvement, sound settings, channel management, animated wallpaper, and supplemental chat styles imported by `chat.css`. |
+| `css/chat-omni.css` | chat | `page-scoped` | active | Omni workspace rebuild and omnichannel health/account mode styles imported by `chat.css`. |
+| `css/chat-polish.css` | chat | `page-scoped` | active | Chat dashboard-surface polish and adjacent override layer imported by `chat.css`. |
+| `css/chat-settings.css` | chat | `page-scoped` | active | Chat settings control-plane and AI provider configuration styles imported by `chat.css`. |
 | `css/content.css` | content | `page-scoped` | active | Content matrix page styles. |
 | `css/controls.css` | shared-ui | `shared` | active | Shared form controls, buttons, and toolbar patterns. |
 | `css/copilot.css` | copilot | `page-scoped` | active | Sales/copilot workspace styles. |
@@ -68,10 +84,10 @@ commit.
 
 ## Current Large-File Candidates
 
-The current high-value CSS consolidation candidates are `css/chat.css`,
-`css/hr-page.css`, `landing/style.css`, `css/features.css`, `css/dark-mode.css`,
-`css/minigame.css`, `css/modals.css`, `css/layout.css`, and
-`css/graduation.css`.
+The current high-value CSS consolidation candidates are `css/chat-core.css`,
+`css/chat-effects.css`, `css/hr-page.css`, `landing/style.css`,
+`css/features.css`, `css/dark-mode.css`, `css/minigame.css`,
+`css/modals.css`, `css/layout.css`, and `css/graduation.css`.
 
 Do not start with a broad reformat. Prefer page-scoped extraction or removal
 with `npm run check:css-surface`, `npm run test:ui`, and browser smoke for the

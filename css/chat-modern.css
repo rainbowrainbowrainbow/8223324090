@@ -1,0 +1,905 @@
+/* === Messenger Improvements v22.1.0 === */
+
+/* Emoji search empty state */
+.chat-emoji-panel-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--gray-400);
+    font-size: 13px;
+}
+
+/* Unread divider */
+.chat-unread-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    margin: 4px 0;
+}
+.chat-unread-divider::before,
+.chat-unread-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--primary);
+    opacity: 0.5;
+}
+.chat-unread-divider-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+    white-space: nowrap;
+}
+
+/* Image lightbox */
+.chat-lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+    animation: chatLightboxIn 0.2s ease;
+}
+@keyframes chatLightboxIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.chat-lightbox-img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+    cursor: default;
+}
+.chat-lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    font-size: 24px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.chat-lightbox-close:hover { background: rgba(255,255,255,0.3); }
+.chat-lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    font-size: 28px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.chat-lightbox-nav:hover { background: rgba(255,255,255,0.3); }
+.chat-lightbox-nav.prev { left: 16px; }
+.chat-lightbox-nav.next { right: 16px; }
+.chat-lightbox-counter {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+}
+
+/* Scroll-to-bottom unread badge */
+.chat-scroll-bottom-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+/* Drag overlay text hint */
+.chat-drag-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: rgba(16, 185, 129, 0.08);
+    border: 3px dashed var(--primary);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    animation: chatDragPulse 1.5s infinite;
+}
+@keyframes chatDragPulse {
+    0%, 100% { border-color: var(--primary); }
+    50% { border-color: rgba(16, 185, 129, 0.4); }
+}
+.chat-drag-overlay-icon { font-size: 40px; margin-bottom: 8px; }
+.chat-drag-overlay-text { font-size: 15px; font-weight: 600; color: var(--primary); }
+
+/* Reaction detail popup */
+.chat-reaction-detail {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    padding: 8px 12px;
+    min-width: 120px;
+    max-width: 200px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 50;
+    font-size: 12px;
+    animation: chatReactionDetailIn 0.15s ease;
+}
+@keyframes chatReactionDetailIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.chat-reaction-detail-emoji { font-size: 20px; margin-bottom: 4px; }
+.chat-reaction-detail-user {
+    padding: 2px 0;
+    color: var(--text-primary, #1e293b);
+    font-weight: 500;
+}
+
+/* ARIA focus styles */
+.chat-channel-item:focus-visible,
+.chat-context-item:focus-visible,
+.chat-emoji-panel-btn:focus-visible,
+.chat-header-action-btn:focus-visible,
+.chat-input-icon-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Safe areas for mobile */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .chat-input-area {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* ==========================================
+   UPLOAD PROGRESS BAR (#5)
+   ========================================== */
+.chat-upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface, #f8f9fa);
+    border-bottom: 1px solid var(--gray-200, #e5e7eb);
+}
+.chat-upload-progress-track {
+    flex: 1;
+    height: 4px;
+    background: var(--gray-200, #e5e7eb);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.chat-upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary, #6366f1);
+    border-radius: 2px;
+    transition: width 0.15s ease;
+}
+.chat-upload-progress-text {
+    font-size: 11px;
+    color: var(--gray-500, #6b7280);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ==========================================
+   ONLINE STATUS DOTS (#1)
+   ========================================== */
+.chat-online-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--surface, #fff);
+    background: var(--gray-300, #d1d5db);
+    transition: background 0.3s ease;
+    display: none;
+}
+.chat-online-dot.online {
+    display: block;
+    background: #22c55e;
+    animation: onlinePulse 2s ease-in-out infinite;
+}
+.chat-avatar {
+    position: relative;
+}
+.chat-online-dot.sidebar-dot {
+    width: 8px;
+    height: 8px;
+    bottom: -1px;
+    right: -1px;
+}
+@keyframes onlinePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0); }
+}
+
+/* Channel icon needs relative for online dot */
+.chat-channel-dm-icon {
+    position: relative;
+}
+
+/* ==========================================
+   LAST SEEN / PRESENCE IN PROFILE (#2)
+   ========================================== */
+.chat-profile-presence {
+    font-size: 12px;
+    color: var(--gray-400, #9ca3af);
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.chat-profile-presence.online {
+    color: #22c55e;
+    font-weight: 600;
+}
+
+/* Mobile improvements */
+@media (max-width: 768px) {
+    .chat-context-item {
+        min-height: 44px;
+        font-size: 14px;
+    }
+    .chat-header-action-btn {
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .chat-input-icon-btn {
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .chat-emoji-panel-btn {
+        min-width: 36px;
+        min-height: 36px;
+        font-size: 22px;
+    }
+}
+
+/* ─── Sound Settings Panel — v28.0.0 ───────────────────────────────────── */
+.chat-sound-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+.sound-settings-panel {
+    position: fixed;
+    top: 50px;
+    right: 16px;
+    width: 240px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+    padding: 14px;
+    z-index: 99999;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sound-settings-panel.hidden {
+    display: none;
+}
+
+.sound-settings-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary, #fff);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color, #333);
+}
+
+.sound-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary, #aaa);
+}
+
+.sound-volume-slider {
+    width: 90px;
+    accent-color: var(--accent, #7c5cbf);
+    cursor: pointer;
+}
+
+.sound-theme-select {
+    background: var(--bg-tertiary, #2a2a3e);
+    border: 1px solid var(--border-color, #444);
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
+
+.sound-test-btn {
+    background: var(--accent, #7c5cbf);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+    align-self: flex-end;
+}
+
+.sound-test-btn:hover {
+    background: var(--accent-hover, #9470d8);
+}
+
+/* Toggle switch */
+.sound-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+}
+
+.sound-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.sound-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: var(--border-color, #555);
+    border-radius: 18px;
+    transition: background-color 0.2s;
+}
+
+.sound-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 3px;
+    background: var(--white);
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.sound-toggle-switch input:checked + .sound-toggle-slider {
+    background-color: var(--accent, #7c5cbf);
+}
+
+.sound-toggle-switch input:checked + .sound-toggle-slider::before {
+    transform: translateX(16px);
+}
+
+/* ── Forwarded Badge (v33.5) ──────────── */
+.chat-forwarded-badge {
+    font-size: 11px;
+    color: var(--primary, #6366f1);
+    border-left: 2px solid var(--primary, #6366f1);
+    padding: 2px 6px;
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+/* ── Channel Info Panel — Edit/Manage (v33.5) ── */
+.chat-info-edit-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.chat-info-field { margin-bottom: 10px; }
+.chat-info-field label { font-size: 11px; color: var(--gray-400); display: block; margin-bottom: 4px; }
+.chat-info-field input {
+    width: 100%; padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px; font-size: 13px;
+    background: var(--input-bg, #fff);
+    box-sizing: border-box;
+}
+.chat-info-save-btn {
+    width: 100%; padding: 8px; margin-top: 4px;
+    background: var(--primary, #6366f1); color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+    transition: opacity 0.2s;
+}
+.chat-info-save-btn:hover { opacity: 0.9; }
+/* Mute toggle */
+.chat-mute-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.chat-mute-toggle input { display: none; }
+.chat-mute-slider {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: var(--gray-200); cursor: pointer; transition: background 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider { background: var(--primary); }
+.chat-mute-slider::after {
+    content: ''; position: absolute;
+    width: 16px; height: 16px; border-radius: 50%;
+    top: 2px; left: 2px; background: var(--white);
+    transition: transform 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider::after { transform: translateX(16px); }
+/* Danger zone */
+.chat-info-danger { padding: 12px 16px; background: rgba(239,68,68,0.03); }
+.chat-info-danger-btn {
+    width: 100%; padding: 8px; border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: none; cursor: pointer; font-size: 13px;
+    margin-bottom: 6px; text-align: left;
+    transition: background 0.2s;
+}
+.chat-info-danger-btn:hover { background: var(--gray-100); }
+.chat-info-danger-btn--red { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.chat-info-danger-btn--red:hover { background: rgba(239,68,68,0.07); }
+.chat-info-member-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--gray-300); font-size: 14px;
+    padding: 2px 4px; border-radius: 4px;
+    transition: color 0.2s; margin-left: auto;
+}
+.chat-info-member-remove:hover { color: #ef4444; }
+
+/* v33.5: Muted bell — crossed out icon */
+.chat-header-action-btn.muted-bell svg { opacity: 0.4; }
+.chat-header-action-btn.muted-bell::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 20px; height: 2px;
+    background: #ef4444;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    border-radius: 1px;
+    pointer-events: none;
+}
+
+/* ==========================================
+ * v33.7.0: Booking Preview Card
+ * ========================================== */
+.chat-booking-preview {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-left: 3px solid var(--primary, #6c5ce7);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.chat-booking-preview:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-bp-header {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--primary, #6c5ce7);
+}
+.chat-bp-row {
+    padding: 1px 0;
+    color: var(--text-secondary, #666);
+}
+.chat-bp-price {
+    margin-top: 4px;
+    font-weight: 600;
+    color: var(--success, #00b894);
+}
+
+/* ==========================================
+ * v33.7.0: Checklist in Messages
+ * ========================================== */
+.chat-check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    cursor: pointer;
+    user-select: none;
+}
+.chat-check-item input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary, #6c5ce7);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.chat-check-text {
+    font-size: 13px;
+}
+.chat-check-done {
+    text-decoration: line-through;
+    color: var(--gray-400, #999);
+}
+
+/* ==========================================
+ * v33.7.0: Important Messages
+ * ========================================== */
+.chat-message.important .chat-bubble {
+    border-left: 3px solid #f39c12;
+    background: rgba(243, 156, 18, 0.06);
+}
+.chat-important-badge {
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* ==========================================
+ * v33.7.0: Status Area
+ * ========================================== */
+.chat-status-area {
+    position: relative;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+}
+.chat-peer-status {
+    font-size: 11px;
+    color: var(--gray-400, #999);
+    margin-left: 4px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==========================================
+ * v33.7.0: Remind Picker Modal Buttons
+ * ========================================== */
+.chat-modal-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f8f9fa);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+    text-align: left;
+}
+.chat-modal-btn:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-modal-btn-primary {
+    background: var(--primary, #6c5ce7);
+    color: #fff;
+    border-color: var(--primary, #6c5ce7);
+}
+.chat-modal-btn-primary:hover {
+    background: var(--primary-dark, #5a4bd1);
+}
+
+/* Dark mode overrides */
+.dark-mode .chat-booking-preview {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+.dark-mode .chat-message.important .chat-bubble {
+    background: rgba(243, 156, 18, 0.1);
+}
+.dark-mode .chat-modal-btn {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: var(--text-primary, #eee);
+}
+.dark-mode .chat-modal-btn:hover {
+    background: rgba(255,255,255,0.12);
+}
+
+/* ==========================================
+ * v33.12.0: Info Panel Tabs
+ * ========================================== */
+.chat-info-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    padding: 0 8px;
+}
+.chat-info-tab {
+    padding: 8px 12px; font-size: 14px; background: none; border: none;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--gray-400); transition: color 0.15s;
+}
+.chat-info-tab.active { color: var(--primary, #6366f1); border-bottom-color: var(--primary, #6366f1); }
+.chat-info-tab:hover { color: var(--gray-600); }
+
+/* AI Task Form in message */
+.msg-ai-task-form {
+    margin-top: 8px; padding: 10px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--primary, #6366f1);
+    border-radius: 10px;
+}
+
+/* ==========================================
+ * v33.9.0: ANIMATED WALLPAPERS
+ * ========================================== */
+
+/* Bubbles — floating circles */
+.wp-bubbles {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(167,139,250,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(244,114,182,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(99,102,241,0.08) 0%, transparent 60%);
+    animation: wpBubblesMove 20s ease-in-out infinite;
+}
+@keyframes wpBubblesMove {
+    0%,100% { background-position: 0% 0%, 100% 0%, 50% 50%; }
+    33%     { background-position: 10% 20%, 90% 30%, 40% 60%; }
+    66%     { background-position: 5% 10%, 95% 10%, 55% 45%; }
+}
+
+/* Aurora — moving gradient */
+.wp-aurora {
+    background: linear-gradient(-45deg, rgba(16,185,129,0.12), rgba(99,102,241,0.12), rgba(244,63,94,0.12), rgba(59,130,246,0.12));
+    background-size: 400% 400%;
+    animation: wpAurora 15s ease infinite;
+}
+@keyframes wpAurora {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Cosmos — deep space with twinkling */
+.wp-cosmos {
+    background:
+        radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 60%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 70%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(2px 2px at 25% 85%, rgba(167,139,250,0.8) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 45%, rgba(96,165,250,0.8) 0%, transparent 100%),
+        radial-gradient(circle at 30% 70%, rgba(99,102,241,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 70% 30%, rgba(168,85,247,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #1e1b4b 100%);
+    animation: wpCosmosTwinkle 4s ease-in-out infinite alternate;
+}
+@keyframes wpCosmosTwinkle {
+    0%   { filter: brightness(1); }
+    100% { filter: brightness(1.05); }
+}
+.wp-cosmos .chat-bubble { color: #e2e8f0; }
+.wp-cosmos .chat-bubble-username { color: #a5b4fc !important; }
+.wp-cosmos .chat-bubble-time { color: #94a3b8 !important; }
+
+/* Ocean — waves */
+.wp-ocean {
+    background: linear-gradient(180deg,
+        rgba(14,165,233,0.08) 0%, rgba(6,182,212,0.12) 30%,
+        rgba(13,148,136,0.08) 60%, rgba(14,165,233,0.04) 100%);
+    background-size: 100% 200%;
+    animation: wpOcean 8s ease-in-out infinite;
+}
+@keyframes wpOcean {
+    0%,100% { background-position: 0% 0%; }
+    50%     { background-position: 0% 100%; }
+}
+
+/* Sunset — warm glow */
+.wp-sunset {
+    background: linear-gradient(-45deg,
+        rgba(249,115,22,0.1), rgba(239,68,68,0.1),
+        rgba(236,72,153,0.1), rgba(249,115,22,0.08));
+    background-size: 400% 400%;
+    animation: wpSunset 12s ease infinite;
+}
+@keyframes wpSunset {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Forest — depth layers */
+.wp-forest {
+    background:
+        linear-gradient(180deg, rgba(22,101,52,0.06) 0%, rgba(21,128,61,0.1) 50%, rgba(34,197,94,0.06) 100%),
+        radial-gradient(ellipse at 20% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(34,197,94,0.08) 0%, transparent 50%);
+    animation: wpForest 20s ease-in-out infinite;
+}
+@keyframes wpForest {
+    0%,100% { filter: brightness(1) saturate(1); }
+    50%     { filter: brightness(1.03) saturate(1.1); }
+}
+
+/* Candy — playful gradient */
+.wp-candy {
+    background: linear-gradient(-45deg,
+        rgba(236,72,153,0.1), rgba(168,85,247,0.1),
+        rgba(59,130,246,0.1), rgba(14,165,233,0.08));
+    background-size: 300% 300%;
+    animation: wpCandy 10s ease infinite;
+}
+@keyframes wpCandy {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Neon — cyberpunk glow */
+.wp-neon {
+    background:
+        radial-gradient(circle at 20% 50%, rgba(124,58,237,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 80% 50%, rgba(6,182,212,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(16,185,129,0.1) 0%, transparent 40%),
+        linear-gradient(180deg, rgba(15,23,42,0.05) 0%, rgba(30,41,59,0.05) 100%);
+    animation: wpNeon 6s ease-in-out infinite alternate;
+}
+@keyframes wpNeon {
+    0%   { filter: hue-rotate(0deg) brightness(1); }
+    100% { filter: hue-rotate(30deg) brightness(1.05); }
+}
+
+/* Snow — soft falling effect */
+.wp-snow {
+    background:
+        radial-gradient(2px 2px at 15% 20%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 50%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 30%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 70%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 15%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%);
+    background-size: 200px 200px, 300px 300px, 250px 250px, 150px 150px, 350px 350px, 100% 100%;
+    animation: wpSnowFall 10s linear infinite;
+}
+@keyframes wpSnowFall {
+    0%   { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+    100% { background-position: 0 200px, 50px 300px, -30px 250px, 20px 150px, -10px 350px, 0 0; }
+}
+
+/* Dino / Park — themed */
+.wp-dino {
+    background:
+        radial-gradient(ellipse at 30% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 20%, rgba(202,138,4,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, rgba(34,197,94,0.05) 0%, rgba(146,64,14,0.05) 100%);
+    animation: wpDino 15s ease-in-out infinite;
+}
+@keyframes wpDino {
+    0%,100% { filter: saturate(1); }
+    50%     { filter: saturate(1.15); }
+}
+
+/* Geometric — subtle grid pattern */
+.wp-geometric {
+    background:
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(60deg, rgba(100,116,139,0.05) 25%, transparent 25.5%, transparent 75%, rgba(100,116,139,0.05) 75%);
+    background-size: 40px 70px;
+}
+
+/* Gradient — smooth animated */
+.wp-gradient {
+    background: linear-gradient(-45deg, rgba(99,102,241,0.1), rgba(168,85,247,0.1), rgba(236,72,153,0.1), rgba(59,130,246,0.1));
+    background-size: 400% 400%;
+    animation: wpGradient 8s ease infinite;
+}
+@keyframes wpGradient {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Dark mode wallpaper adjustments */
+.dark-mode .wp-sunset {
+    background: linear-gradient(-45deg, rgba(249,115,22,0.15), rgba(239,68,68,0.15), rgba(236,72,153,0.15), rgba(249,115,22,0.12));
+    background-size: 400% 400%;
+    animation: wpSunset 12s ease infinite;
+}
+.dark-mode .wp-forest {
+    background:
+        linear-gradient(180deg, rgba(22,101,52,0.12) 0%, rgba(21,128,61,0.18) 50%, rgba(34,197,94,0.1) 100%),
+        radial-gradient(ellipse at 20% 80%, rgba(22,163,74,0.18) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(34,197,94,0.12) 0%, transparent 50%);
+}
+.dark-mode .wp-snow {
+    background:
+        radial-gradient(2px 2px at 15% 20%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 50%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 30%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 70%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 15%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        linear-gradient(180deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.8) 100%);
+    background-size: 200px 200px, 300px 300px, 250px 250px, 150px 150px, 350px 350px, 100% 100%;
+    animation: wpSnowFall 10s linear infinite;
+}
+.dark-mode .wp-geometric {
+    background:
+        linear-gradient(30deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(150deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(30deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(150deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(60deg, rgba(148,163,184,0.08) 25%, transparent 25.5%, transparent 75%, rgba(148,163,184,0.08) 75%);
+    background-size: 40px 70px;
+}
+
+/* ==========================================
+ * v33.9.0: Channel Section Labels
+ * ========================================== */
+.chat-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--gray-400, #9CA3AF);
+    letter-spacing: 0.5px;
+    padding: 12px 14px 4px;
+    text-transform: uppercase;
+}
+
+/* ==========================================
+ * v33.9.0: Send Effects
+ * ========================================== */
+@keyframes effectWave {
+    0%,100% { transform: translateX(0); }
+    25%     { transform: translateX(-3px); }
+    75%     { transform: translateX(3px); }
+}
+@keyframes confettiFall {
+    0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+}
+.chat-effect-wave { animation: effectWave 0.3s ease; }
+.chat-confetti {
+    position: fixed;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: confettiFall 0.8s ease-out forwards;
+    z-index: 10000;
+}
+
+/* ==========================================
+ * v33.9.0: Super Reaction Float
+ * ========================================== */
+@keyframes superReactionPop {
+    0%   { transform: scale(0) translateY(0); opacity: 0; }
+    30%  { transform: scale(1.8) translateY(-10px); opacity: 1; }
+    60%  { transform: scale(1.5) translateY(-20px); opacity: 0.9; }
+    100% { transform: scale(1) translateY(-40px); opacity: 0; }
+}
+.chat-super-reaction-float {
+    position: fixed;
+    font-size: 36px;
+    pointer-events: none;
+    animation: superReactionPop 1.2s ease-out forwards;
+    z-index: 10000;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    filter: drop-shadow(0 0 8px rgba(99,102,241,0.6));
+}

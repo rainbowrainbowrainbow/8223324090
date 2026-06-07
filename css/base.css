@@ -217,6 +217,45 @@ body:not(.dark-mode) {
 
 .hidden { display: none !important; }
 
+.form-modal-dialog.account-access-modal,
+.form-modal-dialog.account-create-modal {
+    width: min(760px, calc(100vw - 32px));
+    max-width: min(760px, calc(100vw - 32px)) !important;
+}
+
+.account-access-modal .form-modal-fields,
+.account-create-modal .form-modal-fields {
+    max-height: min(68vh, 720px);
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.account-access-modal .fm-checkbox-group,
+.account-create-modal .fm-checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 6px;
+}
+
+.account-access-modal .fm-checkbox-group label,
+.account-create-modal .fm-checkbox-group label {
+    min-height: 42px;
+    margin-bottom: 0 !important;
+}
+
+@media (max-width: 560px) {
+    .form-modal-dialog.account-access-modal,
+    .form-modal-dialog.account-create-modal {
+        width: calc(100vw - 20px);
+        max-width: calc(100vw - 20px) !important;
+    }
+
+    .account-access-modal .fm-checkbox-group,
+    .account-create-modal .fm-checkbox-group {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Smooth scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -59,7 +59,8 @@ const BUSINESS_CONTEXT_ALIASES = Object.freeze({
   'срм': 'crm'
 });
 const BUSINESS_CONTEXT_SWITCH_ROLES = Object.freeze([
-  'creator'
+  'creator',
+  'director'
 ]);
 const BUSINESS_SCOPE_SINGLE = 'single';
 const BUSINESS_SCOPE_MULTI = 'multi';
@@ -183,7 +184,7 @@ function businessContextWasRequested(req) {
 }
 
 function isBusinessContextSwitchRole(user) {
-  return String(user?.role || '').trim() === 'creator';
+  return BUSINESS_CONTEXT_SWITCH_ROLES.includes(String(user?.role || '').trim());
 }
 
 function explicitForcedBusinessContext(user) {

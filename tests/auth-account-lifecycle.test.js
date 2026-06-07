@@ -836,9 +836,13 @@ test('director account management is capped below director level', async () => {
             username: 'director.operator',
             password: 'DirectorPass789!',
             name: 'Director Operator',
-            role: 'director'
+            role: 'director',
+            businessContexts: ['event_genix', 'dar'],
+            defaultBusinessContext: 'dar'
         }, creatorToken());
         assert.equal(createDirector.status, 200);
+        assert.deepEqual(createDirector.data.user.business_contexts, ['event_genix', 'dar']);
+        assert.equal(createDirector.data.user.default_business_context, 'dar');
 
         const directorLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'director.operator',
@@ -846,16 +850,21 @@ test('director account management is capped below director level', async () => {
         });
         assert.equal(directorLogin.status, 200);
         const directorToken = directorLogin.data.accessToken;
+        const directorVerify = await request(baseUrl, 'GET', '/api/auth/verify', undefined, directorToken);
+        assert.equal(directorVerify.status, 200);
+        assert.equal(directorVerify.data.user.businessContextPolicy.canSwitch, true);
+        assert.deepEqual(directorVerify.data.user.businessContextPolicy.allowed, ['event_genix', 'dar']);
+        assert.equal(directorVerify.data.user.defaultBusinessContext, 'dar');
 
         const createManager = await request(baseUrl, 'POST', '/api/users', {
             username: 'manager.by.director',
             password: 'ManagerPass789!',
             name: 'Manager By Director',
             role: 'manager',
-            actionAllowlist: ['delete_booking', 'manage_accounts']
+            actionAllowlist: ['delete_booking', 'manage_staff', 'manage_accounts']
         }, directorToken);
         assert.equal(createManager.status, 200, JSON.stringify(createManager.data));
-        assert.deepEqual(createManager.data.user.action_allowlist, ['delete_booking']);
+        assert.deepEqual(createManager.data.user.action_allowlist, ['delete_booking', 'manage_staff']);
 
         const createPeerDirector = await request(baseUrl, 'POST', '/api/users', {
             username: 'peer.director',

@@ -871,6 +871,10 @@ function formModal(title, fields, options = {}) {
             const baseStyle = 'width:100%;padding:10px 14px;border:2px solid rgba(139,92,246,0.3);border-radius:10px;font-size:15px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1a1a2e);outline:none;transition:border-color 0.2s;';
             const hint = f.hint ? `<div class="form-modal-field-hint" style="margin-top:4px;font-size:12px;line-height:1.35;color:var(--text-secondary,#666);">${String(f.hint).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : '';
 
+            if (f.type === 'note') {
+                const note = String(f.text || f.defaultValue || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                return `<div class="form-modal-note" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(59,130,246,0.24);border-radius:10px;background:rgba(59,130,246,0.08);font-size:13px;line-height:1.4;color:var(--text-secondary,#666);">${note}</div>`;
+            }
             if (f.type === 'select' && f.options) {
                 const opts = renderSelectOptions(f, f.options);
                 return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select>${hint}</div>`;

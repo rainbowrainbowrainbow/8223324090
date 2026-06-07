@@ -30,12 +30,14 @@ const {
     ROLE_LEVEL,
     canUseAction
 } = require('../middleware/auth');
+const { BUSINESS_CONTEXT_SWITCH_ROLES } = require('../services/businessContext');
 
 const DEFAULT_CONTEXT = 'event_genix';
 const args = new Set(process.argv.slice(2));
 const STRICT = args.has('--strict');
 const REQUIRE_DB = args.has('--require-db');
 const NON_DELEGABLE = Array.from(NON_DELEGABLE_ACTIONS || []);
+const BUSINESS_SWITCH_ROLES = Array.from(BUSINESS_CONTEXT_SWITCH_ROLES || []);
 
 function asArray(value) {
     if (Array.isArray(value)) return value.filter(Boolean).map(String);
@@ -64,10 +66,10 @@ function inspectUser(row) {
     if (row.role === 'art_director' && canUseAction(row, 'manage_accounts')) {
         issues.push('art_director still has effective manage_accounts');
     }
-    if (row.role !== 'creator') {
+    if (!BUSINESS_SWITCH_ROLES.includes(row.role)) {
         const nonDefaultContexts = businessContexts.filter(ctx => ctx !== DEFAULT_CONTEXT);
         if (nonDefaultContexts.length) {
-            issues.push(`non-creator business_contexts ignored by policy: ${businessContexts.join(',')}`);
+            issues.push(`non-switch-role business_contexts ignored by policy: ${businessContexts.join(',')}`);
         }
     }
     return issues;
@@ -87,6 +89,7 @@ async function main() {
     console.log('Account access static policy audit');
     console.log(`nonDelegableActions=${NON_DELEGABLE.join(',')}`);
     console.log(`manage_accounts roles=${(ACTION_PERMISSIONS.manage_accounts || []).join(',')}`);
+    console.log(`businessContextSwitchRoles=${BUSINESS_SWITCH_ROLES.join(',')}`);
 
     let findings = 0;
     try {

@@ -2101,6 +2101,7 @@ let accountDeepLinkApplied = false;
 const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
 const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
+const ACCOUNT_BUSINESS_SWITCH_ROLES = new Set(['creator', 'director']);
 const ACCOUNT_ACTION_LABELS = {
     create_booking: 'Створювати бронювання',
     edit_booking: 'Редагувати бронювання',
@@ -2133,7 +2134,11 @@ function canLinkAccounts() {
 }
 
 function canEditAccountBusinessContexts() {
-    return AppState.currentUser?.role === 'creator';
+    return ACCOUNT_BUSINESS_SWITCH_ROLES.has(AppState.currentUser?.role);
+}
+
+function accountRoleCanSwitchBusinessContext(role = '') {
+    return ACCOUNT_BUSINESS_SWITCH_ROLES.has(String(role || '').trim());
 }
 
 function normalizeAccountListInput(value) {
@@ -2224,6 +2229,16 @@ function getAccountRoleOptions(defaultRole = 'animator') {
         .map(role => ({ value: role, label: ROLE_LABELS[role] || role }))
         .sort((a, b) => a.label.localeCompare(b.label, 'uk'))
         .map(option => ({ ...option, selected: option.value === defaultRole }));
+}
+
+function getAccountExtraRoleOptions(primaryRole = 'animator', selected = []) {
+    const selectedRoles = normalizeAccountArray(selected);
+    return getAccountRoleOptions()
+        .filter(option => option.value !== primaryRole)
+        .map(option => ({
+            ...option,
+            selected: selectedRoles.includes(option.value)
+        }));
 }
 
 function getAccountActionOptions(selected = [], options = {}) {
@@ -3289,7 +3304,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
     const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
     const defaultBusinessContexts = normalizeAccountBusinessSelection(context.businessContexts || ['event_genix']);
     const defaultBusinessContext = getAccountDefaultBusinessValue(context, defaultBusinessContexts);
-    const canEditBusiness = canEditAccountBusinessContexts();
+    const canEditBusiness = canEditAccountBusinessContexts() && accountRoleCanSwitchBusinessContext(defaultRole);
     const createFields = [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
         { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
@@ -3297,7 +3312,7 @@ window.openAccountCreateModal = async function(button, context = {}) {
         { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
-        { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
+        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: [], options: getAccountExtraRoleOptions(defaultRole, []), hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' },
         { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([], { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Deny має пріоритет над роллю і allow.' }
@@ -3554,17 +3569,17 @@ async function openAccountAccessEditor(userId, button) {
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
-    const currentExtra = normalizeAccountArray(user.extra_roles || user.extraRoles).join(', ');
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
     const currentActionAllowlist = normalizeAccountArray(user.action_allowlist || user.actionAllowlist);
     const currentActionDenylist = normalizeAccountArray(user.action_denylist || user.actionDenylist);
     await loadAccountRoleDefinitions();
     const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
     const currentDefaultBusinessContext = getAccountDefaultBusinessValue(user, currentBusinessContexts);
-    const canEditBusiness = canEditAccountBusinessContexts();
+    const canEditBusiness = canEditAccountBusinessContexts() && accountRoleCanSwitchBusinessContext(user.role);
     const accessFields = [
+        { key: 'accessPolicyNote', type: 'note', text: AppState.currentUser?.role === 'director' ? 'Директор може редагувати ролі, сторінки й дії для акаунтів нижче директорського рівня. Creator/director акаунти змінює тільки creator.' : 'Creator має повний контроль доступів і не може випадково забрати власне керування акаунтами.' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
-        { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
+        { key: 'extraRoles', label: 'Додаткові ролі', type: 'checkboxGroup', defaultValue: normalizeAccountArray(user.extra_roles || user.extraRoles), options: getAccountExtraRoleOptions(user.role || 'animator', user.extra_roles || user.extraRoles), hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' },
         { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist, { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: currentActionDenylist, options: getAccountActionOptions(currentActionDenylist), hint: 'Deny має пріоритет над роллю і allow.' }

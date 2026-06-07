@@ -62,9 +62,9 @@ test('business scope request contract supports single, multi, and all-business m
   );
 });
 
-test('business switch policy is creator-only and locks director-like roles to Park', () => {
+test('business switch policy lets creator and director switch contexts while lower roles stay on Park', () => {
   assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('creator'));
-  assert.equal(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'), false);
+  assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'));
 
   const creatorPolicy = resolveBusinessContextPolicy({ role: 'creator' });
   assert.equal(creatorPolicy.canSwitch, true);
@@ -72,17 +72,22 @@ test('business switch policy is creator-only and locks director-like roles to Pa
   assert.equal(canAccessBusinessContext({ role: 'creator' }, 'maysternya_doli'), true);
 
   const directorPolicy = resolveBusinessContextPolicy({ role: 'director', business_contexts: ['event_genix', 'dar'] });
-  assert.equal(directorPolicy.canSwitch, false);
-  assert.deepEqual(directorPolicy.allowed, ['event_genix']);
-  assert.equal(canAccessBusinessContext({ role: 'director', business_contexts: ['event_genix', 'dar'] }, 'dar'), false);
+  assert.equal(directorPolicy.canSwitch, true);
+  assert.deepEqual(directorPolicy.allowed, ['event_genix', 'dar']);
+  assert.equal(canAccessBusinessContext({ role: 'director', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
 });
 
-test('account business_contexts only limit creator switchers; non-creators stay on Park', () => {
+test('account business_contexts only limit creator/director switchers; lower roles stay on Park', () => {
   const creatorPolicy = resolveBusinessContextPolicy({ role: 'creator', business_contexts: ['event_genix', 'dar'] });
   assert.equal(creatorPolicy.canSwitch, true);
   assert.deepEqual(creatorPolicy.allowed, ['event_genix', 'dar']);
   assert.equal(canAccessBusinessContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
   assert.equal(canAccessBusinessContext({ role: 'creator', business_contexts: ['event_genix', 'dar'] }, 'crm'), false);
+
+  const directorPolicy = resolveBusinessContextPolicy({ role: 'director', business_contexts: ['event_genix', 'crm'] });
+  assert.equal(directorPolicy.canSwitch, true);
+  assert.deepEqual(directorPolicy.allowed, ['event_genix', 'crm']);
+  assert.equal(canAccessBusinessContext({ role: 'director', business_contexts: ['event_genix', 'crm'] }, 'crm'), true);
 
   const policy = resolveBusinessContextPolicy({ role: 'manager', business_contexts: ['event_genix', 'dar'] });
   assert.equal(policy.canSwitch, false);
@@ -91,7 +96,7 @@ test('account business_contexts only limit creator switchers; non-creators stay 
   assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'event_genix'), true);
 });
 
-test('default_business_context is honored only for creator switchers', () => {
+test('default_business_context is honored only for creator/director switchers', () => {
   const user = {
     role: 'creator',
     business_contexts: ['event_genix', 'maysternya_doli'],
@@ -103,6 +108,13 @@ test('default_business_context is honored only for creator switchers', () => {
   assert.equal(policy.defaultContext, 'maysternya_doli');
   assert.equal(canAccessBusinessContext(user, 'event_genix'), true);
   assert.equal(canAccessBusinessContext(user, 'maysternya_doli'), true);
+
+  const director = { ...user, role: 'director' };
+  const directorPolicy = resolveBusinessContextPolicy(director);
+  assert.equal(directorPolicy.canSwitch, true);
+  assert.deepEqual(directorPolicy.allowed, ['event_genix', 'maysternya_doli']);
+  assert.equal(directorPolicy.defaultContext, 'maysternya_doli');
+  assert.equal(canAccessBusinessContext(director, 'maysternya_doli'), true);
 
   const manager = { ...user, role: 'manager' };
   const managerPolicy = resolveBusinessContextPolicy(manager);

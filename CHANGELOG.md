@@ -4,6 +4,18 @@
 
 ---
 
+## v0.73.85 - Акаунти: директорський доступ
+
+### Директор / Account Center / Business context / UI / Guardrail / (Клешня, 07.06.2026) [codex]
+- **Директор отримав повний директорський контур редагування** - роль `director` зберігає доступ до керування акаунтами, налаштувань, staff-дій і операційного редагування, але не може змінювати `creator` або інших `director`.
+- **Бізнес-контекст відкрито для director** - runtime policy тепер дозволяє `creator` і `director` перемикати бізнеси; міграція `257_director_business_context_access.sql` відновлює директорським акаунтам стандартний набір контекстів після попереднього Park-lock.
+- **Account Access editor став зручнішим** - модалка доступів ширша, має прокрутку, директорську policy-підказку і checkbox-вибір `extraRoles` замість ручного введення ролей через кому.
+- **Рольова стеля лишилась захищеною** - директор бачить у редакторі тільки ролі нижче `director`, а security-level actions `manage_accounts/manage_users/manage_settings` не делегуються через allowlist нижчим акаунтам.
+- **Audit і регресії оновлено під нову політику** - account audit більше не позначає director business contexts як debt, а тести покривають director business switch, director account ceiling і нову unlock migration.
+- **Оновлено релізні маркери** - версію піднято до `0.73.85`, cache tags і Service Worker синхронізовано для наступної поставки.
+
+---
+
 ## v0.73.84 - Акаунти: стабілізація допусків
 
 ### Доступи / Акаунти / HR / Staff / Guardrail / (Клешня, 07.06.2026) [codex]

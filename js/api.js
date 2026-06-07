@@ -123,7 +123,8 @@ const CRM_BUSINESS_CONTEXT_ALIASES = Object.freeze({
     'срм': 'crm'
 });
 const CRM_BUSINESS_SWITCH_ROLES = Object.freeze([
-    'creator'
+    'creator',
+    'director'
 ]);
 const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
     dashboard: { id: 'dashboard', label: 'Dashboard', paths: ['/dashboard'] },
@@ -353,7 +354,7 @@ function crmBusinessAssignedContexts(user) {
 }
 
 function crmBusinessUserCanSwitch(user) {
-    return String(user?.role || '').trim() === 'creator';
+    return CRM_BUSINESS_SWITCH_ROLES.includes(String(user?.role || '').trim());
 }
 
 function crmBusinessExplicitForcedContext(user) {

@@ -353,13 +353,18 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     assert.match(sidebarCode, /if \(creatorSurface && current !== 'maysternya_doli'\) return true/);
 });
 
-test('non-creator account lock migration forces Park business context only', () => {
+test('non-creator account lock migration forces Park while director unlock migration restores director contexts', () => {
     const migration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '256_lock_non_creator_business_contexts.sql'), 'utf8');
+    const directorMigration = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '257_director_business_context_access.sql'), 'utf8');
 
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /business_contexts = ARRAY\['event_genix'\]::text\[\]/);
     assert.match(migration, /default_business_context = 'event_genix'/);
     assert.match(migration, /WHERE COALESCE\(role, ''\) <> 'creator'/);
+
+    assert.match(directorMigration, /MIGRATION_KIND: data-fix/);
+    assert.match(directorMigration, /role = 'director'/);
+    assert.match(directorMigration, /ARRAY\['event_genix', 'dar', 'maysternya_doli', 'crm'\]::text\[\]/);
 });
 
 test('timeline root uses account default instead of stale stored business context', () => {

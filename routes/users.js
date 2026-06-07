@@ -140,7 +140,7 @@ function normalizeStoredArray(value) {
 }
 
 function canSwitchBusinessContextsForRole(primaryRole = '') {
-    return primaryRole === 'creator';
+    return ['creator', 'director'].includes(primaryRole);
 }
 
 function normalizeAccountBusinessContexts(value, primaryRole = '') {

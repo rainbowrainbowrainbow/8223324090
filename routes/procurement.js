@@ -950,8 +950,8 @@ async function receiveProcurementItem(client, listId, itemId, body = {}, usernam
              contractor_id = COALESCE(contractor_id, $2),
              is_purchased = true,
              received_quantity = COALESCE(received_quantity, 0) + $3,
-             final_price = $4,
-             actual_price = $4,
+             final_price = $4::numeric,
+             actual_price = ROUND($4::numeric)::int,
              received_at = NOW()
          WHERE id = $5
          RETURNING *`,

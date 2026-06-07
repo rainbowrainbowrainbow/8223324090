@@ -4,6 +4,23 @@
 
 ---
 
+## v0.73.87 - Аудит доступів: hardening
+
+### Account Center / Access audit / Staff bridge / Finance / Guardrail / (Клешня, 07.06.2026) [codex]
+- **Legacy staff-account routes переведено на `manage_accounts`** - `POST /api/staff/:id/link`, `POST /api/staff/:id/unlink`, `POST /api/staff/bulk-create-accounts` і вимкнений `bulk-pdf` більше не покладаються на старий `requireRole`.
+- **Director cap поширено на staff bridge** - директор може керувати лише акаунтами нижче рівня `director`; protected `creator/director` акаунти не можна link/unlink через overlay або масове створення.
+- **Employee profile account links закрито тим самим policy** - `POST/PUT /api/employees` вимагають `manage_accounts` для будь-якої зміни `user_id`, а `/api/employees/auto-link` більше не запускається з HR-only доступом.
+- **HR offboarding / rehire більше не обходять Account Center** - вимкнення linked CRM-акаунта через offboarding і повторна активація акаунта під час rehire тепер вимагають `manage_accounts`; HR-only користувач може завершити або відновити співпрацю, але не змінити CRM login напряму.
+- **Telegram auto-bind більше не перезаписує прив'язку акаунта** - `/start` і helper-прив'язки можуть записати `telegram_chat_id` тільки якщо поле ще порожнє, щоб бот-flow не перепризначив приватні сповіщення.
+- **Personal account checks отримують актуальну Telegram-прив'язку** - auth payload і token rehydration знову несуть `telegram_chat_id`, щоб owner-scoped personal finance accounts не залежали від застарілого JWT shape.
+- **Finance access matrix синхронізовано з backend** - сторінки `/finance` і `/analytics` у backend/frontend/sidebar тепер відкриті тільки для `creator`, `director` і `accountant`, як і Finance API.
+- **Ручні URL закрито frontend page guard** - після валідної сесії `auth.js` перевіряє поточний route через `PAGE_ACCESS` і перекидає користувача з недоступної сторінки на дозволений стартовий маршрут.
+- **Check-in shell підключено до shared auth contract** - `/checkin` більше не живе на legacy `localStorage.token`, а проходить `apiVerifyToken()` і `PAGE_ACCESS` перед камерою та staff API.
+- **Додано guardrails проти повторного drift** - unit-тести, `check:access` і `check:account-access-surface` перевіряють finance page/backend/sidebar parity, protected HTML auth bootstrap, staff bridge, employee links, HR offboarding, personal account Telegram ownership і manual URL guard.
+- **Оновлено релізні маркери** - версію піднято до `0.73.87`, cache tags, Service Worker і `package-lock.json` синхронізовано для наступної поставки.
+
+---
+
 ## v0.73.86 - Акаунти: пакети доступів
 
 ### Account Center / Role packs / UI / Guardrail / (Клешня, 07.06.2026) [codex]

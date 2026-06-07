@@ -64,7 +64,7 @@ const STAFF_PAGE_ACCESS = ALL_STAFF;
 const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
 const TRAINING_ACCESS = [...MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
-const FINANCE_ANALYTICS_ACCESS = [...MANAGER_UP, 'accountant'];
+const FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
@@ -218,7 +218,9 @@ function buildAuthUserPayload(user) {
         defaultBusinessContext,
         default_business_context: defaultBusinessContext,
         businessContextPolicy,
-        name: user.name
+        name: user.name,
+        telegram_chat_id: user.telegram_chat_id || user.telegramChatId || null,
+        telegramChatId: user.telegram_chat_id || user.telegramChatId || null
     };
 }
 
@@ -248,7 +250,7 @@ async function authenticateToken(req, res, next) {
                 }
                 const freshAccessState = await pool.query(
                     `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts,
-                            default_business_context, name, is_active
+                            default_business_context, name, telegram_chat_id, is_active
                      FROM users WHERE id = $1`,
                     [user.id]
                 ).catch(() => ({ rows: [] }));
@@ -439,7 +441,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 
@@ -477,7 +479,7 @@ async function revokeRefreshToken(refreshToken) {
          WHERE rt.token_hash = $1
            AND rt.user_id = u.id
            AND rt.revoked_at IS NULL
-         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.name`,
+         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.name, u.telegram_chat_id`,
         [tokenHash]
     );
     return result.rows[0] || null;

@@ -164,6 +164,32 @@ function createFakePool() {
                 department: 'Operations',
                 position: 'Trainee',
                 role_type: 'animator'
+            }],
+            [46, {
+                id: 46,
+                name: 'Dismissed HR Reactivation',
+                is_active: false,
+                hr_pool_status: 'dismissed',
+                blacklist_reason: null,
+                notes: '',
+                department: 'Operations',
+                position: 'Animator',
+                role_type: 'animator',
+                termination_date: '2099-05-30',
+                termination_reason: 'Former employee'
+            }],
+            [47, {
+                id: 47,
+                name: 'Dismissed Creator Reactivation',
+                is_active: false,
+                hr_pool_status: 'dismissed',
+                blacklist_reason: null,
+                notes: '',
+                department: 'Operations',
+                position: 'Animator',
+                role_type: 'animator',
+                termination_date: '2099-05-30',
+                termination_reason: 'Former employee'
             }]
         ]),
         resourcesByStaff: new Map([
@@ -212,6 +238,28 @@ function createFakePool() {
                 full_name: 'Route Smoke',
                 is_active: true,
                 profile_active: true
+            }]],
+            [46, [{
+                id: 79,
+                username: 'rehire.hr.blocked',
+                name: 'Rehire HR Blocked',
+                role: 'animator',
+                extra_roles: [],
+                profile_id: 791,
+                full_name: 'Rehire HR Blocked',
+                is_active: false,
+                profile_active: false
+            }]],
+            [47, [{
+                id: 80,
+                username: 'rehire.creator.allowed',
+                name: 'Rehire Creator Allowed',
+                role: 'animator',
+                extra_roles: [],
+                profile_id: 792,
+                full_name: 'Rehire Creator Allowed',
+                is_active: false,
+                profile_active: false
             }]]
         ]),
         users: new Map([
@@ -317,6 +365,10 @@ function createFakePool() {
             if (/SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes FROM staff WHERE id = \$1/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [staff] : [] };
+            }
+            if (/SELECT \* FROM staff WHERE id = \$1 FOR UPDATE/i.test(text)) {
+                const staff = hrState.staff.get(Number(params[0]));
+                return { rows: staff ? [staff] : [], rowCount: staff ? 1 : 0 };
             }
             if (/SELECT id, name, department, position, role_type, is_active FROM staff WHERE id = \$1/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
@@ -458,7 +510,7 @@ function createFakePool() {
             if (/FROM staff_resource_assignments sra LEFT JOIN warehouse_stock ws ON ws\.id = sra\.warehouse_stock_id LEFT JOIN costumes c ON c\.id = sra\.costume_id WHERE sra\.staff_id = \$1 AND sra\.status = 'issued'/i.test(text)) {
                 return { rows: hrState.resourcesByStaff.get(Number(params[0])) || [] };
             }
-            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1/i.test(text)) {
+            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1/i.test(text) && !/FOR UPDATE OF ep, u/i.test(text)) {
                 const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
                     .filter(row => row.is_active !== false && row.profile_active !== false)
                     .map(row => ({
@@ -514,11 +566,82 @@ function createFakePool() {
                 hrState.staff.set(id, updated);
                 return { rows: [updated], rowCount: 1 };
             }
+            if (/UPDATE staff SET is_active = true,/i.test(text) && /termination_date = NULL/i.test(text) && /WHERE id = \$1 RETURNING \*/i.test(text)) {
+                const id = Number(params[0]);
+                const staff = hrState.staff.get(id);
+                if (!staff) return { rows: [], rowCount: 0 };
+                const updated = {
+                    ...staff,
+                    is_active: true,
+                    termination_date: null,
+                    termination_reason: null,
+                    termination_recorded_at: null,
+                    termination_recorded_by: null
+                };
+                hrState.staff.set(id, updated);
+                return { rows: [updated], rowCount: 1 };
+            }
+            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1 AND COALESCE\(ep\.is_active, true\) = true AND COALESCE\(u\.is_active, true\) = true FOR UPDATE OF ep, u/i.test(text)) {
+                const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
+                    .filter(row => row.is_active !== false && row.profile_active !== false)
+                    .map(row => ({
+                        id: row.id,
+                        username: row.username,
+                        name: row.name,
+                        role: row.role,
+                        extra_roles: row.extra_roles || [],
+                        profile_id: row.profile_id,
+                        full_name: row.full_name
+                    }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1 AND ep\.user_id IS NOT NULL FOR UPDATE OF ep, u/i.test(text)) {
+                const rows = (hrState.accountsByStaff.get(Number(params[0])) || []).map(row => ({
+                    id: row.id,
+                    username: row.username,
+                    name: row.name,
+                    role: row.role,
+                    extra_roles: row.extra_roles || [],
+                    profile_id: row.profile_id,
+                    full_name: row.full_name
+                }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/UPDATE employee_profiles SET is_active = true WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\) RETURNING user_id/i.test(text)) {
+                const ids = Array.isArray(params[1]) ? params[1].map(Number) : [];
+                const accounts = hrState.accountsByStaff.get(Number(params[0])) || [];
+                const rows = [];
+                for (const account of accounts) {
+                    if (ids.includes(Number(account.id))) {
+                        account.profile_active = true;
+                        rows.push({ user_id: account.id });
+                    }
+                }
+                return { rows, rowCount: rows.length };
+            }
             if (/DELETE FROM hr_shifts hs WHERE hs\.staff_id = \$1/i.test(text)) {
                 return { rows: [], rowCount: 2 };
             }
             if (/DELETE FROM staff_schedule ss WHERE ss\.staff_id = \$1/i.test(text)) {
                 return { rows: [], rowCount: 3 };
+            }
+            if (/UPDATE users SET is_active = true WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
+                const ids = Array.isArray(params[0]) ? params[0].map(Number) : [];
+                const rows = [];
+                for (const accounts of hrState.accountsByStaff.values()) {
+                    for (const account of accounts) {
+                        if (ids.includes(Number(account.id))) {
+                            account.is_active = true;
+                            rows.push({
+                                id: account.id,
+                                username: account.username,
+                                name: account.name,
+                                role: account.role
+                            });
+                        }
+                    }
+                }
+                return { rows, rowCount: rows.length };
             }
             if (/UPDATE users SET is_active = false, session_revoked_at = NOW\(\) WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(Number) : [];
@@ -1410,6 +1533,21 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.data.document_alerts[0].title, 'Медкнижка 2026');
     });
 
+    it('blocks HR-only offboarding from disabling linked CRM accounts without manage_accounts', async () => {
+        queries.length = 0;
+        const res = await request('POST', '/api/hr/staff/42/offboarding', {
+            effective_date: '2099-06-06',
+            target_pool_status: 'reserve',
+            account_action: 'disable',
+            reason: 'HR cannot disable CRM account directly'
+        }, withAuth({}, 'hr'));
+
+        assert.equal(res.status, 403, JSON.stringify(res.data));
+        assert.match(res.data.error, /manage_accounts/);
+        assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO staff_offboarding_events/i.test(q.text)), false);
+    });
+
     it('deactivates linked CRM account, profile, tokens, and audit when HR offboarding disables account', async () => {
         const res = await request('POST', '/api/hr/staff/42/offboarding', {
             effective_date: '2099-06-06',
@@ -1453,6 +1591,37 @@ describe('route-level API safety smoke', () => {
         assert.match(currentUser.data.error, /власний CRM-акаунт/);
         assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
         assert.equal(queries.some(q => /INSERT INTO staff_offboarding_events/i.test(q.text)), false);
+    });
+
+    it('keeps HR-only rehire from reactivating linked CRM accounts without manage_accounts', async () => {
+        queries.length = 0;
+        const res = await request('PUT', '/api/hr/staff/46/status', {
+            is_active: true
+        }, withAuth({}, 'hr'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.reactivated_accounts, 0);
+        assert.equal(res.data.account_reactivation_blocked, true);
+        assert.equal(res.data.account_reactivation_blockers[0].block_reason, 'requires_manage_accounts');
+        assert.equal(queries.some(q => /UPDATE users SET is_active = true/i.test(q.text)), false);
+        assert.equal(queries.some(q => /UPDATE employee_profiles SET is_active = true/i.test(q.text)), false);
+    });
+
+    it('lets account managers reactivate linked CRM accounts during staff rehire', async () => {
+        queries.length = 0;
+        const res = await request('PUT', '/api/hr/staff/47/status', {
+            is_active: true
+        }, withAuth());
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.reactivated_accounts, 1);
+        assert.deepEqual(res.data.reactivated_account_usernames, ['rehire.creator.allowed']);
+        assert.equal(res.data.account_reactivation_blocked, false);
+        assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = true WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE users SET is_active = true WHERE id = ANY\(\$1::int\[\]\)/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO account_security_events/i.test(q.text) && q.params[4] === 'account_activated' && q.params[5] === 'hr_rehire'));
     });
 
     it('assigns HR onboarding responsible owners and syncs canonical tasks without duplicates', async () => {

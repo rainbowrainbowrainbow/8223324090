@@ -38,6 +38,8 @@ document in the same pack.
   links;
 - root static canonical pages and non-embedded aliases have matching
   `PAGE_ACCESS`, unless they are documented exceptions here;
+- protected root static pages load `js/auth.js`, or are explicit redirect
+  shells to another `PAGE_ACCESS` route;
 - every `PAGE_ACCESS` entry resolves to a static page, static alias, or
   hash-modal ownership entry.
 
@@ -99,6 +101,8 @@ This pack is considered done when all of these remain true:
 
 - `npm run check:access` passes.
 - Any new protected static page has a backend and frontend `PAGE_ACCESS` entry.
+- Any new protected static page loads `js/auth.js`, unless it only redirects to
+  another protected page.
 - Any new sidebar link has a `SIDEBAR_ACCESS` key and matches page access roles.
 - Any new public page, embedded route, modal bridge, or intentional sidebar role
   mismatch is listed in `config/accessSurface.js` and this document.

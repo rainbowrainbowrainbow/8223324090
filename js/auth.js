@@ -612,7 +612,7 @@ const _STAFF_PAGE_ACCESS = _ALL_STAFF;
 const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
 const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
-const _FINANCE_ANALYTICS_ACCESS = [..._MANAGER_UP, 'accountant'];
+const _FINANCE_ANALYTICS_ACCESS = ['creator', 'director', 'accountant'];
 
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY.slice(),
@@ -1348,7 +1348,30 @@ function shouldEnableAssistantIdleHints() {
     }
 }
 
+function getCurrentPageAccessPath() {
+    const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    const embeddedParents = {
+        '/embed/designs': '/designs',
+        '/embed/programs': '/programs',
+        '/embed/graduation': '/graduation'
+    };
+    return embeddedParents[path] || path;
+}
+
+function enforceCurrentPageAccess(user = AppState.currentUser) {
+    const path = getCurrentPageAccessPath();
+    if (path === '/invite') return true;
+    if (canAccessPage(path)) return true;
+
+    const fallback = getAuthenticatedTimelineStartPage(user || AppState.currentUser) || '/dashboard';
+    if (window.location.pathname !== fallback) {
+        window.location.replace(fallback);
+    }
+    return false;
+}
+
 function showMainApp() {
+    if (!enforceCurrentPageAccess()) return;
     document.getElementById('loginScreen')?.classList.add('hidden');
     const _userEl = document.getElementById('currentUser');
     if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
@@ -2796,8 +2819,10 @@ document.addEventListener('DOMContentLoaded', () => {
             let user = null;
 
             // Priority 1: AppState (set by page-specific initPage after apiVerifyToken)
+            let hasVerifiedUser = false;
             if (typeof AppState !== 'undefined' && AppState.currentUser) {
                 user = AppState.currentUser;
+                hasVerifiedUser = true;
                 // Sync to localStorage so other mechanisms can find it
                 const saved = localStorage.getItem('pzp_current_user');
                 if (!saved) {
@@ -2817,6 +2842,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            if (hasVerifiedUser && !enforceCurrentPageAccess(user)) return;
             window.WorkingRole?.hydrate?.();
 
             // Fill header #currentUser

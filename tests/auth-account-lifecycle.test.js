@@ -50,6 +50,7 @@ function createFakePool() {
             login_aliases: [],
             session_revoked_at: null,
             password_changed_at: null,
+            telegram_chat_id: 123456001,
             avatar_emoji: null,
             avatar_color: null,
             avatar_url: null
@@ -72,7 +73,8 @@ function createFakePool() {
             default_business_context: row.default_business_context || 'event_genix',
             is_active: row.is_active !== false,
             password_changed_at: row.password_changed_at || null,
-            session_revoked_at: row.session_revoked_at || null
+            session_revoked_at: row.session_revoked_at || null,
+            telegram_chat_id: row.telegram_chat_id || null
         } : null;
     }
 
@@ -145,6 +147,7 @@ function createFakePool() {
                 is_active: true,
                 login_aliases: [],
                 password_changed_at: new Date(),
+                telegram_chat_id: null,
                 session_revoked_at: null
             };
             state.users.push(row);
@@ -186,7 +189,7 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context, name, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context, name(?:, telegram_chat_id)?, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{ ...publicUser(row), session_revoked_at: row.session_revoked_at || null }] : [] };
         }

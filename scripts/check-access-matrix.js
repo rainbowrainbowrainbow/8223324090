@@ -125,11 +125,11 @@ function loadFrontendAuth() {
     const code = fs.readFileSync(filename, 'utf8');
     const sandbox = makeBrowserSandbox();
     const api = vm.runInNewContext(
-        `${code}\n;({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, canAccessPage });`,
+        `${code}\n;({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess });`,
         sandbox,
         { filename }
     );
-    return { ...api, sandbox };
+    return { ...api, sandbox, source: code };
 }
 
 function loadSidebar() {
@@ -257,7 +257,22 @@ function assertDocumentedSurface(entry, label) {
 
 function normalizeSurfacePath(value) {
     if (!value || value === '*') return null;
-    return String(value).split('#')[0].replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    return String(value).split('#')[0].split('?')[0].replace(/\.html$/, '').replace(/\/$/, '') || '/';
+}
+
+function readRootHtml(file) {
+    return fs.readFileSync(path.join(ROOT, file), 'utf8');
+}
+
+function htmlLoadsSharedAuth(source) {
+    return /<script\b[^>]*\bsrc=["'][^"']*\/?js\/auth\.js(?:\?[^"']*)?["']/i.test(source);
+}
+
+function getStaticRedirectTarget(source) {
+    const scriptRedirect = source.match(/window\.location\.replace\(["']([^"']+)["']\)/i);
+    if (scriptRedirect) return normalizeSurfacePath(scriptRedirect[1]);
+    const metaRefresh = source.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'>\s]+)/i);
+    return metaRefresh ? normalizeSurfacePath(metaRefresh[1]) : null;
 }
 
 const rootStaticPaths = new Set();
@@ -374,6 +389,14 @@ for (const entry of ROOT_HTML_SURFACE) {
     if (canonical && !publicStaticExceptions.has(canonical) && !hasPageAccess(canonical)) {
         fail(`static surface ${entry.file}: canonical path ${canonical} missing PAGE_ACCESS entry`);
     }
+    if (canonical && hasPageAccess(canonical)) {
+        const html = readRootHtml(entry.file);
+        const redirectTarget = getStaticRedirectTarget(html);
+        const redirectIsProtected = redirectTarget && hasPageAccess(redirectTarget);
+        if (!htmlLoadsSharedAuth(html) && !redirectIsProtected) {
+            fail(`static surface ${entry.file}: protected page ${canonical} must load js/auth.js or redirect to a PAGE_ACCESS route`);
+        }
+    }
     if (canonical && !publicStaticExceptions.has(canonical)) {
         staticAccessPaths.add(canonical);
     }
@@ -433,6 +456,35 @@ if (frontend.canAccessPage('/chat') !== false) {
 frontend.sandbox.AppState.currentUser = { role: 'marketer' };
 if (frontend.canAccessPage('/sales-funnel') !== true || frontend.canAccessPage('/leads') !== true) {
     fail('marketer should pass both /sales-funnel and /leads lead aliases');
+}
+
+let redirectTarget = null;
+frontend.sandbox.window.location = {
+    pathname: '/hr',
+    href: '',
+    hash: '',
+    replace(target) { redirectTarget = target; },
+    reload() {}
+};
+frontend.sandbox.AppState.currentUser = { role: 'accountant' };
+if (frontend.enforceCurrentPageAccess() !== false || redirectTarget !== '/') {
+    fail('frontend page guard must redirect disallowed manual URLs to the role start page');
+}
+
+redirectTarget = null;
+frontend.sandbox.window.location = {
+    pathname: '/embed/designs',
+    href: '',
+    hash: '',
+    replace(target) { redirectTarget = target; },
+    reload() {}
+};
+frontend.sandbox.AppState.currentUser = { role: 'art_director' };
+if (frontend.getCurrentPageAccessPath() !== '/designs' || frontend.enforceCurrentPageAccess() !== true || redirectTarget) {
+    fail('frontend page guard must evaluate embedded static routes against their parent page access');
+}
+if (!/hasVerifiedUser && !enforceCurrentPageAccess\(user\)/.test(frontend.source)) {
+    fail('frontend sub-page bootstrap must run page access guard after verified AppState user is available');
 }
 
 if (failures.length) {

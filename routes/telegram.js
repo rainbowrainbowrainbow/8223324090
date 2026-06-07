@@ -486,7 +486,6 @@ router.post('/webhook', async (req, res) => {
 
             // v10.0: Auto-register telegram chat_id for personal notifications (/start link)
             if (update.message.chat.type === 'private' && fromUsername) {
-                const { registerTelegramChatId } = require('../services/kleshnya');
                 // Try to link by telegram_username
                 pool.query(
                     'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2 AND telegram_chat_id IS NULL',

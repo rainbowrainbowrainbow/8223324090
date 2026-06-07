@@ -49,6 +49,25 @@ function roleLevel(role) {
     return ROLE_LEVEL[String(role || '').trim()] ?? -1;
 }
 
+function hasExplicitDbConfig() {
+    return Boolean(process.env.DATABASE_URL || process.env.PGHOST || process.env.PGDATABASE || process.env.PGUSER);
+}
+
+function formatDbAuditError(err) {
+    const messages = [];
+    if (err?.message) messages.push(err.message);
+    if (Array.isArray(err?.errors)) {
+        for (const nested of err.errors) {
+            if (nested?.message && !messages.includes(nested.message)) messages.push(nested.message);
+        }
+    }
+    const summary = messages.filter(Boolean).slice(0, 4).join(' | ') || String(err || 'unknown error');
+    if (!hasExplicitDbConfig()) {
+        return `${summary} (no DATABASE_URL/PGHOST/PGDATABASE/PGUSER found in environment or .env)`;
+    }
+    return summary;
+}
+
 function inspectUser(row) {
     const issues = [];
     const actionAllowlist = asArray(row.action_allowlist);
@@ -146,7 +165,7 @@ async function main() {
         }
         await pool.end().catch(() => {});
     } catch (err) {
-        console.log(`DB account audit skipped: ${err.message || err}`);
+        console.log(`DB account audit skipped: ${formatDbAuditError(err)}`);
         if (REQUIRE_DB) process.exitCode = 1;
         return;
     }

@@ -54,6 +54,49 @@ test('finance reporting remains explicitly privileged full-role', () => {
     assert.match(finance, /requireRole\('creator', 'director', 'accountant'\)/, 'finance should stay restricted to finance-privileged roles');
 });
 
+test('finance page access mirrors the finance-privileged backend route', () => {
+    const backendAuth = read('middleware/auth.js');
+    const frontendAuth = read('js/auth.js');
+    const sidebar = read('js/components/sidebar.js');
+
+    assert.match(backendAuth, /const FINANCE_ANALYTICS_ACCESS = \['creator', 'director', 'accountant'\]/);
+    assert.match(frontendAuth, /const _FINANCE_ANALYTICS_ACCESS = \['creator', 'director', 'accountant'\]/);
+    assert.match(sidebar, /finance:\s+\['creator', 'director', 'accountant'\]/);
+    assert.match(sidebar, /analytics:\s+\['creator', 'director', 'accountant'\]/);
+});
+
+test('staff account bridge endpoints use canonical account-management action guards', () => {
+    const staff = read('routes/staff.js');
+
+    assert.match(staff, /router\.post\('\/:id\/link', requireAction\('manage_accounts'\)/);
+    assert.match(staff, /router\.post\('\/:id\/unlink', requireAction\('manage_accounts'\)/);
+    assert.match(staff, /router\.post\('\/bulk-create-accounts', requireAction\('manage_accounts'\)/);
+    assert.match(staff, /router\.post\('\/bulk-pdf', requireAction\('manage_accounts'\)/);
+    assert.match(staff, /function canActorManageAccountRoleSet/);
+    assert.match(staff, /function ensureActorCanManageAccount/);
+});
+
+test('employee profile account links require canonical account-management policy', () => {
+    const employees = read('routes/employees.js');
+
+    assert.match(employees, /canUseAction\(actor, 'manage_accounts'\)/);
+    assert.match(employees, /function ensureActorCanManageAccountId/);
+    assert.match(employees, /await ensureActorCanManageAccountId\(client, req\.user, user_id\)/);
+    assert.match(employees, /await ensureActorCanManageAccountId\(client, req\.user, current\.rows\[0\]\.user_id\)/);
+    assert.match(employees, /router\.post\('\/auto-link', requireAction\('manage_accounts'\)/);
+});
+
+test('HR account side effects stay behind canonical account-management policy', () => {
+    const hr = read('routes/hr.js');
+
+    assert.match(hr, /function accountOffboardingBlockReason/);
+    assert.match(hr, /function accountRehireBlockReason/);
+    assert.match(hr, /canUseAction\(actor, 'manage_accounts'\)/);
+    assert.match(hr, /disable_requires_manage_accounts/);
+    assert.match(hr, /account_reactivation_blocked/);
+    assert.match(hr, /actorCanReactivateStaffAccount\(req\.user, account\)/);
+});
+
 test('cross-entity search and workspace shortcuts cannot bypass booking/task visibility', () => {
     const search = read('routes/search.js');
     assert.match(search, /PAGE_ACCESS/, 'global search should only search non-booking surfaces that the actor can open');

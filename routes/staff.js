@@ -57,11 +57,81 @@ const {
     verifyIssuedCredential
 } = require('../services/accountLinking');
 
-const { requireAction, requireRole, authenticateToken } = require('../middleware/auth');
+const { requireAction, requireRole, authenticateToken, ROLE_LEVEL } = require('../middleware/auth');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
+
+const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
+
+function roleLevel(role) {
+    return ROLE_LEVEL[String(role || '').trim()] ?? -1;
+}
+
+function normalizeAccountRoleSet(...roleLists) {
+    const roles = [];
+    roleLists.flat().forEach(role => {
+        if (typeof role !== 'string') return;
+        const value = role.trim();
+        if (value && !roles.includes(value)) roles.push(value);
+    });
+    return roles;
+}
+
+function accountMaxRoleLevel(account = {}) {
+    return normalizeAccountRoleSet([account.role], account.extra_roles, account.extraRoles)
+        .reduce((max, role) => Math.max(max, roleLevel(role)), -1);
+}
+
+function canActorManageAccountRoleSet(actor, primaryRole, extraRoles = []) {
+    if (!actor || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (actor.role === 'creator') return true;
+    const maxTargetLevel = normalizeAccountRoleSet([primaryRole], extraRoles)
+        .reduce((max, role) => Math.max(max, roleLevel(role)), -1);
+    return maxTargetLevel >= 0 && maxTargetLevel < roleLevel('director');
+}
+
+function canActorManageAccount(actor, account) {
+    if (!actor || !account || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (actor.role === 'creator') return true;
+    return accountMaxRoleLevel(account) < roleLevel('director');
+}
+
+function accountManagementError(message, statusCode = 403) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
+async function getAccountForManagement(client, userId) {
+    const result = await client.query(
+        'SELECT id, username, name, role, extra_roles FROM users WHERE id = $1 FOR UPDATE',
+        [userId]
+    );
+    if (!result.rows.length) throw accountManagementError('Account not found', 404);
+    return result.rows[0];
+}
+
+async function getLinkedAccountsForStaffManagement(client, staffId) {
+    const result = await client.query(
+        `SELECT u.id, u.username, u.name, u.role, u.extra_roles
+         FROM employee_profiles ep
+         JOIN users u ON u.id = ep.user_id
+         WHERE ep.staff_id = $1
+           AND ep.user_id IS NOT NULL
+         ORDER BY ep.id
+         FOR UPDATE OF ep, u`,
+        [staffId]
+    );
+    return result.rows;
+}
+
+function ensureActorCanManageAccount(actor, account) {
+    if (!canActorManageAccount(actor, account)) {
+        throw accountManagementError('Insufficient account-management permissions for this account');
+    }
+}
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
 
@@ -1466,10 +1536,12 @@ router.get('/link-status', async (req, res) => {
 });
 
 // POST /api/staff/:id/link — thin adapter over canonical employee_profiles bridge
-router.post('/:id/link', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+router.post('/:id/link', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const targetAccount = await getAccountForManagement(client, req.body.userId);
+        ensureActorCanManageAccount(req.user, targetAccount);
         const link = await linkUserToStaffProfile(client, {
             staffId: req.params.id,
             userId: req.body.userId,
@@ -1498,10 +1570,12 @@ router.post('/:id/link', requireRole('creator', 'director', 'vice_director', 'se
 });
 
 // POST /api/staff/:id/unlink — unlink staff from user account
-router.post('/:id/unlink', requireRole('creator', 'director'), async (req, res) => {
+router.post('/:id/unlink', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const targetAccounts = await getLinkedAccountsForStaffManagement(client, req.params.id);
+        targetAccounts.forEach(account => ensureActorCanManageAccount(req.user, account));
         const result = await unlinkStaffAccount(client, {
             staffId: req.params.id,
             actor: req.user,
@@ -1521,7 +1595,7 @@ router.post('/:id/unlink', requireRole('creator', 'director'), async (req, res) 
 });
 
 // POST /api/staff/bulk-create-accounts — create one-time credential packets for unlinked staff
-router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (req, res) => {
+router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1550,6 +1624,18 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
             }
             if (personKey) seenPersonKeys.add(personKey);
 
+            const role = staffRoleToAccountRole(staff.role_type);
+            if (!canActorManageAccountRoleSet(req.user, role)) {
+                skipped.push({
+                    staffId: staff.id,
+                    name: staff.name,
+                    role,
+                    reason: 'protected_account_role',
+                    label: 'Account role is protected by account-management policy'
+                });
+                continue;
+            }
+
             const username = await uniqueUsername(client, suggestUsernameForStaff(staff));
             const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
@@ -1557,7 +1643,6 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
             if (!hashVerified) {
                 throw new Error('bulk_account_password_hash_verification_failed');
             }
-            const role = staffRoleToAccountRole(staff.role_type);
 
             const userResult = await client.query(
                 'INSERT INTO users (username, password_hash, role, name, password_changed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username, name, role',
@@ -1625,7 +1710,7 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
 });
 
 // POST /api/staff/bulk-pdf — generate PDF with credentials
-router.post('/bulk-pdf', requireRole('creator', 'director'), async (req, res) => {
+router.post('/bulk-pdf', requireAction('manage_accounts'), async (req, res) => {
     res.status(410).json({
         success: false,
         error: 'PDF/CSV експорт одноразових паролів вимкнено. Скопіюйте one-time credentials із захищеного результату створення.'

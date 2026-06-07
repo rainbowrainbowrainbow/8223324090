@@ -2945,6 +2945,9 @@ async function setStaffProfileActive(staffId, isActive) {
         showNotification(data?.error || 'Не вдалося оновити активність профілю', 'error');
         return false;
     }
+    if (isActive && data.account_reactivation_blocked) {
+        showNotification('Співробітника активовано, але linked CRM-акаунт потребує доступу manage_accounts.', 'warning');
+    }
     return true;
 }
 
@@ -4412,6 +4415,10 @@ function renderStaffOffboardingReadiness(payload = {}) {
     const activeAccounts = Number(payload.active_account_count || 0);
     const documentAlerts = Number(payload.document_alert_count || 0);
     const hasBlockers = Array.isArray(payload.disable_blockers) && payload.disable_blockers.length > 0;
+    const hasPermissionBlocker = (payload.disable_blockers || []).some(item => item.block_reason === 'requires_manage_accounts');
+    const blockerAlert = hasPermissionBlocker
+        ? 'Автоматичне вимкнення акаунта потребує доступу manage_accounts.'
+        : 'Автоматичне вимкнення акаунта заблоковано для поточного або protected-акаунта.';
     const summaryTone = openResources || documentAlerts || hasBlockers ? 'is-warning' : 'is-ok';
     const resourceList = (payload.open_resources || []).slice(0, 3).map(item => {
         const due = item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
@@ -4439,7 +4446,7 @@ function renderStaffOffboardingReadiness(payload = {}) {
             <div class="${documentAlerts ? 'is-warning' : 'is-ok'}"><b>${documentAlerts}</b><span>документи</span></div>
         </div>
         <div class="hr-offboarding-readiness-detail">${details}</div>
-        ${hasBlockers ? '<div class="hr-offboarding-readiness-alert">Автоматичне вимкнення акаунта заблоковано для поточного або creator-акаунта.</div>' : ''}
+        ${hasBlockers ? `<div class="hr-offboarding-readiness-alert">${escapeHtml(blockerAlert)}</div>` : ''}
     </div>`;
 }
 
@@ -4760,7 +4767,11 @@ async function completeStaffOffboarding() {
     }
     const accountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
     if (accountAction === 'disable' && staffOffboardingReadiness?.disable_available === false) {
-        showNotification('CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
+        const needsAccountAccess = (staffOffboardingReadiness.disable_blockers || [])
+            .some(item => item.block_reason === 'requires_manage_accounts');
+        showNotification(needsAccountAccess
+            ? 'Вимкнення CRM-акаунта потребує доступу manage_accounts.'
+            : 'CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
         return;
     }
     const openResources = Number(staffOffboardingReadiness?.open_resource_count || 0);

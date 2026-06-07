@@ -676,7 +676,7 @@ async function handleStart(chatId, threadId, fromUsername) {
     if (fromUsername) {
         try {
             await pool.query(
-                'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2',
+                'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2 AND telegram_chat_id IS NULL',
                 [chatId, fromUsername]
             );
         } catch (e) { /* ignore */ }

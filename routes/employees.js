@@ -7,11 +7,73 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { linkUserToStaffProfile, unlinkStaffAccount } = require('../services/accountLinking');
 
-const { requireRole } = require('../middleware/auth');
+const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const log = createLogger('Employees');
 
 // RBAC: Employee management — management + HR only
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'));
+
+const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
+
+function roleLevel(role) {
+    return ROLE_LEVEL[String(role || '').trim()] ?? -1;
+}
+
+function normalizeAccountRoleSet(...roleLists) {
+    const roles = [];
+    roleLists.flat().forEach(role => {
+        if (typeof role !== 'string') return;
+        const value = role.trim();
+        if (value && !roles.includes(value)) roles.push(value);
+    });
+    return roles;
+}
+
+function accountMaxRoleLevel(account = {}) {
+    return normalizeAccountRoleSet([account.role], account.extra_roles, account.extraRoles)
+        .reduce((max, role) => Math.max(max, roleLevel(role)), -1);
+}
+
+function canActorManageAccount(actor, account) {
+    if (!actor || !account || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return false;
+    if (actor.role === 'creator') return true;
+    return accountMaxRoleLevel(account) < roleLevel('director');
+}
+
+function hasAccountLinkValue(value) {
+    return value !== undefined && value !== null && value !== '';
+}
+
+function accountManagementError(message, statusCode = 403) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
+function ensureManageAccounts(actor) {
+    if (!canUseAction(actor, 'manage_accounts')) {
+        throw accountManagementError('Account link changes require manage_accounts permission');
+    }
+}
+
+async function getAccountForManagement(client, userId) {
+    const result = await client.query(
+        'SELECT id, username, name, role, extra_roles FROM users WHERE id = $1 FOR UPDATE',
+        [userId]
+    );
+    if (!result.rows.length) throw accountManagementError('Account not found', 404);
+    return result.rows[0];
+}
+
+async function ensureActorCanManageAccountId(client, actor, userId) {
+    if (!hasAccountLinkValue(userId)) return null;
+    ensureManageAccounts(actor);
+    const account = await getAccountForManagement(client, userId);
+    if (!canActorManageAccount(actor, account)) {
+        throw accountManagementError('Insufficient account-management permissions for this account');
+    }
+    return account;
+}
 
 // GET /api/employees — list all employee profiles
 router.get('/', async (req, res) => {
@@ -48,6 +110,9 @@ router.post('/', async (req, res) => {
 
         await client.query('BEGIN');
         let profileId = null;
+        if (hasAccountLinkValue(user_id)) {
+            await ensureActorCanManageAccountId(client, req.user, user_id);
+        }
         if (user_id && staff_id) {
             const link = await linkUserToStaffProfile(client, {
                 userId: user_id,
@@ -98,6 +163,11 @@ router.put('/:id', async (req, res) => {
 
         await client.query('BEGIN');
         const current = await client.query('SELECT id, user_id, staff_id FROM employee_profiles WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (current.rows.length && hasAccountLinkValue(user_id)) {
+            await ensureActorCanManageAccountId(client, req.user, user_id);
+        } else if (current.rows.length && current.rows[0].user_id && current.rows[0].staff_id) {
+            await ensureActorCanManageAccountId(client, req.user, current.rows[0].user_id);
+        }
         if (current.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Профіль не знайдено' });
@@ -196,7 +266,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/employees/auto-link — auto-create profiles from existing users/staff
-router.post('/auto-link', async (req, res) => {
+router.post('/auto-link', requireAction('manage_accounts'), async (req, res) => {
     try {
         // Find staff without profiles
         const unlinkedStaff = await pool.query(

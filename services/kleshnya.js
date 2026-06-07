@@ -649,7 +649,7 @@ async function sendToDirector(text) {
 async function registerTelegramChatId(username, chatId) {
     try {
         await pool.query(
-            'UPDATE users SET telegram_chat_id = $1 WHERE username = $2',
+            'UPDATE users SET telegram_chat_id = $1 WHERE username = $2 AND telegram_chat_id IS NULL',
             [chatId, username]
         );
         log.info(`Telegram chat_id registered: ${username} → ${chatId}`);

@@ -8,7 +8,49 @@
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { request, authRequest, getToken, testDate, resetToken, TEST_USER, TEST_PASS } = require('./helpers');
+const { BASE_URL, request, authRequest, getToken, testDate, resetToken, TEST_USER, TEST_PASS } = require('./helpers');
+
+let cachedVerifiedTestUser = null;
+async function getVerifiedTestUser() {
+    if (cachedVerifiedTestUser) return cachedVerifiedTestUser;
+    const token = await getToken();
+    const res = await request('GET', '/api/auth/verify', null, token);
+    assert.equal(res.status, 200);
+    assert.ok(res.data.user);
+    cachedVerifiedTestUser = res.data.user;
+    return cachedVerifiedTestUser;
+}
+
+let cachedActiveStaffId = null;
+let cachedActiveStaffRows = null;
+async function getActiveStaffRows() {
+    if (cachedActiveStaffRows) return cachedActiveStaffRows;
+    const res = await authRequest('GET', '/api/staff?active=true');
+    assert.equal(res.status, 200);
+    cachedActiveStaffRows = Array.isArray(res.data.data) ? res.data.data : [];
+    return cachedActiveStaffRows;
+}
+
+async function getActiveStaffId() {
+    if (cachedActiveStaffId) return cachedActiveStaffId;
+    const staff = await getActiveStaffRows();
+    const active = staff.find(item => item && item.id && item.is_active !== false);
+    assert.ok(active, 'Need at least one active staff member for live HR onboarding tests');
+    cachedActiveStaffId = active.id;
+    return cachedActiveStaffId;
+}
+
+async function getActiveAnimatorStaff() {
+    const staff = await getActiveStaffRows();
+    const animator = staff.find(item => item && item.id && item.is_active !== false && (
+        item.role_type === 'animator'
+        || item.department === 'animators'
+        || String(item.position || '').toLowerCase().includes('animator')
+        || String(item.position || '').toLowerCase().includes('аніматор')
+    ));
+    assert.ok(animator, 'Need at least one active animator staff member for booking second-animator tests');
+    return animator;
+}
 
 // ==========================================
 // AUTH
@@ -421,17 +463,25 @@ describe('History', () => {
         assert.ok(Array.isArray(res.data.items));
     });
 
-    it('POST /api/history — add entry then find by user', async () => {
+    it('POST /api/history — add entry then find by authenticated actor', async () => {
+        const actor = await getVerifiedTestUser();
+        const forgedUser = `forged_history_${Date.now()}`;
+        const marker = `HISTORY_ACTOR_${Date.now()}`;
         const res = await authRequest('POST', '/api/history', {
             action: 'create',
-            user: 'test_api_user',
-            data: { label: 'TEST', room: 'Марвел', date: '2099-01-01', time: '12:00' }
+            user: forgedUser,
+            data: { label: marker, room: 'Марвел', date: '2099-01-01', time: '12:00' }
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
 
-        const check = await authRequest('GET', '/api/history?user=test_api_user');
-        assert.ok(check.data.items.length > 0, 'Should find entry by user filter');
+        const actorHistory = await authRequest('GET', `/api/history?user=${encodeURIComponent(actor.username)}&search=${encodeURIComponent(marker)}`);
+        assert.equal(actorHistory.status, 200);
+        assert.ok(actorHistory.data.items.some(item => item.user === actor.username && item.data?.label === marker), 'Should find entry by authenticated actor');
+
+        const forgedHistory = await authRequest('GET', `/api/history?user=${encodeURIComponent(forgedUser)}&search=${encodeURIComponent(marker)}`);
+        assert.equal(forgedHistory.status, 200);
+        assert.equal(forgedHistory.data.items.length, 0, 'History must not trust caller-supplied body.user');
     });
 });
 
@@ -1587,8 +1637,10 @@ describe('Booking Full Validation', () => {
 describe('Booking Optional Fields', () => {
     const date = '2099-10-03';
     let bookingId;
+    let secondAnimator;
 
     before(async () => {
+        secondAnimator = await getActiveAnimatorStaff();
         await authRequest('POST', `/api/lines/${date}`, [
             { id: 'opt_line', name: 'Optional Fields Test', color: '#AABB00' }
         ]);
@@ -1600,7 +1652,8 @@ describe('Booking Optional Fields', () => {
             programCode: 'КВ1', label: 'КВ1(60)', duration: 90, price: 3500,
             category: 'quest', status: 'confirmed',
             hosts: 2,
-            secondAnimator: 'Даша',
+            secondAnimator: secondAnimator.name,
+            secondAnimatorLineId: String(secondAnimator.id),
             pinataFiller: 'цукерки',
             costume: 'Ельза',
             notes: 'VIP клієнт, алергія на горіхи',
@@ -1614,7 +1667,7 @@ describe('Booking Optional Fields', () => {
         assert.equal(booking.duration, 90);
         assert.equal(booking.price, 3500);
         assert.equal(booking.hosts, 2);
-        assert.equal(booking.secondAnimator, 'Даша');
+        assert.equal(booking.secondAnimator, secondAnimator.name);
         assert.equal(booking.pinataFiller, 'цукерки');
         assert.equal(booking.costume, 'Ельза');
         assert.equal(booking.kidsCount, 15);
@@ -1757,11 +1810,12 @@ describe('Telegram Ask Animator', () => {
             date: '2099-10-06',
             note: 'Test request from API tests'
         });
-        // May return 200 (Telegram API available) or 500 (API unreachable)
+        // May return 200 with success=false when Telegram is not configured, or 500 for API failures.
         assert.ok([200, 500].includes(res.status), `Expected 200 or 500, got ${res.status}`);
         if (res.status === 200) {
             assert.ok('success' in res.data, 'Should have success field');
-            assert.ok('requestId' in res.data, 'Should have requestId');
+            if (res.data.success) assert.ok('requestId' in res.data, 'Successful ask should have requestId');
+            else assert.ok('reason' in res.data, 'Fallback ask should have reason');
         }
     });
 
@@ -1882,23 +1936,27 @@ describe('Lines Overwrite', () => {
 // ==========================================
 
 describe('History Combined Filters', () => {
+    let historyFilterUser;
+
     before(async () => {
+        const actor = await getVerifiedTestUser();
+        historyFilterUser = actor.username;
         await authRequest('POST', '/api/history', {
-            action: 'edit', user: 'filter_test_user',
+            action: 'edit', user: 'forged_filter_test_user',
             data: { label: 'FILTER_MARKER', room: 'Марвел', date: '2099-10-10' }
         });
         await authRequest('POST', '/api/history', {
-            action: 'delete', user: 'filter_test_user',
+            action: 'delete', user: 'forged_filter_test_user',
             data: { label: 'FILTER_MARKER_2', room: 'Ніндзя', date: '2099-10-10' }
         });
     });
 
-    it('GET /api/history?action=edit&user=filter_test_user — combined filter', async () => {
-        const res = await authRequest('GET', '/api/history?action=edit&user=filter_test_user');
+    it('GET /api/history?action=edit&user=<actor> — combined filter', async () => {
+        const res = await authRequest('GET', `/api/history?action=edit&user=${encodeURIComponent(historyFilterUser)}&search=FILTER_MARKER`);
         assert.equal(res.status, 200);
         for (const item of res.data.items) {
             assert.equal(item.action, 'edit');
-            assert.equal(item.user, 'filter_test_user');
+            assert.equal(item.user, historyFilterUser);
         }
         assert.ok(res.data.items.length > 0, 'Should find entries');
     });
@@ -2759,7 +2817,7 @@ describe('Staff Schedule (v7.10)', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/staff', {
-            name: 'Графік Тест', department: 'animators', position: 'Тест-аніматор'
+            name: 'Графік Тест', department: 'animators', position: 'Тест-аніматор', role_type: 'animator'
         });
         testStaffId = res.data.data.id;
     });
@@ -2833,7 +2891,7 @@ describe('Staff Schedule Bulk (v7.10)', () => {
     before(async () => {
         const res = await authRequest('POST', '/api/staff', {
             name: 'Bulk Тест', department: 'cafe', position: 'Тест-кухар',
-            telegramUsername: 'bulk_test_worker'
+            telegramUsername: 'bulk_test_worker', role_type: 'cook'
         });
         testStaffId = res.data.data.id;
     });
@@ -2883,7 +2941,7 @@ describe('Staff Schedule Bulk (v7.10)', () => {
         const res = await authRequest('POST', '/api/staff/schedule/bulk', {
             entries: [
                 { date: '2099-07-10', status: 'working' },
-                { staffId: testStaffId, date: '2099-07-10', status: 'working' }
+                { staffId: testStaffId, date: '2099-07-10', shiftStart: '08:00', shiftEnd: '19:00', status: 'working' }
             ]
         });
         assert.equal(res.status, 200);
@@ -2904,7 +2962,7 @@ describe('Staff Schedule Copy Week (v7.10)', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/staff', {
-            name: 'Copy Тест', department: 'animators', position: 'Копіювальник'
+            name: 'Copy Тест', department: 'animators', position: 'Копіювальник', role_type: 'animator'
         });
         testStaffId = res.data.data.id;
         // Fill source week Mon-Sun 2099-08-04 to 2099-08-10
@@ -2960,7 +3018,7 @@ describe('Staff Schedule Hours (v7.10)', () => {
 
     before(async () => {
         const res = await authRequest('POST', '/api/staff', {
-            name: 'Hours Тест', department: 'admin', position: 'Годинувальник'
+            name: 'Hours Тест', department: 'admin', position: 'Годинувальник', role_type: 'manager'
         });
         testStaffId = res.data.data.id;
         // Create 5 working days + 2 dayoffs
@@ -3007,7 +3065,7 @@ describe('Staff Schedule Check Date (v7.10)', () => {
 
     before(async () => {
         const a = await authRequest('POST', '/api/staff', {
-            name: 'Available Аніматор', department: 'animators', position: 'Аніматор'
+            name: 'Available Аніматор', department: 'animators', position: 'Аніматор', role_type: 'animator'
         });
         availableId = a.data.data.id;
         await authRequest('PUT', '/api/staff/schedule', {
@@ -3016,7 +3074,7 @@ describe('Staff Schedule Check Date (v7.10)', () => {
         });
 
         const u = await authRequest('POST', '/api/staff', {
-            name: 'Sick Аніматор', department: 'animators', position: 'Аніматор'
+            name: 'Sick Аніматор', department: 'animators', position: 'Аніматор', role_type: 'animator'
         });
         unavailableId = u.data.data.id;
         await authRequest('PUT', '/api/staff/schedule', {
@@ -3159,9 +3217,9 @@ describe('CRM Booking Integration (v15.1)', () => {
     it('POST /api/bookings — create with customerId', async () => {
         const date = testDate();
         // Ensure lines exist
-        await authRequest('POST', '/api/lines/' + date, {
-            lines: [{ id: 'crm_line1', name: 'CRM Тест 1', color: '#FF0000' }]
-        });
+        await authRequest('POST', '/api/lines/' + date, [
+            { id: 'crm_line1', name: 'CRM Тест 1', color: '#FF0000' }
+        ]);
 
         const res = await authRequest('POST', '/api/bookings', {
             date: date,
@@ -3341,7 +3399,7 @@ describe('CRM Phase 2 — CSV Export (v15.1)', () => {
     it('GET /api/customers/export — returns CSV', async () => {
         const token = await getToken();
         // Use native fetch directly because helper parses as JSON
-        const res = await fetch('http://localhost:3000/api/customers/export', {
+        const res = await fetch(`${BASE_URL}/api/customers/export`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         assert.equal(res.status, 200);
@@ -3962,27 +4020,55 @@ describe('HR — Certifications (v30.7)', () => {
 });
 
 describe('HR — Onboarding (v30.7)', () => {
+    let onboardingStaffId;
     let progressId;
+    let onboardingTemplateId;
+    let onboardingItemId;
+
     it('GET /api/hr/onboarding/templates — list templates', async () => {
         const res = await authRequest('GET', '/api/hr/onboarding/templates');
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
         assert.ok(res.data.data.length >= 1);
+        onboardingTemplateId = res.data.data[0].id;
+        assert.ok(onboardingTemplateId);
     });
 
     it('POST /api/hr/onboarding/start — start onboarding', async () => {
-        const res = await authRequest('POST', '/api/hr/onboarding/start', { staff_id: 1, template_id: 1 });
+        const actor = await getVerifiedTestUser();
+        onboardingStaffId = await getActiveStaffId();
+        if (!onboardingTemplateId) {
+            const templates = await authRequest('GET', '/api/hr/onboarding/templates');
+            onboardingTemplateId = templates.data.data[0].id;
+        }
+        const res = await authRequest('POST', '/api/hr/onboarding/start', {
+            staff_id: onboardingStaffId,
+            template_id: onboardingTemplateId,
+            responsible_user_id: actor.id
+        });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
         progressId = res.data.data.id;
-        assert.equal(res.data.data.total_items, 8);
+        assert.ok(res.data.data.total_items >= 1);
+
+        const progress = await authRequest('GET', `/api/hr/onboarding?staff_id=${onboardingStaffId}&status=${encodeURIComponent(res.data.data.status || 'in_progress')}`);
+        assert.equal(progress.status, 200);
+        assert.ok(progress.data.success);
+        const row = progress.data.data.find(item => Number(item.id) === Number(progressId));
+        assert.ok(row, 'Started onboarding progress should be visible in list endpoint');
+        const items = Array.isArray(row.items) ? row.items : [];
+        assert.ok(items.length >= 1, 'Started onboarding progress should expose checklist items');
+        onboardingItemId = items[0].id;
+        assert.ok(onboardingItemId);
     });
 
     it('PUT /api/hr/onboarding/:id/check — toggle item', async () => {
-        const res = await authRequest('PUT', `/api/hr/onboarding/${progressId}/check`, { item_id: 1, done: true });
+        assert.ok(progressId, 'Need onboarding progress ID from start step');
+        assert.ok(onboardingItemId, 'Need onboarding checklist item ID from progress payload');
+        const res = await authRequest('PUT', `/api/hr/onboarding/${progressId}/check`, { item_id: onboardingItemId, done: true });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
-        assert.equal(res.data.data.completed_items, 1);
+        assert.ok(res.data.data.completed_items >= 1);
     });
 });
 

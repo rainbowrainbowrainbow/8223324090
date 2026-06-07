@@ -230,11 +230,13 @@
     </div>
 
     <!-- face-api.js CDN -->
+    <script src="/js/config.js?v=0.73.87"></script>
+    <script src="/js/api.js?v=0.73.87"></script>
+    <script src="/js/auth.js?v=0.73.87"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script>
     (function() {
-        const API_BASE = window.location.origin + '/api';
-        let token = localStorage.getItem('token');
+        let token = null;
         let mode = 'checkin'; // 'checkin' or 'checkout'
         let knownDescriptors = [];
         let isProcessing = false;
@@ -242,7 +244,8 @@
         let lastRecognizedTime = 0;
 
         function headers() {
-            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+            if (typeof getAuthHeaders === 'function') return getAuthHeaders(true);
+            return { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
         }
 
         // Clock
@@ -508,18 +511,35 @@
         }
 
         // Init
+        async function requireAuthorizedSession() {
+            const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
+            if (!user) {
+                setStatus('Необхідна авторизація. Перенаправлення на вхід...', 'error');
+                window.location.href = '/';
+                return false;
+            }
+
+            if (typeof AppState !== 'undefined') AppState.currentUser = user;
+            if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
+            if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
+
+            if (typeof canAccessPage === 'function' && !canAccessPage('/checkin')) {
+                const fallback = typeof getAuthenticatedTimelineStartPage === 'function'
+                    ? getAuthenticatedTimelineStartPage(user)
+                    : '/';
+                window.location.href = fallback || '/';
+                return false;
+            }
+
+            token = typeof getStoredAuthToken === 'function'
+                ? getStoredAuthToken()
+                : (localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token') || localStorage.getItem('token') || '');
+            if (token) localStorage.setItem('token', token);
+            return true;
+        }
+
         async function init() {
-            if (!token) {
-                // Check main app token (pzp_token)
-                token = localStorage.getItem('pzp_token');
-                if (token) localStorage.setItem('token', token);
-            }
-            if (!token) {
-                setStatus('Необхідна авторизація', 'error');
-                document.getElementById('statusText').innerHTML =
-                    'Увійдіть в систему для використання. <a href="/" style="color:#A78BFA;text-decoration:underline">Увійти →</a>';
-                return;
-            }
+            if (!(await requireAuthorizedSession())) return;
 
             await loadModels();
             await startCamera();

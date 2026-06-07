@@ -339,6 +339,14 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
         'UPDATE refresh_tokens',
         "eventType: 'account_deactivated'",
         'accountHasCreatorRole',
+        "canUseAction(actor, 'manage_accounts')",
+        'accountOffboardingBlockReason',
+        'staffOffboardingDisableError',
+        'accountRehireBlockReason',
+        'actorCanReactivateStaffAccount',
+        'account_reactivation_blocked',
+        'requires_manage_accounts',
+        'disable_requires_manage_accounts',
         'Не можна вимкнути власний CRM-акаунт через offboarding'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
@@ -348,6 +356,10 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
         'function renderStaffOffboardingReadiness',
         "hrFetch(`/staff/${staffId}/offboarding-readiness`)",
         'staffOffboardingReadiness?.disable_available === false',
+        "block_reason === 'requires_manage_accounts'",
+        'needsAccountAccess',
+        'account_reactivation_blocked',
+        'manage_accounts',
         'Перевірка готовності завантажується'
     ]) {
         assert.ok(HR_JS.includes(token) || HR_HTML.includes(token), `missing UI token ${token}`);

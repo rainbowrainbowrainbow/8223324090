@@ -13,7 +13,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const costumeInventory = require('../services/costumeInventory');
-const { requireAction, requireRole } = require('../middleware/auth');
+const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -1127,6 +1127,59 @@ function accountHasCreatorRole(account = {}) {
     return [account.role, ...extraRoles].filter(Boolean).includes('creator');
 }
 
+function accountRoleLevel(role) {
+    return ROLE_LEVEL[String(role || '').trim()] ?? -1;
+}
+
+function accountRoleSet(account = {}) {
+    const roles = [];
+    [account.role, ...(Array.isArray(account.extra_roles) ? account.extra_roles : [])].forEach(role => {
+        const value = String(role || '').trim();
+        if (value && !roles.includes(value)) roles.push(value);
+    });
+    return roles;
+}
+
+function accountMaxRoleLevel(account = {}) {
+    return accountRoleSet(account).reduce((max, role) => Math.max(max, accountRoleLevel(role)), -1);
+}
+
+function actorCanDisableOffboardingAccount(actor, account = {}) {
+    if (!actor || !canUseAction(actor, 'manage_accounts')) return false;
+    if (Number(account.id) === Number(actor.id)) return false;
+    if (actor.role === 'creator') return true;
+    return accountMaxRoleLevel(account) < accountRoleLevel('director');
+}
+
+function accountOffboardingBlockReason(actor, account = {}) {
+    if (Number(account.id) === Number(actor?.id)) return 'current_user';
+    if (!canUseAction(actor, 'manage_accounts')) return 'requires_manage_accounts';
+    if (!actorCanDisableOffboardingAccount(actor, account)) return 'protected_role';
+    return null;
+}
+
+function staffOffboardingDisableError(blockers = []) {
+    if (blockers.some(account => account.block_reason === 'requires_manage_accounts')) {
+        return 'Вимкнення CRM-акаунта через offboarding потребує доступу manage_accounts';
+    }
+    if (blockers.some(account => account.is_current_user)) {
+        return 'Не можна вимкнути власний CRM-акаунт через offboarding';
+    }
+    return 'Protected CRM-акаунт не можна вимкнути через HR offboarding';
+}
+
+function actorCanReactivateStaffAccount(actor, account = {}) {
+    if (!actor || !canUseAction(actor, 'manage_accounts')) return false;
+    if (actor.role === 'creator') return true;
+    return accountMaxRoleLevel(account) < accountRoleLevel('director');
+}
+
+function accountRehireBlockReason(actor, account = {}) {
+    if (!canUseAction(actor, 'manage_accounts')) return 'requires_manage_accounts';
+    if (!actorCanReactivateStaffAccount(actor, account)) return 'protected_role';
+    return null;
+}
+
 function staffOffboardingAccountMeta(row = {}, currentUserId = null) {
     const userId = Number(row.id);
     return {
@@ -1167,6 +1220,7 @@ function staffOffboardingDocumentAlertMeta(row = {}) {
 
 async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     const currentUserId = Number(options.currentUserId || 0);
+    const actor = options.actor || null;
     const openResources = await db.query(
         `SELECT sra.id, sra.resource_kind, sra.title, sra.quantity, sra.issued_at, sra.due_return_at,
                 ws.name AS warehouse_stock_name,
@@ -1225,7 +1279,12 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     const accounts = activeAccounts.rows.map(row => staffOffboardingAccountMeta(row, currentUserId));
     const openResourceCount = openResources.rows[0]?.total_count || 0;
     const documentAlertCount = documentAlerts.rows[0]?.total_count || 0;
-    const blockedAccounts = accounts.filter(account => account.is_current_user || account.is_protected);
+    const blockedAccounts = accounts
+        .map(account => ({
+            ...account,
+            block_reason: accountOffboardingBlockReason(actor, account)
+        }))
+        .filter(account => account.block_reason);
     return {
         staff_id: Number(staffId),
         open_resource_count: openResourceCount,
@@ -1236,6 +1295,7 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
         document_alerts: documentAlerts.rows.map(staffOffboardingDocumentAlertMeta),
         disable_available: blockedAccounts.length === 0,
         disable_blockers: blockedAccounts,
+        disable_requires_manage_accounts: accounts.length > 0,
         ready_for_closure: openResourceCount === 0 && documentAlertCount === 0
     };
 }
@@ -2238,7 +2298,6 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                       FROM hr_shifts hs
                       WHERE hs.staff_id = s.id
                         AND hs.shift_date >= p.date_from AND hs.shift_date <= p.date_to
-                        AND hs.status IN ('working', 'remote')
                   )
                   OR EXISTS (
                       SELECT 1
@@ -3665,7 +3724,7 @@ router.get('/staff/:id/offboarding-readiness', requireHrManage, async (req, res)
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const data = await loadStaffOffboardingReadiness(req.params.id, pool, { currentUserId: req.user?.id });
+        const data = await loadStaffOffboardingReadiness(req.params.id, pool, { currentUserId: req.user?.id, actor: req.user });
         res.json({ success: true, data });
     } catch (err) {
         log.error('GET /hr/staff/:id/offboarding-readiness error', err);
@@ -3700,12 +3759,20 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         }
-        const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id });
+        const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id, actor: req.user });
         const openResourceCount = readiness.open_resource_count || 0;
         if (accountAction === 'disable' && !readiness.disable_available) {
             await client.query('ROLLBACK');
             const blockers = readiness.disable_blockers || [];
             const currentUserBlocked = blockers.some(account => account.is_current_user);
+            const permissionBlocked = blockers.some(account => account.block_reason === 'requires_manage_accounts');
+            if (permissionBlocked) {
+                return res.status(403).json({
+                    success: false,
+                    error: staffOffboardingDisableError(blockers),
+                    blockers
+                });
+            }
             return res.status(409).json({
                 success: false,
                 error: currentUserBlocked
@@ -4135,19 +4202,38 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             );
 
         let reactivatedAccounts = [];
+        let accountReactivationBlockers = [];
         if (isActive) {
-            const profileRows = await client.query(
-                `UPDATE employee_profiles
-                 SET is_active = true
-                 WHERE staff_id = $1 AND user_id IS NOT NULL
-                 RETURNING user_id`,
+            const linkedAccounts = await client.query(
+                `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id
+                 FROM employee_profiles ep
+                 JOIN users u ON u.id = ep.user_id
+                 WHERE ep.staff_id = $1 AND ep.user_id IS NOT NULL
+                 FOR UPDATE OF ep, u`,
                 [req.params.id]
             ).catch(err => {
-                log.warn(`HR rehire profile activation skipped: ${err.message}`);
+                log.warn(`HR rehire account lookup skipped: ${err.message}`);
                 return { rows: [] };
             });
-            const userIds = profileRows.rows.map(row => Number(row.user_id)).filter(Number.isFinite);
+            const allowedAccounts = linkedAccounts.rows.filter(account => actorCanReactivateStaffAccount(req.user, account));
+            accountReactivationBlockers = linkedAccounts.rows
+                .map(account => ({
+                    ...staffOffboardingAccountMeta(account, req.user?.id),
+                    block_reason: accountRehireBlockReason(req.user, account)
+                }))
+                .filter(account => account.block_reason);
+            const userIds = allowedAccounts.map(row => Number(row.id)).filter(Number.isFinite);
             if (userIds.length) {
+                await client.query(
+                    `UPDATE employee_profiles
+                     SET is_active = true
+                     WHERE staff_id = $1 AND user_id = ANY($2::int[])
+                     RETURNING user_id`,
+                    [req.params.id, userIds]
+                ).catch(err => {
+                    log.warn(`HR rehire profile activation skipped: ${err.message}`);
+                    return { rows: [] };
+                });
                 const activatedUsers = await client.query(
                     `UPDATE users
                      SET is_active = true
@@ -4180,13 +4266,17 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
         await auditLog(isActive ? 'staff_rehire' : 'status_change', parseInt(req.params.id), req.user?.username, {
             is_active: isActive,
             reactivated_accounts: reactivatedAccounts.length,
-            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean)
+            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean),
+            account_reactivation_blocked: accountReactivationBlockers.length > 0,
+            account_reactivation_blockers: accountReactivationBlockers
         }, req.ip);
         res.json({
             success: true,
             data: result.rows[0],
             reactivated_accounts: reactivatedAccounts.length,
-            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean)
+            reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean),
+            account_reactivation_blocked: accountReactivationBlockers.length > 0,
+            account_reactivation_blockers: accountReactivationBlockers
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

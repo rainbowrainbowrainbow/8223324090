@@ -440,6 +440,75 @@ function bookingExtraDataSqlValue(booking = {}) {
     return null;
 }
 
+function bookingSecondAnimatorName(booking = {}) {
+    return String(booking.secondAnimator ?? booking.second_animator ?? '').trim();
+}
+
+function bookingSecondAnimatorLineId(booking = {}) {
+    return String(
+        booking.secondAnimatorLineId
+        ?? booking.second_animator_line_id
+        ?? booking.extraData?.bookingWorkspace?.secondAnimatorLineId
+        ?? booking.extra_data?.bookingWorkspace?.secondAnimatorLineId
+        ?? ''
+    ).trim();
+}
+
+function bookingRequiresSecondAnimatorLink(booking = {}) {
+    return Boolean(bookingSecondAnimatorName(booking));
+}
+
+function normalizeBookingSecondAnimatorFields(booking = {}) {
+    const secondAnimator = bookingSecondAnimatorName(booking);
+    if (!secondAnimator) {
+        if (Object.prototype.hasOwnProperty.call(booking, 'secondAnimator')) booking.secondAnimator = null;
+        return booking;
+    }
+    booking.secondAnimator = secondAnimator;
+    const hostCount = Number(booking.hosts || 0);
+    if (!Number.isFinite(hostCount) || hostCount < 2) booking.hosts = 2;
+    return booking;
+}
+
+async function ensureSecondAnimatorLineForBooking(client, booking, businessContext) {
+    const secondAnimator = bookingSecondAnimatorName(booking);
+    if (!secondAnimator) return null;
+    return ensureParkAnimatorLine(client, {
+        businessContext,
+        date: booking.date,
+        lineId: bookingSecondAnimatorLineId(booking) || null,
+        name: secondAnimator
+    });
+}
+
+async function insertSecondAnimatorLinkedBooking(client, { booking, businessContext, mainBookingId, status, ensuredLine }) {
+    const linkedBooking = {
+        ...booking,
+        lineId: ensuredLine.lineId,
+        lineName: ensuredLine.name,
+        price: 0,
+        secondAnimator: ensuredLine.name,
+        extraData: {}
+    };
+    attachLinkedBookingTimelineIdentity(linkedBooking, businessContext, {
+        ...ensuredLine,
+        source: 'staff_animator'
+    });
+    const newLinkedId = await generateBookingNumber(client);
+    await client.query(
+        `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+        [newLinkedId, businessContext, booking.date, booking.time, ensuredLine.lineId, booking.programId, booking.programCode,
+         booking.label, booking.programName, booking.category, booking.duration, 0, booking.hosts,
+         ensuredLine.name, booking.pinataFiller, booking.pinataMode, booking.pinataNumber,
+         booking.pinataFillerNumber, booking.clientPinataServicePrice,
+         booking.clientPinataServiceNote, booking.costume || null, booking.room, booking.notes,
+         booking.createdBy, mainBookingId, status, booking.kidsCount || null, booking.groupName || null,
+         bookingExtraDataSqlValue(linkedBooking)]
+    );
+    return newLinkedId;
+}
+
 async function ensureBookingTimelineLine(client, booking, businessContext, { name = null } = {}) {
     if (!booking || !booking.date || !booking.lineId) return null;
 
@@ -1417,6 +1486,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         applyBookingPackage(b);
+        normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Invalid booking status' });
@@ -1431,13 +1501,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         let ensuredSecondAnimatorLine = null;
-        if (!b.linkedTo && Number(b.hosts || 0) > 1 && b.secondAnimator) {
-            ensuredSecondAnimatorLine = await ensureParkAnimatorLine(client, {
-                businessContext,
-                date: b.date,
-                lineId: null,
-                name: b.secondAnimator
-            });
+        if (!b.linkedTo && bookingRequiresSecondAnimatorLink(b)) {
+            ensuredSecondAnimatorLine = await ensureSecondAnimatorLineForBooking(client, b, businessContext);
             if (!ensuredSecondAnimatorLine) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, error: 'Другого ведучого не знайдено серед активних аніматорів' });
@@ -1972,6 +2037,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 return res.status(400).json({ success: false, error: pinataFields.error });
             }
             applyBookingPackage(candidate);
+            normalizeBookingSecondAnimatorFields(candidate);
             if (candidate.price != null) {
                 candidate.price = parseFloat(candidate.price);
                 if (!Number.isFinite(candidate.price) || candidate.price < 0) {
@@ -2145,6 +2211,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         applyBookingPackage(main);
+        normalizeBookingSecondAnimatorFields(main);
         if (applyBookingStatusForCreate(main) === 'invalid') {
             return res.status(400).json({ success: false, error: 'Invalid booking status' });
         }
@@ -2205,7 +2272,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
-        if (Number(main.hosts || 0) > 1 && main.secondAnimator) {
+        if (bookingRequiresSecondAnimatorLink(main)) {
             const hasSecondLinked = linked.some(lb => lb.secondAnimator === main.secondAnimator
                 || (
                     lb.secondAnimator
@@ -2215,12 +2282,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     && Number(lb.price || 0) === 0
                 ));
             if (!hasSecondLinked) {
-                const ensuredSecondLine = await ensureParkAnimatorLine(client, {
-                    businessContext,
-                    date: main.date,
-                    lineId: null,
-                    name: main.secondAnimator
-                });
+                const ensuredSecondLine = await ensureSecondAnimatorLineForBooking(client, main, businessContext);
                 if (!ensuredSecondLine) {
                     await client.query('ROLLBACK');
                     return res.status(400).json({ success: false, error: 'Другого ведучого не знайдено серед активних аніматорів' });
@@ -2960,6 +3022,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         applyBookingPackage(b);
+        normalizeBookingSecondAnimatorFields(b);
 
         await client.query('BEGIN');
 
@@ -3111,6 +3174,20 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
         b.customerId = updateCustomerId;
 
+        let ensuredSecondAnimatorLineForUpdate = null;
+        if (!b.linkedTo && bookingRequiresSecondAnimatorLink(b)) {
+            ensuredSecondAnimatorLineForUpdate = await ensureSecondAnimatorLineForBooking(client, b, businessContext);
+            if (!ensuredSecondAnimatorLineForUpdate) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Другого ведучого не знайдено серед активних аніматорів' });
+            }
+            if (String(ensuredSecondAnimatorLineForUpdate.lineId) === String(b.lineId)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: 'Другий ведучий не може бути на тій самій лінії, що й основний аніматор' });
+            }
+            b.secondAnimator = ensuredSecondAnimatorLineForUpdate.name;
+        }
+
         let updateResult;
         if (clientUpdatedAt) {
             // Optimistic locking: check updated_at matches client's version
@@ -3182,12 +3259,55 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
             const linkedResult = await client.query(
-                `SELECT id, line_id FROM bookings WHERE linked_to = $1 AND ${bookingContextSql('', '$2')} AND status != 'cancelled'`,
+                `SELECT id, line_id, second_animator, program_id, price
+                   FROM bookings
+                  WHERE linked_to = $1 AND ${bookingContextSql('', '$2')} AND status != 'cancelled'`,
                 [id, businessContext]
             );
-            const oldSecond = oldBooking.second_animator;
-            const newSecond = b.secondAnimator;
+            const oldSecond = String(oldBooking.second_animator || '').trim();
+            const newSecond = bookingSecondAnimatorName(b);
             const secondChanged = (oldSecond || '') !== (newSecond || '');
+            const shouldHaveSecondLink = bookingRequiresSecondAnimatorLink(b);
+
+            const ensureSecondAnimatorLinkedBooking = async () => {
+                const ensuredLine = ensuredSecondAnimatorLineForUpdate
+                    || await ensureSecondAnimatorLineForBooking(client, b, businessContext);
+                if (!ensuredLine) {
+                    const err = new Error('Другого ведучого не знайдено серед активних аніматорів');
+                    err.statusCode = 400;
+                    err.publicMessage = err.message;
+                    throw err;
+                }
+                if (String(ensuredLine.lineId) === String(b.lineId)) {
+                    const err = new Error('Другий ведучий не може бути на тій самій лінії, що й основний аніматор');
+                    err.statusCode = 409;
+                    err.publicMessage = err.message;
+                    throw err;
+                }
+                await lockBookingConflictResources(client, [{ ...b, lineId: ensuredLine.lineId }], businessContext);
+                const secondConflict = await checkServerConflicts(
+                    client,
+                    b.date,
+                    ensuredLine.lineId,
+                    b.time,
+                    b.duration || 0,
+                    id,
+                    businessContext
+                );
+                if (secondConflict.overlap) {
+                    const err = new Error(`Час зайнятий у другого ведучого: ${secondConflict.conflictWith.label || secondConflict.conflictWith.program_code}`);
+                    err.statusCode = 409;
+                    err.publicMessage = err.message;
+                    throw err;
+                }
+                await insertSecondAnimatorLinkedBooking(client, {
+                    booking: b,
+                    businessContext,
+                    mainBookingId: id,
+                    status: newStatus,
+                    ensuredLine
+                });
+            };
 
             if (secondChanged && linkedResult.rows.length > 0) {
                 // Delete old linked bookings — secondAnimator changed or was cleared
@@ -3198,30 +3318,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                     );
                 }
                 // Create new linked booking if secondAnimator is set
-                if (Number(b.hosts || 0) > 1 && newSecond) {
-                    const ensuredLine = await ensureParkAnimatorLine(client, {
-                        businessContext,
-                        date: b.date,
-                        lineId: null,
-                        name: newSecond
-                    });
-                    if (ensuredLine) {
-                        const newLinkedId = await generateBookingNumber(client);
-                        await client.query(
-                            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                            [newLinkedId, businessContext, b.date, b.time, ensuredLine.lineId, b.programId, b.programCode,
-                             b.label, b.programName, b.category, b.duration, 0, b.hosts,
-                             ensuredLine.name, b.pinataFiller, b.pinataMode, b.pinataNumber,
-                             b.pinataFillerNumber, b.clientPinataServicePrice,
-                             b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
-                             b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
-                             null]
-                        );
-                    } else {
-                        log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
-                    }
-                }
+                if (shouldHaveSecondLink) await ensureSecondAnimatorLinkedBooking();
             } else if (!secondChanged && linkedResult.rows.length > 0) {
                 // No change in secondAnimator — cascade basic fields to existing linked
                 for (const linked of linkedResult.rows) {
@@ -3235,30 +3332,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                          b.pinataFillerNumber, linked.id, businessContext]
                     );
                 }
-            } else if (Number(b.hosts || 0) > 1 && newSecond && linkedResult.rows.length === 0) {
+            } else if (shouldHaveSecondLink && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
-                const ensuredLine = await ensureParkAnimatorLine(client, {
-                    businessContext,
-                    date: b.date,
-                    lineId: null,
-                    name: newSecond
-                });
-                if (ensuredLine) {
-                    const newLinkedId = await generateBookingNumber(client);
-                    await client.query(
-                        `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                        [newLinkedId, businessContext, b.date, b.time, ensuredLine.lineId, b.programId, b.programCode,
-                         b.label, b.programName, b.category, b.duration, 0, b.hosts,
-                         ensuredLine.name, b.pinataFiller, b.pinataMode, b.pinataNumber,
-                         b.pinataFillerNumber, b.clientPinataServicePrice,
-                         b.clientPinataServiceNote, b.costume || null, b.room, b.notes,
-                         b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
-                         null]
-                    );
-                } else {
-                    log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
-                }
+                await ensureSecondAnimatorLinkedBooking();
             }
         }
 

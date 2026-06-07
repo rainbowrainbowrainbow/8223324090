@@ -148,8 +148,10 @@ function _checkAutoOpen() {
     const params = new URLSearchParams(window.location.search);
     const open = params.get('open');
     if (!open) return;
-    // Remove parameter from URL (prevent re-open on refresh)
-    history.replaceState(null, '', window.location.pathname);
+    // Remove only the auto-open hint; keep date/business context intact.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('open');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
     // Open corresponding panel after full initialization
     setTimeout(() => {
         switch (open) {
@@ -331,6 +333,7 @@ function initTimelineListeners() {
             return;
         }
         AppState.selectedDate = newDate;
+        if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(AppState.selectedDate);
         renderTimeline();
     });
 
@@ -350,6 +353,7 @@ function initTimelineListeners() {
             if (!await closeBookingPanel(false)) return;
             AppState.selectedDate = new Date();
             document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+            if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(AppState.selectedDate);
             renderTimeline();
         });
     }

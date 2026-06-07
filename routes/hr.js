@@ -13,7 +13,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const costumeInventory = require('../services/costumeInventory');
-const { requireRole } = require('../middleware/auth');
+const { requireAction, requireRole } = require('../middleware/auth');
 const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 const {
     DEFAULT_BUSINESS_CONTEXT,
@@ -57,7 +57,7 @@ const PAYROLL_EVENT_LABELS = {
     commit: 'Зарплату нараховано',
     reverse: 'Сторно зарплати'
 };
-const requireHrManage = requireRole(...HR_MANAGE_ROLES);
+const requireHrManage = requireAction('manage_staff');
 const requirePayrollControl = requireRole(...PAYROLL_CONTROL_ROLES);
 router.use(requireRole(...HR_VIEW_ROLES));
 // v40: Validate numeric ID params

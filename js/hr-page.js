@@ -2098,8 +2098,9 @@ let accountStaffOptions = [];
 let accountCenterLastUpdatedId = null;
 let accountConflicts = null;
 let accountDeepLinkApplied = false;
-const ACCOUNT_SECURITY_ROLES = ['creator', 'director', 'art_director'];
-const ACCOUNT_PROFILE_ROLES = ['creator', 'director', 'art_director'];
+const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
+const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
+const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
 const ACCOUNT_ACTION_LABELS = {
     create_booking: 'Створювати бронювання',
     edit_booking: 'Редагувати бронювання',
@@ -2129,6 +2130,10 @@ function canManageAccountAccess() {
 
 function canLinkAccounts() {
     return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
+}
+
+function canEditAccountBusinessContexts() {
+    return AppState.currentUser?.role === 'creator';
 }
 
 function normalizeAccountListInput(value) {
@@ -2209,19 +2214,27 @@ function getAccountBusinessSelectOptions(selected = [], current = '') {
 
 function getAccountRoleOptions(defaultRole = 'animator') {
     const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
+    const currentRole = AppState.currentUser?.role;
+    const directorMaxIndex = roles.indexOf('director');
+    const allowedRoles = currentRole === 'creator'
+        ? roles
+        : roles.filter(role => directorMaxIndex < 0 || roles.indexOf(role) >= 0 && roles.indexOf(role) < directorMaxIndex);
     return roles
+        .filter(role => allowedRoles.includes(role))
         .map(role => ({ value: role, label: ROLE_LABELS[role] || role }))
         .sort((a, b) => a.label.localeCompare(b.label, 'uk'))
         .map(option => ({ ...option, selected: option.value === defaultRole }));
 }
 
-function getAccountActionOptions(selected = []) {
+function getAccountActionOptions(selected = [], options = {}) {
+    const includeNonDelegable = options.includeNonDelegable !== false;
     const current = new Set(normalizeAccountListInput(Array.isArray(selected) ? selected.join(',') : selected));
     const actions = accountActionDefinitions.length
         ? accountActionDefinitions.map(item => item.key || item)
         : Object.keys(ACCOUNT_ACTION_LABELS);
     return actions
         .filter(Boolean)
+        .filter(action => includeNonDelegable || !ACCOUNT_NON_DELEGABLE_ACTIONS.has(action))
         .map(action => ({
             value: action,
             label: ACCOUNT_ACTION_LABELS[action] || action,
@@ -3264,7 +3277,7 @@ function renderAccountCenter() {
 
 window.openAccountCreateModal = async function(button, context = {}) {
     if (!canManageAccountSecurity()) {
-        showNotification('Створення акаунтів доступне тільки creator/director/art director', 'error');
+        showNotification('Створення акаунтів доступне тільки creator/director', 'error');
         return;
     }
     await loadAccountRoleDefinitions();
@@ -3276,20 +3289,26 @@ window.openAccountCreateModal = async function(button, context = {}) {
     const defaultRole = staffRoleToAccountRole(context.role || contextStaff?.role_type || 'animator');
     const defaultBusinessContexts = normalizeAccountBusinessSelection(context.businessContexts || ['event_genix']);
     const defaultBusinessContext = getAccountDefaultBusinessValue(context, defaultBusinessContexts);
-    const result = await formModal('Створити CRM акаунт', [
+    const canEditBusiness = canEditAccountBusinessContexts();
+    const createFields = [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: defaultName, placeholder: 'Женя Аніматор' },
         { key: 'username', label: 'Логін', required: true, defaultValue: defaultUsername, placeholder: 'zhenya.animator' },
         { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
         { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: defaultRole, options: getAccountRoleOptions(defaultRole) },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: defaultStaffId, options: getAccountStaffSelectOptions() },
-        { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
-        { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: їх можна активувати як робочу роль у профілі. Основну роль сюди не дублюйте.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' },
-        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Allow додає дію, навіть якщо базова роль її не має.' },
+        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([], { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: [], options: getAccountActionOptions([]), hint: 'Deny має пріоритет над роллю і allow.' }
-    ], {
+    ];
+    if (canEditBusiness) {
+        createFields.splice(6, 0,
+            { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: defaultBusinessContexts, options: getAccountBusinessOptions(defaultBusinessContexts), hint: 'Акаунт бачитиме дані й перемикач тільки для вибраних бізнесів.' },
+            { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: defaultBusinessContext, options: getAccountBusinessSelectOptions(defaultBusinessContexts, defaultBusinessContext), hint: 'Цей бізнес відкриватиметься першим у глобальному перемикачі.' }
+        );
+    }
+    const result = await formModal('Створити CRM акаунт', createFields, {
         icon: '👤',
         type: 'info',
         okText: 'Створити',
@@ -3307,8 +3326,10 @@ window.openAccountCreateModal = async function(button, context = {}) {
         return;
     }
     if (button) button.disabled = true;
-    const selectedBusinessContexts = normalizeAccountBusinessSelection(result.businessContexts);
-    const selectedDefaultBusinessContext = getAccountDefaultBusinessValue({ defaultBusinessContext: result.defaultBusinessContext }, selectedBusinessContexts);
+    const selectedBusinessContexts = canEditBusiness ? normalizeAccountBusinessSelection(result.businessContexts) : ['event_genix'];
+    const selectedDefaultBusinessContext = canEditBusiness
+        ? getAccountDefaultBusinessValue({ defaultBusinessContext: result.defaultBusinessContext }, selectedBusinessContexts)
+        : 'event_genix';
     const response = await crmApiFetch('/api/users', {
         method: 'POST',
         body: {
@@ -3353,7 +3374,7 @@ window.openAccountCreateForStaff = async function(staffId, button) {
 
 window.openAccountLinkForStaff = async function(staffId, button) {
     if (!canLinkAccounts()) {
-        showNotification('Привʼязка акаунтів доступна тільки creator/director/art director', 'error');
+        showNotification('Привʼязка акаунтів доступна тільки creator/director', 'error');
         return;
     }
     const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
@@ -3420,7 +3441,7 @@ window.openAccountForStaff = async function(staffId, button) {
 
 async function openAccountProfileModal(userId, button) {
     if (!canManageAccountProfile()) {
-        showNotification('Редагування профілю доступне тільки creator/director/art director', 'error');
+        showNotification('Редагування профілю доступне тільки creator/director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -3464,7 +3485,7 @@ async function openAccountProfileModal(userId, button) {
 
 async function openAccountPasswordModal(userId, button) {
     if (!canManageAccountSecurity()) {
-        showNotification('Зміна пароля доступна тільки creator/director/art director', 'error');
+        showNotification('Зміна пароля доступна тільки creator/director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -3528,7 +3549,7 @@ async function openAccountPasswordModal(userId, button) {
 
 async function openAccountAccessEditor(userId, button) {
     if (!canManageAccountAccess()) {
-        showNotification('Зміна доступу доступна тільки creator/director/art director', 'error');
+        showNotification('Зміна доступу доступна тільки creator/director', 'error');
         return;
     }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
@@ -3540,15 +3561,21 @@ async function openAccountAccessEditor(userId, button) {
     await loadAccountRoleDefinitions();
     const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
     const currentDefaultBusinessContext = getAccountDefaultBusinessValue(user, currentBusinessContexts);
-    const formResult = await formModal(`Доступ акаунта · ${user.username}`, [
+    const canEditBusiness = canEditAccountBusinessContexts();
+    const accessFields = [
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
-        { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
-        { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant', hint: 'Це реальні extraRoles акаунта: після збереження користувач побачить їх у профілі й зможе перемикати робочу роль.' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' },
-        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist), hint: 'Allow додає дію, навіть якщо базова роль її не має.' },
+        { key: 'actionAllowlist', label: 'Дозволити окремі дії', type: 'checkboxGroup', defaultValue: currentActionAllowlist, options: getAccountActionOptions(currentActionAllowlist, { includeNonDelegable: false }), hint: 'Allow додає тільки делеговані дії. Керування акаунтами та налаштуваннями видається роллю.' },
         { key: 'actionDenylist', label: 'Заборонити окремі дії', type: 'checkboxGroup', defaultValue: currentActionDenylist, options: getAccountActionOptions(currentActionDenylist), hint: 'Deny має пріоритет над роллю і allow.' }
-    ], {
+    ];
+    if (canEditBusiness) {
+        accessFields.splice(1, 0,
+            { key: 'businessContexts', label: 'Доступні бізнеси', type: 'checkboxGroup', required: true, defaultValue: currentBusinessContexts, options: getAccountBusinessOptions(currentBusinessContexts), hint: 'Це визначає, які бізнес-контексти користувач може перемикати і які дані бачить у scoped-модулях.' },
+            { key: 'defaultBusinessContext', label: 'Бізнес за замовченням', type: 'select', defaultValue: currentDefaultBusinessContext, options: getAccountBusinessSelectOptions(currentBusinessContexts, currentDefaultBusinessContext), hint: 'Цей бізнес стане першим після нового входу або чистого браузера.' }
+        );
+    }
+    const formResult = await formModal(`Доступ акаунта · ${user.username}`, accessFields, {
         icon: '🛂',
         type: 'info',
         okText: 'Оновити доступ',
@@ -3559,8 +3586,10 @@ async function openAccountAccessEditor(userId, button) {
     const pageAllowlist = normalizeAccountListInput(formResult.pageAllowlist);
     const actionAllowlist = Array.isArray(formResult.actionAllowlist) ? formResult.actionAllowlist : normalizeAccountListInput(formResult.actionAllowlist);
     const actionDenylist = Array.isArray(formResult.actionDenylist) ? formResult.actionDenylist : normalizeAccountListInput(formResult.actionDenylist);
-    const selectedBusinessContexts = normalizeAccountBusinessSelection(formResult.businessContexts);
-    const selectedDefaultBusinessContext = getAccountDefaultBusinessValue({ defaultBusinessContext: formResult.defaultBusinessContext }, selectedBusinessContexts);
+    const selectedBusinessContexts = canEditBusiness ? normalizeAccountBusinessSelection(formResult.businessContexts) : ['event_genix'];
+    const selectedDefaultBusinessContext = canEditBusiness
+        ? getAccountDefaultBusinessValue({ defaultBusinessContext: formResult.defaultBusinessContext }, selectedBusinessContexts)
+        : 'event_genix';
     if (button) button.disabled = true;
     const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/access`, {
         method: 'PATCH',

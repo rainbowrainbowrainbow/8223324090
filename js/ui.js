@@ -1004,6 +1004,9 @@ function formModal(title, fields, options = {}) {
 }
 
 function showNotification(message, type = '') {
+    if (window.CrmToast?.show && window.CrmToast.show !== showNotification) {
+        return window.CrmToast.show(message, type, arguments[2]);
+    }
     const normalizedMessage = message instanceof Error
         ? (window.CrmApiErrors?.format?.(message) || message.message || 'Помилка')
         : (message && typeof message === 'object' && (message.error || message.message || message.requestId)
@@ -1041,11 +1044,11 @@ function showNotification(message, type = '') {
 
     container.appendChild(toast);
 
-    // Auto-dismiss after 3s
+    // Auto-dismiss after 6s. notification.js owns richer interactive toasts when present.
     setTimeout(() => {
         toast.classList.add('toast-exit');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+        setTimeout(() => toast.remove(), 750);
+    }, 6000);
 }
 
 // Alias for showNotification (used by chat-page.js and others).

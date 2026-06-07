@@ -193,7 +193,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(usersRoute, /router\.post\('\/:id\/reset-password', requireAction\('manage_accounts'\)/);
         assert.match(usersRoute, /router\.post\('\/', requireAction\('manage_accounts'\)/);
         assert.match(usersRoute, /function canCreateAccount/);
-        assert.match(usersRoute, /const ACCOUNT_MANAGER_ROLES = \['creator', 'director', 'art_director'\]/);
+        assert.match(usersRoute, /const ACCOUNT_MANAGER_ROLES = \['creator', 'director'\]/);
         assert.match(usersRoute, /assertSelfAccountAccessSafe/);
         assert.match(usersRoute, /linkUserToStaffProfile/);
         assert.match(usersRoute, /unlinkUserFromStaffProfiles/);
@@ -223,7 +223,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(employeesRoute, /employee_profile_account_unlinked/);
 
         assert.match(hrPage, /function renderAccountConflictSummary/);
-        assert.match(hrPage, /ACCOUNT_SECURITY_ROLES = \['creator', 'director', 'art_director'\]/);
+        assert.match(hrPage, /ACCOUNT_SECURITY_ROLES = \['creator', 'director'\]/);
         assert.match(hrPage, /function canManageAccountProfile/);
         assert.match(hrPage, /ACCOUNT_ACTION_LABELS/);
         assert.match(hrPage, /openAccountCreateForStaff/);

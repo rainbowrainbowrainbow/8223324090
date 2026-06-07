@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.73.81">
-    <link rel="stylesheet" href="css/auth.css?v=0.73.81">
-    <link rel="stylesheet" href="css/layout.css?v=0.73.81">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.81">
-    <link rel="stylesheet" href="css/timeline.css?v=0.73.81">
-    <link rel="stylesheet" href="css/panel.css?v=0.73.81">
-    <link rel="stylesheet" href="css/modals.css?v=0.73.81">
-    <link rel="stylesheet" href="css/controls.css?v=0.73.81">
-    <link rel="stylesheet" href="css/features.css?v=0.73.81">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.81">
-    <link rel="stylesheet" href="css/responsive.css?v=0.73.81">
-    <link rel="stylesheet" href="css/pages.css?v=0.73.81">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.81">
+    <link rel="stylesheet" href="css/base.css?v=0.73.84">
+    <link rel="stylesheet" href="css/auth.css?v=0.73.84">
+    <link rel="stylesheet" href="css/layout.css?v=0.73.84">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.73.84">
+    <link rel="stylesheet" href="css/timeline.css?v=0.73.84">
+    <link rel="stylesheet" href="css/panel.css?v=0.73.84">
+    <link rel="stylesheet" href="css/modals.css?v=0.73.84">
+    <link rel="stylesheet" href="css/controls.css?v=0.73.84">
+    <link rel="stylesheet" href="css/features.css?v=0.73.84">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.73.84">
+    <link rel="stylesheet" href="css/responsive.css?v=0.73.84">
+    <link rel="stylesheet" href="css/pages.css?v=0.73.84">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.73.84">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.73.81">✨ 0.73.81</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.73.84">✨ 0.73.84</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.73.81 — Таймлайн: броні на iPhone 11</p>
+                <p class="tagline">AI First CRM v0.73.84 — Акаунти: стабілізація допусків</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.81</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.73.84</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,6 +1658,36 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.73.84 — Акаунти: стабілізація допусків</h4>
+                    <ul>
+                        <li><b>Керування акаунтами тільки для creator/director</b> — <code>art_director</code> більше не проходить <code>manage_accounts</code> і не бачить Account Center.</li>
+                        <li><b>Director має стелю нижче director</b> — може працювати з менеджерами й адміністраторами, але не може змінювати <code>creator/director</code> або призначати security-доступ.</li>
+                        <li><b>Security actions більше не делегуються allowlist</b> — <code>manage_accounts</code>, <code>manage_users</code> і <code>manage_settings</code> видаються тільки базовою роллю.</li>
+                        <li><b>Action matrix синхронізовано</b> — backend/frontend тепер мають однаковий набір action-допусків, а новий <code>check:action-permissions</code> ловить drift.</li>
+                        <li><b>Додано аудит акаунтів</b> — <code>audit:account-access</code> показує небезпечні grants, завищені extraRoles, business-context хвости і активні акаунти звільнених staff.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.83 — Бронювання: другий аніматор у редагуванні</h4>
+                    <ul>
+                        <li><b>Редагування бронювання з другим аніматором виправлено</b> — після save бекенд створює linked-запис на другому лайні, якщо вибрано другого аніматора.</li>
+                        <li><b><code>hosts = 1</code> більше не ламає другий лайн</b> — система нормалізує host-count до <code>2</code> для такого сценарію, але не плутає його зі staff id.</li>
+                        <li><b>Форма передає точний line id другого аніматора</b> — бекенд використовує <code>secondAnimatorLineId</code>, тому запис не губиться через назву або перейменування лінії.</li>
+                        <li><b>Дата таймлайну не скидається на сьогодні</b> — календар синхронізує <code>?date=...</code>, а збереження повертає користувача на день редагування.</li>
+                        <li><b>Додано регресії та ремонтний guardrail</b> — перевірено <code>PUT /api/bookings/:id</code> і аудит старих missing linked-записів з другим аніматором.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.73.82 — Задачі: мʼякі сповіщення</h4>
+                    <ul>
+                        <li><b>Створення задач показує зелений success-toast</b> — прибрано жовте повідомлення про "перевірити деталі" після фактично успішного створення.</li>
+                        <li><b>У повідомленні видно деталі задачі</b> — дата, пріоритет, відповідальний, категорія, тип і підзадачі показуються одразу після створення.</li>
+                        <li><b>Toast тримається довше</b> — базовий час збільшено до 6 секунд, fade став повільнішим, а hover/focus ставить автозакриття на паузу.</li>
+                        <li><b>Додано дію <code>Відкрити</code></b> — можна одразу перейти до створеної задачі й змінити її.</li>
+                        <li><b>Звук нової задачі став мʼякшим</b> — замість різкого сигналу використовується двотоновий chime.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.73.81 — Таймлайн: броні на iPhone 11</h4>
                     <ul>
@@ -11771,29 +11801,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.73.81"></script>
-    <script src="js/timeline-visibility.js?v=0.73.81"></script>
-    <script src="js/config.js?v=0.73.81"></script>
-    <script src="js/api.js?v=0.73.81"></script>
-    <script src="js/ui.js?v=0.73.81"></script>
-    <script src="js/auth.js?v=0.73.81"></script>
-    <script src="js/timeline-interaction-model.js?v=0.73.81"></script>
-    <script src="js/timeline.js?v=0.73.81"></script>
-    <script src="js/booking.js?v=0.73.81"></script>
-    <script src="js/settings.js?v=0.73.81"></script>
-    <script src="js/booking-form.js?v=0.73.81"></script>
-    <script src="js/booking-linked.js?v=0.73.81"></script>
-    <script src="js/settings-dashboard.js?v=0.73.81"></script>
-    <script src="js/settings-history.js?v=0.73.81"></script>
-    <script src="js/settings-afisha.js?v=0.73.81"></script>
-    <script src="js/settings-certificates.js?v=0.73.81"></script>
-    <script src="js/offline.js?v=0.73.81"></script>
-    <script src="js/crm-feature-registry.js?v=0.73.81"></script>
-    <script src="js/search.js?v=0.73.81"></script>
-    <script src="js/ws.js?v=0.73.81"></script>
-    <script src="js/app.js?v=0.73.81"></script>
-    <script src="js/kleshnya-widget.js?v=0.73.81"></script>
-    <script src="js/components/sidebar.js?v=0.73.81"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.81"></script>
+    <script src="js/timeline-context.js?v=0.73.84"></script>
+    <script src="js/timeline-visibility.js?v=0.73.84"></script>
+    <script src="js/config.js?v=0.73.84"></script>
+    <script src="js/api.js?v=0.73.84"></script>
+    <script src="js/ui.js?v=0.73.84"></script>
+    <script src="js/auth.js?v=0.73.84"></script>
+    <script src="js/timeline-interaction-model.js?v=0.73.84"></script>
+    <script src="js/timeline.js?v=0.73.84"></script>
+    <script src="js/booking.js?v=0.73.84"></script>
+    <script src="js/settings.js?v=0.73.84"></script>
+    <script src="js/booking-form.js?v=0.73.84"></script>
+    <script src="js/booking-linked.js?v=0.73.84"></script>
+    <script src="js/settings-dashboard.js?v=0.73.84"></script>
+    <script src="js/settings-history.js?v=0.73.84"></script>
+    <script src="js/settings-afisha.js?v=0.73.84"></script>
+    <script src="js/settings-certificates.js?v=0.73.84"></script>
+    <script src="js/offline.js?v=0.73.84"></script>
+    <script src="js/crm-feature-registry.js?v=0.73.84"></script>
+    <script src="js/search.js?v=0.73.84"></script>
+    <script src="js/ws.js?v=0.73.84"></script>
+    <script src="js/app.js?v=0.73.84"></script>
+    <script src="js/kleshnya-widget.js?v=0.73.84"></script>
+    <script src="js/components/sidebar.js?v=0.73.84"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.73.84"></script>
 </body>
 </html>

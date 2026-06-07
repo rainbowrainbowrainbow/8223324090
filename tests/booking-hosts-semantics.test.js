@@ -97,8 +97,16 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingsRoute, /function attachLinkedBookingTimelineIdentity/);
     assert.match(bookingsRoute, /bookingExtraDataSqlValue\(lb\)/);
     assert.doesNotMatch(bookingsRoute, /lb\.extraData\s*\?\s*JSON\.stringify\(lb\.extraData\)\s*:\s*\(main\.extraData/);
-    assert.match(bookingsRoute, /Number\(main\.hosts \|\| 0\) > 1 && main\.secondAnimator/);
-    assert.match(bookingsRoute, /Number\(b\.hosts \|\| 0\) > 1 && newSecond && linkedResult\.rows\.length === 0/);
+    assert.match(bookingJs, /selectedSecondAnimatorLineCandidate/);
+    assert.match(bookingJs, /secondAnimatorLineId:/);
+    assert.match(bookingsRoute, /function bookingRequiresSecondAnimatorLink/);
+    assert.match(bookingsRoute, /function normalizeBookingSecondAnimatorFields/);
+    assert.match(bookingsRoute, /function ensureSecondAnimatorLineForBooking/);
+    assert.match(bookingsRoute, /bookingSecondAnimatorLineId/);
+    assert.match(bookingsRoute, /if \(bookingRequiresSecondAnimatorLink\(main\)\)/);
+    assert.match(bookingsRoute, /const shouldHaveSecondLink = bookingRequiresSecondAnimatorLink\(b\)/);
+    assert.match(bookingsRoute, /await insertSecondAnimatorLinkedBooking\(client/);
+    assert.doesNotMatch(bookingsRoute, /Number\(b\.hosts \|\| 0\) > 1 && newSecond/);
 });
 
 test('booking duplicate guard excludes the linked edit group from self-conflicts', () => {
@@ -162,6 +170,22 @@ test('timeline boot binds booking handlers through explicit window exports', () 
     assert.doesNotMatch(appJs, /addEventListener\('submit',\s*handleBookingSubmit\)/);
 });
 
+test('booking save and timeline navigation preserve selected date in the URL', () => {
+    const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const timelineJs = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+
+    assert.match(timelineJs, /function setTimelineDateInUrl\(date\)/);
+    assert.match(timelineJs, /window\.setTimelineDateInUrl = setTimelineDateInUrl/);
+    assert.match(timelineJs, /setTimelineDateInUrl\(AppState\.selectedDate\)/);
+    assert.match(timelineJs, /setTimelineDateInUrl\(dateStr\)/);
+    assert.match(appJs, /url\.searchParams\.delete\('open'\)/);
+    assert.doesNotMatch(appJs, /history\.replaceState\(null,\s*'',\s*window\.location\.pathname\)/);
+    assert.match(appJs, /setTimelineDateInUrl\(AppState\.selectedDate\)/);
+    assert.match(bookingJs, /function restoreTimelineDateAfterBookingSave/);
+    assert.match(bookingJs, /restoreTimelineDateAfterBookingSave\(selectedDateBeforeSave \|\| booking\.date\)/);
+});
+
 test('stale cancelled booking edit falls back to a fresh create flow', () => {
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     const apiJs = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
@@ -184,8 +208,8 @@ test('second animator repair audit is dry-run by default and inserts only missin
 
     assert.match(pkg, /"audit:second-animator-links": "node scripts\/audit-second-animator-links\.js"/);
     assert.match(script, /const FIX = flags\.has\('--fix'\)/);
-    assert.match(script, /COALESCE\(b\.hosts, 0\) > 1/);
     assert.match(script, /NULLIF\(BTRIM\(b\.second_animator\), ''\) IS NOT NULL/);
+    assert.doesNotMatch(script, /COALESCE\(b\.hosts, 0\) > 1/);
     assert.match(script, /async function existingLinkedSecondAnimator/);
     assert.match(script, /linkedTimelineIdentityMismatch/);
     assert.match(script, /repairLinkedTimelineIdentity/);

@@ -665,12 +665,17 @@ const ACTION_PERMISSIONS = {
     edit_booking:    [..._ADMIN_UP, 'reception'],
     cancel_booking:  _MANAGER_UP,
     delete_booking:  _ADMIN_UP,
-    manage_accounts: ['creator', 'director', 'art_director'],
-    manage_users:    ['creator', 'director', 'art_director'],
+    manage_accounts: ['creator', 'director'],
+    manage_users:    ['creator', 'director'],
+    view_all:        _ADMIN_UP,
+    view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     view_revenue:    [..._MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
     export_data:     _MANAGER_UP,
+    manage_staff:    [..._MANAGER_UP, 'hr', 'admin'],
 };
+
+const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
 
 const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
 const ROLE_PREVIEW_SESSION_KEY = 'testRole';
@@ -1271,9 +1276,12 @@ function canAccess(action) {
     const serverDecision = serverActionPermission(action);
     if (serverDecision !== null) return serverDecision;
     if (getCurrentUserActionList('actionDenylist', 'action_denylist').includes(action)) return false;
-    if (getCurrentUserActionList('actionAllowlist', 'action_allowlist').includes(action)) return true;
     const allowed = ACTION_PERMISSIONS[action];
     if (!allowed) return false;
+    if (NON_DELEGABLE_ACTIONS.has(action)) {
+        return allowed.includes(AppState.currentUser?.role);
+    }
+    if (getCurrentUserActionList('actionAllowlist', 'action_allowlist').includes(action)) return true;
     return getUserRoles().some(role => allowed.includes(role));
 }
 

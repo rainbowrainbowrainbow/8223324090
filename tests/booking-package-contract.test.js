@@ -165,8 +165,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /function attachLinkedBookingTimelineIdentity/);
     assert.match(route, /attachLinkedBookingTimelineIdentity\(lb, businessContext/);
     assert.match(route, /bookingExtraDataSqlValue\(lb\)/);
-    assert.match(route, /b\.duration,\s*0,\s*b\.hosts/);
-    assert.match(route, /b\.createdBy,\s*id,\s*newStatus,\s*b\.kidsCount \|\| null,\s*b\.groupName \|\| null,\s*null\]/);
+    assert.match(route, /function insertSecondAnimatorLinkedBooking/);
+    assert.match(route, /booking\.duration,\s*0,\s*booking\.hosts/);
+    assert.match(route, /bookingExtraDataSqlValue\(linkedBooking\)/);
+    assert.doesNotMatch(route, /b\.createdBy,\s*id,\s*newStatus,\s*b\.kidsCount \|\| null,\s*b\.groupName \|\| null,\s*null\]/);
     assert.match(route, /function runOptionalBookingTransactionStep/);
     assert.match(route, /SAVEPOINT booking_optional_step/);
     assert.match(route, /ROLLBACK TO SAVEPOINT booking_optional_step/);

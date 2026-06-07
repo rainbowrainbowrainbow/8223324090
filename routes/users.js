@@ -9,8 +9,10 @@ const {
     requireAction,
     authenticateToken,
     ROLE_HIERARCHY,
+    ROLE_LEVEL,
     PAGE_ACCESS,
     ACTION_PERMISSIONS,
+    NON_DELEGABLE_ACTIONS,
     revokeAllUserTokens,
     canUseAction
 } = require('../middleware/auth');
@@ -35,7 +37,7 @@ const {
 
 const log = createLogger('Users');
 
-const ACCOUNT_MANAGER_ROLES = ['creator', 'director', 'art_director'];
+const ACCOUNT_MANAGER_ROLES = ['creator', 'director'];
 function normalizeRoleSet(...roleLists) {
     const roles = [];
     roleLists.flat().forEach(role => {
@@ -50,20 +52,43 @@ function accountRoles(account = {}) {
     return normalizeRoleSet([account.role], account.extra_roles, account.extraRoles);
 }
 
+function roleLevel(role) {
+    return ROLE_LEVEL[String(role || '').trim()] ?? -1;
+}
+
+function accountMaxRoleLevel(account = {}) {
+    return accountRoles(account).reduce((max, role) => Math.max(max, roleLevel(role)), -1);
+}
+
+function actorCanManageRoleSet(actor, primaryRole, extraRoles = []) {
+    if (!actor || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
+    if (actor.role === 'creator') return true;
+    const maxTargetLevel = normalizeRoleSet([primaryRole], extraRoles).reduce(
+        (max, role) => Math.max(max, roleLevel(role)),
+        -1
+    );
+    return maxTargetLevel >= 0 && maxTargetLevel < roleLevel('director');
+}
+
+function actorCanManageTarget(actor, target) {
+    if (!actor || !target || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
+    if (actor.role === 'creator') return true;
+    return accountMaxRoleLevel(target) < roleLevel('director');
+}
+
 function canToggleAccount(actor, target) {
     if (!actor || !target) return false;
     if (target.id === actor.id) return false;
-    return ACCOUNT_MANAGER_ROLES.includes(actor.role);
+    return actorCanManageTarget(actor, target);
 }
 
 function canMutateSensitiveAccount(actor, target) {
     if (!actor || !target) return false;
-    return ACCOUNT_MANAGER_ROLES.includes(actor.role);
+    return actorCanManageTarget(actor, target);
 }
 
 function canCreateAccount(actor, primaryRole, extraRoles = []) {
-    if (!actor || !ACCOUNT_MANAGER_ROLES.includes(actor.role)) return false;
-    return true;
+    return actorCanManageRoleSet(actor, primaryRole, extraRoles);
 }
 
 function normalizeActionOverrideList(value) {
@@ -85,6 +110,10 @@ function accountActionAllowlist(account = {}) {
 
 function accountActionDenylist(account = {}) {
     return normalizeActionOverrideList(account.action_denylist || account.actionDenylist);
+}
+
+function normalizeActionAllowlist(value) {
+    return normalizeActionOverrideList(value).filter(action => !NON_DELEGABLE_ACTIONS.has(action));
 }
 
 function assertSelfAccountAccessSafe(actor, prospectiveAccount) {
@@ -168,7 +197,7 @@ function shouldActivateAfterPasswordReset(body = {}) {
     return truthyResetFlag(body.activateOnReset) || truthyResetFlag(body.activate) || truthyResetFlag(body.reactivate);
 }
 
-// GET /api/users — list all users for account management (creator/director/art director)
+// GET /api/users — list all users for account management (creator/director)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
 router.get('/', requireAction('manage_accounts'), async (req, res) => {
@@ -190,7 +219,7 @@ router.get('/', requireAction('manage_accounts'), async (req, res) => {
 });
 
 // GET /api/users/roles — return role definitions and access matrix
-router.get('/roles', async (req, res) => {
+router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
     res.json({
         hierarchy: ROLE_HIERARCHY,
         rolePresets: {
@@ -205,9 +234,11 @@ router.get('/roles', async (req, res) => {
         },
         pageAccess: PAGE_ACCESS,
         actionPermissions: ACTION_PERMISSIONS,
+        nonDelegableActions: Array.from(NON_DELEGABLE_ACTIONS),
         actions: Object.keys(ACTION_PERMISSIONS).map(action => ({
             key: action,
-            roles: ACTION_PERMISSIONS[action] || []
+            roles: ACTION_PERMISSIONS[action] || [],
+            delegable: !NON_DELEGABLE_ACTIONS.has(action)
         })),
         businessContexts: businessContextCatalog()
     });
@@ -368,7 +399,7 @@ async function updateAccountAccess(req, res) {
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : null;
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
-            ? normalizeActionOverrideList(actionAllowlistInput)
+            ? normalizeActionAllowlist(actionAllowlistInput)
             : null;
         const normalizedActionDenylist = actionDenylistInput !== undefined
             ? normalizeActionOverrideList(actionDenylistInput)
@@ -381,6 +412,9 @@ async function updateAccountAccess(req, res) {
             return res.status(403).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
+        if (!canCreateAccount(req.user, role, normalizedExtraRoles || normalizeStoredArray(target.rows[0].extra_roles))) {
+            return res.status(403).json({ error: 'Не можна призначити акаунту такий рівень доступу' });
+        }
 
         const oldRole = target.rows[0].role;
         const oldExtraRoles = normalizeStoredArray(target.rows[0].extra_roles);
@@ -664,7 +698,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
             : [];
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
-            ? normalizeActionOverrideList(actionAllowlistInput)
+            ? normalizeActionAllowlist(actionAllowlistInput)
             : [];
         const normalizedActionDenylist = actionDenylistInput !== undefined
             ? normalizeActionOverrideList(actionDenylistInput)

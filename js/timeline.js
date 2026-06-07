@@ -372,6 +372,19 @@ function getTimelineDateFromUrl() {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function setTimelineDateInUrl(date) {
+    if (typeof window === 'undefined' || !window.history?.replaceState) return;
+    const dateKey = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? date
+        : formatDate(date || AppState.selectedDate);
+    if (!dateKey) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('date') === dateKey) return;
+    url.searchParams.set('date', dateKey);
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
+if (typeof window !== 'undefined') window.setTimelineDateInUrl = setTimelineDateInUrl;
+
 function initializeTimeline() {
     AppState.leadConversionContext = getLeadConversionContextFromUrl();
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
@@ -3432,6 +3445,9 @@ function attachMultiDayListeners() {
             if (daySection) {
                 const dateStr = daySection.dataset.date;
                 AppState.selectedDate = new Date(dateStr + 'T00:00:00');
+                const timelineDateInput = document.getElementById('timelineDate');
+                if (timelineDateInput) timelineDateInput.value = dateStr;
+                setTimelineDateInUrl(dateStr);
                 showBookingDetails(bookingId);
             }
         });
@@ -3543,6 +3559,7 @@ async function changeDate(days) {
     newDate.setDate(newDate.getDate() + days);
     AppState.selectedDate = newDate;
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
+    setTimelineDateInUrl(AppState.selectedDate);
     renderTimeline();
 }
 

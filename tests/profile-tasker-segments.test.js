@@ -835,6 +835,7 @@ test('task sounds use task scoped preferences and controls, not chat settings', 
 
     assert.match(soundSource, /task_sound_settings/);
     assert.match(soundSource, /playTask: function/);
+    assert.match(soundSource, /_taskSoftChime/);
     assert.match(soundSource, /chat_sound_settings/);
     assert.match(profileSource, /renderCabinetTaskSoundControls/);
     assert.match(profileSource, /playTask\?\.\('task-complete'\)/);

@@ -801,6 +801,30 @@ function openTaskDeepLink() {
     if (taskId) openTaskDetail(taskId);
 }
 
+function showTaskCreateSuccessToast(createdTasks = [], drafts = [], postCreateWarningCount = 0) {
+    const firstTaskId = createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.id
+        || createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.taskId
+        || createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.task_id;
+    const payload = window.TaskCreate?.buildCreateNotification
+        ? window.TaskCreate.buildCreateNotification(createdTasks, drafts, { postCreateWarningCount })
+        : {
+            title: createdTasks.length > 1 ? 'Задачі успішно створено' : 'Задачу успішно створено',
+            message: createdTasks.length > 1 ? `Створено ${createdTasks.length} задач.` : 'Задачу додано в основний список',
+            details: postCreateWarningCount > 0 ? [`Додаткові кроки синхронізуються: ${postCreateWarningCount}`] : [],
+            durationMs: 8000,
+            fadeDurationMs: 850,
+            pauseOnInteract: true,
+            closeButton: true
+        };
+    if (firstTaskId) {
+        payload.actions = [{
+            label: 'Відкрити',
+            onClick: () => openTaskDetail(firstTaskId)
+        }];
+    }
+    showNotification(payload, 'success');
+}
+
 function setupTaskFilterToggle() {
     const shell = document.getElementById('tasksFilterShell');
     const toggle = document.getElementById('tasksFilterToggle');
@@ -3547,15 +3571,8 @@ async function addTask() {
         keepNewTaskVisible(result.task, data);
     }
 
-    const createdMode = mainDraft.assigneeMode;
     resetTaskComposerAfterCreate();
-    if (postCreateWarningCount > 0) {
-        showNotification('Задачу створено, але частину деталей треба перевірити', 'warning');
-    } else if (createdTasks.length > 1) {
-        showNotification(`Створено ${createdTasks.length} окремі задачі`, 'success');
-    } else {
-        showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
-    }
+    showTaskCreateSuccessToast(createdTasks, drafts, postCreateWarningCount);
     await loadAllTasks();
 }
 

@@ -2619,6 +2619,12 @@ function selectedAnimatorLineCandidate(selectId, selectedName) {
     };
 }
 
+function selectedSecondAnimatorLineCandidate(secondAnimator) {
+    return secondAnimator
+        ? selectedAnimatorLineCandidate('secondAnimatorSelect', secondAnimator)
+        : null;
+}
+
 async function refreshAnimatorSelectsForCurrentSlot() {
     const secondSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
     const extraHostVisible = !!document.getElementById('extraHostToggle')?.checked;
@@ -2749,8 +2755,10 @@ function getBookingFormData() {
         label = 'Клієнтська піньята';
     }
 
-    const secondAnimator = program && program.hosts > 1
+    const secondAnimatorSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
+    const secondAnimator = program && (program.hosts > 1 || secondAnimatorSectionVisible)
         ? document.getElementById('secondAnimatorSelect')?.value : null;
+    const secondAnimatorCandidate = selectedSecondAnimatorLineCandidate(secondAnimator);
 
     const packageTotals = getBookingPackageTotals(program);
     const menuPositions = kitchenEnabled ? packageTotals.menuPositions : [];
@@ -2762,6 +2770,8 @@ function getBookingFormData() {
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
+        secondAnimatorLineId: secondAnimatorCandidate?.id || null,
+        secondAnimatorLineName: secondAnimatorCandidate?.name || secondAnimator || null,
         menuPositions,
         programBasePrice: packageTotals.programBasePrice,
         positionsSubtotal: kitchenEnabled ? packageTotals.positionsSubtotal : 0,
@@ -2948,6 +2958,12 @@ function buildBookingObject(formData, program) {
     const extraData = buildExtraData(hasCatalogProgram ? formData.programId : null) || {};
     const noEventLabel = getNoEventBookingLabel(formData);
     const noEventName = getNoEventProgramName(formData);
+    const baseHosts = hasCatalogProgram
+        ? Number(program.hosts || 0)
+        : (isEducationLessonBooking ? 1 : 0);
+    const normalizedHosts = hasEvent && formData.secondAnimator
+        ? Math.max(baseHosts, 2)
+        : baseHosts;
 
     const obj = {
         date: formatDate(AppState.selectedDate),
@@ -2961,8 +2977,10 @@ function buildBookingObject(formData, program) {
         category: hasCatalogProgram ? program.category : (isEducationLessonBooking ? 'education' : 'custom'),
         duration: hasEvent ? formData.duration : NO_EVENT_TIMELINE_DURATION,
         price: finalPrice,
-        hosts: hasCatalogProgram ? program.hosts : (isEducationLessonBooking ? 1 : 0),
+        hosts: normalizedHosts,
         secondAnimator: hasEvent ? formData.secondAnimator : null,
+        secondAnimatorLineId: hasEvent ? (formData.secondAnimatorLineId || null) : null,
+        secondAnimatorLineName: hasEvent ? (formData.secondAnimatorLineName || formData.secondAnimator || null) : null,
         pinataMode: hasCatalogProgram ? formData.pinataMode : 'none',
         pinataNumber: hasCatalogProgram && formData.pinataMode !== 'none' ? formData.pinataNumber : null,
         pinataFillerNumber: hasCatalogProgram && formData.pinataMode !== 'none' ? formData.pinataFillerNumber : null,
@@ -3278,9 +3296,10 @@ async function buildLinkedBookings(booking, program) {
     const lines = await getLinesForDate(AppState.selectedDate);
 
     // Другий ведучий
-    if (program.hosts > 1 && booking.secondAnimator) {
-        const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', booking.secondAnimator);
+    if (booking.secondAnimator) {
+        const secondCandidate = selectedSecondAnimatorLineCandidate(booking.secondAnimator);
         const secondLine = lines.find(l => l.name === booking.secondAnimator)
+            || lines.find(l => String(l.id) === String(booking.secondAnimatorLineId || ''))
             || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
             || secondCandidate;
         if (secondLine) {
@@ -3702,10 +3721,22 @@ async function refreshCreatedBookingTimelineSnapshot(createdBookings = []) {
     return snapshot;
 }
 
+function restoreTimelineDateAfterBookingSave(dateKey) {
+    const normalizedDate = normalizeBookingDateKey(dateKey);
+    if (!normalizedDate) return;
+    AppState.selectedDate = new Date(`${normalizedDate}T00:00:00`);
+    const timelineDateInput = document.getElementById('timelineDate');
+    if (timelineDateInput) timelineDateInput.value = normalizedDate;
+    if (typeof setTimelineDateInUrl === 'function') {
+        setTimelineDateInUrl(normalizedDate);
+    }
+}
+
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
     const submitBtn = document.getElementById('bookingSubmitBtn');
+    const selectedDateBeforeSave = normalizeBookingDateKey(AppState.selectedDate);
     const formData = getBookingFormData();
     const validation = window.BookingForm?.validate ? BookingForm.validate() : { valid: true };
     if (!validation.valid) {
@@ -3830,6 +3861,7 @@ async function handleBookingSubmit(e) {
 
             AppState.editingBookingId = null;
 
+            restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
             invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
             closeBookingPanel(true);
             unlockSubmitBtn();
@@ -3884,6 +3916,7 @@ async function handleBookingSubmit(e) {
                 : [booking];
             pushUndo('create', createdBookings);
 
+            restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
             const changedDates = new Set(createdBookings.map(item => normalizeBookingDateKey(item.date) || formatDate(AppState.selectedDate)));
             const selectedDateKey = formatDate(AppState.selectedDate);
             changedDates.add(selectedDateKey);

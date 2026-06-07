@@ -775,6 +775,13 @@ test('account action overrides drive final permissions and protect against self-
         assert.equal(hrLogin.status, 200);
         const hrManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, hrLogin.data.accessToken);
         assert.equal(hrManageAccounts.status, 403);
+        const hrRolesMatrix = await request(baseUrl, 'GET', '/api/users/roles', undefined, hrLogin.data.accessToken);
+        assert.equal(hrRolesMatrix.status, 403);
+
+        const creatorRolesMatrix = await request(baseUrl, 'GET', '/api/users/roles', undefined, creatorToken());
+        assert.equal(creatorRolesMatrix.status, 200);
+        assert.deepEqual(creatorRolesMatrix.data.nonDelegableActions.sort(), ['manage_accounts', 'manage_settings', 'manage_users'].sort());
+        assert.equal(creatorRolesMatrix.data.actions.find(action => action.key === 'manage_accounts').delegable, false);
 
         const createArtDirector = await request(baseUrl, 'POST', '/api/users', {
             username: 'art.director',
@@ -790,7 +797,29 @@ test('account action overrides drive final permissions and protect against self-
         });
         assert.equal(artLogin.status, 200);
         const artManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, artLogin.data.accessToken);
-        assert.equal(artManageAccounts.status, 200);
+        assert.equal(artManageAccounts.status, 403);
+
+        const createSecurityOverride = await request(baseUrl, 'POST', '/api/users', {
+            username: 'security.override',
+            password: 'SecurityPass789!',
+            name: 'Security Override',
+            role: 'animator',
+            actionAllowlist: ['manage_accounts']
+        }, creatorToken());
+        assert.equal(createSecurityOverride.status, 200);
+        assert.deepEqual(createSecurityOverride.data.user.action_allowlist, []);
+
+        const securityLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'security.override',
+            password: 'SecurityPass789!'
+        });
+        assert.equal(securityLogin.status, 200);
+        const securityManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, securityLogin.data.accessToken);
+        assert.equal(securityManageAccounts.status, 403);
+        const securityPermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, securityLogin.data.accessToken);
+        assert.equal(securityPermissions.status, 200);
+        assert.equal(securityPermissions.data.actions.manage_accounts, false);
+        assert.equal(securityPermissions.data.actionSources.manage_accounts, 'non_delegable');
 
         const selfLockout = await request(baseUrl, 'PATCH', '/api/users/1/access', {
             role: 'creator',
@@ -798,6 +827,66 @@ test('account action overrides drive final permissions and protect against self-
         }, creatorToken());
         assert.equal(selfLockout.status, 400);
         assert.match(selfLockout.data.error, /акаунт/i);
+    });
+});
+
+test('director account management is capped below director level', async () => {
+    await withAuthApp(async ({ baseUrl }) => {
+        const createDirector = await request(baseUrl, 'POST', '/api/users', {
+            username: 'director.operator',
+            password: 'DirectorPass789!',
+            name: 'Director Operator',
+            role: 'director'
+        }, creatorToken());
+        assert.equal(createDirector.status, 200);
+
+        const directorLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'director.operator',
+            password: 'DirectorPass789!'
+        });
+        assert.equal(directorLogin.status, 200);
+        const directorToken = directorLogin.data.accessToken;
+
+        const createManager = await request(baseUrl, 'POST', '/api/users', {
+            username: 'manager.by.director',
+            password: 'ManagerPass789!',
+            name: 'Manager By Director',
+            role: 'manager',
+            actionAllowlist: ['delete_booking', 'manage_accounts']
+        }, directorToken);
+        assert.equal(createManager.status, 200, JSON.stringify(createManager.data));
+        assert.deepEqual(createManager.data.user.action_allowlist, ['delete_booking']);
+
+        const createPeerDirector = await request(baseUrl, 'POST', '/api/users', {
+            username: 'peer.director',
+            password: 'PeerPass789!',
+            name: 'Peer Director',
+            role: 'director'
+        }, directorToken);
+        assert.equal(createPeerDirector.status, 403);
+
+        const updateCreator = await request(baseUrl, 'PATCH', '/api/users/1/access', {
+            role: 'creator'
+        }, directorToken);
+        assert.equal(updateCreator.status, 403);
+
+        const promoteManager = await request(baseUrl, 'PATCH', `/api/users/${createManager.data.user.id}/access`, {
+            role: 'director'
+        }, directorToken);
+        assert.equal(promoteManager.status, 403);
+
+        const updateManager = await request(baseUrl, 'PATCH', `/api/users/${createManager.data.user.id}/access`, {
+            role: 'admin',
+            extraRoles: ['manager'],
+            actionAllowlist: ['edit_booking']
+        }, directorToken);
+        assert.equal(updateManager.status, 200, JSON.stringify(updateManager.data));
+        assert.equal(updateManager.data.newRole, 'admin');
+
+        const creatorUpdatesDirector = await request(baseUrl, 'PATCH', `/api/users/${createDirector.data.user.id}/access`, {
+            role: 'manager'
+        }, creatorToken());
+        assert.equal(creatorUpdatesDirector.status, 200, JSON.stringify(creatorUpdatesDirector.data));
     });
 });
 

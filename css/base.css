@@ -252,7 +252,9 @@ body:not(.dark-mode) {
 }
 
 .toast {
-    padding: 14px 24px;
+    position: relative;
+    width: min(420px, calc(100vw - 32px));
+    padding: 14px 42px 14px 18px;
     border-radius: 12px;
     font-weight: 700;
     font-size: var(--font-sm);
@@ -264,10 +266,94 @@ body:not(.dark-mode) {
     background: linear-gradient(135deg, #374151 0%, #1F2937 100%);
     color: #FFFFFF;
     box-shadow: 0 8px 24px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+    overflow: hidden;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    cursor: default;
+}
+
+.toast.is-clickable {
+    cursor: pointer;
+}
+
+.toast-content {
+    display: grid;
+    gap: 4px;
+}
+
+.toast-title {
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.toast-message {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.toast-details {
+    display: grid;
+    gap: 2px;
+    margin-top: 2px;
+    color: rgba(255,255,255,0.88);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.toast-detail {
+    min-width: 0;
+}
+
+.toast-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.toast-action-btn {
+    min-height: 32px;
+    padding: 6px 12px;
+    border: 1px solid rgba(255,255,255,0.42);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.18);
+    color: #FFFFFF;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.1;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.toast-action-btn:hover,
+.toast-action-btn:focus-visible {
+    background: rgba(255,255,255,0.28);
+}
+
+.toast-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.16);
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.toast-close:hover,
+.toast-close:focus-visible {
+    background: rgba(255,255,255,0.26);
 }
 
 .toast-exit {
-    animation: notifExit 0.3s ease-in forwards;
+    animation: notifExit var(--toast-exit-ms, 0.75s) ease-in forwards;
 }
 
 @keyframes notifEnter {

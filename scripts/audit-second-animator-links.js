@@ -168,7 +168,6 @@ async function loadCandidateBookings(client) {
         `COALESCE(b.business_context, $1) = $1`,
         `b.linked_to IS NULL`,
         `COALESCE(b.status, 'confirmed') <> 'cancelled'`,
-        `COALESCE(b.hosts, 0) > 1`,
         `NULLIF(BTRIM(b.second_animator), '') IS NOT NULL`
     ];
     if (FROM) {

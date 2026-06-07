@@ -117,15 +117,17 @@ const ACTION_PERMISSIONS = {
     edit_booking:    [...ADMIN_UP, 'reception'],
     cancel_booking:  MANAGER_UP,
     delete_booking:  ADMIN_UP,
-    manage_accounts: ['creator', 'director', 'art_director'],
+    manage_accounts: ['creator', 'director'],
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
-    manage_users:    ['creator', 'director', 'art_director'],
+    manage_users:    ['creator', 'director'],
     view_revenue:    [...MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
     export_data:     MANAGER_UP,
-    manage_staff:    [...MANAGER_UP, 'hr'],
+    manage_staff:    [...MANAGER_UP, 'hr', 'admin'],
 };
+
+const NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_users', 'manage_settings']);
 
 function normalizeActionOverrideList(value) {
     const source = Array.isArray(value)
@@ -174,11 +176,15 @@ function actionPermissionDecision(user, action) {
     if (denylist.includes(action)) {
         return { allowed: false, source: 'denylist', action };
     }
+    const allowedRoles = ACTION_PERMISSIONS[action];
+    if (NON_DELEGABLE_ACTIONS.has(action)) {
+        const allowed = Boolean(user?.role && allowedRoles.includes(user.role));
+        return { allowed, source: allowed ? 'role' : 'non_delegable', action };
+    }
     const allowlist = normalizeActionOverrideList(user.action_allowlist || user.actionAllowlist);
     if (allowlist.includes(action)) {
         return { allowed: true, source: 'allowlist', action };
     }
-    const allowedRoles = ACTION_PERMISSIONS[action];
     const allowed = userHasAnyRole(user, allowedRoles);
     return { allowed, source: allowed ? 'role' : 'none', action };
 }
@@ -516,6 +522,7 @@ module.exports = {
     ROLE_LEVEL,
     PAGE_ACCESS,
     ACTION_PERMISSIONS,
+    NON_DELEGABLE_ACTIONS,
     normalizeRoleList,
     normalizePageAllowlist,
     normalizeActionOverrideList,

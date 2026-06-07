@@ -154,6 +154,10 @@
 
         _playTaskScoped: function (name, settings) {
             if (settings.theme === 'rock') {
+                if (name === 'task-new') {
+                    this._taskSoftChime(settings.volume, [523.25, 659.25], 0.34);
+                    return;
+                }
                 this._taskTone(1320, 0.11, settings.volume, 'triangle');
                 if (name === 'task-complete') {
                     setTimeout(this._taskTone.bind(this, 1760, 0.13, settings.volume, 'triangle'), 70);
@@ -161,10 +165,43 @@
                 return;
             }
             if (settings.theme === 'classic') {
+                if (name === 'task-new') {
+                    this._taskSoftChime(settings.volume, [587.33, 739.99], 0.32);
+                    return;
+                }
                 this._taskTone(name === 'task-complete' ? 1050 : 780, 0.16, settings.volume, 'sine');
                 return;
             }
-            this._taskTone(name === 'task-complete' ? 1050 : 850, 0.07, settings.volume, 'sine');
+            if (name === 'task-new') {
+                this._taskSoftChime(settings.volume, [493.88, 659.25], 0.38);
+                return;
+            }
+            this._taskTone(1050, 0.07, settings.volume, 'sine');
+        },
+
+        _taskSoftChime: function (volume, notes, duration) {
+            var ctx = this.ctx;
+            if (!ctx) return;
+            var safeVolume = Math.max(0, Math.min(1, volume));
+            var master = ctx.createGain();
+            master.gain.setValueAtTime(0.0001, ctx.currentTime);
+            master.gain.linearRampToValueAtTime(safeVolume * 0.18, ctx.currentTime + 0.035);
+            master.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration + 0.18);
+            master.connect(ctx.destination);
+            (notes || [523.25, 659.25]).forEach(function (freq, index) {
+                var start = ctx.currentTime + index * 0.085;
+                var osc = ctx.createOscillator();
+                var gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, start);
+                gain.gain.setValueAtTime(0.0001, start);
+                gain.gain.linearRampToValueAtTime(index === 0 ? 0.72 : 0.56, start + 0.025);
+                gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+                osc.connect(gain);
+                gain.connect(master);
+                osc.start(start);
+                osc.stop(start + duration + 0.02);
+            });
         },
 
         _taskTone: function (freq, duration, volume, type) {

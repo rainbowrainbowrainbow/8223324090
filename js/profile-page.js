@@ -5234,6 +5234,32 @@ async function verifyCabinetCreatedTask(result = {}) {
     };
 }
 
+function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification = {}, postCreateWarningCount = 0) {
+    const taskId = verification.taskId || createdCabinetTaskId(result);
+    const task = result.task || { id: taskId, title: draft.title, category: draft.category, priority: draft.priority };
+    const payload = window.TaskCreate?.buildCreateNotification
+        ? window.TaskCreate.buildCreateNotification([task], [draft], { postCreateWarningCount })
+        : {
+            title: 'Задачу створено в основних задачах',
+            message: draft.title ? `«${draft.title}»` : 'Задачу додано в основний список',
+            details: postCreateWarningCount > 0 ? [`Додаткові кроки синхронізуються: ${postCreateWarningCount}`] : [],
+            durationMs: 8000,
+            fadeDurationMs: 850,
+            pauseOnInteract: true,
+            closeButton: true
+        };
+    payload.title = 'Задачу створено в основних задачах';
+    if (taskId) {
+        payload.actions = [{
+            label: 'Відкрити',
+            onClick: () => {
+                window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+            }
+        }];
+    }
+    showNotification(payload, 'success');
+}
+
 async function setCabinetTaskStatus(taskId, status, options = {}) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
@@ -5477,7 +5503,7 @@ async function createCabinetTask(event, mode) {
         }
         return;
     }
-    const hasPostCreateWarnings = Array.isArray(result.postCreateWarnings) && result.postCreateWarnings.length > 0;
+    const postCreateWarningCount = Array.isArray(result.postCreateWarnings) ? result.postCreateWarnings.length : 0;
     const verification = await verifyCabinetCreatedTask(result);
     if (!verification.ok) {
         if (typeof showNotification === 'function') {
@@ -5499,7 +5525,7 @@ async function createCabinetTask(event, mode) {
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
     cabinetTaskComposerExpanded = false;
     if (typeof showNotification === 'function') {
-        showNotification(hasPostCreateWarnings ? 'Задачу створено, але частину деталей треба перевірити' : 'Задачу створено в основних задачах', hasPostCreateWarnings ? 'warning' : 'success');
+        showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);
     }
     await refreshMyCabinetTab();
 }

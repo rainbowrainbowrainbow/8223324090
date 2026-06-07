@@ -57,7 +57,7 @@ const {
     verifyIssuedCredential
 } = require('../services/accountLinking');
 
-const { requireRole, authenticateToken } = require('../middleware/auth');
+const { requireAction, requireRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
@@ -499,7 +499,7 @@ router.get('/schedule', async (req, res) => {
 });
 
 // PUT /api/staff/schedule — upsert a single schedule entry
-router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { staffId, date, shiftStart, shiftEnd, status, note } = req.body;
@@ -557,7 +557,7 @@ router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'sen
  * Returns count of upserted entries.
  */
 // POST /api/staff/schedule/:id/replace — assign a live schedule slot to a replacement worker through HR shift truth
-router.post('/schedule/:id/replace', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, res) => {
     const client = await pool.connect();
     try {
         const scheduleId = parseInt(req.params.id, 10);
@@ -716,7 +716,7 @@ router.post('/schedule/:id/replace', requireRole('creator', 'director', 'vice_di
 });
 
 // POST /api/staff/schedule/:id/replacement-clear — return a replacement slot to the original worker
-router.post('/schedule/:id/replacement-clear', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), async (req, res) => {
     const client = await pool.connect();
     try {
         const scheduleId = parseInt(req.params.id, 10);
@@ -806,7 +806,7 @@ router.post('/schedule/:id/replacement-clear', requireRole('creator', 'director'
     }
 });
 
-router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) => {
     try {
         const { entries } = req.body;
         if (!Array.isArray(entries) || entries.length === 0) {
@@ -881,7 +881,7 @@ router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director'
  * Copies 7 days of schedule. Optional department filter.
  * Existing entries in target week are overwritten.
  */
-router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
+router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, res) => {
     try {
         const { fromMonday, toMonday, department } = req.body;
         if (!fromMonday || !toMonday) {
@@ -1226,7 +1226,7 @@ router.get('/face-descriptors', async (req, res) => {
 });
 
 // POST /api/staff/:id/face-descriptor — register face descriptor for staff
-router.post('/:id/face-descriptor', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr', 'admin'), async (req, res) => {
+router.post('/:id/face-descriptor', requireAction('manage_staff'), async (req, res) => {
     try {
         const staffId = parseInt(req.params.id);
         const { descriptor } = req.body;

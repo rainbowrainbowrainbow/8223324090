@@ -322,6 +322,133 @@
         }
     }
 
+    const TASK_NOTIFICATION_PRIORITY_LABELS = {
+        urgent: 'Терміново',
+        high: 'Високий',
+        normal: 'Звичайний',
+        low: 'Низький'
+    };
+    const TASK_NOTIFICATION_MODE_LABELS = {
+        work: 'Робоча',
+        personal: 'Особиста',
+        private: 'Приватна'
+    };
+    const TASK_NOTIFICATION_CATEGORY_LABELS = {
+        admin: 'Адмін',
+        event: 'Івент',
+        purchase: 'Закупівлі',
+        orders: 'Замовлення',
+        trampoline: 'Батути',
+        personal: 'Особисті',
+        improvement: 'Покращення',
+        checklist: 'Чек-листи',
+        operational: 'Операційні',
+        maintenance: 'Технічні'
+    };
+
+    function shortTaskText(value, maxLength = 82) {
+        const text = String(value || '').trim().replace(/\s+/g, ' ');
+        if (!text || text.length <= maxLength) return text;
+        return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+    }
+
+    function dateKey(value) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        return text.slice(0, 10);
+    }
+
+    function formatDateUa(dateText) {
+        const key = dateKey(dateText);
+        const parts = key.split('-');
+        if (parts.length !== 3) return key;
+        return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    function taskNotificationDateLabel(task = {}, draft = {}) {
+        const explicitDate = dateKey(task.date || task.deadline || task.remindAt || task.remind_at || task.scheduledStartAt || task.scheduled_start_at);
+        const draftDate = dateKey(draft.date || draft.dueDate || draft.deadline || draft.scheduleDate);
+        const presetDate = draft.duePreset ? dateForDuePresetValue(draft.duePreset, draft.scheduleDate || draft.dueDate || '') : '';
+        const key = explicitDate || draftDate || dateKey(presetDate);
+        if (!key) return 'Без дати';
+        const today = todayStr();
+        const tomorrow = dateForDuePresetValue('tomorrow', '');
+        const label = key === today ? 'Сьогодні' : (key === tomorrow ? 'Завтра' : 'Обрана дата');
+        return `${label} · ${formatDateUa(key)}`;
+    }
+
+    function taskNotificationPriorityLabel(task = {}, draft = {}) {
+        const priority = String(task.priority || draft.priority || 'normal').toLowerCase();
+        return TASK_NOTIFICATION_PRIORITY_LABELS[priority] || priority || 'Звичайний';
+    }
+
+    function taskNotificationOwnerLabel(task = {}, draft = {}) {
+        const owner = task.ownerName || task.owner_name || task.assigneeName || task.assignee_name
+            || task.ownerLabel || task.owner_label || task.assignedTo || task.assigned_to
+            || task.userName || task.user_name || '';
+        if (owner) return String(owner);
+        if (draft.assigneeMode === 'self') return 'Собі';
+        if (draft.ownerLabel) return String(draft.ownerLabel);
+        const ownerId = draft.ownerUserId || draft.owner_user_id || task.ownerUserId || task.owner_user_id;
+        if (ownerId) return `User #${ownerId}`;
+        return draft.assigneeMode === 'team' ? 'Команді' : 'Собі';
+    }
+
+    function taskNotificationCategoryLabel(task = {}, draft = {}) {
+        const category = String(task.category || draft.category || 'admin');
+        const base = TASK_NOTIFICATION_CATEGORY_LABELS[category] || category || 'Адмін';
+        const subcategory = task.subcategory || draft.subcategory || '';
+        return subcategory ? `${base} / ${subcategory}` : base;
+    }
+
+    function taskNotificationModeLabel(task = {}, draft = {}) {
+        const mode = String(task.taskMode || task.task_mode || draft.mode || draft.taskMode || 'work');
+        return TASK_NOTIFICATION_MODE_LABELS[mode] || mode || 'Робоча';
+    }
+
+    function taskNotificationSubtaskLabel(task = {}, draft = {}) {
+        const taskCount = Number(task.subtask_count || task.subtaskCount || 0);
+        const draftCount = normalizeSubtasks(draft.subtasks || draft.taskSubtasks || draft.task_subtasks).length;
+        const count = taskCount || draftCount;
+        return count > 0 ? `${count}` : '';
+    }
+
+    function buildCreateNotification(tasks, drafts, options = {}) {
+        const created = Array.isArray(tasks) ? tasks.filter(Boolean) : [tasks].filter(Boolean);
+        const draftList = Array.isArray(drafts) ? drafts : [drafts || {}];
+        const count = created.length || Number(options.count || 1);
+        const task = created[0] || {};
+        const draft = draftList[0] || {};
+        const titleText = shortTaskText(task.title || draft.title || 'Нова задача');
+        const warningCount = Math.max(0, Number(options.warningCount || options.postCreateWarningCount || 0));
+        const details = [];
+        if (count > 1) {
+            const names = created.slice(0, 3).map((item, index) => shortTaskText(item.title || draftList[index]?.title || `Задача ${index + 1}`, 34)).filter(Boolean);
+            if (names.length) details.push(`Задачі: ${names.join('; ')}${count > names.length ? ` +${count - names.length}` : ''}`);
+            details.push(`Дата першої: ${taskNotificationDateLabel(task, draft)}`);
+            details.push(`Кому: ${taskNotificationOwnerLabel(task, draft)}`);
+        } else {
+            details.push(`Створено на: ${taskNotificationDateLabel(task, draft)}`);
+            details.push(`Пріоритет: ${taskNotificationPriorityLabel(task, draft)}`);
+            details.push(`Кому: ${taskNotificationOwnerLabel(task, draft)}`);
+            details.push(`Категорія: ${taskNotificationCategoryLabel(task, draft)}`);
+            details.push(`Тип: ${taskNotificationModeLabel(task, draft)}`);
+            const subtaskLabel = taskNotificationSubtaskLabel(task, draft);
+            if (subtaskLabel) details.push(`Підзадачі: ${subtaskLabel}`);
+        }
+        if (warningCount > 0) details.push(`Додаткові кроки синхронізуються: ${warningCount}`);
+
+        return {
+            title: count > 1 ? 'Задачі успішно створено' : 'Задачу успішно створено',
+            message: count > 1 ? `Створено ${count} задач.` : `«${titleText}»`,
+            details,
+            durationMs: 8000,
+            fadeDurationMs: 850,
+            pauseOnInteract: true,
+            closeButton: true
+        };
+    }
+
     window.TaskCreate = {
         todayStr,
         dateForDuePresetValue,
@@ -340,7 +467,8 @@
         applySavedDecompositionTemplate,
         requestDecompositionSuggestions,
         buildPayload,
-        createTask
+        createTask,
+        buildCreateNotification
     };
 
     function parseMeta(task = {}) {

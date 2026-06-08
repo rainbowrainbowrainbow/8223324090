@@ -44,6 +44,7 @@ const HR_HTML = [
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
+const HR_ONBOARDING_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrOnboarding.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = readCssWithImports('css/pages.css');
@@ -468,6 +469,42 @@ test('HR salary backend owns payroll period lock, reconciliation, and reversal A
         'idx_payroll_period_events_month_created'
     ]) {
         assert.ok(PAYROLL_EVENTS_MIGRATION.includes(token), `missing migration token ${token}`);
+    }
+});
+
+test('HR onboarding assignment keeps routes thin and owns task sync in service', () => {
+    for (const token of [
+        "require('../services/hrOnboarding')",
+        "router.get('/onboarding/responsible-candidates', requireHrManage",
+        "router.get('/staff/:id/onboarding-assignment', requireHrManage",
+        "router.put('/staff/:id/onboarding-assignment', requireHrManage",
+        "router.post('/onboarding/start', requireHrManage",
+        "router.get('/onboarding'",
+        'const params = [ONBOARDING_TASK_SOURCE_TYPE]',
+        'assignOnboardingResponsible(req.params.id, responsibleUserId, req.user',
+        'loadActiveOnboardingProgress(staff.id)',
+        'onboardingProgressMeta(progress)',
+        'await attachOnboardingAssignments(result.rows)'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing HR onboarding route token ${token}`);
+    }
+
+    for (const token of [
+        "const ONBOARDING_TASK_SOURCE_TYPE = 'onboarding'",
+        'async function assignOnboardingResponsible',
+        'async function syncOnboardingTasks',
+        'async function attachOnboardingAssignments',
+        'async function withOnboardingTransaction',
+        'async function insertHrAuditLog',
+        "source_module = 'hr_onboarding'",
+        "source_module: 'hr_onboarding'",
+        'TASK_ACTION_TYPES.OWNER_REASSIGNED',
+        'emitTaskAssignedToOwner(updatedTask, actor',
+        'INSERT INTO onboarding_progress',
+        'UPDATE onboarding_progress',
+        'INSERT INTO hr_audit_log'
+    ]) {
+        assert.ok(HR_ONBOARDING_SERVICE.includes(token), `missing HR onboarding service token ${token}`);
     }
 });
 

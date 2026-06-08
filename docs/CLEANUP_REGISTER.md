@@ -392,6 +392,21 @@ Status: open.
   onboarding task-owner sync or staff resource/document lifecycle, with focused
   tests before moving route handlers.
 
+2026-06-08 HR onboarding assignment update:
+
+- Extracted the HR onboarding responsible-owner assignment, progress metadata,
+  transaction wrapper, audit write, and generated task synchronization helpers
+  from `routes/hr.js` into `services/hrOnboarding.js`.
+- Kept `/api/hr/onboarding*` and `/api/hr/staff/:id/onboarding-assignment`
+  route handlers, permission middleware, public URLs, and response shapes in
+  `routes/hr.js`.
+- Added a focused HR contract guard so onboarding routes stay thin while the
+  service owns `hr_onboarding` task sync, owner reassignment history, and audit
+  side effects.
+- Next HR backend cleanup candidate: staff resource/document lifecycle. Keep it
+  separate from account-center or access-control changes unless a regression is
+  found.
+
 ### 8. Scheduler, Event, And Callback Cleanup
 
 Goal: keep background work restart-safe and duplicate-safe.

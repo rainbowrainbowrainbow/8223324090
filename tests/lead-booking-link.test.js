@@ -17,7 +17,7 @@ describe('lead booking link repair', () => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
                 if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
-                    return { rows: [{ id: params[1], booking_id: params[0] }], rowCount: 1 };
+                    return { rows: [{ id: params[1], booking_id: params[0], pipeline_stage: params[3], status: params[4] }], rowCount: 1 };
                 }
                 if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
                     return { rows: [], rowCount: 1 };
@@ -35,11 +35,15 @@ describe('lead booking link repair', () => {
         assert.equal(result.attached, true);
         assert.equal(result.leadId, 501);
         assert.equal(result.bookingId, 'BK-2099-0001');
+        assert.equal(result.pipelineStage, 'deposit_received');
+        assert.equal(result.status, 'booked');
         assert.equal(result.customerLinked, true);
         assert.ok(queries.some(q =>
             /UPDATE leads SET booking_id = \$1/i.test(q.text)
             && q.params[0] === 'BK-2099-0001'
             && q.params[2] === 'event_genix'
+            && q.params[3] === 'deposit_received'
+            && q.params[4] === 'booked'
         ));
         assert.ok(queries.some(q =>
             /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(q.text)
@@ -66,7 +70,7 @@ describe('lead booking link repair', () => {
                 const text = String(sql).replace(/\s+/g, ' ').trim();
                 queries.push({ text, params });
                 if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
-                    return { rows: [{ id: params[1], booking_id: params[0] }], rowCount: 1 };
+                    return { rows: [{ id: params[1], booking_id: params[0], pipeline_stage: params[3], status: params[4] }], rowCount: 1 };
                 }
                 return { rows: [], rowCount: 1 };
             }
@@ -76,11 +80,14 @@ describe('lead booking link repair', () => {
             leadId: 9,
             bookingId: 'MD-1',
             customerId: 44,
-            businessContext: 'maysternya_doli'
+            businessContext: 'maysternya_doli',
+            bookingStatus: 'preliminary'
         });
 
         assert.equal(queries.length, 2);
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
+        assert.equal(queries[0].params[3], 'waiting');
+        assert.equal(queries[0].params[4], 'booked');
     });
 
     it('creates a scoped lead for non-park booking CRM handoff', async () => {

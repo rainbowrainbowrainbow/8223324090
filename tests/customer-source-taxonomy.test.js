@@ -25,6 +25,8 @@ test('customer source taxonomy uses polished Ukrainian labels in active dropdown
     for (const block of [sourceFilter, editSource]) {
         assert.match(block, />За рекомендацією</);
         assert.match(block, />Повторне звернення</);
+        assert.match(block, />Сайт Майстерні</);
+        assert.match(block, />Бот Майстерні</);
         assert.match(block, />Не вказано</);
         assert.doesNotMatch(block, />Рекомендація</);
         assert.doesNotMatch(block, />Повторний</);
@@ -37,17 +39,21 @@ test('customer source normalization preserves canonical keys and legacy aliases'
     assert.equal(normalizeCustomerSource('За рекомендацією'), 'recommendation');
     assert.equal(normalizeCustomerSource('Повторний'), 'repeat');
     assert.equal(normalizeCustomerSource('Повторне звернення'), 'repeat');
+    assert.equal(normalizeCustomerSource('maysternya_site'), 'maysternya_site');
+    assert.equal(normalizeCustomerSource('Сайт Майстерні'), 'maysternya_site');
     assert.equal(normalizeCustomerSource(''), null);
     assert.equal(normalizeCustomerSource('', { unknownAsNull: false }), 'unknown');
     assert.equal(normalizeCustomerSource('some-new-raw-source'), 'other');
     assert.equal(getCustomerSourceLabel('Рекомендація'), 'За рекомендацією');
     assert.equal(getCustomerSourceLabel('Повторний'), 'Повторне звернення');
+    assert.equal(getCustomerSourceLabel('maysternya_site'), 'Сайт Майстерні');
     assert.equal(getCustomerSourceLabel(null), 'Не вказано');
     assert.equal(getCustomerSourceLabel('some-new-raw-source'), 'Інше');
 
     const sql = customerSourceSqlExpression('c.source');
     assert.match(sql, /рекомендація/);
     assert.match(sql, /повторний/);
+    assert.match(sql, /maysternya_site/);
     assert.match(sql, /THEN 'recommendation'/);
     assert.match(sql, /THEN 'repeat'/);
 });

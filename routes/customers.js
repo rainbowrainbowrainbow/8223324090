@@ -1545,6 +1545,7 @@ function mapCustomerRow(row) {
         name: row.name,
         phone: row.phone || null,
         instagram: row.instagram || null,
+        leadId: row.lead_id || null,
         childName: row.child_name || null,
         childBirthday: row.child_birthday || null,
         socialIdentities: normalizeSocialIdentities(row.social_identities, { instagram: row.instagram }),

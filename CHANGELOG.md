@@ -4,6 +4,19 @@
 
 ---
 
+## v0.74.5 - Майстерня: Sales Ops v1
+
+### Майстерня долі / Sales Ops / Lead-to-booking / Customers / Follow-up / (Клешня, 08.06.2026) [codex]
+- **Заявка Майстерні стала окремим Sales Ops workspace** - labels, таблиця, модалки й картка ліда перемикаються на "Заявка", "Клієнт", "Запит", "Контакт", "Джерело" і "Повідомлення" тільки коли active `CrmBusinessContext=maysternya_doli`; у Park/all/multi режимах старий UI лишається без змін.
+- **Payload із сайту видно в картці заявки** - workspace показує `businessContext`, `external_id`, `page`, `utm`, `contact_channels`, `source`, `topic/message`, `sessionType` і використовує ці дані для драфта запису.
+- **`Створити запис` відкриває готовий booking draft Майстерні** - lead conversion веде на `/maysternya-doli` з імʼям, телефоном, `leadId`, джерелом, сторінкою, темою й повідомленням; booking panel підставляє онлайн-ресурс і консультаційний сервіс за замовчуванням.
+- **Після збереження запису лід реально конвертується** - booking handoff звʼязує `lead -> booking -> customer`, виставляє status `booked`, переводить pipeline у booking-stage і лишає запис у `business_context=maysternya_doli`, без протікання в Park timeline.
+- **Клієнти й follow-up задачі отримали Майстерня-адаптацію** - customer cards показують сесії, джерело заявки, lead-link і ховають park-only дитячі/сертифікатні блоки; follow-up дії "Передзвонити", "Написати", "Оплата", "Після сесії" створюються з `businessContext=maysternya_doli`.
+- **Regression guard закрив Sales Ops контур** - focused route smoke, lead-booking link, customer taxonomy, UI smoke і syntax перевіряють business-context scoping, lead conversion, booking link, customer presentation і task linkage.
+- **Релізні маркери піднято до `0.74.5`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.4 - Майстерня: конвертація в бронювання
 
 ### Майстерня долі / Lead conversion / Timeline access / Webhook contact / (Клешня, 08.06.2026) [codex]

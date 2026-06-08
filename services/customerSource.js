@@ -9,6 +9,8 @@ const CUSTOMER_SOURCE_LABELS = Object.freeze({
     google: 'Google',
     recommendation: 'За рекомендацією',
     repeat: 'Повторне звернення',
+    maysternya_site: 'Сайт Майстерні',
+    maysternya_bot: 'Бот Майстерні',
     manual: 'Ручне внесення',
     lead: 'Лід',
     other: 'Інше',
@@ -27,6 +29,8 @@ const CUSTOMER_SOURCE_ALIASES = Object.freeze({
     google: ['google', 'гугл'],
     recommendation: ['recommendation', 'recommend', 'referral', 'рекомендація', 'за рекомендацією', 'рекомендовано'],
     repeat: ['repeat', 'returning', 'повторний', 'повторне звернення', 'повторне', 'постійний'],
+    maysternya_site: ['maysternya_site', 'maysternya site', 'сайт майстерні', 'майстерня сайт'],
+    maysternya_bot: ['maysternya_bot', 'maysternya bot', 'бот майстерні', 'майстерня бот'],
     manual: ['manual', 'operator', 'ручний', 'ручне внесення', 'вручну'],
     lead: ['lead', 'лід', 'з ліда'],
     other: ['other', 'інше', 'інший', 'інше джерело']

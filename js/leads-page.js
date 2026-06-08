@@ -95,6 +95,44 @@ let leadCustomerLinkState = {
     customers: [],
     searchTimer: null
 };
+const MAYSTERNYA_LEAD_TASK_PRESETS = {
+    callback: {
+        title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
+        description: leadId => `Follow-up Майстерні з заявки #${leadId}: передзвонити клієнту.`,
+        label: 'Передзвонити',
+        priority: 'high',
+        icon: '📞',
+        offsetDays: 1,
+        hour: 10
+    },
+    write: {
+        title: lead => `Написати клієнту: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
+        description: leadId => `Follow-up Майстерні з заявки #${leadId}: написати клієнту в доступний канал.`,
+        label: 'Написати',
+        priority: 'high',
+        icon: '💬',
+        offsetDays: 0,
+        hour: 16
+    },
+    payment: {
+        title: lead => `Нагадати оплату: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
+        description: leadId => `Follow-up Майстерні з заявки #${leadId}: нагадати про оплату або підтвердження запису.`,
+        label: 'Оплата',
+        priority: 'normal',
+        icon: '₴',
+        offsetDays: 1,
+        hour: 11
+    },
+    post_session: {
+        title: lead => `Follow-up після сесії: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
+        description: leadId => `Follow-up Майстерні з заявки #${leadId}: написати після консультації, зафіксувати результат і наступний крок.`,
+        label: 'Після сесії',
+        priority: 'normal',
+        icon: '✓',
+        offsetDays: 2,
+        hour: 12
+    }
+};
 
 // Auth helpers
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -161,6 +199,52 @@ function leadTimelineHref(params = {}, context = leadBusinessContext()) {
 
 function leadBusinessScope() {
     return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: leadBusinessContext() };
+}
+
+function isMaysternyaLeadContext() {
+    const scope = leadBusinessScope();
+    return scope.mode === 'single' && leadBusinessContext() === 'maysternya_doli';
+}
+
+function leadConversionActionLabel() {
+    return isMaysternyaLeadContext() ? 'Створити запис' : 'Конвертувати';
+}
+
+function syncLeadPresentationUi() {
+    const maysternyaMode = isMaysternyaLeadContext();
+    if (document.body) document.body.dataset.leadBusinessContext = leadBusinessContext();
+    const addBtn = document.getElementById('addLeadBtn');
+    if (addBtn) addBtn.textContent = maysternyaMode ? '+ Нова заявка' : '+ Новий лід';
+    const search = document.getElementById('leadsSearch');
+    if (search) search.placeholder = maysternyaMode ? 'Пошук за клієнтом, телефоном, запитом...' : "Пошук за ім'ям, телефоном...";
+    const bookedFilter = document.querySelector('#filterBtns .filter-btn[data-status="booked"]');
+    if (bookedFilter) bookedFilter.textContent = maysternyaMode ? 'Записано' : 'Заброньовано';
+    const headers = document.querySelectorAll('#tableView .leads-table thead th');
+    const labels = maysternyaMode
+        ? ['Клієнт', 'Контакт', 'Джерело', 'Запит', 'Етап', 'Дата', 'Дії']
+        : ["Ім'я", 'Телефон', 'Джерело', 'Тип', 'Етап', 'Дата', 'Дії'];
+    headers.forEach((header, index) => {
+        if (labels[index]) header.textContent = labels[index];
+    });
+    syncLeadModalBusinessFields();
+}
+
+function syncLeadModalBusinessFields() {
+    const maysternyaMode = isMaysternyaLeadContext();
+    const childrenGroup = document.getElementById('leadChildrenCount')?.closest('.form-group');
+    const celebrantsGroup = document.getElementById('leadCelebrants')?.closest('.form-group');
+    if (childrenGroup) childrenGroup.hidden = maysternyaMode;
+    if (celebrantsGroup) celebrantsGroup.hidden = maysternyaMode;
+    const dateLabel = document.querySelector('label[for="leadEventDate"], #leadEventDate')?.closest('.form-group')?.querySelector('label');
+    if (dateLabel) dateLabel.textContent = maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата';
+    const notesLabel = document.getElementById('leadNotes')?.closest('.form-group')?.querySelector('label');
+    if (notesLabel) notesLabel.textContent = maysternyaMode ? 'Запит / повідомлення' : 'Нотатки';
+    if (maysternyaMode) {
+        const children = document.getElementById('leadChildrenCount');
+        const celebrants = document.getElementById('leadCelebrants');
+        if (children) children.value = '';
+        if (celebrants) celebrants.value = '';
+    }
 }
 
 function isLeadBusinessReadOnly() {
@@ -235,10 +319,12 @@ function initLeadBusinessContext(user) {
             currentBusinessContext = current;
             workspaceLeadId = null;
             closeLeadWorkspace({ pushState: false, force: true, guard: false });
+            syncLeadPresentationUi();
             syncLeadReadOnlyUi();
             await loadLeads();
         }
     }) || 'event_genix';
+    syncLeadPresentationUi();
     syncLeadReadOnlyUi();
 }
 
@@ -331,6 +417,7 @@ async function loadUsers() {
 async function loadLeads() {
     const tbody = document.getElementById('leadsTableBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
+    syncLeadPresentationUi();
     try {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
@@ -484,11 +571,12 @@ function applyLeadQueryParams() {
 
 function getLeadFilterSummary() {
     const search = document.getElementById('leadsSearch')?.value?.trim();
+    const maysternyaMode = isMaysternyaLeadContext();
     return [
         currentPipelineStage ? { label: 'Етап воронки', value: leadPipelineStageLabel(currentPipelineStage) } : null,
         currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
-        currentTypeFilter ? { label: 'Тип', value: LEAD_TYPE_MAP[currentTypeFilter]?.label || currentTypeFilter } : null,
-        currentDateFilter ? { label: 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
+        currentTypeFilter ? { label: maysternyaMode ? 'Запит' : 'Тип', value: LEAD_TYPE_MAP[currentTypeFilter]?.label || currentTypeFilter } : null,
+        currentDateFilter ? { label: maysternyaMode ? 'Дата консультації' : 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
         search ? { label: 'Пошук', value: search } : null
     ].filter(Boolean);
 }
@@ -518,18 +606,25 @@ function resetLeadFilters() {
 
 function leadEmptyHtml() {
     const filters = getLeadFilterSummary();
+    const maysternyaMode = isMaysternyaLeadContext();
     if (window.Explainability) {
         return Explainability.renderEmptyState({
             icon: '🔎',
-            title: filters.length ? 'Лідів за цими фільтрами немає' : 'Лідів ще немає',
+            title: filters.length
+                ? (maysternyaMode ? 'Заявок за цими фільтрами немає' : 'Лідів за цими фільтрами немає')
+                : (maysternyaMode ? 'Заявок ще немає' : 'Лідів ще немає'),
             message: filters.length
                 ? 'Поточний статус, тип, дата або пошук приховали всі записи. Скиньте фільтри, щоб повернути повний список.'
-                : 'Коли зʼявляться заявки або менеджер додасть лід вручну, вони будуть у цьому списку.',
+                : (maysternyaMode
+                    ? 'Коли сайт або менеджер додасть заявку Майстерні, вона буде у цьому списку.'
+                    : 'Коли зʼявляться заявки або менеджер додасть лід вручну, вони будуть у цьому списку.'),
             clearAction: filters.length ? 'leads' : '',
-            clearLabel: 'Показати всі ліди'
+            clearLabel: maysternyaMode ? 'Показати всі заявки' : 'Показати всі ліди'
         });
     }
-    return filters.length ? 'Немає лідів за поточними фільтрами' : 'Немає лідів';
+    return filters.length
+        ? (maysternyaMode ? 'Немає заявок за поточними фільтрами' : 'Немає лідів за поточними фільтрами')
+        : (maysternyaMode ? 'Немає заявок' : 'Немає лідів');
 }
 
 function renderTable() {
@@ -543,6 +638,7 @@ function renderTable() {
     hideFunnelBar();
 
     if (!tbody) return;
+    const maysternyaMode = isMaysternyaLeadContext();
     renderLeadExplainability();
     if (leadsData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${leadEmptyHtml()}</td></tr>`;
@@ -559,19 +655,19 @@ function renderTable() {
         const idleClass = getIdleColor(l);
 
         const canConvert = ['new', 'contact', 'proposal'].includes(l.status);
-        const convertBtn = canConvert ? `<button class="btn-convert" onclick="convertLead(${l.id})">Конвертувати</button>` : '';
+        const convertBtn = canConvert ? `<button class="btn-convert" onclick="convertLead(${l.id})">${leadConversionActionLabel()}</button>` : '';
 
         return `<tr class="${idleClass}" data-lead-id="${l.id}">
             <td><strong>${escapeHtml(l.client_name || '—')}</strong>${l.instagram ? '<br><small style="color:var(--gray-400)">@' + escapeHtml(l.instagram) + '</small>' : ''}</td>
             <td>${escapeHtml(l.phone || '—')}</td>
             <td>${escapeHtml(typeof src === 'string' ? src : '')}</td>
-            <td><span class="lead-type-badge ${lt.cls}">${lt.emoji} ${lt.label}</span></td>
+            <td><span class="lead-type-badge ${lt.cls}">${maysternyaMode ? escapeHtml(l.quality_category || l.request_topic || l.topic || lt.label) : `${lt.emoji} ${lt.label}`}</span></td>
             <td><span class="pipeline-stage">${stage ? stage.emoji + ' ' + stage.label : '—'}</span></td>
             <td>${date}</td>
             <td class="lead-actions">
-                <button class="btn-workspace" onclick="openLeadWorkspace(${l.id})">Кейс</button>
+                <button class="btn-workspace" onclick="openLeadWorkspace(${l.id})">${maysternyaMode ? 'Заявка' : 'Кейс'}</button>
                 <button class="btn-edit" onclick="editLead(${l.id})">Деталі</button>
-                <button class="btn-type" onclick="showTypeMenu(${l.id}, event)">Тип</button>
+                <button class="btn-type" onclick="showTypeMenu(${l.id}, event)">${maysternyaMode ? 'Запит' : 'Тип'}</button>
                 ${convertBtn}
                 <button class="btn-delete" onclick="deleteLead(${l.id})">✕</button>
             </td>
@@ -831,6 +927,9 @@ function renderLeadInboundSection(lead = {}) {
         || lead.inquiryId
         || lead.page
         || lead.email
+        || lead.topic
+        || lead.message
+        || lead.sessionType
         || contactChannels.length
         || utmEntries.length
     );
@@ -844,6 +943,9 @@ function renderLeadInboundSection(lead = {}) {
                 <dt>External ID</dt><dd>${workspaceText(lead.externalId)}</dd>
                 <dt>Inquiry ID</dt><dd>${workspaceText(lead.inquiryId)}</dd>
                 <dt>Email</dt><dd>${workspaceText(lead.email)}</dd>
+                <dt>Тема</dt><dd>${workspaceText(lead.topic)}</dd>
+                <dt>Повідомлення</dt><dd>${workspaceText(lead.message)}</dd>
+                <dt>Тип сесії</dt><dd>${workspaceText(lead.sessionType)}</dd>
                 <dt>Сторінка</dt><dd>${lead.page ? workspaceInlineLink(lead.page) : workspaceText(null)}</dd>
                 <dt>Канали</dt><dd>${contactChannels.length ? contactChannels.map(item => workspaceBadge(item)).join(' ') : workspaceText(null)}</dd>
                 <dt>UTM</dt><dd>${utmEntries.length ? utmEntries.map(([key, value]) => `${escapeHtml(key)}=${workspaceText(value)}`).join('<br>') : workspaceText(null)}</dd>
@@ -863,13 +965,25 @@ function leadOmniSearch(workspace) {
     return lead.phone || customer.phone || lead.clientName || customer.name || '';
 }
 
+function leadCrmContextHref(path, params = {}, context = leadBusinessContext()) {
+    const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
+    const url = new URL(path, window.location.origin);
+    if (normalized && normalized !== 'event_genix') url.searchParams.set('businessContext', normalized);
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        url.searchParams.set(key, String(value));
+    });
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
 function leadOmniHref(workspace, conversation) {
-    if (conversation?.id) return `/omni?conversation=${encodeURIComponent(conversation.id)}`;
+    const context = leadContextFromRecord(workspace?.lead || {});
+    if (conversation?.id) return leadCrmContextHref('/omni', { conversation: conversation.id }, context);
     const conversations = workspace.conversations || [];
     const exactConversation = conversations.find(conv => conv && conv.id);
-    if (exactConversation) return `/omni?conversation=${encodeURIComponent(exactConversation.id)}`;
+    if (exactConversation) return leadCrmContextHref('/omni', { conversation: exactConversation.id }, context);
     const omniSearch = leadOmniSearch(workspace);
-    return omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null;
+    return omniSearch ? leadCrmContextHref('/omni', { search: omniSearch }, context) : null;
 }
 
 function leadContactLinks(lead, workspace) {
@@ -982,36 +1096,62 @@ function renderManagerActionStrip(workspace) {
     const bookingHref = timelineHrefForBooking(exactBooking, leadContextFromRecord(lead));
     const canConfirmBooking = exactBooking?.status === 'preliminary' && typeof canAccess === 'function' && canAccess('edit_booking');
     const canSeeBookingButNotConfirm = exactBooking?.status === 'preliminary' && !canConfirmBooking;
+    const maysternyaMode = isMaysternyaLeadContext();
+    const customerHref = customer?.id ? leadCrmContextHref('/customers', { open: customer.id }, leadContextFromRecord(lead)) : null;
+    const taskHref = exactTask ? leadCrmContextHref('/tasks', { open: exactTask.id }, leadContextFromRecord(lead)) : null;
 
     const actions = [
         { label: 'Подзвонити', href: tel, cls: 'success', disabled: !tel, note: tel ? '' : 'немає телефону' },
+        maysternyaMode ? {
+            label: exactBooking ? 'Відкрити запис' : 'Створити запис',
+            href: exactBooking ? bookingHref : null,
+            onClick: exactBooking ? null : `convertLead(${lead.id})`,
+            cls: 'primary',
+            disabled: exactBooking ? !bookingHref : false,
+            note: exactBooking ? 'є повʼязаний запис' : 'драфт у Майстерні'
+        } : null,
         {
             label: 'Omni exact',
-            href: exactConversation ? `/omni?conversation=${encodeURIComponent(exactConversation.id)}` : null,
+            href: exactConversation ? leadOmniHref(workspace, exactConversation) : null,
             cls: 'primary',
             disabled: !exactConversation,
             note: exactConversation ? '' : 'немає точної розмови'
         },
         {
             label: 'Картка клієнта',
-            href: customer?.id ? `/customers?open=${encodeURIComponent(customer.id)}` : null,
+            href: customerHref,
             disabled: !customer?.id,
             note: customer?.id ? '' : 'клієнта не привʼязано'
         },
         {
-            label: 'Бронювання',
+            label: maysternyaMode ? 'Запис' : 'Бронювання',
             href: bookingHref,
             disabled: !bookingHref,
             note: bookingHref ? '' : 'немає exact booking'
         },
         {
-            label: 'Callback',
+            label: maysternyaMode ? 'Передзвонити' : 'Callback',
             onClick: `createLeadWorkspaceCallbackTask(${lead.id})`,
             cls: 'warning'
         },
+        maysternyaMode ? {
+            label: 'Написати',
+            onClick: `createLeadWorkspaceFollowUpTask(${lead.id}, 'write')`,
+            cls: 'warning'
+        } : null,
+        maysternyaMode ? {
+            label: 'Оплата',
+            onClick: `createLeadWorkspaceFollowUpTask(${lead.id}, 'payment')`,
+            cls: 'warning'
+        } : null,
+        maysternyaMode ? {
+            label: 'Після сесії',
+            onClick: `createLeadWorkspaceFollowUpTask(${lead.id}, 'post_session')`,
+            cls: 'warning'
+        } : null,
         {
             label: 'Відкрити задачу',
-            href: exactTask ? `/tasks?open=${encodeURIComponent(exactTask.id)}` : null,
+            href: taskHref,
             disabled: !exactTask,
             note: exactTask ? '' : 'немає exact задачі'
         },
@@ -1031,7 +1171,7 @@ function renderManagerActionStrip(workspace) {
                 ? (canSeeBookingButNotConfirm ? 'немає права edit_booking' : '')
                 : (exactBooking ? 'не preliminary' : 'немає exact booking')
         }
-    ];
+    ].filter(Boolean);
 
     return `
         <section class="manager-action-strip" aria-label="Швидкі дії менеджера">
@@ -1056,6 +1196,7 @@ function renderLeadWorkspaceContent(workspace) {
     const card = workspace.customerCard || {};
     const canonical = workspace.canonical || {};
     const urgency = workspace.urgency || {};
+    const maysternyaMode = isMaysternyaLeadContext();
     const stage = PIPELINE_STAGES.find(s => s.key === (canonical.stage || lead.pipelineStage || 'new'));
     const status = STATUS_MAP[canonical.aggregateStatus || lead.status] || {};
     const type = LEAD_TYPE_MAP[lead.leadType] || LEAD_TYPE_MAP.quality;
@@ -1068,10 +1209,14 @@ function renderLeadWorkspaceContent(workspace) {
         : eventDays === 1 ? 'Подія завтра'
         : `До події ${eventDays} дн.`;
     const eventCueClass = eventDays !== null && eventDays !== undefined && eventDays <= 1 ? 'urgent' : 'warning';
-    document.getElementById('leadWorkspaceTitle').textContent = lead.clientName || `Лід #${lead.id}`;
-    document.getElementById('leadWorkspaceSubtitle').textContent = `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
+    document.getElementById('leadWorkspaceTitle').textContent = maysternyaMode
+        ? (lead.clientName ? `Заявка: ${lead.clientName}` : `Заявка #${lead.id}`)
+        : (lead.clientName || `Лід #${lead.id}`);
+    document.getElementById('leadWorkspaceSubtitle').textContent = maysternyaMode
+        ? `Майстерня долі · заявка #${lead.id} · запис і follow-up`
+        : `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
 
-    const customerHref = customer?.id ? `/customers?open=${encodeURIComponent(customer.id)}` : null;
+    const customerHref = customer?.id ? leadCrmContextHref('/customers', { open: customer.id }, leadContextFromRecord(lead)) : null;
     const body = document.getElementById('leadWorkspaceBody');
     if (!body) return;
     currentWorkspaceData = workspace;
@@ -1080,14 +1225,14 @@ function renderLeadWorkspaceContent(workspace) {
         <section class="workspace-hero">
             <div class="workspace-hero-main">
                 <div>
-                    <h3 class="workspace-name">${workspaceText(lead.clientName, `Лід #${lead.id}`)}</h3>
+                    <h3 class="workspace-name">${workspaceText(lead.clientName, maysternyaMode ? `Заявка #${lead.id}` : `Лід #${lead.id}`)}</h3>
                     <div class="workspace-meta">
                         ${workspaceText(lead.phone)}${lead.instagram ? ' · @' + workspaceText(lead.instagram).replace(/^@/, '') : ''}
                     </div>
                     <div class="workspace-badge-row">
                         ${workspaceBadge(stage ? `${stage.emoji} ${stage.label}` : (lead.pipelineStage || 'new'), 'stage')}
                         ${workspaceBadge(status.label ? `${status.emoji || ''} ${status.label}` : lead.status)}
-                        ${workspaceBadge(`${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
+                        ${workspaceBadge(maysternyaMode ? (lead.topic || lead.sessionType || lead.sourceChannel || 'Заявка') : `${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
                         ${waitingConversation ? workspaceBadge(waitingReplyText(waitingConversation), 'waiting') : ''}
                         ${eventCue ? workspaceBadge(eventCue, eventCueClass) : ''}
                         ${urgency.overdueTasks ? workspaceBadge(`Прострочено задач: ${urgency.overdueTasks}`, 'urgent') : ''}
@@ -1095,8 +1240,8 @@ function renderLeadWorkspaceContent(workspace) {
                 </div>
                 <div class="workspace-actions">
                     ${leadContactLinks(lead, workspace)}
-                    <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">Редагувати</button>
-                    <button type="button" class="workspace-btn" onclick="showCustomerCardModal(${lead.id})">Картка</button>
+                    <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">${maysternyaMode ? 'Редагувати заявку' : 'Редагувати'}</button>
+                    <button type="button" class="workspace-btn" onclick="showCustomerCardModal(${lead.id})">${maysternyaMode ? 'Картка клієнта' : 'Картка'}</button>
                     <button type="button" class="workspace-btn" onclick="linkWorkspaceLeadCustomer(${lead.id})">${customer?.id ? 'Змінити клієнта' : 'Привʼязати клієнта'}</button>
                 </div>
             </div>
@@ -1111,9 +1256,9 @@ function renderLeadWorkspaceContent(workspace) {
                     <dl class="workspace-kv">
                         <dt>Ім'я</dt><dd>${workspaceText(customer.name)}</dd>
                         <dt>Телефон</dt><dd>${workspaceText(customer.phone)}</dd>
-                        <dt>Дитина</dt><dd>${workspaceText(customer.childName)}</dd>
-                        <dt>Візити</dt><dd>${customer.totalBookings || 0} · ${workspaceMoney(customer.totalSpent)}</dd>
-                        <dt>Останній</dt><dd>${workspaceDate(customer.lastVisit)}</dd>
+                        ${maysternyaMode ? '' : `<dt>Дитина</dt><dd>${workspaceText(customer.childName)}</dd>`}
+                        <dt>${maysternyaMode ? 'Сесії' : 'Візити'}</dt><dd>${customer.totalBookings || 0} · ${workspaceMoney(customer.totalSpent)}</dd>
+                        <dt>${maysternyaMode ? 'Остання сесія' : 'Останній'}</dt><dd>${workspaceDate(customer.lastVisit)}</dd>
                     </dl>
                     <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
                         ${workspaceLink(customerHref, 'Відкрити клієнта')}
@@ -1124,21 +1269,21 @@ function renderLeadWorkspaceContent(workspace) {
             </section>
 
             <section class="workspace-section">
-                <h3>Кейс і дата</h3>
+                <h3>${maysternyaMode ? 'Запит' : 'Кейс і дата'}</h3>
                 <dl class="workspace-kv">
                     <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
                     <dt>Джерело</dt><dd>${workspaceText(lead.sourceChannel || lead.source)}</dd>
-                    <dt>Бажана дата</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
-                    <dt>Програма</dt><dd>${workspaceText(lead.programName)}</dd>
-                    <dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>
-                    <dt>Нотатки</dt><dd>${workspaceText(lead.notes || card.notes)}</dd>
+                    <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
+                    <dt>${maysternyaMode ? 'Консультація' : 'Програма'}</dt><dd>${workspaceText(lead.programName || lead.sessionType)}</dd>
+                    ${maysternyaMode ? '' : `<dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>`}
+                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${workspaceText(maysternyaMode ? (lead.message || lead.notes || card.notes) : (lead.notes || card.notes))}</dd>
                 </dl>
             </section>
 
             ${renderLeadInboundSection(lead)}
 
             <section class="workspace-section full">
-                <h3>Бронювання та події</h3>
+                <h3>${maysternyaMode ? 'Записи та сесії' : 'Бронювання та події'}</h3>
                 ${workspaceList(workspace.bookings || [], booking => `
                     <div class="workspace-row">
                         <div class="workspace-row-top">
@@ -1149,7 +1294,7 @@ function renderLeadWorkspaceContent(workspace) {
                             ${booking.date ? `<a class="workspace-row-link" href="${escapeHtml(timelineHrefForBooking(booking, leadContextFromRecord(lead)))}">Таймлайн</a>` : ''}
                         </div>
                     </div>
-                `, 'Пов’язаних бронювань поки немає')}
+                `, maysternyaMode ? 'Повʼязаних записів поки немає' : 'Пов’язаних бронювань поки немає')}
             </section>
 
             <section class="workspace-section">
@@ -1161,7 +1306,7 @@ function renderLeadWorkspaceContent(workspace) {
                                 <div class="workspace-row-title">${workspaceText(task.title)}</div>
                                 <div class="workspace-row-meta">${workspaceText(task.status)} · ${workspaceText(task.priority)}${task.deadline ? ' · дедлайн ' + workspaceDateTime(task.deadline) : ''}</div>
                             </div>
-                            <a class="workspace-row-link" href="/tasks?open=${encodeURIComponent(task.id)}">Задача</a>
+                            <a class="workspace-row-link" href="${escapeHtml(leadCrmContextHref('/tasks', { open: task.id }, leadContextFromRecord(lead)))}">Задача</a>
                         </div>
                     </div>
                 `, 'Немає прив’язаних задач або next action')}
@@ -1999,7 +2144,7 @@ function setupEvents() {
 
 function openAddModal() {
     if (!guardLeadWrite('створювати ліди')) return;
-    document.getElementById('leadModalTitle').textContent = 'Новий лід';
+    document.getElementById('leadModalTitle').textContent = isMaysternyaLeadContext() ? 'Нова заявка' : 'Новий лід';
     document.getElementById('leadEditId').value = '';
     document.getElementById('leadName').value = '';
     document.getElementById('leadPhone').value = '';
@@ -2010,6 +2155,7 @@ function openAddModal() {
     document.getElementById('leadCelebrants').value = '';
     document.getElementById('leadNotes').value = '';
     document.getElementById('leadAssignedTo').value = '';
+    syncLeadModalBusinessFields();
 
     // Hide pipeline/type fields for new lead
     const stageGroup = document.getElementById('leadStageGroup');
@@ -2026,15 +2172,15 @@ function editLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
 
-    document.getElementById('leadModalTitle').textContent = 'Редагування ліду';
+    document.getElementById('leadModalTitle').textContent = isMaysternyaLeadContext() ? 'Редагування заявки' : 'Редагування ліду';
     document.getElementById('leadEditId').value = id;
     document.getElementById('leadName').value = lead.client_name || '';
     document.getElementById('leadPhone').value = lead.phone || '';
     document.getElementById('leadInstagram').value = lead.instagram || '';
     document.getElementById('leadSource').value = lead.source || '';
     document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('leadChildrenCount').value = lead.children_count || '';
-    document.getElementById('leadCelebrants').value = formatCelebrantsInput(lead.celebrants || []);
+    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (lead.children_count || '');
+    document.getElementById('leadCelebrants').value = isMaysternyaLeadContext() ? '' : formatCelebrantsInput(lead.celebrants || []);
     document.getElementById('leadNotes').value = lead.notes || '';
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
 
@@ -2078,6 +2224,7 @@ async function closeLeadModal(force = false) {
             cancelText: 'Повернутись'
         });
     }
+    syncLeadModalBusinessFields();
     if (!force && isModalDirty()) {
         if (typeof confirmModal === 'function') {
             if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
@@ -2099,8 +2246,8 @@ async function saveLead() {
         instagram: document.getElementById('leadInstagram')?.value.trim() || null,
         source: document.getElementById('leadSource')?.value || null,
         event_date: document.getElementById('leadEventDate')?.value || null,
-        children_count: parseInt(document.getElementById('leadChildrenCount')?.value) || null,
-        celebrants: parseCelebrantsInput(document.getElementById('leadCelebrants')?.value),
+        children_count: isMaysternyaLeadContext() ? null : (parseInt(document.getElementById('leadChildrenCount')?.value) || null),
+        celebrants: isMaysternyaLeadContext() ? [] : parseCelebrantsInput(document.getElementById('leadCelebrants')?.value),
         notes: document.getElementById('leadNotes')?.value.trim() || null,
         assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
@@ -2123,9 +2270,9 @@ async function saveLead() {
         }
         let res;
         if (editId) {
-            res = await apiFetch(`/api/leads/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+            res = await apiFetch(`/api/leads/${editId}`, { method: 'PATCH', body: JSON.stringify(leadPayload(body)) });
         } else {
-            res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(body) });
+            res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(leadPayload(body)) });
         }
         const data = await res.json();
         if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
@@ -2161,9 +2308,29 @@ async function deleteLead(id) {
     }
 }
 
+async function resolveLeadConversionRecord(id) {
+    const fromWorkspace = currentWorkspaceData?.lead?.id === id ? currentWorkspaceData.lead : null;
+    let lead = fromWorkspace || leadsData.find(l => l.id === id) || null;
+    if (!isMaysternyaLeadContext()) return lead;
+    const hasMaysternyaDraftContext = Boolean(lead?.topic || lead?.message || lead?.page || lead?.inbound?.topic || lead?.inbound?.message);
+    if (hasMaysternyaDraftContext) return lead;
+    try {
+        const res = await apiFetch(`/api/leads/${id}/workspace`);
+        if (!res) return lead;
+        const data = await res.json();
+        if (data.success && data.workspace?.lead) {
+            lead = { ...(lead || {}), ...data.workspace.lead };
+            if (currentWorkspaceData?.lead?.id === id) currentWorkspaceData = data.workspace;
+        }
+    } catch (err) {
+        console.warn('Lead conversion workspace hydrate failed', err);
+    }
+    return lead;
+}
+
 async function convertLead(id) {
     if (!guardLeadWrite('конвертувати ліди')) return;
-    const lead = leadsData.find(l => l.id === id);
+    const lead = await resolveLeadConversionRecord(id);
     if (!lead) return;
     const params = new URLSearchParams();
     const customerName = leadRecordText(lead, ['client_name', 'clientName', 'customerName', 'name']);
@@ -2178,6 +2345,18 @@ async function convertLead(id) {
     }
     params.set('leadId', id);
     params.set('convert', 'booking');
+    if (isMaysternyaLeadContext()) {
+        const topic = leadRecordText(lead, ['topic', 'request_topic', 'requestTopic', 'sessionType', 'quality_category', 'qualityCategory', 'programName', 'program_name']);
+        const message = leadRecordText(lead, ['message', 'notes', 'comment', 'description']);
+        const source = leadRecordText(lead, ['sourceChannel', 'source_channel', 'source']);
+        const page = leadRecordText(lead, ['page', 'pageUrl', 'page_url', 'url']);
+        const sessionType = leadRecordText(lead, ['sessionType', 'session_type']);
+        if (topic) params.set('topic', topic);
+        if (message) params.set('message', message.slice(0, 900));
+        if (source) params.set('source', source);
+        if (page) params.set('page', page);
+        if (sessionType) params.set('sessionType', sessionType);
+    }
     window.location.href = leadTimelineHref(Object.fromEntries(params.entries()), leadContextFromRecord(lead));
 }
 
@@ -2191,13 +2370,20 @@ function localDateInput(date = new Date()) {
 }
 
 async function createLeadWorkspaceCallbackTask(leadId) {
+    return createLeadWorkspaceFollowUpTask(leadId, 'callback');
+}
+
+async function createLeadWorkspaceFollowUpTask(leadId, presetKey = 'callback') {
     if (!guardLeadWrite('створювати задачі з ліда')) return;
     const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
     const lead = workspace?.lead || leadsData.find(l => l.id === leadId) || {};
+    const preset = MAYSTERNYA_LEAD_TASK_PRESETS[presetKey] || MAYSTERNYA_LEAD_TASK_PRESETS.callback;
     const defaultDeadline = new Date();
-    defaultDeadline.setDate(defaultDeadline.getDate() + 1);
-    defaultDeadline.setHours(10, 0, 0, 0);
-    const defaultTitle = `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`;
+    defaultDeadline.setDate(defaultDeadline.getDate() + (preset.offsetDays ?? 1));
+    defaultDeadline.setHours(preset.hour ?? 10, 0, 0, 0);
+    const defaultTitle = typeof preset.title === 'function'
+        ? preset.title(lead)
+        : `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`;
     let taskOwners = [];
     try {
         const ownersRes = await apiFetch('/api/tasks/owners');
@@ -2213,14 +2399,14 @@ async function createLeadWorkspaceCallbackTask(leadId) {
 
     let values = null;
     if (typeof formModal === 'function') {
-        values = await formModal('Нова дія для ліда', [
+        values = await formModal(isMaysternyaLeadContext() ? 'Нова дія Майстерні' : 'Нова дія для ліда', [
             { key: 'title', label: 'Що зробити', defaultValue: defaultTitle, required: true },
             { key: 'deadline', label: 'Коли', type: 'datetime-local', defaultValue: localDateTimeInput(defaultDeadline), required: true },
             {
                 key: 'priority',
                 label: 'Пріоритет',
                 type: 'select',
-                defaultValue: 'high',
+                defaultValue: preset.priority || 'high',
                 options: [
                     { value: 'high', label: 'Високий' },
                     { value: 'normal', label: 'Звичайний' },
@@ -2240,10 +2426,10 @@ async function createLeadWorkspaceCallbackTask(leadId) {
                     }))
                 ]
             }
-        ], { okText: 'Створити задачу', type: 'success', icon: '📞' });
+        ], { okText: 'Створити задачу', type: 'success', icon: preset.icon || '📞' });
     } else if (typeof promptModal === 'function') {
         const title = await promptModal('Назва callback-задачі', { defaultValue: defaultTitle, okText: 'Створити' });
-        values = title ? { title, deadline: localDateTimeInput(defaultDeadline), priority: 'high' } : null;
+        values = title ? { title, deadline: localDateTimeInput(defaultDeadline), priority: preset.priority || 'high' } : null;
     }
     if (!values) return;
 
@@ -2261,21 +2447,26 @@ async function createLeadWorkspaceCallbackTask(leadId) {
         const deadline = values.deadline || localDateTimeInput(defaultDeadline);
         const body = {
             title,
-            description: `Швидка дія з workspace ліда #${leadId}`,
+            description: typeof preset.description === 'function'
+                ? preset.description(leadId)
+                : `Швидка дія з workspace ліда #${leadId}`,
             date: deadline ? String(deadline).slice(0, 10) : localDateInput(),
             deadline,
-            priority: values.priority || 'high',
+            priority: values.priority || preset.priority || 'high',
             category: 'operational',
             task_type: 'human',
             source_type: 'lead',
             source_id: String(leadId),
-            ownerUserId: values.ownerUserId
+            sourceEntityType: 'lead',
+            sourceEntityId: String(leadId),
+            ownerUserId: values.ownerUserId,
+            businessContext: leadContextFromRecord(lead)
         };
         const res = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
         if (!res) return;
         const data = await res.json();
         if (data.success) {
-            if (typeof showNotification === 'function') showNotification('Callback-задачу створено і привʼязано до ліда', 'success');
+            if (typeof showNotification === 'function') showNotification('Follow-up задачу створено і привʼязано до ліда', 'success');
             await openLeadWorkspace(leadId, { pushState: false });
         } else if (typeof showNotification === 'function') {
             showNotification(data.error || 'Не вдалося створити задачу', 'error');
@@ -2425,6 +2616,7 @@ function renderLeadCustomerLinkOptions(selectedId = '') {
     const select = document.getElementById('leadCustomerSelect');
     if (!select) return;
     const customers = leadCustomerLinkState.customers;
+    const visitLabel = isMaysternyaLeadContext() ? 'сес.' : 'віз.';
     if (!customers.length) {
         select.innerHTML = '<option value="">Нічого не знайдено</option>';
         renderLeadCustomerLinkPreview();
@@ -2434,7 +2626,7 @@ function renderLeadCustomerLinkOptions(selectedId = '') {
         const meta = [
             customer.phone,
             customer.instagram ? '@' + String(customer.instagram).replace(/^@+/, '') : '',
-            customer.totalBookings ? `${customer.totalBookings} віз.` : ''
+            customer.totalBookings ? `${customer.totalBookings} ${visitLabel}` : ''
         ].filter(Boolean).join(' · ');
         const label = `${customer.name}${meta ? ' · ' + meta : ''}`;
         return `<option value="${customer.id}"${String(customer.id) === String(selectedId) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
@@ -2456,7 +2648,7 @@ function renderLeadCustomerLinkPreview() {
     preview.className = 'lead-customer-link-preview';
     preview.innerHTML = `
         <strong>${escapeHtml(customer.name)}</strong>
-        <span>ID ${escapeHtml(customer.id)}${customer.phone ? ' · ' + escapeHtml(customer.phone) : ''}${customer.instagram ? ' · @' + escapeHtml(String(customer.instagram).replace(/^@+/, '')) : ''}${customer.totalBookings ? ' · ' + escapeHtml(customer.totalBookings) + ' віз.' : ''}</span>
+        <span>ID ${escapeHtml(customer.id)}${customer.phone ? ' · ' + escapeHtml(customer.phone) : ''}${customer.instagram ? ' · @' + escapeHtml(String(customer.instagram).replace(/^@+/, '')) : ''}${customer.totalBookings ? ' · ' + escapeHtml(customer.totalBookings) + ' ' + escapeHtml(isMaysternyaLeadContext() ? 'сес.' : 'віз.') : ''}</span>
     `;
 }
 
@@ -2474,9 +2666,8 @@ async function loadLeadCustomerLinkOptions(query) {
 
     select.innerHTML = '<option value="">Пошук клієнтів...</option>';
     try {
-        const customers = typeof apiSearchCustomers === 'function'
-            ? await apiSearchCustomers(trimmed)
-            : await apiFetch(`/api/customers/search?q=${encodeURIComponent(trimmed)}`).then(res => res ? res.json() : []);
+        const customers = await apiFetch(`/api/customers/search?q=${encodeURIComponent(trimmed)}`)
+            .then(res => res ? res.json() : []);
         const workspace = currentWorkspaceData?.lead?.id === leadCustomerLinkState.leadId ? currentWorkspaceData : null;
         const current = normalizeLeadCustomerOption(workspace?.customer);
         const stillInitialSearch = trimmed === String(leadCustomerSearchSeed(workspace) || '').trim();
@@ -2498,12 +2689,16 @@ async function linkWorkspaceLeadCustomer(leadId) {
 
     const lead = workspace?.lead || {};
     const hint = modal.querySelector('#leadCustomerLinkHint');
+    const title = modal.querySelector('#leadCustomerLinkTitle');
     const input = modal.querySelector('#leadCustomerSearch');
     const current = normalizeLeadCustomerOption(workspace?.customer);
     const seed = leadCustomerSearchSeed(workspace);
+    if (title) title.textContent = isMaysternyaLeadContext() ? 'Привʼязати клієнта Майстерні' : 'Привʼязати клієнта';
     if (hint) {
         const leadLabel = lead.clientName || lead.client_name || `лід #${leadId}`;
-        hint.textContent = `Лід: ${leadLabel}. Оберіть існуючого клієнта зі списку або створіть нового з даних ліда.`;
+        hint.textContent = isMaysternyaLeadContext()
+            ? `Заявка: ${leadLabel}. Оберіть існуючого клієнта Майстерні або створіть нового з даних заявки.`
+            : `Лід: ${leadLabel}. Оберіть існуючого клієнта зі списку або створіть нового з даних ліда.`;
     }
     if (input) input.value = seed;
     mergeLeadCustomerOptions(current ? [current] : []);
@@ -2526,7 +2721,7 @@ async function submitLeadCustomerLink(body, successText) {
     try {
         const res = await apiFetch(`/api/leads/${leadId}/link-customer`, {
             method: 'POST',
-            body: JSON.stringify(body)
+            body: JSON.stringify(leadPayload(body))
         });
         if (!res) return;
         const data = await res.json();
@@ -2581,6 +2776,7 @@ function escapeHtml(str) {
 window.openLeadWorkspace = openLeadWorkspace;
 window.closeLeadWorkspace = closeLeadWorkspace;
 window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
+window.createLeadWorkspaceFollowUpTask = createLeadWorkspaceFollowUpTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;

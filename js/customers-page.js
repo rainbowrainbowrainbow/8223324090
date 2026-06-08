@@ -47,6 +47,8 @@ const SOURCE_LABELS = {
     google:         'Google',
     recommendation: 'За рекомендацією',
     repeat:         'Повторне звернення',
+    maysternya_site:'Сайт Майстерні',
+    maysternya_bot: 'Бот Майстерні',
     manual:         'Ручне внесення',
     lead:           'Лід',
     other:          'Інше',
@@ -65,6 +67,8 @@ const SOURCE_ALIASES = {
     google: ['google', 'гугл'],
     recommendation: ['recommendation', 'recommend', 'referral', 'рекомендація', 'за рекомендацією', 'рекомендовано'],
     repeat: ['repeat', 'returning', 'повторний', 'повторне звернення', 'повторне', 'постійний'],
+    maysternya_site: ['maysternya_site', 'maysternya site', 'сайт майстерні', 'майстерня сайт'],
+    maysternya_bot: ['maysternya_bot', 'maysternya bot', 'бот майстерні', 'майстерня бот'],
     manual: ['manual', 'operator', 'ручний', 'ручне внесення', 'вручну'],
     lead: ['lead', 'лід', 'з ліда'],
     other: ['other', 'інше', 'інший', 'інше джерело']
@@ -200,6 +204,11 @@ function customerBusinessScope() {
     return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: customerBusinessContext() };
 }
 
+function isMaysternyaCustomerContext() {
+    const scope = customerBusinessScope();
+    return scope.mode === 'single' && customerBusinessContext() === 'maysternya_doli';
+}
+
 function isCustomerBusinessReadOnly() {
     return Boolean(window.CrmBusinessContext?.isReadOnly?.(customerBusinessScope()));
 }
@@ -269,6 +278,36 @@ function syncCustomerReadOnlyUi() {
     applyCustomerReadOnlyControls(document);
 }
 
+function syncCustomerPresentationUi() {
+    const maysternyaMode = isMaysternyaCustomerContext();
+    if (document.body) document.body.dataset.customerBusinessContext = customerBusinessContext();
+    const title = document.querySelector('.page-header h2');
+    if (title) title.textContent = maysternyaMode ? 'Клієнти Майстерні' : 'База клієнтів';
+    const addBtn = document.getElementById('addCustomerBtn');
+    if (addBtn) addBtn.textContent = maysternyaMode ? '+ Новий клієнт Майстерні' : '+ Новий клієнт';
+    const headers = document.querySelectorAll('.crm-table thead th');
+    if (headers[4]) headers[4].textContent = maysternyaMode ? 'Сесії' : 'Візити';
+    if (headers[5]) headers[5].textContent = maysternyaMode ? 'Оплачено' : 'Витрачено';
+    if (headers[6]) headers[6].textContent = maysternyaMode ? 'Остання сесія' : 'Останній візит';
+    const sortVisits = document.querySelector('#sortFilter option[value="total_bookings"]');
+    if (sortVisits) sortVisits.textContent = maysternyaMode ? 'За сесіями' : 'За візитами';
+    const sortSpent = document.querySelector('#sortFilter option[value="total_spent"]');
+    if (sortSpent) sortSpent.textContent = maysternyaMode ? 'За оплатами' : 'За витратами';
+    syncCustomerEditBusinessFields();
+}
+
+function syncCustomerEditBusinessFields() {
+    const maysternyaMode = isMaysternyaCustomerContext();
+    const childGrid = document.getElementById('editChildName')?.closest('div[style*="grid-template-columns"]');
+    if (childGrid) childGrid.hidden = maysternyaMode;
+    if (maysternyaMode) {
+        const childName = document.getElementById('editChildName');
+        const childBirthday = document.getElementById('editChildBirthday');
+        if (childName) childName.value = '';
+        if (childBirthday) childBirthday.value = '';
+    }
+}
+
 function initCustomerBusinessContext(user) {
     const api = window.CrmBusinessContext;
     CrmState.businessContext = api?.initPage?.({
@@ -284,11 +323,13 @@ function initCustomerBusinessContext(user) {
             CrmState.businessContext = current;
             CrmState.page = 1;
             CrmState.rfmData = null;
+            syncCustomerPresentationUi();
             syncCustomerReadOnlyUi();
             await refreshData();
             openCustomerDeepLink();
         }
     }) || 'event_genix';
+    syncCustomerPresentationUi();
     syncCustomerReadOnlyUi();
 }
 
@@ -304,6 +345,21 @@ function customerHubAction(href, label, cls = '', options = {}) {
     const title = options.title ? ` title="${escapeHtml(options.title)}"` : '';
     const aria = options.ariaLabel ? ` aria-label="${escapeHtml(options.ariaLabel)}"` : '';
     return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}${title}${aria}>${escapeHtml(label)}</a>`;
+}
+
+function customerCrmContextHref(path, params = {}, context = customerBusinessContext()) {
+    const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
+    const url = new URL(path, window.location.origin);
+    if (normalized && normalized !== 'event_genix') url.searchParams.set('businessContext', normalized);
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        url.searchParams.set(key, String(value));
+    });
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function leadCrmLinkForCustomer(leadId) {
+    return customerCrmContextHref('/sales-funnel', { lead: leadId }, customerBusinessContext());
 }
 
 function customerHubDialogTarget(links = {}) {
@@ -852,6 +908,7 @@ function renderStats() {
         return;
     }
     const s = CrmState.stats;
+    const maysternyaMode = isMaysternyaCustomerContext();
     el.innerHTML = `
         <div class="stat-card">
             <div class="stat-value">${s.total}</div>
@@ -859,11 +916,11 @@ function renderStats() {
         </div>
         <div class="stat-card">
             <div class="stat-value">${s.averages?.avg_bookings || 0}</div>
-            <div class="stat-label">Сер. візитів</div>
+            <div class="stat-label">${maysternyaMode ? 'Сер. сесій' : 'Сер. візитів'}</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">${formatMoney(parseInt(s.averages?.avg_spent) || 0)}</div>
-            <div class="stat-label">Сер. витрати</div>
+            <div class="stat-label">${maysternyaMode ? 'Сер. оплата' : 'Сер. витрати'}</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">${s.bySource?.length || 0}</div>
@@ -874,6 +931,8 @@ function renderStats() {
 
 function renderCustomerTable() {
     const tbody = document.getElementById('customerTableBody');
+    const maysternyaMode = isMaysternyaCustomerContext();
+    syncCustomerPresentationUi();
     renderCustomerExplainability();
     if (CrmState.customers.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7">
@@ -892,7 +951,7 @@ function renderCustomerTable() {
         return `<tr data-id="${c.id}">
             <td>
                 <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
-                ${c.childName ? `<div class="customer-child">👶 ${escapeHtml(c.childName)}</div>` : ''}
+                ${!maysternyaMode && c.childName ? `<div class="customer-child">👶 ${escapeHtml(c.childName)}</div>` : ''}
                 ${tagsHtml ? `<div class="crm-tags-row">${tagsHtml}</div>` : ''}
             </td>
             <td>${escapeHtml(c.phone) || '—'}</td>
@@ -993,12 +1052,13 @@ async function showCustomerDetail(id) {
 
     try {
         const customer = await fetchCustomerDetail(id);
+        const maysternyaMode = isMaysternyaCustomerContext();
 
         let html = `
             <div class="entity-card-shell entity-card-shell-view entity-card-customer" data-entity-card-mode="customer">
             <div class="customer-detail-header entity-card-header">
                 <div class="entity-card-title-block">
-                    <span class="entity-card-kicker">Customer workspace</span>
+                    <span class="entity-card-kicker">${maysternyaMode ? 'Maysternya client workspace' : 'Customer workspace'}</span>
                     <h3>${escapeHtml(customer.name)}</h3>
                     <div class="entity-card-meta">${escapeHtml(customer.phone) || 'телефон не вказано'}${customer.instagram ? ' · @' + escapeHtml(customer.instagram) : ''}</div>
                 </div>
@@ -1022,6 +1082,7 @@ async function showCustomerDetail(id) {
                         <div class="field-label">Соц. ідентичності</div>
                         <div class="field-value">${renderSocialIdentities(customer.socialIdentities, customer.instagram)}</div>
                     </div>
+                    ${maysternyaMode ? '' : `
                     <div class="detail-field">
                         <div class="field-label">Ім'я дитини</div>
                         <div class="field-value">${escapeHtml(customer.childName) || '—'}</div>
@@ -1030,9 +1091,14 @@ async function showCustomerDetail(id) {
                         <div class="field-label">ДН дитини</div>
                         <div class="field-value">${formatDate(customer.childBirthday)}</div>
                     </div>
+                    `}
                     <div class="detail-field">
                         <div class="field-label">Джерело</div>
                         <div class="field-value">${escapeHtml(getCustomerSourceLabel(customer.source))}</div>
+                    </div>
+                    <div class="detail-field">
+                        <div class="field-label">Лід</div>
+                        <div class="field-value">${customer.leadId ? `<a href="${escapeHtml(leadCrmLinkForCustomer(customer.leadId))}">#${escapeHtml(customer.leadId)}</a>` : '—'}</div>
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Клієнт з</div>
@@ -1044,19 +1110,19 @@ async function showCustomerDetail(id) {
                 <h4>Статистика</h4>
                 <div class="detail-grid">
                     <div class="detail-field">
-                        <div class="field-label">Бронювань</div>
+                        <div class="field-label">${maysternyaMode ? 'Сесій' : 'Бронювань'}</div>
                         <div class="field-value">${customer.totalBookings}</div>
                     </div>
                     <div class="detail-field">
-                        <div class="field-label">Витрачено</div>
+                        <div class="field-label">${maysternyaMode ? 'Оплачено' : 'Витрачено'}</div>
                         <div class="field-value">${formatMoney(customer.totalSpent)}</div>
                     </div>
                     <div class="detail-field">
-                        <div class="field-label">Перший візит</div>
+                        <div class="field-label">${maysternyaMode ? 'Перша сесія' : 'Перший візит'}</div>
                         <div class="field-value">${formatDate(customer.firstVisit)}</div>
                     </div>
                     <div class="detail-field">
-                        <div class="field-label">Останній візит</div>
+                        <div class="field-label">${maysternyaMode ? 'Остання сесія' : 'Останній візит'}</div>
                         <div class="field-value">${formatDate(customer.lastVisit)}</div>
                     </div>
             </div>
@@ -1101,7 +1167,7 @@ async function showCustomerDetail(id) {
         }
 
         // Certificates
-        if (customer.certificates && customer.certificates.length > 0) {
+        if (!maysternyaMode && customer.certificates && customer.certificates.length > 0) {
             html += `<div class="detail-section">
                 <h4>Сертифікати (${customer.certificates.length})</h4>
                 <div class="detail-bookings">`;
@@ -1120,7 +1186,7 @@ async function showCustomerDetail(id) {
         // Bookings
         if (customer.bookings && customer.bookings.length > 0) {
             html += `<div class="detail-section">
-                <h4>Історія бронювань (${customer.bookings.length})</h4>
+                <h4>${maysternyaMode ? 'Історія сесій' : 'Історія бронювань'} (${customer.bookings.length})</h4>
                 <div class="detail-bookings">`;
             for (const b of customer.bookings) {
                 const statusIcon = b.status === 'confirmed' ? '✅' : b.status === 'cancelled' ? '❌' : '⏳';
@@ -1236,17 +1302,21 @@ function isCustomerEditDirty() {
 
 function openEditModal(customer) {
     CrmState.editingId = customer ? customer.id : null;
-    document.getElementById('customerEditTitle').textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
+    const maysternyaMode = isMaysternyaCustomerContext();
+    document.getElementById('customerEditTitle').textContent = customer
+        ? (maysternyaMode ? 'Редагувати клієнта Майстерні' : 'Редагувати клієнта')
+        : (maysternyaMode ? 'Новий клієнт Майстерні' : 'Новий клієнт');
 
     document.getElementById('editName').value = customer?.name || '';
     document.getElementById('editPhone').value = customer?.phone || '';
     document.getElementById('editInstagram').value = customer?.instagram || '';
-    document.getElementById('editChildName').value = customer?.childName || '';
-    document.getElementById('editChildBirthday').value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
+    document.getElementById('editChildName').value = maysternyaMode ? '' : (customer?.childName || '');
+    document.getElementById('editChildBirthday').value = maysternyaMode ? '' : (customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '');
     const source = normalizeCustomerSource(customer?.source);
     document.getElementById('editSource').value = source === 'unknown' ? '' : source;
     document.getElementById('editSocialIdentities').value = formatSocialIdentitiesInput(customer?.socialIdentities || []);
     document.getElementById('editNotes').value = customer?.notes || '';
+    syncCustomerEditBusinessFields();
 
     const modal = document.getElementById('customerEditModal');
     _customerEditInitialState = getCustomerEditState();
@@ -1294,8 +1364,8 @@ async function handleSave() {
         name,
         phone: document.getElementById('editPhone')?.value.trim() || null,
         instagram: document.getElementById('editInstagram')?.value.trim().replace('@', '') || null,
-        childName: document.getElementById('editChildName')?.value.trim() || null,
-        childBirthday: document.getElementById('editChildBirthday')?.value || null,
+        childName: isMaysternyaCustomerContext() ? null : (document.getElementById('editChildName')?.value.trim() || null),
+        childBirthday: isMaysternyaCustomerContext() ? null : (document.getElementById('editChildBirthday')?.value || null),
         socialIdentities: parseSocialIdentitiesInput(document.getElementById('editSocialIdentities')?.value),
         source: document.getElementById('editSource')?.value || null,
         notes: document.getElementById('editNotes')?.value.trim() || null

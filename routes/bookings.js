@@ -258,7 +258,8 @@ async function syncBookingLeadHandoff(client, booking, customerId, businessConte
                 leadId: booking.leadId,
                 bookingId: booking.id,
                 customerId,
-                businessContext
+                businessContext,
+                bookingStatus: booking.status
             });
         }
         const leadLink = await ensureLeadForBooking(client, {

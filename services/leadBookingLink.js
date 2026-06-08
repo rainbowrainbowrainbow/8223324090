@@ -7,22 +7,33 @@ function parseLeadId(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-async function attachLeadBookingLink(client, { leadId, bookingId, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT }) {
+async function attachLeadBookingLink(client, { leadId, bookingId, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT, bookingStatus = null }) {
   const parsedLeadId = parseLeadId(leadId);
   const resolvedBookingId = bookingId ? String(bookingId) : '';
   const context = normalizeBusinessContext(businessContext);
   if (!parsedLeadId || !resolvedBookingId) {
     return { attached: false, reason: 'missing_context' };
   }
+  const stage = bookingLeadStage({ status: bookingStatus || 'confirmed' });
+  const status = bookingLeadStatus(stage);
 
   const leadResult = await client.query(
     `UPDATE leads
      SET booking_id = $1,
+         pipeline_stage = CASE
+           WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal','waiting') THEN $4
+           ELSE pipeline_stage
+         END,
+         status = CASE
+           WHEN COALESCE(status, 'new') IN ('new','contact','proposal') THEN $5
+           ELSE status
+         END,
+         booked_at = COALESCE(booked_at, NOW()),
          updated_at = NOW()
      WHERE id = $2
        AND COALESCE(business_context, $3) = $3
-     RETURNING id, booking_id`,
-    [resolvedBookingId, parsedLeadId, context]
+     RETURNING id, booking_id, pipeline_stage, status`,
+    [resolvedBookingId, parsedLeadId, context, stage, status]
   );
 
   if (!leadResult.rows.length) {
@@ -48,6 +59,8 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
     attached: true,
     leadId: parsedLeadId,
     bookingId: resolvedBookingId,
+    pipelineStage: leadResult.rows[0]?.pipeline_stage || stage,
+    status: leadResult.rows[0]?.status || status,
     customerId: Number.isInteger(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null,
     customerLinked,
   };

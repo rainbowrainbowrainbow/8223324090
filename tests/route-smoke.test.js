@@ -838,6 +838,9 @@ function createFakePool() {
                             inquiryId: 'workspace-inquiry',
                             email: 'workspace@example.com',
                             page: 'https://www.maisterniadoli.com/',
+                            topic: 'Натальна консультація',
+                            message: 'Хочу запис у Майстерні',
+                            session_type: 'full',
                             contact_channels: ['site_form', 'whatsapp'],
                             utm: { source: 'google', campaign: 'natal' }
                         },
@@ -1492,6 +1495,8 @@ describe('route-level API safety smoke', () => {
             external_id: 'site-dry-run',
             name: 'Dry Run Lead',
             phone: '+380501112266',
+            topic: 'Dry topic',
+            message: 'Dry message',
             page: 'https://www.maisterniadoli.com/',
             contact_channels: ['site_form'],
             utm: { source: 'codex' }
@@ -1507,6 +1512,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.preview.businessContext, 'maysternya_doli');
         assert.equal(res.data.preview.sourceChannel, 'maysternya_site');
         assert.equal(res.data.preview.externalId, 'site-dry-run');
+        assert.equal(res.data.preview.topic, 'Dry topic');
+        assert.equal(res.data.preview.message, 'Dry message');
         assert.deepEqual(res.data.preview.contactChannels, ['site_form']);
         assert.deepEqual(res.data.preview.utm, { source: 'codex' });
         assert.equal(queries.length, 0);
@@ -1812,6 +1819,9 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.lead.externalId, 'workspace-external');
         assert.equal(res.data.workspace.lead.inquiryId, 'workspace-inquiry');
         assert.equal(res.data.workspace.lead.page, 'https://www.maisterniadoli.com/');
+        assert.equal(res.data.workspace.lead.topic, 'Натальна консультація');
+        assert.equal(res.data.workspace.lead.message, 'Хочу запис у Майстерні');
+        assert.equal(res.data.workspace.lead.sessionType, 'full');
         assert.deepEqual(res.data.workspace.lead.contactChannels, ['site_form', 'whatsapp']);
         assert.deepEqual(res.data.workspace.lead.utm, { source: 'google', campaign: 'natal' });
         assert.equal(res.data.workspace.customer.id, 701);

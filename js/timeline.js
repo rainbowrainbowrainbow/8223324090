@@ -338,7 +338,12 @@ function getLeadConversionContextFromUrl() {
         leadId,
         customerName: (params.get('customerName') || '').trim(),
         customerPhone: (params.get('customerPhone') || '').trim(),
-        eventDate: /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : ''
+        eventDate: /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : '',
+        topic: (params.get('topic') || '').trim(),
+        message: (params.get('message') || '').trim(),
+        source: (params.get('source') || '').trim(),
+        page: (params.get('page') || '').trim(),
+        sessionType: (params.get('sessionType') || '').trim()
     };
 }
 

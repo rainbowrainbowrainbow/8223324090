@@ -1783,6 +1783,7 @@ function clearSelectedCustomerLinkIfEdited(el) {
 function applyLeadConversionContextToBookingForm() {
     const ctx = AppState.leadConversionContext;
     if (!ctx || !ctx.leadId || AppState.editingBookingId) return;
+    const maysternyaMode = isMaysternyaBookingContext();
 
     const customerToggle = document.getElementById('customerDataToggle');
     if (customerToggle) customerToggle.checked = true;
@@ -1800,11 +1801,32 @@ function applyLeadConversionContextToBookingForm() {
     }
     const sourceEl = document.getElementById('customerSource');
     if (sourceEl && !sourceEl.value) sourceEl.value = 'lead';
+    if (maysternyaMode) {
+        const groupEl = document.getElementById('bookingGroupName');
+        const topic = ctx.topic || ctx.sessionType || '';
+        if (groupEl && !groupEl.value) groupEl.value = (topic || ctx.message || '').slice(0, 160);
+
+        const notesEl = document.getElementById('bookingNotes');
+        if (notesEl && !notesEl.value) {
+            const noteLines = [
+                ctx.message ? `Повідомлення: ${ctx.message}` : null,
+                ctx.source ? `Джерело: ${ctx.source}` : null,
+                ctx.page ? `Сторінка: ${ctx.page}` : null,
+                ctx.sessionType ? `Тип сесії: ${ctx.sessionType}` : null
+            ].filter(Boolean);
+            notesEl.value = noteLines.join('\n');
+        }
+    }
     setBookingLeadDetails({
-        source: 'lead',
+        source: ctx.source || 'lead',
         status: 'warm',
         interestDate: ctx.eventDate || '',
-        notes: ctx.customerName ? `Лід #${ctx.leadId}: ${ctx.customerName}` : `Лід #${ctx.leadId}`
+        notes: [
+            ctx.customerName ? `Лід #${ctx.leadId}: ${ctx.customerName}` : `Лід #${ctx.leadId}`,
+            ctx.topic ? `Тема: ${ctx.topic}` : null,
+            ctx.message ? `Повідомлення: ${ctx.message}` : null,
+            ctx.page ? `Сторінка: ${ctx.page}` : null
+        ].filter(Boolean).join('\n')
     });
     renderBookingPackageSummary();
 }
@@ -1819,6 +1841,11 @@ function clearLeadConversionContextAfterBooking(bookingId) {
     url.searchParams.delete('eventDate');
     url.searchParams.delete('customerName');
     url.searchParams.delete('customerPhone');
+    url.searchParams.delete('topic');
+    url.searchParams.delete('message');
+    url.searchParams.delete('source');
+    url.searchParams.delete('page');
+    url.searchParams.delete('sessionType');
     if (bookingId) url.searchParams.set('highlight', bookingId);
     history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
@@ -3072,6 +3099,7 @@ function buildBookingObject(formData, program) {
 
     if (formData.maysternyaMode || isMaysternyaBookingContext()) {
         const contact = getMaysternyaContactSnapshot();
+        const leadCtx = AppState.leadConversionContext || {};
         obj.room = defaultTimelineBookingRoom() || MAYSTERNYA_ONLINE_ROOM;
         obj.hosts = hasEvent ? (program.hosts || 1) : 1;
         obj.kidsCount = null;
@@ -3090,6 +3118,11 @@ function buildBookingObject(formData, program) {
             phone: contact.phone || null,
             instagram: contact.instagram || null,
             topic: contact.topic || null,
+            leadId: leadCtx.leadId || null,
+            inquirySource: leadCtx.source || null,
+            page: leadCtx.page || null,
+            message: leadCtx.message || null,
+            sessionType: leadCtx.sessionType || null,
             source: 'maysternya_compact_booking'
         };
     }

@@ -289,6 +289,10 @@ function buildLeadInboundMetadata(row = {}) {
         inquiryId: firstClean(raw.inquiryId, raw.inquiry_id, raw.requestId, raw.request_id),
         email: firstClean(raw.email, raw.contact_email, raw.contactEmail),
         page: firstClean(raw.page, raw.page_url, raw.pageUrl, raw.url, raw.referrer),
+        topic: firstClean(normalized.request_topic, raw.request_topic, raw.requestTopic, raw.topic, raw.subject),
+        message: firstClean(raw.message, raw.comment, raw.notes, raw.description),
+        sessionType: firstClean(normalized.session_type, raw.session_type, raw.sessionType, raw.record_type, raw.booking_type),
+        bookingTime: firstClean(normalized.booking_time, raw.booking_time, raw.bookingTime, raw.slot_time, raw.time),
         contactChannels,
         utm: normalizeUtm(raw),
         createdAt: firstClean(raw.createdAt, raw.created_at)
@@ -388,6 +392,9 @@ function universalWebhookDryRunPreview(payload, businessContext, sourceChannel) 
         phone: payload.phone || null,
         email: inbound.email || null,
         page: inbound.page || null,
+        topic: inbound.topic || null,
+        message: inbound.message || null,
+        sessionType: inbound.sessionType || null,
         contactChannels: payload.contact_channels?.length ? payload.contact_channels : inbound.contactChannels,
         utm: inbound.utm
     };
@@ -692,6 +699,10 @@ function mapWorkspaceLead(row) {
         inquiryId: inbound.inquiryId || null,
         email: inbound.email || null,
         page: inbound.page || null,
+        topic: inbound.topic || null,
+        message: inbound.message || null,
+        sessionType: inbound.sessionType || null,
+        bookingTime: inbound.bookingTime || null,
         contactChannels: inbound.contactChannels,
         utm: inbound.utm,
         inbound,
@@ -1457,12 +1468,15 @@ router.get('/:id/workspace', async (req, res) => {
             taskParams.push(`%${lead.clientName}%`);
             taskConditions.push(`(t.description ILIKE $${taskParams.length} OR t.title ILIKE $${taskParams.length})`);
         }
+        taskParams.push(businessContext);
+        const taskBusinessRef = `$${taskParams.length}`;
         const taskVisibility = buildTaskVisibilityScope(req.user, taskParams, 't');
         const tasksResult = taskConditions.length > 0
             ? await optionalWorkspaceQuery(`
                 SELECT t.*
                 FROM tasks t
                 WHERE (${taskConditions.join(' OR ')})
+                  AND COALESCE(t.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${taskBusinessRef}
                   ${taskVisibility}
                 ORDER BY
                     CASE WHEN t.status = 'done' THEN 3 WHEN t.status = 'in_progress' THEN 0 ELSE 1 END,

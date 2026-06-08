@@ -4,7 +4,7 @@
 
 ---
 
-## v0.73.88 - HR Свято доступів
+## v0.74.0 - HR Свято доступів
 
 ### HR / Account Center / Live API / CSS foundation / Deploy / (Клешня, 08.06.2026) [codex]
 - **HR Account Center отримав святковий порядок у доступах** - staff bridge, employee account links, offboarding/rehire і Telegram-прив'язки більше не живуть на ручній дисципліні: критичні дії проходять через `manage_accounts`, director ceiling і protected-account policy.
@@ -13,7 +13,7 @@
 - **HR-сторінка стала легшою для супроводу** - великий inline-style блок винесено в `css/hr-page.css`, а HR layout лишився на тому самому публічному HTML/API контракті.
 - **CRM stylesheet-и розкладено по поличках** - assistant rail, chat, sidebar aurora, dashboard і shared page styles тепер мають aggregate entrypoint-и та ordered modules, щоб майбутні правки не ламали пів інтерфейсу одним випадковим diff.
 - **Cleanup карта оновлена під реальність** - `docs/CLEANUP_REGISTER.md`, `docs/CSS_SURFACE.md` і `config/cssSurface.js` описують актуальний CSS surface, Service Worker precache expectations і правило: JS ріжемо тільки за реальною доменною межею.
-- **Релізні маркери піднято до `0.73.88`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog button і `/api/version` підготовлено для наступного deploy-проходу.
+- **Релізні маркери піднято до `0.74.0`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog button і `/api/version` підготовлено для наступного deploy-проходу.
 
 ---
 

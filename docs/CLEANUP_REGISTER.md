@@ -436,6 +436,22 @@ Status: open.
   helpers only if a similarly narrow boundary is confirmed. Do not continue
   splitting HR route code by file size alone.
 
+2026-06-08 HR payroll-scheme update:
+
+- Extracted HR staff payroll-scheme metadata mapping, scheme type labels,
+  hybrid/hourly/manual config normalization, staff scheme workspace loading, and
+  create payload assembly from `routes/hr.js` into
+  `services/hrPayrollSchemes.js`.
+- Kept `/api/hr/staff/:id/payroll-scheme`, `requireHrManage`, response shapes,
+  missing-staff handling, and `staff_payroll_scheme_update` audit calls in
+  `routes/hr.js`.
+- Added a focused HR contract/service test with fake DB coverage for scheme
+  workspace loading, active scheme selection, config parsing, hybrid rules,
+  invalid date normalization, and create payload/audit mapping.
+- Staff role-assignment replacement remains a possible candidate, but it is
+  coupled to broader staff edit flows through profession validation and rate
+  replacement. Treat it as a separate audit, not as a follow-up by size.
+
 ### 8. Scheduler, Event, And Callback Cleanup
 
 Goal: keep background work restart-safe and duplicate-safe.

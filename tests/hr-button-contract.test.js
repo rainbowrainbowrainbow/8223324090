@@ -14,6 +14,12 @@ const {
     requirePayrollMonth
 } = require('../services/hrPayrollPeriod');
 const {
+    createStaffPayrollScheme,
+    loadStaffPayrollSchemeWorkspace,
+    payrollSchemeConfigFromRequest,
+    payrollSchemeMeta
+} = require('../services/hrPayrollSchemes');
+const {
     archiveStaffDocument,
     createStaffDocument,
     listStaffDocuments,
@@ -56,6 +62,7 @@ const HR_HTML = [
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
+const HR_PAYROLL_SCHEMES_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollSchemes.js'), 'utf8');
 const HR_ONBOARDING_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrOnboarding.js'), 'utf8');
 const HR_STAFF_DOCUMENTS_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffDocuments.js'), 'utf8');
 const HR_STAFF_RESOURCES_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffResources.js'), 'utf8');
@@ -218,6 +225,132 @@ test('HR payroll period service owns range, lock, and event normalization', asyn
     assert.equal(event.amount, 1234);
     assert.equal(event.items_count, 2);
     assert.equal(await recordPayrollPeriodEvent('2026-03', 'unknown', 'creator', '', {}, eventDb), null);
+});
+
+test('HR payroll scheme service owns staff scheme config and metadata mapping', async () => {
+    for (const token of [
+        "require('../services/hrPayrollSchemes')",
+        "router.get('/staff/:id/payroll-scheme', requireHrManage",
+        "router.put('/staff/:id/payroll-scheme', requireHrManage",
+        'loadStaffPayrollSchemeWorkspace(req.params.id)',
+        'createStaffPayrollScheme(req.params.id, req.body, req.user)',
+        "auditLog('staff_payroll_scheme_update'"
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing HR payroll scheme route token ${token}`);
+    }
+    for (const token of [
+        'function payrollSchemeConfigFromRequest',
+        'function payrollSchemeMeta',
+        'async function loadPayrollSchemesForStaff',
+        'async function loadStaffPayrollSchemeWorkspace',
+        'async function createStaffPayrollScheme',
+        'SCHEME_TYPES: PAYROLL_SCHEME_TYPES',
+        'createPayrollScheme',
+        'bonusRules',
+        'deductions',
+        'advances'
+    ]) {
+        assert.ok(HR_PAYROLL_SCHEMES_SERVICE.includes(token), `missing HR payroll scheme service token ${token}`);
+    }
+    assert.equal(HR_ROUTE.includes('function payrollSchemeConfigFromRequest'), false, 'route must not own payroll scheme config normalization');
+    assert.equal(HR_ROUTE.includes('PAYROLL_SCHEME_TYPES.map'), false, 'route must not own payroll scheme type metadata');
+    assert.equal(HR_ROUTE.includes('createPayrollScheme({'), false, 'route must not construct payroll scheme payloads directly');
+
+    const queries = [];
+    const fakeDb = {
+        async query(sql, params = []) {
+            queries.push({ sql, params });
+            if (/SELECT id, name, hourly_rate FROM staff/i.test(sql)) {
+                return { rows: [{ id: Number(params[0]), name: 'Dasha Staff', hourly_rate: 120 }] };
+            }
+            if (/FROM payroll_schemes/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 7,
+                        staff_id: Number(params[0]),
+                        scheme_type: 'hourly',
+                        title: 'Hourly base',
+                        is_active: true,
+                        config_json: '{"hourlyRate":120}',
+                        effective_from: '2026-06-01',
+                        effective_to: null,
+                        created_at: '2026-06-01T10:00:00.000Z',
+                        updated_at: '2026-06-01T10:00:00.000Z'
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+
+    const workspace = await loadStaffPayrollSchemeWorkspace(42, fakeDb);
+    assert.equal(workspace.data.staff_id, 42);
+    assert.equal(workspace.data.active_scheme.title, 'Hourly base');
+    assert.equal(workspace.data.fallback_hourly_rate, 120);
+    assert.ok(workspace.data.scheme_types.some(type => type.value === 'hybrid'));
+    assert.match(queries.at(-1).sql, /ORDER BY is_active DESC/);
+
+    const hybridConfig = payrollSchemeConfigFromRequest('hybrid', {
+        config: '{"base":{"kind":"per_shift","rate":90},"percentRules":[{"kind":"percent","rate":3}]}',
+        base_rate: 150,
+        base_quantity: 2,
+        percent_rate: 5,
+        percent_base: 1000,
+        bonus_amount: 25,
+        deduction_amount: 10,
+        advance_amount: 5
+    }, 120);
+    assert.equal(hybridConfig.base.kind, 'per_shift');
+    assert.equal(hybridConfig.base.rate, 150);
+    assert.equal(hybridConfig.base.quantity, 2);
+    assert.equal(hybridConfig.percentRules[0].rate, 5);
+    assert.equal(hybridConfig.bonusRules[0].amount, 25);
+    assert.equal(hybridConfig.deductions[0].amount, 10);
+    assert.equal(hybridConfig.advances[0].amount, 5);
+
+    const meta = payrollSchemeMeta({
+        id: 8,
+        staff_id: 42,
+        scheme_type: 'manual',
+        title: 'Manual',
+        is_active: false,
+        config_json: '{"manualAmount":300}',
+        effective_from: '2026-06-02',
+        effective_to: null,
+        created_at: '2026-06-02T10:00:00.000Z',
+        updated_at: '2026-06-02T10:00:00.000Z'
+    });
+    assert.equal(meta.staffId, 42);
+    assert.equal(meta.schemeType, 'manual');
+    assert.equal(meta.config.manualAmount, 300);
+
+    const createCalls = [];
+    const created = await createStaffPayrollScheme(42, {
+        scheme_type: 'hybrid',
+        title: 'Hybrid plan',
+        base_rate: 150,
+        bonus_amount: 25,
+        effective_from: '2026-06-01',
+        effective_to: 'not-a-date'
+    }, { username: 'creator' }, {
+        db: fakeDb,
+        async createScheme(payload, user) {
+            createCalls.push({ payload, user });
+            return {
+                id: 9,
+                staffId: Number(payload.staffId),
+                schemeType: payload.schemeType,
+                title: payload.title
+            };
+        }
+    });
+    assert.equal(created.data.id, 9);
+    assert.equal(created.audit.scheme_type, 'hybrid');
+    assert.equal(createCalls[0].payload.config.base.rate, 150);
+    assert.equal(createCalls[0].payload.config.bonusRules[0].amount, 25);
+    assert.equal(createCalls[0].payload.effectiveFrom, '2026-06-01');
+    assert.equal(createCalls[0].payload.effectiveTo, null);
+    assert.equal(createCalls[0].user.username, 'creator');
 });
 
 test('HR grouped nav buttons expose routing and future visibility contract', () => {

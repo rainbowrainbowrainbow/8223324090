@@ -18,10 +18,6 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest
 } = require('../services/businessContext');
-const {
-    SCHEME_TYPES: PAYROLL_SCHEME_TYPES,
-    createPayrollScheme
-} = require('../services/payroll');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
@@ -56,6 +52,10 @@ const {
     requirePayrollMonth,
     setPayrollPeriodLock
 } = require('../services/hrPayrollPeriod');
+const {
+    createStaffPayrollScheme,
+    loadStaffPayrollSchemeWorkspace
+} = require('../services/hrPayrollSchemes');
 const {
     archiveStaffDocument,
     createStaffDocument,
@@ -206,40 +206,6 @@ function numberOrNull(value) {
     return Number.isFinite(normalized) ? normalized : null;
 }
 
-function parseJsonObject(value) {
-    if (!value) return {};
-    if (typeof value === 'object' && !Array.isArray(value)) return value;
-    try {
-        const parsed = JSON.parse(String(value));
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-        return {};
-    }
-}
-
-function payrollSchemeMeta(row) {
-    if (!row) return null;
-    return {
-        id: row.id,
-        staff_id: row.staff_id,
-        staffId: row.staff_id,
-        scheme_type: row.scheme_type,
-        schemeType: row.scheme_type,
-        title: row.title || '',
-        is_active: row.is_active === true,
-        isActive: row.is_active === true,
-        config: parseJsonObject(row.config_json),
-        effective_from: row.effective_from,
-        effectiveFrom: row.effective_from,
-        effective_to: row.effective_to,
-        effectiveTo: row.effective_to,
-        created_at: row.created_at,
-        createdAt: row.created_at,
-        updated_at: row.updated_at,
-        updatedAt: row.updated_at
-    };
-}
-
 function staffRoleAssignmentMeta(row) {
     if (!row) return null;
     return {
@@ -285,118 +251,6 @@ async function loadStaffRowOrNull(staffId, db = pool, { lock = false } = {}) {
 
 function hrBusinessContextFromRequest(req) {
     return businessContextFromRequest(req) || DEFAULT_BUSINESS_CONTEXT;
-}
-
-function payrollSchemeTypeTitle(type) {
-    return {
-        per_shift: 'Сума за вихід',
-        hourly: 'Погодинна',
-        monthly_fixed: 'Фікс за місяць',
-        percent: 'Відсоток',
-        hybrid: 'Гібридна',
-        manual: 'Ручна'
-    }[type] || 'Погодинна';
-}
-
-function normalizePayrollSchemeType(value) {
-    const type = cleanStaffText(value, 32) || 'hourly';
-    return PAYROLL_SCHEME_TYPES.includes(type) ? type : 'hourly';
-}
-
-function normalizePayrollBaseKind(value) {
-    const kind = cleanStaffText(value, 32) || 'hourly';
-    return ['hourly', 'per_shift', 'monthly_fixed', 'manual'].includes(kind) ? kind : 'hourly';
-}
-
-function positivePayrollNumber(value, fallback = 0) {
-    const number = numberOrNull(value);
-    if (number === null) return Math.max(0, Number(fallback || 0));
-    return Math.max(0, number);
-}
-
-function replaceSinglePayrollRule(sourceRules, body, amountKeys, labelKeys, defaultLabel) {
-    const hasAmount = amountKeys.some(key => body[key] !== undefined);
-    if (!hasAmount) return Array.isArray(sourceRules) ? sourceRules : [];
-    const amount = positivePayrollNumber(amountKeys.map(key => body[key]).find(value => value !== undefined), 0);
-    if (!amount) return [];
-    const label = cleanStaffText(labelKeys.map(key => body[key]).find(value => value !== undefined), 80) || defaultLabel;
-    return [{ kind: 'fixed', label, amount }];
-}
-
-function payrollSchemeConfigFromRequest(type, body = {}, fallbackRate = 0) {
-    const source = parseJsonObject(body.config || body.config_json);
-    const amount = numberOrNull(body.amount ?? body.rate ?? body.value);
-    const rate = amount === null ? Math.max(0, Number(fallbackRate || 0)) : Math.max(0, amount);
-    if (type === 'per_shift') return { ...source, perShiftRate: rate };
-    if (type === 'monthly_fixed') return { ...source, monthlyAmount: rate };
-    if (type === 'percent') return { ...source, percentRate: rate, sourceMetric: source.sourceMetric || 'manual' };
-    if (type === 'manual') return { ...source, manualAmount: rate };
-    if (type === 'hybrid') {
-        const sourceBase = parseJsonObject(source.base);
-        const baseRate = positivePayrollNumber(
-            body.base_rate ?? body.baseRate ?? body.amount ?? body.rate ?? sourceBase.rate ?? sourceBase.amount ?? source.baseRate,
-            fallbackRate
-        );
-        const baseQuantity = positivePayrollNumber(body.base_quantity ?? body.baseQuantity ?? sourceBase.quantity ?? source.baseQuantity, 0);
-        const percentRate = positivePayrollNumber(body.percent_rate ?? body.percentRate, 0);
-        const percentBase = positivePayrollNumber(body.percent_base ?? body.percentBase ?? body.base_amount ?? body.baseAmount, 0);
-        const percentRules = body.percent_rate !== undefined || body.percentRate !== undefined
-            ? (percentRate ? [{
-                kind: 'percent',
-                label: cleanStaffText(body.percent_label ?? body.percentLabel, 80) || 'Відсоток',
-                rate: percentRate,
-                baseAmount: percentBase,
-                sourceMetric: cleanStaffText(body.percent_source_metric ?? body.percentSourceMetric, 40) || 'manual'
-            }] : [])
-            : (Array.isArray(source.percentRules) ? source.percentRules : []);
-        return {
-            ...source,
-            base: {
-                ...sourceBase,
-                kind: normalizePayrollBaseKind(body.base_kind ?? body.baseKind ?? sourceBase.kind ?? source.baseKind),
-                rate: baseRate,
-                amount: baseRate,
-                ...(baseQuantity ? { quantity: baseQuantity } : {})
-            },
-            bonusRules: replaceSinglePayrollRule(
-                source.bonusRules,
-                body,
-                ['bonus_amount', 'bonusAmount'],
-                ['bonus_label', 'bonusLabel'],
-                'Премія'
-            ),
-            percentRules,
-            deductions: replaceSinglePayrollRule(
-                source.deductions,
-                body,
-                ['deduction_amount', 'deductionAmount'],
-                ['deduction_label', 'deductionLabel'],
-                'Утримання'
-            ),
-            advances: replaceSinglePayrollRule(
-                source.advances,
-                body,
-                ['advance_amount', 'advanceAmount'],
-                ['advance_label', 'advanceLabel'],
-                'Аванс'
-            )
-        };
-    }
-    return { ...source, hourlyRate: rate };
-}
-
-async function loadPayrollSchemesForStaff(staffId, db = pool) {
-    const result = await db.query(
-        `SELECT *
-         FROM payroll_schemes
-         WHERE staff_id = $1
-         ORDER BY is_active DESC, effective_from DESC NULLS LAST, updated_at DESC, id DESC`,
-        [staffId]
-    ).catch(err => {
-        log.warn('payroll scheme lookup failed:', err.message);
-        return { rows: [] };
-    });
-    return result.rows.map(payrollSchemeMeta);
 }
 
 function roleKeysFromStaffRecord(staff = {}) {
@@ -2233,19 +2087,9 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
 
 router.get('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
     try {
-        const staff = await pool.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [req.params.id]);
-        if (!staff.rows.length) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const schemes = await loadPayrollSchemesForStaff(req.params.id);
-        res.json({
-            success: true,
-            data: {
-                staff_id: Number(req.params.id),
-                active_scheme: schemes.find(scheme => scheme.is_active) || null,
-                schemes,
-                scheme_types: PAYROLL_SCHEME_TYPES.map(type => ({ value: type, label: payrollSchemeTypeTitle(type) })),
-                fallback_hourly_rate: Number(staff.rows[0].hourly_rate || 0)
-            }
-        });
+        const workspace = await loadStaffPayrollSchemeWorkspace(req.params.id);
+        if (!workspace) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        res.json({ success: true, data: workspace.data });
     } catch (err) {
         log.error('GET /hr/staff/:id/payroll-scheme error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження зарплатної схеми' });
@@ -2254,26 +2098,12 @@ router.get('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
 
 router.put('/staff/:id/payroll-scheme', requireHrManage, async (req, res) => {
     try {
-        const staff = await pool.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [req.params.id]);
-        if (!staff.rows.length) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const schemeType = normalizePayrollSchemeType(req.body.scheme_type || req.body.schemeType);
-        const config = payrollSchemeConfigFromRequest(schemeType, req.body || {}, staff.rows[0].hourly_rate);
-        const title = cleanStaffText(req.body.title, 160) || payrollSchemeTypeTitle(schemeType);
-        const scheme = await createPayrollScheme({
-            staffId: req.params.id,
-            schemeType,
-            title,
-            config,
-            effectiveFrom: cleanStaffDate(req.body.effective_from || req.body.effectiveFrom),
-            effectiveTo: cleanStaffDate(req.body.effective_to || req.body.effectiveTo),
-            isActive: true
-        }, req.user);
+        const scheme = await createStaffPayrollScheme(req.params.id, req.body, req.user);
+        if (!scheme) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         await auditLog('staff_payroll_scheme_update', parseInt(req.params.id), req.user?.username, {
-            scheme_id: scheme.id,
-            scheme_type: scheme.schemeType,
-            title: scheme.title
+            ...scheme.audit
         }, req.ip);
-        res.json({ success: true, data: scheme });
+        res.json({ success: true, data: scheme.data });
     } catch (err) {
         log.error('PUT /hr/staff/:id/payroll-scheme error', err);
         res.status(err.status || 500).json({ success: false, error: err.status ? err.message : 'Помилка оновлення зарплатної схеми' });

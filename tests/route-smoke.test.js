@@ -833,6 +833,14 @@ function createFakePool() {
                         instagram: 'workspace_lead',
                         source: 'instagram',
                         source_channel: 'instagram',
+                        external_id: 'workspace-external',
+                        raw_payload: {
+                            inquiryId: 'workspace-inquiry',
+                            email: 'workspace@example.com',
+                            page: 'https://www.maisterniadoli.com/',
+                            contact_channels: ['site_form', 'whatsapp'],
+                            utm: { source: 'google', campaign: 'natal' }
+                        },
                         notes: 'Needs follow-up',
                         status: 'contact',
                         pipeline_stage: 'contacted',
@@ -1443,6 +1451,66 @@ describe('route-level API safety smoke', () => {
         assert.match(insert.params[7], /Запис: 2026-05-30 14:00/);
     });
 
+    it('routes Maysternya Doli website leads into the Maysternya business context', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_site', {
+            external_id: 'site-inquiry-1',
+            name: 'Site Lead',
+            phone: '+380501112255',
+            email: 'site@example.com',
+            page: 'https://www.maisterniadoli.com/',
+            contact_channels: ['site_form', 'whatsapp'],
+            utm: {
+                source: 'google',
+                medium: 'cpc',
+                campaign: 'natal'
+            },
+            message: 'Website inquiry'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`,
+            'X-Business-Context': 'event_genix'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[5], 'maysternya_site');
+        assert.equal(insert.params[6], 'site-inquiry-1');
+        const rawPayload = JSON.parse(insert.params[8]);
+        assert.equal(rawPayload.page, 'https://www.maisterniadoli.com/');
+        assert.deepEqual(rawPayload.contact_channels, ['site_form', 'whatsapp']);
+        assert.deepEqual(rawPayload.utm, { source: 'google', medium: 'cpc', campaign: 'natal' });
+    });
+
+    it('validates universal website leads in dry-run mode without writing to the CRM', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_site&dryRun=true', {
+            external_id: 'site-dry-run',
+            name: 'Dry Run Lead',
+            phone: '+380501112266',
+            page: 'https://www.maisterniadoli.com/',
+            contact_channels: ['site_form'],
+            utm: { source: 'codex' }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.dryRun, true);
+        assert.equal(res.data.created, false);
+        assert.equal(res.data.lead, null);
+        assert.equal(res.data.preview.businessContext, 'maysternya_doli');
+        assert.equal(res.data.preview.sourceChannel, 'maysternya_site');
+        assert.equal(res.data.preview.externalId, 'site-dry-run');
+        assert.deepEqual(res.data.preview.contactChannels, ['site_form']);
+        assert.deepEqual(res.data.preview.utm, { source: 'codex' });
+        assert.equal(queries.length, 0);
+        assert.equal(notifiedLeads.length, 0);
+    });
+
     it('rejects the universal lead webhook without the shared webhook token', async () => {
         const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
             external_id: 'missing-token',
@@ -1738,6 +1806,12 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.canonical.statusField, 'pipeline_stage');
         assert.equal(res.data.workspace.canonical.stage, 'contacted');
         assert.equal(res.data.workspace.canonical.aggregateStatus, 'contact');
+        assert.equal(res.data.workspace.lead.businessContext, 'event_genix');
+        assert.equal(res.data.workspace.lead.externalId, 'workspace-external');
+        assert.equal(res.data.workspace.lead.inquiryId, 'workspace-inquiry');
+        assert.equal(res.data.workspace.lead.page, 'https://www.maisterniadoli.com/');
+        assert.deepEqual(res.data.workspace.lead.contactChannels, ['site_form', 'whatsapp']);
+        assert.deepEqual(res.data.workspace.lead.utm, { source: 'google', campaign: 'natal' });
         assert.equal(res.data.workspace.customer.id, 701);
         assert.equal(res.data.workspace.bookings[0].id, 'BK-WS');
         assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');

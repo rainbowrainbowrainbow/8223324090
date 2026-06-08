@@ -65,6 +65,11 @@ const STAGE_TO_STATUS = {
 };
 
 const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
+const MAYSTERNYA_WEBHOOK_SOURCES = new Set([
+    'maysternya_bot',
+    'maysternya_site',
+    'maysternya_site_test'
+]);
 
 const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
@@ -114,7 +119,7 @@ function publicBusinessContext(req) {
 }
 
 function universalWebhookBusinessContext(req, sourceChannel) {
-    if (sourceChannel === 'maysternya_bot') return 'maysternya_doli';
+    if (MAYSTERNYA_WEBHOOK_SOURCES.has(sourceChannel)) return 'maysternya_doli';
     return publicBusinessContext(req);
 }
 
@@ -131,6 +136,23 @@ function timingSafeTextEqual(actual, expected) {
     const expectedBuffer = Buffer.from(String(expected), 'utf8');
     return actualBuffer.length === expectedBuffer.length
         && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function truthyWebhookValue(value) {
+    if (Array.isArray(value)) return value.some(item => truthyWebhookValue(item));
+    const text = String(value ?? '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'y', 'on', 'dryrun', 'dry-run', 'test'].includes(text);
+}
+
+function isUniversalWebhookDryRun(req) {
+    return truthyWebhookValue(req.query?.dryRun)
+        || truthyWebhookValue(req.query?.dry_run)
+        || truthyWebhookValue(req.query?.test)
+        || truthyWebhookValue(req.body?.dryRun)
+        || truthyWebhookValue(req.body?.dry_run)
+        || truthyWebhookValue(req.body?.testMode)
+        || truthyWebhookValue(req.body?.test)
+        || truthyWebhookValue(req.headers?.['x-crm-dry-run']);
 }
 
 function parseOptionalPositiveInt(value, fieldName) {
@@ -185,6 +207,18 @@ function parseJsonArray(value) {
     }
 }
 
+function parseJsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
 function cleanText(value) {
     if (value === undefined || value === null) return null;
     const text = String(value).trim();
@@ -227,6 +261,38 @@ function normalizeTextList(value) {
     if (parsed.length) return parsed.map(cleanText).filter(Boolean).slice(0, 12);
     const text = cleanText(value);
     return text ? text.split(/[,;]+/).map(cleanText).filter(Boolean).slice(0, 12) : [];
+}
+
+function normalizeUtm(raw = {}) {
+    const utm = parseJsonObject(raw.utm);
+    const mapped = {
+        source: firstClean(utm.source, utm.utm_source, raw.utm_source, raw.utmSource),
+        medium: firstClean(utm.medium, utm.utm_medium, raw.utm_medium, raw.utmMedium),
+        campaign: firstClean(utm.campaign, utm.utm_campaign, raw.utm_campaign, raw.utmCampaign),
+        content: firstClean(utm.content, utm.utm_content, raw.utm_content, raw.utmContent),
+        term: firstClean(utm.term, utm.utm_term, raw.utm_term, raw.utmTerm)
+    };
+    return Object.fromEntries(Object.entries(mapped).filter(([, value]) => Boolean(value)));
+}
+
+function buildLeadInboundMetadata(row = {}) {
+    const raw = parseJsonObject(row.raw_payload);
+    const normalized = parseJsonObject(raw.normalized);
+    const contactChannels = normalizeTextList(
+        normalized.contact_channels
+        ?? raw.contact_channels
+        ?? raw.contactChannels
+        ?? raw.channels
+    );
+    return {
+        externalId: firstClean(row.external_id, raw.external_id, raw.externalId, raw.lead_id, raw.leadId),
+        inquiryId: firstClean(raw.inquiryId, raw.inquiry_id, raw.requestId, raw.request_id),
+        email: firstClean(raw.email, raw.contact_email, raw.contactEmail),
+        page: firstClean(raw.page, raw.page_url, raw.pageUrl, raw.url, raw.referrer),
+        contactChannels,
+        utm: normalizeUtm(raw),
+        createdAt: firstClean(raw.createdAt, raw.created_at)
+    };
 }
 
 function stripAt(value) {
@@ -296,6 +362,25 @@ function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal'
                 booking_time: bookingTime
             }
         }
+    };
+}
+
+function universalWebhookDryRunPreview(payload, businessContext, sourceChannel) {
+    const inbound = buildLeadInboundMetadata({
+        external_id: payload.external_id,
+        raw_payload: payload.raw_payload
+    });
+    return {
+        businessContext,
+        sourceChannel,
+        externalId: payload.external_id || inbound.externalId || null,
+        inquiryId: inbound.inquiryId || null,
+        clientName: payload.client_name || null,
+        phone: payload.phone || null,
+        email: inbound.email || null,
+        page: inbound.page || null,
+        contactChannels: payload.contact_channels?.length ? payload.contact_channels : inbound.contactChannels,
+        utm: inbound.utm
     };
 }
 
@@ -453,6 +538,18 @@ async function handleUniversalWebhook(req, res) {
             return res.status(400).json({ error: "Потрібно ім'я або контакт" });
         }
 
+        if (isUniversalWebhookDryRun(req)) {
+            return res.json({
+                ok: true,
+                success: true,
+                dryRun: true,
+                created: false,
+                updated: false,
+                lead: null,
+                preview: universalWebhookDryRunPreview(payload, businessContext, sourceChannel)
+            });
+        }
+
         const result = await upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes);
         if (result.created && result.lead) {
             notifyNewLead(result.lead).catch(() => {});
@@ -460,6 +557,7 @@ async function handleUniversalWebhook(req, res) {
         }
 
         res.json({
+            ok: true,
             success: true,
             created: result.created,
             updated: Boolean(result.lead && !result.created),
@@ -572,6 +670,7 @@ async function optionalWorkspaceQuery(sql, params = []) {
 
 function mapWorkspaceLead(row) {
     const stage = row.pipeline_stage || 'new';
+    const inbound = buildLeadInboundMetadata(row);
     return {
         id: row.id,
         businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
@@ -580,6 +679,13 @@ function mapWorkspaceLead(row) {
         instagram: row.instagram,
         source: row.source,
         sourceChannel: row.source_channel,
+        externalId: inbound.externalId || null,
+        inquiryId: inbound.inquiryId || null,
+        email: inbound.email || null,
+        page: inbound.page || null,
+        contactChannels: inbound.contactChannels,
+        utm: inbound.utm,
+        inbound,
         notes: row.notes,
         status: row.status || STAGE_TO_STATUS[stage] || 'new',
         pipelineStage: stage,
@@ -1795,7 +1901,8 @@ router.get('/webhook/status', (req, res) => {
             universal: {
                 configured: !!UNIVERSAL_WEBHOOK_TOKEN,
                 endpoint:   '/api/leads/webhook/universal?source=<name>',
-                sources:    ['maysternya_bot', 'tiktok', 'turbo', 'bnderoga', 'custom'],
+                sources:    ['maysternya_bot', 'maysternya_site', 'tiktok', 'turbo', 'bnderoga', 'custom'],
+                dryRun:     'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without writing a lead.',
             }
         }
     });

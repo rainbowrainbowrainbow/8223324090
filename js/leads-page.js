@@ -60,6 +60,7 @@ const SOURCE_MAP = {
     google:         '🔍 Google',
     recommendation: '🤝 Рекомендація',
     site:           '🌐 Сайт',
+    maysternya_site:'🌐 Сайт Майстерні',
     phone:          '📞 Телефон',
     'walk-in':      '🚶 Прийшли',
     manual:         '✏️ Ручний',
@@ -120,6 +121,32 @@ function leadPayload(payload = {}) {
     return window.CrmBusinessContext?.payload
         ? window.CrmBusinessContext.payload(payload, leadBusinessContext())
         : { ...(payload || {}), businessContext: leadBusinessContext() };
+}
+
+function leadContextFromRecord(record = {}) {
+    return window.CrmBusinessContext?.normalize?.(
+        record.businessContext
+        || record.business_context
+        || record.inbound?.businessContext
+        || currentBusinessContext
+    ) || currentBusinessContext || 'event_genix';
+}
+
+function leadTimelineRouteForContext(context = leadBusinessContext()) {
+    const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
+    if (normalized === 'maysternya_doli') return '/maysternya-doli';
+    return '/';
+}
+
+function leadTimelineHref(params = {}, context = leadBusinessContext()) {
+    const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
+    const url = new URL(leadTimelineRouteForContext(normalized), window.location.origin);
+    if (normalized && normalized !== 'event_genix') url.searchParams.set('businessContext', normalized);
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        url.searchParams.set(key, String(value));
+    });
+    return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function leadBusinessScope() {
@@ -762,6 +789,59 @@ function workspaceLink(href, label, cls = '') {
     return `<a class="workspace-btn ${cls}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 }
 
+function workspaceSafeExternalUrl(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    try {
+        const url = new URL(text);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch {
+        return '';
+    }
+}
+
+function workspaceInlineLink(href, label = href) {
+    const safeUrl = workspaceSafeExternalUrl(href);
+    if (!safeUrl) return workspaceText(label || href);
+    return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">${workspaceText(label || safeUrl)}</a>`;
+}
+
+function workspaceObjectEntries(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    return Object.entries(value).filter(([, item]) => item !== undefined && item !== null && String(item).trim());
+}
+
+function renderLeadInboundSection(lead = {}) {
+    const contactChannels = Array.isArray(lead.contactChannels)
+        ? lead.contactChannels.map(item => String(item || '').trim()).filter(Boolean)
+        : [];
+    const utmEntries = workspaceObjectEntries(lead.utm);
+    const hasInboundData = Boolean(
+        lead.externalId
+        || lead.inquiryId
+        || lead.page
+        || lead.email
+        || contactChannels.length
+        || utmEntries.length
+    );
+    if (!hasInboundData) return '';
+
+    return `
+        <section class="workspace-section">
+            <h3>Дані заявки</h3>
+            <dl class="workspace-kv">
+                <dt>Бізнес</dt><dd>${workspaceText(lead.businessContext)}</dd>
+                <dt>External ID</dt><dd>${workspaceText(lead.externalId)}</dd>
+                <dt>Inquiry ID</dt><dd>${workspaceText(lead.inquiryId)}</dd>
+                <dt>Email</dt><dd>${workspaceText(lead.email)}</dd>
+                <dt>Сторінка</dt><dd>${lead.page ? workspaceInlineLink(lead.page) : workspaceText(null)}</dd>
+                <dt>Канали</dt><dd>${contactChannels.length ? contactChannels.map(item => workspaceBadge(item)).join(' ') : workspaceText(null)}</dd>
+                <dt>UTM</dt><dd>${utmEntries.length ? utmEntries.map(([key, value]) => `${escapeHtml(key)}=${workspaceText(value)}`).join('<br>') : workspaceText(null)}</dd>
+            </dl>
+        </section>
+    `;
+}
+
 function workspaceList(items, renderer, emptyText) {
     if (!items || !items.length) return `<div class="workspace-empty">${escapeHtml(emptyText)}</div>`;
     return `<div class="workspace-list">${items.map(renderer).join('')}</div>`;
@@ -845,9 +925,12 @@ function exactLeadBooking(workspace) {
     return (workspace.bookings || []).find(booking => booking && String(booking.id) === String(leadBookingId)) || null;
 }
 
-function timelineHrefForBooking(booking) {
+function timelineHrefForBooking(booking, context = leadBusinessContext()) {
     if (!booking?.id || !booking?.date) return null;
-    return `/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}`;
+    return leadTimelineHref({
+        date: String(booking.date).slice(0, 10),
+        highlight: booking.id
+    }, context);
 }
 
 function exactOpenWorkspaceTask(workspace) {
@@ -886,7 +969,7 @@ function renderManagerActionStrip(workspace) {
     const waitingConversation = waitingReplyConversation(workspace);
     const exactBooking = exactLeadBooking(workspace);
     const exactTask = exactOpenWorkspaceTask(workspace);
-    const bookingHref = timelineHrefForBooking(exactBooking);
+    const bookingHref = timelineHrefForBooking(exactBooking, leadContextFromRecord(lead));
     const canConfirmBooking = exactBooking?.status === 'preliminary' && typeof canAccess === 'function' && canAccess('edit_booking');
     const canSeeBookingButNotConfirm = exactBooking?.status === 'preliminary' && !canConfirmBooking;
 
@@ -1042,6 +1125,8 @@ function renderLeadWorkspaceContent(workspace) {
                 </dl>
             </section>
 
+            ${renderLeadInboundSection(lead)}
+
             <section class="workspace-section full">
                 <h3>Бронювання та події</h3>
                 ${workspaceList(workspace.bookings || [], booking => `
@@ -1051,7 +1136,7 @@ function renderLeadWorkspaceContent(workspace) {
                                 <div class="workspace-row-title">${workspaceText(booking.programName || booking.category || `Бронювання ${booking.id}`)}</div>
                                 <div class="workspace-row-meta">${workspaceDate(booking.date)} ${workspaceText(booking.time, '')} · ${workspaceText(booking.status)} · ${workspaceMoney(booking.price)}</div>
                             </div>
-                            ${booking.date ? `<a class="workspace-row-link" href="/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}">Таймлайн</a>` : ''}
+                            ${booking.date ? `<a class="workspace-row-link" href="${escapeHtml(timelineHrefForBooking(booking, leadContextFromRecord(lead)))}">Таймлайн</a>` : ''}
                         </div>
                     </div>
                 `, 'Пов’язаних бронювань поки немає')}
@@ -2080,7 +2165,7 @@ async function convertLead(id) {
     }
     params.set('leadId', id);
     params.set('convert', 'booking');
-    window.location.href = `/?${params.toString()}`;
+    window.location.href = leadTimelineHref(Object.fromEntries(params.entries()), leadContextFromRecord(lead));
 }
 
 function localDateTimeInput(date) {

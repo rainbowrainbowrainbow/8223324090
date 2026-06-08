@@ -336,6 +336,17 @@ test('global business switch routes to the matching timeline surface', () => {
     assert.doesNotMatch(uiCode, /Парк Закревського Періоду - Таймлайн/);
 });
 
+test('lead conversion routes Maysternya bookings to the Maysternya timeline surface', () => {
+    const leadsCode = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
+
+    assert.match(leadsCode, /function leadTimelineRouteForContext/);
+    assert.match(leadsCode, /normalized === 'maysternya_doli'[\s\S]*return '\/maysternya-doli'/);
+    assert.match(leadsCode, /function leadTimelineHref/);
+    assert.match(leadsCode, /businessContext', normalized/);
+    assert.match(leadsCode, /window\.location\.href = leadTimelineHref\(Object\.fromEntries\(params\.entries\(\)\), leadContextFromRecord\(lead\)\)/);
+    assert.doesNotMatch(leadsCode, /window\.location\.href = `\/\?\$\{params\.toString\(\)\}`/);
+});
+
 test('Maysternya sidebar keeps sales tools visible without Park-only clutter', () => {
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 

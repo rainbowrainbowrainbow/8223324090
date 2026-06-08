@@ -4,6 +4,27 @@
 
 ---
 
+## v0.74.3 - Майстерня: конвертація ліда
+
+### Майстерня долі / Sales funnel / Timeline redirect / Guardrail / (Клешня, 08.06.2026) [codex]
+- **Конвертація ліда більше не веде в таймлайн Парку** - кнопка `Конвертувати` на лідах Майстерні будує URL через active `businessContext` і відкриває `/maysternya-doli`, а не root `/`.
+- **Лінки бронювання в кейсі ліда теж стали business-aware** - кнопки переходу на таймлайн із workspace ліда використовують той самий route helper і зберігають `date`, `highlight`, `leadId` та `convert=booking`.
+- **Regression guard закрив redirect** - `tests/timeline-context.test.js` перевіряє, що `convertLead` більше не має hardcoded `/?...` redirect і що для `maysternya_doli` використовується `/maysternya-doli`.
+- **Релізні маркери піднято до `0.74.3`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
+## v0.74.2 - Майстерня: заявки сайту
+
+### Майстерня долі / Lead webhook / Sales funnel workspace / Guardrails / (Клешня, 08.06.2026) [codex]
+- **Заявки сайту Майстерні примусово йдуть у правильний бізнес** - `POST /api/leads/webhook/universal?source=maysternya_site` тепер мапиться в `business_context=maysternya_doli` на стороні CRM, навіть якщо сайт не передав `businessContext` або передав помилковий header.
+- **Метадані заявки видно в кейсі ліда** - workspace ліда отримує `externalId`, `inquiryId`, `email`, `page`, `contactChannels` і `utm` з `raw_payload`, а фронтенд показує їх окремим блоком "Дані заявки" без виводу всього сирого JSON.
+- **Додано dry-run перевірку без бойового ліда** - universal webhook приймає `?dryRun=true`, `?test=true`, body `dryRun/test` або `X-CRM-Dry-Run: true` і повертає preview без `INSERT`, `UPDATE` та сповіщень.
+- **Regression guard закриває інтеграцію сайту** - route smoke перевіряє `maysternya_site -> maysternya_doli`, збереження `page/utm/contact_channels` у payload і dry-run без запису в CRM.
+- **Релізні маркери піднято до `0.74.2`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.1 - HR Чистка маршрутів
 
 ### HR refactor audit / Backend services / Guardrails / Release markers / (Клешня, 08.06.2026) [codex]

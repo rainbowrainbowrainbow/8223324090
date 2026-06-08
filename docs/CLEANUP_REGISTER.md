@@ -421,6 +421,21 @@ Status: open.
   separate pack because it mutates warehouse stock, movement history, costumes,
   and HR audit state transactionally.
 
+2026-06-08 HR staff resources update:
+
+- Extracted HR staff resource list/options, issue, return, resource
+  normalization, assignment metadata mapping, and warehouse/costume transactional
+  side effects from `routes/hr.js` into `services/hrStaffResources.js`.
+- Kept `/api/hr/staff/:id/resources*`, `/api/hr/resource-options`,
+  `requireHrManage`, response shapes, and HR audit calls in `routes/hr.js`.
+- Added a focused HR contract/service test with fake DB coverage for
+  `BEGIN`/`COMMIT`, rollback ownership, warehouse stock decrement/increment,
+  `warehouse_history`, `warehouse_stock_movements` issue/return rows, and
+  costume unassignment on return.
+- Next HR backend cleanup candidate: staff payroll-scheme or role-assignment
+  helpers only if a similarly narrow boundary is confirmed. Do not continue
+  splitting HR route code by file size alone.
+
 ### 8. Scheduler, Event, And Callback Cleanup
 
 Goal: keep background work restart-safe and duplicate-safe.

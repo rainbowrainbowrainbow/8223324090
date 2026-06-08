@@ -19,6 +19,12 @@ const {
     listStaffDocuments,
     safeStaffDocumentDownloadFilename
 } = require('../services/hrStaffDocuments');
+const {
+    issueStaffResource,
+    listStaffResourceOptions,
+    listStaffResources,
+    returnStaffResource
+} = require('../services/hrStaffResources');
 
 const ROOT = path.join(__dirname, '..');
 function readCssWithImports(file, seen = new Set()) {
@@ -52,6 +58,7 @@ const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const HR_ONBOARDING_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrOnboarding.js'), 'utf8');
 const HR_STAFF_DOCUMENTS_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffDocuments.js'), 'utf8');
+const HR_STAFF_RESOURCES_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffResources.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = readCssWithImports('css/pages.css');
@@ -653,6 +660,190 @@ test('HR staff document service owns private upload, archive, and download metad
     assert.equal(archived.data.status, 'archived');
     assert.deepEqual(archived.audit, { document_id: 18, title: 'Contract' });
     assert.equal(safeStaffDocumentDownloadFilename('bad"name\n.pdf'), 'bad_name_.pdf');
+});
+
+test('HR staff resource service owns warehouse and costume side effects atomically', async () => {
+    for (const token of [
+        "require('../services/hrStaffResources')",
+        "router.get('/staff/:id/resources', requireHrManage",
+        "router.get('/resource-options', requireHrManage",
+        "router.post('/staff/:id/resources', requireHrManage",
+        "router.put('/staff/:id/resources/:assignmentId/return', requireHrManage",
+        "auditLog('staff_resource_issue'",
+        "auditLog('staff_resource_return'"
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing HR staff resource route token ${token}`);
+    }
+    for (const token of [
+        'async function issueStaffResource',
+        'async function returnStaffResource',
+        'async function listStaffResources',
+        'async function listStaffResourceOptions',
+        "await client.query('BEGIN')",
+        "await client.query('COMMIT')",
+        "client.query('ROLLBACK')",
+        'INSERT INTO warehouse_history',
+        'INSERT INTO warehouse_stock_movements',
+        "VALUES ($1, 'issue', $2, NULL, $3, $4, $5, $6)",
+        "VALUES ($1, 'return', NULL, $2, $3, $4, $5, $6)",
+        'SET quantity = quantity - $1',
+        'SET quantity = quantity + $1',
+        'SET assigned_to = NULL, assigned_at = NULL',
+        'function staffResourceAssignmentMeta'
+    ]) {
+        assert.ok(HR_STAFF_RESOURCES_SERVICE.includes(token), `missing HR staff resource service token ${token}`);
+    }
+    assert.equal(HR_ROUTE.includes('INSERT INTO warehouse_stock_movements'), false, 'route must not own warehouse movement writes');
+    assert.equal(HR_ROUTE.includes('SET quantity = quantity - $1'), false, 'route must not own warehouse stock decrement');
+
+    const listQueries = [];
+    const listDb = {
+        async query(sql, params) {
+            listQueries.push({ sql, params });
+            if (/FROM staff_resource_assignments sra/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 31,
+                        staff_id: Number(params[0]),
+                        resource_kind: 'warehouse_stock',
+                        warehouse_stock_id: 77,
+                        costume_id: null,
+                        warehouse_stock_name: 'Radio',
+                        costume_name: null,
+                        title: 'Radio',
+                        quantity: 2,
+                        issued_at: '2026-06-08',
+                        due_return_at: null,
+                        returned_at: null,
+                        status: 'issued',
+                        notes: null,
+                        issued_by: 'creator',
+                        returned_by: null,
+                        warehouse_issue_movement_id: 501,
+                        warehouse_return_movement_id: null,
+                        created_at: '2026-06-08T10:00:00.000Z',
+                        updated_at: '2026-06-08T10:00:00.000Z'
+                    }]
+                };
+            }
+            if (/FROM warehouse_stock ws/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 77,
+                        name: 'Radio',
+                        category: 'Comms',
+                        quantity: 5,
+                        unit: 'шт',
+                        owner: 'park',
+                        location_id: 9,
+                        location_name: 'Storage'
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+    const listed = await listStaffResources(42, { includeReturned: false }, listDb);
+    assert.equal(listed[0].warehouse_stock_name, 'Radio');
+    assert.match(listQueries[0].sql, /sra.status = 'issued'/);
+    const options = await listStaffResourceOptions({ kind: 'warehouse_stock', q: 'radio', businessContext: 'park' }, listDb);
+    assert.equal(options.kind, 'warehouse_stock');
+    assert.equal(options.data[0].label, 'Radio');
+    assert.equal(listQueries.at(-1).params[0], 'park');
+
+    const txQueries = [];
+    const assignmentBase = {
+        id: 31,
+        staff_id: 42,
+        resource_kind: 'warehouse_stock',
+        warehouse_stock_id: 77,
+        costume_id: null,
+        title: 'Radio',
+        quantity: 2,
+        issued_at: '2026-06-08',
+        due_return_at: '2026-06-09',
+        returned_at: null,
+        status: 'issued',
+        notes: null,
+        issued_by: 'creator',
+        returned_by: null,
+        warehouse_issue_movement_id: null,
+        warehouse_return_movement_id: null,
+        created_at: '2026-06-08T10:00:00.000Z',
+        updated_at: '2026-06-08T10:00:00.000Z'
+    };
+    const fakePool = {
+        async connect() {
+            return {
+                async query(sql, params = []) {
+                    txQueries.push({ sql, params });
+                    if (/^BEGIN$|^COMMIT$|^ROLLBACK$/i.test(sql)) return { rows: [] };
+                    if (/FROM staff\s+WHERE id = \$1/i.test(sql)) return { rows: [{ id: params[0], name: 'Dasha Staff' }] };
+                    if (/FROM warehouse_stock\s+WHERE id = \$1\s+AND is_active = true/i.test(sql)) {
+                        return { rows: [{ id: 77, name: 'Radio', quantity: 5, unit: 'шт', location_id: 9, business_context: 'park' }] };
+                    }
+                    if (/INSERT INTO staff_resource_assignments/i.test(sql)) return { rows: [{ ...assignmentBase }] };
+                    if (/UPDATE warehouse_stock\s+SET quantity = quantity - \$1/i.test(sql)) return { rows: [], rowCount: 1 };
+                    if (/INSERT INTO warehouse_history/i.test(sql)) return { rows: [], rowCount: 1 };
+                    if (/INSERT INTO warehouse_stock_movements/i.test(sql) && /'issue'/i.test(sql)) return { rows: [{ id: 501 }] };
+                    if (/SET warehouse_issue_movement_id = \$2/i.test(sql)) {
+                        return { rows: [{ ...assignmentBase, warehouse_issue_movement_id: params[1] }] };
+                    }
+                    if (/FROM staff_resource_assignments sra/i.test(sql)) {
+                        return { rows: [{ ...assignmentBase, warehouse_stock_name: 'Radio', costume_id: 88, costume_name: 'Dragon' }] };
+                    }
+                    if (/SELECT id, location_id, business_context\s+FROM warehouse_stock/i.test(sql)) {
+                        return { rows: [{ id: 77, location_id: 9, business_context: 'park' }] };
+                    }
+                    if (/UPDATE warehouse_stock\s+SET quantity = quantity \+ \$1/i.test(sql)) return { rows: [], rowCount: 1 };
+                    if (/INSERT INTO warehouse_stock_movements/i.test(sql) && /'return'/i.test(sql)) return { rows: [{ id: 502 }] };
+                    if (/SET status = 'returned'/i.test(sql)) {
+                        return {
+                            rows: [{
+                                ...assignmentBase,
+                                status: 'returned',
+                                returned_at: params[2],
+                                returned_by: params[3],
+                                warehouse_return_movement_id: params[4],
+                                costume_id: 88
+                            }]
+                        };
+                    }
+                    if (/UPDATE costumes\s+SET assigned_to = NULL/i.test(sql)) return { rows: [], rowCount: 1 };
+                    return { rows: [] };
+                },
+                release() {}
+            };
+        }
+    };
+
+    const issued = await issueStaffResource(42, {
+        resource_kind: 'warehouse_stock',
+        warehouse_stock_id: 77,
+        quantity: 2,
+        due_return_at: '2026-06-09'
+    }, {
+        actor: 'creator',
+        businessContext: 'park',
+        today: '2026-06-08'
+    }, fakePool);
+    assert.equal(issued.data.warehouse_issue_movement_id, 501);
+    assert.equal(issued.audit.resource_kind, 'warehouse_stock');
+    assert.ok(txQueries.some(q => /^BEGIN$/i.test(q.sql)));
+    assert.ok(txQueries.some(q => /^COMMIT$/i.test(q.sql)));
+    assert.ok(txQueries.some(q => /INSERT INTO warehouse_history/i.test(q.sql) && q.params[1] === -2));
+    assert.ok(txQueries.some(q => /INSERT INTO warehouse_stock_movements/i.test(q.sql) && /'issue'/i.test(q.sql)));
+
+    txQueries.length = 0;
+    const returned = await returnStaffResource(42, 31, { returned_at: '2026-06-10' }, {
+        actor: 'creator',
+        today: '2026-06-10'
+    }, fakePool);
+    assert.equal(returned.data.status, 'returned');
+    assert.equal(returned.audit.warehouse_return_movement_id, 502);
+    assert.ok(txQueries.some(q => /INSERT INTO warehouse_history/i.test(q.sql) && q.params[1] === 2));
+    assert.ok(txQueries.some(q => /INSERT INTO warehouse_stock_movements/i.test(q.sql) && /'return'/i.test(q.sql)));
+    assert.ok(txQueries.some(q => /UPDATE costumes\s+SET assigned_to = NULL/i.test(q.sql)));
 });
 
 test('HR offboarding readiness owns account/resource/document closure guardrails', () => {

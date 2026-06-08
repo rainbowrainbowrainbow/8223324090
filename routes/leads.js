@@ -317,7 +317,16 @@ function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal'
         body.username,
         telegram.username
     ));
-    const phone = firstClean(body.phone, body.phone_number, body.phoneNumber, body.contact_phone);
+    const phone = firstClean(
+        body.phone,
+        body.phone_number,
+        body.phoneNumber,
+        body.contact_phone,
+        body.contactPhone,
+        body.contact,
+        body.contact_value,
+        body.contactValue
+    );
     const whatsapp = firstClean(body.whatsapp, body.whatsapp_phone, body.whatsappPhone);
     const name = firstClean(body.name, body.client_name, body.clientName, body.full_name, body.fullName);
     const requestTopic = firstClean(body.request_topic, body.requestTopic, body.topic, body.subject);

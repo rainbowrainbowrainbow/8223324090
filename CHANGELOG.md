@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.4 - Майстерня: конвертація в бронювання
+
+### Майстерня долі / Lead conversion / Timeline access / Webhook contact / (Клешня, 08.06.2026) [codex]
+- **Конвертація ліда знову відкриває форму бронювання** - приватний таймлайн Майстерні тепер визнає `extra_roles=['creator']` як creator-грант на backend і frontend, тому `convert=booking` може автоматично відкрити booking panel, а не тільки сам таймлайн.
+- **Business-context policy синхронізовано з виданими creator-грантами** - `services/businessContext.js`, `js/api.js`, `services/timelineContext.js`, `js/timeline-context.js` і sidebar guard більше не блокують акаунти, яким міграції вже дали creator-доступ без зміни primary role.
+- **Lead deep-link став стійкішим до різних shape-ів API** - `convertLead()` підхоплює `client_name/clientName/customerName`, `phone/customerPhone/contact/whatsapp` і дату в snake_case або camelCase перед переходом на таймлайн.
+- **Контакт із форми сайту більше не губиться** - universal webhook тепер нормалізує поле `contact` з сайту Майстерні як телефон/WhatsApp ліда, щоб booking draft мав контакт клієнта.
+- **Regression guard закрив напівдоступ Майстерні** - тести перевіряють creator-грант через `extra_roles`, business-context доступ, sidebar guard, маршрут конвертації та `contact -> phone` у webhook.
+- **Релізні маркери піднято до `0.74.4`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.3 - Майстерня: конвертація ліда
 
 ### Майстерня долі / Sales funnel / Timeline redirect / Guardrail / (Клешня, 08.06.2026) [codex]

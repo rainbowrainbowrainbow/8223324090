@@ -184,7 +184,7 @@ function businessContextWasRequested(req) {
 }
 
 function isBusinessContextSwitchRole(user) {
-  return BUSINESS_CONTEXT_SWITCH_ROLES.includes(String(user?.role || '').trim());
+  return roleList(user).some(role => BUSINESS_CONTEXT_SWITCH_ROLES.includes(role));
 }
 
 function explicitForcedBusinessContext(user) {

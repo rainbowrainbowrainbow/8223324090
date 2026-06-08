@@ -132,6 +132,16 @@ function leadContextFromRecord(record = {}) {
     ) || currentBusinessContext || 'event_genix';
 }
 
+function leadRecordText(record = {}, keys = []) {
+    for (const key of keys) {
+        const value = record?.[key];
+        if (value === undefined || value === null) continue;
+        const text = String(value).trim();
+        if (text) return text;
+    }
+    return '';
+}
+
 function leadTimelineRouteForContext(context = leadBusinessContext()) {
     const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
     if (normalized === 'maysternya_doli') return '/maysternya-doli';
@@ -2156,10 +2166,13 @@ async function convertLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
     const params = new URLSearchParams();
-    if (lead.client_name) params.set('customerName', lead.client_name);
-    if (lead.phone) params.set('customerPhone', lead.phone);
-    if (lead.event_date) {
-        const eventDate = String(lead.event_date).split('T')[0];
+    const customerName = leadRecordText(lead, ['client_name', 'clientName', 'customerName', 'name']);
+    const customerPhone = leadRecordText(lead, ['phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp']);
+    const rawEventDate = leadRecordText(lead, ['event_date', 'eventDate', 'booking_date', 'bookingDate', 'date']);
+    if (customerName) params.set('customerName', customerName);
+    if (customerPhone) params.set('customerPhone', customerPhone);
+    if (rawEventDate) {
+        const eventDate = String(rawEventDate).split('T')[0];
         params.set('date', eventDate);
         params.set('eventDate', eventDate);
     }

@@ -340,9 +340,12 @@ test('lead conversion routes Maysternya bookings to the Maysternya timeline surf
     const leadsCode = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
 
     assert.match(leadsCode, /function leadTimelineRouteForContext/);
+    assert.match(leadsCode, /function leadRecordText/);
     assert.match(leadsCode, /normalized === 'maysternya_doli'[\s\S]*return '\/maysternya-doli'/);
     assert.match(leadsCode, /function leadTimelineHref/);
     assert.match(leadsCode, /businessContext', normalized/);
+    assert.match(leadsCode, /'client_name', 'clientName', 'customerName', 'name'/);
+    assert.match(leadsCode, /'phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp'/);
     assert.match(leadsCode, /window\.location\.href = leadTimelineHref\(Object\.fromEntries\(params\.entries\(\)\), leadContextFromRecord\(lead\)\)/);
     assert.doesNotMatch(leadsCode, /window\.location\.href = `\/\?\$\{params\.toString\(\)\}`/);
 });
@@ -351,7 +354,9 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
     assert.match(sidebarCode, /function _sidebarUserHasCreator/);
-    assert.match(sidebarCode, /return String\(user\?\.role \|\| user\?\.account_role \|\| user\?\.accountRole \|\| ''\)\.trim\(\) === 'creator'/);
+    assert.match(sidebarCode, /Array\.isArray\(user\?\.extraRoles\)/);
+    assert.match(sidebarCode, /Array\.isArray\(user\?\.extra_roles\)/);
+    assert.match(sidebarCode, /roles\.filter\(Boolean\)\.map\(value => String\(value\)\.trim\(\)\)\.includes\('creator'\)/);
     assert.match(sidebarCode, /if \(!_sidebarUserHasCreator\(user\)\) return false/);
     assert.match(sidebarCode, /const MAYSTERNYA_SIDEBAR_HREFS = new Set/);
     assert.match(sidebarCode, /'\/sales-funnel'/);
@@ -608,22 +613,23 @@ test('timeline load routes keep legacy default-context rows visible', () => {
     assert.match(linesRoute, /COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
 });
 
-test('Maysternya Doli access is creator-only', () => {
+test('Maysternya Doli access accepts creator grants only', () => {
     assert.equal(canAccessTimelineContext({ role: 'creator' }, 'maysternya_doli'), true);
-    assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), false);
+    assert.equal(canAccessTimelineContext({ role: 'manager', extraRoles: ['creator'] }, 'maysternya_doli'), true);
     assert.equal(canAccessTimelineContext({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli'), false);
     assert.equal(canAccessTimelineContext({ role: 'manager' }, 'maysternya_doli'), false);
 });
 
 test('Maysternya Doli actions are creator-scoped inside the allowed surface', () => {
     const director = { role: 'director', pageAllowlist: ['/maysternya-doli'] };
-    const managerWithExtraRole = { role: 'instructor', extraRoles: ['director'], pageAllowlist: ['/maysternya-doli'] };
+    const managerWithCreatorGrant = { role: 'instructor', extraRoles: ['creator'], businessContexts: ['event_genix', 'maysternya_doli'], pageAllowlist: ['/maysternya-doli'] };
     const creator = { role: 'creator' };
 
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'create'), false);
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'delete'), false);
     assert.equal(canUseTimelineAction(director, 'maysternya_doli', 'settings'), false);
-    assert.equal(canUseTimelineAction(managerWithExtraRole, 'maysternya_doli', 'edit'), false);
+    assert.equal(canUseTimelineAction(managerWithCreatorGrant, 'maysternya_doli', 'create'), true);
+    assert.equal(canUseTimelineAction(managerWithCreatorGrant, 'maysternya_doli', 'edit'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'delete'), true);
     assert.equal(canUseTimelineAction(creator, 'maysternya_doli', 'sales'), false);
     assert.equal(canUseTimelineAction({ role: 'manager', pageAllowlist: ['/maysternya-doli'] }, 'maysternya_doli', 'settings'), false);

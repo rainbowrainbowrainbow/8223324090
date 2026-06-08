@@ -62,7 +62,7 @@ test('business scope request contract supports single, multi, and all-business m
   );
 });
 
-test('business switch policy lets creator and director switch contexts while lower roles stay on Park', () => {
+test('business switch policy lets creator grants and director switch contexts while lower roles stay on Park', () => {
   assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('creator'));
   assert.ok(BUSINESS_CONTEXT_SWITCH_ROLES.includes('director'));
 
@@ -75,9 +75,21 @@ test('business switch policy lets creator and director switch contexts while low
   assert.equal(directorPolicy.canSwitch, true);
   assert.deepEqual(directorPolicy.allowed, ['event_genix', 'dar']);
   assert.equal(canAccessBusinessContext({ role: 'director', business_contexts: ['event_genix', 'dar'] }, 'dar'), true);
+
+  const extraCreator = {
+    role: 'manager',
+    extra_roles: ['creator'],
+    business_contexts: ['event_genix', 'maysternya_doli'],
+    default_business_context: 'maysternya_doli'
+  };
+  const extraCreatorPolicy = resolveBusinessContextPolicy(extraCreator);
+  assert.equal(extraCreatorPolicy.canSwitch, true);
+  assert.deepEqual(extraCreatorPolicy.allowed, ['event_genix', 'maysternya_doli']);
+  assert.equal(extraCreatorPolicy.defaultContext, 'maysternya_doli');
+  assert.equal(canAccessBusinessContext(extraCreator, 'maysternya_doli'), true);
 });
 
-test('account business_contexts only limit creator/director switchers; lower roles stay on Park', () => {
+test('account business_contexts only limit creator/director grants; lower roles stay on Park', () => {
   const creatorPolicy = resolveBusinessContextPolicy({ role: 'creator', business_contexts: ['event_genix', 'dar'] });
   assert.equal(creatorPolicy.canSwitch, true);
   assert.deepEqual(creatorPolicy.allowed, ['event_genix', 'dar']);
@@ -96,7 +108,7 @@ test('account business_contexts only limit creator/director switchers; lower rol
   assert.equal(canAccessBusinessContext({ role: 'manager', business_contexts: ['event_genix', 'dar'] }, 'event_genix'), true);
 });
 
-test('default_business_context is honored only for creator/director switchers', () => {
+test('default_business_context is honored only for creator/director grants', () => {
   const user = {
     role: 'creator',
     business_contexts: ['event_genix', 'maysternya_doli'],

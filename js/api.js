@@ -354,7 +354,7 @@ function crmBusinessAssignedContexts(user) {
 }
 
 function crmBusinessUserCanSwitch(user) {
-    return CRM_BUSINESS_SWITCH_ROLES.includes(String(user?.role || '').trim());
+    return crmBusinessRoles(user).some(role => CRM_BUSINESS_SWITCH_ROLES.includes(role));
 }
 
 function crmBusinessExplicitForcedContext(user) {

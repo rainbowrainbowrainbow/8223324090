@@ -1455,7 +1455,7 @@ describe('route-level API safety smoke', () => {
         const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_site', {
             external_id: 'site-inquiry-1',
             name: 'Site Lead',
-            phone: '+380501112255',
+            contact: '+380501112255',
             email: 'site@example.com',
             page: 'https://www.maisterniadoli.com/',
             contact_channels: ['site_form', 'whatsapp'],
@@ -1477,9 +1477,11 @@ describe('route-level API safety smoke', () => {
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text));
         assert.ok(insert);
         assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[2], '+380501112255');
         assert.equal(insert.params[5], 'maysternya_site');
         assert.equal(insert.params[6], 'site-inquiry-1');
         const rawPayload = JSON.parse(insert.params[8]);
+        assert.equal(rawPayload.contact, '+380501112255');
         assert.equal(rawPayload.page, 'https://www.maisterniadoli.com/');
         assert.deepEqual(rawPayload.contact_channels, ['site_form', 'whatsapp']);
         assert.deepEqual(rawPayload.utm, { source: 'google', medium: 'cpc', campaign: 'natal' });

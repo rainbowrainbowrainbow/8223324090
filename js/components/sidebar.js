@@ -1237,7 +1237,11 @@ const Sidebar = (() => {
     }
 
     function _sidebarUserHasCreator(user = _getCurrentSidebarUser()) {
-        return String(user?.role || user?.account_role || user?.accountRole || '').trim() === 'creator';
+        const roles = [user?.role, user?.account_role, user?.accountRole];
+        if (Array.isArray(user?.roles)) roles.push(...user.roles);
+        if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+        if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+        return roles.filter(Boolean).map(value => String(value).trim()).includes('creator');
     }
 
     function _isMaysternyaSidebarContext(user = _getCurrentSidebarUser()) {

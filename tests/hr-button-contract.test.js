@@ -3,6 +3,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
+const {
+    PAYROLL_EVENT_LABELS,
+    assertPayrollPeriodOpen,
+    loadPayrollPeriodLock,
+    normalizePayrollDate,
+    payrollMonthRange,
+    payrollPeriodRange,
+    recordPayrollPeriodEvent,
+    requirePayrollMonth
+} = require('../services/hrPayrollPeriod');
 
 const ROOT = path.join(__dirname, '..');
 function readCssWithImports(file, seen = new Set()) {
@@ -33,6 +43,7 @@ const HR_HTML = [
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = readCssWithImports('css/pages.css');
@@ -95,6 +106,103 @@ test('HR camera checkout keeps actual-time payroll through the shared clock-out 
     assert.equal(payroll.settlementMode, 'actual_time');
     assert.equal(payroll.earlyLeaveMinutes, 90);
     assert.equal(payroll.status, 'early_leave');
+});
+
+test('HR payroll period service owns range, lock, and event normalization', async () => {
+    assert.equal(requirePayrollMonth('2026-02'), '2026-02');
+    assert.equal(requirePayrollMonth('2026-02-01'), null);
+    assert.equal(normalizePayrollDate('2026-02-28'), '2026-02-28');
+    assert.equal(normalizePayrollDate('2026-02-30'), null);
+    assert.deepEqual(payrollMonthRange('2024-02'), { from: '2024-02-01', to: '2024-02-29' });
+    assert.deepEqual(payrollPeriodRange('2026-03'), {
+        from: '2026-03-01',
+        to: '2026-03-31',
+        month_from: '2026-03',
+        month_to: '2026-03',
+        mode: 'month'
+    });
+    assert.deepEqual(payrollPeriodRange('2026-03', '2026-02-25', '2026-03-02'), {
+        from: '2026-02-25',
+        to: '2026-03-02',
+        month_from: '2026-02',
+        month_to: '2026-03',
+        mode: 'range'
+    });
+    assert.throws(() => payrollPeriodRange('2026-03', '2026-03-10', '2026-03-01'), err => {
+        assert.equal(err.statusCode, 400);
+        return true;
+    });
+
+    const emptyLockDb = {
+        async query(sql, params) {
+            assert.match(sql, /FROM payroll_period_locks/);
+            assert.deepEqual(params, ['2026-03']);
+            return { rows: [] };
+        }
+    };
+    assert.deepEqual(await loadPayrollPeriodLock('2026-03', emptyLockDb), {
+        period_month: '2026-03',
+        is_locked: false,
+        locked_at: null,
+        locked_by: null,
+        unlocked_at: null,
+        unlocked_by: null,
+        note: null,
+        meta_json: {}
+    });
+
+    const lockedDb = {
+        async query() {
+            return {
+                rows: [{
+                    period_month: '2026-03',
+                    is_locked: true,
+                    locked_at: '2026-03-31T20:00:00.000Z',
+                    locked_by: 'creator',
+                    note: 'closed',
+                    meta_json: { source: 'test' }
+                }]
+            };
+        }
+    };
+    await assert.rejects(() => assertPayrollPeriodOpen('2026-03', lockedDb), err => {
+        assert.equal(err.statusCode, 423);
+        assert.equal(err.payrollLock.is_locked, true);
+        return true;
+    });
+
+    const eventDb = {
+        async query(sql, params) {
+            assert.match(sql, /INSERT INTO payroll_period_events/);
+            assert.deepEqual(params, [
+                '2026-03',
+                'commit',
+                'creator',
+                'done',
+                1234,
+                2,
+                JSON.stringify({ amount: 1234, count: 2 })
+            ]);
+            return {
+                rows: [{
+                    id: 7,
+                    period_month: '2026-03',
+                    event_type: 'commit',
+                    actor: 'creator',
+                    note: 'done',
+                    amount: '1234',
+                    items_count: '2',
+                    meta_json: { amount: 1234, count: 2 },
+                    created_at: '2026-03-31T20:00:00.000Z'
+                }]
+            };
+        }
+    };
+    const event = await recordPayrollPeriodEvent('2026-03', 'commit', 'creator', 'done', { amount: 1234, count: 2 }, eventDb);
+    assert.equal(event.event_label, PAYROLL_EVENT_LABELS.commit);
+    assert.equal(event.amount, 1234);
+    assert.equal(event.items_count, 2);
+    assert.equal(await recordPayrollPeriodEvent('2026-03', 'unknown', 'creator', '', {}, eventDb), null);
 });
 
 test('HR grouped nav buttons expose routing and future visibility contract', () => {
@@ -316,15 +424,7 @@ test('HR payroll keeps worked inactive staff and ignores unapplied salary adjust
 test('HR salary backend owns payroll period lock, reconciliation, and reversal APIs', () => {
     for (const token of [
         'const PAYROLL_CONTROL_ROLES',
-        'function payrollMonthRange',
-        'function normalizePayrollDate',
-        'function payrollPeriodRange',
-        'async function loadPayrollPeriodLock',
-        'async function assertPayrollPeriodOpen',
-        'async function setPayrollPeriodLock',
-        'async function loadPayrollReconciliation',
-        'async function recordPayrollPeriodEvent',
-        'async function loadPayrollPeriodEvents',
+        "require('../services/hrPayrollPeriod')",
         "router.get('/salary/reconciliation'",
         "router.post('/salary/period-lock'",
         "router.post('/salary/reverse'",
@@ -340,7 +440,26 @@ test('HR salary backend owns payroll period lock, reconciliation, and reversal A
         'period_lock: periodLock, reconciliation',
         'events'
     ]) {
-        assert.ok(HR_ROUTE.includes(token), `missing ${token}`);
+        assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
+    }
+
+    for (const token of [
+        'function payrollMonthRange',
+        'function normalizePayrollDate',
+        'function payrollPeriodRange',
+        'async function loadPayrollPeriodLock',
+        'async function assertPayrollPeriodOpen',
+        'async function setPayrollPeriodLock',
+        'async function loadPayrollReconciliation',
+        'async function recordPayrollPeriodEvent',
+        'async function loadPayrollPeriodEvents',
+        'const PAYROLL_EVENT_TYPES',
+        'const PAYROLL_EVENT_LABELS',
+        'FROM payroll_period_locks',
+        'INSERT INTO payroll_period_events',
+        'FROM payroll_period_events'
+    ]) {
+        assert.ok(HR_PAYROLL_PERIOD_SERVICE.includes(token), `missing payroll period service token ${token}`);
     }
 
     for (const token of [

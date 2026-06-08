@@ -378,6 +378,20 @@ What this gives:
 
 Status: open.
 
+2026-06-08 HR payroll-period update:
+
+- Extracted the HR salary period range, lock, event journal, and reconciliation
+  helpers from `routes/hr.js` into `services/hrPayrollPeriod.js`.
+- Kept HR salary route handlers, permission middleware, public URLs, and API
+  response shape in `routes/hr.js`; this was a backend helper ownership cleanup,
+  not an endpoint split.
+- Updated HR salary contract/static guardrails so the route remains responsible
+  for `/api/hr/salary*` surfaces while the payroll-period service owns lock and
+  event helper behavior.
+- Next HR backend candidates should start from a similarly narrow domain slice:
+  onboarding task-owner sync or staff resource/document lifecycle, with focused
+  tests before moving route handlers.
+
 ### 8. Scheduler, Event, And Callback Cleanup
 
 Goal: keep background work restart-safe and duplicate-safe.
@@ -478,6 +492,7 @@ Status: active rule for all packs.
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
 | Done | Service Worker cache policy guard | Prevents stale/private CRM API data from being cached offline | `npm run check:service-worker-policy`, `tests/service-worker-policy.test.js` |
 | Done | CSS surface ownership guard | Prevents frontend cleanup from deleting or renaming live styles blindly | `npm run check:css-surface`, `npm run test:ui` |
+| Done | HR payroll-period helper extraction | Keeps salary period locks/events/reconciliation out of the HR route monolith without changing `/api/hr/salary*` contracts | `node --test tests/hr-button-contract.test.js`, `npm run test:ui` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 
 ## Open Questions To Resolve Before Destructive Cleanup

@@ -945,5 +945,84 @@ body.dark-mode .page-fatal-error {
 }
 
 /* ==========================================
+   MAYSTERNYA TASK FOLLOW-UP WORKSPACE
+   ========================================== */
+
+.maysternya-task-ops[hidden] {
+    display: none !important;
+}
+
+.maysternya-task-ops {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(240, 253, 250, 0.94), rgba(255, 251, 235, 0.86));
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
+}
+
+.maysternya-task-filter-row,
+.maysternya-task-preset-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.maysternya-task-chip,
+.maysternya-task-preset {
+    min-height: 36px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 118, 110, 0.22);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.maysternya-task-chip {
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #0f766e;
+}
+
+.maysternya-task-chip span {
+    display: inline-flex;
+    min-width: 20px;
+    justify-content: center;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(15, 118, 110, 0.10);
+    color: #0f766e;
+}
+
+.maysternya-task-chip.active {
+    background: #0f766e;
+    border-color: #0f766e;
+    color: #fff;
+}
+
+.maysternya-task-chip.active span {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+}
+
+.maysternya-task-preset {
+    padding: 0 13px;
+    background: #fef3c7;
+    color: #92400e;
+    border-color: rgba(217, 119, 6, 0.28);
+}
+
+.maysternya-task-chip:hover,
+.maysternya-task-preset:hover,
+.maysternya-task-chip:focus-visible,
+.maysternya-task-preset:focus-visible {
+    outline: 2px solid rgba(20,184,166,0.35);
+    outline-offset: 2px;
+}
+
+/* ==========================================
    TASKS OS + MY CABINET
    ========================================== */

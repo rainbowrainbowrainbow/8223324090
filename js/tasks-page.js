@@ -111,6 +111,50 @@ const TASK_SCHEDULE_SLOTS = [
     { key: 'afternoon', icon: '🌤️', label: 'Після обіду' },
     { key: 'evening', icon: '🌙', label: 'Вечір' }
 ];
+const MAYSTERNYA_TASK_BUSINESS_CONTEXT = 'maysternya_doli';
+const MAYSTERNYA_TASK_CATEGORY_ORDER = ['operational', 'admin', 'personal', 'improvement', 'maintenance'];
+const MAYSTERNYA_TASK_PRESETS = Object.freeze({
+    callback: {
+        label: 'Передзвонити',
+        title: 'Передзвонити клієнту Майстерні',
+        priority: 'high',
+        deadlineTime: '10:00',
+        filterTerms: ['передзвон', 'дзвінок', 'callback', 'call']
+    },
+    write: {
+        label: 'Написати',
+        title: 'Написати клієнту Майстерні',
+        priority: 'high',
+        deadlineTime: '16:00',
+        filterTerms: ['написати', 'повідомлення', 'whatsapp', 'telegram', 'write']
+    },
+    payment: {
+        label: 'Оплата',
+        title: 'Нагадати оплату консультації',
+        priority: 'normal',
+        deadlineTime: '11:00',
+        filterTerms: ['оплат', 'платіж', 'payment']
+    },
+    post_session: {
+        label: 'Після сесії',
+        title: 'Follow-up після сесії Майстерні',
+        priority: 'normal',
+        deadlineTime: '12:00',
+        filterTerms: ['після сесії', 'після консультації', 'post_session', 'post session']
+    }
+});
+const MAYSTERNYA_TASK_PRESET_ORDER = ['callback', 'write', 'payment', 'post_session'];
+const TASK_KIND_LABELS = {
+    action: 'Дія',
+    reminder: 'Нагадування',
+    followup: 'Дотиск',
+    deep_work: 'Глибока робота',
+    checklist: 'Чеклист',
+    routine: 'Рутина',
+    waiting: 'Чекаю',
+    idea: 'Ідея',
+    decision: 'Рішення'
+};
 
 let currentView = 'inbox';
 let currentCategory = 'all';
@@ -120,6 +164,8 @@ let assistantTaskFilter = '';
 let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
+let currentTaskBusinessContext = 'event_genix';
+let currentMaysternyaTaskFilter = 'all';
 let captureIntent = {};
 let taskAssigneeMode = 'self';
 let lastCreatedTaskId = null;
@@ -252,8 +298,120 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function taskBusinessContext() {
+    return window.CrmBusinessContext?.normalize?.(currentTaskBusinessContext)
+        || currentTaskBusinessContext
+        || 'event_genix';
+}
+
+function taskBusinessScope() {
+    return window.CrmBusinessContext?.scope?.() || {
+        mode: 'single',
+        activeContext: taskBusinessContext(),
+        selectedContexts: [taskBusinessContext()],
+        readOnly: false,
+        canWrite: true
+    };
+}
+
+function isMaysternyaTaskContext() {
+    const scope = taskBusinessScope();
+    return scope.mode === 'single' && taskBusinessContext() === MAYSTERNYA_TASK_BUSINESS_CONTEXT;
+}
+
+function taskBusinessReadOnlyMessage(actionLabel = 'змінювати задачі') {
+    return window.CrmBusinessContext?.readOnlyMessage?.(taskBusinessScope(), actionLabel)
+        || 'Оберіть один бізнес, щоб змінювати задачі.';
+}
+
+function guardTaskWrite(actionLabel = 'змінювати задачі') {
+    if (window.CrmBusinessContext?.guardWrite) {
+        return window.CrmBusinessContext.guardWrite(actionLabel, taskBusinessScope());
+    }
+    const readOnly = taskBusinessScope().readOnly === true || taskBusinessScope().canWrite === false;
+    if (!readOnly) return true;
+    if (typeof showNotification === 'function') showNotification(taskBusinessReadOnlyMessage(actionLabel), 'warning');
+    return false;
+}
+
+function taskApiUrl(url) {
+    const text = String(url || '');
+    if (!/\/api\/(?:tasks|task-templates)\b/.test(text)) return url;
+    return window.CrmBusinessContext?.apiUrl
+        ? window.CrmBusinessContext.apiUrl(url, taskBusinessContext())
+        : url;
+}
+
+function taskPayload(payload = {}) {
+    return window.CrmBusinessContext?.payload
+        ? window.CrmBusinessContext.payload(payload, taskBusinessContext())
+        : { ...(payload || {}), businessContext: taskBusinessContext() };
+}
+
+function taskScopedJsonBody(body) {
+    if (body === undefined || body === null) return body;
+    if (typeof FormData !== 'undefined' && body instanceof FormData) return body;
+    if (typeof body === 'string') {
+        const text = body.trim();
+        if (!text) return body;
+        try {
+            return JSON.stringify(taskPayload(JSON.parse(text)));
+        } catch {
+            return body;
+        }
+    }
+    if (typeof body === 'object') return JSON.stringify(taskPayload(body));
+    return body;
+}
+
+function taskBlockedApiResponse(actionLabel = 'змінювати задачі') {
+    return {
+        ok: false,
+        status: 403,
+        json: async () => ({
+            success: false,
+            code: 'business_scope_read_only',
+            error: taskBusinessReadOnlyMessage(actionLabel)
+        })
+    };
+}
+
+function taskApiFetch(url, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !guardTaskWrite('змінювати задачі')) {
+        return Promise.resolve(taskBlockedApiResponse());
+    }
+    const request = { ...options };
+    if (request.body !== undefined && method !== 'GET') request.body = taskScopedJsonBody(request.body);
+    return fetch(taskApiUrl(url), request);
+}
+
+function taskApiFetchWithAuth(url, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !guardTaskWrite('змінювати задачі')) {
+        return Promise.resolve(taskBlockedApiResponse());
+    }
+    const request = { ...options };
+    if (request.body !== undefined && method !== 'GET') request.body = taskScopedJsonBody(request.body);
+    const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+    return fetchWithAuth(taskApiUrl(url), request);
+}
+
 function getCategoryConfig(category) {
-    return TASK_CATEGORY_TREE[category] || TASK_CATEGORY_TREE.admin;
+    const config = TASK_CATEGORY_TREE[category] || TASK_CATEGORY_TREE.admin;
+    if (!isMaysternyaTaskContext()) return config;
+    const maysternyaLabels = {
+        operational: 'Follow-up',
+        event: 'Сесії',
+        orders: 'Запити',
+        trampoline: 'Ресурси',
+        checklist: 'Чек-листи',
+        admin: 'Адмін',
+        personal: 'Особисті',
+        improvement: 'Покращення',
+        maintenance: 'Технічні'
+    };
+    return maysternyaLabels[category] ? { ...config, label: maysternyaLabels[category] } : config;
 }
 
 function getSubcategoryConfig(category, subcategory) {
@@ -274,12 +432,218 @@ function getTaxonomyLabel(category, subcategory) {
     return subInfo ? `${catInfo.label} / ${subInfo.label}` : catInfo.label;
 }
 
+function getTopLevelTaskCategoryOrder() {
+    if (!isMaysternyaTaskContext()) return TOP_LEVEL_ORDER;
+    return MAYSTERNYA_TASK_CATEGORY_ORDER;
+}
+
 function renderCategoryOptions(selected = 'admin') {
-    const optionCats = Array.from(new Set([...TOP_LEVEL_ORDER, 'operational', 'maintenance']));
+    const optionCats = Array.from(new Set([...getTopLevelTaskCategoryOrder(), 'operational', 'maintenance', selected].filter(Boolean)));
     return optionCats.map(cat => {
         const info = getCategoryConfig(cat);
         return `<option value="${cat}" ${selected === cat ? 'selected' : ''}>${escapeHtml(info.label)}</option>`;
     }).join('');
+}
+
+function setTextWithDefault(selector, enabled, nextText) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    if (el.dataset.defaultText === undefined) el.dataset.defaultText = el.textContent || '';
+    el.textContent = enabled ? nextText : el.dataset.defaultText;
+}
+
+function ensureSelectOption(select, value, label) {
+    if (!select || !value) return null;
+    let option = Array.from(select.options || []).find(item => item.value === value);
+    if (!option) {
+        option = document.createElement('option');
+        option.value = value;
+        select.appendChild(option);
+    }
+    if (option.dataset.defaultText === undefined) option.dataset.defaultText = option.textContent || label;
+    option.textContent = label;
+    return option;
+}
+
+function syncSelectOptionText(selectId, value, enabled, nextText) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const option = Array.from(select.options || []).find(item => item.value === value);
+    if (!option) return;
+    if (option.dataset.defaultText === undefined) option.dataset.defaultText = option.textContent || '';
+    option.textContent = enabled ? nextText : option.dataset.defaultText;
+}
+
+function getTaskKindLabel(kind) {
+    if (isMaysternyaTaskContext() && kind === 'followup') return 'Follow-up';
+    return TASK_KIND_LABELS[kind] || kind;
+}
+
+function maysternyaTaskSearchText(task = {}) {
+    return [
+        task.title,
+        task.description,
+        task.source_type || task.sourceType,
+        task.source_module || task.sourceModule,
+        task.source_entity_type || task.sourceEntityType,
+        task.source_surface || task.sourceSurface
+    ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function isMaysternyaFollowUpTask(task = {}) {
+    const source = String(task.source_type || task.sourceType || '').toLowerCase();
+    const module = String(task.source_module || task.sourceModule || '').toLowerCase();
+    return taskKind(task) === 'followup'
+        || (task.category || '') === 'operational'
+        || source.includes('maysternya')
+        || module.includes('maysternya')
+        || (source.includes('lead') && module.includes('tasks'));
+}
+
+function matchesMaysternyaTaskFilter(task = {}) {
+    if (!isMaysternyaTaskContext() || currentMaysternyaTaskFilter === 'all') return true;
+    if (currentMaysternyaTaskFilter === 'followup') return isMaysternyaFollowUpTask(task);
+    const preset = MAYSTERNYA_TASK_PRESETS[currentMaysternyaTaskFilter];
+    if (!preset) return true;
+    const text = maysternyaTaskSearchText(task);
+    return isMaysternyaFollowUpTask(task) && preset.filterTerms.some(term => text.includes(term));
+}
+
+function countMaysternyaPresetTasks(key) {
+    return allTasks.filter(task => {
+        if (!isActiveTask(task)) return false;
+        if (key === 'all') return true;
+        if (key === 'followup') return isMaysternyaFollowUpTask(task);
+        const preset = MAYSTERNYA_TASK_PRESETS[key];
+        if (!preset) return false;
+        const text = maysternyaTaskSearchText(task);
+        return isMaysternyaFollowUpTask(task) && preset.filterTerms.some(term => text.includes(term));
+    }).length;
+}
+
+function renderMaysternyaTaskOpsBar() {
+    const host = document.getElementById('maysternyaTaskOpsBar');
+    if (!host) return;
+    const enabled = isMaysternyaTaskContext();
+    host.hidden = !enabled;
+    if (!enabled) {
+        host.innerHTML = '';
+        return;
+    }
+    const filterButtons = [
+        { key: 'all', label: 'Усі' },
+        { key: 'followup', label: 'Follow-up' },
+        ...MAYSTERNYA_TASK_PRESET_ORDER.map(key => ({ key, label: MAYSTERNYA_TASK_PRESETS[key].label }))
+    ].map(item => {
+        const active = currentMaysternyaTaskFilter === item.key;
+        const count = countMaysternyaPresetTasks(item.key);
+        return `<button type="button" class="maysternya-task-chip ${active ? 'active' : ''}" data-maysternya-task-filter="${escapeHtml(item.key)}" aria-pressed="${active ? 'true' : 'false'}">${escapeHtml(item.label)} <span>${count}</span></button>`;
+    }).join('');
+    const presetButtons = MAYSTERNYA_TASK_PRESET_ORDER.map(key => {
+        const preset = MAYSTERNYA_TASK_PRESETS[key];
+        return `<button type="button" class="maysternya-task-preset" data-maysternya-task-preset="${escapeHtml(key)}">+ ${escapeHtml(preset.label)}</button>`;
+    }).join('');
+    host.innerHTML = `
+        <div class="maysternya-task-filter-row" role="group" aria-label="Зріз follow-up Майстерні">${filterButtons}</div>
+        <div class="maysternya-task-preset-row" role="group" aria-label="Швидкі follow-up задачі Майстерні">${presetButtons}</div>
+    `;
+}
+
+function setupMaysternyaTaskOpsBar() {
+    const host = document.getElementById('maysternyaTaskOpsBar');
+    if (!host || host.dataset.bound === 'true') return;
+    host.dataset.bound = 'true';
+    host.addEventListener('click', event => {
+        const filter = event.target.closest('[data-maysternya-task-filter]');
+        if (filter) {
+            setMaysternyaTaskFilter(filter.dataset.maysternyaTaskFilter || 'all');
+            return;
+        }
+        const preset = event.target.closest('[data-maysternya-task-preset]');
+        if (preset) applyMaysternyaTaskPreset(preset.dataset.maysternyaTaskPreset || '');
+    });
+}
+
+function setMaysternyaTaskFilter(filter = 'all') {
+    const next = filter === 'followup' || filter === 'all' || MAYSTERNYA_TASK_PRESETS[filter] ? filter : 'all';
+    currentMaysternyaTaskFilter = next;
+    renderMaysternyaTaskOpsBar();
+    renderBoard();
+}
+
+function applyMaysternyaTaskPreset(key) {
+    const preset = MAYSTERNYA_TASK_PRESETS[key];
+    if (!preset) return;
+    const title = document.getElementById('taskTitle');
+    const category = document.getElementById('taskCategory');
+    const priority = document.getElementById('taskPriority');
+    const kind = document.getElementById('taskKind');
+    const mode = document.getElementById('taskMode');
+    const visibility = document.getElementById('taskVisibility');
+    const deadline = document.getElementById('taskDeadlineTime');
+    if (title) title.value = preset.title;
+    if (category) category.value = 'operational';
+    if (priority) priority.value = preset.priority;
+    if (kind) kind.value = 'followup';
+    if (mode) mode.value = 'work';
+    if (visibility) visibility.value = 'team';
+    if (deadline) deadline.value = preset.deadlineTime;
+    captureIntent = {};
+    setTaskDuePreset('today', { expand: false });
+    currentCategory = 'operational';
+    currentSubcategory = 'all';
+    currentMaysternyaTaskFilter = key;
+    renderCategoryFilters();
+    renderSubcategoryFilters();
+    renderMaysternyaTaskOpsBar();
+    syncTaskSurfaceVisibility();
+    renderBoard();
+    toggleTaskComposerDetails(true);
+    title?.focus();
+}
+
+function syncMaysternyaTaskUi() {
+    const enabled = isMaysternyaTaskContext();
+    document.body?.classList.toggle('tasks-business-maysternya', enabled);
+    setTextWithDefault('.tasks-filter-summary strong', enabled, 'Задачі Майстерні');
+    setTextWithDefault('.tasks-filter-summary span', enabled, 'follow-up, оплата і післясесійні дії');
+    setTextWithDefault('.task-composer-kicker', enabled, 'Швидко додати follow-up');
+    setTextWithDefault('#addTaskBtn', enabled, 'Створити follow-up');
+    setTextWithDefault('[data-summary-view="my"] span', enabled, 'Мої follow-up');
+    setTextWithDefault('[data-summary-view="waiting"] span', enabled, 'Очікують');
+    const categorySelect = document.getElementById('taskCategory');
+    ensureSelectOption(categorySelect, 'operational', enabled ? 'Follow-up' : 'Операційні');
+    ensureSelectOption(categorySelect, 'maintenance', 'Технічні');
+    syncSelectOptionText('taskCategory', 'event', enabled, 'Сесії');
+    syncSelectOptionText('taskCategory', 'orders', enabled, 'Запити');
+    syncSelectOptionText('taskCategory', 'trampoline', enabled, 'Ресурси');
+    syncSelectOptionText('taskKind', 'followup', enabled, 'Follow-up');
+    if (enabled && categorySelect && !document.getElementById('taskTitle')?.value.trim() && categorySelect.value === 'admin') {
+        categorySelect.value = 'operational';
+    }
+    if (!enabled) currentMaysternyaTaskFilter = 'all';
+    renderMaysternyaTaskOpsBar();
+}
+
+function initTaskBusinessContext(user) {
+    const api = window.CrmBusinessContext;
+    currentTaskBusinessContext = api?.initPage?.({
+        pageId: 'system',
+        user,
+        beforeChange: async () => closeTaskDetailOverlay(false),
+        onChange: async ({ current }) => {
+            currentTaskBusinessContext = current;
+            currentMaysternyaTaskFilter = 'all';
+            currentCategory = 'all';
+            currentSubcategory = 'all';
+            syncMaysternyaTaskUi();
+            renderCategoryFilters();
+            renderSubcategoryFilters();
+            syncTaskScopeFilters();
+            await loadAllTasks({ fatal: false });
+        }
+    }) || 'event_genix';
+    syncMaysternyaTaskUi();
 }
 
 function renderSubcategoryOptions(category, selected = '') {
@@ -902,6 +1266,8 @@ async function initPage() {
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         bootStep('shell:ready');
+        initTaskBusinessContext(user);
+        bootStep('business-context:ready', { businessContext: taskBusinessContext() });
         const params = new URLSearchParams(window.location.search);
         const requestedView = params.get('view');
         assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
@@ -917,6 +1283,7 @@ async function initPage() {
         setupTaskSoundControls();
         setupTaskActionDelegation();
         setupTaskFilterToggle();
+        setupMaysternyaTaskOpsBar();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -1044,7 +1411,7 @@ async function apiGetTasks(filters = {}) {
         const params = new URLSearchParams();
         Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
         const qs = params.toString() ? `?${params}` : '';
-        const response = await fetch(`${API_BASE}/tasks${qs}`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -1056,13 +1423,12 @@ async function apiGetTasks(filters = {}) {
 
 async function apiCreateTask(data) {
     if (window.TaskCreate?.createTask) {
-        return await window.TaskCreate.createTask(data, {
+        return await window.TaskCreate.createTask(taskPayload(data), {
             onDuplicate: (err) => showNotification(err.message || 'Активний дубль не створено', 'warning')
         });
     }
     try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const response = await fetchWithAuth(`${API_BASE}/tasks`, {
+        const response = await taskApiFetchWithAuth(`${API_BASE}/tasks`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (!response) return null;
@@ -1080,7 +1446,7 @@ async function apiCreateTask(data) {
 // v33.3: Bulk task actions
 async function apiBulkTasks(ids, action, extra = {}) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/bulk`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/bulk`, {
             method: 'POST', headers: getAuthHeaders(),
             body: JSON.stringify({ ids, action, ...extra })
         });
@@ -1091,7 +1457,7 @@ async function apiBulkTasks(ids, action, extra = {}) {
 
 async function apiPatchTaskStatus(id, status) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${id}/status`, {
             method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ status })
         });
         if (handleAuthError(response)) return null;
@@ -1111,7 +1477,7 @@ async function apiPatchTaskStatus(id, status) {
 
 async function apiPatchTaskPriority(id, priority) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${id}/priority`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${id}/priority`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify({ priority, sourceSurface: 'tasks_page' })
@@ -1133,7 +1499,7 @@ async function apiPatchTaskPriority(id, priority) {
 
 async function apiGetTaskDedupReport() {
     try {
-        const response = await fetch(`${API_BASE}/tasks/dedup-report`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/dedup-report`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API getTaskDedupReport error:', err); return null; }
@@ -1141,7 +1507,7 @@ async function apiGetTaskDedupReport() {
 
 async function apiCleanupTaskDuplicates(dryRun = false) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/dedup-cleanup`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/dedup-cleanup`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ dryRun })
@@ -1153,7 +1519,7 @@ async function apiCleanupTaskDuplicates(dryRun = false) {
 
 async function apiSnoozeTask(id, minutes = 60) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${id}/snooze`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${id}/snooze`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ minutes })
         });
         if (handleAuthError(response)) return null;
@@ -1163,7 +1529,7 @@ async function apiSnoozeTask(id, minutes = 60) {
 
 async function apiDeleteTask(id) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${id}`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${id}`, {
             method: 'DELETE', headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return null;
@@ -1173,7 +1539,7 @@ async function apiDeleteTask(id) {
 
 async function apiGetTemplates() {
     try {
-        const response = await fetch(`${API_BASE}/task-templates`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/task-templates`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         return await response.json();
     } catch (err) { console.error('API getTemplates error:', err); return []; }
@@ -1181,7 +1547,7 @@ async function apiGetTemplates() {
 
 async function apiCreateTemplate(data) {
     try {
-        const response = await fetch(`${API_BASE}/task-templates`, {
+        const response = await taskApiFetch(`${API_BASE}/task-templates`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -1191,7 +1557,7 @@ async function apiCreateTemplate(data) {
 
 async function apiDeleteTemplate(id) {
     try {
-        const response = await fetch(`${API_BASE}/task-templates/${id}`, {
+        const response = await taskApiFetch(`${API_BASE}/task-templates/${id}`, {
             method: 'DELETE', headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return null;
@@ -1202,7 +1568,7 @@ async function apiDeleteTemplate(id) {
 // v20.9.16: Permissions API
 async function apiGetTaskPermissions() {
     try {
-        const response = await fetch(`${API_BASE}/tasks/permissions`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/permissions`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -1211,7 +1577,7 @@ async function apiGetTaskPermissions() {
 
 async function apiGetTaskPreferences() {
     try {
-        const response = await fetch(`${API_BASE}/tasks/preferences`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/preferences`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -1220,7 +1586,7 @@ async function apiGetTaskPreferences() {
 
 async function apiPatchTaskPreferences(data = {}) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/preferences`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/preferences`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -1232,7 +1598,7 @@ async function apiPatchTaskPreferences(data = {}) {
 
 async function apiGetTaskOwners() {
     try {
-        const response = await fetch(`${API_BASE}/tasks/owners`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/owners`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) return [];
         const data = await response.json();
@@ -1242,7 +1608,7 @@ async function apiGetTaskOwners() {
 
 async function apiGetTaskHistory(taskId) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/history?limit=10`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/history?limit=10`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, history: [] };
         if (!response.ok) throw new Error('history API error');
         return await response.json();
@@ -1251,7 +1617,7 @@ async function apiGetTaskHistory(taskId) {
 
 async function apiGetTaskObservers(taskId) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/observers`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/observers`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, observers: [] };
         if (!response.ok) throw new Error('observers API error');
         return await response.json();
@@ -1260,7 +1626,7 @@ async function apiGetTaskObservers(taskId) {
 
 async function apiSaveTaskObservers(taskId, observerUserIds) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/observers`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/observers`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({ observerUserIds })
@@ -1272,7 +1638,7 @@ async function apiSaveTaskObservers(taskId, observerUserIds) {
 
 async function apiCompleteTask(taskId, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/complete`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/complete`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ sourceSurface: options.sourceSurface || 'task_page', reportId: options.reportId || undefined })
@@ -1284,7 +1650,7 @@ async function apiCompleteTask(taskId, options = {}) {
 
 async function apiGetTaskSubtasks(taskId) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks`, { headers: getAuthHeaders(false) });
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/subtasks`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) {
@@ -1295,7 +1661,7 @@ async function apiGetTaskSubtasks(taskId) {
 
 async function apiPatchTaskSubtask(taskId, subtaskId, data) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks/${subtaskId}`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/subtasks/${subtaskId}`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify(data || {})
@@ -1310,7 +1676,7 @@ async function apiPatchTaskSubtask(taskId, subtaskId, data) {
 
 async function apiReassignTask(taskId, ownerUserId) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/reassign`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/reassign`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ ownerUserId, sourceSurface: 'task_page' })
@@ -1325,7 +1691,7 @@ async function apiRescheduleTask(taskId, deadline) {
         const payload = deadline && typeof deadline === 'object'
             ? { ...deadline, sourceSurface: deadline.sourceSurface || 'task_page' }
             : { deadline, sourceSurface: 'task_page' };
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/reschedule`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/reschedule`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload)
@@ -1337,7 +1703,7 @@ async function apiRescheduleTask(taskId, deadline) {
 
 async function apiScheduleTask(taskId, payload) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/schedule`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/schedule`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ ...payload, sourceSurface: payload?.sourceSurface || 'task_page' })
@@ -1354,7 +1720,7 @@ async function apiScheduleTask(taskId, payload) {
 function renderCategoryFilters() {
     const host = document.getElementById('catFilters');
     if (!host) return;
-    const items = ['all', ...TOP_LEVEL_ORDER];
+    const items = ['all', ...getTopLevelTaskCategoryOrder()];
     host.innerHTML = items.map(cat => {
         const active = currentCategory === cat;
         const label = cat === 'all' ? 'Всі' : getCategoryConfig(cat).label;
@@ -1403,7 +1769,7 @@ async function loadAllTasks(options = {}) {
 
 async function apiCreateOperationPack(data) {
     try {
-        const response = await fetch(`${API_BASE}/tasks/operation-pack`, {
+        const response = await taskApiFetch(`${API_BASE}/tasks/operation-pack`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -1434,7 +1800,7 @@ function filterByTaxonomy(tasks) {
 }
 
 function filterByCategory(tasks) {
-    return applyTaskScopeFilter(filterByTaxonomy(tasks));
+    return applyTaskScopeFilter(filterByTaxonomy(tasks)).filter(matchesMaysternyaTaskFilter);
 }
 
 function normalizeAssistantTaskFilter(value) {
@@ -1559,7 +1925,8 @@ function taskKindBadge(t) {
         idea: 'Ідея',
         decision: 'Рішення'
     }[kind] || kind;
-    return `<span class="task-os-badge kind-${escapeHtml(kind)}">${escapeHtml(label)}</span>`;
+    const displayLabel = getTaskKindLabel(kind) || label;
+    return `<span class="task-os-badge kind-${escapeHtml(kind)}">${escapeHtml(displayLabel)}</span>`;
 }
 
 function renderTaskPriorityControl(task = {}) {
@@ -1986,6 +2353,7 @@ function renderBoard() {
     syncTaskSurfaceVisibility();
     updateCounts();
     updateTaskExplainability();
+    renderMaysternyaTaskOpsBar();
     renderOperationsSummary();
 
     switch (currentView) {
@@ -2058,7 +2426,8 @@ function renderTodayView(container) {
     }
 
     let html = '';
-    const orderedCats = [...TOP_LEVEL_ORDER, 'operational', 'maintenance', ...Object.keys(groups).filter(cat => !TOP_LEVEL_ORDER.includes(cat) && !['operational', 'maintenance'].includes(cat))];
+    const categoryOrder = getTopLevelTaskCategoryOrder();
+    const orderedCats = [...categoryOrder, 'operational', 'maintenance', ...Object.keys(groups).filter(cat => !categoryOrder.includes(cat) && !['operational', 'maintenance'].includes(cat))];
     for (const cat of orderedCats) {
         if (!groups[cat]) continue;
         const info = getCategoryConfig(cat);
@@ -2225,8 +2594,7 @@ async function restoreTask(taskId) {
     const result = await apiPatchTaskStatus(taskId, 'todo');
     if (result?.success) {
         // Clear archive fields
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        await fetchWithAuth(`/api/tasks/${taskId}`, {
+        await taskApiFetchWithAuth(`/api/tasks/${taskId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'todo', health_score: 50 })
@@ -2398,8 +2766,7 @@ async function apiPutTaskPartial(taskId, patch = {}) {
         ...(task.version !== undefined ? { version: task.version } : {}),
         ...patch
     };
-    const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-    const response = await fetchWithAuth(`/api/tasks/${id}`, {
+    const response = await taskApiFetchWithAuth(`/api/tasks/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(body)
@@ -4065,8 +4432,7 @@ async function markTaskWaiting(event, taskId) {
     }
     const task = allTasks.find(t => Number(t.id) === Number(taskId));
     if (!task) return;
-    const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-    const response = await fetchWithAuth(`/api/tasks/${taskId}`, {
+    const response = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4388,8 +4754,7 @@ function bindTaskDetailSubtasks() {
 
 async function openTaskDetail(taskId) {
     try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const res = await fetchWithAuth(`/api/tasks/${taskId}`, { headers: {} });
+        const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, { headers: {} });
         if (!res) return;
         if (!res.ok) { showNotification('Задачу не знайдено', 'error'); return; }
         const task = await res.json();
@@ -4506,7 +4871,7 @@ async function openTaskDetail(taskId) {
                         <option value="system" ${taskMode(t)==='system'?'selected':''}>Системна</option>
                     </select></div>
                     <div><label ${_lbl}>Тип наміру</label><select id="_tdKind" ${_inp}>
-                        ${['action','reminder','followup','deep_work','checklist','routine','waiting','idea','decision'].map(k => `<option value="${k}" ${taskKind(t)===k?'selected':''}>${escapeHtml({ action:'Дія', reminder:'Нагадування', followup:'Дотиск', deep_work:'Глибока робота', checklist:'Чеклист', routine:'Рутина', waiting:'Чекаю', idea:'Ідея', decision:'Рішення' }[k])}</option>`).join('')}
+                        ${['action','reminder','followup','deep_work','checklist','routine','waiting','idea','decision'].map(k => `<option value="${k}" ${taskKind(t)===k?'selected':''}>${escapeHtml(getTaskKindLabel(k))}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Видимість</label><select id="_tdVisibility" ${_inp}>
                         <option value="team" ${taskVisibility(t)==='team'?'selected':''}>Командна</option>
@@ -4792,8 +5157,7 @@ async function saveTaskDetail(taskId) {
             subtasks: readTaskDetailSubtasks(),
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const res = await fetchWithAuth(`/api/tasks/${taskId}`, {
+        const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
@@ -4817,8 +5181,7 @@ async function quickChangeStatus(taskId, newStatus) {
         return;
     }
     try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const res = await fetchWithAuth(`/api/tasks/${taskId}/status`, {
+        const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })

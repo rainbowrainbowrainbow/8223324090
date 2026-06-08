@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.6 - Майстерня: follow-up задачі
+
+### Майстерня долі / Tasks OS / Follow-up workspace / Business context / (Клешня, 08.06.2026) [codex]
+- **`/tasks` отримав Майстерня follow-up workspace** - панель швидких зрізів і пресети "Передзвонити", "Написати", "Оплата", "Після сесії" зʼявляються тільки коли active `CrmBusinessContext=maysternya_doli`; у Park режимі старий task board і labels лишаються без змін.
+- **Task API стало явно business-scoped з фронту** - читання, створення, bulk, status/priority/snooze, detail save, observers, subtasks, templates і shared `TaskCreate` adapter проходять через active CRM business context та додають `businessContext` у JSON body для write-запитів.
+- **Задачі Майстерні мають консультаційні defaults** - пресети заповнюють категорію `operational`, тип `followup`, пріоритет, дедлайн і командну видимість, щоб follow-up не змішувався з park-only категоріями.
+- **Майстерня UI не вмикається в aggregate/multi режимах** - helper `isMaysternyaTaskContext()` вимагає single scope, а write guard повертає read-only помилку для оглядових режимів.
+- **Regression guard закрив tasks контур** - `test:ui` перевіряє `initTaskBusinessContext`, scoped `taskApiUrl/taskPayload`, shared `TaskCreate` scoping і наявність прихованої Майстерня follow-up панелі.
+- **Релізні маркери піднято до `0.74.6`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.5 - Майстерня: Sales Ops v1
 
 ### Майстерня долі / Sales Ops / Lead-to-booking / Customers / Follow-up / (Клешня, 08.06.2026) [codex]

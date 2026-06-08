@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.74.5",
+  "version": "0.74.6",
   "eventGenix": {
-    "releaseLabel": "Майстерня: Sales Ops v1"
+    "releaseLabel": "Майстерня: follow-up задачі"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

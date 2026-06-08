@@ -87,14 +87,48 @@
         }));
     }
 
+    function scopedTaskApiUrl(url) {
+        const text = String(url || '');
+        if (!/\/api\/tasks\b/.test(text)) return url;
+        return window.CrmBusinessContext?.apiUrl
+            ? window.CrmBusinessContext.apiUrl(url)
+            : url;
+    }
+
+    function scopedTaskPayload(payload = {}) {
+        return window.CrmBusinessContext?.payload
+            ? window.CrmBusinessContext.payload(payload)
+            : payload;
+    }
+
+    function scopedTaskJsonBody(body) {
+        if (body === undefined || body === null) return body;
+        if (typeof FormData !== 'undefined' && body instanceof FormData) return body;
+        if (typeof body === 'string') {
+            const text = body.trim();
+            if (!text) return body;
+            try {
+                return JSON.stringify(scopedTaskPayload(JSON.parse(text)));
+            } catch {
+                return body;
+            }
+        }
+        if (typeof body === 'object') return JSON.stringify(scopedTaskPayload(body));
+        return body;
+    }
+
     async function taskApiRequest(path, options = {}) {
         const base = typeof API_BASE === 'string' ? API_BASE : '/api';
         const headers = typeof getAuthHeaders === 'function'
             ? getAuthHeaders()
             : { 'Content-Type': 'application/json' };
-        const response = await fetch(`${base}${path}`, {
-            ...options,
-            headers: { ...headers, ...(options.headers || {}) }
+        const request = { ...options };
+        if (request.body !== undefined && String(request.method || 'GET').toUpperCase() !== 'GET') {
+            request.body = scopedTaskJsonBody(request.body);
+        }
+        const response = await fetch(scopedTaskApiUrl(`${base}${path}`), {
+            ...request,
+            headers: { ...headers, ...(request.headers || {}) }
         });
         if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
         const payload = await response.json().catch(() => ({}));
@@ -300,10 +334,10 @@
                 ? getAuthHeaders()
                 : { 'Content-Type': 'application/json' };
             const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-            const response = await fetchWithAuth(`${base}/tasks`, {
+            const response = await fetchWithAuth(scopedTaskApiUrl(`${base}/tasks`), {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(data)
+                body: JSON.stringify(scopedTaskPayload(data))
             });
             if (!response) return null;
             if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
@@ -544,17 +578,17 @@
         }
         if (!values) return null;
         const base = typeof API_BASE === 'string' ? API_BASE : '/api';
-        const response = await fetch(`${base}/tasks/${id}/completion-report`, {
+        const response = await fetch(scopedTaskApiUrl(`${base}/tasks/${id}/completion-report`), {
             method: 'POST',
             headers: typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(scopedTaskPayload({
                 reportText: values.reportText,
                 amount: values.amount,
                 category: 'Задача',
                 type: 'expense',
                 sourceSurface: options.sourceSurface || 'task_detail',
                 taskTitle: title
-            })
+            }))
         });
         if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
         const payload = await response.json().catch(() => ({}));

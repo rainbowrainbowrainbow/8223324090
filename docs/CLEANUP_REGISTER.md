@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-05-29
+Last refreshed: 2026-06-08
 Current product version source: `package.json`
 
 ## Operating Model
@@ -27,26 +27,34 @@ Use `npm run cleanup:inventory` for the current generated view.
 
 Known high-change areas from the latest inventory snapshot:
 
-- `routes/`: 80 files, API ownership and auth boundaries.
-- `services/`: 91 files, business logic and scheduler side effects.
+- `routes/`: 81 files, API ownership and auth boundaries.
+- `services/`: 104 files, business logic and scheduler side effects.
 - `js/`: 67 files, large vanilla frontend modules.
-- `css/`: 29 files plus `landing/style.css`, shared UI and page-specific styling.
-- `tests/`: 147 files, mixed unit, route smoke, UI smoke, and live API tests.
-- `db/migrations/`: 226 migrations, with documented legacy duplicate/gap debt.
+- `css/`: 74 files, shared UI and page-specific styling.
+- `tests/`: 159 files, mixed unit, route smoke, UI smoke, and live API tests.
+- `db/migrations/`: 249 migrations, with documented legacy duplicate/gap debt.
 - `landing/`: 12 public landing materials and static assets.
 
 Large files that should not be casually reformatted:
 
 - `index.html`
-- `css/chat.css`
-- `css/assistant-rail.css`
-- `css/sidebar-aurora.css`
 - `js/dashboard-page.js`
 - `js/chat-page.js`
-- `css/dashboard.css`
+- `js/hr-page.js`
 - `js/profile-page.js`
-- `css/pages.css`
+- `routes/hr.js`
+- `js/booking.js`
+- `js/tasks-page.js`
 - `profile.html`
+- `css/dark-mode.css`
+- `landing/style.css`
+- `omni.html`
+- `js/settings.js`
+
+Do not treat aggregate CSS entrypoints such as `css/assistant-rail.css`,
+`css/chat.css`, `css/sidebar-aurora.css`, `css/dashboard.css`, or
+`css/pages.css` as large-file targets by filename alone. Their payload now
+lives in ordered modules listed in `docs/CSS_SURFACE.md`.
 
 ## Cleanup Tracks
 
@@ -314,16 +322,33 @@ What this gives:
 - Reduces duplicate styling and script drift.
 - Avoids breaking standalone pages that depend on shared globals.
 
-Status: CSS ownership guard added; large CSS consolidation remains open.
+Status: CSS ownership guard active; several large CSS entrypoints are now
+aggregate-only files with module payloads. Remaining frontend cleanup should be
+chosen from the current inventory and only split JS when a stable domain
+boundary already exists.
 
 2026-05-12 CSS update:
 
 - Added `docs/CSS_SURFACE.md`, `config/cssSurface.js`, and
   `npm run check:css-surface`.
-- Current CSS surface is explicit: 25 files under `css/` plus
-  `landing/style.css`.
+- CSS ownership became explicit through the manifest instead of relying on
+  informal filename conventions.
 - Current Service Worker CSS app-shell precache entries are tied to the same
   manifest so cache-sensitive CSS changes require docs and verification.
+
+2026-06-08 CSS cleanup update:
+
+- Split the assistant rail, chat, sidebar aurora, dashboard, and shared page
+  CSS entrypoints into ordered modules while preserving the public stylesheet
+  URLs used by HTML and JavaScript.
+- Updated `docs/CSS_SURFACE.md` and `config/cssSurface.js` so CSS ownership,
+  Service Worker precache expectations, and `npm run check:css-surface` match
+  the modular layout.
+- Current CSS surface from `npm run cleanup:inventory` is 74 files under
+  `css/`; `npm run check:css-surface` tracks 75 referenced CSS files including
+  `landing/style.css`. `css/dashboard.css` and `css/pages.css` are no longer
+  cleanup candidates by size; use their imported modules for any future scoped
+  work.
 
 ### 7. Backend Domain Cleanup
 

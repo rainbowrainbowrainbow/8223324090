@@ -1419,6 +1419,18 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text)));
     });
 
+    it('keeps universal webhook readiness status public and read-only', async () => {
+        const res = await request('GET', '/api/leads/webhook/status');
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.webhooks.universal.configured, true);
+        assert.equal(res.data.webhooks.universal.endpoint, '/api/leads/webhook/universal?source=<name>');
+        assert.ok(res.data.webhooks.universal.sources.includes('maysternya_site'));
+        assert.match(res.data.webhooks.universal.dryRun, /dryRun=true/);
+        assert.equal(queries.length, 0);
+    });
+
     it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {
         const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
             external_id: '123456789',

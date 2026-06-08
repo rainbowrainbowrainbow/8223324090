@@ -836,6 +836,25 @@ router.post('/landing', async (req, res) => {
 // Public provider-secret guarded webhook for external CRM/bot lead capture.
 router.post('/webhook/universal', handleUniversalWebhook);
 
+// GET /api/leads/webhook/status — public read-only webhook configuration status.
+router.get('/webhook/status', (req, res) => {
+    res.json({
+        success: true,
+        webhooks: {
+            telegram:  { configured: true, note: 'Built into /api/telegram/webhook (private chats)' },
+            facebook:  { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/facebook'  },
+            instagram: { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/instagram' },
+            viber:     { configured: !!VIBER_AUTH_TOKEN,     endpoint: '/api/leads/webhook/viber'     },
+            universal: {
+                configured: !!UNIVERSAL_WEBHOOK_TOKEN,
+                endpoint:   '/api/leads/webhook/universal?source=<name>',
+                sources:    ['maysternya_bot', 'maysternya_site', 'tiktok', 'turbo', 'bnderoga', 'custom'],
+                dryRun:     'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without writing a lead.',
+            }
+        }
+    });
+});
+
 // All remaining leads routes require authentication.
 router.use(authenticateToken);
 router.use(requireRole('manager', 'marketer'));
@@ -1910,25 +1929,6 @@ router.post('/webhook/viber', async (req, res) => {
     } catch (err) {
         log.error('Viber webhook error', err);
     }
-});
-
-// GET /api/leads/webhook/status — webhook configuration status
-router.get('/webhook/status', (req, res) => {
-    res.json({
-        success: true,
-        webhooks: {
-            telegram:  { configured: true, note: 'Built into /api/telegram/webhook (private chats)' },
-            facebook:  { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/facebook'  },
-            instagram: { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/instagram' },
-            viber:     { configured: !!VIBER_AUTH_TOKEN,     endpoint: '/api/leads/webhook/viber'     },
-            universal: {
-                configured: !!UNIVERSAL_WEBHOOK_TOKEN,
-                endpoint:   '/api/leads/webhook/universal?source=<name>',
-                sources:    ['maysternya_bot', 'maysternya_site', 'tiktok', 'turbo', 'bnderoga', 'custom'],
-                dryRun:     'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without writing a lead.',
-            }
-        }
-    });
 });
 
 // ============================================================

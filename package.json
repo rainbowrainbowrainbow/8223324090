@@ -1,6 +1,6 @@
 {
   "name": "event-genix",
-  "version": "0.74.7",
+  "version": "0.74.8",
   "eventGenix": {
     "releaseLabel": "Майстерня: webhook readiness"
   },

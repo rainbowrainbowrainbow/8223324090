@@ -4,6 +4,16 @@
 
 ---
 
+## v0.74.8 - Майстерня: webhook readiness
+
+### Майстерня долі / Webhook readiness / Route order / Landing QA / (Клешня, 09.06.2026) [codex]
+- **Webhook readiness реально відкрито без CRM-логіну** - `GET /api/leads/webhook/status` перенесено у public-секцію `routes/leads.js` вище `router.use(authenticateToken)`, тому endpoint більше не повертає 401 після global auth-boundary allowlist.
+- **Dry-run QA лишається без створення ліда** - status endpoint показує universal webhook, allowed sources і інструкцію `?dryRun=true` / `X-CRM-Dry-Run: true` без доступу до `UNIVERSAL_WEBHOOK_TOKEN`.
+- **Route-order regression guard додано** - `tests/route-smoke.test.js` тепер перевіряє реальний leads router, що status проходить без JWT і не виконує DB write.
+- **Релізні маркери піднято до `0.74.8`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.7 - Майстерня: webhook readiness
 
 ### Майстерня долі / Webhook readiness / Auth boundary / Landing QA / (Клешня, 09.06.2026) [codex]

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.1 - HR Чистка маршрутів
+
+### HR refactor audit / Backend services / Guardrails / Release markers / (Клешня, 08.06.2026) [codex]
+- **HR-маршрути почистили без зміни публічного API** - `/api/hr` зберіг URL, `requireHrManage`, audit-події й response shape, але великі внутрішні HR-блоки більше не живуть прямо в `routes/hr.js`.
+- **Зарплатні періоди винесено в окремий сервіс** - range/lock/event/reconciliation helpers переїхали в `services/hrPayrollPeriod.js`, а salary route лишився тонким власником endpoint-контракту.
+- **Onboarding, документи й ресурси отримали свої backend-сервіси** - task sync/responsible owner, приватні staff documents, warehouse/costume issue-return lifecycle і payroll scheme config тепер розкладені по `services/hrOnboarding.js`, `services/hrStaffDocuments.js`, `services/hrStaffResources.js` і `services/hrPayrollSchemes.js`.
+- **Guardrails підсилено під реальні межі доменів** - `tests/hr-button-contract.test.js` перевіряє, що route не забирає назад warehouse side effects, payroll scheme config, private document metadata й onboarding task sync.
+- **Cleanup register оновлено після аудиту** - `docs/CLEANUP_REGISTER.md` фіксує, які HR slices уже винесені, і попереджає не різати `routes/hr.js` або `js/hr-page.js` тільки через розмір.
+- **Релізні маркери піднято до `0.74.1`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для наступного deploy-проходу.
+
+---
+
 ## v0.74.0 - HR Свято доступів
 
 ### HR / Account Center / Live API / CSS foundation / Deploy / (Клешня, 08.06.2026) [codex]

@@ -169,6 +169,12 @@ const PUBLIC_API_ROUTES = [
         reason: 'External lead capture webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN instead of user JWT.'
     },
     {
+        method: 'GET',
+        path: '/leads/webhook/status',
+        owner: 'leads',
+        reason: 'Read-only webhook readiness endpoint exposes configured flags and dry-run instructions without secrets for external delivery smoke checks.'
+    },
+    {
         method: 'POST',
         path: '/landing/demo-request',
         owner: 'landing',

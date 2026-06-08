@@ -4,6 +4,16 @@
 
 ---
 
+## v0.74.7 - Майстерня: webhook readiness
+
+### Майстерня долі / Webhook readiness / Auth boundary / Landing QA / (Клешня, 09.06.2026) [codex]
+- **Webhook readiness став доступний без CRM-логіну** - `GET /api/leads/webhook/status` додано в явний public API boundary як read-only endpoint без секретів, щоб лендінг і QA могли перевіряти готовність доставки заявок.
+- **Dry-run режим задокументовано в public status** - endpoint показує universal webhook, дозволені джерела й інструкцію `?dryRun=true` / `X-CRM-Dry-Run: true` без створення бойового ліда.
+- **Auth-boundary guard оновлено** - `config/authBoundary.js`, `docs/AUTH_BOUNDARY.md` і focused `tests/auth-boundary.test.js` синхронізовані, щоб public exception не розʼїхався з документацією.
+- **Релізні маркери піднято до `0.74.7`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy-проходу.
+
+---
+
 ## v0.74.6 - Майстерня: follow-up задачі
 
 ### Майстерня долі / Tasks OS / Follow-up workspace / Business context / (Клешня, 08.06.2026) [codex]

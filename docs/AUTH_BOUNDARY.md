@@ -47,6 +47,7 @@ focused tests.
 | `GET /status/public` | status | Public status page uses this read-only endpoint without user JWT. |
 | `POST /leads/landing` | leads | Public landing lead capture endpoint; protected by landing lead limiter. |
 | `POST /leads/webhook/universal` | leads | External lead capture webhook is guarded by `UNIVERSAL_WEBHOOK_TOKEN` instead of user JWT. |
+| `GET /leads/webhook/status` | leads | Read-only webhook readiness endpoint exposes configured flags and dry-run instructions without secrets for external delivery smoke checks. |
 | `POST /landing/demo-request` | landing | Public landing demo request endpoint; protected by landing lead limiter. |
 
 ## Query-Token JWT Exceptions

@@ -54,6 +54,7 @@ describe('API auth boundary middleware', () => {
         app.get('/api/status/public', (req, res) => res.json({ ok: true, public: true }));
         app.post('/api/leads/landing', (req, res) => res.json({ ok: true, public: true }));
         app.post('/api/leads/webhook/universal', (req, res) => res.json({ ok: true, public: true, webhook: true }));
+        app.get('/api/leads/webhook/status', (req, res) => res.json({ ok: true, public: true, readiness: true }));
         app.post('/api/omni/webhook/telegram', (req, res) => res.json({ ok: true, public: true, provider: 'telegram' }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
         app.get('/api/graduation/catalog/export', (req, res) => {
@@ -74,6 +75,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/landing/demo-request' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/landing' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/universal' }), true);
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/leads/webhook/status' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);
@@ -107,6 +109,12 @@ describe('API auth boundary middleware', () => {
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.webhook, true);
+    });
+
+    it('allows universal webhook readiness status without JWT', async () => {
+        const res = await request(baseUrl, 'GET', '/api/leads/webhook/status');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.readiness, true);
     });
 
     it('allows Omni Telegram inbox webhook updates without user JWT', async () => {

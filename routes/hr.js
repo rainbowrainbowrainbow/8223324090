@@ -7,7 +7,6 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const crypto = require('crypto');
 const multer = require('multer');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -57,6 +56,14 @@ const {
     requirePayrollMonth,
     setPayrollPeriodLock
 } = require('../services/hrPayrollPeriod');
+const {
+    archiveStaffDocument,
+    createStaffDocument,
+    handleStaffDocumentUpload,
+    listStaffDocuments,
+    loadStaffDocumentDownload,
+    safeStaffDocumentDownloadFilename
+} = require('../services/hrStaffDocuments');
 
 // RBAC: HR module — security can inspect HR surfaces, but mutations stay manager/HR owned.
 const HR_VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'];
@@ -94,25 +101,6 @@ const RESUME_ALLOWED_MIME_TYPES = new Set([
     'application/octet-stream'
 ]);
 
-const STAFF_DOCUMENT_UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
-const STAFF_DOCUMENT_TYPES = new Set(['passport', 'tax_id', 'contract', 'medical_book', 'certificate', 'training', 'other']);
-const STAFF_DOCUMENT_STATUSES = new Set(['active', 'archived', 'expired', 'revoked']);
-const STAFF_DOCUMENT_ALLOWED_EXTENSIONS = new Set([
-    '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'
-]);
-const STAFF_DOCUMENT_ALLOWED_MIME_TYPES = new Set([
-    'application/pdf',
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/csv',
-    'text/plain',
-    'application/octet-stream'
-]);
 const STAFF_RESOURCE_KINDS = new Set(['warehouse_stock', 'costume', 'custom']);
 const STAFF_RESOURCE_STATUSES = new Set(['issued', 'returned', 'lost', 'written_off']);
 const STAFF_ROLE_ASSIGNMENT_STATUSES = new Set(['active', 'inactive', 'suspended']);
@@ -167,52 +155,6 @@ function handleResumeUpload(req, res, next) {
     });
 }
 
-function staffDocumentFileExt(file) {
-    return path.extname(file?.originalname || '').toLowerCase();
-}
-
-function validateStaffDocumentUploadFile(file) {
-    const ext = staffDocumentFileExt(file);
-    const mime = String(file?.mimetype || '').toLowerCase();
-    if (!STAFF_DOCUMENT_ALLOWED_EXTENSIONS.has(ext)) {
-        const err = new Error('Непідтримуваний формат HR-документа');
-        err.statusCode = 400;
-        throw err;
-    }
-    if (mime && !mime.startsWith('text/') && !STAFF_DOCUMENT_ALLOWED_MIME_TYPES.has(mime)) {
-        const err = new Error('Непідтримуваний MIME-тип HR-документа');
-        err.statusCode = 400;
-        throw err;
-    }
-}
-
-const staffDocumentUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: STAFF_DOCUMENT_UPLOAD_LIMIT_BYTES,
-        files: 1
-    },
-    fileFilter: (req, file, cb) => {
-        try {
-            validateStaffDocumentUploadFile(file);
-            cb(null, true);
-        } catch (err) {
-            cb(err);
-        }
-    }
-});
-
-function handleStaffDocumentUpload(req, res, next) {
-    staffDocumentUpload.single('document')(req, res, (err) => {
-        if (!err) return next();
-        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
-        const error = err.code === 'LIMIT_FILE_SIZE'
-            ? 'HR-документ завеликий. Максимум 10 МБ'
-            : (err.message || 'Не вдалося завантажити HR-документ');
-        res.status(status).json({ success: false, error });
-    });
-}
-
 function cleanStaffText(value, limit = 1000) {
     if (value === null || value === undefined) return null;
     const normalized = String(value).replace(/\u0000/g, '').trim();
@@ -222,16 +164,6 @@ function cleanStaffText(value, limit = 1000) {
 function cleanStaffDate(value) {
     const normalized = cleanStaffText(value, 20);
     return normalized && /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
-}
-
-function normalizeStaffDocumentType(value) {
-    const type = cleanStaffText(value, 64) || 'other';
-    return STAFF_DOCUMENT_TYPES.has(type) ? type : 'other';
-}
-
-function normalizeStaffDocumentStatus(value) {
-    const status = cleanStaffText(value, 32) || 'active';
-    return STAFF_DOCUMENT_STATUSES.has(status) ? status : 'active';
 }
 
 function normalizeStaffCertificationStatus(value) {
@@ -344,36 +276,6 @@ function staffRoleAssignmentMeta(row) {
         createdAt: row.created_at,
         updated_at: row.updated_at,
         updatedAt: row.updated_at
-    };
-}
-
-function safeDownloadFilename(value, fallback = 'staff-document') {
-    const raw = cleanStaffText(value, 180) || fallback;
-    return raw.replace(/[\r\n"\\]/g, '_');
-}
-
-function staffDocumentMeta(row) {
-    if (!row) return null;
-    return {
-        id: row.id,
-        staff_id: row.staff_id,
-        document_type: row.document_type,
-        title: row.title,
-        original_name: row.original_name,
-        mime_type: row.mime_type,
-        file_ext: row.file_ext,
-        file_size: row.file_size,
-        file_sha256: row.file_sha256,
-        issued_at: row.issued_at,
-        expires_at: row.expires_at,
-        status: row.status,
-        notes: row.notes,
-        uploaded_by: row.uploaded_by,
-        archived_at: row.archived_at,
-        archived_by: row.archived_by,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`
     };
 }
 
@@ -2175,15 +2077,8 @@ router.get('/staff/:id/documents', requireHrManage, async (req, res) => {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const includeArchived = req.query.include_archived === 'true';
-        let sql = `SELECT id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
-                          file_sha256, issued_at, expires_at, status, notes, uploaded_by,
-                          archived_at, archived_by, created_at, updated_at
-                   FROM staff_documents
-                   WHERE staff_id = $1`;
-        if (!includeArchived) sql += ` AND status = 'active'`;
-        sql += ` ORDER BY expires_at ASC NULLS LAST, created_at DESC, id DESC`;
-        const result = await pool.query(sql, [req.params.id]);
-        res.json({ success: true, data: result.rows.map(staffDocumentMeta) });
+        const documents = await listStaffDocuments(req.params.id, { includeArchived });
+        res.json({ success: true, data: documents });
     } catch (err) {
         log.error('GET /hr/staff/:id/documents error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -2196,53 +2091,14 @@ router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload, 
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const file = req.file;
-        if (!file?.buffer?.length) return res.status(400).json({ success: false, error: 'Файл обовʼязковий' });
-
-        const documentType = normalizeStaffDocumentType(req.body.document_type || req.body.documentType);
-        const originalName = cleanStaffText(file.originalname, 255) || 'document';
-        const title = cleanStaffText(req.body.title, 160) || path.basename(originalName, staffDocumentFileExt(file)) || 'HR-документ';
-        const mimeType = cleanStaffText(file.mimetype, 120) || 'application/octet-stream';
-        const fileExt = staffDocumentFileExt(file).slice(0, 16) || null;
-        const fileSha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
-        const issuedAt = cleanStaffDate(req.body.issued_at || req.body.issuedAt);
-        const expiresAt = cleanStaffDate(req.body.expires_at || req.body.expiresAt);
-        const notes = cleanStaffText(req.body.notes, 2000);
-
-        const result = await pool.query(
-            `INSERT INTO staff_documents
-                (staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
-                 file_sha256, file_data, issued_at, expires_at, notes, uploaded_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-             RETURNING id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
-                       file_sha256, issued_at, expires_at, status, notes, uploaded_by,
-                       archived_at, archived_by, created_at, updated_at`,
-            [
-                req.params.id,
-                documentType,
-                title,
-                originalName,
-                mimeType,
-                fileExt,
-                file.size,
-                fileSha256,
-                file.buffer,
-                issuedAt,
-                expiresAt,
-                notes,
-                req.user?.username || null
-            ]
-        );
+        const created = await createStaffDocument(req.params.id, file, req.body, req.user?.username || null);
         await auditLog('staff_document_upload', parseInt(req.params.id), req.user?.username, {
-            document_id: result.rows[0].id,
-            document_type: documentType,
-            title,
-            original_name: originalName,
-            file_size: file.size
+            ...created.audit
         }, req.ip);
-        res.json({ success: true, data: staffDocumentMeta(result.rows[0]) });
+        res.json({ success: true, data: created.data });
     } catch (err) {
         log.error('POST /hr/staff/:id/documents error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
@@ -2251,18 +2107,12 @@ router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
         }
-        const result = await pool.query(
-            `SELECT id, staff_id, original_name, mime_type, file_size, file_data
-             FROM staff_documents
-             WHERE id = $1 AND staff_id = $2`,
-            [req.params.documentId, req.params.id]
-        );
-        const doc = result.rows[0];
+        const doc = await loadStaffDocumentDownload(req.params.id, req.params.documentId);
         if (!doc) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
         res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
         res.setHeader('Content-Length', String(doc.file_size || doc.file_data.length || 0));
         res.setHeader('Cache-Control', 'no-store, private');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeDownloadFilename(doc.original_name)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeStaffDocumentDownloadFilename(doc.original_name)}"`);
         res.send(doc.file_data);
     } catch (err) {
         log.error('GET /hr/staff/:id/documents/:documentId/download error', err);
@@ -2275,21 +2125,12 @@ router.delete('/staff/:id/documents/:documentId', requireHrManage, async (req, r
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
         }
-        const result = await pool.query(
-            `UPDATE staff_documents
-             SET status = 'archived', archived_at = NOW(), archived_by = $3, updated_at = NOW()
-             WHERE id = $1 AND staff_id = $2
-             RETURNING id, staff_id, document_type, title, original_name, mime_type, file_ext, file_size,
-                       file_sha256, issued_at, expires_at, status, notes, uploaded_by,
-                       archived_at, archived_by, created_at, updated_at`,
-            [req.params.documentId, req.params.id, req.user?.username || null]
-        );
-        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
+        const archived = await archiveStaffDocument(req.params.id, req.params.documentId, req.user?.username || null);
+        if (!archived) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
         await auditLog('staff_document_archive', parseInt(req.params.id), req.user?.username, {
-            document_id: result.rows[0].id,
-            title: result.rows[0].title
+            ...archived.audit
         }, req.ip);
-        res.json({ success: true, data: staffDocumentMeta(result.rows[0]) });
+        res.json({ success: true, data: archived.data });
     } catch (err) {
         log.error('DELETE /hr/staff/:id/documents/:documentId error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

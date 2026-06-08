@@ -13,6 +13,12 @@ const {
     recordPayrollPeriodEvent,
     requirePayrollMonth
 } = require('../services/hrPayrollPeriod');
+const {
+    archiveStaffDocument,
+    createStaffDocument,
+    listStaffDocuments,
+    safeStaffDocumentDownloadFilename
+} = require('../services/hrStaffDocuments');
 
 const ROOT = path.join(__dirname, '..');
 function readCssWithImports(file, seen = new Set()) {
@@ -45,6 +51,7 @@ const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const HR_ONBOARDING_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrOnboarding.js'), 'utf8');
+const HR_STAFF_DOCUMENTS_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffDocuments.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = readCssWithImports('css/pages.css');
@@ -506,6 +513,146 @@ test('HR onboarding assignment keeps routes thin and owns task sync in service',
     ]) {
         assert.ok(HR_ONBOARDING_SERVICE.includes(token), `missing HR onboarding service token ${token}`);
     }
+});
+
+test('HR staff document service owns private upload, archive, and download metadata', async () => {
+    for (const token of [
+        "require('../services/hrStaffDocuments')",
+        "router.get('/staff/:id/documents', requireHrManage",
+        "router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload",
+        "router.get('/staff/:id/documents/:documentId/download', requireHrManage",
+        "router.delete('/staff/:id/documents/:documentId', requireHrManage",
+        "auditLog('staff_document_upload'",
+        "auditLog('staff_document_archive'",
+        "res.setHeader('Cache-Control', 'no-store, private')",
+        'safeStaffDocumentDownloadFilename(doc.original_name)'
+    ]) {
+        assert.ok(HR_ROUTE.includes(token), `missing HR staff document route token ${token}`);
+    }
+
+    for (const token of [
+        'const STAFF_DOCUMENT_UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024',
+        'multer.memoryStorage()',
+        'function validateStaffDocumentUploadFile',
+        'function handleStaffDocumentUpload',
+        'async function listStaffDocuments',
+        'async function createStaffDocument',
+        'async function loadStaffDocumentDownload',
+        'async function archiveStaffDocument',
+        "FROM staff_documents",
+        "INSERT INTO staff_documents",
+        "SET status = 'archived'",
+        "crypto.createHash('sha256')",
+        'download_url: `/api/hr/staff/${row.staff_id}/documents/${row.id}/download`'
+    ]) {
+        assert.ok(HR_STAFF_DOCUMENTS_SERVICE.includes(token), `missing HR staff document service token ${token}`);
+    }
+
+    const queries = [];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql, params });
+            if (/SELECT id, staff_id, document_type/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 17,
+                        staff_id: params[0],
+                        document_type: 'contract',
+                        title: 'Contract',
+                        original_name: 'contract.pdf',
+                        mime_type: 'application/pdf',
+                        file_ext: '.pdf',
+                        file_size: 12,
+                        file_sha256: 'hash',
+                        issued_at: '2026-06-08',
+                        expires_at: null,
+                        status: 'active',
+                        notes: null,
+                        uploaded_by: 'creator',
+                        archived_at: null,
+                        archived_by: null,
+                        created_at: '2026-06-08T10:00:00.000Z',
+                        updated_at: '2026-06-08T10:00:00.000Z'
+                    }]
+                };
+            }
+            if (/INSERT INTO staff_documents/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 18,
+                        staff_id: params[0],
+                        document_type: params[1],
+                        title: params[2],
+                        original_name: params[3],
+                        mime_type: params[4],
+                        file_ext: params[5],
+                        file_size: params[6],
+                        file_sha256: params[7],
+                        issued_at: params[9],
+                        expires_at: params[10],
+                        status: 'active',
+                        notes: params[11],
+                        uploaded_by: params[12],
+                        archived_at: null,
+                        archived_by: null,
+                        created_at: '2026-06-08T10:00:00.000Z',
+                        updated_at: '2026-06-08T10:00:00.000Z'
+                    }]
+                };
+            }
+            if (/UPDATE staff_documents/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: Number(params[0]),
+                        staff_id: Number(params[1]),
+                        document_type: 'contract',
+                        title: 'Contract',
+                        original_name: 'contract.pdf',
+                        mime_type: 'application/pdf',
+                        file_ext: '.pdf',
+                        file_size: 12,
+                        file_sha256: 'hash',
+                        issued_at: null,
+                        expires_at: null,
+                        status: 'archived',
+                        notes: null,
+                        uploaded_by: 'creator',
+                        archived_at: '2026-06-08T11:00:00.000Z',
+                        archived_by: params[2],
+                        created_at: '2026-06-08T10:00:00.000Z',
+                        updated_at: '2026-06-08T11:00:00.000Z'
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+
+    const listed = await listStaffDocuments(42, { includeArchived: false }, fakeDb);
+    assert.equal(listed[0].download_url, '/api/hr/staff/42/documents/17/download');
+    assert.match(queries.at(-1).sql, /status = 'active'/);
+
+    const created = await createStaffDocument(42, {
+        originalname: 'contract.pdf',
+        mimetype: 'application/pdf',
+        size: 12,
+        buffer: Buffer.from('contract body')
+    }, {
+        document_type: 'contract',
+        issued_at: '2026-06-08',
+        expires_at: 'not-a-date',
+        notes: 'Signed'
+    }, 'creator', fakeDb);
+    assert.equal(created.data.title, 'contract');
+    assert.equal(created.data.file_ext, '.pdf');
+    assert.equal(created.audit.document_type, 'contract');
+    assert.equal(queries.at(-1).params[8].toString(), 'contract body');
+    assert.equal(queries.at(-1).params[10], null);
+
+    const archived = await archiveStaffDocument(42, 18, 'creator', fakeDb);
+    assert.equal(archived.data.status, 'archived');
+    assert.deepEqual(archived.audit, { document_id: 18, title: 'Contract' });
+    assert.equal(safeStaffDocumentDownloadFilename('bad"name\n.pdf'), 'bad_name_.pdf');
 });
 
 test('HR offboarding readiness owns account/resource/document closure guardrails', () => {

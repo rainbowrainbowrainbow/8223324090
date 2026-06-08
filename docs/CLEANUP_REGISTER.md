@@ -407,6 +407,20 @@ Status: open.
   separate from account-center or access-control changes unless a regression is
   found.
 
+2026-06-08 HR staff documents update:
+
+- Extracted private HR staff document upload validation, metadata mapping,
+  create/list/download/archive SQL, checksum calculation, and safe download
+  filename handling from `routes/hr.js` into `services/hrStaffDocuments.js`.
+- Kept `/api/hr/staff/:id/documents*` route handlers, `requireHrManage`,
+  guarded binary download headers, and HR audit calls in `routes/hr.js`.
+- Added a focused HR contract/service test with fake DB coverage for list,
+  create, archive, download URL metadata, checksum payloads, and active-only
+  filtering.
+- Staff resource issue/return remains the next candidate, but it should be a
+  separate pack because it mutates warehouse stock, movement history, costumes,
+  and HR audit state transactionally.
+
 ### 8. Scheduler, Event, And Callback Cleanup
 
 Goal: keep background work restart-safe and duplicate-safe.

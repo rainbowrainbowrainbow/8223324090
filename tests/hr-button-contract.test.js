@@ -795,6 +795,38 @@ test('HR staff document service owns private upload, archive, and download metad
     assert.equal(safeStaffDocumentDownloadFilename('bad"name\n.pdf'), 'bad_name_.pdf');
 });
 
+test('HR staff documents are reachable from team card paperclip', () => {
+    for (const token of [
+        'data-ui-contract="hr-staff-document-paperclip"',
+        'class="hr-team-document"',
+        'onclick="openStaffDocuments(${Number(s.id)})"',
+        'function openStaffDocuments',
+        'window.openStaffDocuments = openStaffDocuments',
+        "await openStaffEdit(Number(staffId), { focus: 'documents' })",
+        "if (focusTarget === 'documents') focusStaffDocumentsPanel()",
+        "document.getElementById('editDocumentFile')?.focus?.({ preventScroll: true })"
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing HR document paperclip JS token ${token}`);
+    }
+
+    for (const token of [
+        'id="editStaffDocumentsPanel"',
+        'data-ui-contract="hr-staff-documents-panel"',
+        'Документи й скани',
+        '📎 Додати скан',
+        'Файл або скан'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing HR document panel token ${token}`);
+    }
+
+    for (const token of [
+        '.hr-team-document',
+        '.hr-staff-foundation-panel.is-attention'
+    ]) {
+        assert.ok(`${HR_HTML}\n${PAGES_CSS}`.includes(token), `missing HR document paperclip CSS token ${token}`);
+    }
+});
+
 test('HR staff resource service owns warehouse and costume side effects atomically', async () => {
     for (const token of [
         "require('../services/hrStaffResources')",

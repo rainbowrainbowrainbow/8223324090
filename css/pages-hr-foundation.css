@@ -7,6 +7,11 @@
     padding: 12px;
 }
 
+.hr-staff-foundation-panel.is-attention {
+    border-color: rgba(20, 184, 166, 0.62);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+}
+
 .hr-staff-foundation-head {
     display: flex;
     align-items: flex-start;
@@ -328,6 +333,11 @@ body.dark-mode .hr-staff-foundation-item,
 body.dark-mode .hr-staff-role-assignment-row {
     background: rgba(255,255,255,0.04);
     border-color: rgba(255,255,255,0.08);
+}
+
+body.dark-mode .hr-staff-foundation-panel.is-attention {
+    border-color: rgba(45,212,191,0.50);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.18);
 }
 
 body.dark-mode .hr-staff-foundation-head strong,

@@ -362,6 +362,152 @@ function leadCrmLinkForCustomer(leadId) {
     return customerCrmContextHref('/sales-funnel', { lead: leadId }, customerBusinessContext());
 }
 
+const CUSTOMER_PIPELINE_STAGE_MAP = {
+    new: { label: 'Новий лід', cls: 'new' },
+    contacted: { label: 'Контакт', cls: 'contacted' },
+    info_sent: { label: 'Надання інфо', cls: 'info-sent' },
+    deal: { label: 'Угода', cls: 'deal' },
+    deposit_received: { label: 'Завдаток', cls: 'deposit' },
+    waiting: { label: 'В очікуванні', cls: 'waiting' },
+    completed: { label: 'Проведено', cls: 'completed' },
+    closed: { label: 'Закрито', cls: 'closed' },
+    lost: { label: 'Провалено', cls: 'lost' }
+};
+
+function customerPipelineStageMeta(customer = {}) {
+    const rawStage = customer.leadPipelineStage || customer.pipelineStage || customer.pipeline_stage || '';
+    const key = String(rawStage || '').trim();
+    if (!key && customer.leadId) return { label: 'Лід без етапу', cls: 'unknown', key: '' };
+    if (!key) return { label: 'Без привʼязаного ліда', cls: 'none', key: '' };
+    const meta = CUSTOMER_PIPELINE_STAGE_MAP[key] || {
+        label: key.replace(/_/g, ' '),
+        cls: 'unknown'
+    };
+    return { ...meta, key };
+}
+
+function customerInitials(name) {
+    const letters = String(name || '')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(part => Array.from(part)[0])
+        .filter(Boolean);
+    return (letters.join('') || 'К').toUpperCase();
+}
+
+function pickCustomerHeaderBooking(bookings = []) {
+    if (!Array.isArray(bookings) || bookings.length === 0) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const active = bookings.filter(b => b?.status !== 'cancelled');
+    const upcoming = active
+        .filter(b => {
+            const date = new Date(b.date);
+            return !Number.isNaN(date.getTime()) && date >= today;
+        })
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')));
+    return upcoming[0] || active[0] || bookings[0] || null;
+}
+
+function customerBookingStatusLabel(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'confirmed') return 'Підтверджено';
+    if (normalized === 'cancelled') return 'Скасовано';
+    if (normalized === 'completed') return 'Проведено';
+    if (normalized === 'pending') return 'Очікує';
+    return normalized ? normalized.replace(/_/g, ' ') : '';
+}
+
+function customerHeaderBookingDetails(booking, maysternyaMode = false) {
+    if (!booking) {
+        return {
+            title: 'Бронювань немає',
+            meta: maysternyaMode ? 'Запис ще не створено' : 'Історія порожня',
+            muted: true
+        };
+    }
+    const dateText = [formatDate(booking.date), booking.time || ''].filter(Boolean).join(' · ');
+    const roomText = booking.room || booking.resourceName || booking.lineName || (maysternyaMode ? 'Кабінет не вказано' : 'Кімната не вказана');
+    const programText = booking.label || booking.programName || '';
+    const statusText = customerBookingStatusLabel(booking.status);
+    return {
+        title: dateText || 'Дата не вказана',
+        meta: [roomText, programText, statusText].filter(Boolean).join(' · '),
+        muted: false
+    };
+}
+
+function customerContextualizeHref(href, context = customerBusinessContext()) {
+    if (!href || /^(tel:|mailto:|https?:\/\/)/i.test(href)) return href;
+    const normalized = window.CrmBusinessContext?.normalize?.(context) || context || 'event_genix';
+    const url = new URL(href, window.location.origin);
+    if (normalized && normalized !== 'event_genix') url.searchParams.set('businessContext', normalized);
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function customerHeaderOmniTarget(customer = {}, communicationContext = null) {
+    const links = communicationContext?.links || {};
+    const rawHref = links.omniExact || links.omniSuggested || links.omniSearch || null;
+    const fallbackSearch = customer.phone || customer.name || customer.instagram || '';
+    const href = rawHref
+        ? customerContextualizeHref(rawHref, customer.businessContext || customerBusinessContext())
+        : (fallbackSearch ? customerCrmContextHref('/omni', { search: fallbackSearch }, customer.businessContext || customerBusinessContext()) : null);
+    const label = links.omniExact
+        ? 'Omni: діалог'
+        : links.omniSuggested
+            ? 'Omni: збіг'
+            : 'Omni: пошук';
+    return {
+        href,
+        label,
+        cls: links.omniExact ? 'exact' : (links.omniSuggested ? 'suggested' : 'search')
+    };
+}
+
+function renderCustomerDetailHero(customer, communicationContext = null, maysternyaMode = false) {
+    const stage = customerPipelineStageMeta({
+        ...customer,
+        leadPipelineStage: customer.leadPipelineStage || communicationContext?.lead?.pipelineStage
+    });
+    const booking = pickCustomerHeaderBooking(customer.bookings);
+    const bookingDetails = customerHeaderBookingDetails(booking, maysternyaMode);
+    const omni = customerHeaderOmniTarget(customer, communicationContext);
+    const leadLine = customer.leadId
+        ? `<a href="${escapeHtml(leadCrmLinkForCustomer(customer.leadId))}">Лід #${escapeHtml(customer.leadId)}</a>`
+        : '<span>Лід не привʼязано</span>';
+    const omniButton = omni.href
+        ? `<a class="btn-page-secondary entity-card-action customer-hero-omni ${escapeHtml(omni.cls)}" href="${escapeHtml(omni.href)}">${escapeHtml(omni.label)}</a>`
+        : '<span class="btn-page-secondary entity-card-action customer-hero-omni disabled" aria-disabled="true">Omni недоступний</span>';
+
+    return `<div class="customer-detail-header entity-card-header customer-detail-hero">
+        <div class="customer-hero-identity">
+            <div class="customer-hero-avatar" aria-hidden="true">${escapeHtml(customerInitials(customer.name))}</div>
+            <div class="entity-card-title-block customer-hero-title">
+                <h3>${escapeHtml(customer.name)}</h3>
+                <div class="entity-card-meta">${escapeHtml(customer.phone) || 'телефон не вказано'}${customer.instagram ? ' · @' + escapeHtml(customer.instagram) : ''}</div>
+            </div>
+        </div>
+        <div class="customer-hero-summary" aria-label="Операційний контекст клієнта">
+            <div class="customer-hero-tile customer-hero-stage ${escapeHtml(stage.cls)}">
+                <span>Етап воронки</span>
+                <strong>${escapeHtml(stage.label)}</strong>
+                <small>${leadLine}</small>
+            </div>
+            <div class="customer-hero-tile customer-hero-booking${bookingDetails.muted ? ' muted' : ''}">
+                <span>${maysternyaMode ? 'Найближчий запис' : 'Бронювання'}</span>
+                <strong>${escapeHtml(bookingDetails.title)}</strong>
+                <small>${escapeHtml(bookingDetails.meta)}</small>
+            </div>
+        </div>
+        <div class="entity-card-actions customer-hero-actions">
+            ${omniButton}
+            <button class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
+            <button class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
+        </div>
+    </div>`;
+}
+
 function customerHubDialogTarget(links = {}) {
     if (links.omniExact) {
         return {
@@ -1051,22 +1197,15 @@ async function showCustomerDetail(id) {
     modal.classList.remove('hidden');
 
     try {
-        const customer = await fetchCustomerDetail(id);
+        const [customer, communicationContext] = await Promise.all([
+            fetchCustomerDetail(id),
+            fetchCustomerCommunicationContext(id).catch(() => null)
+        ]);
         const maysternyaMode = isMaysternyaCustomerContext();
 
         let html = `
             <div class="entity-card-shell entity-card-shell-view entity-card-customer" data-entity-card-mode="customer">
-            <div class="customer-detail-header entity-card-header">
-                <div class="entity-card-title-block">
-                    <span class="entity-card-kicker">${maysternyaMode ? 'Maysternya client workspace' : 'Customer workspace'}</span>
-                    <h3>${escapeHtml(customer.name)}</h3>
-                    <div class="entity-card-meta">${escapeHtml(customer.phone) || 'телефон не вказано'}${customer.instagram ? ' · @' + escapeHtml(customer.instagram) : ''}</div>
-                </div>
-                <div class="entity-card-actions">
-                    <button class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
-                    <button class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
-                </div>
-            </div>
+            ${renderCustomerDetailHero(customer, communicationContext, maysternyaMode)}
             <div class="detail-section">
                 <h4>Контакти</h4>
                 <div class="detail-grid">
@@ -1205,7 +1344,7 @@ async function showCustomerDetail(id) {
         content.innerHTML = html;
         applyCustomerReadOnlyControls(content);
 
-        loadCommunicationHub(customer.id);
+        loadCommunicationHub(customer.id, communicationContext);
 
         // Load communications timeline
         loadCommunications(customer.id).then(comms => {
@@ -1528,9 +1667,14 @@ window.mergeCustomers = async function(primaryId, duplicateId) {
 // v30.4: COMMUNICATIONS
 // ==========================================
 
-async function loadCommunicationHub(customerId) {
+async function loadCommunicationHub(customerId, preloadedContext = null) {
     const hubEl = document.getElementById('customerCommHub');
     if (!hubEl) return;
+
+    if (preloadedContext) {
+        hubEl.innerHTML = renderCustomerCommunicationHub(preloadedContext);
+        return;
+    }
 
     try {
         const context = await fetchCustomerCommunicationContext(customerId);

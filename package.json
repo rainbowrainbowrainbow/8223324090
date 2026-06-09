@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.74.8",
+  "version": "0.74.13",
   "eventGenix": {
-    "releaseLabel": "Майстерня: webhook readiness"
+    "releaseLabel": "Майстерня: продажі та бронювання"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

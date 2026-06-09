@@ -1831,6 +1831,31 @@ body.dark-mode .hr-org-detail {
     color: var(--gray-600);
 }
 .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+.hr-team-document {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    background: rgba(20, 184, 166, 0.08);
+    border-radius: var(--radius-xs);
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    color: #0f766e;
+}
+.hr-team-document:hover {
+    border-color: rgba(20, 184, 166, 0.44);
+    background: rgba(20, 184, 166, 0.16);
+    color: #0f766e;
+}
+.hr-team-document:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.42);
+    outline-offset: 2px;
+}
 .hr-team-move {
     padding: 5px 10px;
     border: 1px solid rgba(14, 165, 233, 0.24);
@@ -2793,10 +2818,16 @@ body.dark-mode .hr-people-bucket.is-drop-target {
     background: rgba(20,184,166,0.10);
 }
 body.dark-mode .hr-team-edit,
+body.dark-mode .hr-team-document,
 body.dark-mode .hr-team-move {
     background: rgba(15,23,42,0.42);
     border-color: rgba(148,163,184,0.24);
     color: #E2E8F0;
+}
+body.dark-mode .hr-team-document {
+    border-color: rgba(45,212,191,0.30);
+    background: rgba(20,184,166,0.12);
+    color: #5EEAD4;
 }
 body.dark-mode .hr-team-move {
     border-color: rgba(56,189,248,0.32);

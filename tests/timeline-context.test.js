@@ -344,9 +344,13 @@ test('lead conversion routes Maysternya bookings to the Maysternya timeline surf
     assert.match(leadsCode, /normalized === 'maysternya_doli'[\s\S]*return '\/maysternya-doli'/);
     assert.match(leadsCode, /function leadTimelineHref/);
     assert.match(leadsCode, /businessContext', normalized/);
+    assert.match(leadsCode, /function ensureLeadCustomerForBooking/);
+    assert.match(leadsCode, /params\.set\('customerId', customer\.id\)/);
+    assert.match(leadsCode, /function offerDealBookingFlow/);
+    assert.match(leadsCode, /Створити бронювання на таймлайні зараз/);
     assert.match(leadsCode, /'client_name', 'clientName', 'customerName', 'name'/);
     assert.match(leadsCode, /'phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp'/);
-    assert.match(leadsCode, /window\.location\.href = leadTimelineHref\(Object\.fromEntries\(params\.entries\(\)\), leadContextFromRecord\(lead\)\)/);
+    assert.match(leadsCode, /window\.location\.href = leadTimelineHref\(Object\.fromEntries\(params\.entries\(\)\), leadContextFromRecord\(conversionLead\)\)/);
     assert.doesNotMatch(leadsCode, /window\.location\.href = `\/\?\$\{params\.toString\(\)\}`/);
 });
 

@@ -1789,7 +1789,15 @@ function applyLeadConversionContextToBookingForm() {
     if (customerToggle) customerToggle.checked = true;
     document.getElementById('customerDataSection')?.classList.remove('hidden');
 
-    if (ctx.customerName) {
+    const linkedCustomerId = parseInt(ctx.customerId, 10);
+    if (Number.isInteger(linkedCustomerId) && linkedCustomerId > 0) {
+        applySelectedCustomerToBookingForm({
+            id: linkedCustomerId,
+            name: ctx.customerName || `Клієнт #${linkedCustomerId}`,
+            phone: ctx.customerPhone || '',
+            source: 'lead'
+        }, { markDirty: false });
+    } else if (ctx.customerName) {
         const nameEl = document.getElementById('customerName');
         const searchEl = document.getElementById('customerSearch');
         if (nameEl && !nameEl.value) nameEl.value = ctx.customerName;
@@ -1839,6 +1847,7 @@ function clearLeadConversionContextAfterBooking(bookingId) {
     url.searchParams.delete('lead');
     url.searchParams.delete('convert');
     url.searchParams.delete('eventDate');
+    url.searchParams.delete('customerId');
     url.searchParams.delete('customerName');
     url.searchParams.delete('customerPhone');
     url.searchParams.delete('topic');

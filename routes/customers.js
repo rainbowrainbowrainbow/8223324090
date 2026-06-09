@@ -1376,6 +1376,25 @@ router.get('/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         customer = mapCustomerRow(result.rows[0]);
 
+        if (customer.leadId) {
+            try {
+                const leadResult = await pool.query(
+                    `SELECT id, pipeline_stage, status
+                     FROM leads
+                     WHERE id = $1
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                     LIMIT 1`,
+                    [customer.leadId, businessContext]
+                );
+                const lead = leadResult.rows[0] || null;
+                customer.leadPipelineStage = lead?.pipeline_stage || null;
+                customer.leadStatus = lead?.status || null;
+            } catch {
+                customer.leadPipelineStage = null;
+                customer.leadStatus = null;
+            }
+        }
+
         // Bookings + certificates from PostgreSQL
         const bookingParams = [numId, businessContext];
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
@@ -1546,6 +1565,8 @@ function mapCustomerRow(row) {
         phone: row.phone || null,
         instagram: row.instagram || null,
         leadId: row.lead_id || null,
+        leadPipelineStage: row.lead_pipeline_stage || null,
+        leadStatus: row.lead_status || null,
         childName: row.child_name || null,
         childBirthday: row.child_birthday || null,
         socialIdentities: normalizeSocialIdentities(row.social_identities, { instagram: row.instagram }),

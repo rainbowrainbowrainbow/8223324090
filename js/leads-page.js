@@ -28,15 +28,69 @@ const QUALITY_CATEGORIES = {
 };
 
 const PIPELINE_STAGES = [
-    { key: 'new',              label: 'Новий лід',    emoji: '🔵', color: '#3B82F6' },
-    { key: 'contacted',        label: 'Контакт',      emoji: '📞', color: '#8B5CF6' },
-    { key: 'info_sent',        label: 'Надання інфо',  emoji: '📋', color: '#F59E0B' },
-    { key: 'deal',             label: 'Угода',         emoji: '🤝', color: '#F97316' },
-    { key: 'deposit_received', label: 'Завдаток',      emoji: '💰', color: '#10B981' },
-    { key: 'waiting',          label: 'В очікуванні',  emoji: '⏳', color: '#06B6D4' },
-    { key: 'completed',        label: 'Проведено',     emoji: '✅', color: '#22C55E' },
-    { key: 'closed',           label: 'Закрито',       emoji: '💚', color: '#059669' },
-    { key: 'lost',             label: 'Провалено',     emoji: '❌', color: '#EF4444' }
+    {
+        key: 'new',
+        label: 'Новий лід',
+        emoji: '🔵',
+        color: '#3B82F6',
+        hint: 'Сюди падають нові заявки з форми, дзвінка, чату або ручного створення. Менеджер ще не почав опрацювання.'
+    },
+    {
+        key: 'contacted',
+        label: 'Контакт',
+        emoji: '📞',
+        color: '#8B5CF6',
+        hint: 'Етап виявлення потреби: контакт встановлено, менеджер уточнює запит, дату, формат, бюджет і очікування клієнта.'
+    },
+    {
+        key: 'info_sent',
+        label: 'Надання інфо',
+        emoji: '📋',
+        color: '#F59E0B',
+        hint: 'Клієнту вже надіслали програму, умови, ціни або підбірку варіантів. Тепер чекаємо реакцію чи уточнення.'
+    },
+    {
+        key: 'deal',
+        label: 'Угода',
+        emoji: '🤝',
+        color: '#F97316',
+        hint: 'Тут узгоджуються фінальні умови: дата, пакет, склад послуги, допи, знижка, сума і наступний крок до бронювання.'
+    },
+    {
+        key: 'deposit_received',
+        label: 'Завдаток',
+        emoji: '💰',
+        color: '#10B981',
+        hint: 'Передоплата або фінальне підтвердження отримані. Лід має бути звʼязаний із бронюванням і готовий до підготовки.'
+    },
+    {
+        key: 'waiting',
+        label: 'В очікуванні',
+        emoji: '⏳',
+        color: '#06B6D4',
+        hint: 'Пауза за клієнтом: чекаємо відповідь, рішення, оплату або уточнення. Має бути зрозумілий follow-up.'
+    },
+    {
+        key: 'completed',
+        label: 'Проведено',
+        emoji: '✅',
+        color: '#22C55E',
+        hint: 'Послугу або подію виконано. Тут лишаються ліди, які вже доведені до результату і потребують фінального закриття.'
+    },
+    {
+        key: 'closed',
+        label: 'Закрито',
+        emoji: '💚',
+        color: '#059669',
+        hint: 'Кейс завершено: фінальні нотатки, клієнт, бронювання, оплати та результат зафіксовані.'
+    },
+    {
+        key: 'lost',
+        label: 'Провалено',
+        emoji: '❌',
+        color: '#EF4444',
+        hint: 'Втрачений лід: клієнт відмовився, обрав інше, не відповідає або причина втрати вже зафіксована.'
+    }
 ];
 
 const WIP_LIMIT = 10;
@@ -1387,6 +1441,12 @@ function renderFunnelBar(grouped) {
     return `<div class="funnel-bar-container">${bars}</div>`;
 }
 
+function renderPipelineStageHelp(stage = {}) {
+    const label = stage.label || 'етап';
+    const hint = stage.hint || 'Опис етапу ще не задано.';
+    return `<button type="button" class="pipeline-stage-help" aria-label="${escapeHtml(`${label}: ${hint}`)}" data-tooltip="${escapeHtml(hint)}">!</button>`;
+}
+
 function renderKanban() {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
@@ -1458,7 +1518,10 @@ function renderKanban() {
 
         return `<div class="kanban-column ${isEmpty ? 'kanban-column-empty' : ''} ${isOverWip ? 'kanban-column-wip' : ''}" data-stage="${stage.key}">
             <div class="kanban-column-header" style="border-bottom-color:${stage.color}">
-                <span style="color:${stage.color}">${stage.emoji} ${stage.label}</span>
+                <div class="kanban-stage-title" style="color:${stage.color}">
+                    <span>${stage.emoji} ${escapeHtml(stage.label)}</span>
+                    ${renderPipelineStageHelp(stage)}
+                </div>
                 <span class="kanban-count" style="background:${stage.color};color:#fff">${leads.length}${wipWarning}</span>
             </div>
             ${totalSum > 0 ? `<div class="kanban-column-sum">${totalSum.toLocaleString('uk-UA')} ₴</div>` : ''}
@@ -1528,6 +1591,10 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
             // If deposit_received, show task summary
             if (stage === 'deposit_received') {
                 if (typeof showNotification === 'function') showNotification('💰 Завдаток! Задачі створені автоматично', 'success');
+            }
+            if (stage === 'deal') {
+                const openedBookingDraft = await offerDealBookingFlow(leadId, data.lead);
+                if (openedBookingDraft) return;
             }
             await loadLeads();
             if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
@@ -2328,14 +2395,80 @@ async function resolveLeadConversionRecord(id) {
     return lead;
 }
 
-async function convertLead(id) {
+function leadHasExactBookingContext(leadId, lead = null) {
+    if (lead?.bookingId || lead?.booking_id) return true;
+    if (currentWorkspaceData?.lead?.id !== leadId) return false;
+    return Boolean(exactLeadBooking(currentWorkspaceData));
+}
+
+async function loadLeadWorkspaceForConversion(id) {
+    if (currentWorkspaceData?.lead?.id === id) return currentWorkspaceData;
+    try {
+        const res = await apiFetch(`/api/leads/${id}/workspace`);
+        if (!res) return null;
+        const data = await res.json();
+        if (data.success && data.workspace) return data.workspace;
+    } catch (err) {
+        console.warn('Lead booking customer workspace hydrate failed', err);
+    }
+    return null;
+}
+
+async function ensureLeadCustomerForBooking(leadId, seedLead = null) {
+    const workspace = await loadLeadWorkspaceForConversion(leadId);
+    const workspaceLead = workspace?.lead ? { ...(seedLead || {}), ...workspace.lead } : seedLead;
+    const workspaceCustomer = workspace?.customer || null;
+    const linkBody = workspaceCustomer?.id
+        ? { customerId: workspaceCustomer.id }
+        : { createNew: true };
+
+    const res = await apiFetch(`/api/leads/${leadId}/link-customer`, {
+        method: 'POST',
+        body: JSON.stringify(leadPayload(linkBody))
+    });
+    if (!res) throw new Error('Customer link request failed');
+    const data = await res.json();
+    if (!data.success || !data.customer?.id) {
+        throw new Error(data.error || 'Не вдалося створити або привʼязати клієнта');
+    }
+
+    if (currentWorkspaceData?.lead?.id === leadId) {
+        currentWorkspaceData = {
+            ...currentWorkspaceData,
+            lead: workspaceLead || currentWorkspaceData.lead,
+            customer: data.customer
+        };
+    }
+
+    return {
+        lead: workspaceLead || seedLead,
+        customer: data.customer,
+        mode: data.mode,
+        suggestions: data.suggestions || []
+    };
+}
+
+async function convertLead(id, options = {}) {
     if (!guardLeadWrite('конвертувати ліди')) return;
-    const lead = await resolveLeadConversionRecord(id);
+    const lead = options.lead || await resolveLeadConversionRecord(id);
     if (!lead) return;
+    let ensured = null;
+    try {
+        ensured = await ensureLeadCustomerForBooking(id, lead);
+    } catch (err) {
+        console.error('Lead booking customer ensure error', err);
+        if (typeof showNotification === 'function') {
+            showNotification(err.message || 'Не вдалося створити картку клієнта для бронювання', 'error');
+        }
+        return false;
+    }
+    const conversionLead = ensured.lead || lead;
+    const customer = ensured.customer || null;
     const params = new URLSearchParams();
-    const customerName = leadRecordText(lead, ['client_name', 'clientName', 'customerName', 'name']);
-    const customerPhone = leadRecordText(lead, ['phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp']);
-    const rawEventDate = leadRecordText(lead, ['event_date', 'eventDate', 'booking_date', 'bookingDate', 'date']);
+    const customerName = customer?.name || leadRecordText(conversionLead, ['client_name', 'clientName', 'customerName', 'name']);
+    const customerPhone = customer?.phone || leadRecordText(conversionLead, ['phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp']);
+    const rawEventDate = leadRecordText(conversionLead, ['event_date', 'eventDate', 'booking_date', 'bookingDate', 'date']);
+    if (customer?.id) params.set('customerId', customer.id);
     if (customerName) params.set('customerName', customerName);
     if (customerPhone) params.set('customerPhone', customerPhone);
     if (rawEventDate) {
@@ -2346,18 +2479,30 @@ async function convertLead(id) {
     params.set('leadId', id);
     params.set('convert', 'booking');
     if (isMaysternyaLeadContext()) {
-        const topic = leadRecordText(lead, ['topic', 'request_topic', 'requestTopic', 'sessionType', 'quality_category', 'qualityCategory', 'programName', 'program_name']);
-        const message = leadRecordText(lead, ['message', 'notes', 'comment', 'description']);
-        const source = leadRecordText(lead, ['sourceChannel', 'source_channel', 'source']);
-        const page = leadRecordText(lead, ['page', 'pageUrl', 'page_url', 'url']);
-        const sessionType = leadRecordText(lead, ['sessionType', 'session_type']);
+        const topic = leadRecordText(conversionLead, ['topic', 'request_topic', 'requestTopic', 'sessionType', 'quality_category', 'qualityCategory', 'programName', 'program_name']);
+        const message = leadRecordText(conversionLead, ['message', 'notes', 'comment', 'description']);
+        const source = leadRecordText(conversionLead, ['sourceChannel', 'source_channel', 'source']);
+        const page = leadRecordText(conversionLead, ['page', 'pageUrl', 'page_url', 'url']);
+        const sessionType = leadRecordText(conversionLead, ['sessionType', 'session_type']);
         if (topic) params.set('topic', topic);
         if (message) params.set('message', message.slice(0, 900));
         if (source) params.set('source', source);
         if (page) params.set('page', page);
         if (sessionType) params.set('sessionType', sessionType);
     }
-    window.location.href = leadTimelineHref(Object.fromEntries(params.entries()), leadContextFromRecord(lead));
+    window.location.href = leadTimelineHref(Object.fromEntries(params.entries()), leadContextFromRecord(conversionLead));
+    return true;
+}
+
+async function offerDealBookingFlow(leadId, lead = null) {
+    if (leadHasExactBookingContext(leadId, lead)) return false;
+    const ok = await confirmLeadUiAction('Етап змінено на "Угода". Створити бронювання на таймлайні зараз?', {
+        okText: 'Створити бронювання',
+        cancelText: 'Пізніше',
+        type: 'success'
+    });
+    if (!ok) return false;
+    return convertLead(leadId, { lead });
 }
 
 function localDateTimeInput(date) {

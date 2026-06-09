@@ -2891,7 +2891,8 @@ function renderTeamCards(staff) {
             ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-warning-note">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
             <div class="hr-team-actions">
                 ${accountActions}
-                ${canManage ? `<button type="button" class="hr-team-edit" onclick="openStaffEdit(${Number(s.id)})">Профіль</button>
+                ${canManage ? `<button type="button" class="hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${Number(s.id)})" title="Скани документів" aria-label="Скани документів: ${escapeHtml(s.name)}">📎</button>
+                    <button type="button" class="hr-team-edit" onclick="openStaffEdit(${Number(s.id)})">Профіль</button>
                     <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>
                     <button type="button" class="hr-team-delete" onclick="deleteStaffProfile(${Number(s.id)})">Видалити</button>` : ''}
             </div>
@@ -3027,6 +3028,27 @@ async function deleteStaffProfile(staffId) {
 }
 
 window.deleteStaffProfile = deleteStaffProfile;
+
+function focusStaffDocumentsPanel() {
+    const panel = document.getElementById('editStaffDocumentsPanel');
+    if (!panel) return;
+    window.setTimeout(() => {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        panel.classList.add('is-attention');
+        document.getElementById('editDocumentFile')?.focus?.({ preventScroll: true });
+        window.setTimeout(() => panel.classList.remove('is-attention'), 1800);
+    }, 100);
+}
+
+async function openStaffDocuments(staffId) {
+    if (!canManage) {
+        showNotification('Скани документів доступні тільки HR/керівникам', 'error');
+        return;
+    }
+    await openStaffEdit(Number(staffId), { focus: 'documents' });
+}
+
+window.openStaffDocuments = openStaffDocuments;
 
 async function openStaffMoveMenu(staffId, button) {
     if (!canManage) {
@@ -4800,9 +4822,10 @@ async function completeStaffOffboarding() {
     await loadTeam();
 }
 
-async function openStaffEdit(staffId) {
+async function openStaffEdit(staffId, options = {}) {
     const s = teamStaff.find(st => st.id === staffId);
     if (!s) return;
+    const focusTarget = typeof options === 'string' ? options : options?.focus;
     await ensureProfessionsLoaded({ silent: true });
     await ensureCompanyStructureNodesLoaded({ silent: true });
 
@@ -4860,6 +4883,7 @@ async function openStaffEdit(staffId) {
     staffOffboardingReadiness = null;
 
     showHrEditableModal('staffEditModal');
+    if (focusTarget === 'documents') focusStaffDocumentsPanel();
     loadStaffProfileHistory(staffId);
     loadStaffFoundation(staffId);
     loadStaffRoleAssignments(staffId);

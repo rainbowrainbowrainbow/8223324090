@@ -475,11 +475,25 @@ const CSS_SURFACE = [
         reason: 'Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by pages.css.'
     },
     {
+        file: 'css/pages-customers.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Customer detail hero, funnel stage, booking summary, Omni shortcut, dark-mode, and responsive styles imported by pages.css.'
+    },
+    {
         file: 'css/pages-core.css',
         owner: 'shared-ui',
         category: 'shared',
         status: 'active',
         reason: 'Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-leads.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Sales funnel kanban stage hint controls and tooltip styles imported by pages.css.'
     },
     {
         file: 'css/pages-hr-foundation.css',

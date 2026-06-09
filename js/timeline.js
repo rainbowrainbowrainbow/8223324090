@@ -336,6 +336,7 @@ function getLeadConversionContextFromUrl() {
     const eventDate = (params.get('eventDate') || params.get('date') || '').trim();
     return {
         leadId,
+        customerId: (params.get('customerId') || '').trim(),
         customerName: (params.get('customerName') || '').trim(),
         customerPhone: (params.get('customerPhone') || '').trim(),
         eventDate: /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : '',

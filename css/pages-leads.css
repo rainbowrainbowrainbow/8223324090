@@ -1,0 +1,87 @@
+/* Sales funnel stage hints */
+.kanban-column-header {
+    position: relative;
+    gap: 8px;
+}
+
+.kanban-stage-title {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.kanban-stage-title span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pipeline-stage-help {
+    position: relative;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    opacity: .72;
+    font: 900 11px/1 var(--font-main);
+    cursor: help;
+}
+
+.pipeline-stage-help::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    z-index: 50;
+    width: 230px;
+    max-width: min(230px, calc(100vw - 40px));
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--gray-900);
+    color: var(--white);
+    box-shadow: var(--shadow-lg);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: left;
+    white-space: normal;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity .14s ease, transform .14s ease;
+}
+
+.pipeline-stage-help:hover,
+.pipeline-stage-help:focus-visible {
+    opacity: 1;
+    outline: none;
+}
+
+.pipeline-stage-help:hover::after,
+.pipeline-stage-help:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.kanban-column-empty .kanban-stage-title span {
+    font-size: 11px;
+}
+
+body.dark-mode .pipeline-stage-help::after {
+    border: 1px solid currentColor;
+}
+
+@media (max-width: 768px) {
+    .kanban-column-empty:hover {
+        min-width: 190px;
+        max-width: 220px;
+    }
+}

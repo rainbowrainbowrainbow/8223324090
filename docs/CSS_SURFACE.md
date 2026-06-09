@@ -85,7 +85,9 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-art.css` | shared-ui | `shared` | active | Art standalone shell, tabs, boards, kanban, recent work, and responsive styles imported by `pages.css`. |
 | `css/pages-cabinet.css` | shared-ui | `shared-large` | active-large | Personal cabinet task composer, quick metrics, completion strips, task cards, subtasks, and dark-mode styles imported by `pages.css`. |
 | `css/pages-certificates.css` | shared-ui | `shared` | active | Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by `pages.css`. |
+| `css/pages-customers.css` | shared-ui | `shared` | active | Customer detail hero, funnel stage, booking summary, Omni shortcut, dark-mode, and responsive styles imported by `pages.css`. |
 | `css/pages-core.css` | shared-ui | `shared` | active | Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by `pages.css`. |
+| `css/pages-leads.css` | shared-ui | `shared` | active | Sales funnel kanban stage hint controls and tooltip styles imported by `pages.css`. |
 | `css/pages-hr-foundation.css` | shared-ui | `shared` | active | HR employee-card foundation, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by `pages.css`. |
 | `css/pages-hr-staff.css` | shared-ui | `shared-large` | active-large | HR payroll toolbar, staff pulse navigation, schedule replacement controls, HR team tabs, team filters, and onboarding assignment styles imported by `pages.css`. |
 | `css/pages-task-taxonomy.css` | shared-ui | `shared` | active | Task print rules, taxonomy chips, operations summary, operational packs, and dark-mode taxonomy styles imported by `pages.css`. |

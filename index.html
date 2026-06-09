@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.8">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.8">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.8">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.8">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.8">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.8">
-    <link rel="stylesheet" href="css/features.css?v=0.74.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.8">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.8">
+    <link rel="stylesheet" href="css/base.css?v=0.74.13">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.13">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.13">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.13">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.13">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.13">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.13">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.13">
+    <link rel="stylesheet" href="css/features.css?v=0.74.13">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.13">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.13">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.13">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.13">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.8">✨ 0.74.8</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.13">✨ 0.74.13</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.8 — Майстерня: webhook readiness</p>
+                <p class="tagline">AI First CRM v0.74.13 — Майстерня: продажі та бронювання</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.8</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.13</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1658,6 +1658,57 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.13 — Майстерня: продажі та бронювання</h4>
+                    <ul>
+                        <li><b>Фінальний deploy-пакет Майстерні підготовлено під GitHub flow</b> — у релізі зібрані доробки Майстерні, клієнтів, воронки, бронювання та HR-документів.</li>
+                        <li><b>Ключовий сценарій продажів закрито до бронювання</b> — лід на етапі <code>Угода</code> може одразу перейти в timeline draft із привʼязаним CRM-клієнтом, щоб клієнта було видно в пошуку за ПІБ.</li>
+                        <li><b>Операційні доробки лишаються в одному релізному поїзді</b> — картка клієнта має booking/stage/Omni summary, у воронці є підказки етапів, а в HR додано швидкий доступ до сканів документів.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.13</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.12 — Воронка: угода в бронювання</h4>
+                    <ul>
+                        <li><b>Перехід ліда на етап <code>Угода</code> пропонує створити бронювання</b> — після move/drag на stage <code>deal</code> CRM показує дію "Створити бронювання" і відкриває timeline draft після підтвердження.</li>
+                        <li><b>Перед відкриттям таймлайна гарантується клієнтська картка</b> — система привʼязує знайденого клієнта або створює нового з даних ліда через існуючий <code>link-customer</code> контур.</li>
+                        <li><b>Timeline draft отримує <code>customerId</code></b> — форма бронювання відкривається з уже вибраним CRM-клієнтом, тому його можна знайти в пошуку за ПІБ і запис збережеться з правильним клієнтом.</li>
+                        <li><b>Deep-link cleanup розширено</b> — після створення запису прибирається також <code>customerId</code>, щоб старий conversion draft не відкривався повторно.</li>
+                        <li><b>Regression guards оновлено</b> — UI smoke і <code>tests/timeline-context.test.js</code> перевіряють ensure customer, <code>deal → booking</code> prompt, <code>customerId</code> у deep-link і cleanup.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.12</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.11 — Клієнти: верхній блок картки</h4>
+                    <ul>
+                        <li><b>Верхній блок картки клієнта став операційним summary</b> — тепер поруч із ПІБ і телефоном видно етап воронки, привʼязаний лід і ключове бронювання.</li>
+                        <li><b>Бронювання показує дату й кімнату</b> — якщо записи є, header показує дату/час, кімнату або кабінет, програму й статус; якщо записів немає, видно чесний порожній стан.</li>
+                        <li><b>Додано швидкий перехід в Omni</b> — кнопка веде в точний діалог, ймовірний збіг або пошук Omni з поточним <code>businessContext</code>.</li>
+                        <li><b>Detail API підтягнув stage ліда</b> — <code>GET /api/customers/:id</code> повертає <code>leadPipelineStage</code> і <code>leadStatus</code> тільки в тому самому бізнес-контексті.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє hero-блок клієнта, stage, booking, Omni shortcut і backend-поле ліда.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.11</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.10 — Воронка: підказки етапів</h4>
+                    <ul>
+                        <li><b>У заголовках етапів воронки зʼявився компактний знак <code>!</code></b> — він відкриває підказку на hover і keyboard focus.</li>
+                        <li><b>Кожен етап має свій операційний опис</b> — "Контакт" прямо пояснює етап виявлення потреби, а решта етапів описують, що саме має туди потрапляти.</li>
+                        <li><b>Стиль узгоджено з CRM</b> — маленька кругла кнопка, темна підказка, focus-state, dark mode і мобільний guard не змінюють kanban-логіку.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє наявність stage hints, tooltip-стилів і тексту про виявлення потреби.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.10</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.9 — HR: скани документів</h4>
+                    <ul>
+                        <li><b>На картках команди зʼявилась скріпка</b> — кнопка <code>📎</code> відкриває приватні HR-документи конкретного працівника без пошуку в довгій модалці профілю.</li>
+                        <li><b>Профіль одразу фокусується на сканах</b> — секція "Документи й скани" підсвічується, прокручується у видиму область і ставить фокус на поле файлу.</li>
+                        <li><b>Збереження лишається приватним</b> — використовується наявний <code>staff_documents</code> / <code>/api/hr/staff/:id/documents</code> контур із DB-backed файлами, download і архівом.</li>
+                        <li><b>Regression guard додано</b> — HR button contract перевіряє кнопку-скріпку, панель документів і фокус на upload-полі.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.9</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.8 — Майстерня: webhook readiness</h4>
                     <ul>
@@ -11928,29 +11979,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.8"></script>
-    <script src="js/timeline-visibility.js?v=0.74.8"></script>
-    <script src="js/config.js?v=0.74.8"></script>
-    <script src="js/api.js?v=0.74.8"></script>
-    <script src="js/ui.js?v=0.74.8"></script>
-    <script src="js/auth.js?v=0.74.8"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.8"></script>
-    <script src="js/timeline.js?v=0.74.8"></script>
-    <script src="js/booking.js?v=0.74.8"></script>
-    <script src="js/settings.js?v=0.74.8"></script>
-    <script src="js/booking-form.js?v=0.74.8"></script>
-    <script src="js/booking-linked.js?v=0.74.8"></script>
-    <script src="js/settings-dashboard.js?v=0.74.8"></script>
-    <script src="js/settings-history.js?v=0.74.8"></script>
-    <script src="js/settings-afisha.js?v=0.74.8"></script>
-    <script src="js/settings-certificates.js?v=0.74.8"></script>
-    <script src="js/offline.js?v=0.74.8"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.8"></script>
-    <script src="js/search.js?v=0.74.8"></script>
-    <script src="js/ws.js?v=0.74.8"></script>
-    <script src="js/app.js?v=0.74.8"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.8"></script>
-    <script src="js/components/sidebar.js?v=0.74.8"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.8"></script>
+    <script src="js/timeline-context.js?v=0.74.13"></script>
+    <script src="js/timeline-visibility.js?v=0.74.13"></script>
+    <script src="js/config.js?v=0.74.13"></script>
+    <script src="js/api.js?v=0.74.13"></script>
+    <script src="js/ui.js?v=0.74.13"></script>
+    <script src="js/auth.js?v=0.74.13"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.13"></script>
+    <script src="js/timeline.js?v=0.74.13"></script>
+    <script src="js/booking.js?v=0.74.13"></script>
+    <script src="js/settings.js?v=0.74.13"></script>
+    <script src="js/booking-form.js?v=0.74.13"></script>
+    <script src="js/booking-linked.js?v=0.74.13"></script>
+    <script src="js/settings-dashboard.js?v=0.74.13"></script>
+    <script src="js/settings-history.js?v=0.74.13"></script>
+    <script src="js/settings-afisha.js?v=0.74.13"></script>
+    <script src="js/settings-certificates.js?v=0.74.13"></script>
+    <script src="js/offline.js?v=0.74.13"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.13"></script>
+    <script src="js/search.js?v=0.74.13"></script>
+    <script src="js/ws.js?v=0.74.13"></script>
+    <script src="js/app.js?v=0.74.13"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.13"></script>
+    <script src="js/components/sidebar.js?v=0.74.13"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.13"></script>
 </body>
 </html>

@@ -1416,12 +1416,19 @@ async function apiCancelEducationLessonSeries(seriesId, options = {}) {
 }
 
 // v5.7: Create booking with linked bookings in one transaction
-async function apiCreateBookingFull(main, linked) {
+async function apiCreateBookingFull(main, linked, options = {}) {
     try {
+        const payload = {
+            main: timelineApiPayload(main),
+            linked: (linked || []).map(item => timelineApiPayload(item))
+        };
+        if (Array.isArray(options.banquetActivities) && options.banquetActivities.length > 0) {
+            payload.banquetActivities = options.banquetActivities.map(item => timelineApiPayload(item));
+        }
         const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings/full')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
-            body: JSON.stringify(timelineApiPayload({ main: timelineApiPayload(main), linked: (linked || []).map(item => timelineApiPayload(item)) }))
+            body: JSON.stringify(timelineApiPayload(payload))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -1917,6 +1924,7 @@ async function apiGetProducts(activeOnly = true, filters = {}) {
         if (filters.kitchenType) params.set('kitchenType', filters.kitchenType);
         if (filters.menuSection) params.set('menuSection', filters.menuSection);
         if (filters.availabilityStatus) params.set('availabilityStatus', filters.availabilityStatus);
+        if (filters.priceDate || filters.price_date) params.set('priceDate', filters.priceDate || filters.price_date);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
@@ -1932,6 +1940,7 @@ async function apiGetProduct(id, options = {}) {
     try {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        if (options.priceDate || options.price_date) params.set('priceDate', options.priceDate || options.price_date);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;

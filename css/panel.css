@@ -97,10 +97,19 @@
     display: grid;
     gap: 4px;
     margin-bottom: 0;
+    min-width: 0;
 }
 
 .info-label { color: var(--gray-500); font-size: var(--font-sm); }
-.info-value { font-weight: 800; font-size: var(--font-base); color: var(--gray-800); }
+.info-value {
+    display: block;
+    min-width: 0;
+    font-weight: 800;
+    font-size: var(--font-base);
+    color: var(--gray-800);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 .form-section { margin-bottom: 18px; }
 
@@ -651,7 +660,7 @@ body.timeline-mode-education .booking-block.education-lesson {
     border-radius: 12px;
     cursor: pointer;
     transition: all var(--speed-normal) var(--ease-smooth);
-    min-height: 96px;
+    min-height: 108px;
     position: relative;
     overflow: hidden;
     appearance: none;
@@ -695,6 +704,10 @@ body.timeline-mode-education .booking-block.education-lesson {
     background: var(--primary-50);
     box-shadow: 0 4px 16px rgba(16,185,129,0.25);
     transform: scale(1.04);
+}
+
+.program-icon.is-primary-activity {
+    box-shadow: 0 0 0 2px rgba(14,165,233,0.24), 0 4px 16px rgba(16,185,129,0.22);
 }
 
 .program-icon.selected::after {
@@ -759,6 +772,51 @@ body.timeline-mode-education .booking-block.education-lesson {
 }
 
 /* v5.32: Duration badge — top-right corner of program card */
+.program-price-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    max-width: calc(100% - 36px);
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(15,23,42,0.72);
+    color: var(--white);
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 1;
+}
+
+.program-icon.selected .program-price-badge {
+    background: rgba(5,150,105,0.88);
+}
+
+.program-next-price-badge {
+    display: block;
+    max-width: 100%;
+    margin-top: 4px;
+    padding: 2px 5px;
+    border-radius: 5px;
+    background: rgba(245,158,11,0.14);
+    color: #B45309;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.dark .program-next-price-badge,
+body.dark-mode .program-next-price-badge,
+[data-theme="dark"] .program-next-price-badge {
+    background: rgba(245,158,11,0.18);
+    color: #FCD34D;
+}
+
 .program-duration {
     position: absolute;
     top: 4px;
@@ -928,6 +986,84 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     margin-bottom: 8px;
     color: var(--gray-500);
     font-size: 13px;
+}
+
+.selected-activities-list {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.selected-activity-item {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto 28px;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid rgba(16,185,129,0.14);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.72);
+}
+
+.selected-activity-order {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(16,185,129,0.12);
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.selected-activity-main {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.selected-activity-main strong,
+.selected-activity-main small,
+.selected-activity-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.selected-activity-main strong {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.selected-activity-main small,
+.selected-activity-meta {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.selected-activity-remove {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(239,68,68,0.18);
+    border-radius: 8px;
+    background: rgba(239,68,68,0.08);
+    color: #DC2626;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.selected-activity-remove:hover,
+.selected-activity-remove:focus-visible {
+    border-color: rgba(239,68,68,0.32);
+    background: rgba(239,68,68,0.14);
+    outline: none;
 }
 
 .pinata-mode-section .form-section,

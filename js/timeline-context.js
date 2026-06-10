@@ -46,7 +46,7 @@
             defaultBookingRoom: '\u041E\u043D\u043B\u0430\u0439\u043D',
             isPrivateSurface: true,
             showAfisha: false,
-            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification'],
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes'],
             actionRoles: {
                 create: ['creator'],
                 edit: ['creator'],
@@ -87,7 +87,7 @@
             phoneLabel: 'Телефон',
             emptyLineName: 'Ресурс',
             legendHtml: '<span class="legend-item"><span class="dot custom"></span>Таймлайн вимкнено</span>',
-            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification', 'bookingPackageSummary']
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'bookingPackageSummary']
         },
         simple: {
             key: 'simple',
@@ -119,7 +119,7 @@
                 <span class="legend-item"><span class="dot custom"></span>Записи</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
             `,
-            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification']
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
         },
         specialist: {
             key: 'specialist',
@@ -222,7 +222,7 @@
                 <span class="legend-item"><span class="dot masterclass"></span>Практика</span>
                 <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
             `,
-            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes', 'skipNotification']
+            defaultHiddenElements: ['productSales', 'costume', 'extraHost', 'secondAnimator', 'hostsWarning', 'pinata', 'kidsCount', 'tshirtSizes']
         }
     };
     const VALID_DISPLAY_MODES = new Set(Object.keys(DISPLAY_MODES));

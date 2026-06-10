@@ -183,7 +183,13 @@ window.BookingForm = {
         const groupInput = document.getElementById('bookingGroupName');
         if (groupInput) groupInput.value = '';
 
-        document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
+        if (typeof setSelectedActivityPrograms === 'function') {
+            setSelectedActivityPrograms([], { renderSummary: false, renderPackage: false, markDirty: false });
+        }
+        document.querySelectorAll('.program-icon').forEach(i => {
+            i.classList.remove('selected', 'is-primary-activity');
+            i.setAttribute('aria-pressed', 'false');
+        });
 
         const programSearch = document.getElementById('programSearch');
         if (programSearch) {
@@ -216,9 +222,6 @@ window.BookingForm = {
 
         const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
         if (statusRadio) statusRadio.checked = true;
-
-        const skipNotif = document.getElementById('skipNotificationToggle');
-        if (skipNotif) skipNotif.checked = false;
 
         const kidsCountSection = document.getElementById('kidsCountSection');
         if (kidsCountSection) kidsCountSection.classList.add('hidden');

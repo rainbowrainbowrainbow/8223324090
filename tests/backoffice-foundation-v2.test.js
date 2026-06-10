@@ -36,6 +36,7 @@ describe('backoffice foundation v2 contracts', () => {
     const centerPage = readRepoFile('js', 'center-page.js');
     const centerHtml = readRepoFile('center.html');
     const productsRoute = readRepoFile('routes', 'products.js');
+    const productPricingService = readRepoFile('services', 'productPricing.js');
     const designsPage = readRepoFile('js', 'designs-page.js');
     const designsHtml = readRepoFile('designs.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
@@ -96,8 +97,10 @@ describe('backoffice foundation v2 contracts', () => {
     });
 
     it('keeps design price sheet tied to Price Center instead of duplicated product prices', () => {
-        assert.match(productsRoute, /LEFT JOIN LATERAL \([\s\S]*FROM price_rules pr[\s\S]*WHERE pr\.product_id = p\.id/);
-        assert.match(productsRoute, /priceSource:\s*hasCenterPrice \? 'price_rules' : 'products'/);
+        assert.match(productPricingService, /LEFT JOIN LATERAL \([\s\S]*FROM price_rules pr[\s\S]*WHERE \$\{currentRuleWhere\}/);
+        assert.match(productPricingService, /priceSource:\s*hasCenterPrice \? 'price_rules' : 'products'/);
+        assert.match(productPricingService, /pr\.effective_from <= \$\{queryDate\}/);
+        assert.match(productsRoute, /priceDate/);
         assert.match(productsRoute, /upsertProductPriceRule/);
         assert.match(productsRoute, /buildProductPriceRuleCode/);
 

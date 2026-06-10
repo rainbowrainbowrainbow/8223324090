@@ -10,6 +10,11 @@ const {
     applyBookingPackage,
     bookingPackageAudit
 } = require('../services/bookingPackage');
+const {
+    normalizePriceDate,
+    mapProductPriceFields,
+    applyEffectiveBookingPrice
+} = require('../services/productPricing');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -81,43 +86,127 @@ test('booking package audit records client and commercial package changes', () =
     assert.equal(audit.to.customerId, 12);
 });
 
+test('product effective pricing resolves current and next rule by booking date', async () => {
+    assert.equal(normalizePriceDate('2026-06-10'), '2026-06-10');
+    assert.equal(normalizePriceDate('2026-02-31'), null);
+
+    const mapped = mapProductPriceFields({
+        price: 1500,
+        price_query_date: '2026-06-10',
+        price_rule_code: 'anim60_current',
+        price_rule_value: 1500,
+        price_rule_effective_from: '2026-06-01',
+        next_price_rule_code: 'anim60_future',
+        next_price_rule_value: 1800,
+        next_price_rule_effective_from: '2026-06-11'
+    });
+    assert.equal(mapped.price, 1500);
+    assert.equal(mapped.effectivePriceDate, '2026-06-10');
+    assert.equal(mapped.nextPrice, 1800);
+    assert.equal(mapped.nextPriceFrom, '2026-06-11');
+
+    const queries = [];
+    const booking = {
+        date: '2026-06-11',
+        programId: 'anim60',
+        price: 1500,
+        kidsCount: 0,
+        extraData: {
+            bookingPackage: {
+                programBasePrice: 1500,
+                positionsSubtotal: 200,
+                finalTotal: 1700,
+                menuPositions: []
+            }
+        }
+    };
+    await applyEffectiveBookingPrice({
+        query: async (sql, params) => {
+            queries.push({ sql: String(sql), params });
+            return {
+                rows: [{
+                    id: 'anim60',
+                    business_context: 'event_genix',
+                    price: 1500,
+                    is_per_child: false,
+                    price_query_date: '2026-06-11',
+                    price_rule_code: 'anim60_future',
+                    price_rule_value: 1800,
+                    price_rule_effective_from: '2026-06-11'
+                }]
+            };
+        }
+    }, booking, { businessContext: 'event_genix' });
+
+    assert.match(queries[0].sql, /pr\.effective_from <= \$2::date/);
+    assert.equal(queries[0].params[1], '2026-06-11');
+    assert.equal(booking.price, 2000);
+    assert.equal(booking.extraData.bookingPackage.programBasePrice, 1800);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 2000);
+    assert.deepEqual(booking.extraData.priceSnapshot, {
+        productId: 'anim60',
+        priceCode: 'anim60_future',
+        price: 1800,
+        finalPrice: 2000,
+        priceDate: '2026-06-11',
+        source: 'price_rules',
+        effectiveFrom: '2026-06-11',
+        nextPrice: null,
+        nextPriceFrom: null
+    });
+});
+
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
     const bookingFormJs = read('js', 'booking-form.js');
+    const configJs = read('js', 'config.js');
     const apiJs = read('js', 'api.js');
+    const panelCss = read('css', 'panel.css');
     const route = read('routes', 'bookings.js');
     const customerRoute = read('routes', 'customers.js');
+    const panelStart = html.indexOf('<aside id="bookingPanel"');
+    const panelEnd = html.indexOf('</aside>', panelStart);
+    const bookingPanelHtml = panelStart >= 0 && panelEnd > panelStart
+        ? html.slice(panelStart, panelEnd + '</aside>'.length)
+        : html;
 
-    assert.match(html, /bookingHasEventToggle/);
-    assert.match(html, /bookingKitchenToggle/);
-    assert.match(html, /bookingLeadDetailsToggle/);
-    assert.match(html, /bookingScenarioBar/);
+    assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
+    assert.match(html, /id="bookingKitchenToggle" hidden aria-hidden="true"/);
+    assert.match(html, /id="bookingLeadDetailsToggle" hidden aria-hidden="true"/);
+    assert.doesNotMatch(bookingPanelHtml, /bookingScenarioBar/);
+    assert.doesNotMatch(bookingPanelHtml, /bookingModeSelector/);
+    assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
     assert.match(html, /booking-section-heading/);
     assert.match(html, /id="roomSelect" required aria-required="true"/);
     assert.match(html, /bookingLeadDetailsSection/);
-    assert.match(html, /bookingModeSelector/);
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /bookingStickyFooter/);
     assert.match(html, /id="bookingForm" class="booking-form" novalidate/);
-    assert.match(html, /bookingCreateCustomerBtn/);
+    assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
+    assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
+    assert.match(html, /bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"/);
     assert.match(html, /bookingChangeCustomerBtn/);
     assert.match(html, /programCategoryChips/);
+    assert.match(html, /selectedActivitiesList/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
-    assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="bookingHasEventToggle"'));
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
 
+    assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
+    assert.match(bookingJs, /function getBookingWorkspaceHasEvent\(\) \{\s*return true;/);
+    assert.match(bookingJs, /function isBookingKitchenEnabled\(\) \{\s*return false;/);
+    assert.match(bookingJs, /function isBookingLeadDetailsEnabled\(\) \{\s*return false;/);
     assert.match(bookingJs, /getSelectedProgramIdFromUi/);
     assert.match(bookingJs, /findBookingProductById/);
-    assert.match(bookingJs, /const hasExplicitProgram = Boolean\(selectedProgramId\)/);
-    assert.match(bookingJs, /const hasEvent = maysternyaMode \? true : \(getBookingWorkspaceHasEvent\(\) \|\| hasExplicitProgram\)/);
+    assert.match(bookingJs, /const hasEvent = true;/);
     assert.match(bookingJs, /booking_workspace_v2/);
+    assert.match(bookingJs, /mode: BOOKING_PROGRAM_ONLY_WORKSPACE \? 'event_program_only' : 'workspace'/);
+    assert.match(bookingJs, /scenario: 'event'/);
     assert.match(bookingJs, /room\.required = true/);
     assert.match(bookingJs, /const room = document\.getElementById\('roomSelect'\)\?\.value \|\| '';/);
     assert.match(bookingJs, /room: formData\.room/);
-    assert.match(bookingJs, /kitchenType === 'cake'/);
     assert.match(bookingJs, /function addBookingMenuPositionFromForm/);
     assert.match(bookingJs, /programBasePrice/);
     assert.match(bookingJs, /positionsSubtotal/);
@@ -129,32 +218,55 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /setAttribute\('aria-disabled', validation\.canSubmit \? 'false' : 'true'\)/);
     assert.match(bookingJs, /collectCreatedBookingRecords/);
     assert.match(bookingJs, /NO_EVENT_TIMELINE_DURATION/);
-    assert.match(bookingJs, /getBookingScenarioContentState/);
+    assert.doesNotMatch(bookingJs, /function getBookingScenarioContentState/);
     assert.match(bookingJs, /revealCreatedBookingBlocks/);
     assert.match(bookingJs, /refreshCreatedBookingTimelineSnapshot/);
     assert.match(bookingJs, /bookings: changedDateKey !== selectedDateKey/);
     assert.match(bookingJs, /createdBookingVisibilityMessage/);
     assert.match(bookingJs, /booking-block--just-created/);
-    assert.match(bookingJs, /Оберіть програму або додайте зміст заявки/);
+    assert.match(bookingJs, /Оберіть програму події/);
     assert.match(bookingJs, /Сервер не підтвердив створення бронювання/);
     assert.match(bookingJs, /updateBookingSubmitState/);
     assert.match(bookingJs, /renderProgramCategoryChips/);
     assert.match(bookingJs, /renderSelectedProgramSummary/);
+    assert.match(bookingJs, /selectedActivityProgramIds/);
+    assert.match(bookingJs, /function bookingMultiActivityEnabled/);
+    assert.match(bookingJs, /function setSelectedActivityPrograms/);
+    assert.match(bookingJs, /function buildMultiActivityBookings/);
+    assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
+    assert.match(bookingJs, /multiActivity/);
+    assert.match(bookingJs, /additionalMultiHostActivity/);
+    assert.match(bookingJs, /bookingActivityNextPriceLabel/);
     assert.match(bookingJs, /bookingCustomerDuplicateHint/);
     assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
     assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);
     assert.match(bookingJs, /customer-search-state/);
+    assert.match(bookingJs, /const nextMode = mode === 'new' \? 'search' : mode;/);
+    assert.match(bookingJs, /const hasClient = hasSelectedCustomer;/);
+    assert.match(bookingJs, /Оберіть існуючого клієнта з пошуку/);
+    assert.match(bookingJs, /obj\.customerId = parseInt\(existingId\)/);
+    assert.doesNotMatch(bookingJs, /obj\.customer =/);
+    assert.doesNotMatch(bookingJs, /bookingCreateCustomerBtn/);
+    assert.doesNotMatch(bookingJs, /setBookingClientMode\('new'/);
     assert.match(bookingJs, /role="button" tabindex="0"/);
 
     assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));
+    assert.match(bookingFormJs, /setSelectedActivityPrograms\(\[\], \{ renderSummary: false, renderPackage: false, markDirty: false \}\)/);
     assert.match(apiJs, /apiFetchWithAuthRetry/);
     assert.match(apiJs, /async function apiGetBookings\(date, options = \{\}\)/);
+    assert.match(apiJs, /options\.banquetActivities/);
+    assert.match(apiJs, /payload\.banquetActivities/);
+    assert.match(apiJs, /priceDate/);
     assert.match(apiJs, /options\.fresh/);
     assert.match(apiJs, /Array\.isArray\(payload\?\.customers\)/);
     assert.match(customerRoute, /child_birthday/);
     assert.match(customerRoute, /regexp_replace\(COALESCE\(c\.phone/);
 
     assert.match(route, /applyBookingPackage/);
+    assert.match(route, /applyEffectiveBookingPrice/);
+    assert.match(route, /refreshMultiActivityPriceTotals/);
+    assert.match(route, /await applyEffectiveBookingPrice\(client, b, \{ businessContext \}\)/);
+    assert.match(route, /await applyEffectiveBookingPrice\(client, main, \{ businessContext \}\)/);
     assert.match(route, /function requireBookingRoom/);
     assert.match(route, /const roomError = requireBookingRoom\(b\)/);
     assert.match(route, /const mainRoomError = requireBookingRoom\(main\)/);
@@ -175,6 +287,15 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /function commitBookingTransaction/);
     assert.match(route, /booking_commit_not_verified/);
     assert.match(route, /function assertDurableCreatedBookings/);
+    assert.match(route, /const banquetActivities = Array\.isArray\(req\.body\?\.banquetActivities\)/);
+    assert.match(route, /const activityRows = \[\]/);
+    assert.match(route, /upsertBanquetLink\(client, businessContext, main\.id, activity\.id/);
+    assert.match(route, /activityRows\.map\(row => row\.id\)/);
+    assert.match(route, /const activityBookings = activityRows\.map/);
+    assert.match(route, /activityBookings: responseActivityBookings/);
+    assert.match(route, /banquetLinks: banquetLinkRows\.map/);
+    assert.match(route, /activity_count: activityRows\.length/);
+    assert.match(route, /Finance auto-record \(create\/full activity\)/);
     assert.match(route, /booking_durable_read_missing/);
     assert.match(route, /serverVerified = true/);
     assert.match(route, /runOptionalBookingTransactionStep\(client, 'Finance auto-record'/);
@@ -183,4 +304,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /commitBookingTransaction\(client, 'booking update'\)/);
     assert.match(bookingJs, /createResult\.serverVerified === false/);
     assert.match(bookingJs, /record\?\.serverVerified !== false/);
+    assert.match(configJs, /productsPriceDate/);
+    assert.match(configJs, /function getTimelineProductsPriceDate/);
+    assert.match(configJs, /apiGetProducts\(true, \{ businessContext, priceDate \}\)/);
+    assert.match(panelCss, /\.program-price-badge/);
+    assert.match(panelCss, /\.program-next-price-badge/);
+    assert.match(panelCss, /\.selected-activity-item/);
 });

@@ -339,7 +339,8 @@ const AppState = {
     // v7.0: Products cache from API
     products: null,             // Array of products from API (or null = not loaded)
     productsLoadedAt: 0,        // Timestamp when products were loaded
-    productsBusinessContext: null
+    productsBusinessContext: null,
+    productsPriceDate: null
 };
 
 // Auto-update sidebar avatar when currentUser changes
@@ -370,6 +371,17 @@ function getTimelineProductsBusinessContext() {
     return 'event_genix';
 }
 
+function getTimelineProductsPriceDate() {
+    const date = AppState.selectedDate instanceof Date
+        ? AppState.selectedDate
+        : new Date(AppState.selectedDate || Date.now());
+    if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 function mapApiProductToTimelineProduct(p) {
     return {
         id: p.id,
@@ -394,6 +406,12 @@ function mapApiProductToTimelineProduct(p) {
         availabilityStatus: p.availabilityStatus || p.availability_status || null,
         priceUnit: p.priceUnit || p.price_unit || null,
         priceSource: p.priceSource || p.price_source || null,
+        priceCode: p.priceCode || p.price_code || null,
+        priceRuleEffectiveFrom: p.priceRuleEffectiveFrom || p.price_rule_effective_from || null,
+        effectivePriceDate: p.effectivePriceDate || p.effective_price_date || null,
+        nextPrice: p.nextPrice ?? p.next_price ?? null,
+        nextPriceFrom: p.nextPriceFrom || p.next_price_from || null,
+        nextPriceCode: p.nextPriceCode || p.next_price_code || null,
         perChild: p.isPerChild,
         hasFiller: p.hasFiller,
         isCustom: p.isCustom,
@@ -414,8 +432,10 @@ function timelineDisplayUsesApiProducts() {
 async function getProducts() {
     const now = Date.now();
     const businessContext = getTimelineProductsBusinessContext();
+    const priceDate = getTimelineProductsPriceDate();
     if (!timelineDisplayUsesApiProducts()) {
         AppState.productsBusinessContext = businessContext;
+        AppState.productsPriceDate = priceDate;
         AppState.products = PROGRAMS;
         AppState.productsLoadedAt = now;
         return PROGRAMS;
@@ -423,22 +443,25 @@ async function getProducts() {
     // Return cached if still fresh
     if (AppState.products
         && AppState.productsBusinessContext === businessContext
+        && AppState.productsPriceDate === priceDate
         && (now - AppState.productsLoadedAt) < PRODUCTS_CACHE_TTL) {
         return AppState.products;
     }
     // Try to load from API
     if (typeof apiGetProducts === 'function') {
-        const apiProducts = await apiGetProducts(true, { businessContext });
+        const apiProducts = await apiGetProducts(true, { businessContext, priceDate });
         if (Array.isArray(apiProducts)) {
             // Map API camelCase to match existing PROGRAMS format
             AppState.products = apiProducts.map(mapApiProductToTimelineProduct);
             AppState.productsLoadedAt = now;
             AppState.productsBusinessContext = businessContext;
+            AppState.productsPriceDate = priceDate;
             return AppState.products;
         }
     }
     // Fallback to hardcoded PROGRAMS
     AppState.productsBusinessContext = businessContext;
+    AppState.productsPriceDate = priceDate;
     return PROGRAMS;
 }
 
@@ -448,7 +471,8 @@ async function getProducts() {
  */
 function getProductsSync() {
     if (Array.isArray(AppState.products)
-        && AppState.productsBusinessContext === getTimelineProductsBusinessContext()) {
+        && AppState.productsBusinessContext === getTimelineProductsBusinessContext()
+        && AppState.productsPriceDate === getTimelineProductsPriceDate()) {
         return AppState.products;
     }
     return PROGRAMS;

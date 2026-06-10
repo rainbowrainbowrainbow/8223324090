@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.13">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.13">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.13">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.13">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.13">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.13">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.13">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.13">
-    <link rel="stylesheet" href="css/features.css?v=0.74.13">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.13">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.13">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.13">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.13">
+    <link rel="stylesheet" href="css/base.css?v=0.74.22">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.22">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.22">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.22">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.22">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.22">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.22">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.22">
+    <link rel="stylesheet" href="css/features.css?v=0.74.22">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.22">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.22">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.22">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.22">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.13">✨ 0.74.13</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.22">✨ 0.74.22</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.13 — Майстерня: продажі та бронювання</p>
+                <p class="tagline">AI First CRM v0.74.22 — Деплой: пакет Майстерні та бронювання</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.13</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.22</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -320,6 +320,18 @@
                         <span class="info-label">Аніматор:</span>
                         <span id="selectedLineDisplay" class="info-value">-</span>
                     </div>
+                    <div class="info-item">
+                        <span class="info-label">Клієнт:</span>
+                        <span id="selectedCustomerDisplay" class="info-value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Дитина:</span>
+                        <span id="selectedChildDisplay" class="info-value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Гості:</span>
+                        <span id="selectedGuestsDisplay" class="info-value">-</span>
+                    </div>
                 </div>
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
@@ -383,7 +395,7 @@
                 <div class="booking-section-heading booking-section-heading--compact">
                     <div>
                         <strong>Клієнт</strong>
-                        <small>Спочатку знайдіть існуючу картку. Нового клієнта відкривайте лише за потреби.</small>
+                        <small>Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.</small>
                     </div>
                 </div>
                 <input type="checkbox" id="customerDataToggle" checked hidden aria-hidden="true">
@@ -399,13 +411,12 @@
                     <div id="bookingCustomerSearchState" class="booking-customer-search-state hidden"></div>
                     <div id="bookingSelectedCustomerCard" class="booking-selected-customer hidden"></div>
                     <div class="booking-client-actions">
-                        <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Оберіть клієнта або створіть нового.</span>
+                        <span id="bookingCustomerModeLabel" class="booking-client-mode-label">Знайдіть і виберіть існуючу картку клієнта.</span>
                         <div class="booking-client-actions__buttons">
                             <button type="button" id="bookingChangeCustomerBtn" class="booking-mini-action hidden">Змінити</button>
-                            <button type="button" id="bookingCreateCustomerBtn" class="booking-mini-action booking-mini-action--primary">+ Створити нового клієнта</button>
                         </div>
                     </div>
-                    <div id="bookingNewCustomerForm" class="booking-new-customer-form hidden">
+                    <div id="bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true">
                         <div class="customer-fields">
                             <div class="form-section">
                                 <label>Ім’я клієнта <span class="required-mark">*</span></label>
@@ -447,40 +458,9 @@
                     <div id="bookingCustomerDuplicateHint" class="booking-duplicate-hint hidden"></div>
                 </div>
 
-                <div class="booking-section-heading booking-section-heading--compact">
-                    <div>
-                        <strong>Що входить у бронювання?</strong>
-                        <small>Увімкніть лише ті блоки, які реально потрібні менеджеру зараз.</small>
-                    </div>
-                </div>
-                <div class="booking-mode-selector" id="bookingModeSelector">
-                    <label class="booking-mode-card" for="bookingHasEventToggle">
-                        <input type="checkbox" id="bookingHasEventToggle">
-                        <span class="booking-mode-card__copy">
-                            <strong>Подія / програма</strong>
-                            <small>Анімація, квест, шоу, майстер-клас або інша програма.</small>
-                        </span>
-                    </label>
-                    <label class="booking-mode-card" for="bookingKitchenToggle">
-                        <input type="checkbox" id="bookingKitchenToggle">
-                        <span class="booking-mode-card__copy">
-                            <strong>Кухня / меню</strong>
-                            <small>Додати позиції меню, гостей, стіл і ручний опис.</small>
-                        </span>
-                    </label>
-                    <label class="booking-mode-card" for="bookingLeadDetailsToggle">
-                        <input type="checkbox" id="bookingLeadDetailsToggle">
-                        <span class="booking-mode-card__copy">
-                            <strong>Деталі ліда</strong>
-                            <small>Джерело, інтерес і коментар менеджера.</small>
-                        </span>
-                    </label>
-                </div>
-
-                <div id="bookingScenarioBar" class="booking-scenario-bar" aria-live="polite">
-                    <span id="bookingScenarioChip" class="booking-scenario-chip">Заявка</span>
-                    <span id="bookingScenarioText" class="booking-scenario-text">Кімната і клієнт обов’язкові; додаткові блоки вмикайте за потреби.</span>
-                </div>
+                <input type="checkbox" id="bookingHasEventToggle" checked hidden aria-hidden="true">
+                <input type="checkbox" id="bookingKitchenToggle" hidden aria-hidden="true">
+                <input type="checkbox" id="bookingLeadDetailsToggle" hidden aria-hidden="true">
 
                 <section class="booking-section booking-notes-section">
                     <div class="booking-section-heading booking-section-heading--compact">
@@ -611,12 +591,13 @@
                     <input type="hidden" id="selectedProgram">
                 </div>
 
-                <!-- Інфо про обрану програму -->
+                <!-- Інфо про обрані активності -->
                 <div id="programDetails" class="program-details program-details--summary">
-                    <div class="program-details-title">Обрана програма</div>
-                    <div id="programDetailsEmpty" class="program-details-empty">Оберіть програму зі списку.</div>
+                    <div class="program-details-title">Обрані активності</div>
+                    <div id="programDetailsEmpty" class="program-details-empty">Оберіть одну або кілька активностей зі списку.</div>
+                    <div id="selectedActivitiesList" class="selected-activities-list"></div>
                     <div class="detail-row">
-                        <span>Тривалість:</span>
+                        <span>Тривалість разом:</span>
                         <span id="detailDuration">-</span>
                     </div>
                     <div class="detail-row">
@@ -853,13 +834,6 @@
                     </div>
                 </div>
 
-                <!-- v12.6: Silent booking (no notifications) -->
-                <div id="bookingSkipNotificationSection" class="form-section">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="skipNotificationToggle">
-                        <span class="toggle-text">🔇 Без сповіщень (тихе бронювання)</span>
-                    </label>
-                </div>
                 <div class="booking-sticky-footer" id="bookingStickyFooter">
                     <div class="booking-sticky-footer__top">
                         <div>
@@ -1658,6 +1632,114 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.22 — Деплой: пакет Майстерні та бронювання</h4>
+                    <ul>
+                        <li><b>Зібрано фінальний deploy-пакет</b> — у реліз увійшли доробки Майстерні, воронки, клієнтів, бронювань, таймлайну, HR-документів і центру цін.</li>
+                        <li><b>Майстерня Sales Ops ізольована бізнес-перемикачем</b> — шлях <code>заявка з сайту → лід → клієнт → запис → follow-up</code> працює в <code>maysternya_doli</code> і не протікає в Park/Event Genix.</li>
+                        <li><b>Ліди й клієнти Майстерні не гублять payload із сайту</b> — видно source, external id, page, UTM, contact channels, topic/message і привʼязаний запис.</li>
+                        <li><b>Воронка отримала підказки етапів і booking-flow на угоді</b> — маленькі <code>!</code> пояснюють, що має потрапляти на етап, а <code>Угода</code> готує клієнта та бронювання.</li>
+                        <li><b>Картка клієнта стала операційною</b> — прибрано службовий напис, додано етап воронки, бронювання з датою/кімнатою та швидкий перехід в Omni.</li>
+                        <li><b>Timeline-бронювання очищено</b> — лишився вибір існуючого клієнта і програм подій; створення нового клієнта, блок <code>Що входить</code> і тихе бронювання прибрані.</li>
+                        <li><b>Бронювання краще підказує контекст</b> — у шапці видно клієнта, дитину і гостей, а список кімнат показує тільки вільні кімнати на вибраний день.</li>
+                        <li><b>Кілька активностей одного банкету працюють як окремі блоки</b> — їх можна розсунути на таймлайні, але CRM тримає спільний звʼязок банкету.</li>
+                        <li><b>Ціна програми фіксується на дату події</b> — картки показують актуальну та майбутню ціну, а backend зберігає фінальний <code>priceSnapshot</code>.</li>
+                        <li><b>HR-скріпка для сканів документів лишається в релізній історії</b> — попередня доробка зі швидким доступом до приватних HR-документів не загублена.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.22</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.21 — Бронювання: ціна на дату</h4>
+                    <ul>
+                        <li><b>Ціна програми тепер рахується на дату бронювання</b> — <code>/api/products</code> приймає <code>priceDate</code> і повертає active price з <code>price_rules.effective_from</code>, а не останнє правило за <code>updated_at</code>.</li>
+                        <li><b>Картки програм показують актуальну ціну і майбутню зміну</b> — у швидкому виборі видно ціну на обрану дату, а якщо запланована нова ціна, зʼявляється підпис <code>з ДД.ММ → нова ціна</code>.</li>
+                        <li><b>Backend фіксує фінальну суму сам</b> — при create/full/update бронювання сервер повторно перевіряє effective price по <code>booking.date</code> і записує її в <code>bookings.price</code>.</li>
+                        <li><b>У <code>extra_data.priceSnapshot</code> зберігається джерело ціни</b> — productId, priceCode, price, finalPrice, priceDate, source, effectiveFrom і найближча майбутня зміна лишаються в історії запису.</li>
+                        <li><b>Multi-activity бронювання перераховує кожен блок окремо</b> — додаткові активності отримують власний snapshot, а <code>multiActivity.totalPrice</code> оновлюється після серверного перерахунку.</li>
+                        <li><b>Regression guard додано</b> — contract, route mock і UI smoke перевіряють <code>priceDate</code>, effective price SQL, priceSnapshot і future-price badge.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.21</code></b> — package, package-lock, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.20 — Бронювання: кілька активностей</h4>
+                    <ul>
+                        <li><b>У бронюванні можна вибрати кілька активностей одразу</b> — картки програм працюють як мультивибір, а перша вибрана активність лишається основною для ведучого, костюма і піньяти.</li>
+                        <li><b>Картки активностей показують вартість</b> — у швидкому виборі додано компактний price badge, а підсумок показує список активностей, загальну тривалість і загальну суму.</li>
+                        <li><b>Додаткові активності створюються окремими блоками</b> — кожна має власну тривалість, ціну, час і повноцінний запис на таймлайні, щоб її можна було потім роздвинути вручну.</li>
+                        <li><b>Банкетний звʼязок зберігається окремо від <code>linked_to</code></b> — технічні записи другого ведучого не змішуються з активностями банкету.</li>
+                        <li><b>Візуальне поєднання йде через <code>booking_banquet_links</code></b> — timeline отримує durable links і може показувати, що ці окремі блоки належать до одного банкету.</li>
+                        <li><b><code>/api/bookings/full</code> повертає всі створені записи</b> — у відповіді є <code>activityBookings</code>, <code>banquetLinks</code> і повний <code>allBookings</code> для миттєвого оновлення таймлайна.</li>
+                        <li><b>Regression guard додано</b> — UI smoke і booking contract tests перевіряють мультивибір, payload <code>banquetActivities</code>, окремі activity bookings і CSS бейджі.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.20</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.19 — Таймлайн: без тихого бронювання</h4>
+                    <ul>
+                        <li><b>Опцію <code>Без сповіщень (тихе бронювання)</code> прибрано з панелі бронювання</b> — менеджер більше не бачить неактуальний checkbox у Timeline.</li>
+                        <li><b>Звичайне бронювання більше не відправляє <code>skipNotification</code> із форми</b> — frontend не читає видалений toggle і не додає цей прапорець у payload створення запису.</li>
+                        <li><b>Constructor видимості очищено</b> — <code>skipNotification</code> прибрано з переліку елементів Timeline і з default hidden списків бізнес-режимів.</li>
+                        <li><b>Backend-сумісність залишено</b> — серверна колонка <code>skip_notification</code> і внутрішній silent flag для службових/закритих слотів не змінювались.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє, що checkbox, selector і visibility key не повернулись у booking panel.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.19</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.18 — Таймлайн: тільки програми подій</h4>
+                    <ul>
+                        <li><b>Блок <code>Що входить у бронювання?</code> прибрано з панелі Timeline</b> — менеджер більше не бачить картки <code>Подія / програма</code>, <code>Кухня / меню</code> і <code>Деталі ліда</code>.</li>
+                        <li><b>Timeline залишено для створення програм подій</b> — event-сценарій завжди увімкнений, а збереження бронювання вимагає вибрати програму події.</li>
+                        <li><b>Кухню і деталі ліда відключено в цьому контурі</b> — hidden toggle-и лишились тільки як технічна сумісність, але JS примусово тримає kitchen/lead blocks вимкненими.</li>
+                        <li><b>Підсумок бронювання спрощено</b> — тепер він показує кімнату, клієнта, програму і суму без рядка <code>Кухня: вимкнено</code>.</li>
+                        <li><b>Payload отримав явний <code>event_program_only</code> режим</b> — <code>bookingWorkspace</code> зберігає <code>scenario: event</code>, порожні <code>leadDetails</code> і нульові kitchen-поля.</li>
+                        <li><b>Regression guard оновлено</b> — UI smoke і booking unit checks перевіряють відсутність scenario cards, фіксований program-only режим і нову валідацію <code>Оберіть програму події</code>.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.18</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.17 — Таймлайн: тільки існуючий клієнт</h4>
+                    <ul>
+                        <li><b>Створення клієнта прямо з Timeline прибрано</b> — у панелі бронювання більше немає кнопки <code>Створити нового клієнта</code>, менеджер може тільки знайти й вибрати існуючу картку.</li>
+                        <li><b>Збереження бронювання вимагає привʼязаний <code>customerId</code></b> — набране вручну імʼя, телефон або Instagram більше не проходять як новий клієнт.</li>
+                        <li><b>Payload бронювання більше не відправляє <code>obj.customer</code></b> — Timeline передає лише <code>customerId</code>, тому backend не запускає приховане створення клієнта з форми бронювання.</li>
+                        <li><b>Шапка і підсумок не підміняють пошук вибраним клієнтом</b> — імʼя клієнта показується як вибране тільки після привʼязки існуючої картки.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє відсутність create-кнопки, режиму <code>new</code>, fallback <code>obj.customer</code> і валідацію на існуючого клієнта.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.17</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.16 — Таймлайн: клієнт у шапці бронювання</h4>
+                    <ul>
+                        <li><b>Шапка панелі бронювання тепер показує клієнта, дитину і гостей</b> — поруч із датою, часом і лінією додано <code>Клієнт</code>, <code>Дитина</code>, <code>Гості</code>.</li>
+                        <li><b>Значення оновлюються наживо</b> — шапка реагує на ручний ввід ПІБ, вибір існуючого клієнта, імʼя дитини, кількість дітей, кількість гостей кухні та дані з ліда.</li>
+                        <li><b>Гості беруться з найточнішого доступного поля</b> — спершу <code>Гостей</code> у кухні, потім <code>Кількість дітей/учнів</code>, потім <code>Діти / гості / інтерес</code> із ліда.</li>
+                        <li><b>Візуал лишився в стилі CRM</b> — шапка використовує ті самі плитки, dark mode і responsive-розкладку, а довгі значення обрізаються без розвалу панелі.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє DOM-поля шапки, live helper і CSS-захист від переповнення.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.16</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.15 — Угода: авто-картка клієнта</h4>
+                    <ul>
+                        <li><b>Етап <code>Угода</code> одразу створює або привʼязує SQL-картку клієнта</b> — backend робить це в активному <code>businessContext</code> під час оновлення ліда.</li>
+                        <li><b>Перехід етапу і клієнтська картка збережені однією транзакцією</b> — якщо картку створити не вдалось, CRM не залишає лід у <code>deal</code> без клієнта.</li>
+                        <li><b>Дані заявки з сайту не губляться</b> — у картку клієнта потрапляють джерело, external/inquiry id, сторінка, topic/message, UTM і contact channels.</li>
+                        <li><b>Бронювання використовує вже готову картку</b> — старий <code>link-customer</code> контур доповнює наявного клієнта даними ліда без дублювання.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє auto-create/link для stage <code>deal</code> і SQL-збір даних клієнта.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.15</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.14 — Бронювання: вільні кімнати дня</h4>
+                    <ul>
+                        <li><b>Dropdown кімнат у Park-бронюванні показує тільки кімнати без бронювань на вибраний день</b> — перед відкриттям панелі CRM дивиться бронювання поточної дати й прибирає з <code>roomSelect</code> кімнати, які вже мають запис цього дня.</li>
+                        <li><b>Редагування існуючого бронювання не ламається</b> — поточна кімната редагованого запису лишається видимою в формі, навіть якщо вона зайнята цим же бронюванням.</li>
+                        <li><b>Кнопка "Вільні" узгоджена з денним фільтром</b> — кімнати, які вільні в конкретний час, але вже мають інше бронювання цього дня, більше не пропонуються як вибір.</li>
+                        <li><b>Placeholder виправлено на "Оберіть кімнату"</b> — у Park-режимі список більше не показує некоректне "Оберіть кімната".</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє денний фільтр кімнат, edit-exclusion і попередження для зайнятих за день кімнат.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.14</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.13 — Майстерня: продажі та бронювання</h4>
                     <ul>
@@ -11979,29 +12061,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.13"></script>
-    <script src="js/timeline-visibility.js?v=0.74.13"></script>
-    <script src="js/config.js?v=0.74.13"></script>
-    <script src="js/api.js?v=0.74.13"></script>
-    <script src="js/ui.js?v=0.74.13"></script>
-    <script src="js/auth.js?v=0.74.13"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.13"></script>
-    <script src="js/timeline.js?v=0.74.13"></script>
-    <script src="js/booking.js?v=0.74.13"></script>
-    <script src="js/settings.js?v=0.74.13"></script>
-    <script src="js/booking-form.js?v=0.74.13"></script>
-    <script src="js/booking-linked.js?v=0.74.13"></script>
-    <script src="js/settings-dashboard.js?v=0.74.13"></script>
-    <script src="js/settings-history.js?v=0.74.13"></script>
-    <script src="js/settings-afisha.js?v=0.74.13"></script>
-    <script src="js/settings-certificates.js?v=0.74.13"></script>
-    <script src="js/offline.js?v=0.74.13"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.13"></script>
-    <script src="js/search.js?v=0.74.13"></script>
-    <script src="js/ws.js?v=0.74.13"></script>
-    <script src="js/app.js?v=0.74.13"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.13"></script>
-    <script src="js/components/sidebar.js?v=0.74.13"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.13"></script>
+    <script src="js/timeline-context.js?v=0.74.22"></script>
+    <script src="js/timeline-visibility.js?v=0.74.22"></script>
+    <script src="js/config.js?v=0.74.22"></script>
+    <script src="js/api.js?v=0.74.22"></script>
+    <script src="js/ui.js?v=0.74.22"></script>
+    <script src="js/auth.js?v=0.74.22"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.22"></script>
+    <script src="js/timeline.js?v=0.74.22"></script>
+    <script src="js/booking.js?v=0.74.22"></script>
+    <script src="js/settings.js?v=0.74.22"></script>
+    <script src="js/booking-form.js?v=0.74.22"></script>
+    <script src="js/booking-linked.js?v=0.74.22"></script>
+    <script src="js/settings-dashboard.js?v=0.74.22"></script>
+    <script src="js/settings-history.js?v=0.74.22"></script>
+    <script src="js/settings-afisha.js?v=0.74.22"></script>
+    <script src="js/settings-certificates.js?v=0.74.22"></script>
+    <script src="js/offline.js?v=0.74.22"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.22"></script>
+    <script src="js/search.js?v=0.74.22"></script>
+    <script src="js/ws.js?v=0.74.22"></script>
+    <script src="js/app.js?v=0.74.22"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.22"></script>
+    <script src="js/components/sidebar.js?v=0.74.22"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.22"></script>
 </body>
 </html>

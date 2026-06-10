@@ -132,6 +132,37 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         if (/SELECT psr\.stock_id, psr\.quantity, ws\.name, ws\.quantity AS current_qty/i.test(sql)) {
             return { rows: [], rowCount: 0 };
         }
+        if (/FROM products p/i.test(sql) && /FROM price_rules pr/i.test(sql) && /WHERE p\.id = \$1/i.test(sql)) {
+            const productId = String(params[0] || '');
+            const priceDate = params[1] || null;
+            const businessContext = params[2] || 'event_genix';
+            const prices = {
+                'anim-60': 1500,
+                'paper-show': 1600,
+                'quest-60': 0
+            };
+            if (!Object.prototype.hasOwnProperty.call(prices, productId)) {
+                return { rows: [], rowCount: 0 };
+            }
+            return {
+                rows: [{
+                    id: productId,
+                    business_context: businessContext,
+                    price: prices[productId],
+                    is_per_child: false,
+                    price_query_date: priceDate,
+                    price_rule_code: `${productId}_price`,
+                    price_rule_name: productId,
+                    price_rule_value: prices[productId],
+                    price_rule_unit: 'грн',
+                    price_rule_category: 'test',
+                    price_rule_effective_from: '2099-01-01',
+                    next_price_rule_value: null,
+                    next_price_rule_effective_from: null
+                }],
+                rowCount: 1
+            };
+        }
         if (/SELECT id FROM customers WHERE phone = \$1/i.test(sql)) {
             const [phone, businessContext] = params;
             const row = state.customers.find(item =>

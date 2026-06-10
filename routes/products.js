@@ -33,36 +33,15 @@ const {
     pollProgramIconJob,
     persistProgramIconImage
 } = require('../services/programIconGeneration');
+const {
+    buildProductPriceJoin,
+    mapProductPriceFields,
+    normalizePriceDate
+} = require('../services/productPricing');
 
 const log = createLogger('Products');
 
-const PRODUCT_PRICE_JOIN = `
-    SELECT p.*,
-           pr.code AS price_rule_code,
-           pr.name AS price_rule_name,
-           pr.value AS price_rule_value,
-           pr.unit AS price_rule_unit,
-           pr.category AS price_rule_category,
-           pr.updated_at AS price_rule_updated_at,
-           pr.updated_by AS price_rule_updated_by,
-           COALESCE(psr_stats.tech_card_ingredient_count, 0) AS tech_card_ingredient_count,
-           COALESCE(psr_stats.tech_card_linked_ingredient_count, 0) AS tech_card_linked_ingredient_count
-    FROM products p
-    LEFT JOIN LATERAL (
-        SELECT code, name, value, unit, category, updated_at, updated_by
-        FROM price_rules pr
-        WHERE pr.product_id = p.id
-        ORDER BY pr.updated_at DESC NULLS LAST, pr.id DESC
-        LIMIT 1
-    ) pr ON true
-    LEFT JOIN LATERAL (
-        SELECT
-            COUNT(*)::int AS tech_card_ingredient_count,
-            COUNT(*) FILTER (WHERE psr.stock_id IS NOT NULL)::int AS tech_card_linked_ingredient_count
-        FROM product_stock_requirements psr
-        WHERE psr.product_id = p.id
-    ) psr_stats ON true
-`;
+const PRODUCT_PRICE_JOIN = buildProductPriceJoin;
 
 function buildProductPriceRuleCode(productId) {
     const rawId = String(productId || 'product');
@@ -835,10 +814,17 @@ function normalizeSourceDocumentPayload(body, existing = {}) {
     };
 }
 
-async function getProductWithPriceRule(client, id, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+async function getProductWithPriceRule(client, id, businessContext = DEFAULT_BUSINESS_CONTEXT, options = {}) {
+    const priceDate = normalizePriceDate(options.priceDate);
+    const params = [id, businessContext];
+    let priceJoin = PRODUCT_PRICE_JOIN();
+    if (priceDate) {
+        params.push(priceDate);
+        priceJoin = PRODUCT_PRICE_JOIN(`$${params.length}`);
+    }
     const result = await client.query(
-        `${PRODUCT_PRICE_JOIN} WHERE p.id = $1 AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-        [id, businessContext]
+        `${priceJoin} WHERE p.id = $1 AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+        params
     );
     return result.rows[0] || null;
 }
@@ -920,10 +906,8 @@ async function upsertProductPriceRule(client, product, username) {
 }
 
 // Map DB row to API response (snake_case -> camelCase)
-function mapProductRow(row) {
-    const hasCenterPrice = row.price_rule_code && row.price_rule_value !== null && row.price_rule_value !== undefined;
-    const legacyPrice = row.price === null || row.price === undefined ? null : Number(row.price);
-    const centerPrice = hasCenterPrice ? Number(row.price_rule_value) : null;
+function mapProductRow(row, options = {}) {
+    const priceFields = mapProductPriceFields(row, options);
     return {
         id: row.id,
         businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
@@ -943,15 +927,25 @@ function mapProductRow(row) {
         iconJobId: row.icon_job_id || null,
         category: row.category,
         duration: row.duration,
-        price: hasCenterPrice ? centerPrice : legacyPrice,
-        legacyPrice,
-        priceSource: hasCenterPrice ? 'price_rules' : 'products',
-        priceCode: row.price_rule_code || null,
-        priceName: row.price_rule_name || null,
-        priceUnit: row.price_rule_unit || null,
-        priceCategory: row.price_rule_category || null,
-        priceUpdatedAt: row.price_rule_updated_at || row.updated_at,
-        priceUpdatedBy: row.price_rule_updated_by || row.updated_by,
+        price: priceFields.price,
+        legacyPrice: priceFields.legacyPrice,
+        priceSource: priceFields.priceSource,
+        priceCode: priceFields.priceCode,
+        priceName: priceFields.priceName,
+        priceUnit: priceFields.priceUnit,
+        priceCategory: priceFields.priceCategory,
+        priceRuleEffectiveFrom: priceFields.priceRuleEffectiveFrom,
+        effectivePriceDate: priceFields.effectivePriceDate,
+        priceUpdatedAt: priceFields.priceUpdatedAt,
+        priceUpdatedBy: priceFields.priceUpdatedBy,
+        nextPrice: priceFields.nextPrice,
+        nextPriceCode: priceFields.nextPriceCode,
+        nextPriceName: priceFields.nextPriceName,
+        nextPriceUnit: priceFields.nextPriceUnit,
+        nextPriceCategory: priceFields.nextPriceCategory,
+        nextPriceFrom: priceFields.nextPriceFrom,
+        nextPriceUpdatedAt: priceFields.nextPriceUpdatedAt,
+        nextPriceUpdatedBy: priceFields.nextPriceUpdatedBy,
         hosts: row.hosts,
         ageRange: row.age_range,
         kidsCapacity: row.kids_capacity,
@@ -1051,8 +1045,18 @@ router.get('/', async (req, res) => {
         const availabilityStatus = PRODUCT_AVAILABILITY_STATUSES.has(req.query.availabilityStatus || req.query.availability_status)
             ? (req.query.availabilityStatus || req.query.availability_status)
             : null;
+        const rawPriceDate = req.query.priceDate || req.query.price_date || null;
+        const priceDate = normalizePriceDate(rawPriceDate);
+        if (rawPriceDate && !priceDate) {
+            return res.status(400).json({ error: 'Invalid priceDate format' });
+        }
         const where = [];
         const params = [];
+        let priceDatePlaceholder = null;
+        if (priceDate) {
+            params.push(priceDate);
+            priceDatePlaceholder = `$${params.length}`;
+        }
         where.push(pushBusinessScopeCondition(params, businessScope, 'p'));
         if (activeOnly) where.push('p.is_active = true');
         if (domain) {
@@ -1071,9 +1075,9 @@ router.get('/', async (req, res) => {
             params.push(availabilityStatus);
             where.push(`COALESCE(p.availability_status, 'active') = $${params.length}`);
         }
-        const query = `${PRODUCT_PRICE_JOIN} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY COALESCE(p.domain, 'program'), p.category, p.menu_section NULLS LAST, p.sort_order LIMIT 1000`;
+        const query = `${PRODUCT_PRICE_JOIN(priceDatePlaceholder)} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY COALESCE(p.domain, 'program'), p.category, p.menu_section NULLS LAST, p.sort_order LIMIT 1000`;
         const result = await pool.query(query, params);
-        res.json(result.rows.map(mapProductRow));
+        res.json(result.rows.map(row => mapProductRow(row, { priceDate })));
     } catch (err) {
         log.error('List products error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1628,11 +1632,16 @@ router.get('/:id', async (req, res) => {
         if (!id || id.length > 50) {
             return res.status(400).json({ error: 'Invalid product ID' });
         }
-        const product = await getProductWithPriceRule(pool, id, businessContext);
+        const rawPriceDate = req.query.priceDate || req.query.price_date || null;
+        const priceDate = normalizePriceDate(rawPriceDate);
+        if (rawPriceDate && !priceDate) {
+            return res.status(400).json({ error: 'Invalid priceDate format' });
+        }
+        const product = await getProductWithPriceRule(pool, id, businessContext, { priceDate });
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
-        res.json(mapProductRow(product));
+        res.json(mapProductRow(product, { priceDate }));
     } catch (err) {
         log.error('Get product error', err);
         res.status(500).json({ error: 'Internal server error' });

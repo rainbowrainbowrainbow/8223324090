@@ -34,19 +34,32 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     const bookingJs = read('js', 'booking.js');
     const panelCss = read('css', 'panel.css');
     const responsiveCss = read('css', 'responsive.css');
+    const panelStart = html.indexOf('<aside id="bookingPanel"');
+    const panelEnd = html.indexOf('</aside>', panelStart);
+    const bookingPanelHtml = panelStart >= 0 && panelEnd > panelStart
+        ? html.slice(panelStart, panelEnd + '</aside>'.length)
+        : html;
 
     [
-        'bookingHasEventToggle',
-        'bookingKitchenToggle',
-        'bookingLeadDetailsToggle',
         'bookingMenuAddBtn',
-        'bookingCreateCustomerBtn',
         'bookingSubmitBtn'
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
+    assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
+    assert.match(html, /id="bookingKitchenToggle" hidden aria-hidden="true"/);
+    assert.match(html, /id="bookingLeadDetailsToggle" hidden aria-hidden="true"/);
+    assert.doesNotMatch(bookingPanelHtml, /bookingModeSelector/);
+    assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
+    assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
+    assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
 
-    assert.match(bookingJs, /bookingHasEventToggle'\)\?\.addEventListener\('change'/);
-    assert.match(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);
-    assert.match(bookingJs, /bookingLeadDetailsToggle'\)\?\.addEventListener\('change'/);
+    assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
+    assert.match(bookingJs, /function getBookingWorkspaceHasEvent\(\) \{\s*return true;/);
+    assert.match(bookingJs, /function isBookingKitchenEnabled\(\) \{\s*return false;/);
+    assert.match(bookingJs, /function isBookingLeadDetailsEnabled\(\) \{\s*return false;/);
+    assert.match(bookingJs, /Оберіть програму події/);
+    assert.doesNotMatch(bookingJs, /bookingHasEventToggle'\)\?\.addEventListener\('change'/);
+    assert.doesNotMatch(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);
+    assert.doesNotMatch(bookingJs, /bookingLeadDetailsToggle'\)\?\.addEventListener\('change'/);
     assert.match(bookingJs, /bookingMenuAddBtn'\)\?\.addEventListener\('click'/);
     assert.match(bookingJs, /document\.createElement\('button'\)/);
     assert.match(bookingJs, /icon\.type = 'button'/);

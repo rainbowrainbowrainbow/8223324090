@@ -1587,6 +1587,13 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
         const data = await res.json();
         if (data.success) {
             if (typeof showNotification === 'function') showNotification(`Етап змінено на: ${stage}`, 'success');
+            if (stage === 'deal' && data.customer?.id && currentWorkspaceData?.lead?.id === leadId) {
+                currentWorkspaceData = {
+                    ...currentWorkspaceData,
+                    lead: data.lead || currentWorkspaceData.lead,
+                    customer: data.customer
+                };
+            }
 
             // If deposit_received, show task summary
             if (stage === 'deposit_received') {

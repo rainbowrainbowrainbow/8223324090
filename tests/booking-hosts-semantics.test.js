@@ -90,7 +90,7 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingsRoute, /const ensuredMainLine = await ensureBookingTimelineLine\(client, main, businessContext/s);
     assert.match(bookingsRoute, /async function bookingDayProjectionStatus/);
     assert.match(bookingsRoute, /const projectedDate = String\(date \|\| ''\)\.slice\(0, 10\)/);
-    assert.match(bookingsRoute, /\[mainBooking, \.\.\.linkedBookings\]\.map\(async booking/);
+    assert.match(bookingsRoute, /allBookings\.map\(async booking/);
     assert.match(bookingsRoute, /booking\.timelineProjection = await bookingDayProjectionStatus/);
     assert.match(bookingsRoute, /booking_line_not_visible/);
     assert.match(bookingsRoute, /ensureParkAnimatorLine\(client, \{\s*businessContext,\s*date: lb\.date \|\| main\.date/s);

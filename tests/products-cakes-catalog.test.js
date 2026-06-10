@@ -65,7 +65,7 @@ test('products runtime exposes kitchen cake price unit through canonical API and
     const programsPage = read('js/programs-page.js');
 
     assert.match(productsRoute, /PRODUCT_PRICE_JOIN/);
-    assert.match(productsRoute, /priceUnit: row\.price_rule_unit/);
+    assert.match(productsRoute, /priceUnit: priceFields\.priceUnit/);
     assert.match(productsRoute, /servingUnit: row\.serving_unit/);
     assert.match(productsRoute, /p\.kitchen_type = \$\$\{params\.length\}/);
     assert.match(programsPage, /function renderKitchenPrice\(product\)/);

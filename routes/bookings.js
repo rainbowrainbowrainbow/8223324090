@@ -21,6 +21,7 @@ const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
+const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
@@ -768,6 +769,22 @@ async function attachBanquetLinksToBookings(bookings, businessContext) {
     }));
 }
 
+async function upsertBanquetLink(client, businessContext, sourceId, targetId, label, user) {
+    const pair = normalizeBanquetLinkPair(sourceId, targetId);
+    if (!pair) return null;
+    const insert = await client.query(
+        `INSERT INTO booking_banquet_links
+            (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (business_context, booking_a_id, booking_b_id, relation_type)
+         DO UPDATE SET label = COALESCE(EXCLUDED.label, booking_banquet_links.label),
+                       updated_at = NOW()
+         RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
+        [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE, label || null, actorUserId(user), user?.username || null]
+    );
+    return insert.rows[0] || null;
+}
+
 function pickAtomicLinkedPatch(input) {
     const patch = {};
     if (!input || typeof input !== 'object') return patch;
@@ -1340,16 +1357,7 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, source);
         }
-        const insert = await client.query(
-            `INSERT INTO booking_banquet_links
-                (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (business_context, booking_a_id, booking_b_id, relation_type)
-             DO UPDATE SET label = COALESCE(EXCLUDED.label, booking_banquet_links.label),
-                           updated_at = NOW()
-             RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
-            [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE, label, actorUserId(req.user), req.user?.username || null]
-        );
+        const insertedLink = await upsertBanquetLink(client, businessContext, pair[0], pair[1], label, req.user);
         await insertScopedHistory(client, 'booking_banquet_link_created', req.user?.username, {
                 booking_id: id,
                 target_booking_id: targetId,
@@ -1359,7 +1367,7 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
             businessContext
         );
         await client.query('COMMIT');
-        const link = mapBanquetLinkRow(insert.rows[0], id);
+        const link = mapBanquetLinkRow(insertedLink, id);
         broadcast('booking:banquet-link-updated', { link, date: source.date }, req.user?.id?.toString(), source.date);
         res.json({ success: true, link });
     } catch (err) {
@@ -1487,6 +1495,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         applyBookingPackage(b);
+        await applyEffectiveBookingPrice(client, b, { businessContext });
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
             await client.query('ROLLBACK');
@@ -2038,6 +2047,7 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 return res.status(400).json({ success: false, error: pinataFields.error });
             }
             applyBookingPackage(candidate);
+            await applyEffectiveBookingPrice(client, candidate, { businessContext });
             normalizeBookingSecondAnimatorFields(candidate);
             if (candidate.price != null) {
                 candidate.price = parseFloat(candidate.price);
@@ -2195,6 +2205,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
     try {
         const { main } = req.body;
         const linked = Array.isArray(req.body?.linked) ? req.body.linked : [];
+        const banquetActivities = Array.isArray(req.body?.banquetActivities) ? req.body.banquetActivities : [];
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'create')) return;
@@ -2231,8 +2242,45 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 }
             }
         }
+        for (const activity of banquetActivities) {
+            if (!activity.date) activity.date = main.date;
+            if (!activity.time) activity.time = main.time;
+            if (!activity.lineId) activity.lineId = main.lineId;
+            if (!String(activity.room || '').trim()) activity.room = main.room;
+            activity.businessContext = businessContext;
+            if (!validateDate(activity.date)) return res.status(400).json({ success: false, error: 'Invalid activity date format' });
+            if (!validateTime(activity.time)) return res.status(400).json({ success: false, error: 'Invalid activity time format' });
+            const duration = parseInt(activity.duration, 10) || 0;
+            if (duration <= 0 || duration > 1440) {
+                return res.status(400).json({ success: false, error: 'Activity duration must be between 1 and 1440 minutes' });
+            }
+            await hydrateBookingRoomFromTimelineResource(pool, activity, businessContext);
+            const activityRoomError = requireBookingRoom(activity);
+            if (activityRoomError) return res.status(400).json({ error: activityRoomError });
+            const activityCapacityError = await validateBookingTimelineResourceCapacity(pool, activity, businessContext);
+            if (activityCapacityError) return res.status(409).json({ success: false, error: activityCapacityError.error, resource: activityCapacityError.resource });
+            const activityPinataFields = applyPinataNormalization(activity);
+            if (activityPinataFields.error) return res.status(400).json({ success: false, error: activityPinataFields.error });
+            applyBookingPackage(activity);
+            normalizeBookingSecondAnimatorFields(activity);
+            if (applyBookingStatusForCreate(activity, main.status) === 'invalid') {
+                return res.status(400).json({ success: false, error: 'Invalid activity booking status' });
+            }
+            if (activity.price != null) {
+                activity.price = parseFloat(activity.price);
+                if (!Number.isFinite(activity.price) || activity.price < 0) {
+                    return res.status(400).json({ success: false, error: 'Activity price must be non-negative' });
+                }
+            }
+        }
 
         await client.query('BEGIN');
+
+        await applyEffectiveBookingPrice(client, main, { businessContext });
+        for (const activity of banquetActivities) {
+            await applyEffectiveBookingPrice(client, activity, { businessContext });
+        }
+        refreshMultiActivityPriceTotals([main, ...banquetActivities]);
 
         const ensuredMainLine = await ensureBookingTimelineLine(client, main, businessContext, {
             name: main.lineName || main.animatorName || null
@@ -2320,7 +2368,21 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
-        await lockBookingConflictResources(client, [main, ...linked], businessContext);
+        for (const activity of banquetActivities) {
+            const ensuredActivityLine = await ensureBookingTimelineLine(client, activity, businessContext, {
+                name: activity.lineName || activity.animatorName || null
+            });
+            if (!ensuredActivityLine) {
+                await client.query('ROLLBACK');
+                return res.status(400).json(bookingLineUnavailablePayload());
+            }
+            attachLinkedBookingTimelineIdentity(activity, businessContext, {
+                ...ensuredActivityLine,
+                source: 'multi_activity_line'
+            });
+        }
+
+        await lockBookingConflictResources(client, [main, ...linked, ...banquetActivities], businessContext);
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0, null, businessContext);
         if (conflict.overlap) {
@@ -2436,7 +2498,65 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
+        const activityRows = [];
+        const banquetLinkRows = [];
+        for (const activity of banquetActivities) {
+            const activityConflict = await checkServerConflicts(client, activity.date, activity.lineId, activity.time, activity.duration || 0, null, businessContext);
+            if (activityConflict.overlap) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    conflictBookingId: activityConflict.conflictWith.id,
+                    error: `Час зайнятий для активності: ${activityConflict.conflictWith.label || activityConflict.conflictWith.program_code} о ${activityConflict.conflictWith.time}`
+                });
+            }
+
+            const activityDuplicate = await checkServerDuplicate(client, activity.date, activity.programId, activity.time, activity.duration || 0, null, businessContext);
+            if (activityDuplicate) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, conflictBookingId: activityDuplicate.id, error: `Активність вже є ${activity.date} о ${activity.time}` });
+            }
+
+            const activityRoomConflict = await checkRoomConflict(client, activity.date, activity.room, activity.time, activity.duration || 0, null, businessContext);
+            if (activityRoomConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    conflictBookingId: activityRoomConflict.id,
+                    error: `Кімната "${activity.room}" зайнята для активності: ${activityRoomConflict.label || activityRoomConflict.program_code} о ${activityRoomConflict.time}`
+                });
+            }
+
+            const activityTeacherConflict = await validateEducationLessonTeacherConflict(client, activity, businessContext);
+            if (activityTeacherConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: activityTeacherConflict.error, conflictBookingId: activityTeacherConflict.conflict.id });
+            }
+
+            activity.id = await generateBookingNumber(client);
+            const activityInsert = await client.query(
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+                 RETURNING *`,
+                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetTables || null, activity.banquetMenu || null]
+            );
+            if (activityInsert.rows[0]) {
+                activityRows.push(activityInsert.rows[0]);
+                const linkRow = await upsertBanquetLink(client, businessContext, main.id, activity.id, main.groupName || activity.groupName || null, req.user);
+                if (linkRow) banquetLinkRows.push(linkRow);
+            }
+        }
+
         await insertScopedHistory(client, 'create', main.createdBy || req.user?.username, main, businessContext);
+        for (const activityRow of activityRows) {
+            await insertScopedHistory(
+                client,
+                'create',
+                activityRow.created_by || main.createdBy || req.user?.username,
+                mapBookingRow(activityRow),
+                businessContext
+            );
+        }
 
         if (parkSideEffectsAllowedForContext(businessContext) && main.price > 0 && main.status !== 'preliminary') {
             await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full)', async () => {
@@ -2448,6 +2568,27 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 );
             });
         }
+        for (const activityRow of activityRows) {
+            const activityPrice = Number(activityRow.price || 0);
+            if (parkSideEffectsAllowedForContext(businessContext) && activityPrice > 0 && activityRow.status !== 'preliminary') {
+                await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full activity)', async () => {
+                    await client.query(
+                        `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                         VALUES ($1, 'income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' AND COALESCE(business_context, 'event_genix') = $1 LIMIT 1),
+                                 $2, $3, $4, $5, $6, $7)`,
+                        [
+                            businessContext,
+                            activityPrice,
+                            `${activityRow.program_name || activityRow.label || activityRow.program_code} (${activityRow.id})`,
+                            activityRow.date,
+                            activityRow.payment_method || main.paymentMethod || null,
+                            activityRow.id,
+                            activityRow.created_by || main.createdBy || req.user?.username
+                        ]
+                    );
+                });
+            }
+        }
 
         if (sideEffectsAllowedForContext(businessContext)) {
             await queueBookingEventInTransaction(client, 'booking.created', {
@@ -2455,15 +2596,36 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 program_code: main.programCode, program_name: main.programName,
                 status: main.status, price: main.price || 0,
                 kids_count: main.kidsCount, created_by: main.createdBy,
-                linked_count: linkedRows.length
+                linked_count: linkedRows.length,
+                activity_count: activityRows.length,
+                banquet_link_count: banquetLinkRows.length
             }, main.id, `booking_created_${main.id}`);
+            for (const activityRow of activityRows) {
+                await queueBookingEventInTransaction(client, 'booking.created', {
+                    booking_id: activityRow.id,
+                    business_context: businessContext,
+                    date: activityRow.date,
+                    time: activityRow.time,
+                    room: activityRow.room,
+                    program_code: activityRow.program_code,
+                    program_name: activityRow.program_name,
+                    status: activityRow.status,
+                    price: Number(activityRow.price || 0),
+                    kids_count: activityRow.kids_count,
+                    created_by: activityRow.created_by || main.createdBy,
+                    linked_count: 0,
+                    activity_count: 0,
+                    banquet_parent_id: main.id,
+                    banquet_link_count: 1
+                }, activityRow.id, `booking_created_${activityRow.id}`);
+            }
         }
 
         await commitBookingTransaction(client, 'booking create/full');
 
         const durableRows = await assertDurableCreatedBookings(
             client,
-            [main.id, ...linkedRows.map(row => row.id)],
+            [main.id, ...linkedRows.map(row => row.id), ...activityRows.map(row => row.id)],
             businessContext,
             'booking create/full'
         );
@@ -2493,7 +2655,13 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        await Promise.all([mainBooking, ...linkedBookings].map(async booking => {
+        const activityBookings = activityRows.map(row => {
+            const mapped = mapBookingRow(durableById.get(String(row.id)) || row);
+            mapped.serverVerified = true;
+            return mapped;
+        });
+        let allBookings = [mainBooking, ...linkedBookings, ...activityBookings];
+        await Promise.all(allBookings.map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {
                 id: booking.id,
                 date: booking.linkedTo ? (booking.date || main.date) : (main.date || booking.date),
@@ -2508,18 +2676,31 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 });
             }
         }));
+        try {
+            allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
+        } catch (linkErr) {
+            log.warn(`Created booking banquet link enrichment failed: ${linkErr.message}`);
+        }
+        const linkedIdSet = new Set(linkedRows.map(row => String(row.id)));
+        const activityIdSet = new Set(activityRows.map(row => String(row.id)));
+        const responseMainBooking = allBookings.find(item => String(item.id) === String(mainBooking.id)) || mainBooking;
+        const responseLinkedBookings = allBookings.filter(item => linkedIdSet.has(String(item.id)));
+        const responseActivityBookings = allBookings.filter(item => activityIdSet.has(String(item.id)));
 
         // WebSocket: notify other clients
-        broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);
+        allBookings.forEach(booking => {
+            broadcast('booking:created', booking, req.user?.id?.toString(), booking.date || main.date);
+        });
 
-        const allBookings = [mainBooking, ...linkedBookings];
         res.json({
             success: true,
-            mainBooking,
-            linkedBookings,
+            mainBooking: responseMainBooking,
+            linkedBookings: responseLinkedBookings,
+            activityBookings: responseActivityBookings,
+            banquetLinks: banquetLinkRows.map(row => mapBanquetLinkRow(row, main.id)),
             allBookings,
             projection: {
-                main: mainBooking.timelineProjection || null,
+                main: responseMainBooking.timelineProjection || null,
                 bookings: allBookings.map(item => bookingTimelineProjectionContract(item))
             },
             serverVerified: true
@@ -3174,6 +3355,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
         b.customerId = updateCustomerId;
+
+        await applyEffectiveBookingPrice(client, b, { businessContext });
 
         let ensuredSecondAnimatorLineForUpdate = null;
         if (!b.linkedTo && bookingRequiresSecondAnimatorLink(b)) {

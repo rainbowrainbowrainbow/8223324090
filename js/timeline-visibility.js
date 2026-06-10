@@ -58,7 +58,6 @@
         { key: 'kidsCount', label: 'Кількість дітей', selector: '#kidsCountSection', area: 'Форма бронювання' },
         { key: 'tshirtSizes', label: 'Розміри футболок', selector: '#tshirtSizesSection', area: 'Форма бронювання' },
         { key: 'bookingStatus', label: 'Статус бронювання', selector: '#bookingPanel .status-section', area: 'Форма бронювання' },
-        { key: 'skipNotification', label: 'Без сповіщень', selector: '#skipNotificationToggle', area: 'Форма бронювання', targetWrapper: true },
         { key: 'bookingSubmit', label: 'Кнопка збереження бронювання', selector: '#bookingSubmitBtn', area: 'Форма бронювання' }
     ];
 

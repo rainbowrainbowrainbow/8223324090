@@ -662,6 +662,172 @@ function mergeLeadSocialIdentities(existingValue, lead = {}) {
     return merged;
 }
 
+function leadCustomerSource(lead = {}) {
+    return normalizeCustomerSource(lead.source || lead.source_channel || 'lead', { unknownAsNull: false });
+}
+
+function leadCustomerName(lead = {}) {
+    return firstClean(lead.client_name, lead.name) || `Lead #${lead.id}`;
+}
+
+function leadCustomerChildName(lead = {}) {
+    const celebrants = normalizeCelebrants(lead.celebrants, {
+        childrenCount: lead.children_count,
+        childAge: lead.child_age
+    });
+    return firstClean(...celebrants.map(item => item.name));
+}
+
+function buildLeadCustomerNotes(lead = {}) {
+    const inbound = buildLeadInboundMetadata(lead);
+    const utmText = inbound.utm && Object.keys(inbound.utm).length
+        ? Object.entries(inbound.utm).map(([key, value]) => `${key}=${value}`).join(', ')
+        : null;
+    const desiredDateParts = [
+        normalizeDateOnly(lead.event_date) || cleanText(lead.event_date),
+        inbound.bookingTime
+    ].filter(Boolean);
+    const lines = [
+        `Лід #${lead.id}`,
+        lead.source || lead.source_channel ? `Джерело: ${[lead.source, lead.source_channel].filter(Boolean).join(' / ')}` : null,
+        inbound.externalId ? `External ID: ${inbound.externalId}` : null,
+        inbound.inquiryId ? `Inquiry ID: ${inbound.inquiryId}` : null,
+        inbound.email ? `Email: ${inbound.email}` : null,
+        inbound.page ? `Сторінка: ${inbound.page}` : null,
+        inbound.topic ? `Запит: ${inbound.topic}` : null,
+        inbound.message ? `Повідомлення: ${inbound.message}` : null,
+        inbound.sessionType ? `Тип сесії: ${inbound.sessionType}` : null,
+        desiredDateParts.length ? `Бажана дата/час: ${desiredDateParts.join(' ')}` : null,
+        lead.children_count ? `Кількість дітей: ${lead.children_count}` : null,
+        lead.child_age ? `Вік дитини: ${lead.child_age}` : null,
+        inbound.contactChannels?.length ? `Канали контакту: ${inbound.contactChannels.join(', ')}` : null,
+        utmText ? `UTM: ${utmText}` : null,
+        lead.notes ? `Нотатки ліда: ${lead.notes}` : null
+    ];
+    return lines.filter(Boolean).join('\n');
+}
+
+function appendUniqueLeadCustomerNote(existingValue, noteValue, leadId) {
+    const existing = cleanText(existingValue);
+    const note = cleanText(noteValue);
+    if (!note) return existing || null;
+    if (!existing) return note;
+    if (leadId && existing.includes(`Лід #${leadId}`)) return existing;
+    if (existing.includes(note)) return existing;
+    return `${existing}\n${note}`;
+}
+
+async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const leadId = parseInt(lead.id, 10);
+    if (Number.isInteger(leadId) && leadId > 0) {
+        const linked = await queryable.query(
+            `SELECT *
+             FROM customers
+             WHERE lead_id = $1
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             ORDER BY updated_at DESC NULLS LAST, id DESC
+             LIMIT 1`,
+            [leadId, businessContext]
+        );
+        if (linked.rows.length) return linked.rows[0];
+    }
+
+    const phoneDigits = normalizeDigits(lead.phone);
+    const instagram = normalizeInstagram(lead.instagram);
+    if (!phoneDigits && !instagram) return null;
+
+    const matched = await queryable.query(
+        `SELECT *
+         FROM customers
+         WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+           AND (
+             ($2 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2)
+             OR ($3 <> '' AND lower(regexp_replace(COALESCE(instagram, ''), '^@+', '', 'g')) = $3)
+           )
+         ORDER BY
+           CASE
+             WHEN lead_id = $4 THEN 0
+             WHEN lead_id IS NULL THEN 1
+             ELSE 2
+           END,
+           updated_at DESC NULLS LAST,
+           id DESC
+         LIMIT 1`,
+        [businessContext, phoneDigits || '', instagram || '', Number.isInteger(leadId) ? leadId : null]
+    );
+    return matched.rows[0] || null;
+}
+
+async function ensureDealCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const leadId = parseInt(lead.id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+
+    const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    const existing = await findCustomerForLead(queryable, lead, normalizedBusinessContext);
+    const name = leadCustomerName(lead);
+    const phone = cleanText(lead.phone);
+    const instagram = normalizeInstagram(lead.instagram);
+    const childName = leadCustomerChildName(lead);
+    const source = leadCustomerSource(lead);
+    const noteBlock = buildLeadCustomerNotes(lead);
+
+    if (existing) {
+        const notes = appendUniqueLeadCustomerNote(existing.notes, noteBlock, leadId);
+        const updated = await queryable.query(
+            `UPDATE customers
+             SET name = COALESCE(NULLIF(name, ''), $1),
+                 phone = COALESCE(NULLIF(phone, ''), $2),
+                 instagram = COALESCE(NULLIF(instagram, ''), $3),
+                 child_name = COALESCE(NULLIF(child_name, ''), $4),
+                 source = COALESCE(NULLIF(source, ''), $5),
+                 notes = $6,
+                 lead_id = CASE WHEN lead_id IS NULL OR lead_id = $7 THEN $7 ELSE lead_id END,
+                 social_identities = $8::jsonb,
+                 updated_at = NOW()
+             WHERE id = $9
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10
+             RETURNING *`,
+            [
+                name,
+                phone || null,
+                instagram || null,
+                childName || null,
+                source,
+                notes,
+                leadId,
+                JSON.stringify(mergeLeadSocialIdentities(existing.social_identities, lead)),
+                existing.id,
+                normalizedBusinessContext
+            ]
+        );
+        return {
+            mode: existing.lead_id ? 'updated_existing' : 'linked_existing',
+            customer: updated.rows[0]
+        };
+    }
+
+    const inserted = await queryable.query(
+        `INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+         RETURNING *`,
+        [
+            normalizedBusinessContext,
+            name,
+            phone || null,
+            instagram || null,
+            childName || null,
+            source,
+            noteBlock || null,
+            leadId,
+            JSON.stringify(leadSocialIdentities(lead))
+        ]
+    );
+    return {
+        mode: 'created_new',
+        customer: inserted.rows[0]
+    };
+}
+
 function calculateDaysUntil(dateValue) {
     const dateOnly = toDateOnly(dateValue);
     if (!dateOnly) return null;
@@ -743,6 +909,7 @@ function mapWorkspaceCustomer(row) {
         childBirthday: row.child_birthday,
         source: row.source,
         notes: row.notes,
+        leadId: row.lead_id || null,
         totalBookings: parseInt(row.real_total_bookings ?? row.total_bookings ?? 0, 10) || 0,
         totalSpent: parseInt(row.real_total_spent ?? row.total_spent ?? 0, 10) || 0,
         firstVisit: row.real_first_visit || row.first_visit || null,
@@ -1118,18 +1285,36 @@ router.patch('/:id', async (req, res) => {
 
         params.push(parseInt(req.params.id));
         params.push(businessContext);
-        const result = await pool.query(
-            `UPDATE leads SET ${updates.join(', ')}
-             WHERE id = $${params.length - 1}
-               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}
-             RETURNING *`,
-            params
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Лід не знайдено' });
-        }
+        let updatedLead;
+        let dealCustomerLink = null;
+        const shouldEnsureDealCustomer = pipeline_stage === 'deal';
+        const updateClient = shouldEnsureDealCustomer ? await pool.connect() : null;
+        try {
+            if (updateClient) await updateClient.query('BEGIN');
+            const queryable = updateClient || pool;
+            const result = await queryable.query(
+                `UPDATE leads SET ${updates.join(', ')}
+                 WHERE id = $${params.length - 1}
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${params.length}
+                 RETURNING *`,
+                params
+            );
+            if (result.rows.length === 0) {
+                if (updateClient) await updateClient.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+            }
 
-        const updatedLead = result.rows[0];
+            updatedLead = result.rows[0];
+            if (shouldEnsureDealCustomer) {
+                dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext);
+            }
+            if (updateClient) await updateClient.query('COMMIT');
+        } catch (err) {
+            if (updateClient) await updateClient.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            if (updateClient) updateClient.release();
+        }
 
         // v33.8.0 Integration 8: Lead → Customer source link
         const newStatus = updatedLead.status;
@@ -1178,7 +1363,12 @@ router.patch('/:id', async (req, res) => {
             logStageChange(updatedLead.id, pipeline_stage, req.user?.id).catch(() => {});
         }
 
-        res.json({ success: true, lead: updatedLead });
+        const response = { success: true, lead: updatedLead };
+        if (dealCustomerLink?.customer) {
+            response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
+            response.customerLinkMode = dealCustomerLink.mode;
+        }
+        res.json(response);
     } catch (err) {
         log.error('PATCH /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення' });
@@ -1222,24 +1412,30 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
             }
+            const existingCustomer = existing.rows[0];
+            const linkNotes = appendUniqueLeadCustomerNote(existingCustomer.notes, buildLeadCustomerNotes(lead), leadId);
             const updated = await client.query(
                 `UPDATE customers
                  SET lead_id = $1,
                      phone = COALESCE(NULLIF(phone, ''), $2),
                      instagram = COALESCE(NULLIF(instagram, ''), $3),
                      source = COALESCE(NULLIF(source, ''), $4),
-                     social_identities = $6::jsonb,
+                     child_name = COALESCE(NULLIF(child_name, ''), $5),
+                     notes = $6,
+                     social_identities = $7::jsonb,
                      updated_at = NOW()
-                 WHERE id = $5
-                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $7
+                 WHERE id = $8
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9
                  RETURNING *`,
                 [
                     leadId,
-                    lead.phone || null,
+                    cleanText(lead.phone),
                     normalizeInstagram(lead.instagram) || null,
-                    normalizeCustomerSource(lead.source || 'lead', { unknownAsNull: false }),
+                    leadCustomerSource(lead),
+                    leadCustomerChildName(lead),
+                    linkNotes,
+                    JSON.stringify(mergeLeadSocialIdentities(existingCustomer.social_identities, lead)),
                     customerId,
-                    JSON.stringify(mergeLeadSocialIdentities(existing.rows[0].social_identities, lead)),
                     businessContext
                 ]
             );
@@ -1251,12 +1447,12 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                  RETURNING *`,
                 [
                     businessContext,
-                    lead.client_name || `Lead #${leadId}`,
-                    lead.phone || null,
+                    leadCustomerName(lead),
+                    cleanText(lead.phone),
                     normalizeInstagram(lead.instagram) || null,
-                    null,
-                    normalizeCustomerSource(lead.source || lead.source_channel || 'lead', { unknownAsNull: false }),
-                    [lead.notes, lead.child_age ? `Вік дитини з ліда: ${lead.child_age}` : null].filter(Boolean).join('\n') || null,
+                    leadCustomerChildName(lead),
+                    leadCustomerSource(lead),
+                    buildLeadCustomerNotes(lead) || null,
                     leadId,
                     JSON.stringify(leadSocialIdentities(lead))
                 ]

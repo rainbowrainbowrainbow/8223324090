@@ -112,7 +112,13 @@ function walkFiles(dir, matcher) {
 checkPage('index.html', (doc, html) => {
     const modalsCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
     const featuresCss = fs.readFileSync(path.join(ROOT, 'css', 'features.css'), 'utf8');
+    const panelCss = fs.readFileSync(path.join(ROOT, 'css', 'panel.css'), 'utf8');
     const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+    const bookingCode = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const bookingFormCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-form.js'), 'utf8');
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const bookingsRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
+    const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales,\s*[\r\n]+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
         || modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales,\s*[\r\n]+body\.dark-mode\s+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
@@ -158,6 +164,14 @@ checkPage('index.html', (doc, html) => {
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
     check('Park pinata filler supports client-owned filler without legacy client-pinata token', html.includes('value="client_filler"') && html.includes('Свій наповнювач клієнта') && !html.includes('value="Клієнта"'));
+    check('Booking multi-activity selection surface exists', !!doc.getElementById('selectedActivitiesList') && html.includes('program-details--summary'));
+    check('Booking multi-activity frontend keeps separate activity payloads', bookingCode.includes('selectedActivityProgramIds') && bookingCode.includes('function bookingMultiActivityEnabled') && bookingCode.includes('function buildMultiActivityBookings') && bookingCode.includes('apiCreateBookingFull(booking, linked, { banquetActivities })') && bookingCode.includes('additionalMultiHostActivity') && bookingCode.includes('multiActivity'));
+    check('Booking reset clears multi-activity state', bookingFormCode.includes('setSelectedActivityPrograms([], { renderSummary: false, renderPackage: false, markDirty: false })') && bookingFormCode.includes("classList.remove('selected', 'is-primary-activity')"));
+    check('Booking API submits banquetActivities through full create', apiCode.includes('options.banquetActivities') && apiCode.includes('payload.banquetActivities'));
+    check('Products API requests effective prices by timeline date', apiCode.includes("params.set('priceDate'") && productPricingCode.includes('function buildProductPriceJoin') && productPricingCode.includes('effective_from <= ${queryDate}') && productPricingCode.includes('nextPriceFrom'));
+    check('Booking full route persists activity bookings as banquet-linked root blocks', bookingsRouteCode.includes('const banquetActivities = Array.isArray(req.body?.banquetActivities)') && bookingsRouteCode.includes('const activityRows = []') && bookingsRouteCode.includes('upsertBanquetLink(client, businessContext, main.id, activity.id') && bookingsRouteCode.includes('activityBookings: responseActivityBookings') && bookingsRouteCode.includes('banquetLinks: banquetLinkRows.map') && bookingsRouteCode.includes('Finance auto-record (create/full activity)'));
+    check('Booking save pins effective product prices server-side', bookingsRouteCode.includes('applyEffectiveBookingPrice') && bookingsRouteCode.includes('refreshMultiActivityPriceTotals') && productPricingCode.includes('extra.priceSnapshot') && productPricingCode.includes('priceDate'));
+    check('Booking multi-activity cards have price and selected-list styling', panelCss.includes('.program-price-badge') && panelCss.includes('.program-next-price-badge') && panelCss.includes('.selected-activity-item') && panelCss.includes('.selected-activity-remove'));
     const loginDisplayLabel = String(pkg.eventGenix.releaseLabel || '').replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
     check('login release badge shows package version once', doc.querySelector('.login-release-badge')?.textContent.trim() === `✨ ${pkg.version}`);
     check('login release badge does not duplicate release label', !doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
@@ -1007,6 +1021,7 @@ check('Legacy dark-mode/sidebar shell DOM fallbacks are removed from live JS', !
 
 // Check lead modal action binding
 const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');
+const leadsRouteCode = fs.readFileSync(path.join(ROOT, 'routes/leads.js'), 'utf8');
 const leadsPageCss = cssTextWithImports('css/pages.css');
 check('Lead modal buttons bind before async data loads', leadsCode.indexOf('setupEvents();') < leadsCode.indexOf('await loadUsers();'));
 check('Lead modal buttons support touchend taps', leadsCode.includes("btn.addEventListener('touchend', run, { passive: false })"));
@@ -1017,6 +1032,7 @@ check('Lead workspace opens via query-driven endpoint', leadsCode.includes('getW
 check('Lead workspace uses canonical pipeline stage', leadsCode.includes('canonical: pipeline_stage') && leadsCode.includes('PIPELINE_STAGES.find'));
 check('Lead workspace links customer/task/omni context', leadsCode.includes("leadCrmContextHref('/customers'") && leadsCode.includes("leadCrmContextHref('/tasks'") && leadsCode.includes("leadCrmContextHref('/omni'"));
 check('Lead conversion deep-link auto-opens booking with ensured customer context', leadsCode.includes('function ensureLeadCustomerForBooking') && leadsCode.includes("params.set('customerId', customer.id)") && leadsCode.includes("params.set('convert', 'booking')") && leadsCode.includes("params.set('eventDate', eventDate)") && leadsCode.includes('function offerDealBookingFlow') && leadsCode.includes('Створити бронювання на таймлайні зараз') && timelineCode.includes('function maybeAutoOpenLeadConversionBooking') && timelineCode.includes("customerId: (params.get('customerId')") && timelineCode.includes('openTimelineCreateBookingFromToolbar()') && timelineCode.includes("params.get('convert') === 'booking'"));
+check('Lead deal stage auto-creates or links a SQL customer card', leadsRouteCode.includes('function ensureDealCustomerForLead') && leadsRouteCode.includes("const shouldEnsureDealCustomer = pipeline_stage === 'deal'") && leadsRouteCode.includes('await ensureDealCustomerForLead(queryable, updatedLead, businessContext)') && leadsRouteCode.includes('INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)') && leadsRouteCode.includes('buildLeadCustomerNotes(lead)') && leadsRouteCode.includes('appendUniqueLeadCustomerNote'));
 check('Maysternya Sales Ops lead actions are scoped and task-backed', leadsCode.includes('function isMaysternyaLeadContext') && leadsCode.includes('MAYSTERNYA_LEAD_TASK_PRESETS') && leadsCode.includes("label: exactBooking ? 'Відкрити запис' : 'Створити запис'") && leadsCode.includes('createLeadWorkspaceFollowUpTask') && leadsCode.includes('businessContext: leadContextFromRecord(lead)'));
 check('Lead customer linking uses searchable existing-customer dropdown', leadsCode.includes('leadCustomerSelect') && leadsCode.includes("apiFetch(`/api/customers/search?q=") && !leadsCode.includes('apiSearchCustomers(trimmed)') && leadsCode.includes('submitLeadCustomerLinkExisting') && leadsCode.includes('submitLeadCustomerCreateNew'));
 check('Leads editable/customer confirmations avoid native browser dialogs', leadsCode.includes('function confirmLeadUiAction') && !/window\.confirm(?:\s|[?.(])/.test(leadsCode));
@@ -1152,6 +1168,12 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const indexHtmlForBookingPanel = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const bookingPanelStart = indexHtmlForBookingPanel.indexOf('<aside id="bookingPanel"');
+const bookingPanelEnd = indexHtmlForBookingPanel.indexOf('</aside>', bookingPanelStart);
+const bookingPanelHtml = bookingPanelStart >= 0 && bookingPanelEnd > bookingPanelStart
+    ? indexHtmlForBookingPanel.slice(bookingPanelStart, bookingPanelEnd + '</aside>'.length)
+    : indexHtmlForBookingPanel;
 const editBookingBlock = bookingCode.slice(bookingCode.indexOf('async function editBooking'), bookingCode.indexOf('// ==========================================\n// DUPLICATE BOOKING'));
 const duplicateBookingBlock = bookingCode.slice(bookingCode.indexOf('async function duplicateBooking'), bookingCode.indexOf('// ==========================================\n// INVITE HELPERS'));
 const telegramTemplatesCode = fs.readFileSync(path.join(ROOT, 'services/templates.js'), 'utf8');
@@ -1175,6 +1197,66 @@ const securityMiddlewareCode = fs.readFileSync(path.join(ROOT, 'middleware/secur
 const panelCss = fs.readFileSync(path.join(ROOT, 'css/panel.css'), 'utf8');
 const bookingFormJs = fs.readFileSync(path.join(ROOT, 'js/booking-form.js'), 'utf8');
 check('Booking lead conversion cleanup removes auto-open query hints', bookingCode.includes("url.searchParams.delete('leadId')") && bookingCode.includes("url.searchParams.delete('convert')") && bookingCode.includes("url.searchParams.delete('eventDate')") && bookingCode.includes("url.searchParams.delete('customerId')") && bookingCode.includes("url.searchParams.delete('customerName')") && bookingCode.includes("url.searchParams.delete('topic')") && bookingCode.includes("url.searchParams.delete('message')") && bookingCode.includes("url.searchParams.delete('page')"));
+check('Booking room dropdown filters out rooms already booked on the selected day',
+    bookingCode.includes('function collectOccupiedRoomsForBookingDay')
+    && bookingCode.includes('function renderBookingRoomOptionsForDay')
+    && bookingCode.includes('function refreshBookingRoomAvailabilityForSelectedDate')
+    && bookingCode.includes('await refreshBookingRoomAvailabilityForSelectedDate();')
+    && bookingCode.includes("await refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom: booking.room || '', excludeId: bookingId });")
+    && bookingCode.includes('Мають бронювання цього дня')
+    && bookingCode.includes('Ця кімната вже має бронювання на цей день'));
+check('Booking panel header shows client, child, and guests live context',
+    htmlContains('index.html', 'selectedCustomerDisplay')
+    && htmlContains('index.html', 'selectedChildDisplay')
+    && htmlContains('index.html', 'selectedGuestsDisplay')
+    && bookingCode.includes('function updateBookingContextHeaderSummary')
+    && bookingCode.includes('function bookingContextGuestsText')
+    && bookingCode.includes("document.getElementById('banquetGuests')?.value?.trim()")
+    && bookingCode.includes("document.getElementById('kidsCountInput')?.value?.trim()")
+    && bookingCode.includes("document.getElementById('bookingLeadChildrenInfo')?.value?.trim()")
+    && bookingCode.includes('updateBookingContextHeaderSummary();')
+    && panelCss.includes('.info-value')
+    && panelCss.includes('text-overflow: ellipsis')
+    && responsiveCss.includes('grid-template-columns: repeat(2, minmax(0, 1fr));'));
+check('Timeline booking links only an existing customer card',
+    htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
+    && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')
+    && !htmlContains('index.html', 'bookingCreateCustomerBtn')
+    && bookingCode.includes("const nextMode = mode === 'new' ? 'search' : mode;")
+    && bookingCode.includes('const hasClient = hasSelectedCustomer;')
+    && bookingCode.includes("errors.push('Оберіть існуючого клієнта з пошуку.');")
+    && bookingCode.includes('obj.customerId = parseInt(existingId);')
+    && !bookingCode.includes('obj.customer =')
+    && !bookingCode.includes("setBookingClientMode('new'")
+    && !bookingCode.includes('bookingCreateCustomerBtn')
+    && !bookingCode.includes('isValidNewBookingClient'));
+check('Timeline booking workspace is program-only without scenario cards',
+    htmlContains('index.html', 'id="bookingHasEventToggle" checked hidden aria-hidden="true"')
+    && htmlContains('index.html', 'id="bookingKitchenToggle" hidden aria-hidden="true"')
+    && htmlContains('index.html', 'id="bookingLeadDetailsToggle" hidden aria-hidden="true"')
+    && !bookingPanelHtml.includes('bookingModeSelector')
+    && !bookingPanelHtml.includes('bookingScenarioBar')
+    && !bookingPanelHtml.includes('Що входить у бронювання?')
+    && bookingCode.includes('const BOOKING_PROGRAM_ONLY_WORKSPACE = true')
+    && bookingCode.includes('function getBookingWorkspaceHasEvent() {\n    return true;')
+    && bookingCode.includes('function isBookingKitchenEnabled() {\n    return false;')
+    && bookingCode.includes('function isBookingLeadDetailsEnabled() {\n    return false;')
+    && bookingCode.includes("errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');")
+    && bookingCode.includes("mode: BOOKING_PROGRAM_ONLY_WORKSPACE ? 'event_program_only' : 'workspace'")
+    && bookingCode.includes("scenario: 'event'")
+    && !bookingCode.includes('function getBookingScenarioContentState')
+    && !bookingCode.includes("bookingHasEventToggle')?.addEventListener('change'")
+    && !bookingCode.includes("bookingKitchenToggle')?.addEventListener('change'")
+    && !bookingCode.includes("bookingLeadDetailsToggle')?.addEventListener('change'"));
+check('Timeline booking no longer exposes silent booking toggle',
+    !bookingPanelHtml.includes('bookingSkipNotificationSection')
+    && !bookingPanelHtml.includes('skipNotificationToggle')
+    && !bookingPanelHtml.includes('Без сповіщень')
+    && !bookingPanelHtml.includes('тихе бронювання')
+    && !bookingCode.includes("document.getElementById('skipNotificationToggle')")
+    && !bookingFormJs.includes('skipNotificationToggle')
+    && !timelineVisibilityCode.includes("key: 'skipNotification'")
+    && !htmlContains('js/timeline-context.js', "'skipNotification'"));
 check('Booking edit keeps the existing customer selected without reselecting',
     bookingCode.includes('function hydrateBookingCustomerSelection')
     && bookingCode.includes('function applySelectedCustomerToBookingForm')
@@ -1187,7 +1269,7 @@ check('Booking edit keeps the existing customer selected without reselecting',
     && !editBookingBlock.includes('apiGetCustomer(booking.customerId).then')
     && !duplicateBookingBlock.includes('apiGetCustomer(booking.customerId).then'));
 check('HR access editor describes extraRoles as real working-role grants', hrCode.includes('Це реальні extraRoles акаунта') && hrCode.includes('const extraRoles = normalizeAccountListInput(formResult.extraRoles)') && hrCode.includes('extraRoles: normalizeAccountListInput(result.extraRoles)'));
-check('Maysternya Doli uses the shared booking panel with configurable visibility', configCode.includes("const MAYSTERNYA_DOLI_PROGRAMS = [") && configCode.includes("id: 'md_demo_consult_15'") && configCode.includes("name: 'Демо консультація'") && configCode.includes('duration: 15') && configCode.includes("id: 'md_full_consult_40'") && configCode.includes("name: 'Повна консультація'") && configCode.includes('duration: 90') && configCode.includes('Повна консультація(90)') && !configCode.includes("id: 'md_consult_60'") && !configCode.includes("id: 'md_custom'") && configCode.includes("? ['custom']") && configCode.includes("custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги'") && configCode.includes('apiGetProducts(true, { businessContext })') && configCode.includes('Array.isArray(apiProducts)') && configCode.includes('timelineDisplayUsesApiProducts') && !configCode.includes('if (IS_MAYSTERNYA_DOLI_TIMELINE) {\n        AppState.products = PROGRAMS;') && bookingCode.includes("TIMELINE_DISPLAY_MODE !== 'park'") && bookingCode.includes('p.updatedAt') && bookingCode.includes('prepareMaysternyaBookingPanel') && bookingCode.includes('MAYSTERNYA_ONLINE_ROOM') && bookingFormJs.includes('isMaysternyaBookingContext') && htmlContains('index.html', 'maysternyaQuickBookingTools') && htmlContains('index.html', 'newBookingBtn') && timelineCode.includes('openTimelineCreateBookingFromToolbar') && timelineVisibilityCode.includes("key: 'createBooking'") && authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && !panelCss.includes('body.timeline-context-maysternya .booking-room-first-section') && !panelCss.includes('body.timeline-context-maysternya .booking-customer-search-section') && !panelCss.includes('body.timeline-mode-simple .booking-room-first-section') && !panelCss.includes('body.timeline-mode-simple .status-section'));
+check('Maysternya Doli uses the shared booking panel with configurable visibility', configCode.includes("const MAYSTERNYA_DOLI_PROGRAMS = [") && configCode.includes("id: 'md_demo_consult_15'") && configCode.includes("name: 'Демо консультація'") && configCode.includes('duration: 15') && configCode.includes("id: 'md_full_consult_40'") && configCode.includes("name: 'Повна консультація'") && configCode.includes('duration: 90') && configCode.includes('Повна консультація(90)') && !configCode.includes("id: 'md_consult_60'") && !configCode.includes("id: 'md_custom'") && configCode.includes("? ['custom']") && configCode.includes("custom: IS_MAYSTERNYA_DOLI_TIMELINE ? 'Консультації' : 'Послуги'") && configCode.includes('apiGetProducts(true, { businessContext, priceDate })') && configCode.includes('Array.isArray(apiProducts)') && configCode.includes('timelineDisplayUsesApiProducts') && !configCode.includes('if (IS_MAYSTERNYA_DOLI_TIMELINE) {\n        AppState.products = PROGRAMS;') && bookingCode.includes("TIMELINE_DISPLAY_MODE !== 'park'") && bookingCode.includes('p.updatedAt') && bookingCode.includes('prepareMaysternyaBookingPanel') && bookingCode.includes('MAYSTERNYA_ONLINE_ROOM') && bookingFormJs.includes('isMaysternyaBookingContext') && htmlContains('index.html', 'maysternyaQuickBookingTools') && htmlContains('index.html', 'newBookingBtn') && timelineCode.includes('openTimelineCreateBookingFromToolbar') && timelineVisibilityCode.includes("key: 'createBooking'") && authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && !panelCss.includes('body.timeline-context-maysternya .booking-room-first-section') && !panelCss.includes('body.timeline-context-maysternya .booking-customer-search-section') && !panelCss.includes('body.timeline-mode-simple .booking-room-first-section') && !panelCss.includes('body.timeline-mode-simple .status-section'));
 check('Maysternya Doli booking can close busy slots', bookingCode.includes('closeMaysternyaTimelineSlot') && bookingCode.includes('slotClosed: true') && bookingCode.includes('MAYSTERNYA_CLOSED_ROOM') && timelineCode.includes('slot-closed') && timelineCode.includes('isMaysternyaSlotClosed') && timelineCss.includes('.booking-block.slot-closed') && htmlContains('index.html', 'maysternyaCloseSlotBtn'));
 check('Resource-backed timeline can close cabinets and show capacity-aware free resources', bookingCode.includes('isTimelineResourceBackedBookingMode') && bookingCode.includes('timelineResourceCapacityError') && bookingCode.includes('timelineResourceBlock') && bookingCode.includes('resource_blackout') && bookingCode.includes('data-free-room') && bookingCode.includes('capacity=${encodeURIComponent(String(requestedCapacity))}') && timelineCode.includes('resourceBlockExtra') && panelCss.includes('body.timeline-mode-education .maysternya-quick-booking-tools') && !panelCss.includes('body.timeline-mode-education #kidsCountSection') && fs.readFileSync(path.join(ROOT, 'css/features.css'), 'utf8').includes('.free-room-chip small'));
 check('Education timeline captures lesson metadata, real series, and teacher conflicts', htmlContains('index.html', 'educationLessonSection') && htmlContains('index.html', 'educationLessonTeacher') && htmlContains('index.html', 'educationLessonRepeatEvery') && bookingCode.includes('getEducationLessonDetails') && bookingCode.includes('apiCreateEducationLessonSeries') && bookingCode.includes('extraData.educationLesson') && bookingFormJs.includes('educationLessonRepeatEvery') && timelineCode.includes('educationLessonExtra') && timelineCode.includes('lessonSeriesBadge') && htmlContains('routes/bookings.js', 'validateEducationLessonTeacherConflict') && htmlContains('routes/bookings.js', 'education-series') && htmlContains('routes/bookings.js', 'buildEducationLessonSeriesCandidates') && htmlContains('routes/bookings.js', 'seriesRootBookingId') && panelCss.includes('.education-lesson-section'));

@@ -70,7 +70,9 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(leadsRoute, /mergePolicy: 'suggest_only'/);
         assert.match(leadsRoute, /function leadSocialIdentities/);
         assert.match(leadsRoute, /function mergeLeadSocialIdentities/);
-        assert.match(leadsRoute, /social_identities = \$6::jsonb/);
+        assert.match(leadsRoute, /function buildLeadCustomerNotes/);
+        assert.match(leadsRoute, /function appendUniqueLeadCustomerNote/);
+        assert.match(leadsRoute, /notes = \$6,[\s\S]*social_identities = \$7::jsonb/);
         assert.match(leadsRoute, /INSERT INTO customers[\s\S]*social_identities/);
         assert.doesNotMatch(leadsRoute, /autoMerge|mergeAutomatically|blindMerge/i);
     });

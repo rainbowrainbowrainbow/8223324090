@@ -4,6 +4,22 @@
 
 ---
 
+## v0.74.32 - Воронка: Kanban лідів, порядок і якість
+
+### Leads / Воронка / Kanban / Drag&Drop / Якість ліда / UI / Міграція / Guardrail / (Клешня, 10.06.2026) [codex]
+- **Перетягування ліда вниз у Kanban виправлено** - картка тепер реально вставляється вище або нижче сусідньої картки під курсором, а не повертається в стару позицію після drop/reload.
+- **Порядок карток у колонці Kanban став durable** - frontend відправляє `kanban_order`, backend зберігає `kanban_position`, а `GET /api/leads?order=kanban` повертає лід-картки в ручному порядку.
+- **Додано міграцію `260_leads_kanban_position.sql`** - у `leads` зʼявилось nullable поле `kanban_position` та індекс `idx_leads_business_stage_kanban_position`; старі ліди лишаються у порядку `created_at` доки їх не рухали вручну.
+- **Якість ліда в Kanban більше не є системним сірим select-ом** - нативний `<select>` замінено на compact CRM pill-кнопку з власним popover-меню у стилі темної CRM.
+- **Меню якості ліда зберігає стару поведінку** - вибір `Якісний`, `Спам`, `Співпраця`, `Інформаційний` або `Неякісний` і далі йде через існуючий `PATCH /api/leads/:id` з `lead_type`.
+- **Номер телефону в Kanban-картці більше не обрізається** - телефон винесено в окремий рядок із переносом, тому довгі номери не ховаються за `...` біля ярлика якості.
+- **Drop/read-only guard-и збережено** - click/pointerdown на контролах якості не відкриває картку й не запускає drag, а aggregate/multi business scope вимикає редагування.
+- **UI guard-и оновлено** - smoke test перевіряє durable Kanban order, кастомний lead quality popover, відсутність нативного select-а та повну читабельність телефону.
+- **Попередній реліз `0.74.31` перевірено й залишено нижче окремим блоком** - inline зміна якості ліда, `PATCH lead_type`, stopPropagation і dark-mode стиль не загублені в release notes.
+- **Релізні маркери піднято до `0.74.32`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.31 - Воронка: якість ліда в Kanban
 
 ### Leads / Воронка / Kanban / Якість ліда / UI / Guardrail / (Клешня, 10.06.2026) [codex]

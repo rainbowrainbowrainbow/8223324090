@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.74.31",
+  "version": "0.74.32",
   "eventGenix": {
-    "releaseLabel": "Воронка: якість ліда в Kanban"
+    "releaseLabel": "Воронка: Kanban лідів, порядок і якість"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

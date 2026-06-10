@@ -149,6 +149,7 @@ let leadCustomerLinkState = {
     customers: [],
     searchTimer: null
 };
+let kanbanDragState = null;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -479,6 +480,7 @@ async function loadLeads() {
         if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
         if (currentDateFilter) params.set('event_date', currentDateFilter);
         if (currentPipelineStage) params.set('pipeline_stage', currentPipelineStage);
+        if (currentView === 'kanban') params.set('order', 'kanban');
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
         params.set('limit', '200');
@@ -1453,13 +1455,11 @@ function renderLeadTypeSelect(lead = {}) {
     const currentType = LEAD_TYPE_MAP[lead.lead_type] ? lead.lead_type : 'quality';
     const current = LEAD_TYPE_MAP[currentType] || LEAD_TYPE_MAP.quality;
     const clientName = lead.client_name || 'лід';
-    const options = Object.entries(LEAD_TYPE_MAP).map(([key, meta]) => {
-        const selected = key === currentType ? ' selected' : '';
-        return `<option value="${escapeHtml(key)}"${selected}>${meta.emoji} ${escapeHtml(meta.label)}</option>`;
-    }).join('');
-    return `<select class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда" onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()" onchange="updateLeadTypeFromKanbanSelect(${leadId}, this.value, event)">
-        ${options}
-    </select>`;
+    return `<button type="button" class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда" onclick="showKanbanLeadTypeMenu(${leadId}, event)" onpointerdown="event.stopPropagation()">
+        <span class="lead-type-select-dot" aria-hidden="true">${current.emoji}</span>
+        <span class="lead-type-select-label">${escapeHtml(current.label)}</span>
+        <span class="lead-type-select-caret" aria-hidden="true">⌄</span>
+    </button>`;
 }
 
 function renderKanban() {
@@ -1563,41 +1563,98 @@ function setupKanbanDragDrop() {
     cards.forEach(card => {
         card.addEventListener('dragstart', e => {
             e.dataTransfer.setData('text/plain', card.dataset.id);
+            e.dataTransfer.effectAllowed = 'move';
+            kanbanDragState = {
+                leadId: Number(card.dataset.id),
+                originStage: card.closest('.kanban-cards')?.dataset.stage || '',
+                dropped: false
+            };
             card.classList.add('dragging');
         });
-        card.addEventListener('dragend', () => card.classList.remove('dragging'));
+        card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            if (!kanbanDragState?.dropped) renderKanban();
+            kanbanDragState = null;
+            syncKanbanEmptyPlaceholders();
+        });
     });
 
     columns.forEach(col => {
         col.addEventListener('dragover', e => {
             e.preventDefault();
+            const draggingCard = document.querySelector('.kanban-card.dragging');
+            if (draggingCard) {
+                const afterElement = getKanbanDragAfterElement(col, e.clientY);
+                if (afterElement) {
+                    col.insertBefore(draggingCard, afterElement);
+                } else {
+                    col.appendChild(draggingCard);
+                }
+                syncKanbanEmptyPlaceholders();
+            }
             col.classList.add('drag-over');
         });
-        col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+        col.addEventListener('dragleave', e => {
+            if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over');
+        });
         col.addEventListener('drop', async e => {
             e.preventDefault();
             col.classList.remove('drag-over');
-            const leadId = e.dataTransfer.getData('text/plain');
+            const draggingCard = document.querySelector('.kanban-card.dragging');
+            const leadId = e.dataTransfer.getData('text/plain') || draggingCard?.dataset.id;
             const newStage = col.dataset.stage;
             if (!leadId || !newStage) return;
+            if (kanbanDragState) kanbanDragState.dropped = true;
+            const orderedLeadIds = getKanbanOrderedLeadIds(col);
 
             // If moving to 'lost', ask for reason
             if (newStage === 'lost') {
+                loadLeads();
                 showLostReasonModal(parseInt(leadId), newStage);
                 return;
             }
 
-            await updateLeadStage(parseInt(leadId), newStage);
+            const saved = await updateLeadStage(parseInt(leadId), newStage, {
+                kanban_order: orderedLeadIds
+            });
+            if (!saved) renderKanban();
         });
     });
 }
 
+function syncKanbanEmptyPlaceholders() {
+    document.querySelectorAll('.kanban-cards').forEach(col => {
+        const hasCards = Boolean(col.querySelector('.kanban-card'));
+        col.querySelectorAll('.kanban-empty').forEach(empty => {
+            empty.hidden = hasCards;
+        });
+    });
+}
+
+function getKanbanOrderedLeadIds(col) {
+    return Array.from(col?.querySelectorAll?.('.kanban-card[data-id]') || [])
+        .map(card => Number(card.dataset.id))
+        .filter(id => Number.isInteger(id) && id > 0);
+}
+
+function getKanbanDragAfterElement(col, y) {
+    return Array.from(col.querySelectorAll('.kanban-card[draggable]:not(.dragging)'))
+        .reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset, element: child };
+            }
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
 async function updateLeadStage(leadId, stage, extraFields = {}) {
-    if (!guardLeadWrite('переміщати ліди між етапами')) return;
+    if (!guardLeadWrite('переміщати ліди між етапами')) return false;
     try {
         const body = { pipeline_stage: stage, ...extraFields };
         const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
-        if (!res) return;
+        if (!res) return false;
         const data = await res.json();
         if (data.success) {
             if (typeof showNotification === 'function') showNotification(`Етап змінено на: ${stage}`, 'success');
@@ -1615,14 +1672,16 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
             }
             if (stage === 'deal') {
                 const openedBookingDraft = await offerDealBookingFlow(leadId, data.lead);
-                if (openedBookingDraft) return;
+                if (openedBookingDraft) return true;
             }
             await loadLeads();
             if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
+            return true;
         }
     } catch (e) {
         console.error('Update stage error', e);
     }
+    return false;
 }
 
 // ==========================================
@@ -1704,18 +1763,62 @@ async function setLeadType(leadId, type, event) {
     }
 }
 
+function closeKanbanLeadTypeMenus() {
+    document.querySelectorAll('.lead-type-popover').forEach(el => el.remove());
+    document.querySelectorAll('[data-lead-type-select][aria-expanded="true"]').forEach(control => {
+        control.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function showKanbanLeadTypeMenu(leadId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    if (!guardLeadWrite('змінювати тип ліда')) return;
+
+    const trigger = event?.target?.closest?.('[data-lead-type-select]')
+        || document.querySelector(`[data-lead-type-select][data-lead-id="${Number(leadId)}"]`);
+    const lead = leadsData.find(l => Number(l.id) === Number(leadId));
+    const currentType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
+    const wasOpen = trigger?.getAttribute('aria-expanded') === 'true';
+    closeKanbanLeadTypeMenus();
+    if (wasOpen || !trigger) return;
+
+    trigger.setAttribute('aria-expanded', 'true');
+    const rect = trigger.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'lead-type-popover';
+    menu.setAttribute('role', 'menu');
+    menu.dataset.leadId = String(leadId);
+    menu.style.top = `${Math.round(rect.bottom + 8)}px`;
+    menu.style.left = `${Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - 220)))}px`;
+    menu.innerHTML = Object.entries(LEAD_TYPE_MAP).map(([key, meta]) => {
+        const selected = key === currentType ? ' is-selected' : '';
+        return `<button type="button" class="lead-type-popover-item ${meta.cls}${selected}" role="menuitemradio" aria-checked="${key === currentType ? 'true' : 'false'}" onclick="updateLeadTypeFromKanbanSelect(${Number(leadId)}, '${escapeHtml(key)}', event)">
+            <span class="lead-type-popover-dot" aria-hidden="true">${meta.emoji}</span>
+            <span class="lead-type-popover-label">${escapeHtml(meta.label)}</span>
+        </button>`;
+    }).join('');
+    document.body.appendChild(menu);
+
+    setTimeout(() => {
+        document.addEventListener('click', closeKanbanLeadTypeMenus, { once: true });
+    }, 0);
+}
+
 async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
     if (event) {
         event.stopPropagation();
         event.preventDefault();
     }
-    const select = event?.target?.closest?.('[data-lead-type-select]');
+    closeKanbanLeadTypeMenus();
+    const select = document.querySelector(`[data-lead-type-select][data-lead-id="${Number(leadId)}"]`);
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));
     const previousType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
     const nextType = LEAD_TYPE_MAP[type] ? type : previousType;
     if (nextType === previousType) return;
     if (!guardLeadWrite('змінювати тип ліда')) {
-        if (select) select.value = previousType;
         return;
     }
     if (select) {
@@ -1725,13 +1828,11 @@ async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
     try {
         const saved = await persistLeadType(leadId, nextType, { reload: false });
         if (!saved) {
-            if (select) select.value = previousType;
             return;
         }
         if (lead) lead.lead_type = nextType;
         await loadLeads();
     } catch (e) {
-        if (select) select.value = previousType;
         console.error('Kanban lead type select error', e);
         if (typeof showNotification === 'function') showNotification(e.message || 'Не вдалося змінити тип ліда', 'error');
     } finally {
@@ -2999,6 +3100,7 @@ window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
+window.showKanbanLeadTypeMenu = showKanbanLeadTypeMenu;
 window.updateLeadTypeFromKanbanSelect = updateLeadTypeFromKanbanSelect;
 window.closeQualityCategoryModal = closeQualityCategoryModal;
 window.closeLostReasonModal = closeLostReasonModal;

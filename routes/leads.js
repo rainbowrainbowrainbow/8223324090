@@ -64,6 +64,23 @@ const STAGE_TO_STATUS = {
     lost: 'lost'
 };
 
+const PIPELINE_STAGE_ORDER = [
+    'new',
+    'contacted',
+    'info_sent',
+    'deal',
+    'deposit_received',
+    'waiting',
+    'completed',
+    'closed',
+    'lost'
+];
+
+const PIPELINE_STAGE_ORDER_SQL = `CASE COALESCE(l.pipeline_stage, 'new')
+    ${PIPELINE_STAGE_ORDER.map((stage, index) => `WHEN '${stage}' THEN ${index + 1}`).join(' ')}
+    ELSE 999
+END`;
+
 const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
 const MAYSTERNYA_WEBHOOK_SOURCES = new Set([
     'maysternya_bot',
@@ -165,6 +182,48 @@ function parseOptionalPositiveInt(value, fieldName) {
     }
 
     return { provided: true, value: parsed };
+}
+
+function normalizeKanbanOrder(value, requiredLeadId) {
+    if (!Array.isArray(value)) return [];
+    const leadId = Number(requiredLeadId);
+    const seen = new Set();
+    const ids = [];
+    for (const rawId of value) {
+        const id = Number(rawId);
+        if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+        if (ids.length >= 300) break;
+    }
+    return Number.isInteger(leadId) && leadId > 0 && ids.includes(leadId) ? ids : [];
+}
+
+async function persistLeadKanbanOrder(queryable, { businessContext, stage, orderedLeadIds }) {
+    const normalizedStage = cleanText(stage) || 'new';
+    const ids = Array.isArray(orderedLeadIds) ? orderedLeadIds : [];
+    if (!ids.length) return;
+
+    const values = [];
+    const params = [];
+    ids.forEach((id, index) => {
+        params.push(id, (index + 1) * 1000);
+        values.push(`($${params.length - 1}::integer, $${params.length}::numeric)`);
+    });
+    params.push(businessContext, normalizedStage);
+    const businessRef = `$${params.length - 1}`;
+    const stageRef = `$${params.length}`;
+
+    await queryable.query(
+        `WITH ordered(id, position) AS (VALUES ${values.join(', ')})
+         UPDATE leads l
+            SET kanban_position = ordered.position
+           FROM ordered
+          WHERE l.id = ordered.id
+            AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = ${businessRef}
+            AND COALESCE(l.pipeline_stage, 'new') = ${stageRef}`,
+        params
+    );
 }
 
 async function ensureAssignableUser(userId) {
@@ -1060,7 +1119,7 @@ router.get('/', async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
-        const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type } = req.query;
+        const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type, order } = req.query;
         const conditions = [];
         const params = [];
         conditions.push(leadScopeCondition(params, businessScope, 'l'));
@@ -1103,13 +1162,17 @@ router.get('/', async (req, res) => {
         const limitVal = Math.min(parseInt(lim) || 50, 200);
         params.push(limitVal);
 
+        const orderBy = order === 'kanban'
+            ? `ORDER BY ${PIPELINE_STAGE_ORDER_SQL}, l.kanban_position ASC NULLS LAST, l.created_at DESC`
+            : 'ORDER BY l.created_at DESC';
+
         const result = await pool.query(`
             SELECT l.*, u.name AS assigned_name, p.label AS program_name
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
             ${where}
-            ORDER BY l.created_at DESC
+            ${orderBy}
             LIMIT $${params.length}
         `, params);
 
@@ -1226,7 +1289,9 @@ router.patch('/:id', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
+        const leadId = parseInt(req.params.id, 10);
         const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, celebrants, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
+        const kanbanOrderIds = normalizeKanbanOrder(req.body?.kanban_order, leadId);
         const updates = [];
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
@@ -1283,12 +1348,12 @@ router.patch('/:id', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Немає полів для оновлення' });
         }
 
-        params.push(parseInt(req.params.id));
+        params.push(leadId);
         params.push(businessContext);
         let updatedLead;
         let dealCustomerLink = null;
         const shouldEnsureDealCustomer = pipeline_stage === 'deal';
-        const updateClient = shouldEnsureDealCustomer ? await pool.connect() : null;
+        const updateClient = shouldEnsureDealCustomer || kanbanOrderIds.length ? await pool.connect() : null;
         try {
             if (updateClient) await updateClient.query('BEGIN');
             const queryable = updateClient || pool;
@@ -1307,6 +1372,21 @@ router.patch('/:id', async (req, res) => {
             updatedLead = result.rows[0];
             if (shouldEnsureDealCustomer) {
                 dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext);
+            }
+            if (kanbanOrderIds.length) {
+                await persistLeadKanbanOrder(queryable, {
+                    businessContext,
+                    stage: updatedLead.pipeline_stage || pipeline_stage || 'new',
+                    orderedLeadIds: kanbanOrderIds
+                });
+                const refreshedLead = await queryable.query(
+                    `SELECT * FROM leads
+                      WHERE id = $1
+                        AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                      LIMIT 1`,
+                    [leadId, businessContext]
+                );
+                updatedLead = refreshedLead.rows[0] || updatedLead;
             }
             if (updateClient) await updateClient.query('COMMIT');
         } catch (err) {

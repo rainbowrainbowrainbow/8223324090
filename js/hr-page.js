@@ -2861,14 +2861,27 @@ function renderTeamCards(staff) {
             staffStructureNodeTitle(s) ? `<span><b>Структ.</b>${escapeHtml(staffStructureNodeTitle(s))}</span>` : ''
         ].filter(Boolean).join('');
         const primaryRole = professionTitle(s.role_type) || roleLabel || 'Професія не задана';
+        const profileClick = `openStaffEdit(${Number(s.id)})`;
+        const avatarNode = canManage
+            ? `<button type="button" class="hr-team-avatar hr-team-profile-trigger" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}" onclick="${profileClick}" title="Відкрити профіль: ${escapeHtml(s.name)}" aria-label="Відкрити профіль: ${escapeHtml(s.name)}">${avatar}</button>`
+            : `<div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>`;
+        const nameNode = canManage
+            ? `<button type="button" class="hr-team-name hr-team-name-button" onclick="${profileClick}" title="Відкрити профіль">${escapeHtml(s.name)}</button>`
+            : `<div class="hr-team-name">${escapeHtml(s.name)}</div>`;
+        const profileTopAction = canManage
+            ? `<button type="button" class="hr-team-edit hr-team-edit--top" onclick="${profileClick}">Профіль</button>`
+            : '';
 
         return `<article class="hr-team-card ${s.is_active ? '' : 'inactive'}" data-staff-id="${Number(s.id)}" data-current-bucket="${escapeHtml(bucketForStaff(s))}" draggable="${canManage ? 'true' : 'false'}">
             <div class="hr-team-card-head">
-                <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
+                ${avatarNode}
                 <div class="hr-team-details">
                     <div class="hr-team-name-row">
-                        <div class="hr-team-name">${escapeHtml(s.name)}</div>
-                        ${s.is_active ? '' : '<span class="hr-team-status-pill is-muted">звільнений</span>'}
+                        <div class="hr-team-title-main">
+                            ${nameNode}
+                            ${s.is_active ? '' : '<span class="hr-team-status-pill is-muted">звільнений</span>'}
+                        </div>
+                        ${profileTopAction}
                     </div>
                     <div class="hr-team-role">
                         <strong>${escapeHtml(primaryRole)}</strong>
@@ -2892,7 +2905,6 @@ function renderTeamCards(staff) {
             <div class="hr-team-actions">
                 ${accountActions}
                 ${canManage ? `<button type="button" class="hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${Number(s.id)})" title="Скани документів" aria-label="Скани документів: ${escapeHtml(s.name)}">📎</button>
-                    <button type="button" class="hr-team-edit" onclick="openStaffEdit(${Number(s.id)})">Профіль</button>
                     <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>
                     <button type="button" class="hr-team-delete" onclick="deleteStaffProfile(${Number(s.id)})">Видалити</button>` : ''}
             </div>

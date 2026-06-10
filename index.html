@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.22">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.22">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.22">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.22">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.22">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.22">
-    <link rel="stylesheet" href="css/features.css?v=0.74.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.22">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.22">
+    <link rel="stylesheet" href="css/base.css?v=0.74.26">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.26">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.26">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.26">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.26">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.26">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.26">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.26">
+    <link rel="stylesheet" href="css/features.css?v=0.74.26">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.26">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.26">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.26">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.26">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.22">✨ 0.74.22</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.26">✨ 0.74.26</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.22 — Деплой: пакет Майстерні та бронювання</p>
+                <p class="tagline">AI First CRM v0.74.26 — Деплой: піньята та HR профіль</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.22</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.26</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -635,7 +635,6 @@
                     <div class="form-section">
                         <label for="pinataMode">Піньята</label>
                         <select id="pinataMode" name="pinataMode">
-                            <option value="none">Без піньяти</option>
                             <option value="park">Піньята парку</option>
                             <option value="client">Клієнтська піньята (послуга)</option>
                         </select>
@@ -643,13 +642,18 @@
                 </div>
 
                 <div id="pinataSharedFields" class="pinata-shared-section hidden">
-                    <div class="form-section">
-                        <label for="pinataNumber">Номер піньяти</label>
-                        <input type="text" id="pinataNumber" name="pinataNumber" maxlength="80" placeholder="P-014">
+                    <div id="pinataDesignPicker" class="pinata-choice-picker" data-pinata-picker="design">
+                        <div class="pinata-choice-head">
+                            <div>
+                                <strong>Піньята</strong>
+                                <small>Назва, номер і мініатюра</small>
+                            </div>
+                            <span id="pinataDesignPickerStatus" class="pinata-choice-status">Оберіть</span>
+                        </div>
+                        <div id="pinataDesignPickerList" class="pinata-choice-grid" role="listbox" aria-label="Оберіть піньяту"></div>
                     </div>
-                    <div class="form-section">
-                        <label for="pinataFillerNumber">Номер наповнювача</label>
-                        <input type="text" id="pinataFillerNumber" name="pinataFillerNumber" maxlength="80" placeholder="F-008">
+                    <div class="pinata-transport-fields" aria-hidden="true">
+                        <input type="hidden" id="pinataNumber" name="pinataNumber" maxlength="80">
                     </div>
                 </div>
 
@@ -666,9 +670,18 @@
 
                 <!-- Вибір наповнювача піньяти парку -->
                 <div id="pinataFillerSection" class="pinata-filler-section hidden">
-                    <div class="form-section">
-                        <label>Наповнювач</label>
-                        <select id="pinataFillerSelect">
+                    <div id="pinataFillerPicker" class="pinata-choice-picker" data-pinata-picker="filler">
+                        <div class="pinata-choice-head">
+                            <div>
+                                <strong>Наповнювач</strong>
+                                <small>Назва, номер і мініатюра</small>
+                            </div>
+                            <span id="pinataFillerPickerStatus" class="pinata-choice-status">Оберіть</span>
+                        </div>
+                        <div id="pinataFillerPickerList" class="pinata-choice-grid" role="listbox" aria-label="Оберіть наповнювач"></div>
+                    </div>
+                    <div class="pinata-transport-fields" aria-hidden="true">
+                        <select id="pinataFillerSelect" tabindex="-1">
                             <option value="">Оберіть наповнювач</option>
                             <option value="client_filler">Свій наповнювач клієнта</option>
                             <optgroup label="Номер 1">
@@ -702,6 +715,7 @@
                                 <option value="6XL">6 - XL</option>
                             </optgroup>
                         </select>
+                        <input type="hidden" id="pinataFillerNumber" name="pinataFillerNumber" maxlength="80">
                     </div>
                 </div>
 
@@ -1632,6 +1646,51 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.26 — Деплой: піньята та HR профіль</h4>
+                    <ul>
+                        <li><b>Пакет локальних змін <code>0.74.23</code>–<code>0.74.25</code> підготовлено до деплою</b> — у реліз зібрано cleanup піньяти, картковий picker піньяти/наповнювачів і швидке відкриття HR-профілю.</li>
+                        <li><b>Попередні зміни лишились окремо виписані нижче</b> — <code>0.74.23</code> про <code>Без піньяти</code>, <code>0.74.24</code> про візуальний picker, <code>0.74.25</code> про HR-профіль у шапці.</li>
+                        <li><b>Піньята більше не показує зайву опцію</b> — у видимому dropdown лишаються тільки <code>Піньята парку</code> та <code>Клієнтська піньята (послуга)</code>.</li>
+                        <li><b>Піньята і наповнювачі мають один картковий UI-шаблон</b> — назва, номер/код і мініатюра показуються однаково; emoji fallback лишається до появи реальних фото.</li>
+                        <li><b>HR-профіль відкривається із шапки картки</b> — кнопка <code>Профіль</code> вище, а аватар і ПІБ теж відкривають профіль.</li>
+                        <li><b>Regression guard-и покривають пакет</b> — UI smoke фіксує selector піньяти, picker-и, shared renderer і HR profile trigger-и.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.26</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані для деплою.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.25 — HR: профіль у шапці картки</h4>
+                    <ul>
+                        <li><b>Кнопку <code>Профіль</code> перенесено в шапку HR-картки робітника</b> — вона тепер поруч із ПІБ, щоб не шукати профіль у нижньому ряду дій.</li>
+                        <li><b>Клік по аватару відкриває профіль</b> — круг із ініціалами працює як доступна кнопка з hover/focus станом.</li>
+                        <li><b>Клік по ПІБ також відкриває профіль</b> — ім'я робітника веде в ту саму картку редагування профілю.</li>
+                        <li><b>Нижній action-row очищено від дубля</b> — там лишаються документи, переміщення та видалення.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє профільну дію в шапці, на аватарі та на ПІБ.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.25</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.24 — Піньята: візуальний вибір</h4>
+                    <ul>
+                        <li><b>Піньята і наповнювачі тепер мають один картковий picker-шаблон</b> — однаковий візуал з мініатюрою, назвою, номером і selected-state.</li>
+                        <li><b>Піньята показує назву дизайну та номер</b> — поки немає фото, CRM використовує emoji-мініатюри; якщо в API є <code>image_url</code>, шаблон уже готовий показати картинку.</li>
+                        <li><b>Наповнювачі замінені з видимого select на картки</b> — видно <code>Номер 1 · 1 - M</code>, <code>Номер 1 · 1 - L</code>, <code>Свій наповнювач клієнта</code> та номер/код.</li>
+                        <li><b>API-контракт бронювання не змінювався</b> — старі поля <code>pinataNumber</code>, <code>pinataFillerNumber</code> і <code>pinataFillerSelect</code> лишились hidden transport-полями.</li>
+                        <li><b>Fallback не порожній</b> — якщо складський API недоступний або дизайнів ще немає, показуються emoji-заглушки для вибору.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє design/filler picker-и, shared renderer і CSS карток.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.24</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.23 — Піньята: без зайвої опції</h4>
+                    <ul>
+                        <li><b>У dropdown <code>Піньята</code> прибрано варіант <code>Без піньяти</code></b> — коли менеджер уже працює з піньятою, список більше не пропонує логічно зайву дію.</li>
+                        <li><b>Доступними лишились два робочі варіанти</b> — <code>Піньята парку</code> та <code>Клієнтська піньята (послуга)</code>.</li>
+                        <li><b>Сумісність старих записів не чіпали</b> — технічний режим <code>none</code> лишився в JS/backend для reset-flow та історичних бронювань.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє, що option <code>none</code> не повернувся в selector піньяти.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.23</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.22 — Деплой: пакет Майстерні та бронювання</h4>
                     <ul>
@@ -12061,29 +12120,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.22"></script>
-    <script src="js/timeline-visibility.js?v=0.74.22"></script>
-    <script src="js/config.js?v=0.74.22"></script>
-    <script src="js/api.js?v=0.74.22"></script>
-    <script src="js/ui.js?v=0.74.22"></script>
-    <script src="js/auth.js?v=0.74.22"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.22"></script>
-    <script src="js/timeline.js?v=0.74.22"></script>
-    <script src="js/booking.js?v=0.74.22"></script>
-    <script src="js/settings.js?v=0.74.22"></script>
-    <script src="js/booking-form.js?v=0.74.22"></script>
-    <script src="js/booking-linked.js?v=0.74.22"></script>
-    <script src="js/settings-dashboard.js?v=0.74.22"></script>
-    <script src="js/settings-history.js?v=0.74.22"></script>
-    <script src="js/settings-afisha.js?v=0.74.22"></script>
-    <script src="js/settings-certificates.js?v=0.74.22"></script>
-    <script src="js/offline.js?v=0.74.22"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.22"></script>
-    <script src="js/search.js?v=0.74.22"></script>
-    <script src="js/ws.js?v=0.74.22"></script>
-    <script src="js/app.js?v=0.74.22"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.22"></script>
-    <script src="js/components/sidebar.js?v=0.74.22"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.22"></script>
+    <script src="js/timeline-context.js?v=0.74.26"></script>
+    <script src="js/timeline-visibility.js?v=0.74.26"></script>
+    <script src="js/config.js?v=0.74.26"></script>
+    <script src="js/api.js?v=0.74.26"></script>
+    <script src="js/ui.js?v=0.74.26"></script>
+    <script src="js/auth.js?v=0.74.26"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.26"></script>
+    <script src="js/timeline.js?v=0.74.26"></script>
+    <script src="js/booking.js?v=0.74.26"></script>
+    <script src="js/settings.js?v=0.74.26"></script>
+    <script src="js/booking-form.js?v=0.74.26"></script>
+    <script src="js/booking-linked.js?v=0.74.26"></script>
+    <script src="js/settings-dashboard.js?v=0.74.26"></script>
+    <script src="js/settings-history.js?v=0.74.26"></script>
+    <script src="js/settings-afisha.js?v=0.74.26"></script>
+    <script src="js/settings-certificates.js?v=0.74.26"></script>
+    <script src="js/offline.js?v=0.74.26"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.26"></script>
+    <script src="js/search.js?v=0.74.26"></script>
+    <script src="js/ws.js?v=0.74.26"></script>
+    <script src="js/app.js?v=0.74.26"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.26"></script>
+    <script src="js/components/sidebar.js?v=0.74.26"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.26"></script>
 </body>
 </html>

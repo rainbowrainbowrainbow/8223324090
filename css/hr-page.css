@@ -1565,6 +1565,8 @@ body.dark-mode .hr-org-detail {
 .hr-team-avatar {
     width: 46px;
     height: 46px;
+    padding: 0;
+    border: 0;
     border-radius: 50%;
     background: var(--gray-100);
     display: flex;
@@ -1575,6 +1577,17 @@ body.dark-mode .hr-org-detail {
     color: var(--gray-400);
     flex-shrink: 0;
     overflow: hidden;
+}
+.hr-team-profile-trigger {
+    font-family: inherit;
+    cursor: pointer;
+    transition: box-shadow var(--speed-fast), transform var(--speed-fast), outline-color var(--speed-fast);
+}
+.hr-team-profile-trigger:hover,
+.hr-team-profile-trigger:focus-visible {
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.20);
+    transform: translateY(-1px);
+    outline: none;
 }
 .hr-team-avatar img {
     width: 100%;
@@ -1590,6 +1603,13 @@ body.dark-mode .hr-org-detail {
     gap: 8px;
     min-width: 0;
 }
+.hr-team-title-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
 .hr-team-name {
     font-weight: 800;
     font-size: 15px;
@@ -1597,6 +1617,21 @@ body.dark-mode .hr-org-detail {
     color: var(--gray-800);
     min-width: 0;
     overflow-wrap: anywhere;
+}
+.hr-team-name-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.hr-team-name-button:hover,
+.hr-team-name-button:focus-visible {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    outline: none;
 }
 .hr-team-role {
     display: flex;
@@ -1831,6 +1866,11 @@ body.dark-mode .hr-org-detail {
     color: var(--gray-600);
 }
 .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+.hr-team-edit--top {
+    margin-left: auto;
+    align-self: flex-start;
+    white-space: nowrap;
+}
 .hr-team-document {
     width: 30px;
     min-width: 30px;

@@ -725,6 +725,10 @@ function initBookingFormListeners() {
             if (typeof syncPinataModeFields === 'function') {
                 syncPinataModeFields(event.target.value);
             }
+            if (typeof renderPinataVisualPickers === 'function') {
+                renderPinataVisualPickers();
+            }
+            if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
         });
     }
     const pinataFillerSelect = document.getElementById('pinataFillerSelect');
@@ -733,6 +737,10 @@ function initBookingFormListeners() {
             if (typeof syncPinataClientFillerChoice === 'function') {
                 syncPinataClientFillerChoice();
             }
+            if (typeof renderPinataVisualPickers === 'function') {
+                renderPinataVisualPickers({ skipFetch: true });
+            }
+            if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
         });
     }
 

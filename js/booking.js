@@ -24,6 +24,19 @@ function isPinataProgram(program) {
 const CLIENT_PINATA_FILLER_VALUE = 'client_filler';
 const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
 
+const PINATA_PICKER_FALLBACK_DESIGNS = [
+    { id: 'P-001', name: 'Кругла піньята', emoji: '🪅', meta: 'Базова форма' },
+    { id: 'P-002', name: 'Фігурна піньята', emoji: '⭐', meta: 'PRO форма' },
+    { id: 'P-003', name: 'Святкова піньята', emoji: '🎉', meta: 'Каталог' }
+];
+
+const PinataPickerState = {
+    status: null,
+    promise: null,
+    designChoices: [],
+    fillerChoices: []
+};
+
 function isClientPinataFillerChoice(value) {
     return String(value || '').trim() === CLIENT_PINATA_FILLER_VALUE;
 }
@@ -73,6 +86,222 @@ function getPinataModeValue() {
     return document.getElementById('pinataMode')?.value || 'none';
 }
 
+function pinataNormalizeChoiceValue(value) {
+    return String(value || '').trim();
+}
+
+function pinataNumberFromId(prefix, id) {
+    const raw = pinataNormalizeChoiceValue(id);
+    if (!raw) return '';
+    if (/^[A-ZА-ЯІЇЄҐ]+[-\d]/i.test(raw)) return raw;
+    if (/^\d+$/.test(raw)) return `${prefix}-${raw.padStart(3, '0')}`;
+    return raw;
+}
+
+function pinataEmojiForText(text, fallback = '🪅') {
+    const normalized = String(text || '').toLowerCase();
+    if (normalized.includes('client') || normalized.includes('клієнт') || normalized.includes('свій')) return '🤝';
+    if (normalized.includes('pro') || normalized.includes('фігур')) return '⭐';
+    if (normalized.includes('xl')) return '🎁';
+    if (normalized.includes('l')) return '🍬';
+    if (normalized.includes('m')) return '🍭';
+    return fallback;
+}
+
+function renderPinataChoiceThumb(choice) {
+    if (choice.imageUrl) {
+        return `<img src="${_escB(choice.imageUrl)}" loading="lazy" alt="">`;
+    }
+    return `<span aria-hidden="true">${_escB(choice.emoji || '🪅')}</span>`;
+}
+
+function renderPinataChoiceCard(choice, selectedValue) {
+    const selected = pinataNormalizeChoiceValue(choice.value) === pinataNormalizeChoiceValue(selectedValue);
+    return `
+        <button type="button" class="pinata-choice-card${selected ? ' selected' : ''}" data-pinata-choice="${_escB(choice.value)}" role="option" aria-selected="${selected ? 'true' : 'false'}" aria-pressed="${selected ? 'true' : 'false'}">
+            <span class="pinata-choice-thumb">${renderPinataChoiceThumb(choice)}</span>
+            <span class="pinata-choice-body">
+                <strong>${_escB(choice.title || 'Піньята')}</strong>
+                <small>${_escB(choice.meta || 'Каталог')}</small>
+            </span>
+            <span class="pinata-choice-number">${_escB(choice.number || choice.value || '')}</span>
+        </button>
+    `;
+}
+
+async function loadPinataPickerStatus() {
+    if (PinataPickerState.status) return PinataPickerState.status;
+    if (PinataPickerState.promise) return PinataPickerState.promise;
+    PinataPickerState.promise = (async () => {
+        try {
+            const token = localStorage.getItem('pzp_token');
+            const res = await fetch('/api/warehouse/pinata-status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            PinataPickerState.status = data?.success ? data : { success: false };
+        } catch {
+            PinataPickerState.status = { success: false };
+        } finally {
+            PinataPickerState.promise = null;
+        }
+        return PinataPickerState.status;
+    })();
+    return PinataPickerState.promise;
+}
+
+function buildPinataDesignChoices(status = PinataPickerState.status) {
+    const designs = Array.isArray(status?.designs) ? status.designs : [];
+    const source = designs.length ? designs : PINATA_PICKER_FALLBACK_DESIGNS;
+    return source.map((design, index) => {
+        const number = pinataNumberFromId('P', design.pinata_number || design.number || design.code || design.id || (index + 1));
+        const title = design.name || design.title || `Піньята ${number}`;
+        return {
+            kind: 'design',
+            value: number,
+            title,
+            number,
+            meta: design.prints_qty || design.printsQty ? `Друків: ${design.prints_qty || design.printsQty}` : (design.meta || 'Дизайн піньяти'),
+            emoji: design.emoji || pinataEmojiForText(title, '🪅'),
+            imageUrl: design.image_url || design.imageUrl || ''
+        };
+    });
+}
+
+function findPinataFillerStock(value, status = PinataPickerState.status) {
+    const stock = Array.isArray(status?.stock) ? status.stock : [];
+    const needle = pinataNormalizeChoiceValue(value).toLowerCase();
+    if (!needle) return null;
+    return stock.find(item => String(item.name || '').toLowerCase().includes(needle)) || null;
+}
+
+function buildPinataFillerChoices(status = PinataPickerState.status) {
+    const select = document.getElementById('pinataFillerSelect');
+    const options = Array.from(select?.querySelectorAll('option[value]') || [])
+        .filter(option => option.value);
+    return options.map(option => {
+        const value = option.value;
+        const isClientFiller = isClientPinataFillerChoice(value);
+        const group = option.closest('optgroup')?.label || '';
+        const stock = findPinataFillerStock(value, status);
+        const number = isClientFiller ? 'Свій' : value;
+        return {
+            kind: 'filler',
+            value,
+            title: isClientFiller ? CLIENT_PINATA_FILLER_LABEL : (group ? `${group} · ${option.textContent.trim()}` : option.textContent.trim()),
+            number,
+            meta: isClientFiller
+                ? 'Наповнювач клієнта'
+                : (stock ? `Склад: ${stock.quantity} ${stock.unit || 'шт'}` : (group || 'Наповнювач')),
+            emoji: pinataEmojiForText(isClientFiller ? CLIENT_PINATA_FILLER_LABEL : value, '🍬'),
+            imageUrl: ''
+        };
+    });
+}
+
+function bindPinataChoicePicker(kind) {
+    const list = document.getElementById(kind === 'design' ? 'pinataDesignPickerList' : 'pinataFillerPickerList');
+    if (!list || list.dataset.bound === 'true') return;
+    list.dataset.bound = 'true';
+    list.addEventListener('click', event => {
+        const card = event.target.closest('[data-pinata-choice]');
+        if (!card) return;
+        selectPinataChoice(kind, card.dataset.pinataChoice || '');
+    });
+}
+
+function currentPinataChoice(kind, value) {
+    const choices = kind === 'design' ? PinataPickerState.designChoices : PinataPickerState.fillerChoices;
+    return choices.find(choice => pinataNormalizeChoiceValue(choice.value) === pinataNormalizeChoiceValue(value)) || null;
+}
+
+function updatePinataChoiceStatus(kind, choice) {
+    const status = document.getElementById(kind === 'design' ? 'pinataDesignPickerStatus' : 'pinataFillerPickerStatus');
+    if (!status) return;
+    status.textContent = choice ? `${choice.number || choice.value} · ${choice.title}` : 'Оберіть';
+}
+
+function renderPinataChoicePicker(kind, choices, selectedValue) {
+    const list = document.getElementById(kind === 'design' ? 'pinataDesignPickerList' : 'pinataFillerPickerList');
+    if (!list) return;
+    list.innerHTML = choices.length
+        ? choices.map(choice => renderPinataChoiceCard(choice, selectedValue)).join('')
+        : '<div class="pinata-choice-empty">Немає доступних варіантів</div>';
+    updatePinataChoiceStatus(kind, currentPinataChoice(kind, selectedValue));
+    bindPinataChoicePicker(kind);
+}
+
+function renderPinataVisualPickers(options = {}) {
+    const mode = getPinataModeValue();
+    const designValue = document.getElementById('pinataNumber')?.value || '';
+    const fillerValue = document.getElementById('pinataFillerSelect')?.value || '';
+
+    PinataPickerState.designChoices = buildPinataDesignChoices();
+    if (designValue && !currentPinataChoice('design', designValue)) {
+        PinataPickerState.designChoices.unshift({
+            kind: 'design',
+            value: designValue,
+            title: 'Збережена піньята',
+            number: designValue,
+            meta: 'Із бронювання',
+            emoji: '🪅',
+            imageUrl: ''
+        });
+    }
+    PinataPickerState.fillerChoices = buildPinataFillerChoices();
+    if (fillerValue && !currentPinataChoice('filler', fillerValue)) {
+        PinataPickerState.fillerChoices.unshift({
+            kind: 'filler',
+            value: fillerValue,
+            title: 'Збережений наповнювач',
+            number: fillerValue,
+            meta: 'Із бронювання',
+            emoji: '🍬',
+            imageUrl: ''
+        });
+    }
+    renderPinataChoicePicker('design', PinataPickerState.designChoices, designValue);
+    if (mode === 'park') {
+        renderPinataChoicePicker('filler', PinataPickerState.fillerChoices, fillerValue);
+    }
+
+    if (!options.skipFetch && !PinataPickerState.status && !PinataPickerState.promise) {
+        loadPinataPickerStatus().then(() => renderPinataVisualPickers({ skipFetch: true }));
+    }
+}
+
+function selectPinataChoice(kind, value) {
+    const choice = currentPinataChoice(kind, value);
+    if (!choice) return;
+
+    if (kind === 'design') {
+        const pinataNumber = document.getElementById('pinataNumber');
+        if (pinataNumber) {
+            pinataNumber.value = choice.number || choice.value || '';
+            pinataNumber.dispatchEvent(new Event('input', { bubbles: true }));
+            pinataNumber.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        updatePinataChoiceStatus('design', choice);
+    } else {
+        const fillerSelect = document.getElementById('pinataFillerSelect');
+        const fillerNumber = document.getElementById('pinataFillerNumber');
+        if (fillerSelect) fillerSelect.value = choice.value || '';
+        if (fillerNumber) {
+            fillerNumber.disabled = false;
+            fillerNumber.value = isClientPinataFillerChoice(choice.value) ? CLIENT_PINATA_FILLER_LABEL : (choice.number || choice.value || '');
+        }
+        syncPinataClientFillerChoice();
+        fillerSelect?.dispatchEvent(new Event('change', { bubbles: true }));
+        fillerNumber?.dispatchEvent(new Event('input', { bubbles: true }));
+        fillerNumber?.dispatchEvent(new Event('change', { bubbles: true }));
+        updatePinataChoiceStatus('filler', choice);
+    }
+
+    renderPinataVisualPickers({ skipFetch: true });
+    if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+    if (window.BookingForm) BookingForm._dirty = true;
+}
+
 function syncPinataModeFields(mode = getPinataModeValue()) {
     const modeSection = document.getElementById('pinataModeSection');
     const sharedSection = document.getElementById('pinataSharedFields');
@@ -103,6 +332,7 @@ function syncPinataModeFields(mode = getPinataModeValue()) {
         if (serviceNote) serviceNote.value = '';
     }
     syncPinataClientFillerChoice();
+    renderPinataVisualPickers();
 }
 
 function resetPinataModeFields() {
@@ -127,6 +357,7 @@ function resetPinataModeFields() {
     document.getElementById('pinataSharedFields')?.classList.add('hidden');
     document.getElementById('pinataFillerSection')?.classList.add('hidden');
     document.getElementById('clientPinataServiceFields')?.classList.add('hidden');
+    renderPinataVisualPickers({ skipFetch: true });
 }
 
 const BookingPackageState = {
@@ -4927,6 +5158,7 @@ async function editBooking(bookingId) {
                 pinataFillerSelect.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (booking.pinataFiller || '');
                 syncPinataClientFillerChoice();
             }
+            renderPinataVisualPickers();
             if (mode === 'client') {
                 const priceInput = document.getElementById('clientPinataServicePrice');
                 const noteInput = document.getElementById('clientPinataServiceNote');
@@ -5027,6 +5259,7 @@ async function duplicateBooking(bookingId) {
                 pinataFillerSelect.value = clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (booking.pinataFiller || '');
                 syncPinataClientFillerChoice();
             }
+            renderPinataVisualPickers();
             if (mode === 'client') {
                 const priceInput = document.getElementById('clientPinataServicePrice');
                 const noteInput = document.getElementById('clientPinataServiceNote');
@@ -5645,11 +5878,7 @@ async function _loadPinataStockBadge() {
     const badge = document.getElementById('pinataStockBadge');
     if (!badge) return;
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res  = await fetch('/api/warehouse/pinata-status', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await loadPinataPickerStatus();
         if (!data.success) return;
         const osnovy = data.stock.find(s => s.name.includes('Основи'));
         if (osnovy) {

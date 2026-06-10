@@ -962,6 +962,199 @@ body.timeline-dashboard-page .pinata-service-section input:focus {
     outline: none;
 }
 
+.pinata-transport-fields {
+    display: none;
+}
+
+.pinata-choice-picker {
+    display: grid;
+    gap: 10px;
+}
+
+.pinata-choice-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.pinata-choice-head strong {
+    display: block;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.pinata-choice-head small {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.pinata-choice-status {
+    max-width: 46%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border: 1px solid rgba(20,184,166,0.18);
+    border-radius: 999px;
+    background: rgba(20,184,166,0.08);
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.pinata-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+    gap: 8px;
+}
+
+.pinata-choice-card {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    min-height: 62px;
+    min-width: 0;
+    width: 100%;
+    padding: 9px;
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.78);
+    color: var(--gray-800);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.pinata-choice-card:hover,
+.pinata-choice-card:focus-visible {
+    border-color: rgba(20,184,166,0.46);
+    background: rgba(240,253,250,0.9);
+    box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+    outline: none;
+}
+
+.pinata-choice-card.selected {
+    border-color: rgba(20,184,166,0.78);
+    background: rgba(20,184,166,0.14);
+    box-shadow: inset 0 0 0 1px rgba(20,184,166,0.28);
+}
+
+.pinata-choice-thumb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    overflow: hidden;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(236,72,153,0.16), rgba(20,184,166,0.12));
+    font-size: 22px;
+}
+
+.pinata-choice-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pinata-choice-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.pinata-choice-body strong,
+.pinata-choice-body small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pinata-choice-body strong {
+    color: inherit;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.pinata-choice-body small {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.pinata-choice-number {
+    align-self: start;
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 3px 6px;
+    border-radius: 8px;
+    background: rgba(59,130,246,0.12);
+    color: #2563EB;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.pinata-choice-empty {
+    padding: 10px;
+    border: 1px dashed rgba(148,163,184,0.26);
+    border-radius: var(--radius-sm);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+body.timeline-dashboard-page .pinata-choice-head strong {
+    color: #F8FAFC;
+}
+
+body.timeline-dashboard-page .pinata-choice-head small,
+body.timeline-dashboard-page .pinata-choice-body small {
+    color: rgba(226,232,240,0.72);
+}
+
+body.timeline-dashboard-page .pinata-choice-status {
+    background: rgba(20,184,166,0.16);
+    border-color: rgba(45,212,191,0.28);
+    color: #99F6E4;
+}
+
+body.timeline-dashboard-page .pinata-choice-card {
+    background: rgba(30,41,59,0.76);
+    border-color: rgba(148,163,184,0.2);
+    color: #F8FAFC;
+}
+
+body.timeline-dashboard-page .pinata-choice-card:hover,
+body.timeline-dashboard-page .pinata-choice-card:focus-visible {
+    border-color: rgba(45,212,191,0.48);
+    background: rgba(30,64,75,0.86);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.24);
+}
+
+body.timeline-dashboard-page .pinata-choice-card.selected {
+    border-color: rgba(45,212,191,0.78);
+    background: rgba(20,184,166,0.18);
+}
+
+body.timeline-dashboard-page .pinata-choice-number {
+    background: rgba(96,165,250,0.16);
+    color: #BFDBFE;
+}
+
+body.timeline-dashboard-page .pinata-choice-empty {
+    border-color: rgba(148,163,184,0.2);
+    color: rgba(226,232,240,0.72);
+}
+
 .pinata-client-filler-active input,
 body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     color: #99F6E4;

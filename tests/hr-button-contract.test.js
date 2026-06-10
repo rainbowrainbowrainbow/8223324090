@@ -260,8 +260,8 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     const fakeDb = {
         async query(sql, params = []) {
             queries.push({ sql, params });
-            if (/SELECT id, name, hourly_rate FROM staff/i.test(sql)) {
-                return { rows: [{ id: Number(params[0]), name: 'Dasha Staff', hourly_rate: 120 }] };
+            if (/SELECT id, name, hourly_rate, COALESCE\(rate_unit, 'hour'\) AS rate_unit FROM staff/i.test(sql)) {
+                return { rows: [{ id: Number(params[0]), name: 'Dasha Staff', hourly_rate: 120, rate_unit: 'hour' }] };
             }
             if (/FROM payroll_schemes/i.test(sql)) {
                 return {
@@ -287,6 +287,7 @@ test('HR payroll scheme service owns staff scheme config and metadata mapping', 
     assert.equal(workspace.data.staff_id, 42);
     assert.equal(workspace.data.active_scheme.title, 'Hourly base');
     assert.equal(workspace.data.fallback_hourly_rate, 120);
+    assert.equal(workspace.data.fallback_rate_unit, 'hour');
     assert.ok(workspace.data.scheme_types.some(type => type.value === 'hybrid'));
     assert.match(queries.at(-1).sql, /ORDER BY is_active DESC/);
 

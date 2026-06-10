@@ -206,6 +206,28 @@ function numberOrNull(value) {
     return Number.isFinite(normalized) ? normalized : null;
 }
 
+function normalizeStaffRateUnit(value) {
+    const unit = String(value || '').trim().toLowerCase();
+    if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    return 'hour';
+}
+
+function staffRateUnit(row = {}) {
+    return normalizeStaffRateUnit(row.rate_unit ?? row.rateUnit);
+}
+
+function payrollAmountForRate(rate, rateUnit, minutes = 0, days = 0) {
+    const normalizedRate = Number(rate || 0);
+    if (!Number.isFinite(normalizedRate) || normalizedRate <= 0) return 0;
+    return normalizeStaffRateUnit(rateUnit) === 'day'
+        ? normalizedRate * Math.max(0, Number(days || 0))
+        : normalizedRate * (Math.max(0, Number(minutes || 0)) / 60.0);
+}
+
+function rateUnitLabel(unit) {
+    return normalizeStaffRateUnit(unit) === 'day' ? 'день' : 'г';
+}
+
 function staffRoleAssignmentMeta(row) {
     if (!row) return null;
     return {
@@ -225,6 +247,8 @@ function staffRoleAssignmentMeta(row) {
         internshipStatus: row.internship_status || 'none',
         hourly_rate: row.hourly_rate === null || row.hourly_rate === undefined ? null : Number(row.hourly_rate),
         hourlyRate: row.hourly_rate === null || row.hourly_rate === undefined ? null : Number(row.hourly_rate),
+        rate_unit: staffRateUnit(row),
+        rateUnit: staffRateUnit(row),
         payroll_scheme_id: row.payroll_scheme_id || null,
         payrollSchemeId: row.payroll_scheme_id || null,
         payroll_scheme_title: row.payroll_scheme_title || null,
@@ -276,6 +300,7 @@ function compatibilityRoleAssignmentsFromStaff(staff = {}, professionRates = [])
         admission_status: key === primary ? 'approved' : 'pending',
         internship_status: key === 'intern' ? 'in_progress' : 'none',
         hourly_rate: rateMap.get(key) || (key === primary ? Number(staff.hourly_rate || 0) : null),
+        rate_unit: staffRateUnit(staff),
         payroll_scheme_id: null,
         notes: null
     }));
@@ -301,7 +326,7 @@ async function loadStaffRoleAssignments(staffId, db = pool) {
 
     const staff = await db.query(
         `SELECT id, role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                is_active, hourly_rate
+                is_active, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit
          FROM staff WHERE id = $1`,
         [staffId]
     );
@@ -1232,7 +1257,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                    $5::varchar(7) AS month_to
         ),
         active_staff AS (
-            SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, s.department
+            SELECT DISTINCT s.id, s.name, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit, s.department
             FROM staff s
             CROSS JOIN params p
             WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
@@ -1270,6 +1295,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             SELECT s.id AS staff_id,
                    COALESCE(hs.profession_key, s.role_type) AS profession_key,
                    COALESCE(NULLIF(spr.hourly_rate, 0), s.hourly_rate, 0)::numeric AS rate,
+                   COALESCE(s.rate_unit, 'hour') AS rate_unit,
                    COALESCE(SUM(tr.total_worked_minutes), 0)::numeric AS total_minutes,
                    SUM(tr.overtime_minutes) AS overtime_minutes,
                    COUNT(*) FILTER (WHERE tr.status IN ('present', 'late', 'early_leave', 'auto_closed', 'unscheduled'))::int AS days_worked
@@ -1281,20 +1307,23 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
             LEFT JOIN staff_profession_rates spr ON spr.staff_id = s.id
                 AND spr.profession_key = COALESCE(hs.profession_key, s.role_type)
             GROUP BY s.id, COALESCE(hs.profession_key, s.role_type),
-                     COALESCE(NULLIF(spr.hourly_rate, 0), s.hourly_rate, 0)
+                     COALESCE(NULLIF(spr.hourly_rate, 0), s.hourly_rate, 0),
+                     COALESCE(s.rate_unit, 'hour')
         ),
         time_totals AS (
             SELECT staff_id,
                    SUM(total_minutes)::numeric AS total_minutes,
                    SUM(overtime_minutes)::numeric AS overtime_minutes,
                    SUM(days_worked)::int AS days_worked,
-                   SUM((total_minutes / 60.0) * rate)::numeric AS base_salary,
-                   SUM((overtime_minutes / 60.0) * rate * 1.5)::numeric AS overtime_pay,
+                   SUM(CASE WHEN rate_unit = 'day' THEN days_worked * rate ELSE (total_minutes / 60.0) * rate END)::numeric AS base_salary,
+                   SUM(CASE WHEN rate_unit = 'day' THEN 0 ELSE (overtime_minutes / 60.0) * rate * 1.5 END)::numeric AS overtime_pay,
                    COALESCE(
                        jsonb_agg(jsonb_build_object(
                            'profession_key', profession_key,
                            'rate', rate,
-                           'hours', ROUND(total_minutes / 60.0, 1)
+                           'rate_unit', rate_unit,
+                           'hours', ROUND(total_minutes / 60.0, 1),
+                           'days', days_worked
                        ) ORDER BY profession_key) FILTER (WHERE total_minutes > 0 OR overtime_minutes > 0),
                        '[]'::jsonb
                    ) AS profession_rates
@@ -1327,6 +1356,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                s.role_type,
                s.department,
                COALESCE(s.hourly_rate, 0)::numeric AS hourly_rate,
+               COALESCE(s.rate_unit, 'hour') AS rate_unit,
                COALESCE(tt.profession_rates, '[]'::jsonb) AS profession_rate_summary,
                COALESCE(tt.days_worked, 0)::int AS days_worked,
                ROUND(COALESCE(tt.total_minutes, 0) / 60.0, 1)::numeric AS hours_worked,
@@ -1353,6 +1383,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
         role_type: row.role_type,
         department: row.department,
         hourly_rate: Number(row.hourly_rate || 0),
+        rate_unit: staffRateUnit(row),
         profession_rate_summary: Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [],
         days_worked: Number(row.days_worked || 0),
         hours_worked: Number(row.hours_worked || 0),
@@ -1778,7 +1809,8 @@ router.get('/staff', async (req, res) => {
         const { active, role_type, include_freelance } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
+                    hire_date, birth_date, address, is_active, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit,
+                    company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     is_freelance, unique_person_key, hr_pool_status, blacklist_reason, blacklisted_at,
                     termination_date, termination_reason, termination_recorded_at, termination_recorded_by,
@@ -1876,7 +1908,8 @@ router.get('/staff/:id', async (req, res) => {
         const staff = await pool.query(
             `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hire_date, birth_date, address, is_active, hourly_rate, company_structure_node_id, photo_url, notes,
+                    hire_date, birth_date, address, is_active, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit,
+                    company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     hr_pool_status, blacklist_reason, blacklisted_at,
                     termination_date, termination_reason, termination_recorded_at, termination_recorded_by
@@ -2474,7 +2507,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', requireHrManage, async (req, res) => {
     try {
-        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
+        const { name, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
@@ -2485,11 +2518,13 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             ? req.body.profession_rates
             : req.body.professionRates;
         const fieldPresence = {
+            name: hasBodyField('name'),
             phone: hasBodyField('phone'),
             emergency_contact: hasBodyField('emergency_contact'),
             emergency_phone: hasBodyField('emergency_phone'),
             role_type: hasBodyField('role_type'),
             hourly_rate: hasBodyField('hourly_rate'),
+            rate_unit: hasBodyField('rate_unit') || hasBodyField('rateUnit'),
             birth_date: hasBodyField('birth_date'),
             notes: hasBodyField('notes'),
             telegram_id: hasBodyField('telegram_id'),
@@ -2502,9 +2537,9 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             blacklist_reason: hasBodyField('blacklist_reason')
         };
         const beforeStaffResult = await pool.query(
-            `SELECT id, phone, emergency_contact, emergency_phone, role_type,
+            `SELECT id, name, phone, emergency_contact, emergency_phone, role_type,
                     COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hourly_rate, company_structure_node_id, birth_date, address, notes, telegram_id, telegram_username,
+                    hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit, company_structure_node_id, birth_date, address, notes, telegram_id, telegram_username,
                     contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at
              FROM staff
              WHERE id = $1`,
@@ -2565,11 +2600,17 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             return Number.isFinite(normalized) ? normalized : null;
         };
 
+        if (fieldPresence.name) {
+            const normalizedName = textOrNull(name);
+            if (!normalizedName) return res.status(400).json({ success: false, error: 'ПІБ співробітника обовʼязкове' });
+            queueStaffUpdate('name', normalizedName);
+        }
         if (fieldPresence.phone) queueStaffUpdate('phone', textOrNull(phone));
         if (fieldPresence.emergency_contact) queueStaffUpdate('emergency_contact', textOrNull(emergency_contact));
         if (fieldPresence.emergency_phone) queueStaffUpdate('emergency_phone', textOrNull(emergency_phone));
         if (fieldPresence.role_type) queueStaffUpdate('role_type', textOrNull(role_type));
         if (fieldPresence.hourly_rate) queueStaffUpdate('hourly_rate', numberOrNull(hourly_rate));
+        if (fieldPresence.rate_unit) queueStaffUpdate('rate_unit', normalizeStaffRateUnit(rate_unit ?? req.body.rateUnit));
         if (fieldPresence.birth_date) queueStaffUpdate('birth_date', birth_date || null);
         if (fieldPresence.notes) queueStaffUpdate('notes', textOrNull(notes));
         if (fieldPresence.telegram_id) queueStaffUpdate('telegram_id', textOrNull(telegram_id));
@@ -2645,7 +2686,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         }
         const changedFields = [
             'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
-            'hourly_rate', 'company_structure_node_id', 'birth_date', 'address', 'notes', 'telegram_id', 'telegram_username',
+            'hourly_rate', 'rate_unit', 'company_structure_node_id', 'birth_date', 'address', 'notes', 'telegram_id', 'telegram_username',
             'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at'
         ];
         const changes = buildStaffProfileChanges(beforeStaff, result.rows[0], changedFields);
@@ -3753,7 +3794,10 @@ router.get('/report/monthly', async (req, res) => {
         }
 
         const staffList = await pool.query(
-            'SELECT id, name, role_type, hourly_rate FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name'
+            `SELECT id, name, role_type, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit
+             FROM staff
+             WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)
+             ORDER BY name`
         );
         const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
         const staffById = new Map(staffList.rows.map(st => [Number(st.id), st]));
@@ -3823,8 +3867,9 @@ router.get('/report/monthly', async (req, res) => {
                 s.days_worked++;
                 s.total_worked_minutes += r.total_worked_minutes || 0;
                 s.total_overtime_minutes += r.overtime_minutes || 0;
-                const rate = rateForStaffProfession(staffById.get(Number(r.staff_id)) || { id: r.staff_id }, r.profession_key, professionRateMap);
-                s.estimated_salary = (s.estimated_salary || 0) + (((Number(r.total_worked_minutes) || 0) / 60) * rate);
+                const staff = staffById.get(Number(r.staff_id)) || { id: r.staff_id };
+                const rate = rateForStaffProfession(staff, r.profession_key, professionRateMap);
+                s.estimated_salary = (s.estimated_salary || 0) + payrollAmountForRate(rate, staffRateUnit(staff), r.total_worked_minutes, 1);
             }
             if (r.status === 'late') { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
             if (r.status === 'early_leave') s.days_early_leave++;
@@ -3843,6 +3888,7 @@ router.get('/report/monthly', async (req, res) => {
             const totalWorkedHours = Math.round(s.total_worked_minutes / 60 * 10) / 10;
             const totalOvertimeHours = Math.round(s.total_overtime_minutes / 60 * 10) / 10;
             const rate = parseFloat(st.hourly_rate) || 0;
+            const rateUnit = staffRateUnit(st);
             const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
 
             return {
@@ -3850,6 +3896,7 @@ router.get('/report/monthly', async (req, res) => {
                 staff_name: st.name,
                 role_type: st.role_type,
                 hourly_rate: rate,
+                rate_unit: rateUnit,
                 days_scheduled: daysScheduled,
                 days_worked: s.days_worked,
                 days_late: s.days_late,
@@ -3859,7 +3906,7 @@ router.get('/report/monthly', async (req, res) => {
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
-                estimated_salary: Math.round(s.estimated_salary || totalWorkedHours * rate),
+                estimated_salary: Math.round(s.estimated_salary || payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked)),
                 late_count: s.late_count,
                 avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
                 attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
@@ -3915,7 +3962,8 @@ router.get('/report/export', async (req, res) => {
             `SELECT s.id AS staff_id, s.name, s.role_type, tr.record_date, tr.clock_in, tr.clock_out,
                     tr.planned_start, tr.planned_end,
                     tr.total_worked_minutes, tr.late_minutes, tr.early_leave_minutes, tr.overtime_minutes,
-                    s.hourly_rate, COALESCE(hs.profession_key, s.role_type) AS profession_key
+                    s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                    COALESCE(hs.profession_key, s.role_type) AS profession_key
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
@@ -3931,8 +3979,8 @@ router.get('/report/export', async (req, res) => {
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const workedH = ((r.total_worked_minutes || 0) / 60).toFixed(1);
             const rate = rateForStaffProfession(r, r.profession_key, professionRateMap);
-            const salary = (parseFloat(workedH) * rate).toFixed(0);
-            return `${r.name};${r.record_date};${ci};${co};${r.planned_start || ''};${r.planned_end || ''};${r.total_worked_minutes || 0};${r.late_minutes || 0};${r.early_leave_minutes || 0};${r.overtime_minutes || 0};${rate};${salary}`;
+            const salary = payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
+            return `${r.name};${r.record_date};${ci};${co};${r.planned_start || ''};${r.planned_end || ''};${r.total_worked_minutes || 0};${r.late_minutes || 0};${r.early_leave_minutes || 0};${r.overtime_minutes || 0};${rate} грн/${rateUnitLabel(r.rate_unit)};${salary}`;
         }).join('\n');
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -5077,7 +5125,7 @@ router.post('/salary/commit', requirePayrollControl, async (req, res) => {
                 [
                     catId,
                     totalSalary,
-                    `Зарплата ${row.staff_name} за ${month} (${Math.round(Number(row.hours_worked || 0))}г, ставки: ${(row.profession_rate_summary || []).map(segment => `${segment.profession_key} ${segment.rate} грн/г`).join(', ') || `${row.hourly_rate} грн/г`})`,
+                    `Зарплата ${row.staff_name} за ${month} (${Math.round(Number(row.hours_worked || 0))}г, ставки: ${(row.profession_rate_summary || []).map(segment => `${segment.profession_key} ${segment.rate} грн/${rateUnitLabel(segment.rate_unit)}`).join(', ') || `${row.hourly_rate} грн/${rateUnitLabel(row.rate_unit)}`})`,
                     new Date(parseInt(month.split('-')[0], 10), parseInt(month.split('-')[1], 10), 0).toISOString().slice(0, 10),
                     row.staff_id,
                     actor

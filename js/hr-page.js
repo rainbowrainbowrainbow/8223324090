@@ -43,6 +43,11 @@ const HR_POOL_LABELS = {
     blacklisted: 'Чорний список'
 };
 
+const STAFF_RATE_UNIT_LABELS = {
+    hour: 'За годину',
+    day: 'За день'
+};
+
 const STAFF_DOCUMENT_TYPE_LABELS = {
     passport: 'Паспорт',
     tax_id: 'ІПН',
@@ -457,6 +462,28 @@ function staffProfessionRateRows(staff = {}) {
         : [];
 }
 
+function normalizeStaffRateUnit(value) {
+    const unit = String(value || '').trim().toLowerCase();
+    if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    return 'hour';
+}
+
+function staffRateUnit(staff = {}) {
+    return normalizeStaffRateUnit(staff.rate_unit || staff.rateUnit);
+}
+
+function currentEditRateUnit(staff = {}) {
+    return normalizeStaffRateUnit(document.getElementById('editRateUnit')?.value || staffRateUnit(staff));
+}
+
+function staffRateUnitSuffix(unit = 'hour') {
+    return normalizeStaffRateUnit(unit) === 'day' ? 'день' : 'год';
+}
+
+function formatStaffRate(rate, unit = 'hour') {
+    return `${Number(rate || 0)} ₴/${staffRateUnitSuffix(unit)}`;
+}
+
 function staffProfessionRateMap(staff = {}) {
     const map = new Map();
     staffProfessionRateRows(staff).forEach(row => {
@@ -507,14 +534,20 @@ function renderStaffReadinessBadges(staff = {}) {
 function renderStaffRateSummary(staff = {}) {
     const professionKeys = normalizeProfessionList([staff.role_type, ...staffSecondaryProfessions(staff)]);
     if (!professionKeys.length) return '';
+    const unit = staffRateUnit(staff);
     const rates = professionKeys
         .map(key => ({ key, label: professionTitle(key), rate: staffProfessionRateFor(staff, key) }))
         .filter(item => Number(item.rate) > 0);
     if (!rates.length) return '';
     const baseRate = Number(staff.hourly_rate || 0);
     const hasOverrides = staffProfessionRateRows(staff).length > 0;
-    if (!hasOverrides && baseRate > 0) return `${baseRate} ₴/год`;
-    return rates.slice(0, 3).map(item => `${item.label}: ${item.rate} ₴/год`).join(' · ');
+    if (!hasOverrides && baseRate > 0) return formatStaffRate(baseRate, unit);
+    return rates.slice(0, 3).map(item => `${item.label}: ${formatStaffRate(item.rate, unit)}`).join(' · ');
+}
+
+function syncStaffProfileHeaderName(value) {
+    const header = document.getElementById('editStaffHeaderName');
+    if (header) header.textContent = String(value || '').trim() || 'ПІБ';
 }
 
 function teamSearchHaystack(staff = {}) {
@@ -994,6 +1027,20 @@ function initNewTabs() {
     document.getElementById('editHourlyRate')?.addEventListener('input', () => {
         refreshStaffRateEditorFromCurrentForm();
         refreshStaffRoleAssignmentsFromCurrentForm();
+    });
+    document.getElementById('editRateUnit')?.addEventListener('change', () => {
+        syncStaffRateUnitUi();
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffRoleAssignmentsFromCurrentForm();
+        const payrollType = document.getElementById('editPayrollSchemeType');
+        const unit = currentEditRateUnit();
+        if (payrollType && !document.getElementById('editPayrollSchemeTitle')?.value) {
+            payrollType.value = unit === 'day' ? 'per_shift' : 'hourly';
+            updatePayrollAdvancedVisibility();
+        }
+    });
+    document.getElementById('editStaffName')?.addEventListener('input', event => {
+        syncStaffProfileHeaderName(event.target?.value || '');
     });
     document.getElementById('editResourceKind')?.addEventListener('change', event => {
         loadStaffResourceOptions(event.target?.value || 'custom');
@@ -3964,6 +4011,11 @@ function renderSecondaryProfessionPicker(options = [], selected = [], query = ''
     }
 }
 
+function setSecondaryProfessionPickerOpen(open) {
+    const picker = document.getElementById('editSecondaryProfessionPicker');
+    if (picker) picker.classList.toggle('is-open', Boolean(open));
+}
+
 function populateSecondaryProfessionSelect(selected = [], primaryRole = '') {
     const primary = normalizeProfessionKey(primaryRole);
     const options = professionOptionsFromCatalog(primary).filter(option => normalizeProfessionKey(option.value) !== primary);
@@ -3996,6 +4048,8 @@ function renderStaffProfessionRatesEditor(staff = {}) {
         if (key) currentInputValues.set(key, input.value);
     });
     const baseRate = Number(document.getElementById('editHourlyRate')?.value || staff.hourly_rate || 0);
+    const unit = currentEditRateUnit(staff);
+    const suffix = `₴/${staffRateUnitSuffix(unit)}`;
     root.innerHTML = keys.map(key => {
         const customRate = rateMap.get(key);
         const displayRate = currentInputValues.has(key)
@@ -4003,7 +4057,10 @@ function renderStaffProfessionRatesEditor(staff = {}) {
             : (Number.isFinite(customRate) && customRate > 0 ? customRate : '');
         return `<label class="hr-profession-rate-row" data-rate-profession="${escapeHtml(key)}">
             <span>${escapeHtml(professionTitle(key))}</span>
-            <input type="number" min="0" step="10" inputmode="decimal" data-profession-rate="${escapeHtml(key)}" value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="${baseRate > 0 ? escapeHtml(baseRate) : '0'}">
+            <div class="hr-profession-rate-control">
+                <input type="number" min="0" step="10" inputmode="decimal" data-profession-rate="${escapeHtml(key)}" value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="${baseRate > 0 ? escapeHtml(baseRate) : '0'}">
+                <small>${escapeHtml(suffix)}</small>
+            </div>
         </label>`;
     }).join('');
 }
@@ -4030,14 +4087,35 @@ function refreshStaffRateEditorFromCurrentForm() {
     renderStaffProfessionRatesEditor(staff);
 }
 
+function syncStaffRateUnitUi(staff = {}) {
+    const unit = currentEditRateUnit(staff);
+    const label = document.getElementById('editHourlyRateLabel');
+    const hint = document.getElementById('editHourlyRateHint');
+    const suffix = staffRateUnitSuffix(unit);
+    if (label) label.textContent = `Ставка грн/${suffix}`;
+    if (hint) {
+        hint.textContent = unit === 'day'
+            ? 'Денна ставка рахується за відпрацьований день. Ставки по професіях нижче використовують ту саму одиницю.'
+            : 'Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.';
+    }
+}
+
 function bindSecondaryProfessionPicker() {
     const search = document.getElementById('editSecondaryProfessionSearch');
     const picker = document.getElementById('editSecondaryProfessionPicker');
     if (search) {
+        search.onfocus = () => setSecondaryProfessionPickerOpen(true);
         search.oninput = () => {
+            setSecondaryProfessionPickerOpen(true);
             populateSecondaryProfessionSelect(readStaffSecondaryProfessionSelection(), document.getElementById('editRoleType')?.value);
             refreshStaffRateEditorFromCurrentForm();
             refreshStaffRoleAssignmentsFromCurrentForm();
+        };
+        search.onkeydown = event => {
+            if (event.key === 'Escape') {
+                setSecondaryProfessionPickerOpen(false);
+                search.blur();
+            }
         };
     }
     if (picker) {
@@ -4052,9 +4130,16 @@ function bindSecondaryProfessionPicker() {
                 : normalizeProfessionList(current.filter(key => key !== remove.dataset.secondaryRemove), [primary]);
             if (search && add) search.value = '';
             populateSecondaryProfessionSelect(next, primary);
+            if (add) {
+                setSecondaryProfessionPickerOpen(true);
+                search?.focus();
+            }
             refreshStaffRateEditorFromCurrentForm();
             refreshStaffRoleAssignmentsFromCurrentForm();
         };
+        document.addEventListener('click', event => {
+            if (!picker.contains(event.target)) setSecondaryProfessionPickerOpen(false);
+        });
     }
 }
 
@@ -4091,6 +4176,7 @@ const STAFF_HISTORY_ACTION_LABELS = {
 };
 
 const STAFF_HISTORY_FIELD_LABELS = {
+    name: 'ПІБ',
     role_type: 'основна професія',
     secondary_professions: 'додаткові професії',
     profession_rates: 'ставки по професіях',
@@ -4098,6 +4184,7 @@ const STAFF_HISTORY_FIELD_LABELS = {
     hr_pool_status: 'HR-статус',
     blacklist_reason: 'чорний список',
     hourly_rate: 'ставка',
+    rate_unit: 'тип ставки',
     phone: 'телефон',
     emergency_contact: 'екстрений контакт',
     emergency_phone: 'телефон екстр. контакту',
@@ -4573,7 +4660,8 @@ async function saveStaffRoleAssignments() {
 function setPayrollSchemeForm(payload = {}) {
     const scheme = payload.active_scheme || payload.activeScheme || null;
     const fallbackRate = Number(payload.fallback_hourly_rate ?? payload.fallbackHourlyRate ?? document.getElementById('editHourlyRate')?.value ?? 0);
-    const type = scheme?.scheme_type || scheme?.schemeType || 'hourly';
+    const fallbackUnit = normalizeStaffRateUnit(payload.fallback_rate_unit ?? payload.fallbackRateUnit ?? currentEditRateUnit());
+    const type = scheme?.scheme_type || scheme?.schemeType || (fallbackUnit === 'day' ? 'per_shift' : 'hourly');
     const typeSelect = document.getElementById('editPayrollSchemeType');
     const amountInput = document.getElementById('editPayrollSchemeAmount');
     const titleInput = document.getElementById('editPayrollSchemeTitle');
@@ -4590,7 +4678,7 @@ function setPayrollSchemeForm(payload = {}) {
     if (summary) {
         summary.textContent = scheme
             ? `Активна: ${PAYROLL_SCHEME_LABELS[type] || type} · ${scheme.title || 'без назви'}${scheme.effective_from ? ` · з ${formatStaffDateValue(scheme.effective_from)}` : ''}${scheme.effective_to ? ` · до ${formatStaffDateValue(scheme.effective_to)}` : ''}`
-            : `Активної схеми немає. За замовченням використовується HR-ставка: ${fmtMoney(fallbackRate)} / год.`;
+            : `Активної схеми немає. За замовченням використовується HR-ставка: ${fmtMoney(fallbackRate)} / ${staffRateUnitSuffix(fallbackUnit)}.`;
     }
 }
 
@@ -4842,6 +4930,9 @@ async function openStaffEdit(staffId, options = {}) {
     await ensureCompanyStructureNodesLoaded({ silent: true });
 
     document.getElementById('editStaffId').value = staffId;
+    const editStaffName = document.getElementById('editStaffName');
+    if (editStaffName) editStaffName.value = s.name || '';
+    syncStaffProfileHeaderName(s.name || '');
     populateStaffProfessionControls(s);
     document.getElementById('editPhone').value = s.phone || '';
     document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
@@ -4849,11 +4940,14 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
     document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
+    const rateUnitSelect = document.getElementById('editRateUnit');
+    if (rateUnitSelect) rateUnitSelect.value = staffRateUnit(s);
+    syncStaffRateUnitUi(s);
     document.getElementById('editTelegramId').value = s.telegram_id || '';
     document.getElementById('editTelegramUsername').value = s.telegram_username || '';
     document.getElementById('editContractType').value = s.contract_type || 'parttime';
-    document.getElementById('editPoolStatus').value = s.hr_pool_status || 'core';
-    document.getElementById('editBlacklistReason').value = s.blacklist_reason || '';
+    const editPoolStatus = document.getElementById('editPoolStatus');
+    if (editPoolStatus) editPoolStatus.value = s.hr_pool_status || 'core';
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
     ['editDocumentTitle', 'editDocumentIssuedAt', 'editDocumentExpiresAt', 'editDocumentNotes',
@@ -4873,7 +4967,7 @@ async function openStaffEdit(staffId, options = {}) {
     if (resourceSource) resourceSource.innerHTML = '<option value="">Ручний запис</option>';
     updateResourcePickerVisibility();
     const payrollType = document.getElementById('editPayrollSchemeType');
-    if (payrollType) payrollType.value = 'hourly';
+    if (payrollType) payrollType.value = staffRateUnit(s) === 'day' ? 'per_shift' : 'hourly';
     updatePayrollAdvancedVisibility();
     const payrollAmount = document.getElementById('editPayrollSchemeAmount');
     if (payrollAmount) payrollAmount.value = String(s.hourly_rate || 0);
@@ -4906,6 +5000,7 @@ async function openStaffEdit(staffId, options = {}) {
 async function saveStaffEdit() {
     const staffId = document.getElementById('editStaffId')?.value;
     const body = {
+        name: document.getElementById('editStaffName')?.value || null,
         role_type: document.getElementById('editRoleType')?.value,
         secondary_professions: normalizeProfessionList(readStaffSecondaryProfessionSelection(), [document.getElementById('editRoleType')?.value]),
         phone: document.getElementById('editPhone')?.value || null,
@@ -4914,16 +5009,17 @@ async function saveStaffEdit() {
         emergency_contact: document.getElementById('editEmergencyContact')?.value || null,
         emergency_phone: document.getElementById('editEmergencyPhone')?.value || null,
         hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
+        rate_unit: currentEditRateUnit(),
         telegram_id: document.getElementById('editTelegramId')?.value || null,
         telegram_username: document.getElementById('editTelegramUsername')?.value || null,
         contract_type: document.getElementById('editContractType')?.value || 'parttime',
-        hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core',
-        blacklist_reason: document.getElementById('editBlacklistReason')?.value || null,
         company_structure_node_id: document.getElementById('editCompanyStructureNode')?.value || null,
         profession_rates: readStaffProfessionRates(),
         skills: document.getElementById('editSkills')?.value ? document.getElementById('editSkills')?.value.split(',').map(s => s.trim()).filter(Boolean) : null,
         notes: document.getElementById('editNotes')?.value || null
     };
+    const editPoolStatus = document.getElementById('editPoolStatus');
+    if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';
 
     const data = await hrFetch(`/staff/${staffId}`, {
         method: 'PUT',
@@ -6637,16 +6733,24 @@ async function loadSalary() {
 
 function renderSalaryRateSummary(row = {}) {
     const segments = Array.isArray(row.profession_rate_summary) ? row.profession_rate_summary : [];
+    const fallbackUnit = staffRateUnit(row);
     const normalized = segments
         .map(segment => ({
             key: normalizeProfessionKey(segment.profession_key || segment.professionKey || segment.key),
             rate: Number(segment.rate || segment.hourly_rate || segment.hourlyRate || 0),
-            hours: Number(segment.hours || 0)
+            rateUnit: normalizeStaffRateUnit(segment.rate_unit || segment.rateUnit || fallbackUnit),
+            hours: Number(segment.hours || 0),
+            days: Number(segment.days || 0)
         }))
         .filter(segment => segment.key && segment.rate > 0);
-    if (!normalized.length) return `${Number(row.hourly_rate || 0)} ₴/год`;
+    if (!normalized.length) return formatStaffRate(row.hourly_rate || 0, fallbackUnit);
     return normalized
-        .map(segment => `${escapeHtml(professionTitle(segment.key))}: ${segment.rate} ₴/год${segment.hours ? ` · ${segment.hours} год` : ''}`)
+        .map(segment => {
+            const quantity = segment.rateUnit === 'day'
+                ? (segment.days ? ` · ${segment.days} дн` : '')
+                : (segment.hours ? ` · ${segment.hours} год` : '');
+            return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}`;
+        })
         .join('<br>');
 }
 

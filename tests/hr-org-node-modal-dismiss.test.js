@@ -258,11 +258,13 @@ test('HR staff update route persists every staff edit form field explicitly', ()
     assert.notEqual(end, -1);
     const route = source.slice(start, end);
     const expectedFields = [
+        'name',
         'phone',
         'emergency_contact',
         'emergency_phone',
         'role_type',
         'hourly_rate',
+        'rate_unit',
         'birth_date',
         'notes',
         'telegram_id',
@@ -285,7 +287,7 @@ test('HR staff update route persists every staff edit form field explicitly', ()
     assert.match(route, /blacklisted_at = COALESCE\(blacklisted_at, NOW\(\)\)/);
     assert.match(route, /::text\[\]/);
     assert.match(route, /::jsonb/);
-    assert.doesNotMatch(route, /COALESCE\(\$\d+,\s*(phone|emergency_contact|emergency_phone|hourly_rate|birth_date|notes|telegram_id|telegram_username|contract_type|skills|address|hr_pool_status)\)/);
+    assert.doesNotMatch(route, /COALESCE\(\$\d+,\s*(name|phone|emergency_contact|emergency_phone|hourly_rate|birth_date|notes|telegram_id|telegram_username|contract_type|skills|address|hr_pool_status)\)/);
 });
 
 test('HR org canvas drag cancels sticky relink mode and persists the moved node position', async () => {

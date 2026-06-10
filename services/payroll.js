@@ -49,6 +49,12 @@ function toNumber(value, fallback = 0) {
     return Number.isFinite(num) ? num : fallback;
 }
 
+function normalizeStaffRateUnit(value) {
+    const unit = String(value || '').trim().toLowerCase();
+    if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    return 'hour';
+}
+
 function roundMoney(value) {
     return Math.round(toNumber(value, 0));
 }
@@ -88,11 +94,25 @@ function mapStaff(row) {
         department: row.department,
         position: row.position || row.role_type || '',
         roleType: row.role_type || '',
-        hourlyRate: toNumber(row.hourly_rate)
+        hourlyRate: toNumber(row.hourly_rate),
+        rateUnit: normalizeStaffRateUnit(row.rate_unit)
     };
 }
 
 function fallbackSchemeForStaff(staff) {
+    if (normalizeStaffRateUnit(staff.rateUnit) === 'day') {
+        return {
+            id: null,
+            staffId: staff.id,
+            schemeType: 'per_shift',
+            title: 'Денна ставка з HR',
+            isActive: true,
+            isFallback: true,
+            config: { perShiftRate: staff.hourlyRate || 0 },
+            effectiveFrom: null,
+            effectiveTo: null
+        };
+    }
     return {
         id: null,
         staffId: staff.id,
@@ -334,7 +354,7 @@ async function fetchStaffList(month) {
     const readStaff = async (withStatusFilter = true) => {
         const statusFilter = withStatusFilter ? "AND COALESCE(sa.status, 'applied') = 'applied'" : '';
         return pool.query(`
-            SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate
+            SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit
             FROM staff s
             WHERE (s.is_freelance = false OR s.is_freelance IS NULL)
               AND (
@@ -383,7 +403,7 @@ async function fetchStaffList(month) {
     } catch (err) {
         if (!isMissingTableError(err)) log.warn('payroll staff query failed:', err.message);
         const fallback = await pool.query(`
-            SELECT id, name, department, position, role_type, hourly_rate
+            SELECT id, name, department, position, role_type, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit
             FROM staff
             WHERE is_active = true
             ORDER BY name

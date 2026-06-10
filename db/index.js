@@ -536,6 +536,7 @@ async function initDatabase() {
 
         // v7.10.1: Telegram username for staff notifications
         await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
+        await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS rate_unit VARCHAR(10) DEFAULT 'hour'`);
 
         // Seed staff if table is empty
         const staffCount = await pool.query('SELECT COUNT(*) FROM staff');

@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.74.26">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.26">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.26">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.26">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.26">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.26">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.26">
+    <link rel="stylesheet" href="css/base.css?v=0.74.28">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.28">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.28">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.28">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.28">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.28">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.28">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.74.26">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.74.28">
 </head>
 <body data-page-group="hr">
     <script>
@@ -525,8 +525,24 @@
     <!-- Staff edit modal -->
     <div id="staffEditModal" class="hr-modal-overlay" style="display:none;">
         <div class="hr-modal hr-staff-profile-modal" role="dialog" aria-modal="true">
-            <h3>Редагувати профіль</h3>
             <input type="hidden" id="editStaffId">
+            <div class="hr-staff-profile-hero">
+                <span class="hr-staff-profile-section">Команда</span>
+                <div class="hr-staff-profile-card">
+                    <span>Картка співробітника</span>
+                    <strong id="editStaffHeaderName">ПІБ</strong>
+                </div>
+                <div class="hr-staff-profile-quick-fields">
+                    <label>
+                        <span>ФІО</span>
+                        <input type="text" id="editStaffName" maxlength="160" aria-label="ФІО співробітника" placeholder="Прізвище Імʼя">
+                    </label>
+                    <label>
+                        <span>Телефон</span>
+                        <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
+                    </label>
+                </div>
+            </div>
             <div class="form-group">
                 <label>Основна професія</label>
                 <select id="editRoleType">
@@ -573,10 +589,6 @@
                 <small class="form-hint">Клік по професії додає її до чіпів. Основну професію дублювати не можна.</small>
             </div>
             <div class="form-group">
-                <label>Телефон</label>
-                <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
-            </div>
-            <div class="form-group">
                 <label>Дата народження</label>
                 <input type="date" id="editBirthDate">
             </div>
@@ -593,9 +605,15 @@
                 <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
             </div>
             <div class="form-group">
-                <label>Ставка грн/год</label>
+                <div class="hr-rate-label-row">
+                    <label id="editHourlyRateLabel">Ставка грн/год</label>
+                    <select id="editRateUnit" aria-label="Одиниця ставки">
+                        <option value="hour">За годину</option>
+                        <option value="day">За день</option>
+                    </select>
+                </div>
                 <input type="number" id="editHourlyRate" min="0" step="10" value="0">
-                <small class="form-hint">Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.</small>
+                <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.</small>
             </div>
             <div class="form-group">
                 <label>Ставки по професіях</label>
@@ -726,18 +744,6 @@
                     <option value="fulltime">Повна зайнятість</option>
                     <option value="freelance">Фріланс</option>
                 </select>
-            </div>
-            <div class="form-group">
-                <label>HR-статус</label>
-                <select id="editPoolStatus">
-                    <option value="core">Основна команда</option>
-                    <option value="reserve">Резервний пул</option>
-                    <option value="blacklisted">Чорний список</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Причина чорного списку</label>
-                <textarea id="editBlacklistReason" rows="2" aria-label="Причина чорного списку" placeholder="Заповнюється тільки для чорного списку"></textarea>
             </div>
             <div class="form-group">
                 <label>Навички (через кому)</label>
@@ -961,15 +967,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.74.26"></script>
-    <script src="js/config.js?v=0.74.26"></script>
-    <script src="js/notification.js?v=0.74.26"></script>
-    <script src="js/api.js?v=0.74.26"></script>
-    <script src="js/auth.js?v=0.74.26"></script>
-    <script src="js/components/sidebar.js?v=0.74.26"></script>
+    <script src="js/ui.js?v=0.74.28"></script>
+    <script src="js/config.js?v=0.74.28"></script>
+    <script src="js/notification.js?v=0.74.28"></script>
+    <script src="js/api.js?v=0.74.28"></script>
+    <script src="js/auth.js?v=0.74.28"></script>
+    <script src="js/components/sidebar.js?v=0.74.28"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.74.26"></script>
-    <script src="js/hr-page.js?v=0.74.26"></script>
-    <script src="js/alerts.js?v=0.74.26"></script>
+    <script src="js/ws.js?v=0.74.28"></script>
+    <script src="js/hr-page.js?v=0.74.28"></script>
+    <script src="js/alerts.js?v=0.74.28"></script>
 </body>
 </html>

@@ -70,6 +70,7 @@ const STARTUP_SCHEMA_COLUMNS = [
     'leads.business_context',
     'mailing_list.business_context',
     'products.business_context',
+    'staff.rate_unit',
     'staff.telegram_username',
     'task_templates.business_context',
     'task_templates.category',

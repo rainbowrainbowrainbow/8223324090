@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.26">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.26">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.26">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.26">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.26">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.26">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.26">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.26">
-    <link rel="stylesheet" href="css/features.css?v=0.74.26">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.26">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.26">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.26">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.26">
+    <link rel="stylesheet" href="css/base.css?v=0.74.28">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.28">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.28">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.28">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.28">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.28">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.28">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.28">
+    <link rel="stylesheet" href="css/features.css?v=0.74.28">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.28">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.28">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.28">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.28">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.26">✨ 0.74.26</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.28">✨ 0.74.28</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.26 — Деплой: піньята та HR профіль</p>
+                <p class="tagline">AI First CRM v0.74.28 — HR: ставки та профіль команди</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.26</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.28</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1646,6 +1646,32 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.28 — HR: ставки та профіль команди</h4>
+                    <ul>
+                        <li><b>У картці робітника додано вибір одиниці ставки</b> — менеджер може обрати <code>За годину</code> або <code>За день</code> прямо біля поля ставки.</li>
+                        <li><b>Підписи змінюються автоматично</b> — форма показує <code>Ставка грн/год</code> або <code>Ставка грн/день</code>, а ставки по професіях отримують такий самий suffix.</li>
+                        <li><b>Backend зберігає <code>staff.rate_unit</code></b> — нова міграція додає <code>hour/day</code>, а всі старі працівники лишаються на погодинній ставці.</li>
+                        <li><b>Зарплатний розрахунок поважає денну ставку</b> — <code>hour</code> рахується як години × ставка, <code>day</code> як відпрацьовані дні × ставка.</li>
+                        <li><b>Monthly report, CSV export і payroll fallback синхронізовані</b> — денна ставка більше не множиться на години в старих звітах.</li>
+                        <li><b>Активна зарплатна схема лишається пріоритетною</b> — якщо схеми немає, HR fallback показує і рахує правильну одиницю ставки.</li>
+                        <li><b>Ручний HR-статус прибрано з профілю</b> — переміщення між робітниками, резервом, стажерами та чорним списком лишається в окремих діях картки.</li>
+                        <li><b>Додаткові професії стали компактним dropdown</b> — список варіантів відкривається під пошуком і більше не розтягує модалку профілю.</li>
+                        <li><b>Шапку HR-профілю перебудовано під розділ <code>Команда</code></b> — зверху видно картку співробітника, а ПІБ і телефон редагуються в першому рядку.</li>
+                        <li><b>Причину чорного списку прибрано з профільної форми</b> — поле більше не займає місце в редагуванні співробітника; причина лишається в окремій дії переміщення.</li>
+                        <li><b>Regression guard додано</b> — UI smoke і focused HR tests перевіряють selector, API payload, SQL-розрахунок і payroll fallback.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.28</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.27 — HR: денна ставка</h4>
+                    <ul>
+                        <li><b>Проміжний локальний пакет HR-змін зафіксовано перед фінальним деплоєм</b> — історія не стрибає з <code>0.74.28</code> на <code>0.74.26</code>.</li>
+                        <li><b>Додано основу денних ставок</b> — профіль співробітника отримав вибір <code>За годину</code> або <code>За день</code>, а backend зберігає <code>staff.rate_unit</code>.</li>
+                        <li><b>Почато cleanup HR-профілю</b> — status/blacklist прибрані з основної форми профілю й лишаються в окремих діях картки.</li>
+                        <li><b>Regression guard-и оновлено</b> — UI smoke і Node-тести покривають rate unit, приховані поля профілю, compact dropdown і backend whitelist.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.26 — Деплой: піньята та HR профіль</h4>
                     <ul>
@@ -12120,29 +12146,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.26"></script>
-    <script src="js/timeline-visibility.js?v=0.74.26"></script>
-    <script src="js/config.js?v=0.74.26"></script>
-    <script src="js/api.js?v=0.74.26"></script>
-    <script src="js/ui.js?v=0.74.26"></script>
-    <script src="js/auth.js?v=0.74.26"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.26"></script>
-    <script src="js/timeline.js?v=0.74.26"></script>
-    <script src="js/booking.js?v=0.74.26"></script>
-    <script src="js/settings.js?v=0.74.26"></script>
-    <script src="js/booking-form.js?v=0.74.26"></script>
-    <script src="js/booking-linked.js?v=0.74.26"></script>
-    <script src="js/settings-dashboard.js?v=0.74.26"></script>
-    <script src="js/settings-history.js?v=0.74.26"></script>
-    <script src="js/settings-afisha.js?v=0.74.26"></script>
-    <script src="js/settings-certificates.js?v=0.74.26"></script>
-    <script src="js/offline.js?v=0.74.26"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.26"></script>
-    <script src="js/search.js?v=0.74.26"></script>
-    <script src="js/ws.js?v=0.74.26"></script>
-    <script src="js/app.js?v=0.74.26"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.26"></script>
-    <script src="js/components/sidebar.js?v=0.74.26"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.26"></script>
+    <script src="js/timeline-context.js?v=0.74.28"></script>
+    <script src="js/timeline-visibility.js?v=0.74.28"></script>
+    <script src="js/config.js?v=0.74.28"></script>
+    <script src="js/api.js?v=0.74.28"></script>
+    <script src="js/ui.js?v=0.74.28"></script>
+    <script src="js/auth.js?v=0.74.28"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.28"></script>
+    <script src="js/timeline.js?v=0.74.28"></script>
+    <script src="js/booking.js?v=0.74.28"></script>
+    <script src="js/settings.js?v=0.74.28"></script>
+    <script src="js/booking-form.js?v=0.74.28"></script>
+    <script src="js/booking-linked.js?v=0.74.28"></script>
+    <script src="js/settings-dashboard.js?v=0.74.28"></script>
+    <script src="js/settings-history.js?v=0.74.28"></script>
+    <script src="js/settings-afisha.js?v=0.74.28"></script>
+    <script src="js/settings-certificates.js?v=0.74.28"></script>
+    <script src="js/offline.js?v=0.74.28"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.28"></script>
+    <script src="js/search.js?v=0.74.28"></script>
+    <script src="js/ws.js?v=0.74.28"></script>
+    <script src="js/app.js?v=0.74.28"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.28"></script>
+    <script src="js/components/sidebar.js?v=0.74.28"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.28"></script>
 </body>
 </html>

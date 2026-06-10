@@ -1768,9 +1768,23 @@ body.dark-mode .hr-org-detail {
     display: grid;
     gap: 8px;
 }
+.hr-rate-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.hr-rate-label-row select {
+    width: auto;
+    min-width: 132px;
+    min-height: 34px;
+    padding: 6px 28px 6px 10px;
+    font-size: 13px;
+    font-weight: 850;
+}
 .hr-profession-rate-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 120px;
+    grid-template-columns: minmax(0, 1fr) 166px;
     gap: 8px;
     align-items: center;
     padding: 8px 10px;
@@ -1797,6 +1811,18 @@ body.dark-mode .hr-org-detail {
     font-weight: 800;
     background: var(--white);
     color: var(--gray-800);
+}
+.hr-profession-rate-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+}
+.hr-profession-rate-control small {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 850;
+    white-space: nowrap;
 }
 .hr-missing-banner {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.1));
@@ -2532,10 +2558,67 @@ body.dark-mode .hr-org-detail {
 .hr-staff-profile-modal {
     max-width: 640px;
 }
-.hr-profession-picker {
+.hr-staff-profile-hero {
     display: grid;
     gap: 10px;
-    padding: 12px;
+    margin: 0 0 14px;
+}
+.hr-staff-profile-section {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563EB;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+.hr-staff-profile-card {
+    display: grid;
+    gap: 4px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(59, 130, 246, 0.08));
+}
+.hr-staff-profile-card span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+.hr-staff-profile-card strong {
+    color: var(--gray-900);
+    font-size: 24px;
+    font-weight: 950;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+.hr-staff-profile-quick-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+    gap: 10px;
+}
+.hr-staff-profile-quick-fields label {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+.hr-staff-profile-quick-fields span {
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 850;
+}
+.hr-profession-picker {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
     border: 1px solid rgba(20, 184, 166, 0.22);
     border-radius: 12px;
     background: rgba(20, 184, 166, 0.04);
@@ -2554,11 +2637,33 @@ body.dark-mode .hr-org-detail {
     font-size: 11px;
     white-space: nowrap;
 }
-.hr-profession-selected-list,
-.hr-profession-options {
+.hr-profession-selected-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    max-height: 70px;
+    overflow-y: auto;
+}
+.hr-profession-options {
+    position: absolute;
+    z-index: 80;
+    left: 10px;
+    right: 10px;
+    top: calc(100% - 10px);
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 12px;
+    background: var(--white);
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+}
+.hr-profession-picker.is-open .hr-profession-options,
+.hr-profession-picker:focus-within .hr-profession-options {
+    display: flex;
 }
 .hr-profession-selected-chip,
 .hr-profession-option {
@@ -2575,6 +2680,12 @@ body.dark-mode .hr-org-detail {
     font-size: 12px;
     font-weight: 850;
     cursor: pointer;
+}
+.hr-profession-option {
+    width: 100%;
+    justify-content: flex-start;
+    min-height: 34px;
+    border-radius: 8px;
 }
 .hr-profession-selected-chip {
     background: rgba(20, 184, 166, 0.13);
@@ -2853,6 +2964,15 @@ body.dark-mode .hr-profession-rate-row input {
     border-color: #4A4A6A;
     color: #F8FAFC;
 }
+body.dark-mode .hr-rate-label-row select {
+    background: #1E1E38;
+    border-color: #4A4A6A;
+    color: #F8FAFC;
+    color-scheme: dark;
+}
+body.dark-mode .hr-profession-rate-control small {
+    color: #94A3B8;
+}
 body.dark-mode .hr-people-bucket.is-drop-target {
     outline-color: rgba(45,212,191,0.52);
     background: rgba(20,184,166,0.10);
@@ -2873,9 +2993,30 @@ body.dark-mode .hr-team-move {
     border-color: rgba(56,189,248,0.32);
     color: #BAE6FD;
 }
+body.dark-mode .hr-staff-profile-section {
+    background: rgba(59,130,246,0.16);
+    border-color: rgba(96,165,250,0.32);
+    color: #93C5FD;
+}
+body.dark-mode .hr-staff-profile-card {
+    background: linear-gradient(135deg, rgba(20,184,166,0.13), rgba(59,130,246,0.12));
+    border-color: rgba(94,234,212,0.24);
+}
+body.dark-mode .hr-staff-profile-card span,
+body.dark-mode .hr-staff-profile-quick-fields span {
+    color: #94A3B8;
+}
+body.dark-mode .hr-staff-profile-card strong {
+    color: #F8FAFC;
+}
 body.dark-mode .hr-profession-picker {
     background: rgba(20,184,166,0.08);
     border-color: rgba(45,212,191,0.26);
+}
+body.dark-mode .hr-profession-options {
+    background: #1D1A3A;
+    border-color: rgba(94,234,212,0.26);
+    box-shadow: 0 20px 42px rgba(0,0,0,0.36);
 }
 body.dark-mode .hr-profession-picker-head,
 body.dark-mode .hr-profession-picker-head strong,
@@ -3028,6 +3169,9 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         min-height: 44px;
         padding: 10px 8px;
         font-size: 12px;
+    }
+    .hr-staff-profile-quick-fields {
+        grid-template-columns: 1fr;
     }
     .hr-today-date {
         width: 100%;

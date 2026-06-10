@@ -24,6 +24,12 @@ function numberOrNull(value) {
     return Number.isFinite(normalized) ? normalized : null;
 }
 
+function normalizeStaffRateUnit(value) {
+    const unit = String(value || '').trim().toLowerCase();
+    if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    return 'hour';
+}
+
 function parseJsonObject(value) {
     if (!value) return {};
     if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -171,9 +177,10 @@ async function loadPayrollSchemesForStaff(staffId, db = pool) {
 }
 
 async function loadStaffPayrollSchemeWorkspace(staffId, db = pool) {
-    const staff = await db.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [staffId]);
+    const staff = await db.query("SELECT id, name, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit FROM staff WHERE id = $1", [staffId]);
     if (!staff.rows.length) return null;
     const schemes = await loadPayrollSchemesForStaff(staffId, db);
+    const fallbackRateUnit = normalizeStaffRateUnit(staff.rows[0].rate_unit);
     return {
         staff: staff.rows[0],
         data: {
@@ -181,7 +188,9 @@ async function loadStaffPayrollSchemeWorkspace(staffId, db = pool) {
             active_scheme: schemes.find(scheme => scheme.is_active) || null,
             schemes,
             scheme_types: PAYROLL_SCHEME_TYPES.map(type => ({ value: type, label: payrollSchemeTypeTitle(type) })),
-            fallback_hourly_rate: Number(staff.rows[0].hourly_rate || 0)
+            fallback_hourly_rate: Number(staff.rows[0].hourly_rate || 0),
+            fallback_rate_unit: fallbackRateUnit,
+            fallbackRateUnit
         }
     };
 }
@@ -189,7 +198,7 @@ async function loadStaffPayrollSchemeWorkspace(staffId, db = pool) {
 async function createStaffPayrollScheme(staffId, body = {}, user = null, options = {}) {
     const db = options.db || pool;
     const createScheme = options.createScheme || createPayrollScheme;
-    const staff = await db.query('SELECT id, name, hourly_rate FROM staff WHERE id = $1', [staffId]);
+    const staff = await db.query("SELECT id, name, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit FROM staff WHERE id = $1", [staffId]);
     if (!staff.rows.length) return null;
 
     const schemeType = normalizePayrollSchemeType(body.scheme_type || body.schemeType);

@@ -53,7 +53,7 @@ check:migrations`.
 `certificates.customer_id`, `certificates.season`, `certificates.value_uah`,
 `customer_cards.business_context`, `customers.business_context`,
 `leads.business_context`, `mailing_list.business_context`,
-`products.business_context`, `staff.telegram_username`,
+`products.business_context`, `staff.rate_unit`, `staff.telegram_username`,
 `task_templates.business_context`, `task_templates.category`, `tasks.afisha_id`, `tasks.archive_reason`,
 `tasks.archived_at`, `tasks.business_context`, `tasks.category`, `tasks.control_policy`,
 `tasks.deadline`, `tasks.dependency_ids`, `tasks.duplicate_of_task_id`,

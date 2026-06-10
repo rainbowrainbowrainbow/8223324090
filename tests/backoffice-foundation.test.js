@@ -115,9 +115,11 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(staffRoute, /INSERT INTO staff[\s\S]*role_type[\s\S]*address/);
         assert.match(staffRoute, /UPDATE staff SET[\s\S]*role_type\s*=\s*COALESCE\(\$\d+,role_type\)[\s\S]*address\s*=\s*COALESCE\(\$\d+,address\)/);
         assert.match(hrPage, /id="editAddress"|editAddress/);
-        assert.match(hrPage, /editPoolStatus/);
+        assert.match(hrPage, /editStaffName/);
+        assert.match(hrPage, /setPoolStatus/);
+        assert.doesNotMatch(hrHtml, /id="editPoolStatus"/);
         assert.match(hrPage, /raw_application_text/);
         assert.match(hrHtml, /id="editAddress"/);
-        assert.match(hrHtml, /id="editPoolStatus"/);
+        assert.match(hrHtml, /id="editStaffName"/);
     });
 });

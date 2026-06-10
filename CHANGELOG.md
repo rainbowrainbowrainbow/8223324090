@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.35 - Воронка: F5 не губить Kanban
+
+### Leads / Воронка / Kanban / Legacy Redirect / URL state / Guardrail / Release / (Клешня, 10.06.2026) [codex]
+- **F5 на legacy-шляху `/leads?view=kanban` більше не скидає воронку** - серверний редирект на `/sales-funnel` тепер переносить query string, тому `view=kanban`, фільтри, пошук і stage не губляться до запуску frontend.
+- **Кешована стара сторінка `/leads` сама нормалізується в canonical route** - frontend переписує URL на `/sales-funnel` через `history.replaceState` до застосування query-параметрів.
+- **Попередній механізм `syncLeadUrlState` залишився робочим** - нова правка не замінює `0.74.34`, а закриває фактичну причину, через яку браузер втрачав параметри під час redirect.
+- **Додано regression guard для legacy refresh state** - `tests/ui-check.js` тепер перевіряє і серверний query-preserving redirect, і frontend-normalization fallback.
+- **Попередні релізи `0.74.34`, `0.74.33`, `0.74.32` і нижче перевірено й залишено окремими блоками** - URL state, якість ліда, drag/drop order, HR-ставки, документи й таймлайн не загублені в release notes.
+- **Релізні маркери піднято до `0.74.35`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.34 - Воронка: Kanban зберігає вигляд після F5
 
 ### Leads / Воронка / Kanban / URL state / Guardrail / Release / (Клешня, 10.06.2026) [codex]

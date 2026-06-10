@@ -428,6 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch {}
     initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
 
+    normalizeLeadCanonicalRoute();
     setupEvents();
     bindKanbanLeadTypeMenuEvents();
     applyLeadQueryParams();
@@ -602,6 +603,18 @@ function leadDateFilterLabel(value) {
 
 function leadPipelineStageLabel(value) {
     return PIPELINE_STAGES.find(stage => stage.key === value)?.label || value;
+}
+
+function normalizeLeadCanonicalRoute() {
+    if (!window.history || !window.location) return;
+    const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+    if (currentPath !== '/leads') return;
+    const url = new URL(window.location.href);
+    url.pathname = '/sales-funnel';
+    const previousState = window.history.state && typeof window.history.state === 'object'
+        ? window.history.state
+        : {};
+    window.history.replaceState({ ...previousState, leadsRoute: 'sales-funnel' }, '', url);
 }
 
 function applyLeadQueryParams() {

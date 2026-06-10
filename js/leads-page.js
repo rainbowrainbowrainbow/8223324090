@@ -152,6 +152,8 @@ let leadCustomerLinkState = {
 };
 let kanbanDragState = null;
 let kanbanLeadTypeMenuEventsBound = false;
+let kanbanLeadTypeTriggerOpenedAt = 0;
+let kanbanLeadTypeTriggerOpenedLeadId = 0;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -1595,6 +1597,7 @@ function renderKanban() {
         </div>`;
     }).join('');
 
+    bindKanbanLeadTypeTriggerControls(kanbanWrap);
     setupKanbanDragDrop();
     syncLeadReadOnlyUi();
 }
@@ -1604,7 +1607,8 @@ function setupKanbanDragDrop() {
     const columns = document.querySelectorAll('.kanban-cards');
 
     cards.forEach(card => {
-        card.querySelectorAll('a, button, select, [data-kanban-actions], [data-lead-type-select]').forEach(control => {
+        card.querySelectorAll('a, button, select, [data-kanban-actions]').forEach(control => {
+            if (control.matches?.('[data-lead-type-select]')) return;
             control.addEventListener('click', event => event.stopPropagation());
             control.addEventListener('pointerdown', event => event.stopPropagation());
         });
@@ -1820,32 +1824,62 @@ function closeKanbanLeadTypeMenus() {
     });
 }
 
+function closestLeadTypeElement(target, selector) {
+    const elementTarget = target?.nodeType === 1 ? target : target?.parentElement;
+    return elementTarget?.closest?.(selector) || null;
+}
+
+function leadTypeTriggerFromEvent(event) {
+    if (event?.currentTarget?.matches?.('[data-lead-type-select]')) {
+        return event.currentTarget;
+    }
+    return closestLeadTypeElement(event?.target, '[data-lead-type-select]');
+}
+
+function handleKanbanLeadTypeTriggerEvent(event) {
+    const trigger = leadTypeTriggerFromEvent(event);
+    if (!trigger) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (trigger.disabled) return;
+
+    const leadId = Number(trigger.dataset.leadId || 0);
+    if (!leadId) return;
+    const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
+        && Date.now() - kanbanLeadTypeTriggerOpenedAt < 700;
+    if (event.type === 'click' && justOpened) return;
+
+    kanbanLeadTypeTriggerOpenedAt = Date.now();
+    kanbanLeadTypeTriggerOpenedLeadId = leadId;
+    showKanbanLeadTypeMenu(leadId, event);
+}
+
+function bindKanbanLeadTypeTriggerControls(root = document) {
+    root.querySelectorAll('[data-lead-type-select]').forEach(trigger => {
+        if (trigger.dataset.leadTypeTriggerBound === 'true') return;
+        trigger.dataset.leadTypeTriggerBound = 'true';
+        trigger.addEventListener('pointerdown', handleKanbanLeadTypeTriggerEvent);
+        trigger.addEventListener('click', handleKanbanLeadTypeTriggerEvent);
+        trigger.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            handleKanbanLeadTypeTriggerEvent(event);
+        });
+    });
+}
+
 function bindKanbanLeadTypeMenuEvents() {
     if (kanbanLeadTypeMenuEventsBound) return;
     kanbanLeadTypeMenuEventsBound = true;
-    let pointerOpenedAt = 0;
-    let pointerOpenedLeadId = 0;
 
     document.addEventListener('pointerdown', event => {
-        const trigger = event.target?.closest?.('[data-lead-type-select]');
-        if (trigger) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (trigger.disabled) return;
-            pointerOpenedAt = Date.now();
-            pointerOpenedLeadId = Number(trigger.dataset.leadId || 0);
-            showKanbanLeadTypeMenu(pointerOpenedLeadId, event);
-            return;
-        }
-
-        if (event.target?.closest?.('.lead-type-popover')) {
+        if (closestLeadTypeElement(event.target, '.lead-type-popover')) {
             event.stopPropagation();
             return;
         }
     }, true);
 
     document.addEventListener('click', event => {
-        const option = event.target?.closest?.('[data-lead-type-option]');
+        const option = closestLeadTypeElement(event.target, '[data-lead-type-option]');
         if (option) {
             event.preventDefault();
             event.stopPropagation();
@@ -1854,19 +1888,12 @@ function bindKanbanLeadTypeMenuEvents() {
             return;
         }
 
-        const trigger = event.target?.closest?.('[data-lead-type-select]');
+        const trigger = closestLeadTypeElement(event.target, '[data-lead-type-select]');
         if (trigger) {
-            event.preventDefault();
-            event.stopPropagation();
-            const leadId = Number(trigger.dataset.leadId || 0);
-            const justOpenedByPointer = pointerOpenedLeadId === leadId && Date.now() - pointerOpenedAt < 700;
-            if (justOpenedByPointer) return;
-            if (trigger.disabled) return;
-            showKanbanLeadTypeMenu(leadId, event);
             return;
         }
 
-        if (!event.target?.closest?.('.lead-type-popover')) {
+        if (!closestLeadTypeElement(event.target, '.lead-type-popover')) {
             closeKanbanLeadTypeMenus();
         }
     }, true);
@@ -1879,7 +1906,7 @@ function showKanbanLeadTypeMenu(leadId, event) {
     }
     if (!guardLeadWrite('змінювати тип ліда')) return;
 
-    const trigger = event?.target?.closest?.('[data-lead-type-select]')
+    const trigger = leadTypeTriggerFromEvent(event)
         || document.querySelector(`[data-lead-type-select][data-lead-id="${Number(leadId)}"]`);
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));
     const currentType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';

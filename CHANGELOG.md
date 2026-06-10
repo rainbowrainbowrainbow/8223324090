@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.37 - Воронка: кнопка якості ліда працює
+
+### Leads / Воронка / Kanban / Якість ліда / Click handlers / Guardrail / Release / (Клешня, 10.06.2026) [codex]
+- **Кнопка якості ліда в Kanban отримала власний handler** - відкриття меню тепер прив'язане напряму до кнопки через `pointerdown`, `click` і клавіатуру, а не залежить від загального document-handler.
+- **Drag/drop картки більше не проковтує натискання якості** - загальне перехоплення `button` у Kanban явно пропускає `[data-lead-type-select]`, тому натискання не губиться всередині drag/click guard-ів картки.
+- **Popover якості лишається робочим для вибору типу** - опції `Якісний`, `Спам`, `Співпраця`, `Інформаційний` і `Неякісний` далі зберігаються через існуючий `PATCH /api/leads/:id`, без зміни API.
+- **Додано regression guard для прямого trigger-flow** - UI smoke перевіряє, що кнопка якості має власні pointer/click/keyboard handlers і не входить у загальний stopPropagation набір Kanban-картки.
+- **Попередній реліз `0.74.36` залишено окремим блоком нижче** - попередня спроба з pointer fallback, read-only guard і підказкою `Проведено` не загублена в release notes.
+- **Релізні маркери піднято до `0.74.37`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.36 - Воронка: якість ліда відкривається
 
 ### Leads / Воронка / Kanban / Якість ліда / Tooltip / Guardrail / Release / (Клешня, 10.06.2026) [codex]

@@ -75,7 +75,7 @@ const PIPELINE_STAGES = [
         label: 'Проведено',
         emoji: '✅',
         color: '#22C55E',
-        hint: 'Послугу або подію виконано. Тут лишаються ліди, які вже доведені до результату і потребують фінального закриття.'
+        hint: 'Святкування відбулося, фінальні правки і корективи менеджера.'
     },
     {
         key: 'closed',
@@ -353,7 +353,8 @@ function syncLeadReadOnlyUi() {
         '.btn-add-mailing',
         '#addMailingModal .btn-save'
     ].join(',')).forEach(el => {
-        el.disabled = readOnly;
+        const keepClickableForGuard = el.matches?.('[data-lead-type-select]');
+        if ('disabled' in el) el.disabled = readOnly && !keepClickableForGuard;
         el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
         el.classList.toggle('crm-business-readonly-control', readOnly);
         if (readOnly) el.title = leadReadOnlyMessage('редагувати ліди');
@@ -1822,10 +1823,24 @@ function closeKanbanLeadTypeMenus() {
 function bindKanbanLeadTypeMenuEvents() {
     if (kanbanLeadTypeMenuEventsBound) return;
     kanbanLeadTypeMenuEventsBound = true;
+    let pointerOpenedAt = 0;
+    let pointerOpenedLeadId = 0;
 
     document.addEventListener('pointerdown', event => {
-        if (event.target?.closest?.('[data-lead-type-select], .lead-type-popover')) {
+        const trigger = event.target?.closest?.('[data-lead-type-select]');
+        if (trigger) {
+            event.preventDefault();
             event.stopPropagation();
+            if (trigger.disabled) return;
+            pointerOpenedAt = Date.now();
+            pointerOpenedLeadId = Number(trigger.dataset.leadId || 0);
+            showKanbanLeadTypeMenu(pointerOpenedLeadId, event);
+            return;
+        }
+
+        if (event.target?.closest?.('.lead-type-popover')) {
+            event.stopPropagation();
+            return;
         }
     }, true);
 
@@ -1843,8 +1858,11 @@ function bindKanbanLeadTypeMenuEvents() {
         if (trigger) {
             event.preventDefault();
             event.stopPropagation();
-            if (trigger.disabled || trigger.getAttribute('aria-disabled') === 'true') return;
-            showKanbanLeadTypeMenu(Number(trigger.dataset.leadId || 0), event);
+            const leadId = Number(trigger.dataset.leadId || 0);
+            const justOpenedByPointer = pointerOpenedLeadId === leadId && Date.now() - pointerOpenedAt < 700;
+            if (justOpenedByPointer) return;
+            if (trigger.disabled) return;
+            showKanbanLeadTypeMenu(leadId, event);
             return;
         }
 

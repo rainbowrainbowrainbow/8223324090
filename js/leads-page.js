@@ -346,6 +346,7 @@ function syncLeadReadOnlyUi() {
         '.lead-actions .btn-delete',
         '.lead-actions .btn-convert',
         '.kanban-card-actions button',
+        '[data-lead-type-select]',
         '.btn-add-mailing',
         '#addMailingModal .btn-save'
     ].join(',')).forEach(el => {
@@ -1447,6 +1448,20 @@ function renderPipelineStageHelp(stage = {}) {
     return `<button type="button" class="pipeline-stage-help" aria-label="${escapeHtml(`${label}: ${hint}`)}" data-tooltip="${escapeHtml(hint)}">!</button>`;
 }
 
+function renderLeadTypeSelect(lead = {}) {
+    const leadId = Number(lead.id || 0);
+    const currentType = LEAD_TYPE_MAP[lead.lead_type] ? lead.lead_type : 'quality';
+    const current = LEAD_TYPE_MAP[currentType] || LEAD_TYPE_MAP.quality;
+    const clientName = lead.client_name || 'лід';
+    const options = Object.entries(LEAD_TYPE_MAP).map(([key, meta]) => {
+        const selected = key === currentType ? ' selected' : '';
+        return `<option value="${escapeHtml(key)}"${selected}>${meta.emoji} ${escapeHtml(meta.label)}</option>`;
+    }).join('');
+    return `<select class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда" onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()" onchange="updateLeadTypeFromKanbanSelect(${leadId}, this.value, event)">
+        ${options}
+    </select>`;
+}
+
 function renderKanban() {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
@@ -1489,7 +1504,6 @@ function renderKanban() {
 
         const cards = leads.map(l => {
             const idleClass = getIdleColor(l);
-            const lt = LEAD_TYPE_MAP[l.lead_type] || LEAD_TYPE_MAP.quality;
             const days = getDaysOnStage(l);
             const daysClass = days > 7 ? 'days-warn' : days > 3 ? 'days-mid' : '';
             const phone = l.phone || '';
@@ -1503,7 +1517,7 @@ function renderKanban() {
                 </div>
                 <div class="kanban-card-meta">
                     <span class="kanban-card-meta-text" title="${escapeHtml(phoneLabel)}">${escapeHtml(phoneLabel)}</span>
-                    <span class="lead-type-badge ${lt.cls}">${lt.emoji} ${escapeHtml(lt.label)}</span>
+                    ${renderLeadTypeSelect(l)}
                 </div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
                 <div class="kanban-card-actions" data-kanban-actions onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
@@ -1540,7 +1554,7 @@ function setupKanbanDragDrop() {
     const columns = document.querySelectorAll('.kanban-cards');
 
     cards.forEach(card => {
-        card.querySelectorAll('a, button, [data-kanban-actions]').forEach(control => {
+        card.querySelectorAll('a, button, select, [data-kanban-actions], [data-lead-type-select]').forEach(control => {
             control.addEventListener('click', event => event.stopPropagation());
             control.addEventListener('pointerdown', event => event.stopPropagation());
         });
@@ -1647,33 +1661,84 @@ function showTypeMenu(leadId, event) {
     }, 50);
 }
 
+async function persistLeadType(leadId, type, { reload = true } = {}) {
+    if (!guardLeadWrite('змінювати тип ліда')) return false;
+    const normalizedType = LEAD_TYPE_MAP[type] ? type : 'quality';
+    const body = { lead_type: normalizedType };
+    // Collaboration: auto-create task
+    if (normalizedType === 'collaboration') {
+        body.notes = (leadsData.find(l => l.id === leadId)?.notes || '') + '\n[Співпраця] Потрібна задача для відділу';
+    }
+    const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!res) return false;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'Не вдалося змінити тип ліда');
+    }
+    if (typeof showNotification === 'function') showNotification(`Тип змінено: ${LEAD_TYPE_MAP[normalizedType]?.label}`, 'success');
+
+    // If informational, suggest mailing
+    if (normalizedType === 'informational') {
+        if (typeof showNotification === 'function') showNotification('📩 Автоматично додано до розсилки', 'info');
+    }
+    if (reload) await loadLeads();
+    return true;
+}
+
 async function setLeadType(leadId, type, event) {
     if (event) event.stopPropagation();
     if (!guardLeadWrite('змінювати тип ліда')) return;
     document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
 
-    // If quality type, show category picker
+    // If quality type from the full menu, show category picker.
     if (type === 'quality') {
         showQualityCategoryModal(leadId);
         return;
     }
 
     try {
-        const body = { lead_type: type };
-        // Collaboration: auto-create task
-        if (type === 'collaboration') {
-            body.notes = (leadsData.find(l => l.id === leadId)?.notes || '') + '\n[Співпраця] Потрібна задача для відділу';
-        }
-        await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
-        if (typeof showNotification === 'function') showNotification(`Тип змінено: ${LEAD_TYPE_MAP[type]?.label}`, 'success');
-
-        // If informational, suggest mailing
-        if (type === 'informational') {
-            if (typeof showNotification === 'function') showNotification('📩 Автоматично додано до розсилки', 'info');
-        }
-        await loadLeads();
+        await persistLeadType(leadId, type);
     } catch (e) {
         console.error('Set lead type error', e);
+        if (typeof showNotification === 'function') showNotification(e.message || 'Не вдалося змінити тип ліда', 'error');
+    }
+}
+
+async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const select = event?.target?.closest?.('[data-lead-type-select]');
+    const lead = leadsData.find(l => Number(l.id) === Number(leadId));
+    const previousType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
+    const nextType = LEAD_TYPE_MAP[type] ? type : previousType;
+    if (nextType === previousType) return;
+    if (!guardLeadWrite('змінювати тип ліда')) {
+        if (select) select.value = previousType;
+        return;
+    }
+    if (select) {
+        select.disabled = true;
+        select.classList.add('is-saving');
+    }
+    try {
+        const saved = await persistLeadType(leadId, nextType, { reload: false });
+        if (!saved) {
+            if (select) select.value = previousType;
+            return;
+        }
+        if (lead) lead.lead_type = nextType;
+        await loadLeads();
+    } catch (e) {
+        if (select) select.value = previousType;
+        console.error('Kanban lead type select error', e);
+        if (typeof showNotification === 'function') showNotification(e.message || 'Не вдалося змінити тип ліда', 'error');
+    } finally {
+        if (select) {
+            select.disabled = false;
+            select.classList.remove('is-saving');
+        }
     }
 }
 
@@ -2934,6 +2999,7 @@ window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
+window.updateLeadTypeFromKanbanSelect = updateLeadTypeFromKanbanSelect;
 window.closeQualityCategoryModal = closeQualityCategoryModal;
 window.closeLostReasonModal = closeLostReasonModal;
 window.closeAddMailingModal = closeAddMailingModal;

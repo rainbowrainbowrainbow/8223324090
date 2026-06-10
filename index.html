@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.30">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.30">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.30">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.30">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.30">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.30">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.30">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.30">
-    <link rel="stylesheet" href="css/features.css?v=0.74.30">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.30">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.30">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.30">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.30">
+    <link rel="stylesheet" href="css/base.css?v=0.74.31">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.31">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.31">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.31">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.31">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.31">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.31">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.31">
+    <link rel="stylesheet" href="css/features.css?v=0.74.31">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.31">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.31">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.31">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.31">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.30">✨ 0.74.30</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.31">✨ 0.74.31</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.30 — HR: ставки, документи і ціни активностей</p>
+                <p class="tagline">AI First CRM v0.74.31 — Воронка: якість ліда в Kanban</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.30</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.31</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1646,6 +1646,20 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.31 — Воронка: якість ліда в Kanban</h4>
+                    <ul>
+                        <li><b>У Kanban-мініатюрі ліда якість тепер змінюється випадаючим списком</b> — менеджер може прямо на картці перемкнути <code>Якісний</code>, <code>Спам</code>, <code>Співпраця</code>, <code>Інформаційний</code> або <code>Неякісний</code>.</li>
+                        <li><b>Статичний бейдж у Kanban замінено на компактний select-бейдж</b> — елемент виглядає як маленький ярлик у стилі воронки, але відкриває нативний dropdown.</li>
+                        <li><b>Зміна якості з Kanban одразу зберігається через існуючий API</b> — frontend відправляє <code>lead_type</code>, показує статус і перезавантажує воронку після успіху.</li>
+                        <li><b>Dropdown не відкриває картку ліда і не запускає drag</b> — click/pointerdown зупинені на самому контролі.</li>
+                        <li><b>Read-only business scope поважає новий контроль</b> — у aggregate/multi режимах dropdown вимикається разом з іншими діями редагування ліда.</li>
+                        <li><b>Для темної теми додано окремі кольори типів</b> — <code>quality/spam/collaboration/informational/low_quality</code> не зливаються з темним фоном.</li>
+                        <li><b>UI guard оновлено</b> — smoke test перевіряє inline dropdown, handler збереження, stopPropagation і dark-mode стиль.</li>
+                        <li><b>Попередній реліз <code>0.74.30</code> перевірено й залишено нижче</b> — HR-ставки, документи й ціни активностей не загублені.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.31</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.30 — HR: ставки, документи і ціни активностей</h4>
                     <ul>
@@ -12175,29 +12189,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.30"></script>
-    <script src="js/timeline-visibility.js?v=0.74.30"></script>
-    <script src="js/config.js?v=0.74.30"></script>
-    <script src="js/api.js?v=0.74.30"></script>
-    <script src="js/ui.js?v=0.74.30"></script>
-    <script src="js/auth.js?v=0.74.30"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.30"></script>
-    <script src="js/timeline.js?v=0.74.30"></script>
-    <script src="js/booking.js?v=0.74.30"></script>
-    <script src="js/settings.js?v=0.74.30"></script>
-    <script src="js/booking-form.js?v=0.74.30"></script>
-    <script src="js/booking-linked.js?v=0.74.30"></script>
-    <script src="js/settings-dashboard.js?v=0.74.30"></script>
-    <script src="js/settings-history.js?v=0.74.30"></script>
-    <script src="js/settings-afisha.js?v=0.74.30"></script>
-    <script src="js/settings-certificates.js?v=0.74.30"></script>
-    <script src="js/offline.js?v=0.74.30"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.30"></script>
-    <script src="js/search.js?v=0.74.30"></script>
-    <script src="js/ws.js?v=0.74.30"></script>
-    <script src="js/app.js?v=0.74.30"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.30"></script>
-    <script src="js/components/sidebar.js?v=0.74.30"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.30"></script>
+    <script src="js/timeline-context.js?v=0.74.31"></script>
+    <script src="js/timeline-visibility.js?v=0.74.31"></script>
+    <script src="js/config.js?v=0.74.31"></script>
+    <script src="js/api.js?v=0.74.31"></script>
+    <script src="js/ui.js?v=0.74.31"></script>
+    <script src="js/auth.js?v=0.74.31"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.31"></script>
+    <script src="js/timeline.js?v=0.74.31"></script>
+    <script src="js/booking.js?v=0.74.31"></script>
+    <script src="js/settings.js?v=0.74.31"></script>
+    <script src="js/booking-form.js?v=0.74.31"></script>
+    <script src="js/booking-linked.js?v=0.74.31"></script>
+    <script src="js/settings-dashboard.js?v=0.74.31"></script>
+    <script src="js/settings-history.js?v=0.74.31"></script>
+    <script src="js/settings-afisha.js?v=0.74.31"></script>
+    <script src="js/settings-certificates.js?v=0.74.31"></script>
+    <script src="js/offline.js?v=0.74.31"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.31"></script>
+    <script src="js/search.js?v=0.74.31"></script>
+    <script src="js/ws.js?v=0.74.31"></script>
+    <script src="js/app.js?v=0.74.31"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.31"></script>
+    <script src="js/components/sidebar.js?v=0.74.31"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.31"></script>
 </body>
 </html>

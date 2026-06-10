@@ -79,6 +79,125 @@ body.dark-mode .pipeline-stage-help::after {
     border: 1px solid currentColor;
 }
 
+.lead-type-select {
+    flex: 0 0 auto;
+    min-width: 112px;
+    max-width: 134px;
+    min-height: 28px;
+    padding: 3px 24px 3px 10px;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 850;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    color: #334155;
+    background-color: #F8FAFC;
+    background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+        calc(100% - 12px) 50%,
+        calc(100% - 8px) 50%;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+    appearance: none;
+    box-sizing: border-box;
+}
+
+.lead-type-select:hover {
+    filter: brightness(0.98);
+    box-shadow: 0 1px 4px rgba(15,23,42,0.08);
+}
+
+.lead-type-select:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+}
+
+.lead-type-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+}
+
+.lead-type-select.is-saving {
+    cursor: progress;
+    opacity: 0.72;
+}
+
+.lead-type-select.type-quality {
+    background-color: #D1FAE5;
+    border-color: #A7F3D0;
+    color: #065F46;
+}
+
+.lead-type-select.type-spam {
+    background-color: #FEE2E2;
+    border-color: #FECACA;
+    color: #991B1B;
+}
+
+.lead-type-select.type-collab {
+    background-color: #EDE9FE;
+    border-color: #DDD6FE;
+    color: #5B21B6;
+}
+
+.lead-type-select.type-info {
+    background-color: #DBEAFE;
+    border-color: #BFDBFE;
+    color: #1D4ED8;
+}
+
+.lead-type-select.type-low {
+    background-color: #F1F5F9;
+    border-color: #CBD5E1;
+    color: #475569;
+}
+
+.lead-type-select option {
+    color: #0F172A;
+    background: #FFFFFF;
+    font-weight: 700;
+}
+
+body.dark-mode .lead-type-select option {
+    background: #1e1e32;
+    color: #E2E8F0;
+}
+
+body.dark-mode .lead-type-select.type-quality {
+    background-color: rgba(16,185,129,0.18);
+    border-color: rgba(52,211,153,0.42);
+    color: #A7F3D0;
+}
+
+body.dark-mode .lead-type-select.type-spam {
+    background-color: rgba(239,68,68,0.18);
+    border-color: rgba(248,113,113,0.42);
+    color: #FCA5A5;
+}
+
+body.dark-mode .lead-type-select.type-collab {
+    background-color: rgba(139,92,246,0.18);
+    border-color: rgba(167,139,250,0.42);
+    color: #DDD6FE;
+}
+
+body.dark-mode .lead-type-select.type-info {
+    background-color: rgba(59,130,246,0.18);
+    border-color: rgba(96,165,250,0.42);
+    color: #BFDBFE;
+}
+
+body.dark-mode .lead-type-select.type-low {
+    background-color: rgba(148,163,184,0.14);
+    border-color: rgba(148,163,184,0.34);
+    color: #CBD5E1;
+}
+
 @media (max-width: 768px) {
     .kanban-column-empty:hover {
         min-width: 190px;

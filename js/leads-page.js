@@ -122,6 +122,7 @@ const SOURCE_MAP = {
     universal:      '🌐 Universal'
 };
 
+const LEAD_VIEW_MODES = new Set(['table', 'kanban', 'mailing']);
 let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
@@ -606,7 +607,7 @@ function leadPipelineStageLabel(value) {
 function applyLeadQueryParams() {
     const params = new URLSearchParams(window.location.search);
     const requestedView = params.get('view');
-    if (['table', 'kanban', 'mailing'].includes(requestedView)) currentView = requestedView;
+    if (LEAD_VIEW_MODES.has(requestedView)) currentView = requestedView;
     const requestedStage = params.get('pipeline_stage') || params.get('stage') || '';
     currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
     currentFilter = params.get('status') || currentFilter;
@@ -626,6 +627,38 @@ function applyLeadQueryParams() {
         const expected = dateKey === 'tomorrow' ? todayKyiv(1) : todayKyiv(0);
         btn.classList.toggle('active', currentDateFilter === expected);
     });
+}
+
+function syncLeadUrlState({ replace = true } = {}) {
+    if (!window.history || !window.location) return;
+    const url = new URL(window.location.href);
+    const setOrDelete = (key, value) => {
+        const clean = String(value || '').trim();
+        if (clean) url.searchParams.set(key, clean);
+        else url.searchParams.delete(key);
+    };
+
+    if (LEAD_VIEW_MODES.has(currentView) && currentView !== 'table') {
+        url.searchParams.set('view', currentView);
+    } else {
+        url.searchParams.delete('view');
+    }
+    setOrDelete('status', currentFilter);
+    setOrDelete('lead_type', currentTypeFilter);
+    setOrDelete('event_date', currentDateFilter);
+    setOrDelete('pipeline_stage', currentPipelineStage);
+    url.searchParams.delete('stage');
+    setOrDelete('search', document.getElementById('leadsSearch')?.value?.trim() || '');
+
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) return;
+    const previousState = window.history.state && typeof window.history.state === 'object'
+        ? window.history.state
+        : {};
+    const state = { ...previousState, leadsView: currentView };
+    if (replace) window.history.replaceState(state, '', url);
+    else window.history.pushState(state, '', url);
 }
 
 function getLeadFilterSummary() {
@@ -660,6 +693,7 @@ function resetLeadFilters() {
     if (search) search.value = '';
     document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => btn.classList.toggle('active', !btn.dataset.status));
     document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => btn.classList.remove('active'));
+    syncLeadUrlState();
     loadLeads();
 }
 
@@ -2305,11 +2339,9 @@ function setupEvents() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            currentView = btn.dataset.view;
-            if (currentView === 'kanban') renderKanban();
-            else if (currentView === 'mailing') loadMailing();
-            else renderTable();
-            syncWorkspaceHighlight();
+            currentView = LEAD_VIEW_MODES.has(btn.dataset.view) ? btn.dataset.view : 'table';
+            syncLeadUrlState();
+            loadLeads();
         });
     });
 
@@ -2321,6 +2353,7 @@ function setupEvents() {
             currentFilter = btn.dataset.status;
             currentTypeFilter = '';
             currentPipelineStage = '';
+            syncLeadUrlState();
             loadLeads();
         });
     });
@@ -2341,6 +2374,7 @@ function setupEvents() {
                 }
                 currentDateFilter = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
             }
+            syncLeadUrlState();
             loadLeads();
         });
     });
@@ -2351,7 +2385,10 @@ function setupEvents() {
     if (searchInput) {
         searchInput.addEventListener('input', () => {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(loadLeads, 300);
+            searchTimeout = setTimeout(() => {
+                syncLeadUrlState();
+                loadLeads();
+            }, 300);
         });
     }
     document.addEventListener('click', (e) => {

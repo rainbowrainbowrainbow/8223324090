@@ -81,8 +81,11 @@ body.dark-mode .pipeline-stage-help::after {
 
 .lead-type-select {
     flex: 0 0 auto;
-    min-width: 104px;
-    max-width: 132px;
+    appearance: none;
+    -webkit-appearance: none;
+    width: fit-content;
+    min-width: 96px;
+    max-width: 136px;
     min-height: 28px;
     display: inline-grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -96,11 +99,29 @@ body.dark-mode .pipeline-stage-help::after {
     font-weight: 900;
     line-height: 1.2;
     text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
     cursor: pointer;
     color: #0F172A;
     background: rgba(248,250,252,0.94);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.74), 0 1px 2px rgba(15,23,42,0.08);
     box-sizing: border-box;
+    transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+
+.kanban-card .lead-type-select--kanban {
+    justify-self: start;
+    align-self: start;
+    inline-size: fit-content;
+    max-inline-size: 100%;
+    min-block-size: 30px;
+    padding: 5px 9px 5px 7px;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 999px;
+    background-clip: padding-box;
+    user-select: none;
+    touch-action: manipulation;
 }
 
 .lead-type-select:hover {
@@ -123,6 +144,14 @@ body.dark-mode .pipeline-stage-help::after {
 .lead-type-select.is-saving {
     cursor: progress;
     opacity: 0.72;
+}
+
+.kanban-card .lead-type-select--kanban:disabled {
+    transform: none;
+}
+
+.kanban-card .lead-type-select--kanban:not(:disabled):active {
+    transform: translateY(0);
 }
 
 .lead-type-select-dot {
@@ -157,10 +186,22 @@ body.dark-mode .pipeline-stage-help::after {
     color: #065F46;
 }
 
+.kanban-card .lead-type-select--kanban.type-quality {
+    background: linear-gradient(135deg, rgba(16,185,129,0.22), rgba(209,250,229,0.96));
+    border-color: rgba(52,211,153,0.46);
+    color: #064E3B;
+}
+
 .lead-type-select.type-spam {
     background: linear-gradient(135deg, #FEE2E2, #FEF2F2);
     border-color: rgba(239,68,68,0.32);
     color: #991B1B;
+}
+
+.kanban-card .lead-type-select--kanban.type-spam {
+    background: linear-gradient(135deg, rgba(248,113,113,0.22), rgba(254,226,226,0.96));
+    border-color: rgba(248,113,113,0.46);
+    color: #7F1D1D;
 }
 
 .lead-type-select.type-collab {
@@ -169,16 +210,34 @@ body.dark-mode .pipeline-stage-help::after {
     color: #5B21B6;
 }
 
+.kanban-card .lead-type-select--kanban.type-collab {
+    background: linear-gradient(135deg, rgba(139,92,246,0.24), rgba(237,233,254,0.96));
+    border-color: rgba(167,139,250,0.46);
+    color: #4C1D95;
+}
+
 .lead-type-select.type-info {
     background: linear-gradient(135deg, #DBEAFE, #EFF6FF);
     border-color: rgba(59,130,246,0.32);
     color: #1D4ED8;
 }
 
+.kanban-card .lead-type-select--kanban.type-info {
+    background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(219,234,254,0.96));
+    border-color: rgba(96,165,250,0.46);
+    color: #1E3A8A;
+}
+
 .lead-type-select.type-low {
     background: linear-gradient(135deg, #F1F5F9, #F8FAFC);
     border-color: rgba(100,116,139,0.28);
     color: #475569;
+}
+
+.kanban-card .lead-type-select--kanban.type-low {
+    background: linear-gradient(135deg, rgba(148,163,184,0.20), rgba(248,250,252,0.94));
+    border-color: rgba(148,163,184,0.40);
+    color: #334155;
 }
 
 .lead-type-popover {
@@ -194,6 +253,8 @@ body.dark-mode .pipeline-stage-help::after {
 }
 
 .lead-type-popover-item {
+    appearance: none;
+    -webkit-appearance: none;
     width: 100%;
     min-height: 36px;
     display: grid;
@@ -265,10 +326,22 @@ body.dark-mode .lead-type-select.type-quality {
     color: #A7F3D0;
 }
 
+body.dark-mode .kanban-card .lead-type-select--kanban.type-quality {
+    background: linear-gradient(135deg, rgba(16,185,129,0.22), rgba(6,95,70,0.28));
+    border-color: rgba(52,211,153,0.50);
+    color: #D1FAE5;
+}
+
 body.dark-mode .lead-type-select.type-spam {
     background: rgba(239,68,68,0.16);
     border-color: rgba(248,113,113,0.42);
     color: #FCA5A5;
+}
+
+body.dark-mode .kanban-card .lead-type-select--kanban.type-spam {
+    background: linear-gradient(135deg, rgba(239,68,68,0.22), rgba(127,29,29,0.24));
+    border-color: rgba(248,113,113,0.50);
+    color: #FECACA;
 }
 
 body.dark-mode .lead-type-select.type-collab {
@@ -277,16 +350,34 @@ body.dark-mode .lead-type-select.type-collab {
     color: #DDD6FE;
 }
 
+body.dark-mode .kanban-card .lead-type-select--kanban.type-collab {
+    background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(76,29,149,0.26));
+    border-color: rgba(167,139,250,0.50);
+    color: #EDE9FE;
+}
+
 body.dark-mode .lead-type-select.type-info {
     background: rgba(59,130,246,0.16);
     border-color: rgba(96,165,250,0.42);
     color: #BFDBFE;
 }
 
+body.dark-mode .kanban-card .lead-type-select--kanban.type-info {
+    background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(30,58,138,0.24));
+    border-color: rgba(96,165,250,0.50);
+    color: #DBEAFE;
+}
+
 body.dark-mode .lead-type-select.type-low {
     background: rgba(148,163,184,0.14);
     border-color: rgba(148,163,184,0.34);
     color: #CBD5E1;
+}
+
+body.dark-mode .kanban-card .lead-type-select--kanban.type-low {
+    background: linear-gradient(135deg, rgba(148,163,184,0.16), rgba(30,41,59,0.32));
+    border-color: rgba(148,163,184,0.40);
+    color: #E2E8F0;
 }
 
 @media (max-width: 768px) {

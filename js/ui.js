@@ -859,15 +859,28 @@ function formModal(title, fields, options = {}) {
         const escAttr = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const escHtml = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const noteTextToHtml = (value) => escHtml(value).replace(/\n/g, '<br>');
-        const renderSelectOptions = (field, optionList) => {
+        const renderSelectOptions = (field, optionList, selectedOverride = null) => {
             const optionsToRender = Array.isArray(optionList) ? optionList : [];
-            return optionsToRender.map(o => `<option value="${escAttr(o.value)}"${o.value === field.defaultValue ? ' selected' : ''}>${escAttr(o.label)}</option>`).join('');
+            const hasSelectedOverride = selectedOverride !== null && selectedOverride !== undefined;
+            const hasDefaultValue = field.defaultValue !== null && field.defaultValue !== undefined;
+            const selectedValue = hasSelectedOverride
+                ? String(selectedOverride)
+                : (hasDefaultValue ? String(field.defaultValue) : null);
+            return optionsToRender.map(o => {
+                const selected = selectedValue !== null
+                    ? String(o.value) === selectedValue
+                    : o.selected === true;
+                return `<option value="${escAttr(o.value)}"${selected ? ' selected' : ''}>${escAttr(o.label)}</option>`;
+            }).join('');
         };
         const renderCheckboxOptions = (field, optionList, selectedOverride = null) => {
             const optionsToRender = Array.isArray(optionList) ? optionList : [];
+            const hasDefaultValue = field.defaultValue !== null && field.defaultValue !== undefined;
             const selectedValues = selectedOverride !== null
                 ? selectedOverride
-                : (Array.isArray(field.defaultValue) ? field.defaultValue.map(String) : String(field.defaultValue || '').split(/[,;\s]+/).filter(Boolean));
+                : (hasDefaultValue
+                    ? (Array.isArray(field.defaultValue) ? field.defaultValue.map(String) : String(field.defaultValue || '').split(/[,;\s]+/).filter(Boolean))
+                    : optionsToRender.filter(o => o.selected === true).map(o => o.value));
             const selected = new Set(selectedValues.map(String));
             return optionsToRender.map(o => {
                 const value = escAttr(o.value);
@@ -891,32 +904,32 @@ function formModal(title, fields, options = {}) {
 
             if (f.type === 'note') {
                 const note = String(f.text || f.defaultValue || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                return `<div class="form-modal-note" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(59,130,246,0.24);border-radius:10px;background:rgba(59,130,246,0.08);font-size:13px;line-height:1.4;color:var(--text-secondary,#666);">${note}</div>`;
+                return `<div class="form-modal-note" data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(59,130,246,0.24);border-radius:10px;background:rgba(59,130,246,0.08);font-size:13px;line-height:1.4;color:var(--text-secondary,#666);">${note}</div>`;
             }
             if (f.type === 'dynamicNote') {
-                return `<div id="${id}" class="form-modal-note form-modal-dynamic-note" data-dynamic-note="${f.key}" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(16,185,129,0.24);border-radius:10px;background:rgba(16,185,129,0.08);font-size:13px;line-height:1.45;color:var(--text-secondary,#666);"></div>`;
+                return `<div id="${id}" class="form-modal-note form-modal-dynamic-note" data-fm-field-wrap="${escAttr(f.key)}" data-dynamic-note="${f.key}" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(16,185,129,0.24);border-radius:10px;background:rgba(16,185,129,0.08);font-size:13px;line-height:1.45;color:var(--text-secondary,#666);"></div>`;
             }
             if (f.type === 'presetButtons' && Array.isArray(f.presets)) {
                 const buttons = f.presets.map((preset, index) => {
                     const labelText = escHtml(preset.label || `Пакет ${index + 1}`);
                     const hintText = preset.hint ? `<small style="display:block;margin-top:2px;font-size:11px;line-height:1.25;opacity:0.76;">${escHtml(preset.hint)}</small>` : '';
-                    return `<button type="button" class="form-modal-preset-btn" data-fm-preset="${f.key}" data-fm-preset-index="${index}" style="text-align:left;padding:9px 10px;border:1px solid rgba(45,212,191,0.26);border-radius:10px;background:rgba(45,212,191,0.08);color:var(--text,#1a1a2e);font:inherit;font-size:13px;font-weight:800;cursor:pointer;">${labelText}${hintText}</button>`;
+                    return `<button type="button" class="form-modal-preset-btn" data-fm-preset="${f.key}" data-fm-preset-index="${index}" aria-pressed="false" style="text-align:left;padding:9px 10px;border:1px solid rgba(45,212,191,0.26);border-radius:10px;background:rgba(45,212,191,0.08);color:var(--text,#1a1a2e);font:inherit;font-size:13px;font-weight:800;cursor:pointer;">${labelText}${hintText}</button>`;
                 }).join('');
-                return `<div style="margin-bottom:10px;">${f.label ? `<div style="font-size:13px;font-weight:700;color:var(--text-secondary,#666);margin-bottom:6px;">${escHtml(f.label)}</div>` : ''}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">${buttons}</div>${hint}</div>`;
+                return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${f.label ? `<div style="font-size:13px;font-weight:700;color:var(--text-secondary,#666);margin-bottom:6px;">${escHtml(f.label)}</div>` : ''}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">${buttons}</div>${hint}</div>`;
             }
             if (f.type === 'select' && f.options) {
                 const opts = renderSelectOptions(f, f.options);
-                return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select>${hint}</div>`;
+                return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select>${hint}</div>`;
             }
             if (f.type === 'checkboxGroup' && f.options) {
                 const opts = renderCheckboxOptions(f, f.options);
-                return `<div style="margin-bottom:10px;">${label}<div id="${id}" class="fm-field fm-checkbox-group" data-key="${f.key}" data-checkbox-group="true">${opts}</div>${hint}</div>`;
+                return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<div id="${id}" class="fm-field fm-checkbox-group" data-key="${f.key}" data-checkbox-group="true">${opts}</div>${hint}</div>`;
             }
             if (f.type === 'textarea') {
-                return `<div style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea>${hint}</div>`;
+                return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea>${hint}</div>`;
             }
             const inputType = f.type || 'text';
-            return `<div style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}">${hint}</div>`;
+            return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}">${hint}</div>`;
         }).join('');
 
         const overlay = document.createElement('div');
@@ -960,7 +973,8 @@ function formModal(title, fields, options = {}) {
         let initialValuesJson = null;
         const getValuesJson = () => JSON.stringify(getValues());
         const isDirty = () => initialValuesJson !== null && getValuesJson() !== initialValuesJson;
-        const setFieldValue = (key, value) => {
+        const setFieldValue = (key, value, options = {}) => {
+            const { notify = true } = options;
             const el = overlay.querySelector(`.fm-field[data-key="${String(key).replace(/"/g, '\\"')}"]`);
             if (!el) return;
             if (el.dataset.checkboxGroup === 'true') {
@@ -971,7 +985,22 @@ function formModal(title, fields, options = {}) {
             } else {
                 el.value = value == null ? '' : String(value);
             }
-            el.dispatchEvent(new Event('change', { bubbles: true }));
+            if (notify) el.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const isFieldVisible = (field, vals = getValues()) => {
+            if (typeof field.visibleWhen === 'function') return !!field.visibleWhen(vals);
+            if (typeof field.hiddenWhen === 'function') return !field.hiddenWhen(vals);
+            return true;
+        };
+        const updateConditionalFields = () => {
+            const vals = getValues();
+            fields.forEach(f => {
+                const wrap = overlay.querySelector(`[data-fm-field-wrap="${String(f.key).replace(/"/g, '\\"')}"]`);
+                if (!wrap) return;
+                const visible = isFieldVisible(f, vals);
+                wrap.hidden = !visible;
+                wrap.classList.toggle('form-modal-field-hidden', !visible);
+            });
         };
         const updateDynamicNotes = () => {
             const vals = getValues();
@@ -982,6 +1011,10 @@ function formModal(title, fields, options = {}) {
                     if (!el) return;
                     el.innerHTML = noteTextToHtml(f.render(vals) || '');
                 });
+        };
+        const updateFormState = () => {
+            updateConditionalFields();
+            updateDynamicNotes();
         };
         const requestCancel = async () => {
             if (isDirty() && window.UnsafeDismissGuard) {
@@ -1000,6 +1033,8 @@ function formModal(title, fields, options = {}) {
         overlay.querySelector('.confirm-ok').addEventListener('click', () => {
             const vals = getValues();
             for (const f of fields) {
+                const wrap = overlay.querySelector(`[data-fm-field-wrap="${String(f.key).replace(/"/g, '\\"')}"]`);
+                if (wrap?.hidden) continue;
                 const value = vals[f.key];
                 const missing = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
                 if (f.required && missing) {
@@ -1016,11 +1051,11 @@ function formModal(title, fields, options = {}) {
         overlay.querySelectorAll('.fm-field').forEach(el => {
             el.addEventListener('focus', () => { el.style.borderColor = 'rgba(139,92,246,0.6)'; });
             el.addEventListener('blur', () => { el.style.borderColor = 'rgba(139,92,246,0.3)'; });
-            el.addEventListener('input', updateDynamicNotes);
-            el.addEventListener('change', updateDynamicNotes);
+            el.addEventListener('input', updateFormState);
+            el.addEventListener('change', updateFormState);
         });
         overlay.querySelectorAll('input[data-fm-checkbox-group]').forEach(el => {
-            el.addEventListener('change', updateDynamicNotes);
+            el.addEventListener('change', updateFormState);
         });
 
         const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); requestCancel(); } };
@@ -1030,7 +1065,7 @@ function formModal(title, fields, options = {}) {
 
         const dependentRebuilders = [];
         fields
-            .filter(f => f.type === 'select' && f.dependsOn && f.optionsBy)
+            .filter(f => f.type === 'select' && f.dependsOn && (f.optionsBy || typeof f.optionsFor === 'function'))
             .forEach(f => {
                 const parent = overlay.querySelector(`#fm_${f.dependsOn}`);
                 const target = overlay.querySelector(`#fm_${f.key}`);
@@ -1038,12 +1073,17 @@ function formModal(title, fields, options = {}) {
 
                 const rebuild = () => {
                     const previous = target.value || f.defaultValue || '';
-                    const nextOptions = f.optionsBy[parent.value] || f.optionsBy.__default || f.options || [];
-                    target.innerHTML = renderSelectOptions(f, nextOptions);
-                    if (nextOptions.some(o => String(o.value) === String(previous))) {
-                        target.value = previous;
-                    }
-                    updateDynamicNotes();
+                    const vals = getValues();
+                    const parentValue = parent.dataset.checkboxGroup === 'true' ? vals[f.dependsOn] : parent.value;
+                    const nextOptions = typeof f.optionsFor === 'function'
+                        ? f.optionsFor(parentValue, vals)
+                        : (f.optionsBy[parent.value] || f.optionsBy.__default || f.options || []);
+                    const nextValue = nextOptions.some(o => String(o.value) === String(previous))
+                        ? previous
+                        : (nextOptions.find(o => o.selected === true)?.value ?? nextOptions[0]?.value ?? '');
+                    target.innerHTML = renderSelectOptions(f, nextOptions, nextValue);
+                    target.value = nextValue == null ? '' : String(nextValue);
+                    updateFormState();
                 };
 
                 dependentRebuilders.push(rebuild);
@@ -1064,7 +1104,7 @@ function formModal(title, fields, options = {}) {
                         ? f.optionsFor(parent.value, vals)
                         : (f.optionsBy[parent.value] || f.optionsBy.__default || f.options || []);
                     target.innerHTML = renderCheckboxOptions(f, nextOptions, selected);
-                    updateDynamicNotes();
+                    updateFormState();
                 };
 
                 dependentRebuilders.push(rebuild);
@@ -1072,23 +1112,37 @@ function formModal(title, fields, options = {}) {
                 rebuild();
             });
         const rebuildDependentFields = () => dependentRebuilders.forEach(rebuild => rebuild());
+        const applyPresetValues = (presetValues, activeButton = null) => {
+            const entries = Object.entries(presetValues || {});
+            if (!entries.length) return;
+
+            entries.forEach(([key, value]) => setFieldValue(key, value, { notify: false }));
+            rebuildDependentFields();
+            entries.forEach(([key, value]) => setFieldValue(key, value, { notify: false }));
+            updateFormState();
+
+            if (activeButton) {
+                overlay.querySelectorAll(`[data-fm-preset="${activeButton.dataset.fmPreset}"]`).forEach(item => {
+                    const isActive = item === activeButton;
+                    item.classList.toggle('is-active', isActive);
+                    item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                });
+            }
+        };
         overlay.querySelectorAll('[data-fm-preset]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const field = fields.find(item => item.key === btn.dataset.fmPreset);
                 const preset = field?.presets?.[Number(btn.dataset.fmPresetIndex)];
                 if (!preset?.values || typeof preset.values !== 'object') return;
-                Object.entries(preset.values).forEach(([key, value]) => {
-                    setFieldValue(key, value);
-                    rebuildDependentFields();
-                });
-                updateDynamicNotes();
+                applyPresetValues(preset.values, btn);
             });
         });
 
-        updateDynamicNotes();
+        updateFormState();
         initialValuesJson = getValuesJson();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
-        const firstField = overlay.querySelector('.fm-field');
+        const firstField = Array.from(overlay.querySelectorAll('.fm-field'))
+            .find(field => !field.closest('[data-fm-field-wrap]')?.hidden);
         if (firstField) requestAnimationFrame(() => firstField.focus());
     });
 }

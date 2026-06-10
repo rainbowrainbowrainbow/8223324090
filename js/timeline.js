@@ -3588,6 +3588,21 @@ function initRoomLoadPanel() {
     btn.setAttribute('aria-controls', 'roomLoadPanel');
     btn.setAttribute('aria-expanded', 'false');
 
+    const positionRoomLoadPanel = () => {
+        if (!btn || !panel) return;
+        const margin = 12;
+        const gap = 8;
+        const rect = btn.getBoundingClientRect();
+        const panelWidth = Math.min(panel.offsetWidth || 390, Math.max(280, window.innerWidth - margin * 2));
+        const top = Math.max(margin, Math.min(rect.bottom + gap, window.innerHeight - 160));
+        const maxRight = Math.max(margin, window.innerWidth - panelWidth - margin);
+        const right = Math.min(Math.max(margin, window.innerWidth - rect.right), maxRight);
+        const maxHeight = Math.max(220, window.innerHeight - top - margin);
+        panel.style.setProperty('--room-load-anchor-top', `${Math.round(top)}px`);
+        panel.style.setProperty('--room-load-anchor-right', `${Math.round(right)}px`);
+        panel.style.setProperty('--room-load-max-h', `${Math.round(maxHeight)}px`);
+    };
+
     const closeRoomLoadPanel = () => {
         panel.classList.remove('visible');
         panel.setAttribute('aria-hidden', 'true');
@@ -3601,6 +3616,7 @@ function initRoomLoadPanel() {
     const openRoomLoadPanel = () => {
         panel.classList.remove('hidden');
         panel.setAttribute('aria-hidden', 'false');
+        positionRoomLoadPanel();
         // Force reflow before adding visible class for animation.
         panel.offsetHeight;
         panel.classList.add('visible');
@@ -3622,6 +3638,14 @@ function initRoomLoadPanel() {
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && panel.classList.contains('visible')) closeRoomLoadPanel();
     });
+
+    window.addEventListener('resize', () => {
+        if (panel.classList.contains('visible')) positionRoomLoadPanel();
+    });
+
+    window.addEventListener('scroll', () => {
+        if (panel.classList.contains('visible')) positionRoomLoadPanel();
+    }, true);
 
     document.addEventListener('click', event => {
         if (!panel.classList.contains('visible')) return;

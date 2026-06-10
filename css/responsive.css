@@ -203,6 +203,7 @@
     body.timeline-dashboard-page .v32-controls,
     body.timeline-dashboard-page .action-buttons {
         align-self: center;
+        overflow: visible !important;
     }
 
     body.timeline-dashboard-page .v32-controls {

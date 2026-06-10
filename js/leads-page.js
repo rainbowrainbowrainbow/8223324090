@@ -150,6 +150,7 @@ let leadCustomerLinkState = {
     searchTimer: null
 };
 let kanbanDragState = null;
+let kanbanLeadTypeMenuEventsBound = false;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -427,6 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
 
     setupEvents();
+    bindKanbanLeadTypeMenuEvents();
     applyLeadQueryParams();
     await loadUsers();
     await loadLeads();
@@ -1455,10 +1457,10 @@ function renderLeadTypeSelect(lead = {}) {
     const currentType = LEAD_TYPE_MAP[lead.lead_type] ? lead.lead_type : 'quality';
     const current = LEAD_TYPE_MAP[currentType] || LEAD_TYPE_MAP.quality;
     const clientName = lead.client_name || 'лід';
-    return `<button type="button" class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда" onclick="showKanbanLeadTypeMenu(${leadId}, event)" onpointerdown="event.stopPropagation()">
+    return `<button type="button" class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда">
         <span class="lead-type-select-dot" aria-hidden="true">${current.emoji}</span>
         <span class="lead-type-select-label">${escapeHtml(current.label)}</span>
-        <span class="lead-type-select-caret" aria-hidden="true">⌄</span>
+        <span class="lead-type-select-caret" aria-hidden="true">▾</span>
     </button>`;
 }
 
@@ -1770,6 +1772,41 @@ function closeKanbanLeadTypeMenus() {
     });
 }
 
+function bindKanbanLeadTypeMenuEvents() {
+    if (kanbanLeadTypeMenuEventsBound) return;
+    kanbanLeadTypeMenuEventsBound = true;
+
+    document.addEventListener('pointerdown', event => {
+        if (event.target?.closest?.('[data-lead-type-select], .lead-type-popover')) {
+            event.stopPropagation();
+        }
+    }, true);
+
+    document.addEventListener('click', event => {
+        const option = event.target?.closest?.('[data-lead-type-option]');
+        if (option) {
+            event.preventDefault();
+            event.stopPropagation();
+            const leadId = Number(option.dataset.leadId || 0);
+            updateLeadTypeFromKanbanSelect(leadId, option.dataset.leadType || '', event);
+            return;
+        }
+
+        const trigger = event.target?.closest?.('[data-lead-type-select]');
+        if (trigger) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (trigger.disabled || trigger.getAttribute('aria-disabled') === 'true') return;
+            showKanbanLeadTypeMenu(Number(trigger.dataset.leadId || 0), event);
+            return;
+        }
+
+        if (!event.target?.closest?.('.lead-type-popover')) {
+            closeKanbanLeadTypeMenus();
+        }
+    }, true);
+}
+
 function showKanbanLeadTypeMenu(leadId, event) {
     if (event) {
         event.stopPropagation();
@@ -1795,16 +1832,12 @@ function showKanbanLeadTypeMenu(leadId, event) {
     menu.style.left = `${Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - 220)))}px`;
     menu.innerHTML = Object.entries(LEAD_TYPE_MAP).map(([key, meta]) => {
         const selected = key === currentType ? ' is-selected' : '';
-        return `<button type="button" class="lead-type-popover-item ${meta.cls}${selected}" role="menuitemradio" aria-checked="${key === currentType ? 'true' : 'false'}" onclick="updateLeadTypeFromKanbanSelect(${Number(leadId)}, '${escapeHtml(key)}', event)">
+        return `<button type="button" class="lead-type-popover-item ${meta.cls}${selected}" role="menuitemradio" aria-checked="${key === currentType ? 'true' : 'false'}" data-lead-type-option="true" data-lead-id="${Number(leadId)}" data-lead-type="${escapeHtml(key)}">
             <span class="lead-type-popover-dot" aria-hidden="true">${meta.emoji}</span>
             <span class="lead-type-popover-label">${escapeHtml(meta.label)}</span>
         </button>`;
     }).join('');
     document.body.appendChild(menu);
-
-    setTimeout(() => {
-        document.addEventListener('click', closeKanbanLeadTypeMenus, { once: true });
-    }, 0);
 }
 
 async function updateLeadTypeFromKanbanSelect(leadId, type, event) {

@@ -4,6 +4,25 @@
 
 ---
 
+## v0.74.33 - Деплой: доступи, таймлайн і якість ліда
+
+### Timeline / HR Account Center / Form Modal / Leads Kanban / UI / Guardrail / Release / (Клешня, 10.06.2026) [codex]
+- **Room-load на таймлайні витягнуто з прихованого краю** - панель завантаження кімнат тепер позиціонується як toolbar popover біля кнопки, має видиму ширину/висоту, адаптивний bottom-sheet на мобільному і перераховує позицію при scroll/resize.
+- **Порожні action-кнопки таймлайну більше не залишають невидиму смугу** - toolbar враховує `timeline-hidden-by-config` і `timeline-permission-hidden`, а responsive layout не обрізає popover-и.
+- **Швидкі пачки доступу в HR Account Center реально проставляють поля** - preset тепер виставляє основну роль, додаткові ролі, доступні бізнеси і бізнес за замовченням одним кліком.
+- **Пачка Майстерні може ставити `maysternya_doli` бізнесом за замовченням** - для ролей, які можуть перемикати бізнеси, preset додає `event_genix` + `maysternya_doli` і підписує це в hint.
+- **Доступні сторінки акаунта переведено з ручного рядка в checkbox-список** - `pageAllowlist` більше не треба вводити через кому, а options будуються з матриці доступів і зрозумілих назв сторінок.
+- **Бізнес-поля в модалках акаунтів показуються тільки для ролей з business switch** - при зміні ролі UI ховає/показує бізнеси, а select бізнесу за замовченням перебудовується від вибраних checkbox-ів.
+- **`formModal` отримав залежні поля для складних CRM-форм** - підтримано `visibleWhen/hiddenWhen`, wrapper `data-fm-field-wrap`, `optionsFor` для select, повторне застосування preset після rebuild і пропуск required-перевірки для прихованих полів.
+- **Додано unit-тест `tests/form-modal-dependencies.test.js`** - тест фіксує preset із залежними checkbox/select значеннями і hidden required fields, а `npm run test:unit` тепер запускає цей guard.
+- **Кнопки якості ліда в Kanban виправлено після регресії дизайну** - сірі широкі кнопки замінено на compact CRM pill із власним popover-меню, delegated click-handler-ом і без inline `onclick`.
+- **Lead quality popover більше не конфліктує з drag/drop картки** - pointer/click події зупиняються на контролі, але зміна якості й далі зберігається через існуючий `PATCH /api/leads/:id`.
+- **Regression guard-и оновлено для всього пакета** - UI smoke перевіряє room-load popover, toolbar visibility, HR Account Center preset/dependency contract і Kanban quality pill.
+- **Попередні релізи `0.74.32` і `0.74.31` перевірено й залишено нижче окремими блоками** - durable Kanban order, телефон у картці, кастомна якість ліда та попередній inline-flow не загублені в release notes.
+- **Релізні маркери піднято до `0.74.33`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.32 - Воронка: Kanban лідів, порядок і якість
 
 ### Leads / Воронка / Kanban / Drag&Drop / Якість ліда / UI / Міграція / Guardrail / (Клешня, 10.06.2026) [codex]

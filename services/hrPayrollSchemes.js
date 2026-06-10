@@ -27,6 +27,7 @@ function numberOrNull(value) {
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
     if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    if (['month', 'monthly', 'per_month', 'per-month'].includes(unit)) return 'month';
     return 'hour';
 }
 

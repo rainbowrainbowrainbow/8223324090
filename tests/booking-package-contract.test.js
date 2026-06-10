@@ -308,6 +308,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(configJs, /function getTimelineProductsPriceDate/);
     assert.match(configJs, /apiGetProducts\(true, \{ businessContext, priceDate \}\)/);
     assert.match(panelCss, /\.program-price-badge/);
+    assert.match(panelCss, /\.program-price-badge[\s\S]*min-width:\s*46px/);
+    assert.match(panelCss, /\.program-price-badge[\s\S]*color:\s*#ECFDF5/);
+    assert.match(panelCss, /body\.dark-mode \.program-price-badge[\s\S]*color:\s*#F8FAFC/);
     assert.match(panelCss, /\.program-next-price-badge/);
     assert.match(panelCss, /\.selected-activity-item/);
 });

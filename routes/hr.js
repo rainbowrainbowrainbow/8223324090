@@ -209,6 +209,7 @@ function numberOrNull(value) {
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
     if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    if (['month', 'monthly', 'per_month', 'per-month'].includes(unit)) return 'month';
     return 'hour';
 }
 
@@ -219,13 +220,18 @@ function staffRateUnit(row = {}) {
 function payrollAmountForRate(rate, rateUnit, minutes = 0, days = 0) {
     const normalizedRate = Number(rate || 0);
     if (!Number.isFinite(normalizedRate) || normalizedRate <= 0) return 0;
-    return normalizeStaffRateUnit(rateUnit) === 'day'
+    const unit = normalizeStaffRateUnit(rateUnit);
+    if (unit === 'month') return Math.max(0, Number(days || 0)) > 0 || Math.max(0, Number(minutes || 0)) > 0 ? normalizedRate : 0;
+    return unit === 'day'
         ? normalizedRate * Math.max(0, Number(days || 0))
         : normalizedRate * (Math.max(0, Number(minutes || 0)) / 60.0);
 }
 
 function rateUnitLabel(unit) {
-    return normalizeStaffRateUnit(unit) === 'day' ? 'день' : 'г';
+    const normalized = normalizeStaffRateUnit(unit);
+    if (normalized === 'day') return 'день';
+    if (normalized === 'month') return 'міс';
+    return 'г';
 }
 
 function staffRoleAssignmentMeta(row) {
@@ -1315,8 +1321,15 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                    SUM(total_minutes)::numeric AS total_minutes,
                    SUM(overtime_minutes)::numeric AS overtime_minutes,
                    SUM(days_worked)::int AS days_worked,
-                   SUM(CASE WHEN rate_unit = 'day' THEN days_worked * rate ELSE (total_minutes / 60.0) * rate END)::numeric AS base_salary,
-                   SUM(CASE WHEN rate_unit = 'day' THEN 0 ELSE (overtime_minutes / 60.0) * rate * 1.5 END)::numeric AS overtime_pay,
+                   (
+                       MAX(CASE WHEN rate_unit = 'month' THEN rate ELSE 0 END)
+                       + SUM(CASE
+                           WHEN rate_unit = 'month' THEN 0
+                           WHEN rate_unit = 'day' THEN days_worked * rate
+                           ELSE (total_minutes / 60.0) * rate
+                       END)
+                   )::numeric AS base_salary,
+                   SUM(CASE WHEN rate_unit IN ('day', 'month') THEN 0 ELSE (overtime_minutes / 60.0) * rate * 1.5 END)::numeric AS overtime_pay,
                    COALESCE(
                        jsonb_agg(jsonb_build_object(
                            'profession_key', profession_key,
@@ -1324,7 +1337,7 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
                            'rate_unit', rate_unit,
                            'hours', ROUND(total_minutes / 60.0, 1),
                            'days', days_worked
-                       ) ORDER BY profession_key) FILTER (WHERE total_minutes > 0 OR overtime_minutes > 0),
+                       ) ORDER BY profession_key) FILTER (WHERE total_minutes > 0 OR overtime_minutes > 0 OR rate_unit = 'month'),
                        '[]'::jsonb
                    ) AS profession_rates
             FROM time_segments
@@ -3869,7 +3882,9 @@ router.get('/report/monthly', async (req, res) => {
                 s.total_overtime_minutes += r.overtime_minutes || 0;
                 const staff = staffById.get(Number(r.staff_id)) || { id: r.staff_id };
                 const rate = rateForStaffProfession(staff, r.profession_key, professionRateMap);
-                s.estimated_salary = (s.estimated_salary || 0) + payrollAmountForRate(rate, staffRateUnit(staff), r.total_worked_minutes, 1);
+                if (staffRateUnit(staff) !== 'month') {
+                    s.estimated_salary = (s.estimated_salary || 0) + payrollAmountForRate(rate, staffRateUnit(staff), r.total_worked_minutes, 1);
+                }
             }
             if (r.status === 'late') { s.days_late++; s.late_count++; s.total_late_minutes += r.late_minutes || 0; }
             if (r.status === 'early_leave') s.days_early_leave++;
@@ -3890,6 +3905,9 @@ router.get('/report/monthly', async (req, res) => {
             const rate = parseFloat(st.hourly_rate) || 0;
             const rateUnit = staffRateUnit(st);
             const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
+            const estimatedSalary = rateUnit === 'month'
+                ? payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked)
+                : (s.estimated_salary || payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked));
 
             return {
                 staff_id: st.id,
@@ -3906,7 +3924,7 @@ router.get('/report/monthly', async (req, res) => {
                 days_vacation: s.days_vacation,
                 total_worked_hours: totalWorkedHours,
                 total_overtime_hours: totalOvertimeHours,
-                estimated_salary: Math.round(s.estimated_salary || payrollAmountForRate(rate, rateUnit, s.total_worked_minutes, s.days_worked)),
+                estimated_salary: Math.round(estimatedSalary),
                 late_count: s.late_count,
                 avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
                 attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
@@ -3979,7 +3997,9 @@ router.get('/report/export', async (req, res) => {
             const co = r.clock_out ? new Date(r.clock_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' }) : '';
             const workedH = ((r.total_worked_minutes || 0) / 60).toFixed(1);
             const rate = rateForStaffProfession(r, r.profession_key, professionRateMap);
-            const salary = payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
+            const salary = staffRateUnit(r) === 'month'
+                ? ''
+                : payrollAmountForRate(rate, staffRateUnit(r), r.total_worked_minutes, 1).toFixed(0);
             return `${r.name};${r.record_date};${ci};${co};${r.planned_start || ''};${r.planned_end || ''};${r.total_worked_minutes || 0};${r.late_minutes || 0};${r.early_leave_minutes || 0};${r.overtime_minutes || 0};${rate} грн/${rateUnitLabel(r.rate_unit)};${salary}`;
         }).join('\n');
 

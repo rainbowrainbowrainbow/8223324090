@@ -52,6 +52,7 @@ function toNumber(value, fallback = 0) {
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
     if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    if (['month', 'monthly', 'per_month', 'per-month'].includes(unit)) return 'month';
     return 'hour';
 }
 
@@ -100,7 +101,21 @@ function mapStaff(row) {
 }
 
 function fallbackSchemeForStaff(staff) {
-    if (normalizeStaffRateUnit(staff.rateUnit) === 'day') {
+    const unit = normalizeStaffRateUnit(staff.rateUnit);
+    if (unit === 'month') {
+        return {
+            id: null,
+            staffId: staff.id,
+            schemeType: 'monthly_fixed',
+            title: 'Місячна ставка з HR',
+            isActive: true,
+            isFallback: true,
+            config: { monthlyAmount: staff.hourlyRate || 0 },
+            effectiveFrom: null,
+            effectiveTo: null
+        };
+    }
+    if (unit === 'day') {
         return {
             id: null,
             staffId: staff.id,

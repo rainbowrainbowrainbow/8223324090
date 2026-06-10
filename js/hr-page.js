@@ -45,7 +45,8 @@ const HR_POOL_LABELS = {
 
 const STAFF_RATE_UNIT_LABELS = {
     hour: 'За годину',
-    day: 'За день'
+    day: 'За день',
+    month: 'За місяць'
 };
 
 const STAFF_DOCUMENT_TYPE_LABELS = {
@@ -465,6 +466,7 @@ function staffProfessionRateRows(staff = {}) {
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
     if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    if (['month', 'monthly', 'per_month', 'per-month'].includes(unit)) return 'month';
     return 'hour';
 }
 
@@ -477,7 +479,10 @@ function currentEditRateUnit(staff = {}) {
 }
 
 function staffRateUnitSuffix(unit = 'hour') {
-    return normalizeStaffRateUnit(unit) === 'day' ? 'день' : 'год';
+    const normalized = normalizeStaffRateUnit(unit);
+    if (normalized === 'day') return 'день';
+    if (normalized === 'month') return 'міс';
+    return 'год';
 }
 
 function formatStaffRate(rate, unit = 'hour') {
@@ -4036,9 +4041,10 @@ function currentStaffProfessionKeysForEdit(staff = {}) {
 function renderStaffProfessionRatesEditor(staff = {}) {
     const root = document.getElementById('editProfessionRates');
     if (!root) return;
-    const keys = currentStaffProfessionKeysForEdit(staff);
+    const primary = normalizeProfessionKey(document.getElementById('editRoleType')?.value || staff.role_type);
+    const keys = currentStaffProfessionKeysForEdit(staff).filter(key => key && key !== primary);
     if (!keys.length) {
-        root.innerHTML = '<div class="hr-profession-picker-empty">Спочатку виберіть основну професію.</div>';
+        root.innerHTML = '<div class="hr-profession-picker-empty">Додаткові професії не вибрані. Для основної професії використовується базова ставка вище.</div>';
         return;
     }
     const rateMap = staffProfessionRateMap(staff);
@@ -4056,7 +4062,7 @@ function renderStaffProfessionRatesEditor(staff = {}) {
             ? currentInputValues.get(key)
             : (Number.isFinite(customRate) && customRate > 0 ? customRate : '');
         return `<label class="hr-profession-rate-row" data-rate-profession="${escapeHtml(key)}">
-            <span>${escapeHtml(professionTitle(key))}</span>
+            <span><b>${escapeHtml(professionTitle(key))}</b><small>Додаткова професія</small></span>
             <div class="hr-profession-rate-control">
                 <input type="number" min="0" step="10" inputmode="decimal" data-profession-rate="${escapeHtml(key)}" value="${displayRate ? escapeHtml(displayRate) : ''}" placeholder="${baseRate > 0 ? escapeHtml(baseRate) : '0'}">
                 <small>${escapeHtml(suffix)}</small>
@@ -4094,9 +4100,11 @@ function syncStaffRateUnitUi(staff = {}) {
     const suffix = staffRateUnitSuffix(unit);
     if (label) label.textContent = `Ставка грн/${suffix}`;
     if (hint) {
-        hint.textContent = unit === 'day'
-            ? 'Денна ставка рахується за відпрацьований день. Ставки по професіях нижче використовують ту саму одиницю.'
-            : 'Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.';
+        hint.textContent = unit === 'month'
+            ? 'Місячна ставка рахується як фікс за зарплатний період. Додаткові професії використовують ту саму одиницю.'
+            : unit === 'day'
+                ? 'Денна ставка рахується за відпрацьований день. Додаткові професії використовують ту саму одиницю.'
+                : 'Погодинна ставка рахується за відпрацьовані години. Додаткові професії використовують ту саму одиницю.';
     }
 }
 
@@ -4752,15 +4760,13 @@ async function uploadStaffDocument() {
     body.append('document', file);
     body.append('document_type', document.getElementById('editDocumentType')?.value || 'other');
     body.append('title', document.getElementById('editDocumentTitle')?.value || file.name);
-    body.append('issued_at', document.getElementById('editDocumentIssuedAt')?.value || '');
-    body.append('expires_at', document.getElementById('editDocumentExpiresAt')?.value || '');
     body.append('notes', document.getElementById('editDocumentNotes')?.value || '');
     const data = await hrFetch(`/staff/${staffId}/documents`, { method: 'POST', body });
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося завантажити документ', 'error');
         return;
     }
-    ['editDocumentTitle', 'editDocumentIssuedAt', 'editDocumentExpiresAt', 'editDocumentNotes'].forEach(id => {
+    ['editDocumentTitle', 'editDocumentNotes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -4939,7 +4945,8 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editAddress').value = s.address || '';
     document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
-    document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
+    const primaryRate = staffProfessionRateMap(s).get(normalizeProfessionKey(s.role_type));
+    document.getElementById('editHourlyRate').value = primaryRate || s.hourly_rate || 0;
     const rateUnitSelect = document.getElementById('editRateUnit');
     if (rateUnitSelect) rateUnitSelect.value = staffRateUnit(s);
     syncStaffRateUnitUi(s);
@@ -4950,7 +4957,7 @@ async function openStaffEdit(staffId, options = {}) {
     if (editPoolStatus) editPoolStatus.value = s.hr_pool_status || 'core';
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
-    ['editDocumentTitle', 'editDocumentIssuedAt', 'editDocumentExpiresAt', 'editDocumentNotes',
+    ['editDocumentTitle', 'editDocumentNotes',
      'editMedicalIssuedAt', 'editMedicalExpiresAt', 'editMedicalNotes',
      'editResourceTitle', 'editResourceDueReturnAt', 'editResourceNotes',
      'editOffboardingReason', 'editOffboardingNotes'].forEach(id => {
@@ -4967,7 +4974,10 @@ async function openStaffEdit(staffId, options = {}) {
     if (resourceSource) resourceSource.innerHTML = '<option value="">Ручний запис</option>';
     updateResourcePickerVisibility();
     const payrollType = document.getElementById('editPayrollSchemeType');
-    if (payrollType) payrollType.value = staffRateUnit(s) === 'day' ? 'per_shift' : 'hourly';
+    if (payrollType) {
+        const unit = staffRateUnit(s);
+        payrollType.value = unit === 'month' ? 'monthly_fixed' : unit === 'day' ? 'per_shift' : 'hourly';
+    }
     updatePayrollAdvancedVisibility();
     const payrollAmount = document.getElementById('editPayrollSchemeAmount');
     if (payrollAmount) payrollAmount.value = String(s.hourly_rate || 0);
@@ -6746,9 +6756,11 @@ function renderSalaryRateSummary(row = {}) {
     if (!normalized.length) return formatStaffRate(row.hourly_rate || 0, fallbackUnit);
     return normalized
         .map(segment => {
-            const quantity = segment.rateUnit === 'day'
-                ? (segment.days ? ` · ${segment.days} дн` : '')
-                : (segment.hours ? ` · ${segment.hours} год` : '');
+            const quantity = segment.rateUnit === 'month'
+                ? ''
+                : segment.rateUnit === 'day'
+                    ? (segment.days ? ` · ${segment.days} дн` : '')
+                    : (segment.hours ? ` · ${segment.hours} год` : '');
             return `${escapeHtml(professionTitle(segment.key))}: ${formatStaffRate(segment.rate, segment.rateUnit)}${quantity}`;
         })
         .join('<br>');

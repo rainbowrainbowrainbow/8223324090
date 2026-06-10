@@ -68,6 +68,7 @@ const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
     if (['day', 'daily', 'per_day', 'per-day'].includes(unit)) return 'day';
+    if (['month', 'monthly', 'per_month', 'per-month'].includes(unit)) return 'month';
     return 'hour';
 }
 
@@ -1905,7 +1906,13 @@ router.get('/payroll', async (req, res) => {
             const hoursWorked = Math.round(e.total_minutes / 60 * 10) / 10;
             const hourlyRate = parseFloat(s.hourly_rate) || 0;
             const rateUnit = normalizeStaffRateUnit(s.rate_unit);
-            const salary = Math.round(rateUnit === 'day' ? (Number(e.count || 0) * hourlyRate) : (hoursWorked * hourlyRate));
+            const salary = Math.round(
+                rateUnit === 'month'
+                    ? (Number(e.count || 0) > 0 || hoursWorked > 0 ? hourlyRate : 0)
+                    : rateUnit === 'day'
+                        ? (Number(e.count || 0) * hourlyRate)
+                        : (hoursWorked * hourlyRate)
+            );
 
             payroll.push({
                 staffId: s.id,

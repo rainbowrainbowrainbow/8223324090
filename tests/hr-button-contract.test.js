@@ -826,6 +826,17 @@ test('HR staff documents are reachable from team card paperclip', () => {
     ]) {
         assert.ok(`${HR_HTML}\n${PAGES_CSS}`.includes(token), `missing HR document paperclip CSS token ${token}`);
     }
+
+    for (const token of ['editDocumentIssuedAt', 'editDocumentExpiresAt']) {
+        assert.equal(HR_HTML.includes(token), false, `HR document upload form should not expose ${token}`);
+    }
+    const uploadStart = HR_JS.indexOf('async function uploadStaffDocument');
+    const uploadEnd = HR_JS.indexOf('async function archiveStaffDocument', uploadStart);
+    assert.notEqual(uploadStart, -1);
+    assert.notEqual(uploadEnd, -1);
+    const uploadBlock = HR_JS.slice(uploadStart, uploadEnd);
+    assert.equal(uploadBlock.includes("body.append('issued_at'"), false);
+    assert.equal(uploadBlock.includes("body.append('expires_at'"), false);
 });
 
 test('HR staff resource service owns warehouse and costume side effects atomically', async () => {

@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.74.28">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.28">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.28">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.28">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.28">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.28">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.28">
+    <link rel="stylesheet" href="css/base.css?v=0.74.30">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.30">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.30">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.30">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.30">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.30">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.74.28">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.74.30">
 </head>
 <body data-page-group="hr">
     <script>
@@ -571,6 +571,21 @@
                     </optgroup>
                 </select>
                 <small class="form-hint">Основна професія керує головним групуванням, графіком і таймлайном.</small>
+                <div class="hr-primary-rate-card">
+                    <div class="hr-rate-label-row">
+                        <span>Базова ставка основної професії</span>
+                        <select id="editRateUnit" aria-label="Одиниця ставки">
+                            <option value="hour">За годину</option>
+                            <option value="day">За день</option>
+                            <option value="month">За місяць</option>
+                        </select>
+                    </div>
+                    <label class="hr-primary-rate-field">
+                        <span id="editHourlyRateLabel">Ставка грн/год</span>
+                        <input type="number" id="editHourlyRate" min="0" step="10" value="0">
+                    </label>
+                    <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується для основної професії та як fallback для додаткових професій без окремої ставки.</small>
+                </div>
             </div>
             <div class="form-group">
                 <label>Додаткові професії</label>
@@ -587,6 +602,13 @@
                     <div id="editSecondaryProfessionOptions" class="hr-profession-options"></div>
                 </div>
                 <small class="form-hint">Клік по професії додає її до чіпів. Основну професію дублювати не можна.</small>
+                <div class="hr-profession-rate-panel">
+                    <div class="hr-profession-rate-head">
+                        <strong>Ставки додаткових професій</strong>
+                        <span>Одиниця оплати одна для співробітника: година, день або місяць.</span>
+                    </div>
+                    <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
+                </div>
             </div>
             <div class="form-group">
                 <label>Дата народження</label>
@@ -603,22 +625,6 @@
             <div class="form-group">
                 <label>Телефон екстр. контакту</label>
                 <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
-            </div>
-            <div class="form-group">
-                <div class="hr-rate-label-row">
-                    <label id="editHourlyRateLabel">Ставка грн/год</label>
-                    <select id="editRateUnit" aria-label="Одиниця ставки">
-                        <option value="hour">За годину</option>
-                        <option value="day">За день</option>
-                    </select>
-                </div>
-                <input type="number" id="editHourlyRate" min="0" step="10" value="0">
-                <small class="form-hint" id="editHourlyRateHint">Базова ставка використовується, якщо для конкретної професії нижче не задано окрему ставку.</small>
-            </div>
-            <div class="form-group">
-                <label>Ставки по професіях</label>
-                <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
-                <small class="form-hint">Заповнюйте тільки ті ролі, де ставка відрізняється від базової.</small>
             </div>
             <section class="hr-staff-foundation-panel" aria-label="Ролі та допуски">
                 <div class="hr-staff-foundation-head">
@@ -777,14 +783,6 @@
                     <div class="form-group">
                         <label>Назва</label>
                         <input type="text" id="editDocumentTitle" maxlength="160" placeholder="Напр. Медкнижка 2026">
-                    </div>
-                    <div class="form-group">
-                        <label>Видано</label>
-                        <input type="date" id="editDocumentIssuedAt">
-                    </div>
-                    <div class="form-group">
-                        <label>Діє до</label>
-                        <input type="date" id="editDocumentExpiresAt">
                     </div>
                     <div class="form-group is-wide">
                         <label>Файл або скан</label>
@@ -967,15 +965,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.74.28"></script>
-    <script src="js/config.js?v=0.74.28"></script>
-    <script src="js/notification.js?v=0.74.28"></script>
-    <script src="js/api.js?v=0.74.28"></script>
-    <script src="js/auth.js?v=0.74.28"></script>
-    <script src="js/components/sidebar.js?v=0.74.28"></script>
+    <script src="js/ui.js?v=0.74.30"></script>
+    <script src="js/config.js?v=0.74.30"></script>
+    <script src="js/notification.js?v=0.74.30"></script>
+    <script src="js/api.js?v=0.74.30"></script>
+    <script src="js/auth.js?v=0.74.30"></script>
+    <script src="js/components/sidebar.js?v=0.74.30"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.74.28"></script>
-    <script src="js/hr-page.js?v=0.74.28"></script>
-    <script src="js/alerts.js?v=0.74.28"></script>
+    <script src="js/ws.js?v=0.74.30"></script>
+    <script src="js/hr-page.js?v=0.74.30"></script>
+    <script src="js/alerts.js?v=0.74.30"></script>
 </body>
 </html>

@@ -537,6 +537,20 @@ async function initDatabase() {
         // v7.10.1: Telegram username for staff notifications
         await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
         await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS rate_unit VARCHAR(10) DEFAULT 'hour'`);
+        await safeQuery(`UPDATE staff SET rate_unit = 'hour' WHERE rate_unit IS NULL OR rate_unit NOT IN ('hour', 'day', 'month')`);
+        await safeQuery(`DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'chk_staff_rate_unit'
+                   AND pg_get_constraintdef(oid) LIKE '%month%'
+            ) THEN
+                ALTER TABLE staff DROP CONSTRAINT IF EXISTS chk_staff_rate_unit;
+                ALTER TABLE staff
+                    ADD CONSTRAINT chk_staff_rate_unit CHECK (rate_unit IN ('hour', 'day', 'month'));
+            END IF;
+        END $$;`);
 
         // Seed staff if table is empty
         const staffCount = await pool.query('SELECT COUNT(*) FROM staff');

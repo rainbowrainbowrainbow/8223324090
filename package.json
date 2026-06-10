@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.74.37",
+  "version": "0.74.38",
   "eventGenix": {
-    "releaseLabel": "Воронка: кнопка якості ліда працює"
+    "releaseLabel": "Воронка: пояснення доступу якості ліда"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

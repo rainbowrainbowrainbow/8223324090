@@ -300,6 +300,51 @@ body.dark-mode .pipeline-stage-help::after {
     white-space: nowrap;
 }
 
+.lead-type-popover--notice {
+    width: 272px;
+    padding: 10px 12px;
+    border-color: rgba(251, 191, 36, 0.34);
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
+}
+
+.lead-type-popover-notice-title {
+    color: #FDE68A;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.lead-type-popover-notice-text {
+    margin-top: 5px;
+    color: #F8FAFC;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.35;
+}
+
+.lead-type-popover-notice-meta {
+    margin-top: 7px;
+    color: #CBD5E1;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.lead-type-select--blocked-pulse {
+    animation: leadTypeBlockedPulse .68s ease;
+}
+
+@keyframes leadTypeBlockedPulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+    }
+    40% {
+        box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.28);
+    }
+}
+
 .lead-type-popover-item.type-quality {
     color: #A7F3D0;
 }

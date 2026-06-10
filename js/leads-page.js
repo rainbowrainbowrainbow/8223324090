@@ -1843,6 +1843,11 @@ function handleKanbanLeadTypeTriggerEvent(event) {
     event.stopPropagation();
     if (trigger.disabled) return;
 
+    if (isLeadBusinessReadOnly()) {
+        showKanbanLeadTypeReadOnlyNotice(trigger);
+        return;
+    }
+
     const leadId = Number(trigger.dataset.leadId || 0);
     if (!leadId) return;
     const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
@@ -1865,6 +1870,41 @@ function bindKanbanLeadTypeTriggerControls(root = document) {
             handleKanbanLeadTypeTriggerEvent(event);
         });
     });
+}
+
+function showKanbanLeadTypeReadOnlyNotice(trigger) {
+    closeKanbanLeadTypeMenus();
+    const scope = leadBusinessScope();
+    const message = leadReadOnlyMessage('змінювати якість ліда');
+    if (typeof showNotification === 'function') showNotification(message, 'warning');
+    if (!trigger) return;
+
+    trigger.setAttribute('aria-expanded', 'true');
+    trigger.title = message;
+    trigger.classList.add('lead-type-select--blocked-pulse');
+    setTimeout(() => trigger.classList.remove('lead-type-select--blocked-pulse'), 700);
+
+    const rect = trigger.getBoundingClientRect();
+    const notice = document.createElement('div');
+    notice.className = 'lead-type-popover lead-type-popover--notice';
+    notice.setAttribute('role', 'status');
+    notice.dataset.leadTypeReadonlyNotice = 'true';
+    notice.style.top = `${Math.round(rect.bottom + 8)}px`;
+    notice.style.left = `${Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - 280)))}px`;
+    const modeLabel = scope?.mode === 'all'
+        ? 'увімкнений огляд усіх бізнесів'
+        : 'увімкнений огляд кількох бізнесів';
+    notice.innerHTML = `<div class="lead-type-popover-notice-title">Тільки перегляд</div>
+        <div class="lead-type-popover-notice-text">${escapeHtml(message)}</div>
+        <div class="lead-type-popover-notice-meta">${escapeHtml(modeLabel)}. Оберіть один бізнес у перемикачі, щоб змінити якість.</div>`;
+    document.body.appendChild(notice);
+
+    setTimeout(() => {
+        if (notice.isConnected) notice.remove();
+        if (trigger.getAttribute('aria-expanded') === 'true') {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    }, 3600);
 }
 
 function bindKanbanLeadTypeMenuEvents() {
@@ -1904,10 +1944,15 @@ function showKanbanLeadTypeMenu(leadId, event) {
         event.stopPropagation();
         event.preventDefault();
     }
-    if (!guardLeadWrite('змінювати тип ліда')) return;
 
     const trigger = leadTypeTriggerFromEvent(event)
         || document.querySelector(`[data-lead-type-select][data-lead-id="${Number(leadId)}"]`);
+    if (isLeadBusinessReadOnly()) {
+        showKanbanLeadTypeReadOnlyNotice(trigger);
+        return;
+    }
+    if (!guardLeadWrite('змінювати тип ліда')) return;
+
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));
     const currentType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
     const wasOpen = trigger?.getAttribute('aria-expanded') === 'true';

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.74.39 - Воронка: меню якості ліда
+
+### Leads / Воронка / Kanban / Якість ліда / Popover CSS / Drag-card guard / Release / (Клешня, 10.06.2026) [codex]
+- **Знайдено реальну причину, чому клік виглядав мертвим** - `leads.html` не підключав `css/pages-leads.css`, тому `.lead-type-popover` не мав `position: fixed`, z-index і CRM-стилів; меню могло створюватися, але не з'являлося там, де користувач натиснув.
+- **Сторінка воронки тепер вантажить lead-specific CSS** - `css/pages-leads.css` додано в `leads.html`, тож кнопка якості й popover отримують правильний вигляд, позиціювання, dark-mode кольори та notice-стилі.
+- **Кнопку якості виведено з drag-конфлікту картки** - trigger має `draggable="false"` і `data-kanban-interactive="true"`, а dragstart ігнорує інтерактивні елементи всередині Kanban-card.
+- **Inline `onclick` з Kanban-картки прибрано** - відкриття lead workspace перенесено в JS-обробник, який не спрацьовує при кліку по якості, телефону, Telegram або action-кнопках.
+- **Меню якості ловиться на capture-рівні** - `pointerdown`, `mousedown`, `touchstart` і `click` проходять через спільний guard до того, як drag/drop або картка можуть перехопити подію.
+- **Додано regression guard саме на підключення CSS** - UI smoke тепер перевіряє не тільки наявність стилів у файлі, а й те, що `leads.html` реально підключає `css/pages-leads.css`.
+- **Попередні релізи `0.74.38`, `0.74.37` і нижче залишено окремими блоками** - read-only пояснення, прямий handler і старі Kanban fixes не загублені в release notes.
+- **Релізні маркери піднято до `0.74.39`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.38 - Воронка: пояснення доступу якості ліда
 
 ### Leads / Воронка / Kanban / Якість ліда / Read-only scope / Guardrail / Release / (Клешня, 10.06.2026) [codex]

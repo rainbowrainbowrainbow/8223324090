@@ -1507,7 +1507,7 @@ function renderLeadTypeSelect(lead = {}) {
     const currentType = LEAD_TYPE_MAP[lead.lead_type] ? lead.lead_type : 'quality';
     const current = LEAD_TYPE_MAP[currentType] || LEAD_TYPE_MAP.quality;
     const clientName = lead.client_name || 'лід';
-    return `<button type="button" class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда">
+    return `<button type="button" draggable="false" class="lead-type-select lead-type-select--kanban ${current.cls}" data-lead-type-select data-kanban-interactive="true" data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Якість ліда: ${escapeHtml(clientName)}" title="Змінити якість ліда">
         <span class="lead-type-select-dot" aria-hidden="true">${current.emoji}</span>
         <span class="lead-type-select-label">${escapeHtml(current.label)}</span>
         <span class="lead-type-select-caret" aria-hidden="true">▾</span>
@@ -1562,7 +1562,7 @@ function renderKanban() {
             const phoneLabel = phone || '—';
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
-            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" onclick="openLeadWorkspace(${l.id})">
+            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}">
                 <div class="kanban-card-top">
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>
@@ -1615,7 +1615,16 @@ function setupKanbanDragDrop() {
     });
 
     cards.forEach(card => {
+        card.addEventListener('click', event => {
+            if (isKanbanInteractiveTarget(event.target)) return;
+            const leadId = Number(card.dataset.id || 0);
+            if (leadId) openLeadWorkspace(leadId);
+        });
         card.addEventListener('dragstart', e => {
+            if (isKanbanInteractiveTarget(e.target)) {
+                e.preventDefault();
+                return;
+            }
             e.dataTransfer.setData('text/plain', card.dataset.id);
             e.dataTransfer.effectAllowed = 'move';
             kanbanDragState = {
@@ -1829,6 +1838,20 @@ function closestLeadTypeElement(target, selector) {
     return elementTarget?.closest?.(selector) || null;
 }
 
+function isKanbanInteractiveTarget(target) {
+    return Boolean(closestLeadTypeElement(target, [
+        'a',
+        'button',
+        'select',
+        'textarea',
+        'input',
+        '[data-kanban-actions]',
+        '[data-kanban-interactive="true"]',
+        '[data-lead-type-select]',
+        '.lead-type-popover'
+    ].join(',')));
+}
+
 function leadTypeTriggerFromEvent(event) {
     if (event?.currentTarget?.matches?.('[data-lead-type-select]')) {
         return event.currentTarget;
@@ -1843,19 +1866,19 @@ function handleKanbanLeadTypeTriggerEvent(event) {
     event.stopPropagation();
     if (trigger.disabled) return;
 
+    const leadId = Number(trigger.dataset.leadId || 0);
+    if (!leadId) return;
+    const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
+        && Date.now() - kanbanLeadTypeTriggerOpenedAt < 700;
+    if (justOpened) return;
+
+    kanbanLeadTypeTriggerOpenedAt = Date.now();
+    kanbanLeadTypeTriggerOpenedLeadId = leadId;
     if (isLeadBusinessReadOnly()) {
         showKanbanLeadTypeReadOnlyNotice(trigger);
         return;
     }
 
-    const leadId = Number(trigger.dataset.leadId || 0);
-    if (!leadId) return;
-    const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
-        && Date.now() - kanbanLeadTypeTriggerOpenedAt < 700;
-    if (event.type === 'click' && justOpened) return;
-
-    kanbanLeadTypeTriggerOpenedAt = Date.now();
-    kanbanLeadTypeTriggerOpenedLeadId = leadId;
     showKanbanLeadTypeMenu(leadId, event);
 }
 
@@ -1863,8 +1886,6 @@ function bindKanbanLeadTypeTriggerControls(root = document) {
     root.querySelectorAll('[data-lead-type-select]').forEach(trigger => {
         if (trigger.dataset.leadTypeTriggerBound === 'true') return;
         trigger.dataset.leadTypeTriggerBound = 'true';
-        trigger.addEventListener('pointerdown', handleKanbanLeadTypeTriggerEvent);
-        trigger.addEventListener('click', handleKanbanLeadTypeTriggerEvent);
         trigger.addEventListener('keydown', event => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             handleKanbanLeadTypeTriggerEvent(event);
@@ -1911,12 +1932,21 @@ function bindKanbanLeadTypeMenuEvents() {
     if (kanbanLeadTypeMenuEventsBound) return;
     kanbanLeadTypeMenuEventsBound = true;
 
-    document.addEventListener('pointerdown', event => {
+    const handleTriggerCapture = event => {
+        const trigger = leadTypeTriggerFromEvent(event);
+        if (trigger) {
+            handleKanbanLeadTypeTriggerEvent(event);
+            return;
+        }
         if (closestLeadTypeElement(event.target, '.lead-type-popover')) {
             event.stopPropagation();
             return;
         }
-    }, true);
+    };
+
+    document.addEventListener('pointerdown', handleTriggerCapture, true);
+    document.addEventListener('mousedown', handleTriggerCapture, true);
+    document.addEventListener('touchstart', handleTriggerCapture, true);
 
     document.addEventListener('click', event => {
         const option = closestLeadTypeElement(event.target, '[data-lead-type-option]');
@@ -1930,6 +1960,7 @@ function bindKanbanLeadTypeMenuEvents() {
 
         const trigger = closestLeadTypeElement(event.target, '[data-lead-type-select]');
         if (trigger) {
+            handleKanbanLeadTypeTriggerEvent(event);
             return;
         }
 

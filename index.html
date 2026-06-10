@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.38">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.38">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.38">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.38">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.38">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.38">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.38">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.38">
-    <link rel="stylesheet" href="css/features.css?v=0.74.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.38">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.38">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.38">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.38">
+    <link rel="stylesheet" href="css/base.css?v=0.74.39">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.39">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.39">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.39">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.39">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.39">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.39">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.39">
+    <link rel="stylesheet" href="css/features.css?v=0.74.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.39">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.39">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.39">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.38">✨ 0.74.38</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.39">✨ 0.74.39</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.38 — Воронка: пояснення доступу якості ліда</p>
+                <p class="tagline">AI First CRM v0.74.39 — Воронка: меню якості ліда</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.38</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.39</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1647,13 +1647,26 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.74.39 — Воронка: меню якості ліда</h4>
+                    <ul>
+                        <li><b>Знайдено реальну причину мертвого кліку</b> — <code>leads.html</code> не підключав <code>css/pages-leads.css</code>, тому popover якості не мав позиціювання й міг бути невидимим.</li>
+                        <li><b>Воронка тепер вантажить lead-specific CSS</b> — кнопка якості, меню вибору, notice і dark-mode стилі реально підключені на сторінці.</li>
+                        <li><b>Кнопка якості більше не бере участі в drag картки</b> — trigger має <code>draggable="false"</code> і окремий інтерактивний guard.</li>
+                        <li><b>Inline <code>onclick</code> з Kanban-картки прибрано</b> — workspace відкривається тільки при кліку по самій картці, а не по внутрішніх кнопках.</li>
+                        <li><b>Меню ловить <code>pointerdown</code>, <code>mousedown</code>, <code>touchstart</code> і <code>click</code> на capture-рівні</b> — drag/drop більше не має шансу проковтнути натискання якості.</li>
+                        <li><b>Додано regression guard на реальне підключення CSS</b> — UI smoke тепер перевіряє, що <code>leads.html</code> завантажує <code>css/pages-leads.css</code>.</li>
+                        <li><b>Попередні релізи <code>0.74.38</code>, <code>0.74.37</code> і нижче залишено окремо</b> — read-only пояснення, прямий handler і Kanban fixes не загублені.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.39</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.74.38 — Воронка: пояснення доступу якості ліда</h4>
                     <ul>
                         <li><b>Сіра кнопка якості ліда більше не мовчить</b> — якщо воронка відкрита в read-only режимі бізнес-контексту, натискання показує пояснення біля кнопки й toast.</li>
                         <li><b>Пояснення показує причину блокування</b> — popover пише, що увімкнений огляд усіх або кількох бізнесів, і просить обрати один бізнес у перемикачі.</li>
                         <li><b>Зміна якості не відкривається в <code>all/multi</code> scope</b> — guard лишається чесним і не пише неоднозначну зміну без конкретного <code>businessContext</code>.</li>
                         <li><b>Додано візуальний pulse для заблокованої дії</b> — кнопка коротко підсвічується у стилі CRM, щоб було видно, що клік дійшов.</li>
-                        <li><b>Додано regression guard</b> — UI smoke перевіряє read-only notice, стилі popover і pulse-анімацію.</li>
+                        <li><b>Додано regression guard</b> — UI smoke перевіряє read-only notice, стилі notice-popover і pulse-анімацію.</li>
                         <li><b>Попередній реліз <code>0.74.37</code> залишено нижче</b> — прямий handler кнопки, keyboard support і drag/drop skip не загублені.</li>
                         <li><b>Релізні маркери піднято до <code>0.74.38</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
                     </ul>
@@ -12280,29 +12293,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.38"></script>
-    <script src="js/timeline-visibility.js?v=0.74.38"></script>
-    <script src="js/config.js?v=0.74.38"></script>
-    <script src="js/api.js?v=0.74.38"></script>
-    <script src="js/ui.js?v=0.74.38"></script>
-    <script src="js/auth.js?v=0.74.38"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.38"></script>
-    <script src="js/timeline.js?v=0.74.38"></script>
-    <script src="js/booking.js?v=0.74.38"></script>
-    <script src="js/settings.js?v=0.74.38"></script>
-    <script src="js/booking-form.js?v=0.74.38"></script>
-    <script src="js/booking-linked.js?v=0.74.38"></script>
-    <script src="js/settings-dashboard.js?v=0.74.38"></script>
-    <script src="js/settings-history.js?v=0.74.38"></script>
-    <script src="js/settings-afisha.js?v=0.74.38"></script>
-    <script src="js/settings-certificates.js?v=0.74.38"></script>
-    <script src="js/offline.js?v=0.74.38"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.38"></script>
-    <script src="js/search.js?v=0.74.38"></script>
-    <script src="js/ws.js?v=0.74.38"></script>
-    <script src="js/app.js?v=0.74.38"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.38"></script>
-    <script src="js/components/sidebar.js?v=0.74.38"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.38"></script>
+    <script src="js/timeline-context.js?v=0.74.39"></script>
+    <script src="js/timeline-visibility.js?v=0.74.39"></script>
+    <script src="js/config.js?v=0.74.39"></script>
+    <script src="js/api.js?v=0.74.39"></script>
+    <script src="js/ui.js?v=0.74.39"></script>
+    <script src="js/auth.js?v=0.74.39"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.39"></script>
+    <script src="js/timeline.js?v=0.74.39"></script>
+    <script src="js/booking.js?v=0.74.39"></script>
+    <script src="js/settings.js?v=0.74.39"></script>
+    <script src="js/booking-form.js?v=0.74.39"></script>
+    <script src="js/booking-linked.js?v=0.74.39"></script>
+    <script src="js/settings-dashboard.js?v=0.74.39"></script>
+    <script src="js/settings-history.js?v=0.74.39"></script>
+    <script src="js/settings-afisha.js?v=0.74.39"></script>
+    <script src="js/settings-certificates.js?v=0.74.39"></script>
+    <script src="js/offline.js?v=0.74.39"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.39"></script>
+    <script src="js/search.js?v=0.74.39"></script>
+    <script src="js/ws.js?v=0.74.39"></script>
+    <script src="js/app.js?v=0.74.39"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.39"></script>
+    <script src="js/components/sidebar.js?v=0.74.39"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.39"></script>
 </body>
 </html>

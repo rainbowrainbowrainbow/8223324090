@@ -122,6 +122,9 @@ body.dark-mode .pipeline-stage-help::after {
     background-clip: padding-box;
     user-select: none;
     touch-action: manipulation;
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 2;
 }
 
 .lead-type-select:hover {

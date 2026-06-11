@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.9 - LEAD ON: migration readiness repair
+
+### LEAD ON / Міграції / Readiness / Production schema / Hotfix / Deploy safety / (Клешня, 11.06.2026) [codex]
+- **Production readiness repair** - `261_leads_customer_card_canonical_customers` стала self-healing для старих схем і сама додає потрібні legacy-compat колонки перед backfill.
+- **Pending data-fix більше не лишає `/api/ready` червоним після deploy** - Railway restart має повторно застосувати `261` і записати marker у `schema_migrations`.
+- **Старі `customer_cards` лишаються архівними** - міграція не видаляє legacy rows, а переносить дані в `customers.notes` idempotent-блоками.
+- **Релізні маркери піднято до `0.75.9`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.8 - LEAD ON: release gate і live smoke
 
 ### LEAD ON / Надійність / Release gate / Live smoke / Health / Deploy safety / (Клешня, 11.06.2026) [codex]

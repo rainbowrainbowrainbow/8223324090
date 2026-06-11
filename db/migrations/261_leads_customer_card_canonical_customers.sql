@@ -1,6 +1,56 @@
--- MIGRATION_KIND: data-fix
--- SAFETY: Idempotent CRM lead/customer data backfill. Existing customer_cards rows are preserved as archive/compat data; no rows are deleted.
+-- MIGRATION_KIND: mixed
+-- SAFETY: Idempotent CRM lead/customer data backfill. Existing customer_cards rows are preserved as archive/compat data; no rows are deleted. Additive legacy-compat columns are ensured before the data copy so older production schemas can safely retry this migration.
 -- ROLLBACK: Restore customers.notes from backup if legacy card note blocks must be removed, then manually clear customers.lead_id/leads event fields that were populated by this migration.
+
+ALTER TABLE leads
+    ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'new',
+    ADD COLUMN IF NOT EXISTS pipeline_stage VARCHAR(40) DEFAULT 'new',
+    ADD COLUMN IF NOT EXISTS event_date DATE,
+    ADD COLUMN IF NOT EXISTS children_count INTEGER,
+    ADD COLUMN IF NOT EXISTS source_channel VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix';
+
+ALTER TABLE customers
+    ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
+    ADD COLUMN IF NOT EXISTS child_name VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS source VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS notes TEXT,
+    ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS social_identities JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS customer_cards (
+    id SERIAL PRIMARY KEY,
+    lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
+    event_type VARCHAR(50),
+    event_date DATE,
+    guest_count INTEGER,
+    children_count INTEGER,
+    budget_approx INTEGER,
+    how_found VARCHAR(100),
+    email VARCHAR(100),
+    channel VARCHAR(30),
+    notes TEXT,
+    business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE customer_cards
+    ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
+    ADD COLUMN IF NOT EXISTS event_type VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS event_date DATE,
+    ADD COLUMN IF NOT EXISTS guest_count INTEGER,
+    ADD COLUMN IF NOT EXISTS children_count INTEGER,
+    ADD COLUMN IF NOT EXISTS budget_approx INTEGER,
+    ADD COLUMN IF NOT EXISTS how_found VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS email VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS channel VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS notes TEXT,
+    ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_customer_cards_lead ON customer_cards(lead_id);
 
 UPDATE leads
 SET status = CASE COALESCE(pipeline_stage, 'new')

@@ -1332,7 +1332,6 @@ function renderManagerActionStrip(workspace) {
 function renderLeadWorkspaceContent(workspace) {
     const lead = workspace.lead || {};
     const customer = workspace.customer;
-    const card = workspace.customerCard || {};
     const canonical = workspace.canonical || {};
     const urgency = workspace.urgency || {};
     const maysternyaMode = isMaysternyaLeadContext();
@@ -1380,7 +1379,7 @@ function renderLeadWorkspaceContent(workspace) {
                 <div class="workspace-actions">
                     ${leadContactLinks(lead, workspace)}
                     <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">${maysternyaMode ? 'Редагувати заявку' : 'Редагувати'}</button>
-                    <button type="button" class="workspace-btn" onclick="showCustomerCardModal(${lead.id})">${maysternyaMode ? 'Картка клієнта' : 'Картка'}</button>
+                    <button type="button" class="workspace-btn" onclick="openLeadCustomerCard(${lead.id})">${maysternyaMode ? 'Картка клієнта' : 'Картка'}</button>
                     <button type="button" class="workspace-btn" onclick="linkWorkspaceLeadCustomer(${lead.id})">${customer?.id ? 'Змінити клієнта' : 'Привʼязати клієнта'}</button>
                 </div>
             </div>
@@ -1412,10 +1411,10 @@ function renderLeadWorkspaceContent(workspace) {
                 <dl class="workspace-kv">
                     <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
                     <dt>Джерело</dt><dd>${workspaceText(leadSourceLabel(lead))}</dd>
-                    <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
+                    <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate)}</dd>
                     <dt>${maysternyaMode ? 'Консультація' : 'Програма'}</dt><dd>${workspaceText(lead.programName || lead.sessionType)}</dd>
                     ${maysternyaMode ? '' : `<dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>`}
-                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${workspaceText(maysternyaMode ? (lead.message || lead.notes || card.notes) : (lead.notes || card.notes))}</dd>
+                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${workspaceText(maysternyaMode ? (lead.message || lead.notes) : lead.notes)}</dd>
                 </dl>
             </section>
 
@@ -2277,9 +2276,8 @@ async function setQualityCategory(category) {
             body: JSON.stringify({ lead_type: 'quality', quality_category: category })
         });
         if (typeof showNotification === 'function') showNotification(`Якісний лід: ${QUALITY_CATEGORIES[category] || category}`, 'success');
-        // Show customer card modal
-        showCustomerCardModal(leadId);
         await loadLeads();
+        await openLeadCustomerCard(leadId);
     } catch (e) {
         console.error('Set quality category error', e);
     }
@@ -2892,6 +2890,28 @@ async function ensureLeadCustomerForBooking(leadId, seedLead = null) {
     };
 }
 
+async function openLeadCustomerCard(leadId, seedLead = null) {
+    const workspace = await loadLeadWorkspaceForConversion(leadId);
+    const lead = workspace?.lead || seedLead || leadsData.find(l => l.id === leadId) || {};
+    if (workspace?.customer?.id) {
+        window.location.href = leadCrmContextHref('/customers', { open: workspace.customer.id }, leadContextFromRecord(lead));
+        return true;
+    }
+    if (!guardLeadWrite('створити картку клієнта для ліда')) return false;
+    try {
+        const ensured = await ensureLeadCustomerForBooking(leadId, lead);
+        if (!ensured?.customer?.id) throw new Error('Customer was not returned');
+        window.location.href = leadCrmContextHref('/customers', { open: ensured.customer.id }, leadContextFromRecord(ensured.lead || lead));
+        return true;
+    } catch (err) {
+        console.error('Open lead customer card error', err);
+        if (typeof showNotification === 'function') {
+            showNotification(err.message || 'Не вдалося відкрити картку клієнта', 'error');
+        }
+        return false;
+    }
+}
+
 function syncLeadDealCustomerContext(leadId, lead = null, customer = null) {
     if (!customer?.id || currentWorkspaceData?.lead?.id !== leadId) return;
     currentWorkspaceData = {
@@ -3412,6 +3432,7 @@ window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
 window.createLeadWorkspaceFollowUpTask = createLeadWorkspaceFollowUpTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
+window.openLeadCustomerCard = openLeadCustomerCard;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;

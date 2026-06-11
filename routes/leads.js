@@ -64,6 +64,15 @@ const STAGE_TO_STATUS = {
     lost: 'lost'
 };
 
+const STATUS_TO_STAGE = {
+    new: 'new',
+    contact: 'contacted',
+    proposal: 'deal',
+    booked: 'deposit_received',
+    completed: 'completed',
+    lost: 'lost'
+};
+
 const PIPELINE_STAGE_ORDER = [
     'new',
     'contacted',
@@ -76,9 +85,17 @@ const PIPELINE_STAGE_ORDER = [
     'lost'
 ];
 
+const VALID_PIPELINE_STAGES = new Set(PIPELINE_STAGE_ORDER);
+const VALID_LEAD_STATUSES = new Set(Object.keys(STATUS_TO_STAGE));
+
 const PIPELINE_STAGE_ORDER_SQL = `CASE COALESCE(l.pipeline_stage, 'new')
     ${PIPELINE_STAGE_ORDER.map((stage, index) => `WHEN '${stage}' THEN ${index + 1}`).join(' ')}
     ELSE 999
+END`;
+
+const LEAD_STATUS_FROM_STAGE_SQL = `CASE COALESCE(pipeline_stage, 'new')
+    ${Object.entries(STAGE_TO_STATUS).map(([stage, status]) => `WHEN '${stage}' THEN '${status}'`).join(' ')}
+    ELSE COALESCE(status, 'new')
 END`;
 
 const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
@@ -310,6 +327,38 @@ function normalizeTelegramId(value) {
 function normalizeDateOnly(value) {
     const dateOnly = toDateOnly(value);
     return dateOnly && /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null;
+}
+
+function normalizeLeadPatchStageStatus({ pipelineStage, status }) {
+    const hasStage = pipelineStage !== undefined;
+    const hasStatus = status !== undefined;
+    const normalizedStage = cleanText(pipelineStage);
+    const normalizedStatus = cleanText(status);
+
+    if (hasStage) {
+        if (!normalizedStage || !VALID_PIPELINE_STAGES.has(normalizedStage)) {
+            return { error: 'Некоректний pipeline_stage' };
+        }
+        return {
+            stageProvided: true,
+            stage: normalizedStage,
+            status: STAGE_TO_STATUS[normalizedStage]
+        };
+    }
+
+    if (hasStatus) {
+        if (!normalizedStatus || !VALID_LEAD_STATUSES.has(normalizedStatus)) {
+            return { error: 'Некоректний status' };
+        }
+        const stage = STATUS_TO_STAGE[normalizedStatus];
+        return {
+            stageProvided: true,
+            stage,
+            status: STAGE_TO_STATUS[stage]
+        };
+    }
+
+    return { stageProvided: false };
 }
 
 function normalizeTextList(value) {
@@ -892,6 +941,44 @@ function buildLeadCustomerNotes(lead = {}) {
     return lines.filter(Boolean).join('\n');
 }
 
+function buildLegacyCustomerCardNotes(leadId, card = {}) {
+    const marker = `legacy customer_card:${card.id || leadId}`;
+    const lines = [
+        `[${marker}]`,
+        card.event_type ? `Тип події: ${card.event_type}` : null,
+        card.event_date ? `Дата події: ${normalizeDateOnly(card.event_date) || cleanText(card.event_date)}` : null,
+        card.guest_count ? `Гостей: ${card.guest_count}` : null,
+        card.children_count ? `Дітей: ${card.children_count}` : null,
+        card.budget_approx ? `Бюджет: ${card.budget_approx}` : null,
+        card.how_found ? `Звідки дізнались: ${card.how_found}` : null,
+        card.email ? `Email: ${card.email}` : null,
+        card.channel ? `Канал: ${card.channel}` : null,
+        card.notes ? `Нотатки старої картки: ${card.notes}` : null
+    ].filter(Boolean);
+    return { marker, text: lines.length > 1 ? lines.join('\n') : '' };
+}
+
+function appendUniqueMarkedNote(existingValue, marker, noteValue) {
+    const existing = cleanText(existingValue);
+    const note = cleanText(noteValue);
+    if (!note) return existing || null;
+    if (existing && marker && existing.includes(marker)) return existing;
+    if (!existing) return note;
+    return `${existing}\n\n${note}`;
+}
+
+function upsertMarkedNote(existingValue, marker, noteValue) {
+    const existing = cleanText(existingValue);
+    const note = cleanText(noteValue);
+    if (!note) return existing || null;
+    if (!existing || !marker || !existing.includes(marker)) return appendUniqueMarkedNote(existing, marker, note);
+    const parts = existing.split(/\n{2,}/);
+    const index = parts.findIndex(part => part.includes(marker));
+    if (index === -1) return appendUniqueMarkedNote(existing, marker, note);
+    parts[index] = note;
+    return parts.map(cleanText).filter(Boolean).join('\n\n') || null;
+}
+
 function appendUniqueLeadCustomerNote(existingValue, noteValue, leadId) {
     const existing = cleanText(existingValue);
     const note = cleanText(noteValue);
@@ -1107,6 +1194,28 @@ function mapWorkspaceCustomer(row) {
     };
 }
 
+function buildCustomerCardCompat(lead = {}, customer = null) {
+    if (!lead && !customer) return null;
+    return {
+        deprecated: true,
+        source: 'customers',
+        lead_id: lead?.id || customer?.lead_id || null,
+        customer_id: customer?.id || null,
+        name: customer?.name || lead?.client_name || lead?.clientName || null,
+        phone: customer?.phone || lead?.phone || null,
+        instagram: customer?.instagram || lead?.instagram || null,
+        email: null,
+        channel: lead?.source_channel || lead?.sourceChannel || lead?.source || null,
+        event_type: lead?.quality_category || lead?.qualityCategory || lead?.event_type || null,
+        event_date: lead?.event_date || lead?.eventDate || null,
+        guest_count: null,
+        children_count: lead?.children_count || lead?.childrenCount || null,
+        budget_approx: null,
+        how_found: lead?.source || null,
+        notes: customer?.notes || lead?.notes || null
+    };
+}
+
 function mapWorkspaceBooking(row, leadBookingId = null) {
     const isLeadBooking = Boolean(leadBookingId) && String(row.id) === String(leadBookingId);
     return {
@@ -1257,9 +1366,15 @@ router.get('/', async (req, res) => {
             params.push(pipeline_stage);
             conditions.push(`l.pipeline_stage = $${params.length}`);
         }
-        if (status) {
-            params.push(status);
-            conditions.push(`l.status = $${params.length}`);
+        if (status && !pipeline_stage) {
+            const normalizedStatus = cleanText(status);
+            if (!normalizedStatus || !VALID_LEAD_STATUSES.has(normalizedStatus)) {
+                return res.status(400).json({ success: false, error: 'Некоректний status' });
+            }
+            const matchingStages = PIPELINE_STAGE_ORDER.filter(stage => STAGE_TO_STATUS[stage] === normalizedStatus);
+            if (!matchingStages.includes(STATUS_TO_STAGE[normalizedStatus])) matchingStages.push(STATUS_TO_STAGE[normalizedStatus]);
+            params.push(matchingStages);
+            conditions.push(`COALESCE(l.pipeline_stage, 'new') = ANY($${params.length}::text[])`);
         }
         if (assigned_to) {
             const assignedId = parseInt(assigned_to);
@@ -1325,7 +1440,7 @@ router.get('/hot', async (req, res) => {
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
-            WHERE l.status = 'new'
+            WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
               AND ${scopeSql}
               AND l.created_at < NOW() - INTERVAL '24 hours'
             ORDER BY l.created_at ASC
@@ -1356,7 +1471,7 @@ router.get('/stats', async (req, res) => {
         const stageScopeSql = leadScopeCondition(stageParams, businessScope, '');
 
         const [byStatus, byType, byStage] = await Promise.all([
-            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE ${statusScopeSql} ${dateFilter} GROUP BY status`, statusParams),
+            pool.query(`SELECT ${LEAD_STATUS_FROM_STAGE_SQL} AS status, COUNT(*) AS count FROM leads WHERE ${statusScopeSql} ${dateFilter} GROUP BY ${LEAD_STATUS_FROM_STAGE_SQL}`, statusParams),
             pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE ${typeScopeSql} ${dateFilter} GROUP BY lead_type`, typeParams),
             pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE ${stageScopeSql} ${dateFilter} GROUP BY pipeline_stage`, stageParams),
         ]);
@@ -1424,18 +1539,24 @@ router.patch('/:id', async (req, res) => {
         const updates = [];
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
+        const stageStatus = normalizeLeadPatchStageStatus({ pipelineStage: pipeline_stage, status });
 
         if (assignedTo.error) {
             return res.status(400).json({ success: false, error: assignedTo.error });
+        }
+        if (stageStatus.error) {
+            return res.status(400).json({ success: false, error: stageStatus.error });
         }
         if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
 
-        if (status) {
-            params.push(status);
+        if (stageStatus.stageProvided) {
+            params.push(stageStatus.stage);
+            updates.push(`pipeline_stage = $${params.length}`);
+            params.push(stageStatus.status);
             updates.push(`status = $${params.length}`);
-            if (status === 'booked') updates.push(`booked_at = NOW()`);
+            if (stageStatus.status === 'booked') updates.push(`booked_at = COALESCE(booked_at, NOW())`);
         }
         if (notes !== undefined) { params.push(notes); updates.push(`notes = $${params.length}`); }
         if (assignedTo.provided) { params.push(assignedTo.value); updates.push(`assigned_to = $${params.length}`); }
@@ -1453,15 +1574,6 @@ router.patch('/:id', async (req, res) => {
             updates.push(`celebrants = $${params.length}::jsonb`);
         }
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
-        if (pipeline_stage !== undefined) {
-            params.push(pipeline_stage);
-            updates.push(`pipeline_stage = $${params.length}`);
-            // Auto-sync status from pipeline_stage (if status not explicitly set)
-            if (!status && STAGE_TO_STATUS[pipeline_stage]) {
-                params.push(STAGE_TO_STATUS[pipeline_stage]);
-                updates.push(`status = $${params.length}`);
-            }
-        }
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
         if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
         if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }
@@ -1469,7 +1581,7 @@ router.patch('/:id', async (req, res) => {
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
-        } else if (status === 'contact') {
+        } else if (stageStatus.status === 'contact') {
             updates.push(`last_contact_at = COALESCE(last_contact_at, NOW())`);
         }
 
@@ -1481,11 +1593,28 @@ router.patch('/:id', async (req, res) => {
         params.push(businessContext);
         let updatedLead;
         let dealCustomerLink = null;
-        const shouldEnsureDealCustomer = pipeline_stage === 'deal';
-        const updateClient = shouldEnsureDealCustomer || kanbanOrderIds.length ? await pool.connect() : null;
+        let previousLead = null;
+        const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
+        const shouldEnsureDealCustomer = effectivePipelineStage === 'deal';
+        const updateClient = shouldEnsureDealCustomer || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
         try {
             if (updateClient) await updateClient.query('BEGIN');
             const queryable = updateClient || pool;
+            if (stageStatus.stageProvided) {
+                const previousResult = await queryable.query(
+                    `SELECT id, pipeline_stage, status
+                     FROM leads
+                     WHERE id = $1
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                     FOR UPDATE`,
+                    [leadId, businessContext]
+                );
+                if (previousResult.rows.length === 0) {
+                    if (updateClient) await updateClient.query('ROLLBACK');
+                    return res.status(404).json({ success: false, error: 'Lead not found' });
+                }
+                previousLead = previousResult.rows[0];
+            }
             const result = await queryable.query(
                 `UPDATE leads SET ${updates.join(', ')}
                  WHERE id = $${params.length - 1}
@@ -1499,13 +1628,27 @@ router.patch('/:id', async (req, res) => {
             }
 
             updatedLead = result.rows[0];
+            if (stageStatus.stageProvided) {
+                const oldStage = previousLead?.pipeline_stage || 'new';
+                const newStage = updatedLead.pipeline_stage || effectivePipelineStage || 'new';
+                if (oldStage !== newStage) {
+                    await logStageChange(queryable, {
+                        leadId: updatedLead.id,
+                        oldStage,
+                        newStage,
+                        oldStatus: previousLead?.status || STAGE_TO_STATUS[oldStage] || 'new',
+                        newStatus: updatedLead.status || STAGE_TO_STATUS[newStage] || 'new',
+                        userId: req.user?.id
+                    });
+                }
+            }
             if (shouldEnsureDealCustomer) {
                 dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext);
             }
             if (kanbanOrderIds.length) {
                 await persistLeadKanbanOrder(queryable, {
                     businessContext,
-                    stage: updatedLead.pipeline_stage || pipeline_stage || 'new',
+                    stage: updatedLead.pipeline_stage || effectivePipelineStage || 'new',
                     orderedLeadIds: kanbanOrderIds
                 });
                 const refreshedLead = await queryable.query(
@@ -1527,7 +1670,8 @@ router.patch('/:id', async (req, res) => {
 
         // v33.8.0 Integration 8: Lead → Customer source link
         const newStatus = updatedLead.status;
-        if (['completed', 'deal', 'closed'].includes(newStatus) && updatedLead.booking_id) {
+        const newStage = updatedLead.pipeline_stage || effectivePipelineStage || 'new';
+        if ((['deal', 'deposit_received', 'waiting', 'completed', 'closed'].includes(newStage) || ['completed', 'booked'].includes(newStatus)) && updatedLead.booking_id) {
             setImmediate(async () => {
                 try {
                     const bk = await pool.query(
@@ -1556,22 +1700,17 @@ router.patch('/:id', async (req, res) => {
         }
 
         // v29.1: Pipeline stage hooks (fire-and-forget)
-        if (pipeline_stage === 'deposit_received') {
+        if (newStage === 'deposit_received') {
             onDepositReceived(updatedLead, req.user).catch(e =>
                 log.error('onDepositReceived error (non-blocking)', e)
             );
         }
         // v29.1: Auto-add to mailing on informational/lost
-        if (lead_type === 'informational' || pipeline_stage === 'lost') {
+        if (lead_type === 'informational' || newStage === 'lost') {
             addToMailingIfNeeded(updatedLead).catch(e =>
                 log.error('addToMailing error (non-blocking)', e)
             );
         }
-        // v29.1: Log pipeline stage changes
-        if (pipeline_stage !== undefined) {
-            logStageChange(updatedLead.id, pipeline_stage, req.user?.id).catch(() => {});
-        }
-
         const response = { success: true, lead: updatedLead };
         if (dealCustomerLink?.customer) {
             response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
@@ -1776,14 +1915,6 @@ router.get('/:id/workspace', async (req, res) => {
         const rawLead = leadResult.rows[0];
         const lead = mapWorkspaceLead(rawLead);
 
-        const cardResult = await optionalWorkspaceQuery(`
-            SELECT * FROM customer_cards
-            WHERE lead_id = $1
-              AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
-            LIMIT 1
-        `, [leadId, businessContext]);
-        const customerCard = cardResult.rows[0] || null;
-
         let bookingCustomerId = null;
         if (lead.bookingId) {
             const bookingLinkParams = [lead.bookingId, businessContext];
@@ -1799,7 +1930,7 @@ router.get('/:id/workspace', async (req, res) => {
             bookingCustomerId = bookingLinkResult.rows[0]?.customer_id || null;
         }
 
-        const phoneDigits = normalizeDigits(lead.phone || customerCard?.phone);
+        const phoneDigits = normalizeDigits(lead.phone);
         const instagramKey = normalizeInstagram(lead.instagram);
         const customerLookupParams = [bookingCustomerId, leadId, phoneDigits, instagramKey, businessContext];
         const customerBookingScope = getVisibleBookingScope(req.user, customerLookupParams, 'b');
@@ -1843,6 +1974,7 @@ router.get('/:id/workspace', async (req, res) => {
         `, customerLookupParams);
         const customer = mapWorkspaceCustomer(customerResult.rows[0]);
         const customerId = customer?.id || bookingCustomerId || null;
+        const customerCard = customer ? buildCustomerCardCompat(rawLead, customerResult.rows[0]) : null;
 
         const bookingConditions = [];
         const bookingParams = [];
@@ -1972,7 +2104,6 @@ router.get('/:id/workspace', async (req, res) => {
 
         const eventDates = [
             lead.eventDate,
-            customerCard?.event_date,
             ...bookings.map(b => b.date)
         ].map(toDateOnly).filter(Boolean).sort();
         const nextEventDate = eventDates.find(d => calculateDaysUntil(d) >= 0) || eventDates[0] || null;
@@ -2345,13 +2476,25 @@ router.get('/:id/card', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const result = await pool.query(
-            `SELECT * FROM customer_cards
-             WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+        const leadResult = await pool.query(
+            `SELECT *
+             FROM leads
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              LIMIT 1`,
             [req.params.id, businessContext]
         );
-        res.json({ success: true, card: result.rows[0] || null });
+        if (!leadResult.rows.length) {
+            return res.json({ success: true, deprecated: true, card: null, customer: null });
+        }
+        const lead = leadResult.rows[0];
+        const customer = await findCustomerForLead(pool, lead, businessContext);
+        res.json({
+            success: true,
+            deprecated: true,
+            source: 'customers',
+            card: customer ? buildCustomerCardCompat(lead, customer) : null,
+            customer: mapWorkspaceCustomer(customer)
+        });
     } catch (err) {
         log.error('GET /leads/:id/card error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
@@ -2360,53 +2503,100 @@ router.get('/:id/card', async (req, res) => {
 
 // POST /api/leads/:id/card — create/update customer card
 router.post('/:id/card', async (req, res) => {
+    let client;
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const leadId = parseInt(req.params.id);
+        const leadId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
+        }
         const { event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes } = req.body;
 
-        // Check lead exists
-        const lead = await pool.query(
-            `SELECT id FROM leads WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const leadResult = await client.query(
+            `SELECT *
+             FROM leads
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
             [leadId, businessContext]
         );
-        if (lead.rows.length === 0) {
+        if (leadResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
 
-        // Upsert
-        const existing = await pool.query(
-            `SELECT id FROM customer_cards
-             WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
-            [leadId, businessContext]
-        );
-        let result;
-        if (existing.rows.length > 0) {
-            result = await pool.query(`
-                UPDATE customer_cards SET
-                    event_type = $2, event_date = $3, guest_count = $4, children_count = $5,
-                    budget_approx = $6, how_found = $7, email = $8, channel = $9, notes = $10,
-                    updated_at = NOW()
-                WHERE lead_id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $11
-                RETURNING *
-            `, [leadId, event_type || null, event_date || null, guest_count || null,
-                children_count || null, budget_approx || null, how_found || null,
-                email || null, channel || null, notes || null, businessContext]);
-        } else {
-            result = await pool.query(`
-                INSERT INTO customer_cards (business_context, lead_id, event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *
-            `, [businessContext, leadId, event_type || null, event_date || null, guest_count || null,
-                children_count || null, budget_approx || null, how_found || null,
-                email || null, channel || null, notes || null]);
+        let lead = leadResult.rows[0];
+        const leadUpdates = [];
+        const leadParams = [];
+        if (event_date !== undefined) {
+            leadParams.push(event_date || null);
+            leadUpdates.push(`event_date = $${leadParams.length}`);
+        }
+        if (children_count !== undefined) {
+            leadParams.push(children_count || null);
+            leadUpdates.push(`children_count = $${leadParams.length}`);
+        }
+        if (leadUpdates.length) {
+            leadParams.push(leadId, businessContext);
+            const updatedLead = await client.query(
+                `UPDATE leads
+                 SET ${leadUpdates.join(', ')}, updated_at = NOW()
+                 WHERE id = $${leadParams.length - 1}
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${leadParams.length}
+                 RETURNING *`,
+                leadParams
+            );
+            lead = updatedLead.rows[0] || lead;
         }
 
-        log.info(`Customer card saved for lead ${leadId}`);
-        res.json({ success: true, card: result.rows[0] });
+        const ensured = await ensureDealCustomerForLead(client, lead, businessContext);
+        const legacyNote = buildLegacyCustomerCardNotes(leadId, {
+            id: `lead:${leadId}`,
+            event_type: event_type || null,
+            event_date: event_date || null,
+            guest_count: guest_count || null,
+            children_count: children_count || null,
+            budget_approx: budget_approx || null,
+            how_found: how_found || null,
+            email: email || null,
+            channel: channel || null,
+            notes: notes || null
+        });
+        let customer = ensured?.customer || null;
+        if (customer && legacyNote.text) {
+            const nextNotes = upsertMarkedNote(customer.notes, legacyNote.marker, legacyNote.text);
+            if (nextNotes !== cleanText(customer.notes)) {
+                const customerUpdate = await client.query(
+                    `UPDATE customers
+                     SET notes = $1, updated_at = NOW()
+                     WHERE id = $2
+                       AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+                     RETURNING *`,
+                    [nextNotes, customer.id, businessContext]
+                );
+                customer = customerUpdate.rows[0] || customer;
+            }
+        }
+
+        await client.query('COMMIT');
+        log.info(`Customer compat card saved to customers for lead ${leadId}`);
+        res.json({
+            success: true,
+            deprecated: true,
+            source: 'customers',
+            card: buildCustomerCardCompat(lead, customer),
+            customer: mapWorkspaceCustomer(customer),
+            customerLinkMode: ensured?.mode || null
+        });
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('POST /leads/:id/card error', err);
         res.status(500).json({ success: false, error: 'Помилка збереження картки' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -2491,15 +2681,22 @@ async function onDepositReceived(lead, user) {
 }
 
 // Log pipeline stage change to lead_interactions
-async function logStageChange(leadId, newStage, userId) {
-    try {
-        await pool.query(`
-            INSERT INTO lead_interactions (lead_id, type, notes, created_by, created_at)
-            VALUES ($1, 'stage_change', $2, $3, NOW())
-        `, [leadId, `Pipeline → ${newStage}`, userId || null]);
-    } catch (e) {
-        // lead_interactions may not exist yet, non-blocking
-    }
+async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus, newStatus, userId }) {
+    await queryable.query(`
+        INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)
+        VALUES ($1, $2, 'status_change', $3, $4::jsonb, NOW())
+    `, [
+        leadId,
+        userId || null,
+        `Pipeline: ${oldStage || 'new'} -> ${newStage || 'new'}`,
+        JSON.stringify({
+            oldStage: oldStage || 'new',
+            newStage: newStage || 'new',
+            oldStatus: oldStatus || null,
+            newStatus: newStatus || null,
+            source: 'leads.patch'
+        })
+    ]);
 }
 
 // Auto-add to mailing list
@@ -2524,7 +2721,7 @@ router.get('/new-count', async (req, res) => {
         const r = await pool.query(
             `SELECT COUNT(*)::int AS count
              FROM leads
-             WHERE status = 'new'
+             WHERE COALESCE(pipeline_stage, 'new') = 'new'
                AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
             [businessContext]
         );

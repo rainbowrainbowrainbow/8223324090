@@ -989,6 +989,9 @@ function createFakePool() {
             if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
+            if (/SELECT id, pipeline_stage, status FROM leads WHERE id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(text)) {
+                return { rows: [{ id: params[0], pipeline_stage: 'new', status: 'new' }] };
+            }
             if (/UPDATE leads SET .* WHERE id = \$\d+(?: AND COALESCE\(business_context, 'event_genix'\) = \$\d+)? RETURNING \*/i.test(text)) {
                 const row = {
                     id: params[params.length - 2] || params[params.length - 1],
@@ -1013,6 +1016,12 @@ function createFakePool() {
                 return {
                     rows: [row]
                 };
+            }
+            if (/INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(text)) {
+                if (String(params[2] || '').includes('new -> lost')) {
+                    throw new Error('route smoke interaction insert failure');
+                }
+                return { rows: [], rowCount: 1 };
             }
             if (/FROM customers WHERE lead_id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1/i.test(text)) {
                 return { rows: [] };
@@ -1947,6 +1956,48 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
         assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text)));
+        const stageLog = queries.find(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text));
+        assert.ok(stageLog, 'stage change should be written to lead_interactions');
+        assert.equal(stageLog.params[0], 501);
+        assert.equal(stageLog.params[2], 'Pipeline: new -> deal');
+        assert.deepEqual(JSON.parse(stageLog.params[3]), {
+            oldStage: 'new',
+            newStage: 'deal',
+            oldStatus: 'new',
+            newStatus: 'proposal',
+            source: 'leads.patch'
+        });
+    });
+
+    it('rolls back a lead stage change when the interaction audit cannot be written', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'lost' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 500, JSON.stringify(res.data));
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+    });
+
+    it('keeps pipeline_stage canonical when legacy status conflicts', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'contacted', status: 'lost' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.lead.pipeline_stage, 'contacted');
+        assert.equal(res.data.lead.status, 'contact');
+    });
+
+    it('maps legacy lead status updates to canonical pipeline stages', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501', { status: 'booked' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.lead.pipeline_stage, 'deposit_received');
+        assert.equal(res.data.lead.status, 'booked');
+    });
+
+    it('rejects unknown lead status values instead of storing arbitrary statuses', async () => {
+        const res = await request('PATCH', '/api/leads/501', { status: 'whatever' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 400, JSON.stringify(res.data));
     });
 
     it('preserves exact lead source linkage when creating manager callback tasks', async () => {

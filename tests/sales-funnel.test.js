@@ -105,7 +105,7 @@ describe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {
 });
 
 describe('Sales Funnel v29.1.0 — Customer Cards', () => {
-    it('POST /api/leads/:id/card — creates customer card', async () => {
+    it('POST /api/leads/:id/card — saves legacy card fields into the real customer card', async () => {
         if (!testLeadId) return;
         const res = await authRequest('POST', `/api/leads/${testLeadId}/card`, {
             event_type: 'birthday',
@@ -119,28 +119,40 @@ describe('Sales Funnel v29.1.0 — Customer Cards', () => {
             notes: 'Тестова картка'
         });
         assert.equal(res.status, 200);
+        assert.equal(res.data.deprecated, true);
+        assert.equal(res.data.source, 'customers');
         assert.ok(res.data.card);
-        assert.equal(res.data.card.event_type, 'birthday');
-        assert.equal(res.data.card.guest_count, 20);
+        assert.ok(res.data.customer);
+        assert.equal(res.data.customer.leadId, testLeadId);
+        assert.equal(res.data.card.customer_id, res.data.customer.id);
+        assert.equal(res.data.card.event_date, '2026-04-15');
+        assert.match(res.data.customer.notes || '', new RegExp(`legacy customer_card:lead:${testLeadId}`));
+        assert.match(res.data.customer.notes || '', /8000/);
     });
 
-    it('GET /api/leads/:id/card — returns existing card', async () => {
+    it('GET /api/leads/:id/card — returns a customers-backed compat card', async () => {
         if (!testLeadId) return;
         const res = await authRequest('GET', `/api/leads/${testLeadId}/card`);
         assert.equal(res.status, 200);
+        assert.equal(res.data.deprecated, true);
+        assert.equal(res.data.source, 'customers');
         assert.ok(res.data.card);
-        assert.equal(res.data.card.event_type, 'birthday');
+        assert.ok(res.data.customer);
+        assert.equal(res.data.card.customer_id, res.data.customer.id);
+        assert.equal(res.data.card.event_date, '2026-04-15');
     });
 
-    it('POST /api/leads/:id/card — updates existing card', async () => {
+    it('POST /api/leads/:id/card — updates the compat note block without touching customer_cards', async () => {
         if (!testLeadId) return;
         const res = await authRequest('POST', `/api/leads/${testLeadId}/card`, {
             event_type: 'corporate',
+            event_date: '2026-05-01',
             budget_approx: 15000
         });
         assert.equal(res.status, 200);
-        assert.equal(res.data.card.event_type, 'corporate');
-        assert.equal(res.data.card.budget_approx, 15000);
+        assert.equal(res.data.source, 'customers');
+        assert.equal(res.data.card.event_date, '2026-05-01');
+        assert.match(res.data.customer.notes || '', /15000/);
     });
 
     it('GET /api/leads/999999/card — returns null card', async () => {

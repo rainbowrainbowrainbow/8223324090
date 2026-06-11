@@ -4,6 +4,18 @@
 
 ---
 
+## v0.74.45 - Ліди: єдина картка клієнта й аудит етапів
+
+### Ліди / Воронка / Картка клієнта / Аудит / Status canonical / Migration / Release / (Клешня, 11.06.2026) [codex]
+- **Активною карткою клієнта для ліда лишився `customers`** - workspace і кнопка “Картка клієнта” відкривають реального клієнта, а не стару lead-local `customer_cards`.
+- **Старі `customer_cards` перенесено в notes реального клієнта** - міграція `261_*` створює або знаходить customer, додає idempotent блок `legacy customer_card`, backfill-ить дату події й кількість дітей у лід.
+- **Зміни етапів тепер пишуться в `lead_interactions` атомарно** - `PATCH /api/leads/:id` записує `status_change` з `oldStage`, `newStage`, `oldStatus`, `newStatus`; якщо аудит не записався, PATCH відкочується.
+- **`pipeline_stage` став canonical полем воронки** - legacy `status` мапиться у stage, конфліктний `status` більше не перемагає `pipeline_stage`, невідомі значення відхиляються.
+- **Regression guard оновлено** - route smoke покриває audit insert, rollback, canonical mapping і заборону довільних status; UI smoke забороняє повернення старого customer-card modal у workspace.
+- **Релізні маркери піднято до `0.74.45`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.44 - Кімнати: ресурсні підписи й звʼязки активностей
 
 ### Бронювання / Кімнати / Resource availability / Shared room links / Release / (Клешня, 11.06.2026) [codex]

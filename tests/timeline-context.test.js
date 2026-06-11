@@ -312,6 +312,66 @@ test('Dar simple timeline opens from URL before the server business profile hydr
     assert.equal(sandbox.window.TimelineBusinessContext.appendApiContext('/api/bookings'), '/api/bookings?businessContext=dar');
 });
 
+test('root park timeline does not inherit a hidden global CRM business context', () => {
+    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
+    const sandbox = {
+        console,
+        URLSearchParams,
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail || null;
+            }
+        },
+        window: {
+            location: { pathname: '/', search: '', href: 'https://crm.test/' },
+            CrmBusinessContext: {
+                current: () => 'dar',
+                state: () => ({
+                    activeBusinessId: 'dar',
+                    source: 'stored_global_context',
+                    availableBusinesses: [{ key: 'event_genix' }, { key: 'dar' }]
+                })
+            },
+            addEventListener() {},
+            dispatchEvent() {}
+        },
+        document: {
+            title: '',
+            readyState: 'complete',
+            body: {
+                classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+                dataset: {},
+                setAttribute() {}
+            },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem: () => null,
+            setItem() {},
+            removeItem() {}
+        }
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+
+    vm.runInNewContext(contextCode, sandbox);
+
+    const ctx = sandbox.window.TimelineBusinessContext.current();
+    const state = sandbox.window.TimelineBusinessContext.state();
+    assert.equal(ctx.key, 'event_genix');
+    assert.equal(ctx.apiValue, 'event_genix');
+    assert.equal(state.activeBusinessContext, 'event_genix');
+    assert.equal(state.routeBusinessId, 'event_genix');
+    assert.equal(state.crmBusinessId, 'dar');
+    assert.equal(sandbox.window.TimelineBusinessContext.appendApiContext('/api/bookings/2026-06-08'), '/api/bookings/2026-06-08?businessContext=event_genix');
+    const payload = sandbox.window.TimelineBusinessContext.withApiContext({ status: 'confirmed' });
+    assert.equal(payload.status, 'confirmed');
+    assert.equal(payload.businessContext, 'event_genix');
+});
+
 test('global business switch routes to the matching timeline surface', () => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');

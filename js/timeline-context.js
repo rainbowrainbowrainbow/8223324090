@@ -341,6 +341,10 @@
         return null;
     }
 
+    function currentPinnedRootContext() {
+        return normalizedPath() === CONTEXTS.event_genix.path ? CONTEXTS.event_genix : null;
+    }
+
     function currentUrlContext() {
         try {
             const params = new URLSearchParams(window.location.search || '');
@@ -362,18 +366,23 @@
     function currentContext() {
         return currentRouteContext()
             || currentUrlContext()
+            || currentPinnedRootContext()
             || currentCrmContext()
             || CONTEXTS.event_genix;
     }
 
     function contextState() {
         const ctx = currentContext();
+        const explicitRouteCtx = currentRouteContext();
+        const rootRouteCtx = currentPinnedRootContext();
+        const routeCtx = explicitRouteCtx || rootRouteCtx;
+        const urlCtx = currentUrlContext();
         const crmState = window.CrmBusinessContext?.state?.();
         return {
             activeBusinessId: ctx.key,
             activeBusinessContext: ctx.apiValue,
-            source: currentRouteContext() ? 'route' : (currentUrlContext() ? 'url' : (crmState?.source || 'timeline_default')),
-            routeBusinessId: currentRouteContext()?.key || null,
+            source: explicitRouteCtx ? 'route' : (urlCtx ? 'url' : (rootRouteCtx ? 'route' : (crmState?.source || 'timeline_default'))),
+            routeBusinessId: routeCtx?.key || null,
             crmBusinessId: crmState?.activeBusinessId || null,
             lastExplicitBusinessId: crmState?.lastExplicitBusinessId || null,
             availableBusinesses: Array.isArray(crmState?.availableBusinesses)

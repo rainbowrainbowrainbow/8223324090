@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.5 - LEAD ON: кореневий таймлайн
+
+### LEAD ON / Таймлайн / Root context / Business context isolation / Hotfix / (Клешня, 11.06.2026) [codex]
+- **Кореневий таймлайн `/` більше не успадковує прихований CRM business context** - якщо в CRM останнім був активний `dar`, `crm` або інший бізнес, парк усе одно формує timeline API запити з `businessContext=event_genix`.
+- **Network для парку знову стабільний** - `TimelineBusinessContext.current()`, `appendApiContext()` і `withApiContext()` на чистому `/` повертають `event_genix`, а не глобальний `CrmBusinessContext.current()`.
+- **Явні override не зламані** - `/?businessContext=dar` і `/maysternya-doli` лишаються explicit timeline contexts; заблоковано саме мовчазне спадкування глобального state.
+- **Regression guard додано** - `tests/timeline-context.test.js` перевіряє сценарій: global CRM context = `dar`, сторінка = `/`, bookings API отримує `businessContext=event_genix`.
+- **Релізні маркери піднято до `0.75.5`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.4 - LEAD ON: контекст таймлайна
 
 ### LEAD ON / Таймлайн / Бронювання / Business context aliases / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]

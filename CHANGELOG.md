@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.2 - LEAD ON: fallback бронювань
+
+### LEAD ON / Таймлайн / Бронювання / Line identity / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]
+- **Бронювання більше не зникають, коли id ліній і ресурсів розʼїхались** - frontend матчить booking blocks не тільки по одному `resourceId`, а й по legacy `lineId`, `line_id`, `resource_id`, metadata та видимих назвах ресурсів.
+- **Unmatched бронювання показуються аварійно, а не губляться** - якщо бронь не співпала з жодною лінією, таймлайн рендерить її на першій доступній лінії й пише warning з id бронювань.
+- **Regression guard додано** - UI smoke перевіряє tolerant line/resource matching і fallback `unmatched_line_identity`.
+- **Релізні маркери піднято до `0.75.2`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy.
+
+---
+
 ## v0.75.1 - LEAD ON: таймлайн бронювань
 
 ### LEAD ON / Таймлайн / Бронювання / Visual links / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]

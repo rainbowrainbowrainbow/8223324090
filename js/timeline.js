@@ -502,9 +502,85 @@ function timelineBookingResourceIdentity(booking = {}) {
     };
 }
 
+function normalizedTimelineMatchKey(value) {
+    return String(value ?? '').trim().toLowerCase();
+}
+
+function addTimelineMatchKey(keys, value) {
+    const key = normalizedTimelineMatchKey(value);
+    if (key) keys.add(key);
+}
+
+function addTimelineMetadataMatchKeys(keys, metadata = {}) {
+    if (!metadata || typeof metadata !== 'object') return;
+    addTimelineMatchKey(keys, metadata.legacyLineId);
+    addTimelineMatchKey(keys, metadata.legacy_line_id);
+    addTimelineMatchKey(keys, metadata.lineId);
+    addTimelineMatchKey(keys, metadata.line_id);
+    addTimelineMatchKey(keys, metadata.resourceId);
+    addTimelineMatchKey(keys, metadata.resource_id);
+    const legacyIds = metadata.legacyLineIds || metadata.legacy_line_ids;
+    if (Array.isArray(legacyIds)) legacyIds.forEach(item => addTimelineMatchKey(keys, item));
+}
+
+function timelineLineMatchKeys(line = {}) {
+    const embedded = timelineEmbeddedIdentity(line);
+    const identity = timelineLineResourceIdentity(line);
+    const keys = new Set();
+    [
+        line?.id,
+        line?.lineId,
+        line?.line_id,
+        line?.resourceId,
+        line?.resource_id,
+        line?.staffId,
+        line?.staff_id,
+        identity.resourceId,
+        embedded.resourceId,
+        embedded.resource_id,
+        line?.name,
+        line?.shortName,
+        line?.short_name
+    ].forEach(value => addTimelineMatchKey(keys, value));
+    addTimelineMetadataMatchKeys(keys, line?.metadata);
+    addTimelineMetadataMatchKeys(keys, line?.extraData || line?.extra_data);
+    return keys;
+}
+
+function timelineBookingMatchKeys(booking = {}) {
+    const embedded = timelineEmbeddedIdentity(booking);
+    const identity = timelineBookingResourceIdentity(booking);
+    const keys = new Set();
+    [
+        booking?.lineId,
+        booking?.line_id,
+        booking?.resourceId,
+        booking?.resource_id,
+        identity.resourceId,
+        embedded.resourceId,
+        embedded.resource_id
+    ].forEach(value => addTimelineMatchKey(keys, value));
+    addTimelineMetadataMatchKeys(keys, booking?.metadata);
+    addTimelineMetadataMatchKeys(keys, booking?.extraData || booking?.extra_data);
+
+    // Resource-backed cabinet/room timelines historically stored the visible room
+    // name in bookings.room while lines now use durable resource ids.
+    const lineType = normalizedTimelineMatchKey(identity.resourceType);
+    if (lineType === 'cabinet' || lineType === 'room' || lineType === 'resource') {
+        addTimelineMatchKey(keys, booking?.room);
+    }
+    return keys;
+}
+
 function timelineBookingsForLine(bookings = [], line = {}) {
-    const lineResourceId = timelineLineResourceIdentity(line).resourceId;
-    return bookings.filter(booking => String(timelineBookingResourceIdentity(booking).resourceId || '') === String(lineResourceId || ''));
+    const lineKeys = timelineLineMatchKeys(line);
+    return bookings.filter(booking => {
+        const bookingKeys = timelineBookingMatchKeys(booking);
+        for (const key of bookingKeys) {
+            if (lineKeys.has(key)) return true;
+        }
+        return false;
+    });
 }
 
 function normalizeTimelineLinesForContext(lines = []) {
@@ -697,9 +773,37 @@ async function renderTimeline() {
         } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
     }
 
+    const lineBookingsById = new Map();
+    const matchedBookingIds = new Set();
+    lines.forEach(line => {
+        const lineBookings = timelineBookingsForLine(bookings, line);
+        lineBookingsById.set(String(line.id), lineBookings);
+        lineBookings.forEach(booking => matchedBookingIds.add(String(booking.id)));
+    });
+    const unmatchedBookings = bookings.filter(booking => !matchedBookingIds.has(String(booking.id)));
+    if (unmatchedBookings.length && lines.length) {
+        const fallbackLine = lines[0];
+        const fallbackKey = String(fallbackLine.id);
+        lineBookingsById.set(fallbackKey, [
+            ...(lineBookingsById.get(fallbackKey) || []),
+            ...unmatchedBookings.map(booking => ({
+                ...booking,
+                timelineIdentity: {
+                    ...(booking.timelineIdentity || {}),
+                    fallbackLineId: fallbackLine.id,
+                    fallbackReason: 'unmatched_line_identity'
+                }
+            }))
+        ]);
+        console.warn('[Timeline] Rendered unmatched bookings on fallback line', {
+            lineId: fallbackLine.id,
+            bookingIds: unmatchedBookings.map(booking => booking.id)
+        });
+    }
+
     lines.forEach(line => {
         try {
-        const lineBookings = timelineBookingsForLine(bookings, line);
+        const lineBookings = lineBookingsById.get(String(line.id)) || [];
         const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;

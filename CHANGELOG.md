@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.8 - LEAD ON: release gate і live smoke
+
+### LEAD ON / Надійність / Release gate / Live smoke / Health / Deploy safety / (Клешня, 11.06.2026) [codex]
+- **Додано `npm run release:gate`** - переддеплойна команда перевіряє актуальність версії/гілки й запускає повний `npm test`; якщо передати live URL, додатково запускає live smoke і timeline release proof.
+- **Додано `npm run smoke:live -- <url>`** - post-deploy smoke перевіряє `/api/version`, `/api/health`, `/api/ready`, `/api/health/deep`, а з токеном або логіном також `bookings`, `lines` і `leads`.
+- **Health розділено за призначенням** - `/api/health` став легким uptime/database check для Railway, `/api/ready` перевіряє готовність схеми й повертає `503` при drift, `/api/health/deep` показує diagnostic schema details.
+- **Public auth boundary оновлено** - readiness/deep health endpoints явно внесені в `config/authBoundary.js`, документацію і smoke-тести.
+- **Release runbook додано** - `docs/RELEASE_RELIABILITY.md` описує, що запускати до/після деплою і як діяти, якщо live smoke червоний.
+- **Regression guard посилено** - route smoke тепер перевіряє і light health, і degraded schema на `/api/ready`/`/api/health/deep`.
+- **Релізні маркери піднято до `0.75.8`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.7 - LEAD ON: стабілізація таймлайна і лідів
 
 ### LEAD ON / Таймлайн / Ліди / Schema diagnostics / Hotfix / Branch / (Клешня, 11.06.2026) [codex]

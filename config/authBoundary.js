@@ -12,6 +12,18 @@ const PUBLIC_API_ROUTES = [
     },
     {
         method: 'GET',
+        path: '/ready',
+        owner: 'settings',
+        reason: 'Public readiness endpoint verifies database and schema compatibility before/after deploy.'
+    },
+    {
+        method: 'GET',
+        path: '/health/deep',
+        owner: 'settings',
+        reason: 'Public deep health endpoint exposes schema diagnostics for release smoke checks.'
+    },
+    {
+        method: 'GET',
         path: '/version',
         owner: 'settings',
         reason: 'Public version endpoint used by clients and smoke checks.'

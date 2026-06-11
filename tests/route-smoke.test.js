@@ -1492,7 +1492,7 @@ describe('route-level API safety smoke', () => {
         clearModules();
     });
 
-    it('keeps version and health public through the actual settings router', async () => {
+    it('keeps version, light health, readiness, and deep health public through the actual settings router', async () => {
         const version = await request('GET', '/api/version');
         assert.equal(version.status, 200, JSON.stringify(version.data));
         assert.equal(version.data.success, true);
@@ -1506,7 +1506,17 @@ describe('route-level API safety smoke', () => {
         assert.equal(health.data.releaseLabel, pkg.eventGenix.releaseLabel);
         assert.equal(health.data.status, 'ok');
         assert.equal(health.data.database, 'connected');
-        assert.equal(health.data.schema.status, 'ok');
+        assert.equal(health.data.schema, undefined);
+
+        const ready = await request('GET', '/api/ready');
+        assert.equal(ready.status, 200, JSON.stringify(ready.data));
+        assert.equal(ready.data.status, 'ok');
+        assert.equal(ready.data.schema.status, 'ok');
+
+        const deep = await request('GET', '/api/health/deep');
+        assert.equal(deep.status, 200, JSON.stringify(deep.data));
+        assert.equal(deep.data.status, 'ok');
+        assert.equal(deep.data.schema.status, 'ok');
     });
 
     it('reports degraded schema health when required timeline/lead columns are missing', async () => {
@@ -1514,13 +1524,24 @@ describe('route-level API safety smoke', () => {
         missingSchemaMigrations.add('262_leads_customer_links_and_value');
 
         const health = await request('GET', '/api/health');
-
         assert.equal(health.status, 200, JSON.stringify(health.data));
         assert.equal(health.data.database, 'connected');
-        assert.equal(health.data.status, 'degraded');
-        assert.equal(health.data.schema.status, 'degraded');
-        assert.ok(health.data.schema.missing.includes('column:booking_banquet_links.relation_type'));
-        assert.ok(health.data.schema.missing.includes('migration:262_leads_customer_links_and_value'));
+        assert.equal(health.data.status, 'ok');
+        assert.equal(health.data.schema, undefined);
+
+        const ready = await request('GET', '/api/ready');
+        assert.equal(ready.status, 503, JSON.stringify(ready.data));
+        assert.equal(ready.data.status, 'degraded');
+        assert.equal(ready.data.schema.status, 'degraded');
+        assert.ok(ready.data.schema.missing.includes('column:booking_banquet_links.relation_type'));
+        assert.ok(ready.data.schema.missing.includes('migration:262_leads_customer_links_and_value'));
+
+        const deep = await request('GET', '/api/health/deep');
+        assert.equal(deep.status, 200, JSON.stringify(deep.data));
+        assert.equal(deep.data.status, 'degraded');
+        assert.equal(deep.data.schema.status, 'degraded');
+        assert.ok(deep.data.schema.missing.includes('column:booking_banquet_links.relation_type'));
+        assert.ok(deep.data.schema.missing.includes('migration:262_leads_customer_links_and_value'));
     });
 
     it('keeps public landing demo validation available without JWT', async () => {

@@ -108,6 +108,8 @@ npm run test:unit
 npm run test:ui
 npm run test:api
 npm run test:integration
+npm run release:gate
+npm run smoke:live -- https://<live-crm-host>
 npm run health
 ```
 
@@ -133,6 +135,8 @@ Notes:
 - `npm run test:api` runs `tests/api.test.js` and expects a configured local app/database.
 - `npm run test:integration` runs the broader `tests/*.test.js` suite and also expects a configured local app/database.
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
+- `npm run release:gate` is the pre-deploy gate: it checks current version/branch state and runs the full local verification baseline; with a live URL it also runs live smoke/proof.
+- `npm run smoke:live -- https://<live-crm-host>` is the post-deploy smoke: version, light health, readiness/deep schema diagnostics, and authenticated bookings/lines/leads contracts.
 - `npm run version:sync` runs the same version tool in fix mode and edits files.
 - There is no current style lint, TypeScript typecheck, or build pipeline.
 
@@ -177,8 +181,9 @@ For user-visible or deployable product changes:
 3. Update `CHANGELOG.md` when the change is release-relevant.
 4. Run `npm run version:sync` only when you intend to update generated version references.
 5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, changelog, service-worker caches, or `/api/version` ownership.
-6. After deploy, run `npm run version:smoke -- https://<live-crm-host>` and treat a mismatch as an incomplete deploy.
-7. For timeline releases, also run `npm run release:timeline-proof -- https://<live-crm-host>`; it proves `/`, `/maysternya-doli`, timeline assets, and Service Worker cache names are all on the current version.
+6. Before deploy, run `npm run release:gate` and do not deploy if it fails.
+7. After deploy, run `npm run smoke:live -- https://<live-crm-host>` and `npm run version:smoke -- https://<live-crm-host>`; treat a mismatch or `schema.status != ok` as an incomplete deploy.
+8. For timeline releases, also run `npm run release:timeline-proof -- https://<live-crm-host>`; it proves `/`, `/maysternya-doli`, timeline assets, and Service Worker cache names are all on the current version.
 
 Documentation-only changes normally do not need a product version bump unless a release marker is explicitly requested.
 
@@ -193,6 +198,7 @@ The project is documented as Railway-hosted, but historical docs disagree on the
 - Do not change Railway settings or production env vars without explicit confirmation.
 - Do not upload files through GitHub UI.
 - Railway builds must use Node 22.x. If build logs show Node 18 or engine warnings for Node 20+/22+ dependencies, stop and fix the runtime baseline before treating the deployment as valid.
+- Current release reliability runbook: [`docs/RELEASE_RELIABILITY.md`](docs/RELEASE_RELIABILITY.md).
 
 ## Worktree And Change Hygiene
 

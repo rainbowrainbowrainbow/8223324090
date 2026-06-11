@@ -22,6 +22,8 @@ focused tests.
 | --- | --- | --- |
 | `ANY /auth/*` | auth | Authentication endpoints own their own login, refresh, logout, and credential guards. |
 | `GET /health` | settings | Public health endpoint for uptime checks and lightweight operational smoke. |
+| `GET /ready` | settings | Public readiness endpoint verifies database and schema compatibility before/after deploy. |
+| `GET /health/deep` | settings | Public deep health endpoint exposes schema diagnostics for release smoke checks. |
 | `GET /version` | settings | Public version endpoint used by clients and smoke checks. |
 | `POST /telegram/webhook` | telegram | Telegram webhook is guarded by provider secret validation instead of JWT. |
 | `POST /omni/webhook/telegram` | omnichannel | Omni Telegram inbox webhook must accept Telegram provider updates before CRM user JWT exists. |

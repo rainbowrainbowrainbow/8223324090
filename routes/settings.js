@@ -123,6 +123,46 @@ async function getRuntimeSchemaDiagnostics() {
     return diagnostics;
 }
 
+async function buildBaseHealth() {
+    const release = getReleaseMetadata();
+    const checks = {
+        version: release.version,
+        releaseLabel: release.releaseLabel,
+        database: 'unknown',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    };
+    const mem = process.memoryUsage();
+    checks.memory = {
+        rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+        heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB'
+    };
+    try {
+        const start = Date.now();
+        await pool.query('SELECT 1');
+        checks.database = 'connected';
+        checks.dbLatency = (Date.now() - start) + 'ms';
+        checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
+    } catch (err) {
+        checks.database = 'error: ' + err.message;
+    }
+    checks.status = checks.database === 'connected' ? 'ok' : 'degraded';
+    return checks;
+}
+
+async function buildDeepHealth() {
+    const checks = await buildBaseHealth();
+    checks.schema = checks.database === 'connected'
+        ? await getRuntimeSchemaDiagnostics()
+        : { status: 'unknown', missing: [] };
+    try {
+        const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');
+        checks.userCount = uc.rows[0].c;
+    } catch {}
+    checks.status = checks.database === 'connected' && checks.schema.status === 'ok' ? 'ok' : 'degraded';
+    return checks;
+}
+
 // v39.8: Move version + health BEFORE auth (must be public)
 // Duplicates removed from below auth wall
 
@@ -131,23 +171,16 @@ router.get('/version', (req, res) => {
 });
 
 router.get('/health', async (req, res) => {
-    const release = getReleaseMetadata();
-    const checks = { version: release.version, releaseLabel: release.releaseLabel, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
-    const mem = process.memoryUsage();
-    checks.memory = { rss: Math.round(mem.rss / 1024 / 1024) + 'MB', heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB' };
-    try {
-        const start = Date.now();
-        await pool.query('SELECT 1');
-        checks.database = 'connected';
-        checks.dbLatency = (Date.now() - start) + 'ms';
-        checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
-    } catch (err) { checks.database = 'error: ' + err.message; }
-    checks.schema = checks.database === 'connected'
-        ? await getRuntimeSchemaDiagnostics()
-        : { status: 'unknown', missing: [] };
-    try { const uc = await pool.query('SELECT COUNT(*)::int as c FROM users'); checks.userCount = uc.rows[0].c; } catch {}
-    checks.status = checks.database === 'connected' && checks.schema.status === 'ok' ? 'ok' : 'degraded';
-    res.json(checks);
+    res.json(await buildBaseHealth());
+});
+
+router.get('/ready', async (req, res) => {
+    const checks = await buildDeepHealth();
+    res.status(checks.status === 'ok' ? 200 : 503).json(checks);
+});
+
+router.get('/health/deep', async (req, res) => {
+    res.json(await buildDeepHealth());
 });
 
 // v39.8: Security — require authentication for remaining endpoints

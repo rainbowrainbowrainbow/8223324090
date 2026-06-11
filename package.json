@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.7",
+  "version": "0.75.8",
   "eventGenix": {
-    "releaseLabel": "LEAD ON: стабілізація таймлайна і лідів"
+    "releaseLabel": "LEAD ON: release gate і live smoke"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -42,6 +42,8 @@
     "version:sync": "node scripts/version-sync.js --fix",
     "version:bump": "node scripts/version-sync.js --fix --bump",
     "version:smoke": "node scripts/live-version-smoke.js",
+    "release:gate": "node scripts/release-gate.js",
+    "smoke:live": "node scripts/live-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""
   },

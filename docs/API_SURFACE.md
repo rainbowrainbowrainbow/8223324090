@@ -112,7 +112,7 @@ the intentional broad route mounts:
 
 | Mount | Route File | Reason |
 | --- | --- | --- |
-| `/api` | `routes/settings.js` | Owns generic `/api/version`, `/api/health`, and settings endpoints. Mounted after feature routers. |
+| `/api` | `routes/settings.js` | Owns generic `/api/version`, `/api/health`, `/api/ready`, `/api/health/deep`, and settings endpoints. Mounted after feature routers. |
 | `/api` | `routes/shop.js` | Owns legacy gamification aliases such as `/api/inventory`, `/api/profile/:id`, and `/api/profile/equip`. |
 
 ## Server-Level API Routes

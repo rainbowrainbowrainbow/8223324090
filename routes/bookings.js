@@ -1427,12 +1427,8 @@ router.get('/:date', async (req, res) => {
                     client_pinata_service_price, client_pinata_service_note, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
-                    confirmed_at, confirmed_by, confirmation_note, confirmation_source,
-                    c.name AS customer_name
+                    confirmed_at, confirmed_by, confirmation_note, confirmation_source
              FROM bookings b
-             LEFT JOIN customers c
-               ON c.id = b.customer_id
-              AND ${bookingContextColumnSql('c.business_context')} = ${bookingContextColumnSql('b.business_context')}
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'
                ${visibility}
              ORDER BY time`,

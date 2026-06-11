@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.6 - LEAD ON: броні без customer join
+
+### LEAD ON / Таймлайн / Бронювання / SQL fail-safe / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]
+- **Timeline list більше не залежить від `customers` schema** - `GET /api/bookings/:date` знову бере критичний список booking blocks напряму з `bookings`, як у старій робочій гілці.
+- **Schema drift у клієнтах більше не ховає бронювання** - якщо production `customers` має іншу структуру або розʼїханий `business_context`, це більше не валить основний API таймлайна.
+- **Context/status safeguards лишились** - legacy park aliases `pzp`, `park`, `park_zakrevsky` і порожній `bookings.status` продовжують оброблятись як активні Event Genix броні.
+- **Regression guard додано** - `tests/booking-banquet-links.test.js` перевіряє, що timeline list SQL не містить `JOIN customers` і не привʼязує рендер броней до клієнтської таблиці.
+- **Релізні маркери піднято до `0.75.6`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для hotfix deploy.
+
+---
+
 ## v0.75.5 - LEAD ON: кореневий таймлайн
 
 ### LEAD ON / Таймлайн / Root context / Business context isolation / Hotfix / (Клешня, 11.06.2026) [codex]

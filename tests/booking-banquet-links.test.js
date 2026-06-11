@@ -86,7 +86,7 @@ function makeDb(rows, links = [], options = {}) {
             state.tx.push(sql);
             return { rows: [], rowCount: 0 };
         }
-        if (/FROM bookings b .* WHERE b\.date = \$1/i.test(sql)) {
+        if (/FROM bookings b\s+(?:LEFT JOIN[\s\S]+?\s+)?WHERE b\.date = \$1/i.test(sql)) {
             const normalizeContext = value => {
                 const raw = String(value || 'event_genix').trim().toLowerCase();
                 return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
@@ -311,6 +311,13 @@ test('GET bookings treats legacy park context aliases as Event Genix timeline bo
         assert.ok(
             state.queries.some(query => /park_zakrevsky', 'park', 'pzp/i.test(query.sql) && /FROM bookings b/i.test(query.sql)),
             'timeline list query must normalize legacy park business_context aliases'
+        );
+        const listQuery = state.queries.find(query => /FROM bookings b/i.test(query.sql) && /WHERE b\.date = \$1/i.test(query.sql));
+        assert.ok(listQuery, 'timeline list query should be captured');
+        assert.doesNotMatch(
+            listQuery.sql,
+            /JOIN customers/i,
+            'timeline list must not depend on customer schema to render booking blocks'
         );
     });
 });

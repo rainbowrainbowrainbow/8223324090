@@ -74,12 +74,14 @@ function makeDb(rows, links = [], options = {}) {
         links: links.map((link, index) => ({ id: index + 1, relation_type: 'banquet_activity', ...link })),
         histories: [],
         tx: [],
+        queries: [],
         nextLinkId: links.length + 1,
         released: 0
     };
 
     async function query(text, params = []) {
         const sql = String(text).replace(/\s+/g, ' ').trim();
+        state.queries.push({ sql, params });
         if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
             state.tx.push(sql);
             return { rows: [], rowCount: 0 };
@@ -269,6 +271,23 @@ test('GET bookings still returns timeline bookings when visual link enrichment f
         assert.deepEqual(data[0].banquetLinks, []);
         assert.deepEqual(data[0].sharedRoomLinks, []);
     }, { failLinkRead: true });
+});
+
+test('GET bookings treats legacy null status rows as active timeline bookings', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2099-0001', time: '12:00', status: null })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/2099-06-01`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.length, 1);
+        assert.equal(data[0].id, 'BK-2099-0001');
+        assert.equal(data[0].status, 'confirmed');
+        assert.ok(
+            state.queries.some(query => /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(query.sql)),
+            'timeline list query must not drop legacy bookings with NULL status'
+        );
+    });
 });
 
 test('POST banquet link creates a durable same-day relation', async () => {

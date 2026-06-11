@@ -1426,7 +1426,7 @@ router.get('/:date', async (req, res) => {
              LEFT JOIN customers c
                ON c.id = b.customer_id
               AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
-             WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND b.status != 'cancelled'
+             WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'
                ${visibility}
              ORDER BY time`,
             params

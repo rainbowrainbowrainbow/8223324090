@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.3 - LEAD ON: бронювання таймлайна
+
+### LEAD ON / Таймлайн / Бронювання / API status filter / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]
+- **Порожні таймлайни через legacy `NULL` status виправлено** - `GET /api/bookings/:date` більше не відсікає старі бронювання, у яких `bookings.status` порожній або `NULL`; такі записи вважаються активними як `confirmed`.
+- **Cancelled лишається прихованим** - фільтр тепер використовує `LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'`, тому реальні скасовані броні не повертаються.
+- **Regression guard додано** - `tests/booking-banquet-links.test.js` перевіряє, що timeline list route повертає legacy booking із `status = NULL` і має безпечний SQL-предикат.
+- **Релізні маркери піднято до `0.75.3`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy.
+
+---
+
 ## v0.75.2 - LEAD ON: fallback бронювань
 
 ### LEAD ON / Таймлайн / Бронювання / Line identity / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]

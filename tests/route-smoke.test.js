@@ -16,6 +16,8 @@ let baseUrl;
 let authToken;
 let queries;
 let notifiedLeads;
+let missingSchemaMigrations;
+let missingSchemaColumns;
 
 const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
@@ -345,13 +347,20 @@ function createFakePool() {
                 return { rows: [{ ok: 1 }] };
             }
             if (/SELECT version FROM schema_migrations WHERE version = ANY\(\$1::text\[\]\)/i.test(text)) {
-                return { rows: (params[0] || []).map(version => ({ version })) };
+                return {
+                    rows: (params[0] || [])
+                        .filter(version => !missingSchemaMigrations.has(String(version)))
+                        .map(version => ({ version }))
+                };
             }
             if (/FROM information_schema\.columns/i.test(text)) {
                 const values = Array.isArray(params) ? params : [];
                 const rows = [];
                 for (let i = 0; i < values.length; i += 2) {
-                    rows.push({ table_name: values[i], column_name: values[i + 1] });
+                    const key = `${values[i]}.${values[i + 1]}`;
+                    if (!missingSchemaColumns.has(key)) {
+                        rows.push({ table_name: values[i], column_name: values[i + 1] });
+                    }
                 }
                 return { rows };
             }
@@ -1412,6 +1421,8 @@ describe('route-level API safety smoke', () => {
         clearModules();
         queries = [];
         notifiedLeads = [];
+        missingSchemaMigrations = new Set();
+        missingSchemaColumns = new Set();
 
         const fakePool = createFakePool();
         installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
@@ -1468,6 +1479,8 @@ describe('route-level API safety smoke', () => {
     beforeEach(() => {
         queries.length = 0;
         notifiedLeads.length = 0;
+        missingSchemaMigrations.clear();
+        missingSchemaColumns.clear();
     });
 
     after(async () => {
@@ -1494,6 +1507,20 @@ describe('route-level API safety smoke', () => {
         assert.equal(health.data.status, 'ok');
         assert.equal(health.data.database, 'connected');
         assert.equal(health.data.schema.status, 'ok');
+    });
+
+    it('reports degraded schema health when required timeline/lead columns are missing', async () => {
+        missingSchemaColumns.add('booking_banquet_links.relation_type');
+        missingSchemaMigrations.add('262_leads_customer_links_and_value');
+
+        const health = await request('GET', '/api/health');
+
+        assert.equal(health.status, 200, JSON.stringify(health.data));
+        assert.equal(health.data.database, 'connected');
+        assert.equal(health.data.status, 'degraded');
+        assert.equal(health.data.schema.status, 'degraded');
+        assert.ok(health.data.schema.missing.includes('column:booking_banquet_links.relation_type'));
+        assert.ok(health.data.schema.missing.includes('migration:262_leads_customer_links_and_value'));
     });
 
     it('keeps public landing demo validation available without JWT', async () => {

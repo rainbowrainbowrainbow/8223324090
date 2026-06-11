@@ -225,7 +225,7 @@ test('pointercancel during booking drag rolls back visuals and clears transient 
     assert.equal(document.body.classList.contains('dragging-active'), false);
 });
 
-test('renderTimeline keeps the schedule visible when timeline APIs return non-array payloads', async () => {
+test('renderTimeline shows an explicit booking API error instead of an empty schedule', async () => {
     const { window, api, consoleErrors } = createHarness();
 
     window.apiGetLines = async () => [{ id: 'line-1', name: 'Line 1', color: '#14b8a6' }];
@@ -236,7 +236,10 @@ test('renderTimeline keeps the schedule visible when timeline APIs return non-ar
 
     const timelineLines = window.document.getElementById('timelineLines');
     assert.ok(timelineLines, 'timeline container should exist');
-    assert.doesNotMatch(timelineLines.textContent, /Помилка завантаження таймлайну|CRITICAL/i);
+    assert.ok(timelineLines.querySelector('.timeline-data-error'), 'booking API errors should render an explicit timeline error state');
+    assert.match(timelineLines.textContent, /Не вдалося завантажити бронювання/);
+    assert.match(timelineLines.textContent, /неочікуваний формат/);
+    assert.ok(window.__timelineToolbarNormalizations.includes('render-error'));
     assert.equal(consoleErrors.some(args => String(args[0] || '').includes('CRITICAL renderTimeline error')), false);
 });
 

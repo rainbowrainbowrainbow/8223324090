@@ -772,16 +772,27 @@ async function attachBanquetLinksToBookings(bookings, businessContext) {
     const ids = bookings.map(booking => booking.id).filter(Boolean);
     if (ids.length === 0) return bookings;
 
-    const linksResult = await pool.query(
-        `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
-           FROM booking_banquet_links
-          WHERE business_context = $1
-            AND relation_type = ANY($2::text[])
-            AND booking_a_id = ANY($3::text[])
-            AND booking_b_id = ANY($3::text[])
-          ORDER BY created_at ASC, id ASC`,
-        [businessContext || DEFAULT_TIMELINE_CONTEXT, BOOKING_VISUAL_LINK_RELATION_TYPES, ids]
-    );
+    let linksResult;
+    try {
+        linksResult = await pool.query(
+            `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
+               FROM booking_banquet_links
+              WHERE business_context = $1
+                AND relation_type = ANY($2::text[])
+                AND booking_a_id = ANY($3::text[])
+                AND booking_b_id = ANY($3::text[])
+              ORDER BY created_at ASC, id ASC`,
+            [businessContext || DEFAULT_TIMELINE_CONTEXT, BOOKING_VISUAL_LINK_RELATION_TYPES, ids]
+        );
+    } catch (err) {
+        log.warn(`Booking visual link enrichment skipped: ${err.message}`);
+        return bookings.map(booking => ({
+            ...booking,
+            bookingLinks: Array.isArray(booking.bookingLinks) ? booking.bookingLinks : [],
+            banquetLinks: Array.isArray(booking.banquetLinks) ? booking.banquetLinks : [],
+            sharedRoomLinks: Array.isArray(booking.sharedRoomLinks) ? booking.sharedRoomLinks : []
+        }));
+    }
     const byBooking = new Map(ids.map(id => [String(id), []]));
     linksResult.rows.forEach(row => {
         const a = String(row.booking_a_id);
@@ -855,43 +866,48 @@ async function bookingVisualLinkPairExists(client, businessContext, sourceId, ta
 async function createSharedRoomActivityLinks(client, businessContext, bookingRow, user) {
     if (!bookingRow?.id || !isRootBookingRow(bookingRow) || !isRealRoom(bookingRow.room)) return [];
     if (!bookingRow.date || !bookingRow.time) return [];
-    const result = await client.query(
-        `SELECT id, date, time, duration, room, status, linked_to, label, program_code, program_name, group_name
-           FROM bookings
-          WHERE date = $1
-            AND room = $2
-            AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $3
-            AND status != 'cancelled'
-            AND id <> $4
-            AND NULLIF(COALESCE(linked_to, ''), '') IS NULL
-          ORDER BY time ASC, id ASC`,
-        [bookingRow.date, bookingRow.room, businessContext || DEFAULT_TIMELINE_CONTEXT, bookingRow.id]
-    );
-    const created = [];
-    for (const candidate of result.rows) {
-        if (bookingTimesOverlap(bookingRow, candidate)) continue;
-        if (await bookingVisualLinkPairExists(client, businessContext, bookingRow.id, candidate.id)) continue;
-        const linkRow = await upsertBanquetLink(
-            client,
-            businessContext || DEFAULT_TIMELINE_CONTEXT,
-            bookingRow.id,
-            candidate.id,
-            sharedRoomLinkLabel(bookingRow),
-            user,
-            SHARED_ROOM_LINK_RELATION_TYPE
+    try {
+        const result = await client.query(
+            `SELECT id, date, time, duration, room, status, linked_to, label, program_code, program_name, group_name
+               FROM bookings
+              WHERE date = $1
+                AND room = $2
+                AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $3
+                AND status != 'cancelled'
+                AND id <> $4
+                AND NULLIF(COALESCE(linked_to, ''), '') IS NULL
+              ORDER BY time ASC, id ASC`,
+            [bookingRow.date, bookingRow.room, businessContext || DEFAULT_TIMELINE_CONTEXT, bookingRow.id]
         );
-        if (!linkRow) continue;
-        created.push(linkRow);
-        await insertScopedHistory(client, 'booking_shared_room_link_created', user?.username, {
-            booking_id: bookingRow.id,
-            target_booking_id: candidate.id,
-            business_context: businessContext || DEFAULT_TIMELINE_CONTEXT,
-            relation_type: SHARED_ROOM_LINK_RELATION_TYPE,
-            room: bookingRow.room,
-            date: bookingRow.date
-        }, businessContext || DEFAULT_TIMELINE_CONTEXT);
+        const created = [];
+        for (const candidate of result.rows) {
+            if (bookingTimesOverlap(bookingRow, candidate)) continue;
+            if (await bookingVisualLinkPairExists(client, businessContext, bookingRow.id, candidate.id)) continue;
+            const linkRow = await upsertBanquetLink(
+                client,
+                businessContext || DEFAULT_TIMELINE_CONTEXT,
+                bookingRow.id,
+                candidate.id,
+                sharedRoomLinkLabel(bookingRow),
+                user,
+                SHARED_ROOM_LINK_RELATION_TYPE
+            );
+            if (!linkRow) continue;
+            created.push(linkRow);
+            await insertScopedHistory(client, 'booking_shared_room_link_created', user?.username, {
+                booking_id: bookingRow.id,
+                target_booking_id: candidate.id,
+                business_context: businessContext || DEFAULT_TIMELINE_CONTEXT,
+                relation_type: SHARED_ROOM_LINK_RELATION_TYPE,
+                room: bookingRow.room,
+                date: bookingRow.date
+            }, businessContext || DEFAULT_TIMELINE_CONTEXT);
+        }
+        return created;
+    } catch (err) {
+        log.warn(`Shared-room visual links skipped for booking ${bookingRow.id}: ${err.message}`);
+        return [];
     }
-    return created;
 }
 
 function pickAtomicLinkedPatch(input) {

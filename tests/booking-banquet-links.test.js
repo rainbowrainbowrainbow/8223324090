@@ -68,7 +68,7 @@ function bookingRow(overrides = {}) {
     };
 }
 
-function makeDb(rows, links = []) {
+function makeDb(rows, links = [], options = {}) {
     const state = {
         rows: rows.map(row => ({ ...row })),
         links: links.map((link, index) => ({ id: index + 1, relation_type: 'banquet_activity', ...link })),
@@ -142,6 +142,9 @@ function makeDb(rows, links = []) {
             return { rows: deleted ? [{ ...deleted }] : [], rowCount: before - state.links.length };
         }
         if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
+            if (options.failLinkRead) {
+                throw new Error('simulated booking_banquet_links schema drift');
+            }
             const relationTypes = new Set(Array.isArray(params[1]) ? params[1] : [params[1]]);
             const visible = new Set(params[2] || []);
             return {
@@ -184,9 +187,9 @@ async function listen(app) {
     });
 }
 
-async function withApp(rows, links, fn) {
+async function withApp(rows, links, fn, options = {}) {
     clearModules();
-    const { pool, state } = makeDb(rows, links);
+    const { pool, state } = makeDb(rows, links, options);
     installMock('../db', { pool, generateBookingNumber: async () => 'BK-2099-9999' });
     installMock('../middleware/auth', {
         authenticateToken: (req, _res, next) => {
@@ -250,6 +253,22 @@ test('GET bookings attaches visible banquet links symmetrically', async () => {
         assert.deepEqual(first.bookingLinks.map(link => link.relationType).sort(), ['banquet_activity', 'shared_room_activity']);
         assert.equal(data.find(item => item.id === 'BK-2099-0002').banquetLinks[0].targetId, 'BK-2099-0001');
     });
+});
+
+test('GET bookings still returns timeline bookings when visual link enrichment fails', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2099-0001', time: '12:00' }),
+        bookingRow({ id: 'BK-2099-0002', time: '13:00', line_id: 'line-2' })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/2099-06-01`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.length, 2);
+        assert.equal(data[0].id, 'BK-2099-0001');
+        assert.deepEqual(data[0].bookingLinks, []);
+        assert.deepEqual(data[0].banquetLinks, []);
+        assert.deepEqual(data[0].sharedRoomLinks, []);
+    }, { failLinkRead: true });
 });
 
 test('POST banquet link creates a durable same-day relation', async () => {

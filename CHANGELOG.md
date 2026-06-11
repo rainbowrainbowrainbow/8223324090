@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.1 - LEAD ON: таймлайн бронювань
+
+### LEAD ON / Таймлайн / Бронювання / Visual links / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]
+- **Таймлайн знову показує бронювання навіть при збої visual links** - `GET /api/bookings/:date` більше не падає через enrichment таблиці `booking_banquet_links`; якщо link-шар має schema drift, API повертає самі бронювання і логує warning.
+- **Автозвʼязок бронювань тієї ж кімнати не блокує створення броні** - `shared_room_activity` лишається корисним, але його помилка більше не відкочує основне бронювання.
+- **Regression guard додано** - `tests/booking-banquet-links.test.js` перевіряє, що таймлайн отримує бронювання навіть коли read visual-link metadata падає.
+- **Релізні маркери піднято до `0.75.1`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для hotfix deploy.
+
+---
+
 ## v0.75.0 - LEAD ON
 
 ### LEAD ON / Ліди / Канбан / Customer journey / Webhooks / Pipeline API / Release / (Клешня, 11.06.2026) [codex]

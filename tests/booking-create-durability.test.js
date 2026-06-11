@@ -82,6 +82,11 @@ function bookingRowFromInsert(params) {
     };
 }
 
+function normalizeContext(value) {
+    const raw = String(value || 'event_genix').trim().toLowerCase();
+    return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+}
+
 function makeDb({ commitCommand = 'COMMIT' } = {}) {
     const state = {
         rows: [],
@@ -119,7 +124,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const normalizedName = String(name || '').trim().toLowerCase();
             const rows = state.lines.filter(line =>
                 line.date === date &&
-                (line.business_context || 'event_genix') === businessContext &&
+                normalizeContext(line.business_context) === normalizeContext(businessContext) &&
                 (
                     (lineId && String(line.line_id) === String(lineId)) ||
                     (normalizedName && String(line.name || '').trim().toLowerCase() === normalizedName)
@@ -168,7 +173,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const [phone, businessContext] = params;
             const row = state.customers.find(item =>
                 item.phone === phone &&
-                (item.business_context || 'event_genix') === businessContext
+                normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
         }
@@ -182,11 +187,11 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             state.customers.push(row);
             return { rows: [{ id: row.id }], rowCount: 1 };
         }
-        if (/SELECT id FROM customers WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 LIMIT 1/i.test(sql)) {
+        if (/SELECT id FROM customers WHERE id = \$1 AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) IN \('park_zakrevsky', 'park', 'pzp'\) THEN 'event_genix' ELSE LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) END) = \$2 LIMIT 1/i.test(sql)) {
             const [id, businessContext] = params;
             const row = state.customers.find(item =>
                 Number(item.id) === Number(id) &&
-                (item.business_context || 'event_genix') === businessContext
+                normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
         }
@@ -203,11 +208,11 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             state.rows.push(row);
             return { rows: [], rowCount: 1 };
         }
-        if (/SELECT \* FROM bookings WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2(?: FOR UPDATE)?/i.test(sql)) {
+        if (/SELECT \* FROM bookings WHERE id = \$1 AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) IN \('park_zakrevsky', 'park', 'pzp'\) THEN 'event_genix' ELSE LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) END) = \$2(?: FOR UPDATE)?/i.test(sql)) {
             const [id, businessContext] = params;
             const row = state.rows.find(item =>
                 item.id === id &&
-                (item.business_context || 'event_genix') === businessContext
+                normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
         }
@@ -216,7 +221,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const businessContext = params[33];
             const row = state.rows.find(item =>
                 item.id === id &&
-                (item.business_context || 'event_genix') === businessContext
+                normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             if (!row) return { rows: [], rowCount: 0 };
             Object.assign(row, {
@@ -260,16 +265,16 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const [linkedTo, businessContext] = params;
             const rows = state.rows.filter(row =>
                 row.linked_to === linkedTo &&
-                (row.business_context || 'event_genix') === businessContext &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                 row.status !== 'cancelled'
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
-        if (/SELECT id FROM bookings WHERE linked_to = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2/i.test(sql)) {
+        if (/SELECT id FROM bookings WHERE linked_to = \$1 AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) IN \('park_zakrevsky', 'park', 'pzp'\) THEN 'event_genix' ELSE LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\) END) = \$2/i.test(sql)) {
             const [linkedTo, businessContext] = params;
             const rows = state.rows.filter(row =>
                 row.linked_to === linkedTo &&
-                (row.business_context || 'event_genix') === businessContext &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                 row.status !== 'cancelled'
             );
             return { rows: rows.map(row => ({ id: row.id })), rowCount: rows.length };
@@ -278,7 +283,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const [id, businessContext] = params;
             const before = state.rows.length;
             state.rows = state.rows.filter(row =>
-                !(row.id === id && (row.business_context || 'event_genix') === businessContext)
+                !(row.id === id && normalizeContext(row.business_context) === normalizeContext(businessContext))
             );
             return { rows: [], rowCount: before - state.rows.length };
         }
@@ -287,7 +292,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const businessContext = params[12];
             const row = state.rows.find(item =>
                 item.id === id &&
-                (item.business_context || 'event_genix') === businessContext &&
+                normalizeContext(item.business_context) === normalizeContext(businessContext) &&
                 item.status !== 'cancelled'
             );
             if (row) {
@@ -327,7 +332,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const businessContext = params[1];
             const rows = state.rows.filter(row =>
                 ids.has(String(row.id)) &&
-                (row.business_context || 'event_genix') === businessContext &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                 row.status !== 'cancelled'
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
@@ -336,7 +341,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const [date, businessContext, id] = params;
             const row = state.rows.find(item =>
                 item.date === date &&
-                (item.business_context || 'event_genix') === businessContext &&
+                normalizeContext(item.business_context) === normalizeContext(businessContext) &&
                 item.id === id &&
                 item.status !== 'cancelled'
             );
@@ -347,7 +352,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             const rows = state.rows.filter(row =>
                 row.date === date &&
                 row.room === room &&
-                (row.business_context || 'event_genix') === businessContext &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
                 row.status !== 'cancelled' &&
                 row.id !== excludedId &&
                 !String(row.linked_to || '').trim()

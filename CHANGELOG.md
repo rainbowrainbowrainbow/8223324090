@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.4 - LEAD ON: контекст таймлайна
+
+### LEAD ON / Таймлайн / Бронювання / Business context aliases / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]
+- **Порожній таймлайн парку через старі `business_context` alias виправлено** - `GET /api/bookings/:date` тепер нормалізує legacy значення `pzp`, `park` і `park_zakrevsky` як `event_genix`, тому старі бронювання знову потрапляють у таймлайн.
+- **Customer join синхронізовано з тим самим контекстом** - при підвантаженні бронювань клієнтські дані не губляться, якщо `customers.business_context` і `bookings.business_context` записані різними alias однієї площадки.
+- **Regression guard додано** - `tests/booking-banquet-links.test.js` перевіряє, що timeline list route повертає legacy park booking із `business_context = pzp`.
+- **Релізні маркери піднято до `0.75.4`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано для deploy.
+
+---
+
 ## v0.75.3 - LEAD ON: бронювання таймлайна
 
 ### LEAD ON / Таймлайн / Бронювання / API status filter / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]

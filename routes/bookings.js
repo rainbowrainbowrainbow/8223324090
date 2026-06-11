@@ -74,9 +74,16 @@ async function insertScopedHistory(queryable, action, username, data, businessCo
     });
 }
 
+function bookingContextColumnSql(column) {
+    return `CASE
+        WHEN LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), '${DEFAULT_TIMELINE_CONTEXT}')) IN ('park_zakrevsky', 'park', 'pzp') THEN '${DEFAULT_TIMELINE_CONTEXT}'
+        ELSE LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), '${DEFAULT_TIMELINE_CONTEXT}'))
+    END`;
+}
+
 function bookingContextSql(alias = '', placeholder = '$1') {
     const column = alias ? `${alias}.business_context` : 'business_context';
-    return `COALESCE(${column}, '${DEFAULT_TIMELINE_CONTEXT}') = ${placeholder}`;
+    return `${bookingContextColumnSql(column)} = ${placeholder}`;
 }
 
 async function getScopedBookingById(queryable, id, businessContext, { forUpdate = false } = {}) {
@@ -1425,7 +1432,7 @@ router.get('/:date', async (req, res) => {
              FROM bookings b
              LEFT JOIN customers c
                ON c.id = b.customer_id
-              AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+              AND ${bookingContextColumnSql('c.business_context')} = ${bookingContextColumnSql('b.business_context')}
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'
                ${visibility}
              ORDER BY time`,

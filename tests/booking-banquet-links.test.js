@@ -87,21 +87,29 @@ function makeDb(rows, links = [], options = {}) {
             return { rows: [], rowCount: 0 };
         }
         if (/FROM bookings b .* WHERE b\.date = \$1/i.test(sql)) {
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
             return {
                 rows: state.rows.filter(row =>
                     row.date === params[0] &&
-                    row.business_context === params[1] &&
+                    normalizeContext(row.business_context) === normalizeContext(params[1]) &&
                     row.status !== 'cancelled'
                 )
             };
         }
-        if (/SELECT \* FROM bookings WHERE id = ANY\(\$1::text\[\]\)(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(sql)) {
+        if (/SELECT \* FROM bookings WHERE id = ANY\(\$1::text\[\]\)(?: AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)? FOR UPDATE/i.test(sql)) {
             const ids = new Set(params[0] || []);
-            const businessContext = sql.includes('COALESCE') ? params[1] : null;
+            const businessContext = params.length > 1 ? params[1] : null;
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
             return {
                 rows: state.rows.filter(row =>
                     ids.has(row.id) &&
-                    (!businessContext || (row.business_context || 'event_genix') === businessContext)
+                    (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext))
                 )
             };
         }
@@ -286,6 +294,23 @@ test('GET bookings treats legacy null status rows as active timeline bookings', 
         assert.ok(
             state.queries.some(query => /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(query.sql)),
             'timeline list query must not drop legacy bookings with NULL status'
+        );
+    });
+});
+
+test('GET bookings treats legacy park context aliases as Event Genix timeline bookings', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2099-0001', time: '12:00', business_context: 'pzp' })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/2099-06-01?businessContext=event_genix`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.length, 1);
+        assert.equal(data[0].id, 'BK-2099-0001');
+        assert.equal(data[0].businessContext, 'pzp');
+        assert.ok(
+            state.queries.some(query => /park_zakrevsky', 'park', 'pzp/i.test(query.sql) && /FROM bookings b/i.test(query.sql)),
+            'timeline list query must normalize legacy park business_context aliases'
         );
     });
 });

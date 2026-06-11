@@ -1604,10 +1604,40 @@
     opacity: 0.78;
 }
 
+.free-room-chip.has-day-bookings {
+    background: #EFF6FF;
+    border-color: #67E8F9;
+    color: #0E7490;
+}
+
+.free-room-chip.has-day-bookings small {
+    color: #0369A1;
+}
+
+.free-room-chip.occupied,
+.free-room-chip[aria-disabled="true"] {
+    background: #FEF2F2;
+    border-color: #FCA5A5;
+    color: #991B1B;
+    cursor: not-allowed;
+}
+
+.free-room-chip.occupied small,
+.free-room-chip[aria-disabled="true"] small {
+    color: #B91C1C;
+}
+
 .free-room-chip:hover {
     background: #D1FAE5;
     border-color: var(--primary);
     transform: translateY(-1px);
+}
+
+.free-room-chip.occupied:hover,
+.free-room-chip[aria-disabled="true"]:hover {
+    background: #FEF2F2;
+    border-color: #FCA5A5;
+    transform: none;
 }
 
 .occupied-rooms {

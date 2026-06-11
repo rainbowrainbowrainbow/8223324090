@@ -1543,12 +1543,14 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
     }
 }
 
-async function apiCreateBookingBanquetLink(sourceId, targetId, label = '') {
+async function apiCreateBookingBanquetLink(sourceId, targetId, label = '', relationType = null) {
     try {
+        const payload = { targetId, label };
+        if (relationType) payload.relationType = relationType;
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
-            body: JSON.stringify(timelineApiPayload({ targetId, label }))
+            body: JSON.stringify(timelineApiPayload(payload))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -1562,9 +1564,13 @@ async function apiCreateBookingBanquetLink(sourceId, targetId, label = '') {
     }
 }
 
-async function apiDeleteBookingBanquetLink(sourceId, targetId) {
+async function apiDeleteBookingBanquetLink(sourceId, targetId, relationType = 'banquet_activity') {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links/${encodeURIComponent(targetId)}`)}`, {
+        let path = timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links/${encodeURIComponent(targetId)}`);
+        if (relationType) {
+            path += `${path.includes('?') ? '&' : '?'}relationType=${encodeURIComponent(relationType)}`;
+        }
+        const response = await fetch(`${API_BASE}${path}`, {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });

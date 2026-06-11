@@ -739,6 +739,13 @@ describe('Free Rooms', () => {
         assert.ok(typeof res.data.total === 'number', 'Should have total count');
         assert.ok(res.data.occupied.includes('Марвел'), 'Marvel should be occupied');
         assert.ok(!res.data.free.includes('Марвел'), 'Marvel should not be in free list');
+        assert.ok(Array.isArray(res.data.rooms), 'Should include extended room metadata');
+        const marvel = res.data.rooms.find(room => room.name === 'Марвел');
+        assert.ok(marvel, 'Marvel metadata should exist');
+        assert.equal(marvel.occupied, true, 'Marvel should be occupied at requested time');
+        assert.ok(Array.isArray(marvel.dayBookings), 'Marvel should include day bookings');
+        assert.ok(marvel.dayBookings.some(item => item.time === '14:00'), 'Marvel should expose day booking time');
+        assert.ok(res.data.dayBookingsByRoom?.['Марвел']?.length >= 1, 'Should include dayBookingsByRoom metadata');
     });
 
     it('GET /api/rooms/free/:date/:time/:duration — non-overlapping time shows all free', async () => {
@@ -746,6 +753,9 @@ describe('Free Rooms', () => {
         assert.equal(res.status, 200);
         assert.ok(res.data.free.includes('Марвел'), 'Marvel should be free at 20:00');
         assert.equal(res.data.occupied.length, 0, 'No rooms should be occupied at 20:00');
+        const marvel = res.data.rooms.find(room => room.name === 'Марвел');
+        assert.equal(marvel.occupied, false, 'Marvel should be clickable at non-overlapping time');
+        assert.ok(marvel.dayBookings.length >= 1, 'Marvel should still show existing day booking metadata');
     });
 
     it('GET /api/rooms/free — invalid date returns 400', async () => {
@@ -912,6 +922,11 @@ describe('Room Conflict', () => {
             category: 'animation', status: 'confirmed'
         });
         assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(Array.isArray(res.data.sharedRoomLinks), 'Should return shared-room links created during booking');
+        assert.ok(res.data.sharedRoomLinks.some(link => link.relationType === 'shared_room_activity' && link.targetId === firstBookingId), 'New booking should link to existing same-room booking');
+        const check = await authRequest('GET', `/api/bookings/${date}`);
+        const created = check.data.find(b => b.id === res.data.booking.id);
+        assert.ok(created?.bookingLinks?.some(link => link.relationType === 'shared_room_activity' && link.targetId === firstBookingId), 'GET should expose durable shared-room visual link');
         if (res.data.booking) await authRequest('DELETE', `/api/bookings/${res.data.booking.id}?permanent=true`);
     });
 

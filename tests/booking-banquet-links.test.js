@@ -84,7 +84,7 @@ function makeDb(rows, links = []) {
             state.tx.push(sql);
             return { rows: [], rowCount: 0 };
         }
-        if (/FROM bookings b WHERE b\.date = \$1/i.test(sql)) {
+        if (/FROM bookings b .* WHERE b\.date = \$1/i.test(sql)) {
             return {
                 rows: state.rows.filter(row =>
                     row.date === params[0] &&
@@ -142,11 +142,12 @@ function makeDb(rows, links = []) {
             return { rows: deleted ? [{ ...deleted }] : [], rowCount: before - state.links.length };
         }
         if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
+            const relationTypes = new Set(Array.isArray(params[1]) ? params[1] : [params[1]]);
             const visible = new Set(params[2] || []);
             return {
                 rows: state.links.filter(link =>
                     link.business_context === params[0] &&
-                    link.relation_type === params[1] &&
+                    relationTypes.has(link.relation_type) &&
                     visible.has(link.booking_a_id) &&
                     visible.has(link.booking_b_id)
                 )
@@ -221,7 +222,8 @@ async function withApp(rows, links, fn) {
 test('GET bookings attaches visible banquet links symmetrically', async () => {
     await withApp([
         bookingRow({ id: 'BK-2099-0001', time: '12:00' }),
-        bookingRow({ id: 'BK-2099-0002', time: '13:00', line_id: 'line-2', label: 'Banquet photo' })
+        bookingRow({ id: 'BK-2099-0002', time: '13:00', line_id: 'line-2', label: 'Banquet photo' }),
+        bookingRow({ id: 'BK-2099-0003', time: '14:30', line_id: 'line-3', label: 'Room activity' })
     ], [{
         business_context: 'event_genix',
         booking_a_id: 'BK-2099-0001',
@@ -230,11 +232,22 @@ test('GET bookings attaches visible banquet links symmetrically', async () => {
         label: 'Banquet Olya',
         created_by: 'tester',
         created_at: new Date('2099-01-01T00:00:00Z').toISOString()
+    }, {
+        business_context: 'event_genix',
+        booking_a_id: 'BK-2099-0001',
+        booking_b_id: 'BK-2099-0003',
+        relation_type: 'shared_room_activity',
+        label: 'same room: Room A',
+        created_by: 'tester',
+        created_at: new Date('2099-01-01T00:01:00Z').toISOString()
     }], async ({ baseUrl }) => {
         const res = await fetch(`${baseUrl}/api/bookings/2099-06-01`);
         const data = await res.json();
         assert.equal(res.status, 200, JSON.stringify(data));
-        assert.equal(data.find(item => item.id === 'BK-2099-0001').banquetLinks[0].targetId, 'BK-2099-0002');
+        const first = data.find(item => item.id === 'BK-2099-0001');
+        assert.equal(first.banquetLinks[0].targetId, 'BK-2099-0002');
+        assert.equal(first.sharedRoomLinks[0].targetId, 'BK-2099-0003');
+        assert.deepEqual(first.bookingLinks.map(link => link.relationType).sort(), ['banquet_activity', 'shared_room_activity']);
         assert.equal(data.find(item => item.id === 'BK-2099-0002').banquetLinks[0].targetId, 'BK-2099-0001');
     });
 });
@@ -268,12 +281,43 @@ test('DELETE banquet link removes only the banquet relation pair', async () => {
         booking_a_id: 'BK-2099-0001',
         booking_b_id: 'BK-2099-0002',
         relation_type: 'banquet_activity'
+    }, {
+        business_context: 'event_genix',
+        booking_a_id: 'BK-2099-0001',
+        booking_b_id: 'BK-2099-0002',
+        relation_type: 'shared_room_activity'
     }], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings/BK-2099-0002/banquet-links/BK-2099-0001`, { method: 'DELETE' });
         const data = await res.json();
         assert.equal(res.status, 200, JSON.stringify(data));
         assert.equal(data.removed, true);
-        assert.equal(state.links.length, 0);
+        assert.equal(state.links.length, 1);
+        assert.equal(state.links[0].relation_type, 'shared_room_activity');
         assert.equal(state.histories[0].action, 'booking_banquet_link_deleted');
+    });
+});
+
+test('DELETE room activity link removes only the shared-room relation pair', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2099-0001', time: '12:00' }),
+        bookingRow({ id: 'BK-2099-0002', time: '13:00', line_id: 'line-2' })
+    ], [{
+        business_context: 'event_genix',
+        booking_a_id: 'BK-2099-0001',
+        booking_b_id: 'BK-2099-0002',
+        relation_type: 'banquet_activity'
+    }, {
+        business_context: 'event_genix',
+        booking_a_id: 'BK-2099-0001',
+        booking_b_id: 'BK-2099-0002',
+        relation_type: 'shared_room_activity'
+    }], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-2099-0001/banquet-links/BK-2099-0002?relationType=shared_room_activity`, { method: 'DELETE' });
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.removed, true);
+        assert.equal(state.links.length, 1);
+        assert.equal(state.links[0].relation_type, 'banquet_activity');
+        assert.equal(state.histories[0].data.relation_type, 'shared_room_activity');
     });
 });

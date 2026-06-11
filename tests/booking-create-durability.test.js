@@ -93,6 +93,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         ],
         tx: [],
         histories: [],
+        links: [],
         customers: [],
         nextCustomerId: 701,
         nextBookingSeq: 1,
@@ -340,6 +341,57 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
                 item.status !== 'cancelled'
             );
             return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/SELECT id, date, time, duration, room, status, linked_to, label, program_code, program_name, group_name FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
+            const [date, room, businessContext, excludedId] = params;
+            const rows = state.rows.filter(row =>
+                row.date === date &&
+                row.room === room &&
+                (row.business_context || 'event_genix') === businessContext &&
+                row.status !== 'cancelled' &&
+                row.id !== excludedId &&
+                !String(row.linked_to || '').trim()
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT 1 FROM booking_banquet_links/i.test(sql)) {
+            const [businessContext, bookingA, bookingB, relationTypes] = params;
+            const relationSet = new Set(Array.isArray(relationTypes) ? relationTypes : [relationTypes]);
+            const found = state.links.find(link =>
+                link.business_context === businessContext &&
+                link.booking_a_id === bookingA &&
+                link.booking_b_id === bookingB &&
+                relationSet.has(link.relation_type)
+            );
+            return { rows: found ? [{ '?column?': 1 }] : [], rowCount: found ? 1 : 0 };
+        }
+        if (/INSERT INTO booking_banquet_links/i.test(sql)) {
+            const [businessContext, bookingA, bookingB, relationType, label, createdByUserId, createdBy] = params;
+            const row = {
+                id: state.links.length + 1,
+                business_context: businessContext,
+                booking_a_id: bookingA,
+                booking_b_id: bookingB,
+                relation_type: relationType,
+                label,
+                created_by_user_id: createdByUserId,
+                created_by: createdBy,
+                created_at: '2099-01-01T00:00:00.000Z'
+            };
+            state.links.push(row);
+            return { rows: [{ ...row }], rowCount: 1 };
+        }
+        if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
+            const [businessContext, relationTypes, ids] = params;
+            const relationSet = new Set(Array.isArray(relationTypes) ? relationTypes : [relationTypes]);
+            const visible = new Set(Array.isArray(ids) ? ids.map(String) : []);
+            const rows = state.links.filter(link =>
+                link.business_context === businessContext &&
+                relationSet.has(link.relation_type) &&
+                visible.has(String(link.booking_a_id)) &&
+                visible.has(String(link.booking_b_id))
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
         throw new Error(`Unexpected booking create durability query: ${sql}`);
     }

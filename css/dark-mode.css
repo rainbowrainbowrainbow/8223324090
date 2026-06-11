@@ -1483,9 +1483,28 @@ body.dark-mode .free-room-chip {
     color: #6EE7B7;
 }
 
+body.dark-mode .free-room-chip.has-day-bookings {
+    background: color-mix(in srgb, var(--info) 16%, transparent);
+    border-color: color-mix(in srgb, var(--info) 34%, transparent);
+    color: var(--primary-light);
+}
+
+body.dark-mode .free-room-chip.occupied,
+body.dark-mode .free-room-chip[aria-disabled="true"] {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+    color: var(--danger);
+}
+
 body.dark-mode .free-room-chip:hover {
     background: rgba(16,185,129,0.25);
     border-color: var(--primary);
+}
+
+body.dark-mode .free-room-chip.occupied:hover,
+body.dark-mode .free-room-chip[aria-disabled="true"]:hover {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 32%, transparent);
 }
 
 body.dark-mode .occupied-rooms {

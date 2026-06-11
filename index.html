@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.74.41">
-    <link rel="stylesheet" href="css/auth.css?v=0.74.41">
-    <link rel="stylesheet" href="css/layout.css?v=0.74.41">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.41">
-    <link rel="stylesheet" href="css/timeline.css?v=0.74.41">
-    <link rel="stylesheet" href="css/panel.css?v=0.74.41">
-    <link rel="stylesheet" href="css/modals.css?v=0.74.41">
-    <link rel="stylesheet" href="css/controls.css?v=0.74.41">
-    <link rel="stylesheet" href="css/features.css?v=0.74.41">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.41">
-    <link rel="stylesheet" href="css/responsive.css?v=0.74.41">
-    <link rel="stylesheet" href="css/pages.css?v=0.74.41">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.41">
+    <link rel="stylesheet" href="css/base.css?v=0.74.43">
+    <link rel="stylesheet" href="css/auth.css?v=0.74.43">
+    <link rel="stylesheet" href="css/layout.css?v=0.74.43">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.74.43">
+    <link rel="stylesheet" href="css/timeline.css?v=0.74.43">
+    <link rel="stylesheet" href="css/panel.css?v=0.74.43">
+    <link rel="stylesheet" href="css/modals.css?v=0.74.43">
+    <link rel="stylesheet" href="css/controls.css?v=0.74.43">
+    <link rel="stylesheet" href="css/features.css?v=0.74.43">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.74.43">
+    <link rel="stylesheet" href="css/responsive.css?v=0.74.43">
+    <link rel="stylesheet" href="css/pages.css?v=0.74.43">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.74.43">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.74.41">✨ 0.74.41</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.74.43">✨ 0.74.43</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.74.41 — Воронка: перетягування й картка клієнта</p>
+                <p class="tagline">AI First CRM v0.74.43 — Кімнати: деплой підписів і звʼязків</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.41</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.74.43</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1646,6 +1646,26 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.74.43 — Кімнати: деплой підписів і звʼязків</h4>
+                    <ul>
+                        <li><b>Підготовлено deploy-реліз для змін кімнат</b> — у релізі є селектор кімнат із денними підписами, автозвʼязок non-overlap бронювань тієї ж кімнати та unified visual links на таймлайні.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.43</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                        <li><b>Історію релізів розділено</b> — <code>0.74.42</code> лишається детальним записом продуктового функціоналу, а <code>0.74.43</code> позначає patch/deploy-підготовку.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.74.42 — Кімнати: підписи й автозвʼязки бронювань</h4>
+                    <ul>
+                        <li><b>Кімнати з бронями більше не зникають із селектора</b> — якщо кімната вільна в обраний час, її можна вибрати для іншої активності того ж дня.</li>
+                        <li><b>У селекторі зʼявився денний підпис</b> — CRM показує час і картку клієнта першої броні, наприклад <code>Марвел — 14:00 Ушакова Ірина +2</code>.</li>
+                        <li><b>Панель вільних кімнат розділяє стани</b> — вільні зараз кімнати клікабельні, кімнати з денними бронями мають підпис, а реальні перетини часу лишаються неклікабельними.</li>
+                        <li><b>Нові броні автоматично повʼязуються з активностями тієї ж кімнати</b> — backend створює durable <code>shared_room_activity</code> links для non-overlap бронювань у межах одного бізнес-контексту.</li>
+                        <li><b>Таймлайн показує два типи звʼязків</b> — банкетні лінії лишилися orange, а “та сама кімната” має teal/blue connector і видимий arc для сусідніх блоків.</li>
+                        <li><b>У деталях тепер “Повʼязані бронювання”</b> — кожен звʼязок має badge <code>банкет</code> або <code>та сама кімната</code>.</li>
+                        <li><b>Релізні маркери піднято до <code>0.74.42</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.74.41 — Воронка: перетягування й картка клієнта</h4>
                     <ul>
@@ -12317,29 +12337,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.74.41"></script>
-    <script src="js/timeline-visibility.js?v=0.74.41"></script>
-    <script src="js/config.js?v=0.74.41"></script>
-    <script src="js/api.js?v=0.74.41"></script>
-    <script src="js/ui.js?v=0.74.41"></script>
-    <script src="js/auth.js?v=0.74.41"></script>
-    <script src="js/timeline-interaction-model.js?v=0.74.41"></script>
-    <script src="js/timeline.js?v=0.74.41"></script>
-    <script src="js/booking.js?v=0.74.41"></script>
-    <script src="js/settings.js?v=0.74.41"></script>
-    <script src="js/booking-form.js?v=0.74.41"></script>
-    <script src="js/booking-linked.js?v=0.74.41"></script>
-    <script src="js/settings-dashboard.js?v=0.74.41"></script>
-    <script src="js/settings-history.js?v=0.74.41"></script>
-    <script src="js/settings-afisha.js?v=0.74.41"></script>
-    <script src="js/settings-certificates.js?v=0.74.41"></script>
-    <script src="js/offline.js?v=0.74.41"></script>
-    <script src="js/crm-feature-registry.js?v=0.74.41"></script>
-    <script src="js/search.js?v=0.74.41"></script>
-    <script src="js/ws.js?v=0.74.41"></script>
-    <script src="js/app.js?v=0.74.41"></script>
-    <script src="js/kleshnya-widget.js?v=0.74.41"></script>
-    <script src="js/components/sidebar.js?v=0.74.41"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.41"></script>
+    <script src="js/timeline-context.js?v=0.74.43"></script>
+    <script src="js/timeline-visibility.js?v=0.74.43"></script>
+    <script src="js/config.js?v=0.74.43"></script>
+    <script src="js/api.js?v=0.74.43"></script>
+    <script src="js/ui.js?v=0.74.43"></script>
+    <script src="js/auth.js?v=0.74.43"></script>
+    <script src="js/timeline-interaction-model.js?v=0.74.43"></script>
+    <script src="js/timeline.js?v=0.74.43"></script>
+    <script src="js/booking.js?v=0.74.43"></script>
+    <script src="js/settings.js?v=0.74.43"></script>
+    <script src="js/booking-form.js?v=0.74.43"></script>
+    <script src="js/booking-linked.js?v=0.74.43"></script>
+    <script src="js/settings-dashboard.js?v=0.74.43"></script>
+    <script src="js/settings-history.js?v=0.74.43"></script>
+    <script src="js/settings-afisha.js?v=0.74.43"></script>
+    <script src="js/settings-certificates.js?v=0.74.43"></script>
+    <script src="js/offline.js?v=0.74.43"></script>
+    <script src="js/crm-feature-registry.js?v=0.74.43"></script>
+    <script src="js/search.js?v=0.74.43"></script>
+    <script src="js/ws.js?v=0.74.43"></script>
+    <script src="js/app.js?v=0.74.43"></script>
+    <script src="js/kleshnya-widget.js?v=0.74.43"></script>
+    <script src="js/components/sidebar.js?v=0.74.43"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.74.43"></script>
 </body>
 </html>

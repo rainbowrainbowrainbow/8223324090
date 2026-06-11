@@ -247,6 +247,7 @@ function mapBookingRow(row) {
         bookingPackage: extraData?.bookingPackage || null,
         skipNotification: row.skip_notification || false,
         customerId: row.customer_id || null,
+        customerName: row.customer_name || row.customerName || null,
         paymentMethod: row.payment_method || null,
         confirmedAt: row.confirmed_at || row.confirmedAt || null,
         confirmedBy: row.confirmed_by || row.confirmedBy || null,
@@ -256,7 +257,8 @@ function mapBookingRow(row) {
         banquetTables: row.banquet_tables || null,
         banquetMenu: row.banquet_menu || null,
         certificateId: row.certificate_id || null,
-        banquetLinks: Array.isArray(row.banquet_links) ? row.banquet_links : []
+        bookingLinks: Array.isArray(row.booking_links) ? row.booking_links : (Array.isArray(row.bookingLinks) ? row.bookingLinks : []),
+        banquetLinks: Array.isArray(row.banquet_links) ? row.banquet_links : (Array.isArray(row.banquetLinks) ? row.banquetLinks : [])
     };
 }
 

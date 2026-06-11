@@ -714,6 +714,16 @@ const ATOMIC_LINKED_HISTORY_ACTIONS = new Set([
 ]);
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
+const SHARED_ROOM_LINK_RELATION_TYPE = 'shared_room_activity';
+const BOOKING_VISUAL_LINK_RELATION_TYPES = Object.freeze([
+    BANQUET_LINK_RELATION_TYPE,
+    SHARED_ROOM_LINK_RELATION_TYPE
+]);
+
+function normalizeBookingLinkRelationType(value, fallback = BANQUET_LINK_RELATION_TYPE) {
+    const relationType = String(value || '').trim();
+    return BOOKING_VISUAL_LINK_RELATION_TYPES.includes(relationType) ? relationType : fallback;
+}
 
 function normalizeBanquetLinkPair(sourceId, targetId) {
     const a = String(sourceId || '').trim();
@@ -750,11 +760,11 @@ async function attachBanquetLinksToBookings(bookings, businessContext) {
         `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
            FROM booking_banquet_links
           WHERE business_context = $1
-            AND relation_type = $2
+            AND relation_type = ANY($2::text[])
             AND booking_a_id = ANY($3::text[])
             AND booking_b_id = ANY($3::text[])
           ORDER BY created_at ASC, id ASC`,
-        [businessContext || DEFAULT_TIMELINE_CONTEXT, BANQUET_LINK_RELATION_TYPE, ids]
+        [businessContext || DEFAULT_TIMELINE_CONTEXT, BOOKING_VISUAL_LINK_RELATION_TYPES, ids]
     );
     const byBooking = new Map(ids.map(id => [String(id), []]));
     linksResult.rows.forEach(row => {
@@ -763,15 +773,21 @@ async function attachBanquetLinksToBookings(bookings, businessContext) {
         if (byBooking.has(a)) byBooking.get(a).push(mapBanquetLinkRow(row, a));
         if (byBooking.has(b)) byBooking.get(b).push(mapBanquetLinkRow(row, b));
     });
-    return bookings.map(booking => ({
-        ...booking,
-        banquetLinks: byBooking.get(String(booking.id)) || []
-    }));
+    return bookings.map(booking => {
+        const bookingLinks = byBooking.get(String(booking.id)) || [];
+        return {
+            ...booking,
+            bookingLinks,
+            banquetLinks: bookingLinks.filter(link => link.relationType === BANQUET_LINK_RELATION_TYPE),
+            sharedRoomLinks: bookingLinks.filter(link => link.relationType === SHARED_ROOM_LINK_RELATION_TYPE)
+        };
+    });
 }
 
-async function upsertBanquetLink(client, businessContext, sourceId, targetId, label, user) {
+async function upsertBanquetLink(client, businessContext, sourceId, targetId, label, user, relationType = BANQUET_LINK_RELATION_TYPE) {
     const pair = normalizeBanquetLinkPair(sourceId, targetId);
     if (!pair) return null;
+    const normalizedRelationType = normalizeBookingLinkRelationType(relationType);
     const insert = await client.query(
         `INSERT INTO booking_banquet_links
             (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)
@@ -780,9 +796,86 @@ async function upsertBanquetLink(client, businessContext, sourceId, targetId, la
          DO UPDATE SET label = COALESCE(EXCLUDED.label, booking_banquet_links.label),
                        updated_at = NOW()
          RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
-        [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE, label || null, actorUserId(user), user?.username || null]
+        [businessContext, pair[0], pair[1], normalizedRelationType, label || null, actorUserId(user), user?.username || null]
     );
     return insert.rows[0] || null;
+}
+
+function bookingTimesOverlap(first, second) {
+    if (!first?.time || !second?.time) return false;
+    const firstStart = timeToMinutes(first.time);
+    const secondStart = timeToMinutes(second.time);
+    if (!Number.isFinite(firstStart) || !Number.isFinite(secondStart)) return false;
+    const firstEnd = firstStart + (parseInt(first.duration, 10) || 0);
+    const secondEnd = secondStart + (parseInt(second.duration, 10) || 0);
+    return firstStart < secondEnd && firstEnd > secondStart;
+}
+
+function isRootBookingRow(row = {}) {
+    return !String(row.linked_to || row.linkedTo || '').trim();
+}
+
+function sharedRoomLinkLabel(row = {}) {
+    const room = String(row.room || '').trim();
+    return room ? `same room: ${room}` : 'same room';
+}
+
+async function bookingVisualLinkPairExists(client, businessContext, sourceId, targetId) {
+    const pair = normalizeBanquetLinkPair(sourceId, targetId);
+    if (!pair) return true;
+    const existing = await client.query(
+        `SELECT 1
+           FROM booking_banquet_links
+          WHERE business_context = $1
+            AND booking_a_id = $2
+            AND booking_b_id = $3
+            AND relation_type = ANY($4::text[])
+          LIMIT 1`,
+        [businessContext || DEFAULT_TIMELINE_CONTEXT, pair[0], pair[1], BOOKING_VISUAL_LINK_RELATION_TYPES]
+    );
+    return existing.rowCount > 0;
+}
+
+async function createSharedRoomActivityLinks(client, businessContext, bookingRow, user) {
+    if (!bookingRow?.id || !isRootBookingRow(bookingRow) || !isRealRoom(bookingRow.room)) return [];
+    if (!bookingRow.date || !bookingRow.time) return [];
+    const result = await client.query(
+        `SELECT id, date, time, duration, room, status, linked_to, label, program_code, program_name, group_name
+           FROM bookings
+          WHERE date = $1
+            AND room = $2
+            AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $3
+            AND status != 'cancelled'
+            AND id <> $4
+            AND NULLIF(COALESCE(linked_to, ''), '') IS NULL
+          ORDER BY time ASC, id ASC`,
+        [bookingRow.date, bookingRow.room, businessContext || DEFAULT_TIMELINE_CONTEXT, bookingRow.id]
+    );
+    const created = [];
+    for (const candidate of result.rows) {
+        if (bookingTimesOverlap(bookingRow, candidate)) continue;
+        if (await bookingVisualLinkPairExists(client, businessContext, bookingRow.id, candidate.id)) continue;
+        const linkRow = await upsertBanquetLink(
+            client,
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            bookingRow.id,
+            candidate.id,
+            sharedRoomLinkLabel(bookingRow),
+            user,
+            SHARED_ROOM_LINK_RELATION_TYPE
+        );
+        if (!linkRow) continue;
+        created.push(linkRow);
+        await insertScopedHistory(client, 'booking_shared_room_link_created', user?.username, {
+            booking_id: bookingRow.id,
+            target_booking_id: candidate.id,
+            business_context: businessContext || DEFAULT_TIMELINE_CONTEXT,
+            relation_type: SHARED_ROOM_LINK_RELATION_TYPE,
+            room: bookingRow.room,
+            date: bookingRow.date
+        }, businessContext || DEFAULT_TIMELINE_CONTEXT);
+    }
+    return created;
 }
 
 function pickAtomicLinkedPatch(input) {
@@ -1295,8 +1388,12 @@ router.get('/:date', async (req, res) => {
                     client_pinata_service_price, client_pinata_service_note, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
-                    confirmed_at, confirmed_by, confirmation_note, confirmation_source
+                    confirmed_at, confirmed_by, confirmation_note, confirmation_source,
+                    c.name AS customer_name
              FROM bookings b
+             LEFT JOIN customers c
+               ON c.id = b.customer_id
+              AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND b.status != 'cancelled'
                ${visibility}
              ORDER BY time`,
@@ -1391,6 +1488,7 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
     if (!pair) {
         return res.status(400).json({ success: false, error: 'Invalid banquet link pair' });
     }
+    const relationType = normalizeBookingLinkRelationType(req.query?.relationType || req.query?.relation_type, BANQUET_LINK_RELATION_TYPE);
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1424,13 +1522,13 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
                     OR (booking_a_id = $3 AND booking_b_id = $2)
                 )
               RETURNING id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by`,
-            [businessContext, pair[0], pair[1], BANQUET_LINK_RELATION_TYPE]
+            [businessContext, pair[0], pair[1], relationType]
         );
         await insertScopedHistory(client, 'booking_banquet_link_deleted', req.user?.username, {
                 booking_id: id,
                 target_booking_id: targetId,
                 business_context: businessContext,
-                relation_type: BANQUET_LINK_RELATION_TYPE,
+                relation_type: relationType,
                 deleted: deleted.rowCount > 0
             },
             businessContext
@@ -1662,6 +1760,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             if (linkedInsert.rows[0]) linkedInsertedRows.push(linkedInsert.rows[0]);
         }
 
+        const sharedRoomLinkRows = await createSharedRoomActivityLinks(client, businessContext, insertResult.rows[0], req.user);
+
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
         // Update first_visit which is not covered by the trigger
         if (sideEffectsAllowedForContext(businessContext) && customerId) {
@@ -1766,8 +1866,18 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
+        let allBookings = [booking, ...linkedBookings];
+        try {
+            allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
+        } catch (linkErr) {
+            log.warn(`Created booking visual link enrichment failed: ${linkErr.message}`);
+        }
+        const responseBooking = allBookings.find(item => String(item.id) === String(booking.id)) || booking;
+        const linkedIdSet = new Set(linkedInsertedRows.map(row => String(row.id)));
+        const responseLinkedBookings = allBookings.filter(item => linkedIdSet.has(String(item.id)));
+
         // WebSocket: notify other clients
-        broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
+        broadcast('booking:created', responseBooking, req.user?.id?.toString(), b.date);
         _alertPush();
 
         // ==========================================
@@ -1944,14 +2054,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        const allBookings = [booking, ...linkedBookings];
         res.json({
             success: true,
-            booking,
-            linkedBookings,
+            booking: responseBooking,
+            linkedBookings: responseLinkedBookings,
+            sharedRoomLinks: sharedRoomLinkRows.map(row => mapBanquetLinkRow(row, b.id)),
             allBookings,
             projection: {
-                main: booking.timelineProjection || null,
+                main: responseBooking.timelineProjection || null,
                 bookings: allBookings.map(item => bookingTimelineProjectionContract(item))
             },
             serverVerified: true
@@ -2547,6 +2657,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
+        const sharedRoomLinkRows = [];
+        for (const rootRow of [mainInsert.rows[0], ...activityRows].filter(Boolean)) {
+            const createdRoomLinks = await createSharedRoomActivityLinks(client, businessContext, rootRow, req.user);
+            sharedRoomLinkRows.push(...createdRoomLinks);
+        }
+
         await insertScopedHistory(client, 'create', main.createdBy || req.user?.username, main, businessContext);
         for (const activityRow of activityRows) {
             await insertScopedHistory(
@@ -2598,7 +2714,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 kids_count: main.kidsCount, created_by: main.createdBy,
                 linked_count: linkedRows.length,
                 activity_count: activityRows.length,
-                banquet_link_count: banquetLinkRows.length
+                banquet_link_count: banquetLinkRows.length,
+                shared_room_link_count: sharedRoomLinkRows.length
             }, main.id, `booking_created_${main.id}`);
             for (const activityRow of activityRows) {
                 await queueBookingEventInTransaction(client, 'booking.created', {
@@ -2616,7 +2733,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                     linked_count: 0,
                     activity_count: 0,
                     banquet_parent_id: main.id,
-                    banquet_link_count: 1
+                    banquet_link_count: 1,
+                    shared_room_link_count: sharedRoomLinkRows.filter(link =>
+                        String(link.booking_a_id) === String(activityRow.id) || String(link.booking_b_id) === String(activityRow.id)
+                    ).length
                 }, activityRow.id, `booking_created_${activityRow.id}`);
             }
         }
@@ -2698,6 +2818,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             linkedBookings: responseLinkedBookings,
             activityBookings: responseActivityBookings,
             banquetLinks: banquetLinkRows.map(row => mapBanquetLinkRow(row, main.id)),
+            sharedRoomLinks: sharedRoomLinkRows.map(row => mapBanquetLinkRow(row, main.id)),
             allBookings,
             projection: {
                 main: responseMainBooking.timelineProjection || null,

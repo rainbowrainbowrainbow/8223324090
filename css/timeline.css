@@ -448,6 +448,21 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     opacity: 0.9;
 }
 
+.timeline-booking-link-path--room {
+    stroke: rgba(6, 182, 212, 0.86);
+    stroke-dasharray: 5 5;
+    filter: drop-shadow(0 3px 7px rgba(8, 145, 178, 0.26));
+}
+
+.timeline-booking-link-path--banquet {
+    stroke: rgba(245, 158, 11, 0.82);
+}
+
+.timeline-booking-link-path--adjacent {
+    stroke-width: 3;
+    stroke-dasharray: 4 4;
+}
+
 .booking-banquet-link-handle {
     position: absolute;
     right: -9px;
@@ -472,6 +487,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block:hover .booking-banquet-link-handle,
 .booking-block:focus-within .booking-banquet-link-handle,
 .booking-block.has-banquet-links .booking-banquet-link-handle,
+.booking-block.has-booking-links .booking-banquet-link-handle,
 body.banquet-linking-active .booking-banquet-link-handle {
     opacity: 1;
 }
@@ -533,6 +549,11 @@ body.banquet-linking-active .booking-block {
     border: 1px solid rgba(245, 158, 11, 0.22);
 }
 
+.booking-banquet-link-chip--room {
+    border-color: rgba(6, 182, 212, 0.26);
+    background: rgba(6, 182, 212, 0.08);
+}
+
 .booking-banquet-link-mark {
     display: inline-flex;
     align-items: center;
@@ -546,6 +567,10 @@ body.banquet-linking-active .booking-block {
     flex: 0 0 auto;
 }
 
+.booking-banquet-link-chip--room .booking-banquet-link-mark {
+    background: linear-gradient(135deg, #06B6D4 0%, #2563EB 100%);
+}
+
 .booking-banquet-link-target {
     min-width: 0;
     flex: 1;
@@ -555,6 +580,22 @@ body.banquet-linking-active .booking-block {
     font-size: 12px;
     font-weight: 800;
     color: var(--gray-700);
+}
+
+.booking-link-chip-badge {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.13);
+    color: #92400E;
+    font-size: 10px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.booking-banquet-link-chip--room .booking-link-chip-badge {
+    background: rgba(6, 182, 212, 0.14);
+    color: #0E7490;
 }
 
 .booking-banquet-unlink-btn {
@@ -590,9 +631,27 @@ body.dark-mode .booking-banquet-link-chip {
     border-color: rgba(245, 158, 11, 0.24);
 }
 
+html[data-theme="dark"] .booking-banquet-link-chip--room,
+body.dark-mode .booking-banquet-link-chip--room {
+    background: rgba(8, 145, 178, 0.14);
+    border-color: rgba(34, 211, 238, 0.24);
+}
+
 html[data-theme="dark"] .booking-banquet-link-target,
 body.dark-mode .booking-banquet-link-target {
     color: rgba(226, 232, 240, 0.9);
+}
+
+html[data-theme="dark"] .booking-link-chip-badge,
+body.dark-mode .booking-link-chip-badge {
+    background: rgba(245, 158, 11, 0.18);
+    color: #FCD34D;
+}
+
+html[data-theme="dark"] .booking-banquet-link-chip--room .booking-link-chip-badge,
+body.dark-mode .booking-banquet-link-chip--room .booking-link-chip-badge {
+    background: rgba(6, 182, 212, 0.2);
+    color: #67E8F9;
 }
 
 html[data-theme="dark"] .booking-banquet-unlink-btn,

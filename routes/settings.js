@@ -554,8 +554,12 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const params = [date, context || DEFAULT_TIMELINE_CONTEXT];
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
-            `SELECT b.room, b.time, b.duration
+            `SELECT b.id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
+                    b.group_name, b.linked_to, c.name AS customer_name
              FROM bookings b
+             LEFT JOIN customers c
+               ON c.id = b.customer_id
+              AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
              WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND b.status != 'cancelled'
              ${visibility.sql}`,
             params
@@ -563,9 +567,11 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
 
         const reqStart = timeToMinutes(time);
         const reqEnd = reqStart + dur;
+        const excludeId = String(req.query.excludeId || req.query.exclude_id || '').trim();
 
         const occupiedRooms = new Set();
         for (const b of bookings.rows) {
+            if (excludeId && String(b.id || '') === excludeId) continue;
             if (!b.room) continue;
             const bStart = timeToMinutes(b.time);
             const bEnd = bStart + (b.duration || 0);
@@ -574,8 +580,32 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
             }
         }
 
+        const dayBookingsByRoom = {};
+        for (const b of bookings.rows) {
+            if (excludeId && String(b.id || '') === excludeId) continue;
+            if (!b.room || String(b.linked_to || '').trim()) continue;
+            if (!dayBookingsByRoom[b.room]) dayBookingsByRoom[b.room] = [];
+            const customerName = b.customer_name || b.group_name || b.label || b.program_name || b.program_code || b.id;
+            dayBookingsByRoom[b.room].push({
+                id: b.id,
+                time: b.time,
+                duration: b.duration || 0,
+                customerName,
+                label: b.label || null,
+                programName: b.program_name || null
+            });
+        }
+        Object.values(dayBookingsByRoom).forEach(roomBookings => {
+            roomBookings.sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+        });
+        const rooms = ALL_ROOMS.map(room => ({
+            name: room,
+            occupied: occupiedRooms.has(room),
+            free: !occupiedRooms.has(room),
+            dayBookings: dayBookingsByRoom[room] || []
+        }));
         const free = ALL_ROOMS.filter(r => !occupiedRooms.has(r));
-        res.json({ free, occupied: Array.from(occupiedRooms), total: ALL_ROOMS.length });
+        res.json({ free, occupied: Array.from(occupiedRooms), total: ALL_ROOMS.length, rooms, dayBookingsByRoom });
     } catch (err) {
         log.error('Free rooms error', err);
         res.status(500).json({ error: 'Internal server error' });

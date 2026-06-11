@@ -1132,10 +1132,11 @@ function createBookingBlock(booking, startHour, anchor) {
     // v5.19: Linked bookings show 🔗 badge instead of user letter
     const badge = isMaysternyaSlotClosed ? '×' : (isEducationLessonBlock ? 'У' : (isLinked ? '🔗' : escapeHtml(userLetter)));
 
-    const banquetTargetIds = getBanquetLinkedTargetIds(renderBooking);
-    if (banquetTargetIds.length > 0) {
+    const linkedTargetIds = getBookingVisualLinkedTargetIds(renderBooking);
+    if (linkedTargetIds.length > 0) {
+        block.classList.add('has-booking-links');
         block.classList.add('has-banquet-links');
-        block.setAttribute('data-banquet-linked-targets', banquetTargetIds.join(','));
+        block.setAttribute('data-banquet-linked-targets', linkedTargetIds.join(','));
     }
 
     const maysternyaClient = maysternyaExtra.clientName || maysternyaExtra.topic || renderBooking.groupName || '';
@@ -1297,19 +1298,40 @@ function eventToTimelinePoint(event) {
     };
 }
 
-function linkPathBetweenPoints(from, to) {
+function linkPathBetweenPoints(from, to, options = {}) {
     if (!from || !to) return '';
+    if (options.adjacent) {
+        const lift = -Math.max(28, Math.min(46, Math.abs(to.y - from.y) + 24));
+        const midX = (from.x + to.x) / 2;
+        return `M ${from.x} ${from.y} C ${from.x} ${from.y + lift}, ${midX} ${from.y + lift}, ${midX} ${from.y + lift} C ${midX} ${to.y + lift}, ${to.x} ${to.y + lift}, ${to.x} ${to.y}`;
+    }
     const dx = Math.max(34, Math.abs(to.x - from.x) * 0.45);
     return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
 }
 
-function appendBanquetLinkPath(layer, from, to, className, label = '') {
+function appendBanquetLinkPath(layer, from, to, className, label = '', options = {}) {
     const path = document.createElementNS(BANQUET_LINK_SVG_NS, 'path');
     path.setAttribute('class', className);
-    path.setAttribute('d', linkPathBetweenPoints(from, to));
+    path.setAttribute('d', linkPathBetweenPoints(from, to, options));
     if (label) path.setAttribute('aria-label', label);
     layer.appendChild(path);
     return path;
+}
+
+function bookingVisualLinkPathClass(link, adjacent = false) {
+    const relationType = normalizeBookingVisualRelationType(link?.relationType || link?.relation_type);
+    const classes = ['timeline-banquet-link-path'];
+    classes.push(relationType === SHARED_ROOM_LINK_RELATION_TYPE
+        ? 'timeline-booking-link-path--room'
+        : 'timeline-booking-link-path--banquet');
+    if (adjacent) classes.push('timeline-booking-link-path--adjacent');
+    return classes.join(' ');
+}
+
+function bookingVisualLinkTitle(link, source, target, targetId) {
+    const relationType = normalizeBookingVisualRelationType(link?.relationType || link?.relation_type);
+    const relationLabel = relationType === SHARED_ROOM_LINK_RELATION_TYPE ? 'Та сама кімната' : 'Банкет';
+    return `${relationLabel}: ${source.label || source.programCode || source.id} ↔ ${target?.label || target?.programCode || targetId}`;
 }
 
 function renderBanquetLinksOverlay() {
@@ -1326,12 +1348,13 @@ function renderBanquetLinksOverlay() {
     cachedBookings.forEach(booking => {
         const fromBlock = blockById.get(String(booking.id));
         if (!fromBlock) return;
-        getBookingBanquetLinks(booking).forEach(link => {
+        getBookingVisualLinks(booking).forEach(link => {
             const targetId = String(link.targetId || '');
             if (!targetId) return;
             const targetBlock = blockById.get(targetId);
             if (!targetBlock) return;
-            const pairKey = String(link.id || [String(booking.id), targetId].sort().join('::'));
+            const relationType = normalizeBookingVisualRelationType(link.relationType || link.relation_type);
+            const pairKey = `${relationType}:${link.id || [String(booking.id), targetId].sort().join('::')}`;
             if (renderedPairs.has(pairKey)) return;
             renderedPairs.add(pairKey);
 
@@ -1343,7 +1366,10 @@ function renderBanquetLinksOverlay() {
             const to = bookingBlockAnchorPoint(targetBlock, toSide);
             const target = bookingById.get(targetId);
             const title = `Банкетний звʼязок: ${booking.label || booking.programCode || booking.id} ↔ ${target?.label || target?.programCode || targetId}`;
-            appendBanquetLinkPath(layer, from, to, 'timeline-banquet-link-path', title);
+            const adjacent = Math.abs((to?.x || 0) - (from?.x || 0)) < 42
+                || Math.abs(fromRect.right - toRect.left) < 12
+                || Math.abs(toRect.right - fromRect.left) < 12;
+            appendBanquetLinkPath(layer, from, to, bookingVisualLinkPathClass(link, adjacent), bookingVisualLinkTitle(link, booking, target, targetId), { adjacent });
         });
     });
 
@@ -1447,8 +1473,8 @@ async function completeBanquetLinkDraft(targetBooking) {
     showNotification('Банкетний звʼязок створено', 'success');
 }
 
-async function removeBookingBanquetLink(sourceId, targetId) {
-    const result = await apiDeleteBookingBanquetLink(sourceId, targetId);
+async function removeBookingBanquetLink(sourceId, targetId, relationType = 'banquet_activity') {
+    const result = await apiDeleteBookingBanquetLink(sourceId, targetId, relationType);
     if (!result || result.success === false) {
         showNotification(result?.error || 'Не вдалося прибрати банкетний звʼязок', 'error');
         return false;
@@ -1660,6 +1686,8 @@ let _banquetLinkDraft = null;
 let _timelineInteractionSaveInFlight = false;
 
 const BANQUET_LINK_SVG_NS = 'http://www.w3.org/2000/svg';
+const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
+const SHARED_ROOM_LINK_RELATION_TYPE = 'shared_room_activity';
 
 function _samePointerId(state, event) {
     if (!state || !event || state.pointerId === undefined || event.pointerId === undefined) return true;
@@ -1739,14 +1767,33 @@ function timelineInteractionUnavailable() {
 }
 
 function getBookingBanquetLinks(booking) {
-    return Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : [];
+    const links = getBookingVisualLinks(booking);
+    return links.filter(link => normalizeBookingVisualRelationType(link?.relationType || link?.relation_type) === BANQUET_LINK_RELATION_TYPE);
 }
 
-function getBanquetLinkedTargetIds(booking) {
-    return getBookingBanquetLinks(booking)
+function normalizeBookingVisualRelationType(value) {
+    return String(value || '').trim() === SHARED_ROOM_LINK_RELATION_TYPE
+        ? SHARED_ROOM_LINK_RELATION_TYPE
+        : BANQUET_LINK_RELATION_TYPE;
+}
+
+function getBookingVisualLinks(booking) {
+    if (Array.isArray(booking?.bookingLinks)) return booking.bookingLinks;
+    const links = [];
+    if (Array.isArray(booking?.banquetLinks)) links.push(...booking.banquetLinks);
+    if (Array.isArray(booking?.sharedRoomLinks)) links.push(...booking.sharedRoomLinks);
+    return links;
+}
+
+function getBookingVisualLinkedTargetIds(booking) {
+    return getBookingVisualLinks(booking)
         .map(link => link?.targetId || (String(link?.bookingAId) === String(booking?.id) ? link?.bookingBId : link?.bookingAId))
         .filter(Boolean)
         .map(String);
+}
+
+function getBanquetLinkedTargetIds(booking) {
+    return getBookingVisualLinkedTargetIds(booking);
 }
 
 // --- Haptic feedback ---

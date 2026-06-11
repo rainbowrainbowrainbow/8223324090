@@ -482,6 +482,8 @@ const BookingRoomAvailabilityState = {
     baseGroups: null,
     defaultHint: '',
     occupiedRooms: new Set(),
+    occupiedNowRooms: new Set(),
+    roomDayBookings: new Map(),
     availableRooms: new Set()
 };
 
@@ -522,22 +524,95 @@ function snapshotBookingRoomOptions() {
 }
 
 function collectOccupiedRoomsForBookingDay(bookings = [], excludeId = '') {
+    return new Set(collectRoomDayBookingsForBookingDay(bookings, excludeId).keys());
+}
+
+function bookingRoomDayBookingName(booking = {}) {
+    const name = booking.customerName || booking.customer_name || booking.groupName || booking.group_name
+        || booking.label || booking.programName || booking.program_name || booking.programCode || booking.program_code
+        || booking.id || 'бронь';
+    const text = String(name || '').trim();
+    return text.length > 28 ? `${text.slice(0, 25)}...` : text;
+}
+
+function bookingRoomDayBookingTime(booking = {}) {
+    return String(booking.time || '').slice(0, 5) || '--:--';
+}
+
+function normalizeRoomDayBookingEntry(booking = {}) {
+    return {
+        id: booking.id || null,
+        time: booking.time || '',
+        duration: parseInt(booking.duration, 10) || 0,
+        customerName: booking.customerName || booking.customer_name || booking.groupName || booking.group_name
+            || booking.label || booking.programName || booking.program_name || booking.programCode || booking.program_code || booking.id || null,
+        label: booking.label || null,
+        programName: booking.programName || booking.program_name || null
+    };
+}
+
+function sortRoomDayBookings(bookings = []) {
+    return [...bookings].sort((a, b) =>
+        String(a.time || '').localeCompare(String(b.time || ''))
+        || String(a.id || '').localeCompare(String(b.id || ''))
+    );
+}
+
+function collectRoomDayBookingsForBookingDay(bookings = [], excludeId = '') {
     const excludedId = String(excludeId || '').trim();
-    const occupied = new Set();
+    const byRoom = new Map();
     (bookings || []).forEach(booking => {
         if (!booking || String(booking.status || '').toLowerCase() === 'cancelled') return;
         if (excludedId && String(booking.id || '') === excludedId) return;
+        if (String(booking.linkedTo || booking.linked_to || '').trim()) return;
         const room = String(booking.room || '').trim();
-        if (isOperationalBookingRoomValue(room)) occupied.add(room);
+        if (!isOperationalBookingRoomValue(room)) return;
+        if (!byRoom.has(room)) byRoom.set(room, []);
+        byRoom.get(room).push(normalizeRoomDayBookingEntry(booking));
     });
-    return occupied;
+    byRoom.forEach((roomBookings, room) => byRoom.set(room, sortRoomDayBookings(roomBookings)));
+    return byRoom;
 }
 
-function renderBookingRoomOptionsForDay(occupiedRooms = new Set(), options = {}) {
+function normalizeRoomDayBookingsIndex(input = new Map()) {
+    if (input instanceof Map) {
+        const normalized = new Map();
+        input.forEach((value, key) => {
+            normalized.set(String(key), sortRoomDayBookings((Array.isArray(value) ? value : []).map(normalizeRoomDayBookingEntry)));
+        });
+        return normalized;
+    }
+    if (input && typeof input === 'object' && !(input instanceof Set)) {
+        const normalized = new Map();
+        Object.entries(input).forEach(([key, value]) => {
+            normalized.set(String(key), sortRoomDayBookings((Array.isArray(value) ? value : []).map(normalizeRoomDayBookingEntry)));
+        });
+        return normalized;
+    }
+    return new Map();
+}
+
+function roomDayBookingSuffix(roomBookings = []) {
+    const sorted = sortRoomDayBookings(roomBookings);
+    if (!sorted.length) return '';
+    const first = sorted[0];
+    const extra = sorted.length > 1 ? ` +${sorted.length - 1}` : '';
+    return ` — ${bookingRoomDayBookingTime(first)} ${bookingRoomDayBookingName(first)}${extra}`;
+}
+
+function roomDayBookingInlineSummary(roomBookings = []) {
+    return roomDayBookingSuffix(roomBookings).replace(/^ — /, '');
+}
+
+function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), options = {}) {
     const select = document.getElementById('roomSelect');
     if (!select) return;
     snapshotBookingRoomOptions();
     const groups = BookingRoomAvailabilityState.baseGroups || [];
+    const roomDayBookings = normalizeRoomDayBookingsIndex(roomDayBookingsInput);
+    const occupiedNowRooms = options.occupiedNowRooms instanceof Set
+        ? options.occupiedNowRooms
+        : new Set(Array.isArray(options.occupiedNowRooms) ? options.occupiedNowRooms : []);
     const selectedRoom = String(options.selectedRoom ?? select.value ?? '').trim();
     const selectedLabel = String(options.selectedLabel || selectedRoom).trim();
     const placeholder = isParkTimelineBookingMode() ? 'кімнату' : (getTimelineBookingPresentation().roomOptionLabel || 'кімнату');
@@ -551,9 +626,7 @@ function renderBookingRoomOptionsForDay(occupiedRooms = new Set(), options = {})
     groups.forEach(group => {
         const visibleOptions = group.options.filter(option => {
             const value = String(option.value || '').trim();
-            if (!value) return false;
-            if (!isOperationalBookingRoomValue(value)) return true;
-            return !occupiedRooms.has(value) || value === selectedRoom;
+            return Boolean(value);
         });
         if (!visibleOptions.length) return;
         const parent = group.label === BOOKING_ROOM_FALLBACK_GROUP
@@ -563,9 +636,12 @@ function renderBookingRoomOptionsForDay(occupiedRooms = new Set(), options = {})
         visibleOptions.forEach(optionData => {
             const option = document.createElement('option');
             option.value = optionData.value;
-            option.textContent = optionData.text;
+            const dayBookings = roomDayBookings.get(optionData.value) || [];
+            option.textContent = `${optionData.text}${isOperationalBookingRoomValue(optionData.value) ? roomDayBookingSuffix(dayBookings) : ''}`;
             option.disabled = optionData.disabled;
-            if (isOperationalBookingRoomValue(option.value) && !occupiedRooms.has(option.value)) {
+            if (dayBookings.length > 0) option.dataset.hasDayBookings = 'true';
+            if (occupiedNowRooms.has(optionData.value)) option.dataset.occupiedNow = 'true';
+            if (isOperationalBookingRoomValue(option.value)) {
                 availableRooms.add(option.value);
             }
             parent.appendChild(option);
@@ -589,18 +665,70 @@ function renderBookingRoomOptionsForDay(occupiedRooms = new Set(), options = {})
         select.value = '';
     }
 
-    BookingRoomAvailabilityState.occupiedRooms = occupiedRooms;
+    BookingRoomAvailabilityState.occupiedRooms = new Set(roomDayBookings.keys());
+    BookingRoomAvailabilityState.occupiedNowRooms = occupiedNowRooms;
+    BookingRoomAvailabilityState.roomDayBookings = roomDayBookings;
     BookingRoomAvailabilityState.availableRooms = availableRooms;
 
     const hint = document.getElementById('bookingRoomHint');
     if (hint && isParkTimelineBookingMode()) {
         const totalRooms = groups.flatMap(group => group.options).filter(option => isOperationalBookingRoomValue(option.value)).length;
-        if (occupiedRooms.size > 0) {
-            hint.textContent = `У списку тільки кімнати без бронювань на ${formatDate(AppState.selectedDate)}. Зайняті: ${Array.from(occupiedRooms).join(', ')}.`;
+        const roomsWithBookings = Array.from(roomDayBookings.entries()).filter(([, value]) => value.length > 0);
+        if (roomsWithBookings.length > 0) {
+            hint.textContent = 'Кімнати з підписом уже мають бронювання цього дня. Їх можна вибрати для іншої активності; перетин часу система заблокує.';
         } else if (totalRooms > 0) {
             hint.textContent = BookingRoomAvailabilityState.defaultHint || 'Без кімнати бронювання не зберігається.';
         }
     }
+}
+
+function roomDayBookingsFromAvailabilityResponse(data = {}) {
+    if (data.dayBookingsByRoom && typeof data.dayBookingsByRoom === 'object') {
+        return normalizeRoomDayBookingsIndex(data.dayBookingsByRoom);
+    }
+    if (Array.isArray(data.rooms)) {
+        const byRoom = new Map();
+        data.rooms.forEach(room => {
+            byRoom.set(String(room.name || room.room || ''), Array.isArray(room.dayBookings) ? room.dayBookings.map(normalizeRoomDayBookingEntry) : []);
+        });
+        return normalizeRoomDayBookingsIndex(byRoom);
+    }
+    return new Map();
+}
+
+function occupiedNowRoomsFromAvailabilityResponse(data = {}) {
+    if (Array.isArray(data.rooms)) {
+        return new Set(data.rooms.filter(room => room.occupied).map(room => String(room.name || room.room || '')).filter(Boolean));
+    }
+    return new Set(Array.isArray(data.occupied) ? data.occupied.map(room => String(room || '')).filter(Boolean) : []);
+}
+
+function getBookingRoomAvailabilityRequest() {
+    const date = formatDate(AppState.selectedDate);
+    let time = document.getElementById('bookingTime')?.value;
+    if (!time && AppState.selectedCell) time = AppState.selectedCell.dataset.time;
+    const programId = document.getElementById('selectedProgram')?.value;
+    const program = programId ? getProductsSync().find(p => String(p.id) === String(programId)) : null;
+    const customDuration = parseInt(document.getElementById('customDuration')?.value || '', 10);
+    const duration = Number.isFinite(customDuration) && customDuration > 0 ? customDuration : (program ? program.duration : 60);
+    return { date, time, duration: parseInt(duration, 10) || 60 };
+}
+
+async function fetchBookingRoomAvailabilityForSelectedSlot(options = {}) {
+    const request = getBookingRoomAvailabilityRequest();
+    if (!request.time) return null;
+    let path = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${request.date}/${request.time}/${request.duration}`)
+        || `/rooms/free/${request.date}/${request.time}/${request.duration}`;
+    const params = [];
+    const excludeId = String(options.excludeId ?? AppState.editingBookingId ?? '').trim();
+    if (excludeId) params.push(`excludeId=${encodeURIComponent(excludeId)}`);
+    const requestedCapacity = parseInt(document.getElementById('kidsCountInput')?.value || '', 10);
+    if (Number.isFinite(requestedCapacity) && requestedCapacity > 0) params.push(`capacity=${encodeURIComponent(String(requestedCapacity))}`);
+    if (params.length) path += `${path.includes('?') ? '&' : '?'}${params.join('&')}`;
+    const response = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders(false) });
+    if (handleAuthError(response)) return null;
+    if (!response.ok) throw new Error(`rooms/free ${response.status}`);
+    return response.json();
 }
 
 async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
@@ -608,11 +736,21 @@ async function refreshBookingRoomAvailabilityForSelectedDate(options = {}) {
     snapshotBookingRoomOptions();
     const selectedRoom = String(options.selectedRoom ?? document.getElementById('roomSelect')?.value ?? '').trim();
     try {
+        if (!Array.isArray(options.bookings)) {
+            const availability = await fetchBookingRoomAvailabilityForSelectedSlot(options);
+            if (availability) {
+                renderBookingRoomOptionsForDay(roomDayBookingsFromAvailabilityResponse(availability), {
+                    selectedRoom,
+                    occupiedNowRooms: occupiedNowRoomsFromAvailabilityResponse(availability)
+                });
+                return;
+            }
+        }
         const bookings = Array.isArray(options.bookings)
             ? options.bookings
             : await getBookingsForDate(AppState.selectedDate);
-        const occupiedRooms = collectOccupiedRoomsForBookingDay(bookings, options.excludeId ?? AppState.editingBookingId);
-        renderBookingRoomOptionsForDay(occupiedRooms, { selectedRoom });
+        const roomDayBookings = collectRoomDayBookingsForBookingDay(bookings, options.excludeId ?? AppState.editingBookingId);
+        renderBookingRoomOptionsForDay(roomDayBookings, { selectedRoom });
     } catch (err) {
         console.warn('Booking room availability refresh failed', err);
     }
@@ -1727,10 +1865,6 @@ function initBookingPackageWorkspace() {
         if (!chip) return;
         const roomValue = chip.dataset.freeRoom || '';
         if (!roomValue) return;
-        if (!isBookingRoomAvailableForSelectedDay(roomValue)) {
-            showNotification('Ця кімната вже має бронювання на цей день', 'warning');
-            return;
-        }
         const room = document.getElementById('roomSelect');
         if (room) {
             ensureTimelineRoomOption(roomValue);
@@ -2385,36 +2519,45 @@ async function showFreeRooms() {
     try {
         let freeRoomsPath = window.TimelineBusinessContext?.appendApiContext?.(`/rooms/free/${date}/${time}/${duration}`)
             || `/rooms/free/${date}/${time}/${duration}`;
+        const queryParams = [];
+        const excludeId = String(AppState.editingBookingId || '').trim();
+        if (excludeId) queryParams.push(`excludeId=${encodeURIComponent(excludeId)}`);
         const requestedCapacity = parseInt(document.getElementById('kidsCountInput')?.value || '', 10);
         if (Number.isFinite(requestedCapacity) && requestedCapacity > 0) {
+            queryParams.push(`capacity=${encodeURIComponent(String(requestedCapacity))}`);
+        }
+        if (queryParams.length) {
             const separator = freeRoomsPath.includes('?') ? '&' : '?';
-            freeRoomsPath = `${freeRoomsPath}${separator}capacity=${encodeURIComponent(String(requestedCapacity))}`;
+            freeRoomsPath = `${freeRoomsPath}${separator}${queryParams.join('&')}`;
         }
         const response = await fetch(`${API_BASE}${freeRoomsPath}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const data = await response.json();
+        if (isParkTimelineBookingMode()) {
+            renderBookingRoomOptionsForDay(roomDayBookingsFromAvailabilityResponse(data), {
+                selectedRoom: document.getElementById('roomSelect')?.value || '',
+                occupiedNowRooms: occupiedNowRoomsFromAvailabilityResponse(data)
+            });
+        }
 
         if (Array.isArray(data.resources)) {
             const freeResources = data.resources.filter(resource => !resource.occupied && resource.capacityAvailable !== false);
             const occupiedResources = data.resources.filter(resource => resource.occupied);
             const overCapacityResources = data.resources.filter(resource => !resource.occupied && resource.capacityAvailable === false);
-            const dayFreeResources = isParkTimelineBookingMode()
-                ? freeResources.filter(resource => isBookingRoomAvailableForSelectedDay(resource.name))
-                : freeResources;
-            const occupiedByDayResources = isParkTimelineBookingMode()
-                ? freeResources.filter(resource => !isBookingRoomAvailableForSelectedDay(resource.name))
-                : [];
-            const freeHtml = dayFreeResources.map(resource => {
+            const freeHtml = freeResources.map(resource => {
                 const capacity = parseInt(resource.capacity, 10);
+                const dayBookings = Array.isArray(resource.dayBookings) ? resource.dayBookings.map(normalizeRoomDayBookingEntry) : [];
+                const daySummary = roomDayBookingInlineSummary(dayBookings);
                 const capacityLabel = Number.isFinite(capacity) && capacity > 0
                     ? `<small>до ${capacity} місць</small>`
                     : '';
-                return `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(resource.name)}"><span>${escapeHtml(resource.name)}</span>${capacityLabel}</button>`;
+                const dayLabel = daySummary ? `<small>${escapeHtml(daySummary)}</small>` : '';
+                return `<button type="button" class="free-room-chip${daySummary ? ' has-day-bookings' : ''}" data-free-room="${escapeHtml(resource.name)}"><span>${escapeHtml(resource.name)}</span>${capacityLabel}${dayLabel}</button>`;
             }).join('');
             const occupiedHtml = occupiedResources.length > 0
-                ? `<div class="occupied-rooms">Зайняті: ${occupiedResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
+                ? occupiedResources.map(resource => `<span class="free-room-chip occupied" aria-disabled="true"><span>${escapeHtml(resource.name)}</span><small>зайнята зараз</small></span>`).join('')
                 : '';
             const overCapacityHtml = overCapacityResources.length > 0
                 ? `<div class="occupied-rooms">Мала місткість: ${overCapacityResources.map(r => {
@@ -2422,25 +2565,26 @@ async function showFreeRooms() {
                     return `${escapeHtml(r.name)}${Number.isFinite(capacity) && capacity > 0 ? ` (${capacity})` : ''}`;
                 }).join(', ')}</div>`
                 : '';
-            const occupiedByDayHtml = occupiedByDayResources.length > 0
-                ? `<div class="occupied-rooms">Мають бронювання цього дня: ${occupiedByDayResources.map(r => escapeHtml(r.name)).join(', ')}</div>`
-                : '';
-            const emptyFreeText = isParkTimelineBookingMode() ? 'Немає кімнат без бронювань на цей день' : 'Немає доступних ресурсів на цей час';
-            panel.innerHTML = freeHtml || `<span class="no-free-rooms">${emptyFreeText}</span>`;
-            panel.innerHTML += occupiedHtml + overCapacityHtml + occupiedByDayHtml;
+            const emptyFreeText = isParkTimelineBookingMode() ? 'Немає кімнат, вільних у цей час' : 'Немає доступних ресурсів на цей час';
+            panel.innerHTML = (freeHtml || `<span class="no-free-rooms">${emptyFreeText}</span>`) + occupiedHtml + overCapacityHtml;
+        } else if (Array.isArray(data.rooms)) {
+            const freeRoomsHtml = data.rooms.filter(room => !room.occupied).map(room => {
+                const dayBookings = Array.isArray(room.dayBookings) ? room.dayBookings.map(normalizeRoomDayBookingEntry) : [];
+                const daySummary = roomDayBookingInlineSummary(dayBookings);
+                return `<button type="button" class="free-room-chip${daySummary ? ' has-day-bookings' : ''}" data-free-room="${escapeHtml(room.name)}"><span>${escapeHtml(room.name)}</span>${daySummary ? `<small>${escapeHtml(daySummary)}</small>` : ''}</button>`;
+            }).join('');
+            const occupiedRoomsHtml = data.rooms.filter(room => room.occupied).map(room => {
+                const dayBookings = Array.isArray(room.dayBookings) ? room.dayBookings.map(normalizeRoomDayBookingEntry) : [];
+                const summary = roomDayBookingInlineSummary(dayBookings) || 'зайнята зараз';
+                return `<span class="free-room-chip occupied" aria-disabled="true"><span>${escapeHtml(room.name)}</span><small>${escapeHtml(summary)}</small></span>`;
+            }).join('');
+            panel.innerHTML = (freeRoomsHtml || '<span class="no-free-rooms">Немає кімнат, вільних у цей час</span>') + occupiedRoomsHtml;
         } else if (data.free && data.free.length > 0) {
-            const dayFreeRooms = isParkTimelineBookingMode()
-                ? data.free.filter(room => isBookingRoomAvailableForSelectedDay(room))
-                : data.free;
-            const occupiedByDayRooms = isParkTimelineBookingMode()
-                ? data.free.filter(room => !isBookingRoomAvailableForSelectedDay(room))
-                : [];
-            const freeRoomsHtml = dayFreeRooms.map(room =>
+            const freeRoomsHtml = data.free.map(room =>
                 `<button type="button" class="free-room-chip" data-free-room="${escapeHtml(room)}"><span>${escapeHtml(room)}</span></button>`
             ).join('');
-            panel.innerHTML = (freeRoomsHtml || '<span class="no-free-rooms">Немає кімнат без бронювань на цей день</span>') +
-            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '') +
-            (occupiedByDayRooms.length > 0 ? `<div class="occupied-rooms">Мають бронювання цього дня: ${occupiedByDayRooms.map(r => escapeHtml(r)).join(', ')}</div>` : '');
+            panel.innerHTML = (freeRoomsHtml || '<span class="no-free-rooms">Немає кімнат, вільних у цей час</span>') +
+            (Array.isArray(data.occupied) && data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті зараз: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
             panel.innerHTML = '<span class="no-free-rooms">Всі кімнати зайняті в цей час</span>';
         }
@@ -4778,11 +4922,18 @@ function getCategoryIcon(category) {
 }
 
 function renderBookingBanquetLinksDetail(booking, allBookings = []) {
-    const links = Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : [];
+    const links = Array.isArray(booking?.bookingLinks)
+        ? booking.bookingLinks
+        : [
+            ...(Array.isArray(booking?.banquetLinks) ? booking.banquetLinks : []),
+            ...(Array.isArray(booking?.sharedRoomLinks) ? booking.sharedRoomLinks : [])
+        ];
     if (!links.length) return '';
     const byId = new Map((allBookings || []).map(item => [String(item.id), item]));
     const rows = links.map(link => {
         const targetId = String(link.targetId || '');
+        const relationType = String(link.relationType || link.relation_type || 'banquet_activity');
+        const relationLabel = relationType === 'shared_room_activity' ? 'та сама кімната' : 'банкет';
         const target = byId.get(targetId);
         const targetLabel = target
             ? `${target.time || ''} ${target.label || target.programCode || target.id}`.trim()
@@ -4790,19 +4941,20 @@ function renderBookingBanquetLinksDetail(booking, allBookings = []) {
         const unlinkAction = isViewer() ? '' : `
             <button type="button"
                     class="booking-banquet-unlink-btn"
-                    onclick="removeBookingBanquetLink('${escapeHtml(String(booking.id))}', '${escapeHtml(targetId)}')">
+                    onclick="removeBookingBanquetLink('${escapeHtml(String(booking.id))}', '${escapeHtml(targetId)}', '${escapeHtml(relationType)}')">
                 Прибрати
             </button>`;
         return `
-            <div class="booking-banquet-link-chip">
-                <span class="booking-banquet-link-mark">в†”</span>
+            <div class="booking-banquet-link-chip booking-banquet-link-chip--${relationType === 'shared_room_activity' ? 'room' : 'banquet'}">
+                <span class="booking-banquet-link-mark">↔</span>
                 <span class="booking-banquet-link-target">${escapeHtml(targetLabel)}</span>
+                <span class="booking-link-chip-badge">${escapeHtml(relationLabel)}</span>
                 ${unlinkAction}
             </div>`;
     }).join('');
     return `
         <div class="booking-banquet-links-detail">
-            <div class="booking-banquet-links-title">Банкетні звʼязки</div>
+            <div class="booking-banquet-links-title">Повʼязані бронювання</div>
             <div class="booking-banquet-links-list">${rows}</div>
         </div>`;
 }

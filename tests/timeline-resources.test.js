@@ -19,7 +19,8 @@ const {
     normalizeTimelineDisplaySettings,
     resourceTypeForDisplayMode,
     findTimelineResourceByName,
-    resourceToLine
+    resourceToLine,
+    timelineResourceAvailability
 } = require('../services/timelineResources');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -67,7 +68,7 @@ test('timeline resources service owns mode-to-resource contract and availability
     assert.match(service, /function resourceTypeForDisplayMode/);
     assert.match(service, /function timelineResourceAvailability/);
     assert.match(service, /async function findTimelineResourceByName/);
-    assert.match(service, /line_id = ANY\(\$3::text\[\]\) OR room = ANY\(\$4::text\[\]\)/);
+    assert.match(service, /b\.line_id = ANY\(\$3::text\[\]\) OR b\.room = ANY\(\$4::text\[\]\)/);
     assert.match(service, /requestedCapacity/);
     assert.match(service, /capacityAvailable/);
     assert.match(service, /overCapacity/);
@@ -168,6 +169,88 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     assert.match(settings, /req\.query\.capacity \|\| req\.query\.attendees \|\| req\.query\.kidsCount/);
     assert.match(booking, /capacity=\$\{encodeURIComponent\(String\(requestedCapacity\)\)\}/);
     assert.match(booking, /data-free-room/);
+});
+
+test('resource availability keeps day booking metadata separate from selected-time conflicts', async () => {
+    const queries = [];
+    const resources = [{
+        id: 1,
+        business_context: 'event_genix',
+        resource_id: 'cabinet-a',
+        type: 'cabinet',
+        name: 'Cabinet A',
+        short_name: 'A',
+        color: '#10B981',
+        capacity: 8,
+        equipment: [],
+        is_active: true,
+        sort_order: 10,
+        metadata: {}
+    }];
+    const bookingRows = [{
+        id: 'BK-2099-0101',
+        line_id: 'cabinet-a',
+        room: 'Cabinet A',
+        time: '10:00',
+        duration: 60,
+        label: 'Lesson A',
+        program_code: 'LESSON',
+        program_name: 'Lesson',
+        status: 'confirmed',
+        kids_count: 4,
+        group_name: null,
+        linked_to: null,
+        extra_data: {},
+        customer_name: 'Ушакова Ірина'
+    }, {
+        id: 'BK-2099-0102',
+        line_id: 'cabinet-a',
+        room: 'Cabinet A',
+        time: '15:00',
+        duration: 60,
+        label: 'Lesson B',
+        program_code: 'LESSON_B',
+        program_name: 'Lesson B',
+        status: 'confirmed',
+        kids_count: 3,
+        group_name: 'Група B',
+        linked_to: null,
+        extra_data: {},
+        customer_name: null
+    }];
+    const fakeDb = {
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            const text = String(sql);
+            if (/SELECT COUNT\(\*\)::int AS count FROM timeline_resources/i.test(text)) {
+                return { rows: [{ count: resources.length }], rowCount: 1 };
+            }
+            if (/SELECT \*\s+FROM timeline_resources/i.test(text)) {
+                return { rows: resources, rowCount: resources.length };
+            }
+            if (/FROM bookings b/i.test(text)) {
+                return { rows: bookingRows, rowCount: bookingRows.length };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        }
+    };
+
+    const availability = await timelineResourceAvailability(fakeDb, {
+        context: 'event_genix',
+        type: 'cabinet',
+        date: '2099-03-10',
+        time: '12:00',
+        duration: 60
+    });
+
+    assert.deepEqual(availability.free, ['Cabinet A']);
+    assert.deepEqual(availability.occupied, []);
+    assert.equal(availability.resources[0].occupied, false);
+    assert.deepEqual(availability.resources[0].bookings, []);
+    assert.equal(availability.resources[0].dayBookings.length, 2);
+    assert.equal(availability.resources[0].dayBookings[0].customerName, 'Ушакова Ірина');
+    assert.equal(availability.resources[0].dayBookings[1].customerName, 'Група B');
+    assert.match(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {

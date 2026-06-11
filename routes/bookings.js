@@ -751,6 +751,22 @@ function mapBanquetLinkRow(row, relativeBookingId = null) {
     };
 }
 
+function mapBookingVisualLinkRowsForResponse(rows = [], preferredBookingId = null, fallbackBookingIds = []) {
+    const fallbackSet = new Set((Array.isArray(fallbackBookingIds) ? fallbackBookingIds : [])
+        .filter(Boolean)
+        .map(id => String(id)));
+    return (Array.isArray(rows) ? rows : []).map(row => {
+        const preferred = preferredBookingId && (
+            String(row.booking_a_id) === String(preferredBookingId)
+            || String(row.booking_b_id) === String(preferredBookingId)
+        )
+            ? preferredBookingId
+            : null;
+        const fallback = preferred || [row.booking_a_id, row.booking_b_id].find(id => fallbackSet.has(String(id)));
+        return mapBanquetLinkRow(row, fallback || preferredBookingId || row.booking_a_id);
+    });
+}
+
 async function attachBanquetLinksToBookings(bookings, businessContext) {
     if (!Array.isArray(bookings) || bookings.length === 0) return bookings;
     const ids = bookings.map(booking => booking.id).filter(Boolean);
@@ -2817,8 +2833,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mainBooking: responseMainBooking,
             linkedBookings: responseLinkedBookings,
             activityBookings: responseActivityBookings,
-            banquetLinks: banquetLinkRows.map(row => mapBanquetLinkRow(row, main.id)),
-            sharedRoomLinks: sharedRoomLinkRows.map(row => mapBanquetLinkRow(row, main.id)),
+            banquetLinks: mapBookingVisualLinkRowsForResponse(banquetLinkRows, main.id),
+            sharedRoomLinks: mapBookingVisualLinkRowsForResponse(
+                sharedRoomLinkRows,
+                main.id,
+                [main.id, ...activityRows.map(row => row.id)]
+            ),
             allBookings,
             projection: {
                 main: responseMainBooking.timelineProjection || null,

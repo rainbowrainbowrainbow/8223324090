@@ -586,10 +586,14 @@ async function createFullBooking(baseUrl, overrides = {}) {
         status: main.status,
         createdBy: main.createdBy
     }];
+    const body = { main, linked };
+    if (Array.isArray(overrides.banquetActivities)) {
+        body.banquetActivities = overrides.banquetActivities;
+    }
     const res = await fetch(`${baseUrl}/api/bookings/full`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ main, linked })
+        body: JSON.stringify(body)
     });
     const data = await res.json().catch(() => ({}));
     return { status: res.status, data };
@@ -731,6 +735,76 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
         assert.equal(linkedExtra.timelineIdentity.resourceId, 'line-second');
         assert.equal(linkedExtra.timelineIdentity.lineId, 'line-second');
         assert.notEqual(linkedExtra.timelineIdentity.resourceId, 'line-main');
+    });
+});
+
+test('POST /api/bookings/full maps shared-room activity links relative to the activity booking', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-0999',
+            business_context: 'event_genix',
+            date: '2099-02-13',
+            time: '10:00',
+            line_id: 'line-1',
+            program_id: 'quest-60',
+            program_code: 'QS',
+            label: 'Existing(60)',
+            program_name: 'Existing activity',
+            category: 'quest',
+            duration: 60,
+            price: 0,
+            hosts: 1,
+            second_animator: null,
+            room: 'Shared Room',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-13',
+                time: '13:00',
+                room: 'Main Room',
+                hosts: 1,
+                secondAnimator: null
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '16:00',
+                lineId: 'line-second',
+                room: 'Shared Room',
+                programId: 'quest-60',
+                programCode: 'QS',
+                label: 'Activity(60)',
+                programName: 'Activity',
+                category: 'quest',
+                duration: 60,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.activityBookings.length, 1);
+        const activityId = res.data.activityBookings[0].id;
+        const roomLink = res.data.sharedRoomLinks.find(link => link.relationType === 'shared_room_activity');
+        assert.ok(roomLink, 'shared-room activity link should be returned');
+        assert.equal(roomLink.bookingId, activityId);
+        assert.equal(roomLink.targetId, 'BK-2099-0999');
+        assert.notEqual(roomLink.bookingId, res.data.mainBooking.id);
     });
 });
 

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.74.44 - Кімнати: ресурсні підписи й звʼязки активностей
+
+### Бронювання / Кімнати / Resource availability / Shared room links / Release / (Клешня, 11.06.2026) [codex]
+- **Resource-backed кімнати теж отримують денні підписи** - `/api/rooms/free` для кабінетів і ресурсних режимів повертає `dayBookings`, навіть коли кімната вільна саме в обраний час.
+- **Зайнятість обраного часу не змішується з денними бронями** - `resources[].bookings` лишається списком реальних overlap-конфліктів, а `resources[].dayBookings` показує контекст дня для селектора.
+- **`POST /api/bookings/full` коректно мапить `shared_room_activity` для activity bookings** - top-level `sharedRoomLinks` більше не приписує звʼязок activity до main booking.
+- **Regression guard додано** - unit тести перевіряють resource day booking metadata і shared-room link mapping для activity booking.
+- **Релізні маркери піднято до `0.74.44`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.43 - Кімнати: деплой підписів і звʼязків
 
 ### Бронювання / Кімнати / Shared room links / Release / Deploy / (Клешня, 11.06.2026) [codex]

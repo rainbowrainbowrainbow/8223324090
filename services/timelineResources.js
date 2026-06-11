@@ -573,24 +573,41 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
     const bookings = await db.query(
-        `SELECT id, line_id, room, time, duration, label, program_code, program_name, status, kids_count, extra_data
-           FROM bookings
-          WHERE date = $1
-            AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
-            AND status != 'cancelled'
-            AND (line_id = ANY($3::text[]) OR room = ANY($4::text[]))`,
+        `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
+                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, c.name AS customer_name
+           FROM bookings b
+           LEFT JOIN customers c
+             ON c.id = b.customer_id
+            AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+          WHERE b.date = $1
+            AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+            AND b.status != 'cancelled'
+            AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
         [date, context, resourceIds, resourceNames]
     );
     const start = timeToMinutes(time);
     const end = start + duration;
     const byResource = new Map(resources.map(resource => [resource.resourceId, []]));
+    const dayBookingsByResource = new Map(resources.map(resource => [resource.resourceId, []]));
     for (const booking of bookings.rows) {
-        const bookingStart = timeToMinutes(booking.time);
-        const bookingEnd = bookingStart + (parseInt(booking.duration, 10) || 0);
-        if (!(start < bookingEnd && end > bookingStart)) continue;
         const direct = resources.find(resource => resource.resourceId === booking.line_id);
         const byName = direct || resources.find(resource => resource.name === booking.room);
         if (!byName) continue;
+        if (!String(booking.linked_to || '').trim()) {
+            const customerName = booking.customer_name || booking.group_name || booking.label
+                || booking.program_name || booking.program_code || booking.id;
+            dayBookingsByResource.get(byName.resourceId)?.push({
+                id: booking.id,
+                time: booking.time,
+                duration: booking.duration || 0,
+                customerName,
+                label: booking.label || null,
+                programName: booking.program_name || null
+            });
+        }
+        const bookingStart = timeToMinutes(booking.time);
+        const bookingEnd = bookingStart + (parseInt(booking.duration, 10) || 0);
+        if (!(start < bookingEnd && end > bookingStart)) continue;
         byResource.get(byName.resourceId)?.push({
             id: booking.id,
             time: booking.time,
@@ -601,8 +618,15 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 || booking.extra_data?.maysternyaBooking?.slotClosed === true
         });
     }
+    dayBookingsByResource.forEach((resourceBookings, resourceId) => {
+        dayBookingsByResource.set(resourceId, [...resourceBookings].sort((a, b) =>
+            String(a.time || '').localeCompare(String(b.time || ''))
+            || String(a.id || '').localeCompare(String(b.id || ''))
+        ));
+    });
     const detailed = resources.map(resource => {
         const conflicts = byResource.get(resource.resourceId) || [];
+        const dayBookings = dayBookingsByResource.get(resource.resourceId) || [];
         const capacity = normalizeCapacity(resource.capacity);
         const capacityAvailable = !requestedCapacity || !capacity || capacity >= requestedCapacity;
         const unavailableReason = conflicts.length > 0
@@ -614,7 +638,8 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
             capacityAvailable,
             requestedCapacity,
             unavailableReason,
-            bookings: conflicts
+            bookings: conflicts,
+            dayBookings
         };
     });
     const freeResources = detailed.filter(resource => !resource.occupied && resource.capacityAvailable);

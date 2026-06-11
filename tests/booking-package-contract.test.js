@@ -293,7 +293,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /activityRows\.map\(row => row\.id\)/);
     assert.match(route, /const activityBookings = activityRows\.map/);
     assert.match(route, /activityBookings: responseActivityBookings/);
-    assert.match(route, /banquetLinks: banquetLinkRows\.map/);
+    assert.match(route, /banquetLinks: mapBookingVisualLinkRowsForResponse\(banquetLinkRows, main\.id\)/);
+    assert.match(route, /sharedRoomLinks: mapBookingVisualLinkRowsForResponse\(/);
     assert.match(route, /activity_count: activityRows\.length/);
     assert.match(route, /Finance auto-record \(create\/full activity\)/);
     assert.match(route, /booking_durable_read_missing/);

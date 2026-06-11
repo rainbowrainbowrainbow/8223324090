@@ -1512,11 +1512,26 @@ describe('route-level API safety smoke', () => {
         assert.equal(ready.status, 200, JSON.stringify(ready.data));
         assert.equal(ready.data.status, 'ok');
         assert.equal(ready.data.schema.status, 'ok');
+        assert.equal(ready.data.schema.dataMigrations['261_leads_customer_card_canonical_customers'], true);
+        assert.deepEqual(ready.data.schema.pendingDataMigrations, []);
 
         const deep = await request('GET', '/api/health/deep');
         assert.equal(deep.status, 200, JSON.stringify(deep.data));
         assert.equal(deep.data.status, 'ok');
         assert.equal(deep.data.schema.status, 'ok');
+    });
+
+    it('reports pending data-only migrations without failing readiness', async () => {
+        missingSchemaMigrations.add('261_leads_customer_card_canonical_customers');
+
+        const ready = await request('GET', '/api/ready');
+        assert.equal(ready.status, 200, JSON.stringify(ready.data));
+        assert.equal(ready.data.status, 'ok');
+        assert.equal(ready.data.schema.status, 'ok');
+        assert.equal(ready.data.schema.dataMigrations['261_leads_customer_card_canonical_customers'], false);
+        assert.deepEqual(ready.data.schema.pendingDataMigrations, ['261_leads_customer_card_canonical_customers']);
+        assert.ok(ready.data.schema.warnings.includes('pending-data-migration:261_leads_customer_card_canonical_customers'));
+        assert.deepEqual(ready.data.schema.missing, []);
     });
 
     it('reports degraded schema health when required timeline/lead columns are missing', async () => {

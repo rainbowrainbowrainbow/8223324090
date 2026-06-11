@@ -114,10 +114,12 @@ Notes:
 
 ## Deploy And Branch Boundaries
 
-- Historical docs mention Railway and a `deployed` production branch, but older docs disagree on the exact deploy source.
-- Codex must not deploy, push to `deployed`, or alter production settings unless the user explicitly asks and confirms the target branch/environment.
+- Railway production target branch should be `codex/timeline-leads-hardening`.
+- Historical docs mention a `deployed` production branch, but it is not the active deploy source. Do not push release or rollback commits to `deployed` unless the user explicitly says Railway was reconfigured to that branch.
+- If Railway is temporarily attached to another branch, use that branch explicitly and pass it as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
+- Codex must not deploy or alter production settings unless the user explicitly asks and confirms the target environment.
 - Never upload files through the GitHub UI.
-- If a task depends on knowing the production branch, Railway project, or deploy owner, stop and ask instead of inferring from stale docs.
+- If a task depends on changing the Railway project, environment, or deploy owner, stop and ask instead of inferring from stale docs.
 
 ## Database And Migrations
 

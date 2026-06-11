@@ -63,6 +63,10 @@ const REQUIRED_SCHEMA_MIGRATIONS = Object.freeze([
     '262_leads_customer_links_and_value'
 ]);
 
+const TRACKED_DATA_MIGRATIONS = Object.freeze([
+    '261_leads_customer_card_canonical_customers'
+]);
+
 const REQUIRED_SCHEMA_COLUMNS = Object.freeze([
     ['bookings', 'business_context'],
     ['bookings', 'customer_id'],
@@ -82,8 +86,11 @@ async function getRuntimeSchemaDiagnostics() {
     const diagnostics = {
         status: 'ok',
         migrations: {},
+        dataMigrations: {},
         columns: {},
-        missing: []
+        missing: [],
+        warnings: [],
+        pendingDataMigrations: []
     };
     try {
         const migrationResult = await pool.query(
@@ -95,6 +102,20 @@ async function getRuntimeSchemaDiagnostics() {
             const ok = applied.has(version);
             diagnostics.migrations[version] = ok;
             if (!ok) diagnostics.missing.push(`migration:${version}`);
+        }
+
+        const dataMigrationResult = await pool.query(
+            'SELECT version FROM schema_migrations WHERE version = ANY($1::text[])',
+            [TRACKED_DATA_MIGRATIONS]
+        );
+        const appliedDataMigrations = new Set(dataMigrationResult.rows.map(row => String(row.version || '')));
+        for (const version of TRACKED_DATA_MIGRATIONS) {
+            const ok = appliedDataMigrations.has(version);
+            diagnostics.dataMigrations[version] = ok;
+            if (!ok) {
+                diagnostics.pendingDataMigrations.push(version);
+                diagnostics.warnings.push(`pending-data-migration:${version}`);
+            }
         }
 
         const columnResult = await pool.query(

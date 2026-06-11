@@ -25,6 +25,14 @@
 npm run release:timeline-proof -- https://8223324090-production.up.railway.app
 ```
 
+За замовчуванням rollback-підказка в proof команді використовує production branch
+`codex/timeline-leads-hardening`. Якщо Railway тимчасово дивиться на іншу гілку,
+передай її явно:
+
+```bash
+RELEASE_DEPLOY_BRANCH=<active-railway-branch> npm run release:timeline-proof -- <live-url>
+```
+
 Команда перевіряє:
 - `/api/version` збігається з `package.json`;
 - `/` містить release text і timeline assets з поточним `?v=`;
@@ -56,7 +64,8 @@ npm run release:timeline-proof -- <live-url>
 1. Зафіксувати live branch target:
 
 ```bash
-git ls-remote origin deployed
+RELEASE_DEPLOY_BRANCH=codex/timeline-leads-hardening
+git ls-remote origin "$RELEASE_DEPLOY_BRANCH"
 ```
 
 2. Якщо останній timeline release ламає production interaction, створити rollback commit через revert поганого release commit:
@@ -65,7 +74,7 @@ git ls-remote origin deployed
 git revert <bad-release-commit>
 npm run version:bump -- patch --label "CRM <next>: rollback таймлайну"
 npm test
-git push origin HEAD:deployed
+git push origin HEAD:"$RELEASE_DEPLOY_BRANCH"
 ```
 
 3. Дочекатися Railway deploy і перевірити:
@@ -87,7 +96,7 @@ npm run release:timeline-proof -- <live-url>
 - `npm run check:service-worker-policy` green.
 - `npm test` green на Node 22/npm 10.
 - Commit pushed to working branch.
-- `git push origin HEAD:deployed` completed.
+- `git push origin HEAD:$RELEASE_DEPLOY_BRANCH` completed.
 - `npm run version:smoke -- <live-url>` green.
 - `npm run release:timeline-proof -- <live-url>` green.
 - Authenticated operator UAT, якщо змінювалась interaction logic.

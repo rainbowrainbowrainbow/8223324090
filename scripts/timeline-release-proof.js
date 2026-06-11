@@ -29,6 +29,13 @@ const TIMELINE_ASSETS = [
     }
 ];
 
+function configuredDeployBranch() {
+    return process.env.RELEASE_DEPLOY_BRANCH
+        || process.env.RAILWAY_DEPLOY_BRANCH
+        || process.env.DEPLOY_BRANCH
+        || 'codex/timeline-leads-hardening';
+}
+
 function fail(message) {
     console.error(`Timeline release proof failed: ${message}`);
     process.exit(1);
@@ -145,6 +152,7 @@ async function proveServiceWorker(base, release) {
 async function runTimelineReleaseProof(target, options = {}) {
     const release = expectedRelease(options);
     const base = normalizeBase(target);
+    const deployBranch = options.deployBranch || configuredDeployBranch();
     const apiVersion = await proveApiVersion(base, release);
     const contexts = [];
     for (const context of TIMELINE_CONTEXTS) {
@@ -165,8 +173,9 @@ async function runTimelineReleaseProof(target, options = {}) {
         assets,
         serviceWorker,
         rollback: {
-            identifyLiveCommit: 'git ls-remote origin deployed',
-            fallback: 'git revert <bad-release-commit>, push HEAD:deployed, then rerun npm run release:timeline-proof -- <live-url>'
+            deployBranch,
+            identifyLiveCommit: `git ls-remote origin ${deployBranch}`,
+            fallback: `git revert <bad-release-commit>, push HEAD:${deployBranch}, then rerun npm run release:timeline-proof -- <live-url>`
         }
     };
 }
@@ -193,5 +202,6 @@ if (require.main === module) {
 module.exports = {
     TIMELINE_ASSETS,
     TIMELINE_CONTEXTS,
+    configuredDeployBranch,
     runTimelineReleaseProof
 };

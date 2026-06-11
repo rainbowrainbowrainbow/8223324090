@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.11 - LEAD ON: deploy branch guardrails
+
+### LEAD ON / Deploy branch / Release proof / Health diagnostics / Runbook / (Клешня, 11.06.2026) [codex]
+- **Production branch зафіксовано** - active Railway target/runbook тепер `codex/timeline-leads-hardening`; історичний `deployed` не використовується як rollback target.
+- **Timeline release proof став branch-aware** - rollback note будується через `RELEASE_DEPLOY_BRANCH`, `RAILWAY_DEPLOY_BRANCH` або `DEPLOY_BRANCH`, default `codex/timeline-leads-hardening`.
+- **Deep health показує data-only migration debt** - `/api/health/deep` додає `schema.dataMigrations`, `schema.pendingDataMigrations` і warning-и без падіння `/api/ready`.
+- **Release runbook і AGENTS оновлено** - production 502, public-only smoke, authenticated smoke і temporary branch override задокументовано.
+- **Релізні маркери піднято до `0.75.11`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.10 - LEAD ON: readiness recovery
 
 ### LEAD ON / Readiness / Production recovery / Schema diagnostics / Hotfix / Deploy safety / (Клешня, 11.06.2026) [codex]

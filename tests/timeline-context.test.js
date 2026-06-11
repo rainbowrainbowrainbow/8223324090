@@ -346,8 +346,12 @@ test('lead conversion routes Maysternya bookings to the Maysternya timeline surf
     assert.match(leadsCode, /businessContext', normalized/);
     assert.match(leadsCode, /function ensureLeadCustomerForBooking/);
     assert.match(leadsCode, /params\.set\('customerId', customer\.id\)/);
-    assert.match(leadsCode, /function offerDealBookingFlow/);
-    assert.match(leadsCode, /Створити бронювання на таймлайні зараз/);
+    assert.match(leadsCode, /function offerDealCustomerCardFlow/);
+    assert.match(leadsCode, /function ensureDealCustomerCardForLead/);
+    assert.match(leadsCode, /leadCrmContextHref\('\/customers', \{ open: ensured\.customer\.id \}/);
+    assert.match(leadsCode, /okText: 'Відкрити картку'/);
+    assert.doesNotMatch(leadsCode, /function offerDealBookingFlow/);
+    assert.doesNotMatch(leadsCode, /Створити бронювання на таймлайні зараз/);
     assert.match(leadsCode, /'client_name', 'clientName', 'customerName', 'name'/);
     assert.match(leadsCode, /'phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp'/);
     assert.match(leadsCode, /window\.location\.href = leadTimelineHref\(Object\.fromEntries\(params\.entries\(\)\), leadContextFromRecord\(conversionLead\)\)/);

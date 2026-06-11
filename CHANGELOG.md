@@ -4,6 +4,32 @@
 
 ---
 
+## v0.74.41 - Воронка: перетягування й картка клієнта
+
+### Leads / Воронка / Kanban / Drag and drop / Угода / Картка клієнта / Release / (Клешня, 11.06.2026) [codex]
+- **Drag and drop приймає всю колонку Kanban** - лід можна кидати в порожню сіру зону етапу, а не тільки поруч з уже наявною карткою.
+- **Підсвітка drop-зони стала очевидною** - колонка показує активний стан під час перетягування, а список карток лишається стабільним у світлій і темній темі.
+- **Перехід у `Угода` більше не пропонує бронювання** - після drag на цей етап CRM пропонує відкрити картку клієнта.
+- **Картка клієнта створюється або прив'язується автоматично** - backend гарантує customer card для ліда в `deal` і повертає її у відповідь `PATCH /api/leads/:id`.
+- **Workspace ліда синхронізує прив'язану картку** - якщо картка вже створена під час зміни етапу, вона одразу з'являється в локальному контексті ліда.
+- **Regression guard оновлено для нового сценарію** - route smoke перевіряє створення customer card, а UI/unit smoke забороняє старий booking prompt для `Угода`.
+- **Релізні маркери піднято до `0.74.41`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
+## v0.74.40 - Майстерня: бот-хуки лідів
+
+### Майстерня долі / Universal webhook / Bot hooks / Lead source / Event envelope / UI / Release / (Клешня, 10.06.2026) [codex]
+- **Бот Майстерні отримав окреме джерело ліда** - `maysternya_bot` у воронці показується як `Бот-хуки Майстерні`, а не змішується із сайтом або ручними заявками.
+- **Universal webhook приймає CRM event envelope** - backend розгортає вкладені `payload`, `lead`, `customer`, `booking`, `contact` і `telegram` з подій `lead_submitted`, `booking_created`, `booking_rescheduled`, `booking_cancelled`, `payment_updated`, `booking_completed`, `lead_updated`.
+- **Bot hook metadata не губиться** - у raw payload і картці ліда зберігаються `crm_event_type`, `crm_event_id`, `crm_booking_id`, `crm_lead_id`, booking date/time, contact channels і Telegram-ідентифікатори.
+- **Картка ліда показує bot hook context** - у workspace додано CRM event, Event ID і Booking ID, а джерело показується через людський label.
+- **Kanban має окремий bot-chip** - на мініатюрі ліда видно `Бот-хуки`, зі стилями під light/dark CRM тему.
+- **Regression guard додано для API і UI** - route smoke перевіряє event envelope, а UI smoke контролює окремий source/type і CSS для bot hooks.
+- **Релізні маркери піднято до `0.74.40`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.39 - Воронка: меню якості ліда
 
 ### Leads / Воронка / Kanban / Якість ліда / Popover CSS / Drag-card guard / Release / (Клешня, 10.06.2026) [codex]

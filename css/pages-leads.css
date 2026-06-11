@@ -4,6 +4,29 @@
     gap: 8px;
 }
 
+body[data-page-group="mgmt"] #kanbanView {
+    align-items: stretch;
+}
+
+body[data-page-group="mgmt"] .kanban-column {
+    display: flex;
+    flex-direction: column;
+}
+
+body[data-page-group="mgmt"] .kanban-cards {
+    flex: 1 1 auto;
+}
+
+body[data-page-group="mgmt"] .kanban-column.is-drop-target {
+    border-color: rgba(16,185,129,0.42);
+    box-shadow: inset 0 0 0 1px rgba(16,185,129,0.18);
+}
+
+body.dark-mode[data-page-group="mgmt"] .kanban-column.is-drop-target {
+    border-color: rgba(52,211,153,0.46);
+    box-shadow: inset 0 0 0 1px rgba(52,211,153,0.18);
+}
+
 .kanban-stage-title {
     min-width: 0;
     display: flex;
@@ -368,10 +391,49 @@ body.dark-mode .pipeline-stage-help::after {
     color: #CBD5E1;
 }
 
+.lead-origin-chip {
+    width: fit-content;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid rgba(148,163,184,0.24);
+    border-radius: 999px;
+    background: rgba(248,250,252,0.88);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+}
+
+.lead-origin-chip--bot,
+.lead-type-badge.type-bot-hooks {
+    border-color: rgba(20,184,166,0.36);
+    background: linear-gradient(135deg, rgba(204,251,241,0.96), rgba(219,234,254,0.92));
+    color: #0F766E;
+}
+
 body.dark-mode .lead-type-select.type-quality {
     background: rgba(16,185,129,0.16);
     border-color: rgba(52,211,153,0.42);
     color: #A7F3D0;
+}
+
+body.dark-mode .lead-origin-chip {
+    border-color: rgba(148,163,184,0.24);
+    background: rgba(15,23,42,0.42);
+    color: #CBD5E1;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+body.dark-mode .lead-origin-chip--bot,
+body.dark-mode .lead-type-badge.type-bot-hooks {
+    border-color: rgba(45,212,191,0.42);
+    background: linear-gradient(135deg, rgba(20,184,166,0.18), rgba(59,130,246,0.16));
+    color: #99F6E4;
 }
 
 body.dark-mode .kanban-card .lead-type-select--kanban.type-quality {

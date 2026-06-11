@@ -334,6 +334,115 @@ function normalizeUtm(raw = {}) {
     return Object.fromEntries(Object.entries(mapped).filter(([, value]) => Boolean(value)));
 }
 
+function normalizeUniversalWebhookEnvelope(body = {}) {
+    const root = parseJsonObject(body);
+    const payload = parseJsonObject(
+        root.payload
+        || root.data
+        || root.event_payload
+        || root.eventPayload
+        || root.record
+    );
+    const lead = parseJsonObject(root.lead || payload.lead || payload.customer_lead || payload.customerLead);
+    const booking = parseJsonObject(root.booking || payload.booking || payload.appointment || payload.session);
+    const customer = parseJsonObject(
+        root.customer
+        || root.client
+        || payload.customer
+        || payload.client
+        || lead.customer
+        || booking.customer
+        || booking.client
+    );
+    const contact = parseJsonObject(
+        root.contact
+        || payload.contact
+        || lead.contact
+        || customer.contact
+        || booking.contact
+    );
+    const telegram = parseJsonObject(root.telegram || payload.telegram || lead.telegram || customer.telegram || contact.telegram);
+
+    const eventType = firstClean(
+        root.event_type,
+        root.eventType,
+        root.event,
+        root.type,
+        payload.event_type,
+        payload.eventType,
+        payload.event,
+        payload.type
+    );
+    const eventId = firstClean(
+        root.event_id,
+        root.eventId,
+        root.id,
+        payload.event_id,
+        payload.eventId
+    );
+    const bookingId = firstClean(
+        root.booking_id,
+        root.bookingId,
+        payload.booking_id,
+        payload.bookingId,
+        booking.id,
+        booking.external_id,
+        booking.externalId
+    );
+    const leadId = firstClean(
+        root.lead_id,
+        root.leadId,
+        payload.lead_id,
+        payload.leadId,
+        lead.id,
+        lead.external_id,
+        lead.externalId
+    );
+
+    return {
+        ...root,
+        ...payload,
+        ...lead,
+        ...customer,
+        ...contact,
+        telegram,
+        crm_event_type: eventType || null,
+        crm_event_id: eventId || null,
+        crm_booking_id: bookingId || null,
+        crm_lead_id: leadId || null,
+        external_id: firstClean(
+            root.external_id,
+            root.externalId,
+            payload.external_id,
+            payload.externalId,
+            lead.external_id,
+            lead.externalId,
+            leadId,
+            booking.lead_external_id,
+            booking.leadExternalId,
+            bookingId ? `booking:${bookingId}` : null
+        ),
+        lead_id: leadId,
+        booking_id: bookingId,
+        name: firstClean(root.name, root.client_name, payload.name, payload.client_name, lead.name, customer.name, contact.name),
+        client_name: firstClean(root.client_name, root.clientName, payload.client_name, payload.clientName, lead.client_name, lead.clientName, customer.name),
+        phone: firstClean(root.phone, payload.phone, lead.phone, customer.phone, contact.phone, booking.phone),
+        telegram_id: firstClean(root.telegram_id, root.telegramId, payload.telegram_id, payload.telegramId, lead.telegram_id, customer.telegram_id, telegram.id, telegram.user_id),
+        telegram_username: firstClean(root.telegram_username, root.telegramUsername, payload.telegram_username, payload.telegramUsername, lead.telegram_username, customer.telegram_username, telegram.username),
+        contact_channels: root.contact_channels ?? root.contactChannels ?? payload.contact_channels ?? payload.contactChannels ?? lead.contact_channels ?? customer.contact_channels,
+        request_topic: firstClean(root.request_topic, root.requestTopic, payload.request_topic, payload.requestTopic, lead.request_topic, customer.request_topic),
+        topic: firstClean(root.topic, payload.topic, lead.topic, booking.topic),
+        session_type: firstClean(root.session_type, root.sessionType, payload.session_type, payload.sessionType, lead.session_type, booking.session_type, booking.service, booking.service_name),
+        booking_date: firstClean(root.booking_date, root.bookingDate, payload.booking_date, payload.bookingDate, booking.booking_date, booking.bookingDate, booking.date, root.date, payload.date),
+        booking_time: firstClean(root.booking_time, root.bookingTime, payload.booking_time, payload.bookingTime, booking.booking_time, booking.bookingTime, booking.time, root.time, payload.time),
+        message: firstClean(root.message, payload.message, lead.message, booking.message, root.comment, payload.comment, root.notes, payload.notes),
+        status: firstClean(root.status, payload.status, lead.status, booking.status),
+        payment_status: firstClean(root.payment_status, root.paymentStatus, payload.payment_status, payload.paymentStatus, booking.payment_status, booking.paymentStatus),
+        amount: firstClean(root.amount, payload.amount, booking.amount, booking.price, booking.total),
+        raw_envelope: root
+    };
+}
+
 function buildLeadInboundMetadata(row = {}) {
     const raw = parseJsonObject(row.raw_payload);
     const normalized = parseJsonObject(raw.normalized);
@@ -345,6 +454,9 @@ function buildLeadInboundMetadata(row = {}) {
     );
     return {
         externalId: firstClean(row.external_id, raw.external_id, raw.externalId, raw.lead_id, raw.leadId),
+        eventType: firstClean(normalized.crm_event_type, raw.crm_event_type, raw.crmEventType, raw.event_type, raw.eventType, raw.event),
+        eventId: firstClean(normalized.crm_event_id, raw.crm_event_id, raw.crmEventId, raw.event_id, raw.eventId),
+        bookingId: firstClean(normalized.crm_booking_id, raw.crm_booking_id, raw.crmBookingId, raw.booking_id, raw.bookingId),
         inquiryId: firstClean(raw.inquiryId, raw.inquiry_id, raw.requestId, raw.request_id),
         email: firstClean(raw.email, raw.contact_email, raw.contactEmail),
         page: firstClean(raw.page, raw.page_url, raw.pageUrl, raw.url, raw.referrer),
@@ -364,41 +476,47 @@ function stripAt(value) {
 }
 
 function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal') {
-    const telegram = body.telegram && typeof body.telegram === 'object' ? body.telegram : {};
+    const normalizedBody = normalizeUniversalWebhookEnvelope(body);
+    const telegram = normalizedBody.telegram && typeof normalizedBody.telegram === 'object'
+        ? normalizedBody.telegram
+        : {};
     const telegramId = normalizeTelegramId(firstClean(
-        body.telegram_id,
-        body.telegramId,
-        body.tg_id,
-        body.tgId,
+        normalizedBody.telegram_id,
+        normalizedBody.telegramId,
+        normalizedBody.tg_id,
+        normalizedBody.tgId,
         telegram.id,
-        telegram.user_id
+        telegram.user_id,
+        normalizedBody.telegram?.id,
+        normalizedBody.telegram?.user_id
     ));
     const telegramUsername = stripAt(firstClean(
-        body.telegram_username,
-        body.telegramUsername,
-        body.tg_username,
-        body.username,
-        telegram.username
+        normalizedBody.telegram_username,
+        normalizedBody.telegramUsername,
+        normalizedBody.tg_username,
+        normalizedBody.username,
+        telegram.username,
+        normalizedBody.telegram?.username
     ));
     const phone = firstClean(
-        body.phone,
-        body.phone_number,
-        body.phoneNumber,
-        body.contact_phone,
-        body.contactPhone,
-        body.contact,
-        body.contact_value,
-        body.contactValue
+        normalizedBody.phone,
+        normalizedBody.phone_number,
+        normalizedBody.phoneNumber,
+        normalizedBody.contact_phone,
+        normalizedBody.contactPhone,
+        normalizedBody.contact,
+        normalizedBody.contact_value,
+        normalizedBody.contactValue
     );
-    const whatsapp = firstClean(body.whatsapp, body.whatsapp_phone, body.whatsappPhone);
-    const name = firstClean(body.name, body.client_name, body.clientName, body.full_name, body.fullName);
-    const requestTopic = firstClean(body.request_topic, body.requestTopic, body.topic, body.subject);
-    const sessionType = firstClean(body.session_type, body.sessionType, body.record_type, body.booking_type);
-    const bookingDate = normalizeDateOnly(firstClean(body.booking_date, body.bookingDate, body.slot_date, body.date));
-    const bookingTime = firstClean(body.booking_time, body.bookingTime, body.slot_time, body.time);
-    const message = firstClean(body.message, body.comment, body.notes, body.description);
-    const externalId = firstClean(body.external_id, body.externalId, body.lead_id, body.leadId);
-    const contactChannels = normalizeTextList(body.contact_channels ?? body.contactChannels ?? body.channels);
+    const whatsapp = firstClean(normalizedBody.whatsapp, normalizedBody.whatsapp_phone, normalizedBody.whatsappPhone);
+    const name = firstClean(normalizedBody.name, normalizedBody.client_name, normalizedBody.clientName, normalizedBody.full_name, normalizedBody.fullName);
+    const requestTopic = firstClean(normalizedBody.request_topic, normalizedBody.requestTopic, normalizedBody.topic, normalizedBody.subject);
+    const sessionType = firstClean(normalizedBody.session_type, normalizedBody.sessionType, normalizedBody.record_type, normalizedBody.booking_type);
+    const bookingDate = normalizeDateOnly(firstClean(normalizedBody.booking_date, normalizedBody.bookingDate, normalizedBody.slot_date, normalizedBody.date));
+    const bookingTime = firstClean(normalizedBody.booking_time, normalizedBody.bookingTime, normalizedBody.slot_time, normalizedBody.time);
+    const message = firstClean(normalizedBody.message, normalizedBody.comment, normalizedBody.notes, normalizedBody.description);
+    const externalId = firstClean(normalizedBody.external_id, normalizedBody.externalId, normalizedBody.lead_id, normalizedBody.leadId);
+    const contactChannels = normalizeTextList(normalizedBody.contact_channels ?? normalizedBody.contactChannels ?? normalizedBody.channels);
     const phoneDigits = normalizeDigits(phone);
     const fallbackExternalId = externalId
         || (telegramId ? `telegram:${telegramId}` : null)
@@ -412,7 +530,7 @@ function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal'
         telegram_id: telegramId,
         telegram_username: telegramUsername,
         whatsapp: whatsapp || null,
-        instagram: stripAt(body.instagram),
+        instagram: stripAt(normalizedBody.instagram),
         request_topic: requestTopic,
         session_type: sessionType,
         event_date: bookingDate,
@@ -421,9 +539,13 @@ function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal'
         message,
         external_id: fallbackExternalId,
         raw_payload: {
-            ...body,
+            ...normalizedBody.raw_envelope,
             normalized: {
                 source_channel: sourceChannel,
+                crm_event_type: normalizedBody.crm_event_type,
+                crm_event_id: normalizedBody.crm_event_id,
+                crm_booking_id: normalizedBody.crm_booking_id,
+                crm_lead_id: normalizedBody.crm_lead_id,
                 telegram_id: telegramId,
                 telegram_username: telegramUsername,
                 whatsapp: whatsapp || null,
@@ -446,6 +568,8 @@ function universalWebhookDryRunPreview(payload, businessContext, sourceChannel) 
         businessContext,
         sourceChannel,
         externalId: payload.external_id || inbound.externalId || null,
+        eventType: inbound.eventType || null,
+        eventId: inbound.eventId || null,
         inquiryId: inbound.inquiryId || null,
         clientName: payload.client_name || null,
         phone: payload.phone || null,
@@ -462,6 +586,8 @@ function universalWebhookDryRunPreview(payload, businessContext, sourceChannel) 
 function formatUniversalLeadNotes(payload, sourceChannel) {
     const lines = [
         `Джерело: ${sourceChannel}`,
+        payload.raw_payload?.normalized?.crm_event_type ? `CRM event: ${payload.raw_payload.normalized.crm_event_type}` : null,
+        payload.raw_payload?.normalized?.crm_booking_id ? `Booking ID: ${payload.raw_payload.normalized.crm_booking_id}` : null,
         payload.request_topic ? `Тема: ${payload.request_topic}` : null,
         payload.session_type ? `Тип сесії: ${payload.session_type}` : null,
         (payload.event_date || payload.booking_time)
@@ -921,6 +1047,9 @@ function mapWorkspaceLead(row) {
         source: row.source,
         sourceChannel: row.source_channel,
         externalId: inbound.externalId || null,
+        eventType: inbound.eventType || null,
+        eventId: inbound.eventId || null,
+        bookingId: inbound.bookingId || null,
         inquiryId: inbound.inquiryId || null,
         email: inbound.email || null,
         page: inbound.page || null,
@@ -947,7 +1076,7 @@ function mapWorkspaceLead(row) {
         }),
         programId: row.program_id,
         programName: row.program_name || row.program_full_name || null,
-        bookingId: row.booking_id,
+        bookingId: row.booking_id || inbound.bookingId || null,
         lostReason: row.lost_reason,
         createdAt: row.created_at,
         updatedAt: row.updated_at,

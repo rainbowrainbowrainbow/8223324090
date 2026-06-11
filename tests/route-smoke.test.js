@@ -990,12 +990,51 @@ function createFakePool() {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
             if (/UPDATE leads SET .* WHERE id = \$\d+(?: AND COALESCE\(business_context, 'event_genix'\) = \$\d+)? RETURNING \*/i.test(text)) {
+                const row = {
+                    id: params[params.length - 2] || params[params.length - 1],
+                    business_context: params[params.length - 1] || 'event_genix',
+                    client_name: 'Lead Smoke',
+                    phone: '+380000000009',
+                    instagram: 'lead_smoke',
+                    source: 'instagram',
+                    source_channel: 'instagram',
+                    assigned_to: null,
+                    status: 'new',
+                    pipeline_stage: 'new',
+                    notes: 'Lead note',
+                    created_at: '2099-05-01T10:00:00Z',
+                    updated_at: '2099-05-02T10:00:00Z'
+                };
+                if (/assigned_to = \$1/i.test(text)) row.assigned_to = params[0];
+                if (/pipeline_stage = \$1/i.test(text)) {
+                    row.pipeline_stage = params[0];
+                    row.status = params[1] || row.status;
+                }
+                return {
+                    rows: [row]
+                };
+            }
+            if (/FROM customers WHERE lead_id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/FROM customers WHERE COALESCE\(business_context, 'event_genix'\) = \$1 AND \(/i.test(text) && /regexp_replace\(COALESCE\(phone, ''\)/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(text)) {
                 return {
                     rows: [{
-                        id: params[params.length - 2] || params[params.length - 1],
-                        client_name: 'Lead Smoke',
-                        assigned_to: params[0] ?? null,
-                        status: 'new'
+                        id: 8701,
+                        business_context: params[0],
+                        name: params[1],
+                        phone: params[2],
+                        instagram: params[3],
+                        child_name: params[4],
+                        source: params[5],
+                        notes: params[6],
+                        lead_id: params[7],
+                        social_identities: params[8] ? JSON.parse(params[8]) : [],
+                        created_at: '2099-05-02T10:05:00Z',
+                        updated_at: '2099-05-02T10:05:00Z'
                     }]
                 };
             }
@@ -1426,6 +1465,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, true);
         assert.equal(res.data.webhooks.universal.configured, true);
         assert.equal(res.data.webhooks.universal.endpoint, '/api/leads/webhook/universal?source=<name>');
+        assert.ok(res.data.webhooks.universal.sources.includes('maysternya_bot'));
         assert.ok(res.data.webhooks.universal.sources.includes('maysternya_site'));
         assert.match(res.data.webhooks.universal.dryRun, /dryRun=true/);
         assert.equal(queries.length, 0);
@@ -1464,6 +1504,55 @@ describe('route-level API safety smoke', () => {
         assert.equal(insert.params[6], '123456789');
         assert.match(insert.params[7], /Тип сесії: повна сесія/);
         assert.match(insert.params[7], /Запис: 2026-05-30 14:00/);
+    });
+
+    it('accepts Maysternya Doli bot CRM event envelopes and preserves hook metadata', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
+            event_type: 'lead_submitted',
+            event_id: 'evt-md-1',
+            payload: {
+                lead: {
+                    external_id: 'bot-envelope-1',
+                    name: 'Олена Бот',
+                    telegram: {
+                        id: '987654321',
+                        username: 'olena_bot'
+                    }
+                },
+                booking: {
+                    id: 'bk-101',
+                    date: '2026-06-20',
+                    time: '15:30',
+                    service: 'Натальна карта'
+                },
+                request_topic: 'Натальна карта',
+                message: 'Прийшло з бота'
+            }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[1], 'Олена Бот');
+        assert.equal(insert.params[3], '987654321');
+        assert.equal(insert.params[5], 'maysternya_bot');
+        assert.equal(insert.params[6], 'bot-envelope-1');
+        assert.match(insert.params[7], /CRM event: lead_submitted/);
+        assert.match(insert.params[7], /Booking ID: bk-101/);
+        assert.match(insert.params[7], /Запис: 2026-06-20 15:30/);
+        const rawPayload = JSON.parse(insert.params[8]);
+        assert.equal(rawPayload.event_type, 'lead_submitted');
+        assert.equal(rawPayload.normalized.crm_event_type, 'lead_submitted');
+        assert.equal(rawPayload.normalized.crm_event_id, 'evt-md-1');
+        assert.equal(rawPayload.normalized.crm_booking_id, 'bk-101');
+        assert.equal(rawPayload.normalized.booking_date, '2026-06-20');
+        assert.equal(rawPayload.normalized.booking_time, '15:30');
     });
 
     it('routes Maysternya Doli website leads into the Maysternya business context', async () => {
@@ -1843,6 +1932,21 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.conversations[0].confidence, 'exact');
         assert.equal(res.data.workspace.conversations[0].replyOwner, 'Dasha Manager');
         assert.equal(res.data.workspace.conversations[0].replyOwnerUserId, 2);
+    });
+
+    it('creates and returns a customer card when a lead moves to deal', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'deal' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customer.name, 'Lead Smoke');
+        assert.equal(res.data.customer.leadId, 501);
+        assert.equal(res.data.customerLinkMode, 'created_new');
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text)));
     });
 
     it('preserves exact lead source linkage when creating manager callback tasks', async () => {

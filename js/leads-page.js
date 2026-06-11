@@ -115,6 +115,7 @@ const SOURCE_MAP = {
     recommendation: '🤝 Рекомендація',
     site:           '🌐 Сайт',
     maysternya_site:'🌐 Сайт Майстерні',
+    maysternya_bot: '🤖 Бот-хуки Майстерні',
     phone:          '📞 Телефон',
     'walk-in':      '🚶 Прийшли',
     manual:         '✏️ Ручний',
@@ -154,6 +155,7 @@ let kanbanDragState = null;
 let kanbanLeadTypeMenuEventsBound = false;
 let kanbanLeadTypeTriggerOpenedAt = 0;
 let kanbanLeadTypeTriggerOpenedLeadId = 0;
+let activeKanbanLeadTypePopover = null;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -218,6 +220,25 @@ function leadPayload(payload = {}) {
     return window.CrmBusinessContext?.payload
         ? window.CrmBusinessContext.payload(payload, leadBusinessContext())
         : { ...(payload || {}), businessContext: leadBusinessContext() };
+}
+
+function leadSourceKey(lead = {}) {
+    return String(lead.sourceChannel || lead.source_channel || lead.source || '').trim();
+}
+
+function leadSourceLabel(valueOrLead) {
+    const key = typeof valueOrLead === 'string' ? valueOrLead : leadSourceKey(valueOrLead);
+    return SOURCE_MAP[key] || key || '—';
+}
+
+function isMaysternyaBotLead(lead = {}) {
+    return leadSourceKey(lead) === 'maysternya_bot';
+}
+
+function leadOriginBadge(lead = {}) {
+    if (isMaysternyaBotLead(lead)) return '🤖 Бот-хуки';
+    const label = leadSourceLabel(lead);
+    return label && label !== '—' ? label : '';
 }
 
 function leadContextFromRecord(record = {}) {
@@ -757,11 +778,14 @@ function renderTable() {
     tbody.innerHTML = leadsData.map(l => {
         const st = STATUS_MAP[l.status] || { label: l.status, emoji: '❓', cls: '' };
         const lt = LEAD_TYPE_MAP[l.lead_type] || LEAD_TYPE_MAP.quality;
-        const src = SOURCE_MAP[l.source] || (l.source || '—');
+        const src = leadSourceLabel(l);
         const date = l.created_at ? new Date(l.created_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : '—';
         const assigned = l.assigned_name || '—';
         const stage = PIPELINE_STAGES.find(s => s.key === (l.pipeline_stage || 'new'));
         const idleClass = getIdleColor(l);
+        const maysternyaKind = isMaysternyaBotLead(l)
+            ? 'Бот-хуки'
+            : (l.quality_category || l.request_topic || l.topic || lt.label);
 
         const canConvert = ['new', 'contact', 'proposal'].includes(l.status);
         const convertBtn = canConvert ? `<button class="btn-convert" onclick="convertLead(${l.id})">${leadConversionActionLabel()}</button>` : '';
@@ -769,8 +793,8 @@ function renderTable() {
         return `<tr class="${idleClass}" data-lead-id="${l.id}">
             <td><strong>${escapeHtml(l.client_name || '—')}</strong>${l.instagram ? '<br><small style="color:var(--gray-400)">@' + escapeHtml(l.instagram) + '</small>' : ''}</td>
             <td>${escapeHtml(l.phone || '—')}</td>
-            <td>${escapeHtml(typeof src === 'string' ? src : '')}</td>
-            <td><span class="lead-type-badge ${lt.cls}">${maysternyaMode ? escapeHtml(l.quality_category || l.request_topic || l.topic || lt.label) : `${lt.emoji} ${lt.label}`}</span></td>
+            <td>${escapeHtml(src)}</td>
+            <td><span class="lead-type-badge ${isMaysternyaBotLead(l) ? 'type-bot-hooks' : lt.cls}">${maysternyaMode ? escapeHtml(maysternyaKind) : `${lt.emoji} ${lt.label}`}</span></td>
             <td><span class="pipeline-stage">${stage ? stage.emoji + ' ' + stage.label : '—'}</span></td>
             <td>${date}</td>
             <td class="lead-actions">
@@ -1033,6 +1057,9 @@ function renderLeadInboundSection(lead = {}) {
     const utmEntries = workspaceObjectEntries(lead.utm);
     const hasInboundData = Boolean(
         lead.externalId
+        || lead.eventType
+        || lead.eventId
+        || lead.bookingId
         || lead.inquiryId
         || lead.page
         || lead.email
@@ -1050,6 +1077,9 @@ function renderLeadInboundSection(lead = {}) {
             <dl class="workspace-kv">
                 <dt>Бізнес</dt><dd>${workspaceText(lead.businessContext)}</dd>
                 <dt>External ID</dt><dd>${workspaceText(lead.externalId)}</dd>
+                <dt>CRM event</dt><dd>${workspaceText(lead.eventType)}</dd>
+                <dt>Event ID</dt><dd>${workspaceText(lead.eventId)}</dd>
+                <dt>Booking ID</dt><dd>${workspaceText(lead.bookingId)}</dd>
                 <dt>Inquiry ID</dt><dd>${workspaceText(lead.inquiryId)}</dd>
                 <dt>Email</dt><dd>${workspaceText(lead.email)}</dd>
                 <dt>Тема</dt><dd>${workspaceText(lead.topic)}</dd>
@@ -1341,7 +1371,7 @@ function renderLeadWorkspaceContent(workspace) {
                     <div class="workspace-badge-row">
                         ${workspaceBadge(stage ? `${stage.emoji} ${stage.label}` : (lead.pipelineStage || 'new'), 'stage')}
                         ${workspaceBadge(status.label ? `${status.emoji || ''} ${status.label}` : lead.status)}
-                        ${workspaceBadge(maysternyaMode ? (lead.topic || lead.sessionType || lead.sourceChannel || 'Заявка') : `${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
+                        ${workspaceBadge(maysternyaMode ? (isMaysternyaBotLead(lead) ? '🤖 Бот-хуки' : (lead.topic || lead.sessionType || leadSourceLabel(lead) || 'Заявка')) : `${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
                         ${waitingConversation ? workspaceBadge(waitingReplyText(waitingConversation), 'waiting') : ''}
                         ${eventCue ? workspaceBadge(eventCue, eventCueClass) : ''}
                         ${urgency.overdueTasks ? workspaceBadge(`Прострочено задач: ${urgency.overdueTasks}`, 'urgent') : ''}
@@ -1381,7 +1411,7 @@ function renderLeadWorkspaceContent(workspace) {
                 <h3>${maysternyaMode ? 'Запит' : 'Кейс і дата'}</h3>
                 <dl class="workspace-kv">
                     <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
-                    <dt>Джерело</dt><dd>${workspaceText(lead.sourceChannel || lead.source)}</dd>
+                    <dt>Джерело</dt><dd>${workspaceText(leadSourceLabel(lead))}</dd>
                     <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
                     <dt>${maysternyaMode ? 'Консультація' : 'Програма'}</dt><dd>${workspaceText(lead.programName || lead.sessionType)}</dd>
                     ${maysternyaMode ? '' : `<dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>`}
@@ -1570,6 +1600,7 @@ function renderKanban() {
                 <div class="kanban-card-meta">
                     <span class="kanban-card-meta-text" title="${escapeHtml(phoneLabel)}">${escapeHtml(phoneLabel)}</span>
                     ${renderLeadTypeSelect(l)}
+                    ${leadOriginBadge(l) ? `<span class="lead-origin-chip ${isMaysternyaBotLead(l) ? 'lead-origin-chip--bot' : ''}">${escapeHtml(leadOriginBadge(l))}</span>` : ''}
                 </div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
                 <div class="kanban-card-actions" data-kanban-actions onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
@@ -1604,7 +1635,7 @@ function renderKanban() {
 
 function setupKanbanDragDrop() {
     const cards = document.querySelectorAll('.kanban-card[draggable]');
-    const columns = document.querySelectorAll('.kanban-cards');
+    const columns = document.querySelectorAll('.kanban-column');
 
     cards.forEach(card => {
         card.querySelectorAll('a, button, select, [data-kanban-actions]').forEach(control => {
@@ -1636,6 +1667,7 @@ function setupKanbanDragDrop() {
         });
         card.addEventListener('dragend', () => {
             card.classList.remove('dragging');
+            clearKanbanDropStates();
             if (!kanbanDragState?.dropped) renderKanban();
             kanbanDragState = null;
             syncKanbanEmptyPlaceholders();
@@ -1643,32 +1675,39 @@ function setupKanbanDragDrop() {
     });
 
     columns.forEach(col => {
+        const dropZone = col.querySelector('.kanban-cards');
+        if (!dropZone) return;
+
+        const setDropState = active => {
+            col.classList.toggle('is-drop-target', active);
+            dropZone.classList.toggle('drag-over', active);
+        };
+
+        col.addEventListener('dragenter', e => {
+            e.preventDefault();
+            setDropState(true);
+        });
         col.addEventListener('dragover', e => {
             e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
             const draggingCard = document.querySelector('.kanban-card.dragging');
             if (draggingCard) {
-                const afterElement = getKanbanDragAfterElement(col, e.clientY);
-                if (afterElement) {
-                    col.insertBefore(draggingCard, afterElement);
-                } else {
-                    col.appendChild(draggingCard);
-                }
-                syncKanbanEmptyPlaceholders();
+                moveDraggingCardIntoKanbanColumn(dropZone, draggingCard, e.clientY);
             }
-            col.classList.add('drag-over');
+            setDropState(true);
         });
         col.addEventListener('dragleave', e => {
-            if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over');
+            if (!col.contains(e.relatedTarget)) setDropState(false);
         });
         col.addEventListener('drop', async e => {
             e.preventDefault();
-            col.classList.remove('drag-over');
+            setDropState(false);
             const draggingCard = document.querySelector('.kanban-card.dragging');
             const leadId = e.dataTransfer.getData('text/plain') || draggingCard?.dataset.id;
-            const newStage = col.dataset.stage;
+            const newStage = dropZone.dataset.stage || col.dataset.stage;
             if (!leadId || !newStage) return;
             if (kanbanDragState) kanbanDragState.dropped = true;
-            const orderedLeadIds = getKanbanOrderedLeadIds(col);
+            const orderedLeadIds = getKanbanOrderedLeadIds(dropZone);
 
             // If moving to 'lost', ask for reason
             if (newStage === 'lost') {
@@ -1685,6 +1724,15 @@ function setupKanbanDragDrop() {
     });
 }
 
+function clearKanbanDropStates() {
+    document.querySelectorAll('.kanban-column.is-drop-target').forEach(col => {
+        col.classList.remove('is-drop-target');
+    });
+    document.querySelectorAll('.kanban-cards.drag-over').forEach(col => {
+        col.classList.remove('drag-over');
+    });
+}
+
 function syncKanbanEmptyPlaceholders() {
     document.querySelectorAll('.kanban-cards').forEach(col => {
         const hasCards = Boolean(col.querySelector('.kanban-card'));
@@ -1698,6 +1746,16 @@ function getKanbanOrderedLeadIds(col) {
     return Array.from(col?.querySelectorAll?.('.kanban-card[data-id]') || [])
         .map(card => Number(card.dataset.id))
         .filter(id => Number.isInteger(id) && id > 0);
+}
+
+function moveDraggingCardIntoKanbanColumn(col, draggingCard, clientY) {
+    const afterElement = getKanbanDragAfterElement(col, clientY);
+    if (afterElement) {
+        col.insertBefore(draggingCard, afterElement);
+    } else {
+        col.appendChild(draggingCard);
+    }
+    syncKanbanEmptyPlaceholders();
 }
 
 function getKanbanDragAfterElement(col, y) {
@@ -1734,8 +1792,8 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
                 if (typeof showNotification === 'function') showNotification('💰 Завдаток! Задачі створені автоматично', 'success');
             }
             if (stage === 'deal') {
-                const openedBookingDraft = await offerDealBookingFlow(leadId, data.lead);
-                if (openedBookingDraft) return true;
+                const openedCustomerCard = await offerDealCustomerCardFlow(leadId, data.lead, data.customer, data.customerLinkMode);
+                if (openedCustomerCard) return true;
             }
             await loadLeads();
             if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
@@ -1831,6 +1889,13 @@ function closeKanbanLeadTypeMenus() {
     document.querySelectorAll('[data-lead-type-select][aria-expanded="true"]').forEach(control => {
         control.setAttribute('aria-expanded', 'false');
     });
+    activeKanbanLeadTypePopover = null;
+}
+
+function closeDetachedLeadTypeMenus() {
+    if (!activeKanbanLeadTypePopover && !document.querySelector('.lead-type-popover, .type-menu-popup')) return;
+    closeKanbanLeadTypeMenus();
+    document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
 }
 
 function closestLeadTypeElement(target, selector) {
@@ -1968,6 +2033,13 @@ function bindKanbanLeadTypeMenuEvents() {
             closeKanbanLeadTypeMenus();
         }
     }, true);
+
+    document.addEventListener('scroll', event => {
+        if (closestLeadTypeElement(event.target, '.lead-type-popover')) return;
+        closeDetachedLeadTypeMenus();
+    }, true);
+
+    window.addEventListener('resize', closeDetachedLeadTypeMenus);
 }
 
 function showKanbanLeadTypeMenu(leadId, event) {
@@ -2006,6 +2078,7 @@ function showKanbanLeadTypeMenu(leadId, event) {
         </button>`;
     }).join('');
     document.body.appendChild(menu);
+    activeKanbanLeadTypePopover = { leadId: Number(leadId), trigger, menu };
 }
 
 async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
@@ -2772,12 +2845,6 @@ async function resolveLeadConversionRecord(id) {
     return lead;
 }
 
-function leadHasExactBookingContext(leadId, lead = null) {
-    if (lead?.bookingId || lead?.booking_id) return true;
-    if (currentWorkspaceData?.lead?.id !== leadId) return false;
-    return Boolean(exactLeadBooking(currentWorkspaceData));
-}
-
 async function loadLeadWorkspaceForConversion(id) {
     if (currentWorkspaceData?.lead?.id === id) return currentWorkspaceData;
     try {
@@ -2823,6 +2890,34 @@ async function ensureLeadCustomerForBooking(leadId, seedLead = null) {
         mode: data.mode,
         suggestions: data.suggestions || []
     };
+}
+
+function syncLeadDealCustomerContext(leadId, lead = null, customer = null) {
+    if (!customer?.id || currentWorkspaceData?.lead?.id !== leadId) return;
+    currentWorkspaceData = {
+        ...currentWorkspaceData,
+        lead: lead || currentWorkspaceData.lead,
+        customer
+    };
+}
+
+async function ensureDealCustomerCardForLead(leadId, seedLead = null, serverCustomer = null, serverMode = '') {
+    if (serverCustomer?.id) {
+        syncLeadDealCustomerContext(leadId, seedLead, serverCustomer);
+        return {
+            lead: seedLead,
+            customer: serverCustomer,
+            mode: serverMode || 'created_or_linked'
+        };
+    }
+    return ensureLeadCustomerForBooking(leadId, seedLead);
+}
+
+function dealCustomerCardResultText(mode) {
+    if (mode === 'created_new') return 'Картку клієнта створено.';
+    if (mode === 'linked_existing') return 'Картку клієнта привʼязано до ліда.';
+    if (mode === 'updated_existing') return 'Картку клієнта оновлено.';
+    return 'Картку клієнта підготовлено.';
 }
 
 async function convertLead(id, options = {}) {
@@ -2871,15 +2966,31 @@ async function convertLead(id, options = {}) {
     return true;
 }
 
-async function offerDealBookingFlow(leadId, lead = null) {
-    if (leadHasExactBookingContext(leadId, lead)) return false;
-    const ok = await confirmLeadUiAction('Етап змінено на "Угода". Створити бронювання на таймлайні зараз?', {
-        okText: 'Створити бронювання',
+async function offerDealCustomerCardFlow(leadId, lead = null, customer = null, mode = '') {
+    let ensured = null;
+    try {
+        ensured = await ensureDealCustomerCardForLead(leadId, lead, customer, mode);
+    } catch (err) {
+        console.error('Lead deal customer ensure error', err);
+        if (typeof showNotification === 'function') {
+            showNotification(err.message || 'Не вдалося створити картку клієнта для угоди', 'error');
+        }
+        return false;
+    }
+    if (!ensured?.customer?.id) {
+        if (typeof showNotification === 'function') showNotification('Не вдалося створити картку клієнта для угоди', 'error');
+        return false;
+    }
+    const resultText = dealCustomerCardResultText(ensured.mode);
+    const ok = await confirmLeadUiAction(`Етап змінено на "Угода". ${resultText} Відкрити її зараз?`, {
+        okText: 'Відкрити картку',
         cancelText: 'Пізніше',
         type: 'success'
     });
     if (!ok) return false;
-    return convertLead(leadId, { lead });
+    const href = leadCrmContextHref('/customers', { open: ensured.customer.id }, leadContextFromRecord(ensured.lead || lead || {}));
+    window.location.href = href;
+    return true;
 }
 
 function localDateTimeInput(date) {

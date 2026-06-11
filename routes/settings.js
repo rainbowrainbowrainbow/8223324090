@@ -60,7 +60,6 @@ function activeBookingStatusSql(alias = '') {
 const REQUIRED_SCHEMA_MIGRATIONS = Object.freeze([
     '216_booking_banquet_links',
     '260_leads_kanban_position',
-    '261_leads_customer_card_canonical_customers',
     '262_leads_customer_links_and_value'
 ]);
 

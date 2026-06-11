@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.10 - LEAD ON: readiness recovery
+
+### LEAD ON / Readiness / Production recovery / Schema diagnostics / Hotfix / Deploy safety / (Клешня, 11.06.2026) [codex]
+- **Production startup відновлено** - ризиковий schema/mixed варіант `261_leads_customer_card_canonical_customers` прибрано, щоб pending data-fix не міг завалити Railway startup.
+- **Readiness gate став точнішим** - `/api/ready` більше не блокує production через data-only marker `261`, але й далі блокує реальні schema/runtime залежності.
+- **Schema блокери збережено** - `262_leads_customer_links_and_value` і потрібні колонки лишаються в deep health diagnostics.
+- **Релізні маркери піднято до `0.75.10`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.9 - LEAD ON: migration readiness repair
 
 ### LEAD ON / Міграції / Readiness / Production schema / Hotfix / Deploy safety / (Клешня, 11.06.2026) [codex]

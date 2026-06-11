@@ -51,11 +51,14 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
     assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
     assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
+    assert.match(html, /id="bookingPrimaryAnimatorSelect"/);
 
     assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
-    assert.match(bookingJs, /function getBookingWorkspaceHasEvent\(\) \{\s*return true;/);
-    assert.match(bookingJs, /function isBookingKitchenEnabled\(\) \{\s*return false;/);
+    assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return Boolean\(getSelectedProgramIdFromUi\(\)\);/);
+    assert.match(bookingJs, /return true;/);
+    assert.match(bookingJs, /return isRoomFirstTimelineView\(\) && timelineKitchenEnabled\(\);/);
     assert.match(bookingJs, /function isBookingLeadDetailsEnabled\(\) \{\s*return false;/);
+    assert.match(bookingJs, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
     assert.match(bookingJs, /Оберіть програму події/);
     assert.doesNotMatch(bookingJs, /bookingHasEventToggle'\)\?\.addEventListener\('change'/);
     assert.doesNotMatch(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);

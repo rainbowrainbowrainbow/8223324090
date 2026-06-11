@@ -12,6 +12,7 @@ function booking(overrides = {}) {
         lineId: overrides.lineId || 'line-1',
         label: overrides.label || 'Booking',
         programCode: overrides.programCode || 'PRG',
+        room: overrides.room || 'Room A',
         linkedTo: overrides.linkedTo || null,
         status: overrides.status || 'confirmed'
     };
@@ -78,6 +79,60 @@ test('candidate conflict evaluation checks linked actor target lines, not only t
     assert.equal(result.type, 'overlap');
     assert.equal(result.conflictBooking.id, 'BK-blocker');
     assert.equal(result.candidate.id, 'BK-linked');
+});
+
+test('room drag changes room only and keeps animator line ids untouched', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', room: 'Room A' });
+    const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', room: 'Room A', linkedTo: 'BK-main' });
+
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: main,
+        allBookings: [main, linked],
+        startMin: 14 * 60,
+        currentMin: 14 * 60 + 30,
+        startLineId: 'Room A',
+        targetLineId: 'Room B',
+        assignmentMode: 'room',
+        startRoom: 'Room A',
+        targetRoom: 'Room B'
+    });
+    const payload = model.buildDragAtomicPayload(intent);
+    const snapshot = model.buildDragUndoSnapshot(intent);
+    const undoPayload = model.buildDragUndoAtomicPayload(snapshot, { ...main, time: '14:30', room: 'Room B' });
+
+    assert.equal(intent.mainCandidate.next.lineId, 'line-1');
+    assert.equal(intent.mainCandidate.next.room, 'Room B');
+    assert.deepEqual(payload.main, { time: '14:30', room: 'Room B' });
+    assert.deepEqual(payload.linked, [{ id: 'BK-linked', time: '14:45', room: 'Room B' }]);
+    assert.deepEqual(undoPayload.main, { time: '14:00', room: 'Room A' });
+    assert.deepEqual(undoPayload.linked, [{ id: 'BK-linked', time: '14:15', room: 'Room A' }]);
+});
+
+test('room drag conflict evaluation checks room overlaps, not line overlaps', () => {
+    const main = booking({ id: 'BK-main', time: '14:00', lineId: 'line-1', room: 'Room A' });
+    const linked = booking({ id: 'BK-linked', time: '14:15', lineId: 'line-2', room: 'Room A', linkedTo: 'BK-main' });
+    const blocker = booking({ id: 'BK-blocker', time: '14:30', lineId: 'line-99', room: 'Room B', label: 'Blocker' });
+
+    const intent = model.buildDragInteractionIntent({
+        draggedBooking: main,
+        allBookings: [main, linked, blocker],
+        startMin: 14 * 60,
+        currentMin: 14 * 60 + 30,
+        startLineId: 'Room A',
+        targetLineId: 'Room B',
+        assignmentMode: 'room',
+        startRoom: 'Room A',
+        targetRoom: 'Room B'
+    });
+    const result = model.evaluateTimelineCandidateConflicts(intent, [main, linked, blocker], {
+        dayStartMin: 12 * 60,
+        dayEndMin: 20 * 60
+    });
+
+    assert.equal(result.valid, false);
+    assert.equal(result.type, 'overlap');
+    assert.equal(result.conflictBooking.id, 'BK-blocker');
+    assert.equal(result.candidate.id, 'BK-main');
 });
 
 test('resize intent updates the whole linked group and excludes siblings from conflicts', () => {

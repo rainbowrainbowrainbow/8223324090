@@ -388,6 +388,16 @@ function initTimelineListeners() {
             applyTimelinePeriod(button.dataset.period, root);
         }, true);
     }
+    const timelineViewSelector = document.getElementById('timelineViewSelector');
+    if (timelineViewSelector && window.TimelineView) {
+        window.TimelineView.updateControls?.();
+        timelineViewSelector.addEventListener('click', event => {
+            const button = event.target?.closest?.('[data-timeline-view]');
+            if (!button) return;
+            event.preventDefault();
+            window.TimelineView.set?.(button.dataset.timelineView);
+        });
+    }
 
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);

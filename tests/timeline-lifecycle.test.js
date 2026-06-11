@@ -177,8 +177,8 @@ test('timeline date cache helpers accept ISO date keys without breaking strict f
     assert.equal(bookingDate, '2026-05-31');
     assert.equal(lines.length, 1);
     assert.deepEqual(bookings, []);
-    assert.ok(window.AppState.cachedLines['event_genix|park|line|2026-05-31']);
-    assert.ok(window.AppState.cachedBookings['event_genix|park|line|2026-05-31']);
+    assert.ok(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31']);
+    assert.ok(window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31']);
 });
 
 test('pointercancel during booking drag rolls back visuals and clears transient state', () => {

@@ -48,6 +48,15 @@ function timelineApiUrl(url) {
     return url;
 }
 
+function timelineApiUrlWithView(url, options = {}) {
+    let path = timelineApiUrl(url);
+    const view = options.timelineView || (typeof window !== 'undefined' ? window.TimelineView?.current?.() : null);
+    if (view) {
+        path += `${path.includes('?') ? '&' : '?'}timelineView=${encodeURIComponent(String(view))}`;
+    }
+    return path;
+}
+
 function timelineApiPayload(payload) {
     if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
         return window.TimelineBusinessContext.withApiContext(payload);
@@ -1321,7 +1330,7 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
 
 async function apiGetBookings(date, options = {}) {
     try {
-        let path = timelineApiUrl(`/bookings/${date}`);
+        let path = timelineApiUrlWithView(`/bookings/${date}`, options);
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
@@ -1599,7 +1608,7 @@ async function apiDeleteBookingBanquetLink(sourceId, targetId, relationType = 'b
 
 async function apiGetLines(date, options = {}) {
     try {
-        let path = timelineApiUrl(`/lines/${date}`);
+        let path = timelineApiUrlWithView(`/lines/${date}`, options);
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }

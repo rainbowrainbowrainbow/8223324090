@@ -9,6 +9,87 @@
 // v7.0: Render generation counter — prevents stale renders from overwriting fresh ones
 let _renderGen = 0;
 let _leadConversionAutoOpenAttempted = false;
+const TIMELINE_VIEW_ANIMATORS = 'animators';
+const TIMELINE_VIEW_ROOMS = 'rooms';
+
+function normalizeTimelineViewMode(value) {
+    return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
+        ? TIMELINE_VIEW_ROOMS
+        : TIMELINE_VIEW_ANIMATORS;
+}
+
+function canUseRoomTimelineView() {
+    const ctx = window.TimelineBusinessContext?.current?.();
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    const contextKey = window.TimelineBusinessContext?.state?.()?.activeBusinessContext || ctx?.apiValue || ctx?.key || 'event_genix';
+    return contextKey === 'event_genix' && presentation?.mode === 'park';
+}
+
+function timelineViewStorageKey() {
+    return window.TimelineBusinessContext?.storageKey?.('timeline_view') || 'pzp_timeline_view';
+}
+
+function timelineViewFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const value = params.get('timelineView') || params.get('timeline_view');
+        return value ? normalizeTimelineViewMode(value) : null;
+    } catch {
+        return null;
+    }
+}
+
+function timelineCurrentView() {
+    const urlView = timelineViewFromUrl();
+    const storedView = normalizeTimelineViewMode(localStorage.getItem(timelineViewStorageKey()));
+    const requested = urlView || storedView;
+    if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
+    return requested;
+}
+
+function isRoomTimelineView() {
+    return timelineCurrentView() === TIMELINE_VIEW_ROOMS;
+}
+
+function updateTimelineViewControls() {
+    const current = timelineCurrentView();
+    document.body.classList.toggle('timeline-view-rooms', current === TIMELINE_VIEW_ROOMS);
+    document.body.classList.toggle('timeline-view-animators', current !== TIMELINE_VIEW_ROOMS);
+    const selector = document.getElementById('timelineViewSelector');
+    if (selector) selector.classList.toggle('hidden', !canUseRoomTimelineView());
+    document.querySelectorAll('[data-timeline-view]').forEach(btn => {
+        const active = normalizeTimelineViewMode(btn.dataset.timelineView) === current;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+async function setTimelineView(view, options = {}) {
+    const next = normalizeTimelineViewMode(view);
+    if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
+    const current = timelineCurrentView();
+    try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
+    updateTimelineViewControls();
+    if (next !== current && options.render !== false) {
+        AppState.cachedBookings = {};
+        AppState.cachedLines = {};
+        AppState.lines = [];
+        AppState.linesByDate = {};
+        if (typeof closeBookingPanel === 'function') {
+            await closeBookingPanel(true).catch?.(() => {});
+        }
+        await renderTimeline();
+    }
+    return next;
+}
+
+window.TimelineView = {
+    current: timelineCurrentView,
+    isRooms: isRoomTimelineView,
+    set: setTimelineView,
+    updateControls: updateTimelineViewControls,
+    normalize: normalizeTimelineViewMode
+};
 
 // v7.0.1: Render debug (console only)
 function _debugRender() {}
@@ -22,7 +103,8 @@ function timelineCacheScopeKey() {
     const presentation = window.TimelineBusinessContext?.presentation?.();
     const mode = presentation?.mode || 'park';
     const resourceType = presentation?.resourceType || 'line';
-    return `${context}|${mode}|${resourceType}`;
+    const timelineView = timelineCurrentView();
+    return `${context}|${mode}|${resourceType}|${timelineView}`;
 }
 
 function timelineDateKey(date) {
@@ -395,6 +477,7 @@ function initializeTimeline() {
     AppState.leadConversionContext = getLeadConversionContextFromUrl();
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
+    updateTimelineViewControls();
     Promise.resolve(renderTimeline())
         .then(() => maybeAutoOpenLeadConversionBooking())
         .catch(error => console.warn('[Timeline] lead conversion auto-open failed', error));
@@ -421,6 +504,7 @@ function renderTimeScale(date) {
 }
 
 function timelineShouldRenderAfisha() {
+    if (isRoomTimelineView()) return false;
     const presentation = window.TimelineBusinessContext?.presentation?.();
     if (presentation) return presentation.showAfisha !== false;
     const ctx = window.TimelineBusinessContext?.current?.();
@@ -450,6 +534,7 @@ function timelineEmbeddedIdentity(source = {}) {
 }
 
 function timelineDefaultResourceType() {
+    if (isRoomTimelineView()) return 'room';
     const presentation = window.TimelineBusinessContext?.presentation?.();
     if (presentation?.resourceType) return presentation.resourceType;
     return presentation?.mode === 'park' ? 'animator' : 'resource';
@@ -485,18 +570,35 @@ function timelineLineResourceIdentity(line = {}, index = 0) {
 
 function timelineBookingResourceIdentity(booking = {}) {
     const embedded = timelineEmbeddedIdentity(booking);
+    const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+    const roomProjection = isRoomTimelineView() || projection?.view === TIMELINE_VIEW_ROOMS;
     const resourceId = String(
-        booking?.lineId
-        || booking?.line_id
-        || booking?.resourceId
-        || booking?.resource_id
-        || embedded.resourceId
-        || embedded.resource_id
-        || ''
+        roomProjection
+            ? (
+                projection?.resourceId
+                || projection?.resource_id
+                || booking?.resourceId
+                || booking?.resource_id
+                || booking?.room
+                || embedded.resourceId
+                || embedded.resource_id
+                || booking?.lineId
+                || booking?.line_id
+                || ''
+            )
+            : (
+                booking?.lineId
+                || booking?.line_id
+                || booking?.resourceId
+                || booking?.resource_id
+                || embedded.resourceId
+                || embedded.resource_id
+                || ''
+            )
     ).trim();
     return {
         resourceId,
-        resourceType: booking?.resourceType || booking?.resource_type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType(),
+        resourceType: roomProjection ? 'room' : (booking?.resourceType || booking?.resource_type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType()),
         businessContext: booking?.businessContext || booking?.business_context || embedded.businessContext || embedded.business_context || timelineBusinessContextValue(),
         source: embedded.source || booking?.resourceSource || booking?.source || 'booking_line'
     };
@@ -641,6 +743,7 @@ async function handleTimelineBusinessContextChanged(event) {
     AppState.cachedLines = {};
     AppState.linesByDate = {};
     AppState.lines = [];
+    updateTimelineViewControls();
     if (typeof closeBookingPanel === 'function') {
         closeBookingPanel(true).catch?.(() => {});
     }
@@ -682,6 +785,7 @@ function renderTimelineDataError(container, error, date) {
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;
+    updateTimelineViewControls();
     if (typeof normalizeTimelineModeState === 'function') {
         normalizeTimelineModeState(AppState);
     }
@@ -2037,8 +2141,12 @@ function _beginBookingDrag(block, booking, startHour, e) {
     s.startMin = timeToMinutes(booking.time);
     s.currentMin = s.startMin;
     s.startLeft = parseFloat(block.style.left);
-    s.startLineId = booking.lineId;
-    s.newLineId = booking.lineId;
+    const bookingIdentity = timelineBookingResourceIdentity(booking);
+    s.assignmentMode = isRoomTimelineView() ? 'room' : 'line';
+    s.startLineId = bookingIdentity.resourceId || booking.lineId;
+    s.newLineId = s.startLineId;
+    s.startRoom = booking.room || '';
+    s.newRoom = booking.room || '';
     s.grid = block.closest('.line-grid');
 
     // Collect related bookings (linked: second animator, extra host)
@@ -2206,6 +2314,7 @@ function _updateBookingDragPosition(clientX, clientY, options = {}) {
     const targetLine = _detectTargetLine(clientY);
     if (targetLine && targetLine !== s.newLineId) {
         s.newLineId = targetLine;
+        if (s.assignmentMode === 'room') s.newRoom = _timelineLineLabel(targetLine);
         _highlightTargetLine(targetLine);
     }
 
@@ -2327,7 +2436,13 @@ function _timelineLineLabels() {
     return labels;
 }
 
+function _timelineLineLabel(lineId) {
+    const labels = _timelineLineLabels();
+    return labels[String(lineId)] || String(lineId || '');
+}
+
 function _timelineDragAssignmentLabel() {
+    if (isRoomTimelineView()) return 'кімнату';
     const presentation = window.TimelineBusinessContext?.presentation?.() || {};
     const resourceType = presentation.resourceType || (typeof TIMELINE_DISPLAY_MODE !== 'undefined' && TIMELINE_DISPLAY_MODE === 'park' ? 'animator' : '');
     if (resourceType === 'animator') return 'ведучого';
@@ -2359,10 +2474,15 @@ function _handleDragEdgeScroll(clientX) {
 function _buildDragIntentFromState(state, timeDelta = null, lineChanged = null) {
     const model = timelineInteractionModel();
     if (!model?.buildDragInteractionIntent) return null;
+    const assignmentMode = isRoomTimelineView() ? 'room' : 'line';
+    const targetRoom = assignmentMode === 'room' ? _timelineLineLabel(state.newLineId) : state.newRoom;
     return model.buildDragInteractionIntent({
         state,
         timeDelta,
         lineChanged,
+        assignmentMode,
+        startRoom: state.startRoom,
+        targetRoom,
         allBookings: state.groupBookings || _getTimelineCachedBookings()
     });
 }
@@ -2499,6 +2619,14 @@ function _validateDragDrop(state, timeDelta) {
         return { valid: false, error: 'Час виходить за межі робочого дня!' };
     }
 
+    if (!result.valid && result.type === 'overlap' && intent.assignmentMode === 'room') {
+        const other = result.conflictBooking;
+        if (other?.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(other.id);
+        const roomName = result.candidate?.next?.room || intent.targetRoom || 'кімнаті';
+        const detail = other ? ` (${other.label || other.programCode || ''} о ${other.time})` : '';
+        return { valid: false, error: `Накладка в кімнаті ${roomName}${detail}` };
+    }
+
     if (!result.valid && result.type === 'overlap') {
         const other = result.conflictBooking;
         if (other?.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(other.id);
@@ -2539,7 +2667,10 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             mainBookingId: intent.mainBooking?.id,
             shiftMinutes: intent.timeDelta,
             lineSwitched: intent.lineChanged,
+            roomSwitched: intent.roomChanged,
             oldLineId: intent.startLineId,
+            oldRoom: intent.startRoom,
+            newRoom: intent.targetRoom,
             oldTime: minutesToTime(intent.startMin)
         };
         const payload = model.buildDragAtomicPayload(intent, historyData);

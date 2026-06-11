@@ -375,6 +375,7 @@ const BookingDrawerState = {
 const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
 const NO_EVENT_TIMELINE_DURATION = 30;
 const BOOKING_PROGRAM_ONLY_WORKSPACE = true;
+const ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service';
 const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
 const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
 const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
@@ -448,6 +449,10 @@ function isOptionalTimelineRoomBookingMode(presentation = getTimelineBookingPres
 function timelineKitchenEnabled() {
     const presentation = getTimelineBookingPresentation();
     return presentation.mode === 'park' && presentation.parkKitchenEnabled !== false;
+}
+
+function isRoomFirstTimelineView() {
+    return window.TimelineView?.isRooms?.() === true;
 }
 
 function isMaysternyaClosedSlotBooking(booking = {}) {
@@ -839,16 +844,17 @@ function getMaysternyaSlotCloseDuration() {
 }
 
 function getBookingWorkspaceHasEvent() {
+    if (isRoomFirstTimelineView()) return Boolean(getSelectedProgramIdFromUi());
     return true;
 }
 
 function isBookingKitchenEnabled() {
-    return false;
+    return isRoomFirstTimelineView() && timelineKitchenEnabled();
 }
 
 function setBookingKitchenEnabled(enabled, options = {}) {
     const toggle = document.getElementById('bookingKitchenToggle');
-    if (toggle) toggle.checked = false;
+    if (toggle) toggle.checked = isRoomFirstTimelineView() && timelineKitchenEnabled();
     syncBookingWorkspaceMode(options);
 }
 
@@ -982,6 +988,8 @@ function getSmartBookingValidationState() {
     const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
     const programRequired = getBookingWorkspaceHasEvent();
+    const primaryAnimatorRequired = isRoomFirstTimelineView() && hasProgram;
+    const hasPrimaryAnimator = Boolean(document.getElementById('bookingPrimaryAnimatorSelect')?.value);
     const warnings = [];
     const errors = [];
     const invalidFields = [];
@@ -998,6 +1006,10 @@ function getSmartBookingValidationState() {
     if (programRequired && !hasProgram) {
         errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');
         invalidFields.push(isEducation ? 'educationLessonTitle' : 'selectedProgram');
+    }
+    if (primaryAnimatorRequired && !hasPrimaryAnimator) {
+        errors.push('Оберіть аніматора для активної програми.');
+        invalidFields.push('bookingPrimaryAnimatorSelect');
     }
     return {
         valid: errors.length === 0,
@@ -1037,7 +1049,8 @@ function applyBookingValidationInvalidFields(validation) {
         'customerPhone',
         'customerInstagram',
         'selectedProgram',
-        'educationLessonTitle'
+        'educationLessonTitle',
+        'bookingPrimaryAnimatorSelect'
     ];
     const invalid = new Set(validation?.invalidFields || []);
     fieldIds.forEach(id => {
@@ -1060,8 +1073,8 @@ function showBookingValidationErrors(validation) {
 }
 
 function getBookingWorkspaceScenario(options = {}) {
-    const hasEvent = true;
-    const hasKitchen = false;
+    const hasEvent = options.hasEvent !== undefined ? Boolean(options.hasEvent) : getBookingWorkspaceHasEvent();
+    const hasKitchen = options.hasKitchen !== undefined ? Boolean(options.hasKitchen) : isBookingKitchenEnabled();
     if (hasEvent && hasKitchen) return 'event_kitchen';
     if (hasEvent) return 'event';
     if (hasKitchen) return 'kitchen_only';
@@ -1098,13 +1111,16 @@ function syncBookingWorkspaceMode(options = {}) {
     const eventToggle = document.getElementById('bookingHasEventToggle');
     const kitchenToggle = document.getElementById('bookingKitchenToggle');
     const leadToggle = document.getElementById('bookingLeadDetailsToggle');
-    if (eventToggle) eventToggle.checked = true;
-    if (kitchenToggle) kitchenToggle.checked = false;
+    const roomFirst = isRoomFirstTimelineView();
+    const hasEvent = roomFirst ? Boolean(getSelectedProgramIdFromUi()) : true;
+    const kitchenEnabled = roomFirst && timelineKitchenEnabled();
+    if (eventToggle) eventToggle.checked = hasEvent;
+    if (kitchenToggle) kitchenToggle.checked = kitchenEnabled;
     if (leadToggle) leadToggle.checked = false;
     if (eventFields) eventFields.classList.remove('hidden');
     if (banquetFields) {
-        banquetFields.classList.add('hidden');
-        banquetFields.hidden = true;
+        banquetFields.classList.toggle('hidden', !kitchenEnabled);
+        banquetFields.hidden = !kitchenEnabled;
     }
     if (leadSection) {
         leadSection.classList.add('hidden');
@@ -1113,6 +1129,10 @@ function syncBookingWorkspaceMode(options = {}) {
     if (room) {
         room.required = true;
         room.setAttribute('aria-required', 'true');
+    }
+    const primaryAnimatorSection = document.getElementById('bookingPrimaryAnimatorSection');
+    if (primaryAnimatorSection) {
+        primaryAnimatorSection.classList.toggle('hidden', !roomFirst);
     }
     renderBookingPackageSummary();
     updateBookingSubmitState();
@@ -1874,7 +1894,7 @@ function initBookingPackageWorkspace() {
         }
         document.getElementById('freeRoomsPanel')?.classList.add('hidden');
     });
-    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu', 'banquetGuests',
+    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu', 'banquetGuests',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
@@ -1966,6 +1986,7 @@ async function openBookingPanel(time, lineId) {
     panelEl?.classList.toggle('booking-panel--maysternya', isMaysternyaBookingContext());
     panelEl?.classList.toggle('booking-panel--minimal-timeline', isMinimalTimelineBookingMode());
     panelEl?.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
+    panelEl?.classList.toggle('booking-panel--room-first', isRoomFirstTimelineView());
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => String(l.id) === String(lineId));
     if (String(lineId || '') === 'afisha') {
@@ -1986,10 +2007,14 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('selectedTimeDisplay').textContent = time;
     document.getElementById('selectedLineDisplay').textContent = line ? line.name : '-';
     document.getElementById('bookingTime').value = time;
-    document.getElementById('bookingLine').value = lineId;
+    document.getElementById('bookingLine').value = isRoomFirstTimelineView() ? ROOM_FIRST_BANQUET_SERVICE_LINE_ID : lineId;
 
     // Скинути форму
     document.getElementById('roomSelect').value = '';
+    if (isRoomFirstTimelineView()) {
+        ensureTimelineRoomOption(line.name);
+        document.getElementById('roomSelect').value = line.name;
+    }
     document.getElementById('selectedProgram').value = '';
     document.getElementById('bookingNotes').value = '';
     const groupInput = document.getElementById('bookingGroupName');
@@ -2048,6 +2073,10 @@ async function openBookingPanel(time, lineId) {
     applyLeadConversionContextToBookingForm();
     prepareMaysternyaBookingPanel();
     prepareDisplayModeBookingPanel({ line });
+    if (isRoomFirstTimelineView()) {
+        await populatePrimaryAnimatorSelect();
+        syncBookingWorkspaceMode({ markDirty: false });
+    }
     updateBookingContextHeaderSummary();
     await refreshBookingRoomAvailabilityForSelectedDate();
 
@@ -2653,7 +2682,7 @@ async function closeBookingPanel(force = false) {
         });
     }
     document.getElementById('bookingPanel')?.classList.add('hidden');
-    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline');
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -3036,6 +3065,10 @@ function selectProgram(programId) {
 
     renderSelectedProgramSummary(program);
     syncPrimaryProgramDependentFields(program);
+    if (isRoomFirstTimelineView()) {
+        populatePrimaryAnimatorSelect().catch(() => {});
+        syncBookingWorkspaceMode({ markDirty: true });
+    }
 
     if (program.hosts > 1) {
         document.getElementById('hostsWarning')?.classList.remove('hidden');
@@ -3198,10 +3231,19 @@ function renderScriptCategory(category) {
     content.classList.add('visible');
 }
 
+async function getAnimatorLinesForBookingDate(options = {}) {
+    const dateStr = formatDate(AppState.selectedDate);
+    if (isRoomFirstTimelineView() || options.forceAnimatorView) {
+        const lines = await apiGetLines(dateStr, { timelineView: 'animators', fresh: options.fresh !== false });
+        return Array.isArray(lines) ? lines : [];
+    }
+    return await getLinesForDate(AppState.selectedDate);
+}
+
 async function populateAnimatorSelectById(selectId, placeholder) {
     const select = document.getElementById(selectId);
     if (!select) return;
-    const lines = await getLinesForDate(AppState.selectedDate);
+    const lines = await getAnimatorLinesForBookingDate();
     const currentLineId = document.getElementById('bookingLine')?.value;
     const currentValue = select.value;
     const candidates = await buildAnimatorLineCandidates(lines, currentLineId);
@@ -3317,6 +3359,10 @@ async function populateExtraHostAnimatorSelect() {
     await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
 }
 
+async function populatePrimaryAnimatorSelect() {
+    await populateAnimatorSelectById('bookingPrimaryAnimatorSelect', 'Оберіть аніматора');
+}
+
 // v7.9.3: Resolve secondAnimator name when line was renamed
 // If the stored name doesn't match any current line, tries to find via linked booking
 async function resolveSecondAnimatorSelect(storedName, bookingId) {
@@ -3383,19 +3429,38 @@ function getBookingFormData() {
     const presentation = getTimelineBookingPresentation();
     const selectedProgramId = getSelectedProgramIdFromUi();
     const hasExplicitProgram = Boolean(selectedProgramId);
-    const hasEvent = true;
-    const kitchenEnabled = false;
+    const roomFirst = isRoomFirstTimelineView();
+    const hasEvent = roomFirst ? hasExplicitProgram : true;
+    const kitchenEnabled = roomFirst && timelineKitchenEnabled();
     const leadDetailsEnabled = false;
     const programId = hasEvent ? selectedProgramId : '';
     const room = document.getElementById('roomSelect')?.value || '';
     const effectiveRoom = room || defaultTimelineBookingRoom(presentation);
     const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
-    const lineId = document.getElementById('bookingLine')?.value;
-    const line = getBookingLineSnapshot(lineId);
+    const primaryAnimatorName = roomFirst ? (document.getElementById('bookingPrimaryAnimatorSelect')?.value || '') : '';
+    const primaryAnimatorCandidate = roomFirst && hasEvent
+        ? selectedAnimatorLineCandidate('bookingPrimaryAnimatorSelect', primaryAnimatorName)
+        : null;
+    const lineId = roomFirst
+        ? (hasEvent ? (primaryAnimatorCandidate?.id || '') : ROOM_FIRST_BANQUET_SERVICE_LINE_ID)
+        : document.getElementById('bookingLine')?.value;
+    const line = roomFirst
+        ? {
+            id: lineId,
+            resourceId: lineId,
+            resourceType: hasEvent ? 'animator' : 'service',
+            name: hasEvent ? (primaryAnimatorCandidate?.name || primaryAnimatorName || '') : 'Банкет / кімната',
+            source: hasEvent ? (primaryAnimatorCandidate?.source || 'primary_animator_select') : 'banquet_service'
+        }
+        : getBookingLineSnapshot(lineId);
 
     let duration = program ? program.duration : 0;
     let label = program ? program.label : '';
+    if (roomFirst && !program) {
+        duration = parseInt(document.getElementById('customDuration')?.value, 10) || 60;
+        label = 'Банкет';
+    }
     if (isEducationTimelineBookingMode() && !program) {
         duration = parseInt(document.getElementById('customDuration')?.value, 10) || 60;
         label = document.getElementById('educationLessonTitle')?.value?.trim() || 'Заняття';
@@ -3443,7 +3508,7 @@ function getBookingFormData() {
     const scenario = getBookingWorkspaceScenario({ hasEvent, positions: menuPositions, hasKitchen: kitchenEnabled });
     const baseFormData = {
         hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
-        programId, room: effectiveRoom, program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', duration, label,
+        programId, room: effectiveRoom, program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', lineResourceType: line?.resourceType || '', duration, label,
         activityPrograms: packageTotals.activityPrograms || (program ? [program] : []),
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
@@ -3452,8 +3517,8 @@ function getBookingFormData() {
         secondAnimatorLineName: secondAnimatorCandidate?.name || secondAnimator || null,
         menuPositions,
         programBasePrice: packageTotals.programBasePrice,
-        positionsSubtotal: 0,
-        finalTotal: packageTotals.programBasePrice
+        positionsSubtotal: kitchenEnabled ? packageTotals.positionsSubtotal : 0,
+        finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice
     };
     baseFormData.educationLesson = getEducationLessonDetails(baseFormData);
 
@@ -3474,7 +3539,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     }
 
     if (secondAnimator) {
-        const lines = await getLinesForDate(AppState.selectedDate);
+        const lines = await getAnimatorLinesForBookingDate();
         const secondCandidate = selectedAnimatorLineCandidate('secondAnimatorSelect', secondAnimator);
         const secondLine = lines.find(l => l.name === secondAnimator)
             || lines.find(l => String(l.id) === String(secondCandidate?.id || ''))
@@ -3596,18 +3661,21 @@ function getNoEventProgramName(formData = {}) {
 }
 
 function buildBookingWorkspaceExtraData(formData = {}) {
+    const positions = Array.isArray(formData.menuPositions) ? formData.menuPositions : [];
+    const kitchen = {
+        itemsCount: positions.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+        menuCount: positions.length,
+        cakeCount: positions.filter(item => /торт|cake/i.test(String(item.title || ''))).length,
+        positionsSubtotal: toBookingMoney(formData.positionsSubtotal || 0)
+    };
     return {
         schemaVersion: BOOKING_WORKSPACE_SCHEMA_VERSION,
-        mode: BOOKING_PROGRAM_ONLY_WORKSPACE ? 'event_program_only' : 'workspace',
-        hasEvent: true,
-        scenario: 'event',
-        leadDetails: {},
-        kitchen: {
-            itemsCount: 0,
-            menuCount: 0,
-            cakeCount: 0,
-            positionsSubtotal: 0
-        },
+        mode: formData.kitchenEnabled || !formData.hasEvent ? 'room_first_workspace' : (BOOKING_PROGRAM_ONLY_WORKSPACE ? 'event_program_only' : 'workspace'),
+        hasEvent: Boolean(formData.hasEvent),
+        scenario: formData.scenario || getBookingWorkspaceScenario(formData),
+        leadDetails: formData.leadDetails || {},
+        kitchen,
+        roomFirst: isRoomFirstTimelineView(),
         lesson: formData.educationLesson || null,
         source: 'booking_workspace_v2'
     };
@@ -3657,7 +3725,7 @@ function buildBookingObject(formData, program) {
         label: hasEvent ? formData.label : noEventLabel,
         programName: hasCatalogProgram ? (program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name) : (isEducationLessonBooking ? (formData.educationLesson.title || 'Заняття') : noEventName),
         category: hasCatalogProgram ? program.category : (isEducationLessonBooking ? 'education' : 'custom'),
-        duration: hasEvent ? formData.duration : NO_EVENT_TIMELINE_DURATION,
+        duration: hasEvent ? formData.duration : (parseInt(formData.duration, 10) || NO_EVENT_TIMELINE_DURATION),
         price: finalPrice,
         hosts: normalizedHosts,
         secondAnimator: hasEvent ? formData.secondAnimator : null,
@@ -3724,6 +3792,7 @@ function buildBookingObject(formData, program) {
     const timelineLine = getBookingLineSnapshot(formData.lineId) || {
         id: formData.lineId,
         resourceId: formData.lineId,
+        resourceType: formData.lineResourceType || (formData.lineSource === 'banquet_service' ? 'service' : null),
         name: formData.lineName,
         source: formData.lineSource
     };
@@ -4843,7 +4912,12 @@ async function handleOptimisticLockConflict(result, localBooking) {
 }
 
 async function checkConflicts(lineId, time, duration, excludeId = null) {
-    const allBookings = await getBookingsForDate(AppState.selectedDate);
+    if (String(lineId || '').trim() === ROOM_FIRST_BANQUET_SERVICE_LINE_ID) {
+        return { overlap: false, noPause: false, conflictWith: null };
+    }
+    const allBookings = isRoomFirstTimelineView()
+        ? (await apiGetBookings(formatDate(AppState.selectedDate), { timelineView: 'animators', fresh: true }) || [])
+        : await getBookingsForDate(AppState.selectedDate);
     const bookings = allBookings.filter(b => b.lineId === lineId && b.id !== excludeId);
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;

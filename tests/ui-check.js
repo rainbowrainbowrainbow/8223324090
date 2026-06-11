@@ -132,6 +132,16 @@ checkPage('index.html', (doc, html) => {
     check('sidebarLinks exists', !!doc.getElementById('sidebarLinks'));
     check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
     check('Timeline create booking button exists', doc.getElementById('newBookingBtn')?.textContent.includes('Створити бронювання'));
+    check('Room-first timeline selector and booking animator field are wired',
+        !!doc.getElementById('timelineViewSelector')
+        && !!doc.querySelector('[data-timeline-view="rooms"]')
+        && !!doc.querySelector('[data-timeline-view="animators"]')
+        && !!doc.getElementById('bookingPrimaryAnimatorSelect')
+        && appCode.includes('window.TimelineView.set?.(button.dataset.timelineView)')
+        && apiCode.includes('function timelineApiUrlWithView')
+        && apiCode.includes('timelineView=${encodeURIComponent(String(view))}')
+        && bookingCode.includes("ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
+        && bookingCode.includes('function populatePrimaryAnimatorSelect'));
     check('Timeline product sales modal exists', !!doc.getElementById('productSalesModal'));
     check('Timeline room load panel has explicit close affordance', doc.getElementById('roomLoadPanel')?.getAttribute('role') === 'dialog' && doc.getElementById('roomLoadPanel')?.getAttribute('aria-hidden') === 'true' && doc.getElementById('roomLoadClose')?.textContent.includes('Закрити'));
     check('Timeline product sales month filter exists', doc.getElementById('productSalesMonth')?.type === 'month');
@@ -1258,7 +1268,7 @@ check('Timeline booking links only an existing customer card',
     && !bookingCode.includes("setBookingClientMode('new'")
     && !bookingCode.includes('bookingCreateCustomerBtn')
     && !bookingCode.includes('isValidNewBookingClient'));
-check('Timeline booking workspace is program-only without scenario cards',
+check('Timeline booking workspace keeps default program-only mode and enables room-first banquet workspace explicitly',
     htmlContains('index.html', 'id="bookingHasEventToggle" checked hidden aria-hidden="true"')
     && htmlContains('index.html', 'id="bookingKitchenToggle" hidden aria-hidden="true"')
     && htmlContains('index.html', 'id="bookingLeadDetailsToggle" hidden aria-hidden="true"')
@@ -1266,12 +1276,13 @@ check('Timeline booking workspace is program-only without scenario cards',
     && !bookingPanelHtml.includes('bookingScenarioBar')
     && !bookingPanelHtml.includes('Що входить у бронювання?')
     && bookingCode.includes('const BOOKING_PROGRAM_ONLY_WORKSPACE = true')
-    && bookingCode.includes('function getBookingWorkspaceHasEvent() {\n    return true;')
-    && bookingCode.includes('function isBookingKitchenEnabled() {\n    return false;')
+    && bookingCode.includes('if (isRoomFirstTimelineView()) return Boolean(getSelectedProgramIdFromUi());')
+    && bookingCode.includes('return true;')
+    && bookingCode.includes('return isRoomFirstTimelineView() && timelineKitchenEnabled();')
     && bookingCode.includes('function isBookingLeadDetailsEnabled() {\n    return false;')
     && bookingCode.includes("errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');")
-    && bookingCode.includes("mode: BOOKING_PROGRAM_ONLY_WORKSPACE ? 'event_program_only' : 'workspace'")
-    && bookingCode.includes("scenario: 'event'")
+    && bookingCode.includes("mode: formData.kitchenEnabled || !formData.hasEvent ? 'room_first_workspace' : (BOOKING_PROGRAM_ONLY_WORKSPACE ? 'event_program_only' : 'workspace')")
+    && bookingCode.includes('const kitchenEnabled = roomFirst && timelineKitchenEnabled();')
     && !bookingCode.includes('function getBookingScenarioContentState')
     && !bookingCode.includes("bookingHasEventToggle')?.addEventListener('change'")
     && !bookingCode.includes("bookingKitchenToggle')?.addEventListener('change'")

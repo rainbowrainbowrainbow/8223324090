@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, syncScheduledAnimatorLines } = require('../services/booking');
+const { validateDate, syncScheduledAnimatorLines, ALL_ROOMS } = require('../services/booking');
 const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
@@ -15,6 +15,8 @@ const {
 } = require('../services/timelineContext');
 const {
     getTimelineDisplaySettings,
+    listTimelineResources,
+    resourceToLine,
     resourceTypeForDisplayMode,
     timelineResourceLinesForMode,
     syncTimelineResourcesFromLines
@@ -26,6 +28,40 @@ const MAYSTERNYA_DEFAULT_LINES = [
     { id: 'md-consult-room', name: 'Олександр', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
 ];
 
+function normalizeTimelineView(value) {
+    return String(value || '').trim().toLowerCase() === 'rooms' ? 'rooms' : 'animators';
+}
+
+function fallbackRoomLines(businessContext) {
+    const colors = ['#10B981', '#3B82F6', '#F97316', '#8B5CF6', '#06B6D4'];
+    return ALL_ROOMS.map((name, index) => ({
+        id: name,
+        resourceId: name,
+        resourceType: 'room',
+        businessContext,
+        name,
+        shortName: name,
+        color: colors[index % colors.length],
+        fromSheet: false,
+        staffId: null,
+        shiftStart: null,
+        shiftEnd: null,
+        shiftStatus: null,
+        source: 'rooms_fallback',
+        sortOrder: index * 10
+    }));
+}
+
+async function roomTimelineLinesForContext(businessContext) {
+    const resources = await listTimelineResources(pool, {
+        context: businessContext,
+        type: 'room',
+        includeInactive: false
+    });
+    if (resources.length) return resources.map(resourceToLine);
+    return fallbackRoomLines(businessContext);
+}
+
 // All lines routes require authentication
 router.use(authenticateToken);
 
@@ -35,6 +71,14 @@ router.get('/:date', async (req, res) => {
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
+        const timelineView = normalizeTimelineView(req.query.timelineView);
+        if (timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT) {
+            const lines = await roomTimelineLinesForContext(businessContext);
+            res.set('X-Timeline-Lines-Source', lines.some(line => line.source === 'timeline_resource') ? 'timeline_resources' : 'rooms_fallback');
+            res.set('X-Timeline-Resource-Type', 'room');
+            res.set('X-Timeline-View', 'rooms');
+            return res.json(lines);
+        }
         const display = await getTimelineDisplaySettings(pool, businessContext);
         const resourceType = resourceTypeForDisplayMode(display.mode, display);
         if (resourceType) {

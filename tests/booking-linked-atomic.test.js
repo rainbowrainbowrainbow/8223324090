@@ -273,6 +273,28 @@ test('linked-atomic updates main and linked bookings in one committed transactio
     });
 });
 
+test('linked-atomic room move syncs linked rows without changing animator line ids', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-2026-0001', time: '10:00', line_id: 'line-1', room: 'Room A' }),
+        bookingRow({ id: 'BK-2026-0002', time: '10:15', line_id: 'line-2', room: 'Room A', linked_to: 'BK-2026-0001' })
+    ], async ({ baseUrl, state }) => {
+        const res = await request(baseUrl, {
+            main: { room: 'Room B' },
+            linked: [],
+            historyAction: 'drag',
+            historyData: { reason: 'room-first-drag' }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').room, 'Room B');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').line_id, 'line-1');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').room, 'Room B');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').line_id, 'line-2');
+        assert.equal(state.histories[0].data.reason, 'room-first-drag');
+    });
+});
+
 test('linked-atomic cross-line move does not treat hosts count as animator identity', async () => {
     await withApp([
         bookingRow({ id: 'BK-2026-0001', time: '14:00', line_id: 'line-1', room: 'Room A', hosts: 1 }),
@@ -360,7 +382,7 @@ test('linked-atomic rolls back before any update when a linked target conflicts'
     });
 });
 
-test('linked-atomic rejects time changes that omit existing linked bookings', async () => {
+test('linked-atomic auto-syncs omitted linked bookings while preserving their time offset', async () => {
     await withApp([
         bookingRow({ id: 'BK-2026-0001', time: '10:00', line_id: 'line-1' }),
         bookingRow({ id: 'BK-2026-0002', time: '10:15', line_id: 'line-2', linked_to: 'BK-2026-0001' })
@@ -371,9 +393,9 @@ test('linked-atomic rejects time changes that omit existing linked bookings', as
             historyAction: 'shift'
         });
 
-        assert.equal(res.status, 400, JSON.stringify(res.data));
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
-        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '10:00');
-        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').time, '10:15');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0001').time, '11:00');
+        assert.equal(state.rows.find(row => row.id === 'BK-2026-0002').time, '11:15');
     });
 });

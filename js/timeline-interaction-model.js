@@ -126,6 +126,10 @@
         const lineChanged = own(input, 'lineChanged')
             ? Boolean(input.lineChanged)
             : !sameLine(startLineId, targetLineId);
+        const assignmentMode = String(input.assignmentMode || state.assignmentMode || 'line') === 'room' ? 'room' : 'line';
+        const startRoom = input.startRoom ?? state.startRoom ?? draggedBooking?.room ?? mainBooking?.room ?? '';
+        const targetRoom = input.targetRoom ?? state.newRoom ?? state.targetRoom ?? startRoom;
+        const roomChanged = assignmentMode === 'room' && !sameLine(startRoom, targetRoom);
         const draggedIsMain = sameId(actorId, mainId);
 
         const candidates = groupBookings.map(booking => {
@@ -133,12 +137,16 @@
             const isDragged = sameId(booking.id, actorId);
             let nextTime = booking.time;
             let nextLineId = booking.lineId;
+            let nextRoom = booking.room;
 
             if (isDragged) {
                 nextTime = targetTime;
-                if (lineChanged) nextLineId = targetLineId;
+                if (lineChanged && assignmentMode === 'line') nextLineId = targetLineId;
             } else if (timeDelta !== 0) {
                 nextTime = addMinutesToTimeValue(booking.time, timeDelta);
+            }
+            if (assignmentMode === 'room' && lineChanged) {
+                nextRoom = targetRoom;
             }
 
             return {
@@ -149,7 +157,8 @@
                 next: {
                     ...booking,
                     time: nextTime,
-                    lineId: nextLineId
+                    lineId: nextLineId,
+                    room: nextRoom
                 }
             };
         });
@@ -174,6 +183,10 @@
             startLineId,
             targetLineId,
             lineChanged,
+            assignmentMode,
+            startRoom,
+            targetRoom,
+            roomChanged,
             candidates,
             mainCandidate,
             linkedCandidates
@@ -184,7 +197,14 @@
         const mainPatch = {};
         const linked = [];
 
-        if (intent.draggedIsMain) {
+        if (intent.assignmentMode === 'room') {
+            if (intent.draggedIsMain) {
+                mainPatch.time = intent.mainCandidate?.next.time;
+                if (intent.roomChanged) mainPatch.room = intent.targetRoom;
+            } else if (intent.timeDelta !== 0) {
+                mainPatch.time = intent.mainCandidate?.next.time;
+            }
+        } else if (intent.draggedIsMain) {
             mainPatch.time = intent.mainCandidate?.next.time;
             mainPatch.lineId = intent.mainCandidate?.next.lineId;
         } else if (intent.timeDelta !== 0) {
@@ -196,7 +216,9 @@
                 id: candidate.id,
                 time: candidate.next.time
             };
-            if (candidate.isDragged && intent.lineChanged) {
+            if (intent.assignmentMode === 'room' && intent.roomChanged) {
+                patch.room = intent.targetRoom;
+            } else if (candidate.isDragged && intent.lineChanged) {
                 patch.lineId = candidate.next.lineId;
             }
             linked.push(patch);
@@ -212,7 +234,9 @@
                 mainBookingId: intent.mainBooking?.id,
                 shiftMinutes: intent.timeDelta,
                 lineSwitched: intent.lineChanged,
+                roomSwitched: intent.roomChanged,
                 oldLineId: intent.startLineId,
+                oldRoom: intent.startRoom,
                 oldTime: minutesToTimeValue(intent.startMin)
             }
         };
@@ -230,6 +254,11 @@
             newTime: savedMain?.time || mainNext.time,
             newLineId: savedMain?.lineId || mainNext.lineId,
             timeDelta: -intent.timeDelta,
+            ...(intent.assignmentMode === 'room' ? {
+                oldRoom: intent.mainBooking?.room,
+                newRoom: savedMain?.room || mainNext.room,
+                assignmentMode: intent.assignmentMode
+            } : {}),
             linked: intent.linkedCandidates.map(candidate => {
                 const savedRow = savedLinked.get(idOf(candidate.id));
                 return {
@@ -237,13 +266,36 @@
                     oldTime: candidate.old.time,
                     oldLineId: candidate.old.lineId,
                     newTime: savedRow?.time || candidate.next.time,
-                    newLineId: savedRow?.lineId || candidate.next.lineId
+                    newLineId: savedRow?.lineId || candidate.next.lineId,
+                    ...(intent.assignmentMode === 'room' ? {
+                        oldRoom: candidate.old.room,
+                        newRoom: savedRow?.room || candidate.next.room
+                    } : {})
                 };
             })
         };
     }
 
     function buildDragUndoAtomicPayload(snapshot, currentBooking = null) {
+        if (snapshot?.assignmentMode === 'room') {
+            return {
+                main: {
+                    time: snapshot.oldTime,
+                    room: snapshot.oldRoom
+                },
+                linked: (snapshot.linked || []).map(item => ({
+                    id: item.id,
+                    time: item.oldTime,
+                    room: item.oldRoom
+                })),
+                historyAction: 'undo_drag',
+                historyData: {
+                    ...(currentBooking || {}),
+                    time: snapshot.oldTime,
+                    room: snapshot.oldRoom
+                }
+            };
+        }
         return {
             main: {
                 time: snapshot.oldTime,
@@ -269,15 +321,17 @@
 
     function buildDragChangeSet(intent) {
         const lineChanges = (intent.candidates || [])
-            .filter(candidate => !sameLine(candidate.old?.lineId, candidate.next?.lineId))
+            .filter(candidate => intent.assignmentMode === 'room'
+                ? !sameLine(candidate.old?.room, candidate.next?.room)
+                : !sameLine(candidate.old?.lineId, candidate.next?.lineId))
             .map(candidate => ({
                 id: candidate.id,
                 bookingId: candidate.id,
                 bookingLabel: labelForBooking(candidate.old),
                 isMain: Boolean(candidate.isMain),
                 isDragged: Boolean(candidate.isDragged),
-                oldLineId: candidate.old?.lineId ?? null,
-                newLineId: candidate.next?.lineId ?? null
+                oldLineId: intent.assignmentMode === 'room' ? (candidate.old?.room ?? null) : (candidate.old?.lineId ?? null),
+                newLineId: intent.assignmentMode === 'room' ? (candidate.next?.room ?? null) : (candidate.next?.lineId ?? null)
             }));
         const deltaMinutes = Number(intent.timeDelta || 0);
         return {
@@ -298,7 +352,7 @@
             lineChanges,
             changedFields: [
                 ...(deltaMinutes !== 0 ? ['time'] : []),
-                ...(lineChanges.length > 0 ? ['line'] : [])
+                ...(lineChanges.length > 0 ? [intent.assignmentMode === 'room' ? 'room' : 'line'] : [])
             ]
         };
     }
@@ -452,7 +506,9 @@
             const blocker = (allBookings || []).find(other => {
                 if (!other || excludeIds.has(idOf(other.id))) return false;
                 if (other.status === 'cancelled') return false;
-                if (!sameLine(other.lineId, candidate.next.lineId)) return false;
+                if (intent.assignmentMode === 'room') {
+                    if (!sameLine(other.room, candidate.next.room)) return false;
+                } else if (!sameLine(other.lineId, candidate.next.lineId)) return false;
                 if (candidate.next.date && other.date && String(other.date) !== String(candidate.next.date)) return false;
                 const otherStart = timeToMinutesValue(other.time);
                 const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
@@ -479,7 +535,9 @@
             pauseWarning = (allBookings || []).find(other => {
                 if (!other || excludeIds.has(idOf(other.id))) return false;
                 if (other.status === 'cancelled') return false;
-                if (!sameLine(other.lineId, candidate.next.lineId)) return false;
+                if (intent.assignmentMode === 'room') {
+                    if (!sameLine(other.room, candidate.next.room)) return false;
+                } else if (!sameLine(other.lineId, candidate.next.lineId)) return false;
                 const otherStart = timeToMinutesValue(other.time);
                 const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
                 const gap = Math.max(otherStart - end, start - otherEnd);

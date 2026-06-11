@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.12 - Room-First Timeline
+
+### Timeline / Rooms / Банкетний workspace / Drag safety / Migration / (Клешня, 12.06.2026) [codex]
+- **Додано альтернативний вигляд таймлайну `Кімнати`** - API приймає `timelineView=rooms|animators`, а `/api/lines/:date?timelineView=rooms` повертає кімнати як рядки таймлайну без зміни старого animator-контракту.
+- **Бронювання у room-view проєктуються по кімнаті** - `/api/bookings/:date?timelineView=rooms` показує root-броні один раз, не дублює технічні `linked_to` другого аніматора і додає `resourceId/resourceType` для кімнатного render path.
+- **Room drag змінює тільки кімнату** - вертикальне перетягування у вигляді `Кімнати` патчить `room`, не чіпає `line_id`, синхронізує linked-рядки і зберігає часовий зсув технічних бронювань.
+- **Банкет без активної програми має службову лінію** - room-first форма може створити кімнатне/банкетне бронювання через `banquet-service`, а активна програма вимагає окремо вибраного аніматора.
+- **Кімнати засіяні як durable timeline resources** - міграція `263_event_genix_room_timeline_resources.sql` idempotent-додає Event Genix кімнати у `timeline_resources`, а API має fallback на поточний список кімнат.
+- **Regression guards додано** - route/unit/UI smoke перевіряють room projection, `timelineView` в API, room-only drag payload, atomic sync linked-броней і нову booking drawer поведінку.
+- **Релізні маркери піднято до `0.75.12`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.11 - LEAD ON: deploy branch guardrails
 
 ### LEAD ON / Deploy branch / Release proof / Health diagnostics / Runbook / (Клешня, 11.06.2026) [codex]

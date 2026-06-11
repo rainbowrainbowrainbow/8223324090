@@ -44,6 +44,7 @@ function minutesToTime(minutes) {
 const MIN_PAUSE = 15;
 const VALID_BOOKING_STATUSES = Object.freeze(['confirmed', 'preliminary', 'cancelled']);
 const BOOKING_CONFLICT_LOCK_NAMESPACE = 'booking_conflict_v1';
+const BANQUET_SERVICE_LINE_ID = 'banquet-service';
 
 const ALL_ROOMS = [
     'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
@@ -67,7 +68,7 @@ function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAUL
     if (!date) return keys;
 
     const lineId = bookingConflictLockPart(booking.lineId || booking.line_id || booking.resourceId || booking.resource_id);
-    if (lineId) keys.add(`line:${context}:${date}:${lineId}`);
+    if (lineId && lineId !== BANQUET_SERVICE_LINE_ID) keys.add(`line:${context}:${date}:${lineId}`);
 
     const room = bookingConflictLockPart(booking.room);
     if (room && room !== 'інше' && room !== 'other') keys.add(`room:${context}:${date}:${room}`);
@@ -119,6 +120,9 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
 }
 
 async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    if (bookingConflictLockPart(lineId) === BANQUET_SERVICE_LINE_ID) {
+        return { overlap: false, noPause: false, conflictWith: null };
+    }
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, lineId, context, excludeId] : [date, lineId, context];
     const result = await client.query(
@@ -409,7 +413,7 @@ function getKyivTimeStr() {
 
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
-    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
+    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES, BANQUET_SERVICE_LINE_ID,
     normalizeBookingStatus, lockBookingConflictResources,
     checkRoomConflict, checkServerConflicts, checkServerDuplicate,
     mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,

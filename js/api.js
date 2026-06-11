@@ -1327,10 +1327,21 @@ async function apiGetBookings(date, options = {}) {
         }
         const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
         if (handleAuthError(response)) return null;
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            const error = apiErrorFromPayload({ ...payload, status: response.status }, `Bookings API error ${response.status}`);
+            error.url = `${API_BASE}${path}`;
+            throw error;
+        }
         return await response.json();
     } catch (err) {
-        console.error('API getBookings error:', err);
+        console.error('API getBookings error:', {
+            message: err?.message,
+            status: err?.status || null,
+            requestId: err?.requestId || null,
+            url: err?.url || null
+        });
+        if (options.throwOnError) throw err;
         // v7.0.1: Return null on error so cache layer can preserve existing data
         return null;
     }

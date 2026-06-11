@@ -1687,6 +1687,7 @@ function buildLeadNotes(analysis, bundle) {
     analysis?.summary ? `AI summary: ${analysis.summary}` : null,
     lead.programPreferences ? `Побажання: ${lead.programPreferences}` : null,
     lead.budget ? `Бюджет: ${lead.budget} грн` : null,
+    analysis?.nextBestQuestion ? `Наступне питання: ${analysis.nextBestQuestion}` : null,
     analysis?.scenario?.label ? `Сценарій: ${analysis.scenario.label}` : null,
     analysis?.leadScore ? `AI score: ${analysis.leadScore.score}/100 (${analysis.leadScore.label})` : null,
     materials ? `Рекомендовані матеріали: ${materials}` : null,
@@ -1728,10 +1729,6 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
     qualityCategory: lead.qualityCategory || EVENT_TYPE_TO_QUALITY[lead.eventType] || null,
     eventType: lead.eventType || null,
     budget: lead.budget || null,
-    customerCardNotes: [
-      lead.programPreferences ? `Побажання: ${lead.programPreferences}` : null,
-      analysis?.nextBestQuestion ? `Наступне питання: ${analysis.nextBestQuestion}` : null,
-    ].filter(Boolean).join('\n') || null,
   };
 }
 
@@ -1752,13 +1749,13 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
     const result = await client.query(
       `INSERT INTO leads
          (business_context, client_name, phone, instagram, source, source_channel, external_id,
-          program_id, event_date, children_count, child_age, notes, status, pipeline_stage, lead_type,
+          program_id, event_date, children_count, potential_value, child_age, notes, status, pipeline_stage, lead_type,
           quality_category, celebrants, raw_payload)
-       VALUES
-         ($1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11, $12, 'new', 'new', $13,
-          $14, $15::jsonb, $16::jsonb)
-       RETURNING *`,
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7,
+           $8, $9, $10, $11, $12, $13, 'new', 'new', $14,
+           $15, $16::jsonb, $17::jsonb)
+        RETURNING *`,
       [
         draft.businessContext,
         draft.clientName,
@@ -1770,6 +1767,7 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
         draft.programId,
         draft.eventDate,
         draft.childrenCount,
+        draft.budget,
         draft.childAge,
         draft.notes,
         draft.leadType,
@@ -1790,30 +1788,6 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
       ]
     );
     const lead = result.rows[0];
-
-    await client.query('SAVEPOINT omni_lead_customer_card');
-    try {
-      await client.query(
-        `INSERT INTO customer_cards
-           (business_context, lead_id, event_type, event_date, children_count, budget_approx, channel, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT DO NOTHING`,
-        [
-          draft.businessContext,
-          lead.id,
-          draft.eventType,
-          draft.eventDate,
-          draft.childrenCount,
-          draft.budget,
-          draft.sourceChannel,
-          draft.customerCardNotes,
-        ]
-      );
-      await client.query('RELEASE SAVEPOINT omni_lead_customer_card');
-    } catch (err) {
-      await client.query('ROLLBACK TO SAVEPOINT omni_lead_customer_card');
-      log.warn('Customer card create skipped for Omni lead', { leadId: lead.id, message: err.message });
-    }
 
     await markConversationLead(bundle.conversation.id, lead.id, analysis, client);
 

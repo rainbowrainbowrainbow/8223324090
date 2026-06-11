@@ -344,6 +344,17 @@ function createFakePool() {
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
             }
+            if (/SELECT version FROM schema_migrations WHERE version = ANY\(\$1::text\[\]\)/i.test(text)) {
+                return { rows: (params[0] || []).map(version => ({ version })) };
+            }
+            if (/FROM information_schema\.columns/i.test(text)) {
+                const values = Array.isArray(params) ? params : [];
+                const rows = [];
+                for (let i = 0; i < values.length; i += 2) {
+                    rows.push({ table_name: values[i], column_name: values[i + 1] });
+                }
+                return { rows };
+            }
             if (/SELECT COUNT\(\*\)::int as c FROM users/i.test(text)) {
                 return { rows: [{ c: 2 }] };
             }
@@ -1482,6 +1493,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(health.data.releaseLabel, pkg.eventGenix.releaseLabel);
         assert.equal(health.data.status, 'ok');
         assert.equal(health.data.database, 'connected');
+        assert.equal(health.data.schema.status, 'ok');
     });
 
     it('keeps public landing demo validation available without JWT', async () => {
@@ -1642,6 +1654,27 @@ describe('route-level API safety smoke', () => {
         assert.equal(rawPayload.page, 'https://www.maisterniadoli.com/');
         assert.deepEqual(rawPayload.contact_channels, ['site_form', 'whatsapp']);
         assert.deepEqual(rawPayload.utm, { source: 'google', medium: 'cpc', campaign: 'natal' });
+    });
+
+    it('creates a new website lead for repeat phone submissions without external_id', async () => {
+        const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_site', {
+            name: 'Repeat Phone Lead',
+            contact: '+380501112255',
+            message: 'New inquiry from the same phone'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+
+        const phoneLookup = queries.find(q => /regexp_replace\(COALESCE\(phone/i.test(q.text));
+        assert.equal(phoneLookup, undefined, 'webhook dedup must not merge repeat leads by phone');
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[2], '+380501112255');
+        assert.equal(insert.params[6], null);
     });
 
     it('validates universal website leads in dry-run mode without writing to the CRM', async () => {

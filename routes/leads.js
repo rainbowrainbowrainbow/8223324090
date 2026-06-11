@@ -699,10 +699,8 @@ function normalizeUniversalWebhookPayload(body = {}, sourceChannel = 'universal'
     const message = firstClean(normalizedBody.message, normalizedBody.comment, normalizedBody.notes, normalizedBody.description);
     const externalId = firstClean(normalizedBody.external_id, normalizedBody.externalId, normalizedBody.lead_id, normalizedBody.leadId);
     const contactChannels = normalizeTextList(normalizedBody.contact_channels ?? normalizedBody.contactChannels ?? normalizedBody.channels);
-    const phoneDigits = normalizeDigits(phone);
     const fallbackExternalId = externalId
-        || (telegramId ? `telegram:${telegramId}` : null)
-        || (phoneDigits ? `${sourceChannel}:${phoneDigits}` : null);
+        || (telegramId ? `telegram:${telegramId}` : null);
     const hasContactSignal = Boolean(name || phone || telegramId || telegramUsername || whatsapp || externalId);
 
     return {
@@ -806,33 +804,6 @@ async function findExistingWebhookLead(payload, businessContext, sourceChannel =
             [businessContext, payload.external_id, sourceChannel]
         );
         if (exact.rows.length > 0) return exact.rows[0];
-    }
-
-    if (payload.telegram_id) {
-        const byTelegram = await pool.query(
-            `SELECT id FROM leads
-             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
-               AND telegram_id = $2::bigint
-               AND COALESCE(status, 'new') NOT IN ('closed','lost')
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [businessContext, payload.telegram_id]
-        );
-        if (byTelegram.rows.length > 0) return byTelegram.rows[0];
-    }
-
-    const phoneDigits = normalizeDigits(payload.phone);
-    if (phoneDigits) {
-        const byPhone = await pool.query(
-            `SELECT id FROM leads
-             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
-               AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2
-               AND COALESCE(status, 'new') NOT IN ('closed','lost')
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [businessContext, phoneDigits]
-        );
-        if (byPhone.rows.length > 0) return byPhone.rows[0];
     }
 
     return null;
@@ -2133,7 +2104,7 @@ router.get('/:id/workspace', async (req, res) => {
                        MIN(b.date) AS real_first_visit,
                        MAX(b.date) AS real_last_visit
                 FROM bookings b
-                WHERE b.status != 'cancelled'
+                WHERE LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'
                   AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
                   ${customerBookingScope.sql}
                 GROUP BY b.customer_id

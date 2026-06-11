@@ -34,6 +34,11 @@ const RESOURCE_TYPE_BY_DISPLAY_MODE = Object.freeze({
 });
 const RESOURCE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
 
+function activeBookingStatusSql(alias = '') {
+    const column = alias ? `${alias}.status` : 'status';
+    return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
+}
+
 function defaultTimelineDisplayMode(context) {
     const key = normalizeTimelineContext(context);
     return key === 'maysternya_doli' || key === 'dar' ? 'simple' : 'park';
@@ -574,14 +579,11 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     }
     const bookings = await db.query(
         `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, c.name AS customer_name
+                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data
            FROM bookings b
-           LEFT JOIN customers c
-             ON c.id = b.customer_id
-            AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
-            AND b.status != 'cancelled'
+            AND ${activeBookingStatusSql('b')}
             AND (b.line_id = ANY($3::text[]) OR b.room = ANY($4::text[]))`,
         [date, context, resourceIds, resourceNames]
     );
@@ -594,7 +596,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         const byName = direct || resources.find(resource => resource.name === booking.room);
         if (!byName) continue;
         if (!String(booking.linked_to || '').trim()) {
-            const customerName = booking.customer_name || booking.group_name || booking.label
+            const customerName = booking.group_name || booking.label
                 || booking.program_name || booking.program_code || booking.id;
             dayBookingsByResource.get(byName.resourceId)?.push({
                 id: booking.id,

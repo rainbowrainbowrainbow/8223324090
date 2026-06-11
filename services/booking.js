@@ -91,6 +91,10 @@ async function lockBookingConflictResources(client, bookings, businessContext = 
     return orderedKeys;
 }
 
+function activeBookingStatusSql(column = 'status') {
+    return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
+}
+
 // --- Conflict checks ---
 
 async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
@@ -98,7 +102,7 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, room, context, excludeId] : [date, room, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
+        `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -118,7 +122,7 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, lineId, context, excludeId] : [date, lineId, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
+        `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -153,7 +157,7 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     const params = excludeId ? [date, programId, context, excludeId] : [date, programId, context];
     // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
-        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND status != 'cancelled'" +
+        `SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
         (excludeId ? ' AND id != $4' : ''),
         params
     );
@@ -350,8 +354,8 @@ async function cleanupLegacyDefaultAnimatorLines(date, db = pool) {
                 WHERE b.date = l.date
                   AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
                   AND b.line_id = l.line_id
-                  AND b.status != 'cancelled'
-           )
+                  AND ${activeBookingStatusSql('b.status')}
+            )
            AND NOT EXISTS (
                 SELECT 1 FROM afisha a
                 WHERE a.date = l.date

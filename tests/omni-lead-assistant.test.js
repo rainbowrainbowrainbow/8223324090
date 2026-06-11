@@ -156,7 +156,8 @@ test('builds a lead insert draft linked to the Omni conversation', () => {
     assert.equal(draft.externalId, 'omni_conv_77');
     assert.equal(draft.businessContext, 'event_genix');
     assert.match(draft.notes, /OmniClaw розмови #77/);
-    assert.match(draft.customerCardNotes, /квест/);
+    assert.match(draft.notes, /квест/);
+    assert.equal(Object.hasOwn(draft, 'customerCardNotes'), false);
 });
 
 test('builds an Omni follow-up task draft from lead analysis', () => {

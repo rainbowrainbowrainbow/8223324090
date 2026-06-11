@@ -160,7 +160,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(business_context, date, line_id\)/);
         assert.match(bookingService, /function cleanupLegacyDefaultAnimatorLines/);
         assert.match(bookingService, /LOWER\(TRIM\(l\.name\)\) ~ '\^аніматор\[\[:space:\]\]\+\[0-9\]\+\$'/);
-        assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM bookings b[\s\S]*b\.status != 'cancelled'/);
+        assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM bookings b[\s\S]*activeBookingStatusSql\('b\.status'\)/);
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM afisha a/);
         assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
         assert.match(linesRoute, /X-Timeline-Lines-Source/);

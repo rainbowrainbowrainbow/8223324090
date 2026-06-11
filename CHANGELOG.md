@@ -4,6 +4,20 @@
 
 ---
 
+## v0.75.7 - LEAD ON: стабілізація таймлайна і лідів
+
+### LEAD ON / Таймлайн / Ліди / Schema diagnostics / Hotfix / Branch / (Клешня, 11.06.2026) [codex]
+- **Порожній таймлайн більше не маскує API-помилку як “немає бронювань”** - якщо `GET /api/bookings/:date` повертає помилку, UI показує окремий стан з кодом, request id і кнопкою повтору, а не малює порожню сітку.
+- **Активні бронювання стали null-safe у критичних timeline SQL** - `NULL` або порожній `bookings.status` трактуються як `confirmed` у списку броней, конфліктах, вільних кімнатах, ресурсах і linked/room перевірках; окремо виправлено невалідний виклик `BTRIM(b)` на `b.status`.
+- **Вільні кімнати й ресурси більше не залежать від `customers` join** - day-booking metadata збирається з `bookings`, щоб schema drift у клієнтах не ламав селектори кімнат і доступність.
+- **Production schema drift видно в health check** - `/api/health` повертає `schema.status`, відсутні міграції та колонки для ключових таблиць лідів/бронювань, щоб Railway не виглядав “здоровим”, коли SQL-контракт неповний.
+- **Повторні website-заявки не злипаються лише по телефону** - universal webhook більше не генерує fallback `external_id` з номера телефону; без реального `external_id` нова заявка стає новим лідом.
+- **Omni lead assistant пише в canonical leads/customers flow** - потенційна сума й нотатки йдуть у `leads`, без активного створення legacy `customer_cards`.
+- **Regression guard оновлено** - route/unit/UI smoke перевіряють явний error state таймлайна, repeat-phone webhook, schema health diagnostics, відсутність активного `customer_cards` insert і null-safe booking predicates.
+- **Релізні маркери піднято до `0.75.7`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.6 - LEAD ON: броні без customer join
 
 ### LEAD ON / Таймлайн / Бронювання / SQL fail-safe / Hotfix / Deploy / (Клешня, 11.06.2026) [codex]

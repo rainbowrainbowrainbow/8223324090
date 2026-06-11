@@ -655,6 +655,31 @@ window.addEventListener('timeline:business-context-changed', event => {
     });
 });
 
+function timelineDataErrorText(error, fallback = 'Не вдалося завантажити дані таймлайна') {
+    const parts = [
+        error?.message || fallback,
+        error?.status ? `HTTP ${error.status}` : '',
+        error?.requestId ? `код ${error.requestId}` : ''
+    ].filter(Boolean);
+    return parts.join(' · ');
+}
+
+function renderTimelineDataError(container, error, date) {
+    if (!container) return;
+    const safe = typeof escapeHtml === 'function' ? escapeHtml : value => String(value ?? '');
+    container.innerHTML = `
+        <div class="timeline-data-error" role="alert">
+            <div class="timeline-data-error__title">Не вдалося завантажити бронювання</div>
+            <div class="timeline-data-error__body">${safe(timelineDataErrorText(error, 'API бронювань повернув помилку'))}</div>
+            <button type="button" class="timeline-data-error__retry">Повторити</button>
+        </div>
+    `;
+    container.querySelector('.timeline-data-error__retry')?.addEventListener('click', () => {
+        invalidateTimelineDateCache(timelineDateKey(date), { lines: false, bookings: true });
+        renderTimeline();
+    });
+}
+
 async function renderTimeline() {
     const thisGen = ++_renderGen;
     if (typeof normalizeTimelineModeState === 'function') {
@@ -695,13 +720,25 @@ async function renderTimeline() {
 
     // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
+    let bookingFetchError = null;
     try {
         const [linesResult, bookingsResult, afishaResult] = await Promise.all([
             getLinesForDate(selectedDate).catch(e => { console.error('[Timeline] getLinesForDate error:', e); return []; }),
-            getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; }),
+            getBookingsForDate(selectedDate).catch(e => {
+                bookingFetchError = e;
+                console.error('[Timeline] getBookingsForDate error:', e);
+                return null;
+            }),
             showAfisha ? apiGetAfishaByDate(formatDate(selectedDate)).catch(() => []) : Promise.resolve([])
         ]);
         lines = normalizeTimelineLinesForContext(Array.isArray(linesResult) ? linesResult : []);
+        if (bookingFetchError && !Array.isArray(bookingsResult)) {
+            renderTimelineDataError(container, bookingFetchError, selectedDate);
+            if (typeof normalizeTimelineToolbarTransientState === 'function') {
+                normalizeTimelineToolbarTransientState('render-error');
+            }
+            return;
+        }
         bookings = normalizeTimelineBookingsForContext(Array.isArray(bookingsResult) ? bookingsResult : []);
         afishaEvents = Array.isArray(afishaResult) ? afishaResult : [];
         AppState.lines = lines;
@@ -3919,16 +3956,20 @@ async function getBookingsForDate(date, options = {}) {
     if (!options.force && cached && (Date.now() - cached.ts) < CACHE_TTL) {
         return cached.data;
     }
-    const bookings = await apiGetBookings(dateStr, { fresh: options.force === true });
+    const bookings = await apiGetBookings(dateStr, { fresh: options.force === true, throwOnError: true });
     // v7.0.1: If API errored (null), preserve cached data instead of caching empty
     if (bookings === null) {
         if (cached) return cached.data;
-        return [];
+        const error = new Error('API бронювань не повернув дані');
+        error.status = null;
+        error.requestId = null;
+        throw error;
     }
     if (!Array.isArray(bookings)) {
-        console.warn('[Timeline] Bookings API returned a non-array payload; keeping timeline render safe');
+        const error = new Error('API бронювань повернув неочікуваний формат');
+        console.warn('[Timeline] Bookings API returned a non-array payload; keeping cached data if possible');
         if (cached && Array.isArray(cached.data)) return cached.data;
-        return [];
+        throw error;
     }
     setTimelineCacheEntry(AppState.cachedBookings, dateStr, bookings);
     return bookings;

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.6">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.6">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.6">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.6">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.6">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.6">
-    <link rel="stylesheet" href="css/features.css?v=0.75.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.6">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.6">
+    <link rel="stylesheet" href="css/base.css?v=0.75.7">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.7">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.7">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.7">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.7">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.7">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.7">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.7">
+    <link rel="stylesheet" href="css/features.css?v=0.75.7">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.7">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.7">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.7">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.6">✨ 0.75.6</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.7">✨ 0.75.7</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.6 — LEAD ON: броні без customer join</p>
+                <p class="tagline">AI First CRM v0.75.7 — LEAD ON: стабілізація таймлайна і лідів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.6</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.7</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1646,6 +1646,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.75.7 — LEAD ON: стабілізація таймлайна і лідів</h4>
+                    <ul>
+                        <li><b>Порожній таймлайн більше не ховає API-помилки</b> — якщо запит бронювань падає, інтерфейс показує код, request id і кнопку повтору, а не порожню сітку.</li>
+                        <li><b>Активні бронювання стали null-safe</b> — порожній <code>status</code> знову вважається активним у списку броней, конфліктах, кімнатах і ресурсах; невалідний <code>BTRIM(b)</code> виправлено на <code>b.status</code>.</li>
+                        <li><b>Селектори кімнат не залежать від <code>customers</code></b> — day-booking підписи беруться з <code>bookings</code>, щоб schema drift не ламав доступність кімнат.</li>
+                        <li><b><code>/api/health</code> показує schema diagnostics</b> — health check тепер видно, якщо на Railway немає потрібних міграцій або колонок.</li>
+                        <li><b>Повторні website-заявки не злипаються лише по телефону</b> — без реального <code>external_id</code> нова заявка створює нового ліда.</li>
+                        <li><b>Omni пише в canonical lead flow</b> — потенційна сума й нотатки йдуть у <code>leads</code>, без активного запису в legacy <code>customer_cards</code>.</li>
+                        <li><b>Релізні маркери піднято до <code>0.75.7</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.75.6 — LEAD ON: броні без customer join</h4>
                     <ul>
@@ -12427,29 +12439,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.6"></script>
-    <script src="js/timeline-visibility.js?v=0.75.6"></script>
-    <script src="js/config.js?v=0.75.6"></script>
-    <script src="js/api.js?v=0.75.6"></script>
-    <script src="js/ui.js?v=0.75.6"></script>
-    <script src="js/auth.js?v=0.75.6"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.6"></script>
-    <script src="js/timeline.js?v=0.75.6"></script>
-    <script src="js/booking.js?v=0.75.6"></script>
-    <script src="js/settings.js?v=0.75.6"></script>
-    <script src="js/booking-form.js?v=0.75.6"></script>
-    <script src="js/booking-linked.js?v=0.75.6"></script>
-    <script src="js/settings-dashboard.js?v=0.75.6"></script>
-    <script src="js/settings-history.js?v=0.75.6"></script>
-    <script src="js/settings-afisha.js?v=0.75.6"></script>
-    <script src="js/settings-certificates.js?v=0.75.6"></script>
-    <script src="js/offline.js?v=0.75.6"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.6"></script>
-    <script src="js/search.js?v=0.75.6"></script>
-    <script src="js/ws.js?v=0.75.6"></script>
-    <script src="js/app.js?v=0.75.6"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.6"></script>
-    <script src="js/components/sidebar.js?v=0.75.6"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.6"></script>
+    <script src="js/timeline-context.js?v=0.75.7"></script>
+    <script src="js/timeline-visibility.js?v=0.75.7"></script>
+    <script src="js/config.js?v=0.75.7"></script>
+    <script src="js/api.js?v=0.75.7"></script>
+    <script src="js/ui.js?v=0.75.7"></script>
+    <script src="js/auth.js?v=0.75.7"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.7"></script>
+    <script src="js/timeline.js?v=0.75.7"></script>
+    <script src="js/booking.js?v=0.75.7"></script>
+    <script src="js/settings.js?v=0.75.7"></script>
+    <script src="js/booking-form.js?v=0.75.7"></script>
+    <script src="js/booking-linked.js?v=0.75.7"></script>
+    <script src="js/settings-dashboard.js?v=0.75.7"></script>
+    <script src="js/settings-history.js?v=0.75.7"></script>
+    <script src="js/settings-afisha.js?v=0.75.7"></script>
+    <script src="js/settings-certificates.js?v=0.75.7"></script>
+    <script src="js/offline.js?v=0.75.7"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.7"></script>
+    <script src="js/search.js?v=0.75.7"></script>
+    <script src="js/ws.js?v=0.75.7"></script>
+    <script src="js/app.js?v=0.75.7"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.7"></script>
+    <script src="js/components/sidebar.js?v=0.75.7"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.7"></script>
 </body>
 </html>

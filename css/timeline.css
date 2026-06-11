@@ -2031,3 +2031,37 @@ body.timeline-constructor-active .timeline-constructor-disabled {
         margin-bottom: 10px;
     }
 }
+
+.timeline-data-error {
+    margin: 18px;
+    padding: 18px;
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    border-radius: 8px;
+    background: rgba(127, 29, 29, 0.22);
+    color: #fee2e2;
+    max-width: 560px;
+}
+
+.timeline-data-error__title {
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.timeline-data-error__body {
+    color: #fecaca;
+    font-size: 14px;
+    line-height: 1.35;
+    margin-bottom: 12px;
+}
+
+.timeline-data-error__retry {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid rgba(45, 212, 191, 0.45);
+    border-radius: 6px;
+    background: rgba(20, 184, 166, 0.18);
+    color: #ccfbf1;
+    font-weight: 800;
+    cursor: pointer;
+}

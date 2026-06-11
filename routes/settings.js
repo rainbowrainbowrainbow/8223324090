@@ -52,6 +52,77 @@ const {
 const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Settings');
 
+function activeBookingStatusSql(alias = '') {
+    const column = alias ? `${alias}.status` : 'status';
+    return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
+}
+
+const REQUIRED_SCHEMA_MIGRATIONS = Object.freeze([
+    '216_booking_banquet_links',
+    '260_leads_kanban_position',
+    '261_leads_customer_card_canonical_customers',
+    '262_leads_customer_links_and_value'
+]);
+
+const REQUIRED_SCHEMA_COLUMNS = Object.freeze([
+    ['bookings', 'business_context'],
+    ['bookings', 'customer_id'],
+    ['booking_banquet_links', 'relation_type'],
+    ['customers', 'business_context'],
+    ['customer_cards', 'business_context'],
+    ['leads', 'business_context'],
+    ['leads', 'kanban_position'],
+    ['leads', 'potential_value'],
+    ['lead_customer_links', 'business_context'],
+    ['lead_customer_links', 'lead_id'],
+    ['lead_customer_links', 'customer_id'],
+    ['lead_customer_links', 'link_type']
+]);
+
+async function getRuntimeSchemaDiagnostics() {
+    const diagnostics = {
+        status: 'ok',
+        migrations: {},
+        columns: {},
+        missing: []
+    };
+    try {
+        const migrationResult = await pool.query(
+            'SELECT version FROM schema_migrations WHERE version = ANY($1::text[])',
+            [REQUIRED_SCHEMA_MIGRATIONS]
+        );
+        const applied = new Set(migrationResult.rows.map(row => String(row.version || '')));
+        for (const version of REQUIRED_SCHEMA_MIGRATIONS) {
+            const ok = applied.has(version);
+            diagnostics.migrations[version] = ok;
+            if (!ok) diagnostics.missing.push(`migration:${version}`);
+        }
+
+        const columnResult = await pool.query(
+            `SELECT table_name, column_name
+               FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND (table_name, column_name) IN (
+                    ${REQUIRED_SCHEMA_COLUMNS.map((_, index) => `($${index * 2 + 1}, $${index * 2 + 2})`).join(', ')}
+                )`,
+            REQUIRED_SCHEMA_COLUMNS.flat()
+        );
+        const existingColumns = new Set(columnResult.rows.map(row => `${row.table_name}.${row.column_name}`));
+        for (const [table, column] of REQUIRED_SCHEMA_COLUMNS) {
+            const key = `${table}.${column}`;
+            const ok = existingColumns.has(key);
+            diagnostics.columns[key] = ok;
+            if (!ok) diagnostics.missing.push(`column:${key}`);
+        }
+
+        diagnostics.status = diagnostics.missing.length ? 'degraded' : 'ok';
+    } catch (err) {
+        diagnostics.status = 'error';
+        diagnostics.error = err.message;
+    }
+    return diagnostics;
+}
+
 // v39.8: Move version + health BEFORE auth (must be public)
 // Duplicates removed from below auth wall
 
@@ -71,8 +142,11 @@ router.get('/health', async (req, res) => {
         checks.dbLatency = (Date.now() - start) + 'ms';
         checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
     } catch (err) { checks.database = 'error: ' + err.message; }
+    checks.schema = checks.database === 'connected'
+        ? await getRuntimeSchemaDiagnostics()
+        : { status: 'unknown', missing: [] };
     try { const uc = await pool.query('SELECT COUNT(*)::int as c FROM users'); checks.userCount = uc.rows[0].c; } catch {}
-    checks.status = checks.database === 'connected' ? 'ok' : 'degraded';
+    checks.status = checks.database === 'connected' && checks.schema.status === 'ok' ? 'ok' : 'degraded';
     res.json(checks);
 });
 
@@ -230,7 +304,7 @@ router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), async
              WHERE b.date >= $1 AND b.date <= $2
                AND b.business_context = $3
                AND b.linked_to IS NULL
-               AND b.status != 'cancelled'
+               AND ${activeBookingStatusSql('b')}
                ${visibility.sql}
              ORDER BY b.date, b.time`,
             params
@@ -555,12 +629,9 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
             `SELECT b.id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                    b.group_name, b.linked_to, c.name AS customer_name
+                    b.group_name, b.linked_to
              FROM bookings b
-             LEFT JOIN customers c
-               ON c.id = b.customer_id
-              AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
-             WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND ${activeBookingStatusSql('b')}
              ${visibility.sql}`,
             params
         );
@@ -585,7 +656,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
             if (excludeId && String(b.id || '') === excludeId) continue;
             if (!b.room || String(b.linked_to || '').trim()) continue;
             if (!dayBookingsByRoom[b.room]) dayBookingsByRoom[b.room] = [];
-            const customerName = b.customer_name || b.group_name || b.label || b.program_name || b.program_code || b.id;
+            const customerName = b.group_name || b.label || b.program_name || b.program_code || b.id;
             dayBookingsByRoom[b.room].push({
                 id: b.id,
                 time: b.time,

@@ -86,6 +86,11 @@ function bookingContextSql(alias = '', placeholder = '$1') {
     return `${bookingContextColumnSql(column)} = ${placeholder}`;
 }
 
+function bookingActiveStatusSql(alias = '') {
+    const column = alias ? `${alias}.status` : 'status';
+    return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
+}
+
 async function getScopedBookingById(queryable, id, businessContext, { forUpdate = false } = {}) {
     const result = await queryable.query(
         `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}${forUpdate ? ' FOR UPDATE' : ''}`,
@@ -115,13 +120,13 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
     try {
         const result = await queryable.query(
             `SELECT b.id
-               FROM bookings b
-              WHERE b.date = $1
-                AND ${bookingContextSql('b', '$2')}
-                AND b.id = $3
-                AND b.status != 'cancelled'
-                ${visibility}
-              LIMIT 1`,
+                FROM bookings b
+               WHERE b.date = $1
+                 AND ${bookingContextSql('b', '$2')}
+                 AND b.id = $3
+                 AND ${bookingActiveStatusSql('b')}
+                 ${visibility}
+               LIMIT 1`,
             params
         );
         return {
@@ -213,7 +218,7 @@ async function assertDurableCreatedBookings(queryable, ids, businessContext, lab
            FROM bookings b
           WHERE b.id = ANY($1::text[])
             AND ${bookingContextSql('b', '$2')}
-            AND b.status != 'cancelled'`,
+            AND ${bookingActiveStatusSql('b')}`,
         [orderedIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     const rowsById = new Map(result.rows.map(row => [String(row.id), row]));
@@ -880,7 +885,7 @@ async function createSharedRoomActivityLinks(client, businessContext, bookingRow
               WHERE date = $1
                 AND room = $2
                 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $3
-                AND status != 'cancelled'
+                AND ${bookingActiveStatusSql()}
                 AND id <> $4
                 AND NULLIF(COALESCE(linked_to, ''), '') IS NULL
               ORDER BY time ASC, id ASC`,
@@ -1065,7 +1070,7 @@ async function validateEducationLessonTeacherConflict(queryable, payload, busine
          FROM bookings
          WHERE date = $1
            AND ${bookingContextSql('', '$2')}
-           AND status != 'cancelled'
+           AND ${bookingActiveStatusSql()}
            AND id != ALL($3::text[])
            AND (${filters.join(' OR ')})`,
         params
@@ -1228,7 +1233,7 @@ async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND line_id = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled'
+         WHERE date = $1 AND line_id = $2 AND ${bookingContextSql('', '$3')} AND ${bookingActiveStatusSql()}
            AND id != ALL($4::text[])`,
         [candidate.date, candidate.line_id, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
@@ -1246,7 +1251,7 @@ async function findAtomicRoomConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled'
+         WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND ${bookingActiveStatusSql()}
            AND id != ALL($4::text[])`,
         [candidate.date, candidate.room, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
@@ -1301,7 +1306,7 @@ router.get('/occupancy', async (req, res) => {
             FROM bookings b
             WHERE b.date::date >= $1::date AND b.date::date <= $2::date
               AND ${bookingContextSql('b', '$3')}
-              AND b.status != 'cancelled' AND b.linked_to IS NULL
+              AND ${bookingActiveStatusSql('b')} AND b.linked_to IS NULL
               ${visibility}
             GROUP BY b.line_id
         `, params);
@@ -1336,7 +1341,7 @@ router.get('/education-series/:seriesId', async (req, res) => {
                FROM bookings b
               WHERE ${educationSeriesSql('b', '$1')}
                 AND ${bookingContextSql('b', '$2')}
-                ${req.query.includeCancelled === 'true' ? '' : "AND b.status != 'cancelled'"}
+                ${req.query.includeCancelled === 'true' ? '' : `AND ${bookingActiveStatusSql('b')}`}
                 ${visibility}
               ORDER BY b.date, b.time, b.id`,
             params
@@ -1379,7 +1384,7 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
                 SET status = 'cancelled', updated_at = NOW()
               WHERE ${educationSeriesSql('b', '$1')}
                 AND ${bookingContextSql('b', '$2')}
-                AND b.status != 'cancelled'
+                AND ${bookingActiveStatusSql('b')}
                 ${dateFilter}
               RETURNING b.*`,
             params
@@ -1429,7 +1434,7 @@ router.get('/:date', async (req, res) => {
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source
              FROM bookings b
-             WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND LOWER(COALESCE(NULLIF(BTRIM(b.status), ''), 'confirmed')) != 'cancelled'
+             WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND ${bookingActiveStatusSql('b')}
                ${visibility}
              ORDER BY time`,
             params
@@ -3051,7 +3056,7 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             `SELECT * FROM bookings
               WHERE linked_to = $1
                 AND ${bookingContextSql('', '$2')}
-                AND status != 'cancelled'
+                AND ${bookingActiveStatusSql()}
               FOR UPDATE`,
             [id, businessContext]
         );
@@ -3402,7 +3407,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 const roomResult = await client.query(
                     `SELECT id, time, duration, label, program_code
                      FROM bookings
-                     WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND status != 'cancelled' AND id != ALL($4::text[])`,
+                      WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND ${bookingActiveStatusSql()} AND id != ALL($4::text[])`,
                     [b.date, b.room, businessContext, excludeIds]
                 );
                 const newStart = timeToMinutes(b.time);
@@ -3605,7 +3610,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             const linkedResult = await client.query(
                 `SELECT id, line_id, second_animator, program_id, price
                    FROM bookings
-                  WHERE linked_to = $1 AND ${bookingContextSql('', '$2')} AND status != 'cancelled'`,
+                  WHERE linked_to = $1 AND ${bookingContextSql('', '$2')} AND ${bookingActiveStatusSql()}`,
                 [id, businessContext]
             );
             const oldSecond = String(oldBooking.second_animator || '').trim();
@@ -3670,7 +3675,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                         `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5,
                          pinata_filler=$6, pinata_mode=$7, client_pinata_service_price=$8,
                          client_pinata_service_note=$9, pinata_number=$10, pinata_filler_number=$11,
-                           updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')} AND status != 'cancelled'`,
+                           updated_at=NOW() WHERE id=$12 AND ${bookingContextSql('', '$13')} AND ${bookingActiveStatusSql()}`,
                         [b.date, b.time, b.duration, newStatus, b.room, b.pinataFiller, b.pinataMode,
                          b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber,
                          b.pinataFillerNumber, linked.id, businessContext]

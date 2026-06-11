@@ -102,7 +102,7 @@ function makeDb(initialRows) {
             };
         }
 
-        if (/SELECT \* FROM bookings WHERE linked_to = \$1(?: AND (?:business_context|COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)? AND status != 'cancelled' FOR UPDATE/i.test(sql)) {
+        if (/SELECT \* FROM bookings WHERE linked_to = \$1(?: AND (?:business_context|COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)? AND (?:status != 'cancelled'|LOWER\(COALESCE\(NULLIF\(BTRIM\(status\), ''\), 'confirmed'\)\) != 'cancelled') FOR UPDATE/i.test(sql)) {
             const businessContext = params[1];
             return {
                 rows: state.rows.filter(row =>

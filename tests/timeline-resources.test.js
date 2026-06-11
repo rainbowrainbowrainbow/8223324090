@@ -248,9 +248,9 @@ test('resource availability keeps day booking metadata separate from selected-ti
     assert.equal(availability.resources[0].occupied, false);
     assert.deepEqual(availability.resources[0].bookings, []);
     assert.equal(availability.resources[0].dayBookings.length, 2);
-    assert.equal(availability.resources[0].dayBookings[0].customerName, 'Ушакова Ірина');
+    assert.equal(availability.resources[0].dayBookings[0].customerName, 'Lesson A');
     assert.equal(availability.resources[0].dayBookings[1].customerName, 'Група B');
-    assert.match(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
+    assert.doesNotMatch(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {

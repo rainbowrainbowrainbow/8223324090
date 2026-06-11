@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.74.45",
+  "version": "0.75.0",
   "eventGenix": {
-    "releaseLabel": "Ліди: єдина картка клієнта й аудит етапів"
+    "releaseLabel": "LEAD ON"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

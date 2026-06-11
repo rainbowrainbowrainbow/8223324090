@@ -1376,7 +1376,41 @@ router.get('/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         customer = mapCustomerRow(result.rows[0]);
 
-        if (customer.leadId) {
+        try {
+            const linkedLeadsResult = await pool.query(
+                `SELECT l.id, l.pipeline_stage, l.status, l.client_name, l.phone, l.created_at,
+                        lcl.link_type, lcl.source AS link_source, lcl.created_at AS linked_at
+                 FROM lead_customer_links lcl
+                 JOIN leads l ON l.id = lcl.lead_id
+                 WHERE lcl.customer_id = $1
+                   AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                   AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 ORDER BY lcl.updated_at DESC NULLS LAST, lcl.id DESC
+                 LIMIT 20`,
+                [numId, businessContext]
+            );
+            customer.leadLinks = linkedLeadsResult.rows.map(row => ({
+                id: row.id,
+                pipelineStage: row.pipeline_stage || null,
+                status: row.status || null,
+                clientName: row.client_name || null,
+                phone: row.phone || null,
+                linkType: row.link_type || null,
+                linkSource: row.link_source || null,
+                linkedAt: row.linked_at || null,
+                createdAt: row.created_at || null
+            }));
+            const primaryLead = linkedLeadsResult.rows[0] || null;
+            if (primaryLead) {
+                customer.leadId = primaryLead.id;
+                customer.leadPipelineStage = primaryLead.pipeline_stage || null;
+                customer.leadStatus = primaryLead.status || null;
+            }
+        } catch {
+            customer.leadLinks = [];
+        }
+
+        if (!customer.leadPipelineStage && customer.leadId) {
             try {
                 const leadResult = await pool.query(
                     `SELECT id, pipeline_stage, status

@@ -684,13 +684,37 @@ function createFakePool() {
                 return { rows: [{ id: 991 }], rowCount: 1 };
             }
             if (/SELECT id FROM leads/i.test(text) && /external_id = \$2/i.test(text)) {
-                return { rows: params[1] === 'existing-external' ? [{ id: 777 }] : [] };
+                return { rows: params[1] === 'existing-external' && params[2] === 'maysternya_bot' ? [{ id: 777 }] : [] };
             }
             if (/SELECT id FROM leads/i.test(text) && /telegram_id = \$2::bigint/i.test(text)) {
                 return { rows: [] };
             }
             if (/SELECT id FROM leads/i.test(text) && /regexp_replace\(COALESCE\(phone/i.test(text)) {
                 return { rows: [] };
+            }
+            if (/SELECT COUNT\(\*\)::int AS total\s+FROM leads l/i.test(text)) {
+                return { rows: [{ total: 650 }] };
+            }
+            if (/SELECT l\.\*, u\.name AS assigned_name, p\.label AS program_name,\s+COALESCE\(l\.potential_value, latest_card\.budget_approx\) AS budget_approx/i.test(text)) {
+                const limit = Number(params[params.length - 2]) || 100;
+                const offset = Number(params[params.length - 1]) || 0;
+                const count = offset >= 500 ? 150 : Math.min(limit, 500);
+                return {
+                    rows: Array.from({ length: count }, (_, index) => ({
+                        id: offset + index + 1,
+                        business_context: 'event_genix',
+                        client_name: `Lead ${offset + index + 1}`,
+                        phone: '+380000000001',
+                        source: 'instagram',
+                        source_channel: 'instagram',
+                        status: 'new',
+                        pipeline_stage: 'new',
+                        potential_value: 1200,
+                        budget_approx: 1200,
+                        created_at: '2099-05-01T10:00:00Z',
+                        updated_at: '2099-05-02T10:00:00Z'
+                    }))
+                };
             }
             if (/INSERT INTO leads/i.test(text) && /source_channel/i.test(text) && /raw_payload/i.test(text)) {
                 return {
@@ -1026,6 +1050,9 @@ function createFakePool() {
             if (/FROM customers WHERE lead_id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1/i.test(text)) {
                 return { rows: [] };
             }
+            if (/FROM lead_customer_links lcl\s+JOIN customers c ON c\.id = lcl\.customer_id/i.test(text)) {
+                return { rows: [] };
+            }
             if (/FROM customers WHERE COALESCE\(business_context, 'event_genix'\) = \$1 AND \(/i.test(text) && /regexp_replace\(COALESCE\(phone, ''\)/i.test(text)) {
                 return { rows: [] };
             }
@@ -1045,6 +1072,23 @@ function createFakePool() {
                         created_at: '2099-05-02T10:05:00Z',
                         updated_at: '2099-05-02T10:05:00Z'
                     }]
+                };
+            }
+            if (/INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at\)/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 9901,
+                        business_context: params[0],
+                        lead_id: params[1],
+                        customer_id: params[2],
+                        link_type: params[3],
+                        source: params[4],
+                        metadata: params[5] ? JSON.parse(params[5]) : {},
+                        created_by: params[6] || null,
+                        created_at: '2099-05-02T10:05:00Z',
+                        updated_at: '2099-05-02T10:05:00Z'
+                    }],
+                    rowCount: 1
                 };
             }
             if (/SELECT \* FROM packages WHERE is_active = true/i.test(text)) {
@@ -1665,6 +1709,7 @@ describe('route-level API safety smoke', () => {
         assert.ok(lookup);
         assert.equal(lookup.params[0], 'maysternya_doli');
         assert.equal(lookup.params[1], 'existing-external');
+        assert.equal(lookup.params[2], 'maysternya_bot');
 
         const update = queries.find(q => /UPDATE leads/i.test(q.text) && /raw_payload/i.test(q.text));
         assert.ok(update);
@@ -1918,6 +1963,26 @@ describe('route-level API safety smoke', () => {
         assert.equal(users.status, 403);
     });
 
+    it('paginates lead kanban rows beyond the old 200 hard cap and keeps budget metadata', async () => {
+        queries.length = 0;
+        const res = await request('GET', '/api/leads?order=kanban&limit=999&offset=500', undefined, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.leads.length, 150);
+        assert.equal(res.data.leads[0].budget_approx, 1200);
+        assert.deepEqual(res.data.pagination, {
+            total: 650,
+            limit: 500,
+            offset: 500,
+            nextOffset: 650,
+            hasMore: false
+        });
+        const listQuery = queries.find(q => /COALESCE\(l\.potential_value, latest_card\.budget_approx\) AS budget_approx/i.test(q.text));
+        assert.ok(listQuery);
+        assert.equal(listQuery.params.at(-2), 500);
+        assert.equal(listQuery.params.at(-1), 500);
+    });
+
     it('composes the lead manager workspace from the canonical pipeline stage', async () => {
         const res = await request('GET', '/api/leads/501/workspace', undefined, withAuth({}, 'manager'));
         assert.equal(res.status, 200, JSON.stringify(res.data));
@@ -1956,6 +2021,11 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
         assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text)));
+        const linkInsert = queries.find(q => /INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at\)/i.test(q.text));
+        assert.ok(linkInsert, 'deal conversion should persist durable lead/customer link');
+        assert.equal(linkInsert.params[1], 501);
+        assert.equal(linkInsert.params[2], 8701);
+        assert.equal(linkInsert.params[3], 'deal_customer');
         const stageLog = queries.find(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text));
         assert.ok(stageLog, 'stage change should be written to lead_interactions');
         assert.equal(stageLog.params[0], 501);

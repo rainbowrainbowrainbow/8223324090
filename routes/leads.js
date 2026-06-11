@@ -87,6 +87,8 @@ const PIPELINE_STAGE_ORDER = [
 
 const VALID_PIPELINE_STAGES = new Set(PIPELINE_STAGE_ORDER);
 const VALID_LEAD_STATUSES = new Set(Object.keys(STATUS_TO_STAGE));
+const LEADS_DEFAULT_LIMIT = 100;
+const LEADS_MAX_LIMIT = 500;
 
 const PIPELINE_STAGE_ORDER_SQL = `CASE COALESCE(l.pipeline_stage, 'new')
     ${PIPELINE_STAGE_ORDER.map((stage, index) => `WHEN '${stage}' THEN ${index + 1}`).join(' ')}
@@ -196,6 +198,18 @@ function parseOptionalPositiveInt(value, fieldName) {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) {
         return { provided: true, error: `${fieldName} повинен бути додатним числом` };
+    }
+
+    return { provided: true, value: parsed };
+}
+
+function parseOptionalNonNegativeInt(value, fieldName) {
+    if (value === undefined) return { provided: false };
+    if (value === null || value === '') return { provided: true, value: null };
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        return { provided: true, error: `${fieldName} повинен бути цілим невідʼємним числом` };
     }
 
     return { provided: true, value: parsed };
@@ -359,6 +373,125 @@ function normalizeLeadPatchStageStatus({ pipelineStage, status }) {
     }
 
     return { stageProvided: false };
+}
+
+function parseLeadListLimit(value) {
+    const parsed = parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) return LEADS_DEFAULT_LIMIT;
+    return Math.min(parsed, LEADS_MAX_LIMIT);
+}
+
+function parseLeadListOffset(value) {
+    const parsed = parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function buildLeadListFilters(query, businessScope) {
+    const { status, assigned_to, source, search, pipeline_stage, lead_type } = query;
+    const conditions = [];
+    const params = [];
+    conditions.push(leadScopeCondition(params, businessScope, 'l'));
+
+    if (pipeline_stage) {
+        const normalizedStage = cleanText(pipeline_stage);
+        if (!normalizedStage || !VALID_PIPELINE_STAGES.has(normalizedStage)) {
+            return { error: 'Некоректний pipeline_stage' };
+        }
+        params.push(normalizedStage);
+        conditions.push(`COALESCE(l.pipeline_stage, 'new') = $${params.length}`);
+    }
+    if (status && !pipeline_stage) {
+        const normalizedStatus = cleanText(status);
+        if (!normalizedStatus || !VALID_LEAD_STATUSES.has(normalizedStatus)) {
+            return { error: 'Некоректний status' };
+        }
+        const matchingStages = PIPELINE_STAGE_ORDER.filter(stage => STAGE_TO_STATUS[stage] === normalizedStatus);
+        if (!matchingStages.includes(STATUS_TO_STAGE[normalizedStatus])) matchingStages.push(STATUS_TO_STAGE[normalizedStatus]);
+        params.push(matchingStages);
+        conditions.push(`COALESCE(l.pipeline_stage, 'new') = ANY($${params.length}::text[])`);
+    }
+    if (assigned_to) {
+        const assignedId = parseInt(assigned_to, 10);
+        if (!Number.isInteger(assignedId)) return { error: 'assigned_to повинен бути числом' };
+        params.push(assignedId);
+        conditions.push(`l.assigned_to = $${params.length}`);
+    }
+    if (source) {
+        params.push(source);
+        conditions.push(`l.source = $${params.length}`);
+    }
+    if (lead_type) {
+        params.push(lead_type);
+        conditions.push(`l.lead_type = $${params.length}`);
+    }
+    if (search) {
+        const pattern = `%${search}%`;
+        params.push(pattern);
+        conditions.push(`(l.client_name ILIKE $${params.length} OR l.phone ILIKE $${params.length} OR l.instagram ILIKE $${params.length})`);
+    }
+    if (query.event_date) {
+        params.push(query.event_date);
+        conditions.push(`l.event_date::date = $${params.length}::date`);
+    }
+
+    return {
+        where: conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '',
+        params
+    };
+}
+
+function leadListOrderSql(order) {
+    return order === 'kanban'
+        ? `ORDER BY ${PIPELINE_STAGE_ORDER_SQL}, l.kanban_position ASC NULLS LAST, l.created_at DESC`
+        : 'ORDER BY l.created_at DESC';
+}
+
+async function fetchLeadList({ businessScope, query = {}, order = query.order, limit, offset }) {
+    const filters = buildLeadListFilters(query, businessScope);
+    if (filters.error) return { error: filters.error };
+
+    const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM leads l
+         ${filters.where}`,
+        filters.params
+    );
+    const total = parseInt(countResult.rows[0]?.total || 0, 10);
+    const effectiveLimit = parseLeadListLimit(limit ?? query.limit);
+    const effectiveOffset = parseLeadListOffset(offset ?? query.offset);
+    const params = [...filters.params, effectiveLimit, effectiveOffset];
+    const limitRef = `$${params.length - 1}`;
+    const offsetRef = `$${params.length}`;
+    const result = await pool.query(`
+        SELECT l.*, u.name AS assigned_name, p.label AS program_name,
+               COALESCE(l.potential_value, latest_card.budget_approx) AS budget_approx
+        FROM leads l
+        LEFT JOIN users u ON l.assigned_to = u.id
+        LEFT JOIN products p ON l.program_id = p.id
+        LEFT JOIN LATERAL (
+            SELECT cc.budget_approx
+            FROM customer_cards cc
+            WHERE cc.lead_id = l.id
+              AND COALESCE(cc.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+              AND cc.budget_approx IS NOT NULL
+            ORDER BY cc.updated_at DESC NULLS LAST, cc.id DESC
+            LIMIT 1
+        ) latest_card ON true
+        ${filters.where}
+        ${leadListOrderSql(order)}
+        LIMIT ${limitRef} OFFSET ${offsetRef}
+    `, params);
+
+    return {
+        leads: result.rows,
+        pagination: {
+            total,
+            limit: effectiveLimit,
+            offset: effectiveOffset,
+            nextOffset: effectiveOffset + result.rows.length,
+            hasMore: effectiveOffset + result.rows.length < total
+        }
+    };
 }
 
 function normalizeTextList(value) {
@@ -662,14 +795,15 @@ function hasLeadContactSignal(payload) {
     return Boolean(payload.contact_signal);
 }
 
-async function findExistingWebhookLead(payload, businessContext) {
+async function findExistingWebhookLead(payload, businessContext, sourceChannel = null) {
     if (payload.external_id) {
         const exact = await pool.query(
             `SELECT id FROM leads
              WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
                AND external_id = $2
+               AND source_channel = $3
              LIMIT 1`,
-            [businessContext, payload.external_id]
+            [businessContext, payload.external_id, sourceChannel]
         );
         if (exact.rows.length > 0) return exact.rows[0];
     }
@@ -705,7 +839,7 @@ async function findExistingWebhookLead(payload, businessContext) {
 }
 
 async function upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes) {
-    const existing = await findExistingWebhookLead(payload, businessContext);
+    const existing = await findExistingWebhookLead(payload, businessContext, sourceChannel);
     if (existing) {
         const update = await pool.query(
             `UPDATE leads
@@ -989,9 +1123,59 @@ function appendUniqueLeadCustomerNote(existingValue, noteValue, leadId) {
     return `${existing}\n${note}`;
 }
 
+async function linkLeadCustomer(queryable, {
+    businessContext = DEFAULT_BUSINESS_CONTEXT,
+    leadId,
+    customerId,
+    linkType = 'customer_card',
+    source = 'lead_customer_flow',
+    userId = null,
+    metadata = {}
+} = {}) {
+    const normalizedLeadId = parseInt(leadId, 10);
+    const normalizedCustomerId = parseInt(customerId, 10);
+    if (!Number.isInteger(normalizedLeadId) || normalizedLeadId <= 0 || !Number.isInteger(normalizedCustomerId) || normalizedCustomerId <= 0) {
+        return null;
+    }
+    const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    const result = await queryable.query(
+        `INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW())
+         ON CONFLICT (business_context, lead_id, customer_id, link_type) DO UPDATE SET
+             source = COALESCE(EXCLUDED.source, lead_customer_links.source),
+             metadata = COALESCE(lead_customer_links.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+             created_by = COALESCE(lead_customer_links.created_by, EXCLUDED.created_by),
+             updated_at = NOW()
+         RETURNING *`,
+        [
+            normalizedBusinessContext,
+            normalizedLeadId,
+            normalizedCustomerId,
+            linkType,
+            source,
+            JSON.stringify(metadata || {}),
+            userId || null
+        ]
+    );
+    return result.rows[0] || null;
+}
+
 async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const leadId = parseInt(lead.id, 10);
     if (Number.isInteger(leadId) && leadId > 0) {
+        const linkResult = await queryable.query(
+            `SELECT c.*
+             FROM lead_customer_links lcl
+             JOIN customers c ON c.id = lcl.customer_id
+             WHERE lcl.lead_id = $1
+               AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+               AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             ORDER BY lcl.updated_at DESC NULLS LAST, lcl.id DESC
+             LIMIT 1`,
+            [leadId, businessContext]
+        );
+        if (linkResult.rows.length) return linkResult.rows[0];
+
         const linked = await queryable.query(
             `SELECT *
              FROM customers
@@ -1030,7 +1214,7 @@ async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAU
     return matched.rows[0] || null;
 }
 
-async function ensureDealCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+async function ensureDealCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT, options = {}) {
     const leadId = parseInt(lead.id, 10);
     if (!Number.isInteger(leadId) || leadId <= 0) return null;
 
@@ -1072,9 +1256,20 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
                 normalizedBusinessContext
             ]
         );
+        const customer = updated.rows[0];
+        const link = await linkLeadCustomer(queryable, {
+            businessContext: normalizedBusinessContext,
+            leadId,
+            customerId: customer?.id,
+            linkType: options.linkType || 'deal_customer',
+            source: options.source || 'deal_stage',
+            userId: options.userId || null,
+            metadata: { mode: existing.lead_id ? 'updated_existing' : 'linked_existing' }
+        });
         return {
             mode: existing.lead_id ? 'updated_existing' : 'linked_existing',
-            customer: updated.rows[0]
+            customer,
+            link
         };
     }
 
@@ -1094,9 +1289,20 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
             JSON.stringify(leadSocialIdentities(lead))
         ]
     );
+    const customer = inserted.rows[0];
+    const link = await linkLeadCustomer(queryable, {
+        businessContext: normalizedBusinessContext,
+        leadId,
+        customerId: customer?.id,
+        linkType: options.linkType || 'deal_customer',
+        source: options.source || 'deal_stage',
+        userId: options.userId || null,
+        metadata: { mode: 'created_new' }
+    });
     return {
         mode: 'created_new',
-        customer: inserted.rows[0]
+        customer,
+        link
     };
 }
 
@@ -1210,7 +1416,7 @@ function buildCustomerCardCompat(lead = {}, customer = null) {
         event_date: lead?.event_date || lead?.eventDate || null,
         guest_count: null,
         children_count: lead?.children_count || lead?.childrenCount || null,
-        budget_approx: null,
+        budget_approx: lead?.potential_value ?? lead?.potentialValue ?? lead?.budget_approx ?? null,
         how_found: lead?.source || null,
         notes: customer?.notes || lead?.notes || null
     };
@@ -1357,70 +1563,11 @@ router.get('/', async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
-        const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type, order } = req.query;
-        const conditions = [];
-        const params = [];
-        conditions.push(leadScopeCondition(params, businessScope, 'l'));
-
-        if (pipeline_stage) {
-            params.push(pipeline_stage);
-            conditions.push(`l.pipeline_stage = $${params.length}`);
+        const result = await fetchLeadList({ businessScope, query: req.query });
+        if (result.error) {
+            return res.status(400).json({ success: false, error: result.error });
         }
-        if (status && !pipeline_stage) {
-            const normalizedStatus = cleanText(status);
-            if (!normalizedStatus || !VALID_LEAD_STATUSES.has(normalizedStatus)) {
-                return res.status(400).json({ success: false, error: 'Некоректний status' });
-            }
-            const matchingStages = PIPELINE_STAGE_ORDER.filter(stage => STAGE_TO_STATUS[stage] === normalizedStatus);
-            if (!matchingStages.includes(STATUS_TO_STAGE[normalizedStatus])) matchingStages.push(STATUS_TO_STAGE[normalizedStatus]);
-            params.push(matchingStages);
-            conditions.push(`COALESCE(l.pipeline_stage, 'new') = ANY($${params.length}::text[])`);
-        }
-        if (assigned_to) {
-            const assignedId = parseInt(assigned_to);
-            if (isNaN(assignedId)) {
-                return res.status(400).json({ success: false, error: 'assigned_to повинен бути числом' });
-            }
-            params.push(assignedId);
-            conditions.push(`l.assigned_to = $${params.length}`);
-        }
-        if (source) {
-            params.push(source);
-            conditions.push(`l.source = $${params.length}`);
-        }
-        if (lead_type) {
-            params.push(lead_type);
-            conditions.push(`l.lead_type = $${params.length}`);
-        }
-        if (search) {
-            const pattern = `%${search}%`;
-            params.push(pattern);
-            conditions.push(`(l.client_name ILIKE $${params.length} OR l.phone ILIKE $${params.length} OR l.instagram ILIKE $${params.length})`);
-        }
-        if (req.query.event_date) {
-            params.push(req.query.event_date);
-            conditions.push(`l.event_date::date = $${params.length}::date`);
-        }
-
-        const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-        const limitVal = Math.min(parseInt(lim) || 50, 200);
-        params.push(limitVal);
-
-        const orderBy = order === 'kanban'
-            ? `ORDER BY ${PIPELINE_STAGE_ORDER_SQL}, l.kanban_position ASC NULLS LAST, l.created_at DESC`
-            : 'ORDER BY l.created_at DESC';
-
-        const result = await pool.query(`
-            SELECT l.*, u.name AS assigned_name, p.label AS program_name
-            FROM leads l
-            LEFT JOIN users u ON l.assigned_to = u.id
-            LEFT JOIN products p ON l.program_id = p.id
-            ${where}
-            ${orderBy}
-            LIMIT $${params.length}
-        `, params);
-
-        res.json({ success: true, leads: result.rows });
+        res.json({ success: true, leads: result.leads, pagination: result.pagination });
     } catch (err) {
         log.error('GET /leads error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження лідів' });
@@ -1539,10 +1686,14 @@ router.patch('/:id', async (req, res) => {
         const updates = [];
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
+        const potentialValue = parseOptionalNonNegativeInt(potential_value, 'potential_value');
         const stageStatus = normalizeLeadPatchStageStatus({ pipelineStage: pipeline_stage, status });
 
         if (assignedTo.error) {
             return res.status(400).json({ success: false, error: assignedTo.error });
+        }
+        if (potentialValue.error) {
+            return res.status(400).json({ success: false, error: potentialValue.error });
         }
         if (stageStatus.error) {
             return res.status(400).json({ success: false, error: stageStatus.error });
@@ -1578,6 +1729,7 @@ router.patch('/:id', async (req, res) => {
         if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
         if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }
         if (source_channel !== undefined) { params.push(source_channel || null); updates.push(`source_channel = $${params.length}`); }
+        if (potentialValue.provided) { params.push(potentialValue.value); updates.push(`potential_value = $${params.length}`); }
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
@@ -1643,7 +1795,11 @@ router.patch('/:id', async (req, res) => {
                 }
             }
             if (shouldEnsureDealCustomer) {
-                dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext);
+                dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext, {
+                    userId: req.user?.id,
+                    source: 'leads.patch',
+                    linkType: 'deal_customer'
+                });
             }
             if (kanbanOrderIds.length) {
                 await persistLeadKanbanOrder(queryable, {
@@ -1682,6 +1838,15 @@ router.patch('/:id', async (req, res) => {
                     const custId = bk.rows[0]?.customer_id;
                     if (!custId) return;
                     const customerSource = normalizeCustomerSource(updatedLead.source || 'lead', { unknownAsNull: false });
+                    await linkLeadCustomer(pool, {
+                        businessContext,
+                        leadId: updatedLead.id,
+                        customerId: custId,
+                        linkType: 'booking_customer',
+                        source: 'lead_booking_sync',
+                        userId: req.user?.id,
+                        metadata: { bookingId: updatedLead.booking_id }
+                    });
                     await pool.query(
                         `UPDATE customers
                          SET source = COALESCE(NULLIF(source, ''), $1),
@@ -1764,7 +1929,7 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
             const linkNotes = appendUniqueLeadCustomerNote(existingCustomer.notes, buildLeadCustomerNotes(lead), leadId);
             const updated = await client.query(
                 `UPDATE customers
-                 SET lead_id = $1,
+                 SET lead_id = CASE WHEN lead_id IS NULL OR lead_id = $1 THEN $1 ELSE lead_id END,
                      phone = COALESCE(NULLIF(phone, ''), $2),
                      instagram = COALESCE(NULLIF(instagram, ''), $3),
                      source = COALESCE(NULLIF(source, ''), $4),
@@ -1788,6 +1953,15 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                 ]
             );
             customer = updated.rows[0];
+            await linkLeadCustomer(client, {
+                businessContext,
+                leadId,
+                customerId: customer.id,
+                linkType: 'operator_link',
+                source: 'leads.link_customer',
+                userId: req.user?.id,
+                metadata: { requestedCustomerId: customer.id }
+            });
         } else if (createNew) {
             const inserted = await client.query(
                 `INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)
@@ -1807,6 +1981,15 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
             );
             customer = inserted.rows[0];
             mode = 'created_new';
+            await linkLeadCustomer(client, {
+                businessContext,
+                leadId,
+                customerId: customer.id,
+                linkType: 'operator_link',
+                source: 'leads.link_customer',
+                userId: req.user?.id,
+                metadata: { createdNew: true }
+            });
         } else {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Передайте customerId або createNew=true' });
@@ -1849,9 +2032,7 @@ router.get('/pipeline', async (req, res) => {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
         const countParams = [];
-        const listParams = [];
         const countScopeSql = leadScopeCondition(countParams, businessScope, '');
-        const listScopeSql = leadScopeCondition(listParams, businessScope, 'l');
         const result = await pool.query(`
             SELECT pipeline_stage, lead_type, COUNT(*) AS count
             FROM leads
@@ -1867,20 +2048,24 @@ router.get('/pipeline', async (req, res) => {
             stages[key] = (stages[key] || 0) + parseInt(r.count);
         }
 
-        // Also return leads per stage for kanban
-        const leadsResult = await pool.query(`
-            SELECT l.id, l.client_name, l.phone, l.lead_type, l.quality_category,
-                   l.pipeline_stage, l.event_date, l.created_at, l.source_channel,
-                   l.business_context,
-                   EXTRACT(EPOCH FROM (NOW() - COALESCE(l.last_contact_at, l.created_at))) / 3600 AS hours_idle
-            FROM leads l
-            WHERE ${listScopeSql}
-              AND l.lead_type NOT IN ('spam')
-            ORDER BY l.created_at DESC
-            LIMIT 300
-        `, listParams);
+        const listResult = await fetchLeadList({
+            businessScope,
+            query: { ...req.query, order: 'kanban', lead_type: req.query.lead_type || undefined },
+            order: 'kanban',
+            limit: req.query.limit || LEADS_MAX_LIMIT,
+            offset: req.query.offset || 0
+        });
+        if (listResult.error) {
+            return res.status(400).json({ success: false, error: listResult.error });
+        }
 
-        res.json({ success: true, pipeline: stages, leads: leadsResult.rows });
+        res.json({
+            success: true,
+            pipeline: stages,
+            leads: listResult.leads,
+            pagination: listResult.pagination,
+            canonicalSource: '/api/leads?order=kanban'
+        });
     } catch (err) {
         log.error('GET /leads/pipeline error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
@@ -1957,6 +2142,14 @@ router.get('/:id/workspace', async (req, res) => {
               AND (
                    ($1::integer IS NOT NULL AND c.id = $1)
                    OR
+                   EXISTS (
+                       SELECT 1
+                       FROM lead_customer_links lcl
+                       WHERE lcl.customer_id = c.id
+                         AND lcl.lead_id = $2
+                         AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+                   )
+                   OR
                    c.lead_id = $2
                    OR ($3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3)
                    OR ($4 <> '' AND lower(regexp_replace(COALESCE(c.instagram, ''), '^@+', '', 'g')) = $4)
@@ -1964,9 +2157,16 @@ router.get('/:id/workspace', async (req, res) => {
             ORDER BY
                 CASE
                     WHEN $1::integer IS NOT NULL AND c.id = $1 THEN 0
-                    WHEN c.lead_id = $2 THEN 1
-                    WHEN $3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3 THEN 2
-                    ELSE 3
+                    WHEN EXISTS (
+                       SELECT 1
+                       FROM lead_customer_links lcl
+                       WHERE lcl.customer_id = c.id
+                         AND lcl.lead_id = $2
+                         AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+                    ) THEN 1
+                    WHEN c.lead_id = $2 THEN 2
+                    WHEN $3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3 THEN 3
+                    ELSE 4
                 END,
                 b_agg.real_last_visit DESC NULLS LAST,
                 c.updated_at DESC
@@ -2271,57 +2471,29 @@ router.delete('/:id', requireMinRole('manager'), async (req, res) => {
 // v23.4.0: Lead Capture Webhooks
 // ============================================================
 
-/** Helper: create lead from webhook data, dedup by phone or external_id */
+/** Compat helper for legacy channel webhooks; canonical dedup/upsert lives in upsertUniversalWebhookLead. */
 async function createLeadFromWebhook({ client_name, phone, telegram_id, instagram,
                                        notes, source_channel, external_id, raw_payload,
                                        businessContext = DEFAULT_BUSINESS_CONTEXT }) {
     businessContext = normalizeBusinessContext(businessContext);
+    const sourceChannel = normalizeWebhookSource(source_channel || 'legacy');
     const isTestMode = process.env.TEST_MODE === 'true';
     if (isTestMode && client_name) client_name = `[TEST] ${client_name}`;
-    // Dedup by phone
-    if (phone) {
-        const dup = await pool.query(
-            `SELECT id FROM leads
-             WHERE phone = $1
-               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
-               AND status NOT IN ('booked','closed','lost')
-             LIMIT 1`,
-            [phone, businessContext]
-        );
-        if (dup.rows.length > 0) {
-            await pool.query(
-                `UPDATE leads
-                   SET notes = COALESCE(notes,'') || E'\n[' || $1 || '] ' || COALESCE($2,''),
-                       last_contact_at = NOW()
-                 WHERE id = $3
-                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
-                [source_channel, notes, dup.rows[0].id, businessContext]
-            );
-            return null;
-        }
-    }
-
-    const result = await pool.query(
-        `INSERT INTO leads
-           (business_context, client_name, phone, telegram_id, instagram,
-            source, source_channel, external_id, notes, raw_payload, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,'new')
-         ON CONFLICT (business_context, source_channel, external_id)
-           WHERE external_id IS NOT NULL DO NOTHING
-         RETURNING *`,
-        [
-            businessContext,
-            client_name || null,
-            phone       || null,
-            telegram_id || null,
-            instagram   || null,
-            source_channel,
-            external_id || null,
-            notes       || null,
-            raw_payload ? JSON.stringify(raw_payload) : null,
-        ]
-    );
-    return result.rows[0] || null;
+    const payload = {
+        client_name: client_name || null,
+        phone: phone || null,
+        telegram_id: telegram_id || null,
+        instagram: stripAt(instagram),
+        source_channel: sourceChannel,
+        external_id: external_id || null,
+        event_date: null,
+        session_type: null,
+        quality_category: null,
+        contact_channels: [],
+        raw_payload: raw_payload || {}
+    };
+    const result = await upsertUniversalWebhookLead(payload, businessContext, sourceChannel, notes || '');
+    return result.created ? result.lead : null;
 }
 
 // GET /api/leads/webhook/facebook — Meta verification
@@ -2512,6 +2684,10 @@ router.post('/:id/card', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
         }
         const { event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes } = req.body;
+        const budgetValue = parseOptionalNonNegativeInt(budget_approx, 'budget_approx');
+        if (budgetValue.error) {
+            return res.status(400).json({ success: false, error: budgetValue.error });
+        }
 
         client = await pool.connect();
         await client.query('BEGIN');
@@ -2539,6 +2715,10 @@ router.post('/:id/card', async (req, res) => {
             leadParams.push(children_count || null);
             leadUpdates.push(`children_count = $${leadParams.length}`);
         }
+        if (budgetValue.provided) {
+            leadParams.push(budgetValue.value);
+            leadUpdates.push(`potential_value = $${leadParams.length}`);
+        }
         if (leadUpdates.length) {
             leadParams.push(leadId, businessContext);
             const updatedLead = await client.query(
@@ -2552,14 +2732,18 @@ router.post('/:id/card', async (req, res) => {
             lead = updatedLead.rows[0] || lead;
         }
 
-        const ensured = await ensureDealCustomerForLead(client, lead, businessContext);
+        const ensured = await ensureDealCustomerForLead(client, lead, businessContext, {
+            userId: req.user?.id,
+            source: 'leads.card_compat',
+            linkType: 'legacy_card_compat'
+        });
         const legacyNote = buildLegacyCustomerCardNotes(leadId, {
             id: `lead:${leadId}`,
             event_type: event_type || null,
             event_date: event_date || null,
             guest_count: guest_count || null,
             children_count: children_count || null,
-            budget_approx: budget_approx || null,
+            budget_approx: budgetValue.provided ? budgetValue.value : null,
             how_found: how_found || null,
             email: email || null,
             channel: channel || null,

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.0 - LEAD ON
+
+### LEAD ON / Ліди / Канбан / Customer journey / Webhooks / Pipeline API / Release / (Клешня, 11.06.2026) [codex]
+- **Канбан і таблиця більше не гублять ліди після 200 записів** - `/api/leads` отримав `offset` pagination із bounded page size, а frontend добирає всі сторінки для поточного фільтра.
+- **Сума по колонках знову рахує реальні гроші** - додано `leads.potential_value`, backfill з legacy `customer_cards.budget_approx`, API віддає compat `budget_approx`, а PATCH ліда реально зберігає потенційну суму.
+- **Повторні заявки одного клієнта мають durable history** - нова таблиця `lead_customer_links` зберігає many-to-one звʼязки між лідами й `customers`, не перезаписуючи старий `customers.lead_id`.
+- **Webhook dedup більше не змішує різні канали** - пошук за `external_id` тепер scoped по `source_channel`, а Facebook/Instagram/Viber ідуть через спільний canonical upsert.
+- **`/api/leads/pipeline` перестав бути окремою правдою** - legacy endpoint повертає rows через той самий canonical lead-list helper, що й `/api/leads?order=kanban`.
+- **Regression guard оновлено** - route smoke покриває пагінацію, budget metadata, scoped webhook dedup і durable lead/customer link insert; UI smoke блокує повернення hard limit 200.
+- **Релізні маркери піднято до `0.75.0`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.74.45 - Ліди: єдина картка клієнта й аудит етапів
 
 ### Ліди / Воронка / Картка клієнта / Аудит / Status canonical / Migration / Release / (Клешня, 11.06.2026) [codex]

@@ -511,12 +511,7 @@ async function loadLeads() {
         if (currentView === 'kanban') params.set('order', 'kanban');
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
-        params.set('limit', '200');
-
-        const res = await apiFetch(`/api/leads?${params}`);
-        if (!res) return;
-        const data = await res.json();
-        leadsData = data.leads || [];
+        leadsData = await fetchAllLeadPages(params);
 
         renderStats();
         if (currentView === 'kanban') {
@@ -532,6 +527,28 @@ async function loadLeads() {
         const tbody = document.getElementById('leadsTableBody');
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Помилка завантаження</td></tr>';
     }
+}
+
+async function fetchAllLeadPages(baseParams) {
+    const all = [];
+    const pageSize = 500;
+    let offset = 0;
+    let guard = 0;
+    while (guard < 50) {
+        guard += 1;
+        const params = new URLSearchParams(baseParams);
+        params.set('limit', String(pageSize));
+        params.set('offset', String(offset));
+        const res = await apiFetch(`/api/leads?${params}`);
+        if (!res) break;
+        const data = await res.json();
+        const page = Array.isArray(data.leads) ? data.leads : [];
+        all.push(...page);
+        const pagination = data.pagination || {};
+        if (!pagination.hasMore || page.length === 0) break;
+        offset = Number.isFinite(Number(pagination.nextOffset)) ? Number(pagination.nextOffset) : offset + page.length;
+    }
+    return all;
 }
 
 function renderStats() {
@@ -559,6 +576,11 @@ function renderStats() {
 function filterByType(type) {
     currentTypeFilter = currentTypeFilter === type ? '' : type;
     loadLeads();
+}
+
+function leadPotentialValue(lead) {
+    const value = Number(lead?.potential_value ?? lead?.potentialValue ?? lead?.budget_approx ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function getIdleColor(lead) {
@@ -1581,7 +1603,7 @@ function renderKanban() {
         const isOverWip = leads.length > WIP_LIMIT;
 
         // Sum of budget_approx for the column
-        const totalSum = leads.reduce((sum, l) => sum + (l.budget_approx || 0), 0);
+        const totalSum = leads.reduce((sum, l) => sum + leadPotentialValue(l), 0);
 
         const cards = leads.map(l => {
             const idleClass = getIdleColor(l);

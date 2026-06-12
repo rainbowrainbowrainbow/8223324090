@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.21",
+  "version": "0.75.23",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Audit"
+    "releaseLabel": "Menu Positions Reliability"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

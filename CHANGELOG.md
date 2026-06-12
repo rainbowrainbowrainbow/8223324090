@@ -4,6 +4,30 @@
 
 ---
 
+## v0.75.23 - Menu Positions Reliability
+
+### Booking drawer / Kitchen menu / Product cache / Booking details / Release / (Клешня, 12.06.2026) [codex]
+- **Позиції меню знову стабільно відображаються в каталозі** - fullscreen каталог примусово дозавантажує продукти, якщо кеш належить іншому business context або ще не містить kitchen-позицій.
+- **Збережені позиції меню не губляться у деталях бронювання** - frontend приймає `bookingPackage`, `booking_package`, top-level `menuPositions` і legacy `menu_positions` як сумісні джерела.
+- **Денний API бронювань повертає кухонні поля** - `GET /api/bookings/:date` знову включає `banquet_guests`, `banquet_tables` і `banquet_menu`, щоб таймлайн і модалка бачили legacy-опис меню.
+- **Додано regression guards** - тести фіксують stale product cache reload, compat-проєкцію top-level `menuPositions` і наявність кухонних полів у booking route.
+- **Релізні маркери піднято до `0.75.23`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.75.22 - Schedule Load Colors
+
+### Staff schedule / Partial shifts / Theme colors / Release / (Клешня, 12.06.2026) [codex]
+- **Неповні зміни в графіку тепер видно одразу** - робочі та віддалені клітинки отримують кольорову градацію за часткою зміни від 8 годин.
+- **0.5 і 0.75 мають різні кольори** - половина зміни підсвічується amber, три чверті - синьо-бірюзовим, щоб їх не плутали в сітці.
+- **Додано інші градації** - дуже короткі зміни, повні зміни, довгі та наддовгі зміни мають окремі класи `shift-load-*` і власний акцент.
+- **У клітинці зʼявився компактний badge** - для неповної або довгої зміни показується коефіцієнт `0.5`, `0.75`, `1.25` тощо, без зайвого шуму на повній зміні.
+- **Темна і світла тема мають окремі контрастні кольори** - стилі винесені в `css/pages-hr-staff.css` і перекривають старі inline-стилі тільки для клітинок графіка.
+- **Regression guard додано** - тест фіксує розрахунок навантаження, CSS-класи, data-атрибути та dark-mode правила.
+- **Релізні маркери піднято до `0.75.22`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.21 - Staff Schedule Audit
 
 ### Staff schedule / Hidden writes / Cell history / Release / (Клешня, 12.06.2026) [codex]

@@ -234,6 +234,53 @@ function scheduleEntryTime(entry = {}) {
     return `${String(entry.shift_start).slice(0, 5)}-${String(entry.shift_end).slice(0, 5)}`;
 }
 
+const STAFF_FULL_SHIFT_MINUTES = 8 * 60;
+
+function scheduleTimeToMinutes(value) {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        return null;
+    }
+    return hours * 60 + minutes;
+}
+
+function formatShiftLoadRatio(value) {
+    if (!Number.isFinite(value) || value <= 0) return '';
+    return String(Math.round(value * 100) / 100).replace(/\.0$/, '');
+}
+
+function scheduleShiftLoadMeta(entry = {}) {
+    const status = normalizeScheduleStatus(entry.status);
+    if (!['working', 'remote'].includes(status)) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
+    const start = scheduleTimeToMinutes(entry.shift_start);
+    const end = scheduleTimeToMinutes(entry.shift_end);
+    if (start === null || end === null) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
+    let minutes = end - start;
+    if (minutes <= 0) minutes += 24 * 60;
+    if (minutes <= 0) return { bucket: '', className: '', label: '', minutes: 0, ratio: null };
+    const exactRatio = minutes / STAFF_FULL_SHIFT_MINUTES;
+    const roundedRatio = Math.max(0.25, Math.round(exactRatio * 4) / 4);
+    let bucket = 'full';
+    if (roundedRatio <= 0.25) bucket = 'quarter';
+    else if (roundedRatio <= 0.5) bucket = 'half';
+    else if (roundedRatio <= 0.75) bucket = 'three-quarter';
+    else if (roundedRatio <= 1) bucket = 'full';
+    else if (roundedRatio <= 1.25) bucket = 'long';
+    else bucket = 'extra-long';
+    const label = formatShiftLoadRatio(roundedRatio);
+    return {
+        bucket,
+        className: `shift-load-${bucket}`,
+        label,
+        minutes,
+        ratio: roundedRatio,
+        showBadge: bucket !== 'full'
+    };
+}
+
 function scheduleHasBlockingConflict(staffId, date, exceptScheduleId = null) {
     const entry = StaffState.schedule[`${staffId}_${date}`];
     if (!entry) return false;
@@ -258,6 +305,8 @@ function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
 function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     const parts = [`${emp.name} - ${date}`];
     if (shiftStart && shiftEnd) parts.push(`${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
+    const loadMeta = scheduleShiftLoadMeta({ ...entry, shift_start: shiftStart, shift_end: shiftEnd });
+    if (loadMeta.label && loadMeta.showBadge) parts.push(`load ${loadMeta.label}x`);
     if (isReplacementEntry(entry)) {
         parts.push(`Заміна за: ${entry.original_staff_name || 'працівника'}`);
         if (entry.replacement_reason) parts.push(`Причина: ${entry.replacement_reason}`);
@@ -595,10 +644,16 @@ function renderEmpRow(emp, dates, today) {
         const shiftEnd = entry?.shift_end;
         const icon = STATUS_ICONS[status] || '';
         const isReplacement = isReplacementEntry(entry);
+        const loadMeta = scheduleShiftLoadMeta({ ...entry, status, shift_start: shiftStart, shift_end: shiftEnd });
+        const loadClass = loadMeta.className || '';
+        const loadBadge = loadMeta.showBadge && loadMeta.label
+            ? `<span class="sch-load-badge" title="shift load ${loadMeta.label}x">${loadMeta.label}</span>`
+            : '';
 
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+            cellContent += loadBadge;
             const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
             if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
             if (isReplacement) {
@@ -619,8 +674,9 @@ function renderEmpRow(emp, dates, today) {
         }
 
         html += `<td>
-            <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''}"
+            <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''}"
                  data-staff="${emp.id}" data-date="${ds}"
+                 data-shift-load="${loadMeta.bucket || ''}" data-shift-ratio="${loadMeta.label || ''}"
                  data-schedule-id="${entry?.id || ''}" data-hr-shift="${entry?.hr_shift_id || ''}"
                  title="${escapeHtml(scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd))}">
                 ${cellContent}

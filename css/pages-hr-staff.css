@@ -79,6 +79,132 @@ body.dark-mode .hr-kpi-refresh::before {
     background: color-mix(in srgb, var(--primary-light, var(--primary)) 16%, transparent);
 }
 
+/* Staff schedule shift load colors */
+body[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] {
+    position: relative;
+    gap: 2px;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-load-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 15px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: nowrap;
+    box-shadow: inset 0 0 0 1px currentColor;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-quarter {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.18), rgba(244, 63, 94, 0.08)) !important;
+    box-shadow: inset 3px 0 0 #F43F5E, inset 0 0 0 1px rgba(244, 63, 94, 0.22) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-half {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.20), rgba(245, 158, 11, 0.08)) !important;
+    box-shadow: inset 3px 0 0 #F59E0B, inset 0 0 0 1px rgba(245, 158, 11, 0.24) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-three-quarter {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(14, 165, 233, 0.08)) !important;
+    box-shadow: inset 3px 0 0 #0EA5E9, inset 0 0 0 1px rgba(14, 165, 233, 0.24) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-full {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(16, 185, 129, 0.05)) !important;
+    box-shadow: inset 3px 0 0 rgba(16, 185, 129, 0.65), inset 0 0 0 1px rgba(16, 185, 129, 0.13) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-long {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(139, 92, 246, 0.08)) !important;
+    box-shadow: inset 3px 0 0 #8B5CF6, inset 0 0 0 1px rgba(139, 92, 246, 0.24) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-extra-long {
+    background: linear-gradient(135deg, rgba(217, 70, 239, 0.18), rgba(217, 70, 239, 0.08)) !important;
+    box-shadow: inset 3px 0 0 #D946EF, inset 0 0 0 1px rgba(217, 70, 239, 0.24) !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-quarter .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-quarter .sch-load-badge {
+    color: #BE123C !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-half .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-half .sch-load-badge {
+    color: #92400E !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-three-quarter .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-three-quarter .sch-load-badge {
+    color: #0369A1 !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-long .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-long .sch-load-badge {
+    color: #6D28D9 !important;
+}
+
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-extra-long .sch-time,
+body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-extra-long .sch-load-badge {
+    color: #A21CAF !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-quarter,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-quarter {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.32), rgba(127, 29, 29, 0.18)) !important;
+    box-shadow: inset 3px 0 0 #FB7185, inset 0 0 0 1px rgba(251, 113, 133, 0.34) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-half,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-half {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.32), rgba(120, 53, 15, 0.18)) !important;
+    box-shadow: inset 3px 0 0 #FBBF24, inset 0 0 0 1px rgba(251, 191, 36, 0.34) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-three-quarter,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-three-quarter {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.30), rgba(12, 74, 110, 0.20)) !important;
+    box-shadow: inset 3px 0 0 #38BDF8, inset 0 0 0 1px rgba(56, 189, 248, 0.34) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-full,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-full {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(6, 78, 59, 0.18)) !important;
+    box-shadow: inset 3px 0 0 #34D399, inset 0 0 0 1px rgba(52, 211, 153, 0.25) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-long,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-long {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.32), rgba(76, 29, 149, 0.18)) !important;
+    box-shadow: inset 3px 0 0 #A78BFA, inset 0 0 0 1px rgba(167, 139, 250, 0.34) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.shift-load-extra-long,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell.shift-load-extra-long {
+    background: linear-gradient(135deg, rgba(217, 70, 239, 0.32), rgba(112, 26, 117, 0.18)) !important;
+    box-shadow: inset 3px 0 0 #E879F9, inset 0 0 0 1px rgba(232, 121, 249, 0.34) !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] .sch-time,
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] .sch-load-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] .sch-time,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] .sch-load-badge {
+    color: #F8FAFC !important;
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell .sch-load-badge,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .sch-cell .sch-load-badge {
+    background: rgba(15, 23, 42, 0.22);
+}
+
 /* Staff schedule cell history */
 .sch-readonly-hint {
     margin: 8px 0 12px;

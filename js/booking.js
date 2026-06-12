@@ -365,7 +365,8 @@ const BookingPackageState = {
     editIndex: null,
     catalogFilter: 'all',
     catalogEditing: null,
-    catalogProductsLoading: false
+    catalogProductsLoading: false,
+    catalogProductsLastLoadKey: null
 };
 
 const BookingDrawerState = {
@@ -1454,23 +1455,30 @@ function toBookingMoney(value) {
     return Math.round(n * 100) / 100;
 }
 
-function getBookingMenuProducts() {
-    if (!timelineKitchenEnabled()) return [];
-    const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
+function isBookingMenuCatalogProduct(product = {}) {
+    const type = bookingKitchenType(product);
+    const isKitchenMenu = product.domain === 'kitchen' && (type === 'menu' || type === 'cake');
+    return (isKitchenMenu || product.category === 'menu' || product.category === 'cake')
+        && product.isActive !== false
+        && product.availabilityStatus !== 'hidden'
+        && product.availabilityStatus !== 'sold_out';
+}
+
+function getBookingMenuProductsFromList(products = []) {
     return products
-        .filter(p => {
-            const type = bookingKitchenType(p);
-            return (p.domain === 'kitchen' && (type === 'menu' || type === 'cake'))
-                || p.category === 'menu'
-                || p.category === 'cake';
-        })
-        .filter(p => p.isActive !== false && p.availabilityStatus !== 'hidden' && p.availabilityStatus !== 'sold_out')
+        .filter(isBookingMenuCatalogProduct)
         .sort((a, b) => {
             const typeCompare = bookingKitchenType(a).localeCompare(bookingKitchenType(b), 'uk');
             return typeCompare
                 || String(a.menuSection || '').localeCompare(String(b.menuSection || ''), 'uk')
                 || (a.sortOrder || 0) - (b.sortOrder || 0);
         });
+}
+
+function getBookingMenuProducts() {
+    if (!timelineKitchenEnabled()) return [];
+    const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
+    return getBookingMenuProductsFromList(Array.isArray(products) ? products : []);
 }
 
 function normalizeBookingMenuPosition(raw, index = 0) {
@@ -1915,27 +1923,55 @@ function bookingMenuCatalogSortedProducts(products = [], filter = 'all') {
 
 function bookingMenuCatalogLoadState(products = getBookingMenuProducts()) {
     if (!timelineKitchenEnabled()) return 'disabled';
-    if (typeof AppState !== 'undefined'
-        && typeof timelineDisplayUsesApiProducts === 'function'
-        && timelineDisplayUsesApiProducts()
-        && !Array.isArray(AppState.products)
-        && !products.length) {
+    if (bookingMenuCatalogShouldLoadProducts(products)) {
         return 'loading';
     }
     return products.length ? 'ready' : 'empty';
 }
 
+function bookingMenuCatalogProductsLoadKey() {
+    const context = typeof getTimelineProductsBusinessContext === 'function'
+        ? getTimelineProductsBusinessContext()
+        : 'event_genix';
+    const priceDate = typeof getTimelineProductsPriceDate === 'function'
+        ? getTimelineProductsPriceDate()
+        : '';
+    return `${context}|${priceDate}`;
+}
+
+function bookingMenuCatalogProductsCacheMatchesTimeline() {
+    if (typeof AppState === 'undefined') return false;
+    if (!Array.isArray(AppState.products)) return false;
+    const businessContext = typeof getTimelineProductsBusinessContext === 'function'
+        ? getTimelineProductsBusinessContext()
+        : 'event_genix';
+    const priceDate = typeof getTimelineProductsPriceDate === 'function'
+        ? getTimelineProductsPriceDate()
+        : '';
+    return AppState.productsBusinessContext === businessContext
+        && AppState.productsPriceDate === priceDate;
+}
+
+function bookingMenuCatalogShouldLoadProducts(products = getBookingMenuProducts()) {
+    if (typeof getProducts !== 'function') return false;
+    if (typeof timelineDisplayUsesApiProducts !== 'function' || !timelineDisplayUsesApiProducts()) return false;
+    if (!bookingMenuCatalogProductsCacheMatchesTimeline()) return true;
+    if (products.length) return false;
+    return BookingPackageState.catalogProductsLastLoadKey !== bookingMenuCatalogProductsLoadKey();
+}
+
 function ensureBookingMenuCatalogProductsLoaded() {
     if (BookingPackageState.catalogProductsLoading || typeof getProducts !== 'function') return;
-    const needsLoad = typeof AppState !== 'undefined'
-        && typeof timelineDisplayUsesApiProducts === 'function'
-        && timelineDisplayUsesApiProducts()
-        && !Array.isArray(AppState.products);
-    if (!needsLoad) return;
+    const products = getBookingMenuProducts();
+    if (!bookingMenuCatalogShouldLoadProducts(products)) return;
+    const loadKey = bookingMenuCatalogProductsLoadKey();
     BookingPackageState.catalogProductsLoading = true;
     renderBookingMenuCatalogList();
     getProducts()
-        .then(() => renderBookingMenuProductOptions())
+        .then(() => {
+            BookingPackageState.catalogProductsLastLoadKey = loadKey;
+            renderBookingMenuProductOptions();
+        })
         .catch(() => renderBookingMenuCatalog())
         .finally(() => {
             BookingPackageState.catalogProductsLoading = false;
@@ -2455,7 +2491,33 @@ function renderBookingPackageSummary() {
 }
 
 function getBookingPackageFromBooking(booking) {
-    return booking?.bookingPackage || booking?.extraData?.bookingPackage || booking?.extra_data?.bookingPackage || null;
+    const extraData = booking?.extraData || booking?.extra_data || {};
+    const packageData = booking?.bookingPackage
+        || booking?.booking_package
+        || extraData?.bookingPackage
+        || extraData?.booking_package
+        || null;
+    if (packageData) {
+        const menuPositions = packageData.menuPositions || packageData.menu_positions || [];
+        return {
+            ...packageData,
+            menuPositions
+        };
+    }
+    const topLevelPositions = booking?.menuPositions || booking?.menu_positions || extraData?.menuPositions || [];
+    if (Array.isArray(topLevelPositions) && topLevelPositions.length) {
+        const positions = topLevelPositions.map((item, index) => normalizeBookingMenuPosition(item, index)).filter(Boolean);
+        const positionsSubtotal = bookingMenuPositionsSubtotal(positions);
+        return {
+            schemaVersion: 1,
+            programBasePrice: toBookingMoney((booking?.price || 0) - positionsSubtotal),
+            positionsSubtotal,
+            finalTotal: toBookingMoney(booking?.price || positionsSubtotal),
+            menuPositions: positions,
+            source: 'booking_workspace_compat'
+        };
+    }
+    return null;
 }
 
 function getBookingWorkspaceFromBooking(booking) {

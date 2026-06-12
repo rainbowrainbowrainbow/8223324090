@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.21">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.21">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.21">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.21">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.21">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.21">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.21">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.21">
-    <link rel="stylesheet" href="css/features.css?v=0.75.21">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.21">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.21">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.21">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.21">
+    <link rel="stylesheet" href="css/base.css?v=0.75.23">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.23">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.23">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.23">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.23">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.23">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.23">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.23">
+    <link rel="stylesheet" href="css/features.css?v=0.75.23">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.23">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.23">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.23">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.23">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.21">✨ 0.75.21</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.23">✨ 0.75.23</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.21 — Staff Schedule Audit</p>
+                <p class="tagline">AI First CRM v0.75.23 — Menu Positions Reliability</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.21</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.23</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1717,14 +1717,32 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.75.23 — Menu Positions Reliability</h4>
+                    <ul>
+                        <li><b>Позиції меню знову стабільно відображаються в каталозі</b> — каталог примусово дозавантажує продукти, якщо кеш належить іншому бізнесу або ще не містить kitchen-позицій.</li>
+                        <li><b>Збережені позиції меню не губляться у деталях</b> — CRM читає <code>bookingPackage</code>, <code>booking_package</code>, top-level <code>menuPositions</code> і legacy <code>menu_positions</code>.</li>
+                        <li><b>Денний API бронювань повертає кухонні поля</b> — <code>banquet_guests</code>, <code>banquet_tables</code> і <code>banquet_menu</code> знову доступні для таймлайну й модалки бронювання.</li>
+                        <li><b>Regression guards додано</b> — тести фіксують reload stale product cache, compat-відображення <code>menuPositions</code> і kitchen-поля в booking route.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.22 — Schedule Load Colors</h4>
+                    <ul>
+                        <li><b>Неповні зміни в графіку тепер видно одразу</b> — робочі та віддалені клітинки отримують кольорову градацію за часткою зміни від 8 годин.</li>
+                        <li><b><code>0.5</code> і <code>0.75</code> мають різні кольори</b> — половина зміни підсвічується amber, три чверті — синьо-бірюзовим.</li>
+                        <li><b>Додано інші градації</b> — дуже короткі, повні, довгі та наддовгі зміни мають окремі класи <code>shift-load-*</code>.</li>
+                        <li><b>У клітинці зʼявився компактний badge</b> — для неповної або довгої зміни показується коефіцієнт <code>0.5</code>, <code>0.75</code>, <code>1.25</code> тощо.</li>
+                        <li><b>Темна і світла тема мають окремі контрастні кольори</b> — стилі винесені в <code>css/pages-hr-staff.css</code> і не ламають старі статуси графіка.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.75.21 — Staff Schedule Audit</h4>
                     <ul>
-                        <li><b>Графік більше не змінюється від перегляду</b> — читання <code>/api/staff/schedule</code>, hours і availability check більше не роблять прихований backfill із <code>hr_shifts</code>.</li>
-                        <li><b>Порожні клітинки лишаються порожніми</b> — навантаження по відділах і CSV-експорт більше не рахують відсутній запис як <code>working</code>.</li>
-                        <li><b>Історія клітинки стала явною</b> — у модалці графіка видно, хто або система змінила статус, час, професію, нотатку чи підміну.</li>
-                        <li><b>Audit пишеться без нової таблиці</b> — одиночне збереження, bulk, копія тижня і підміни залишають технічний запис у <code>hr_audit_log</code>.</li>
-                        <li><b>Legacy <code>day_off</code> нормалізовано</b> — старі вихідні відображаються як <code>dayoff</code>, щоб не ламати підрахунки й кольори.</li>
-                        <li><b>Regression guards додано</b> — тести фіксують read-only schedule API, audit endpoint, історію клітинки і <code>unset</code> для порожніх значень.</li>
+                        <li><b>Графік більше не змінюється від перегляду</b> — читання розкладу не запускає прихований backfill зі змін.</li>
+                        <li><b>Порожні клітинки лишаються порожніми</b> — завантаження й CSV-експорт не рахують відсутній запис як робочу зміну.</li>
+                        <li><b>Додано явну історію клітинки</b> — у модалці графіка видно, хто або система змінювала статус, час, професію, нотатку чи підміну.</li>
+                        <li><b>Audit пишеться в наявний <code>hr_audit_log</code></b> — одиночне збереження, bulk, копія тижня та підміни залишають durable технічний запис.</li>
+                        <li><b>Legacy <code>day_off</code> нормалізовано</b> — старі записи відображаються як <code>dayoff</code>, щоб не ламати підрахунки й кольори.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -12660,30 +12678,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.21"></script>
-    <script src="js/timeline-visibility.js?v=0.75.21"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.21"></script>
-    <script src="js/config.js?v=0.75.21"></script>
-    <script src="js/api.js?v=0.75.21"></script>
-    <script src="js/ui.js?v=0.75.21"></script>
-    <script src="js/auth.js?v=0.75.21"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.21"></script>
-    <script src="js/timeline.js?v=0.75.21"></script>
-    <script src="js/booking.js?v=0.75.21"></script>
-    <script src="js/settings.js?v=0.75.21"></script>
-    <script src="js/booking-form.js?v=0.75.21"></script>
-    <script src="js/booking-linked.js?v=0.75.21"></script>
-    <script src="js/settings-dashboard.js?v=0.75.21"></script>
-    <script src="js/settings-history.js?v=0.75.21"></script>
-    <script src="js/settings-afisha.js?v=0.75.21"></script>
-    <script src="js/settings-certificates.js?v=0.75.21"></script>
-    <script src="js/offline.js?v=0.75.21"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.21"></script>
-    <script src="js/search.js?v=0.75.21"></script>
-    <script src="js/ws.js?v=0.75.21"></script>
-    <script src="js/app.js?v=0.75.21"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.21"></script>
-    <script src="js/components/sidebar.js?v=0.75.21"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.21"></script>
+    <script src="js/timeline-context.js?v=0.75.23"></script>
+    <script src="js/timeline-visibility.js?v=0.75.23"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.23"></script>
+    <script src="js/config.js?v=0.75.23"></script>
+    <script src="js/api.js?v=0.75.23"></script>
+    <script src="js/ui.js?v=0.75.23"></script>
+    <script src="js/auth.js?v=0.75.23"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.23"></script>
+    <script src="js/timeline.js?v=0.75.23"></script>
+    <script src="js/booking.js?v=0.75.23"></script>
+    <script src="js/settings.js?v=0.75.23"></script>
+    <script src="js/booking-form.js?v=0.75.23"></script>
+    <script src="js/booking-linked.js?v=0.75.23"></script>
+    <script src="js/settings-dashboard.js?v=0.75.23"></script>
+    <script src="js/settings-history.js?v=0.75.23"></script>
+    <script src="js/settings-afisha.js?v=0.75.23"></script>
+    <script src="js/settings-certificates.js?v=0.75.23"></script>
+    <script src="js/offline.js?v=0.75.23"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.23"></script>
+    <script src="js/search.js?v=0.75.23"></script>
+    <script src="js/ws.js?v=0.75.23"></script>
+    <script src="js/app.js?v=0.75.23"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.23"></script>
+    <script src="js/components/sidebar.js?v=0.75.23"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.23"></script>
 </body>
 </html>

@@ -115,11 +115,16 @@ function createBookingMenuCatalogHarness() {
                     isActive: true
                 }
             ],
-            selectedDate: '2026-06-12'
+            selectedDate: '2026-06-12',
+            productsBusinessContext: 'event_genix',
+            productsPriceDate: '2026-06-12',
+            productsLoadedAt: Date.now()
         },
         BookingForm: { _dirty: false },
         timelineKitchenEnabled: () => true,
         timelineDisplayUsesApiProducts: () => false,
+        getTimelineProductsBusinessContext: () => 'event_genix',
+        getTimelineProductsPriceDate: () => '2026-06-12',
         getProductsSync: () => context.AppState.products,
         getProducts: async () => context.AppState.products,
         formatPrice: value => `${Number(value || 0)} грн`,
@@ -313,6 +318,71 @@ test('booking menu catalog restores saved quantity, manual price, and note when 
     assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /95/);
     assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /подати о 16:30/);
     assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л x 95 грн \(подати о 16:30\)/);
+});
+
+test('booking menu catalog reloads products when the timeline cache cannot provide kitchen positions', async () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('bookingMenuCatalogPanel').hidden = false;
+    ctx.timelineDisplayUsesApiProducts = () => true;
+    ctx.AppState.products = [{
+        id: 'quest_program',
+        domain: 'program',
+        category: 'quest',
+        name: 'Quest',
+        price: 1200,
+        isActive: true
+    }];
+    ctx.AppState.productsBusinessContext = 'dar';
+    ctx.AppState.productsPriceDate = '2026-06-12';
+    let loadCount = 0;
+    ctx.getProducts = async () => {
+        loadCount += 1;
+        ctx.AppState.products = [{
+            id: 'menu_fresh',
+            domain: 'kitchen',
+            category: 'menu',
+            kitchenType: 'menu',
+            name: 'Fresh menu position',
+            price: 100,
+            menuSection: 'Food',
+            servingUnit: 'portion',
+            isActive: true
+        }];
+        ctx.AppState.productsBusinessContext = 'event_genix';
+        ctx.AppState.productsPriceDate = '2026-06-12';
+        return ctx.AppState.products;
+    };
+
+    ctx.setBookingMenuCatalogOpen(true);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /Завантажую меню/);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(loadCount, 1);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /Fresh menu position/);
+    assert.equal(ctx.BookingPackageState.catalogProductsLastLoadKey, 'event_genix|2026-06-12');
+});
+
+test('booking package detail accepts top-level menuPositions as a compatibility source', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const packageData = ctx.getBookingPackageFromBooking({
+        price: 420,
+        menuPositions: [{
+            productId: 'menu_pizza',
+            title: 'РџС–С†Р°',
+            quantity: 2,
+            unitPrice: 210,
+            subtotal: 420,
+            kitchenType: 'menu',
+            servingUnit: 'С€С‚'
+        }]
+    });
+
+    assert.ok(packageData, 'compat booking package is projected');
+    assert.equal(packageData.menuPositions.length, 1);
+    assert.equal(packageData.menuPositions[0].productId, 'menu_pizza');
+    assert.equal(packageData.positionsSubtotal, 420);
+    assert.equal(packageData.source, 'booking_workspace_compat');
 });
 
 test('booking package persists final total into booking price and extraData', () => {
@@ -599,6 +669,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /banquet_guests/);
     assert.match(route, /banquet_tables/);
     assert.match(route, /banquet_menu/);
+    assert.match(route, /banquet_guests,\s*banquet_tables,\s*banquet_menu/);
     assert.match(route, /bookingPackageAudit/);
     assert.match(route, /function attachLinkedBookingTimelineIdentity/);
     assert.match(route, /attachLinkedBookingTimelineIdentity\(lb, businessContext/);

@@ -1488,7 +1488,8 @@ router.get('/:date', async (req, res) => {
                     client_pinata_service_price, client_pinata_service_note, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
-                    confirmed_at, confirmed_by, confirmation_note, confirmation_source
+                    confirmed_at, confirmed_by, confirmation_note, confirmation_source,
+                    banquet_guests, banquet_tables, banquet_menu
              FROM bookings b
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND ${bookingActiveStatusSql('b')}
                ${visibility}

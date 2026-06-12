@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const staffHtml = fs.readFileSync('staff.html', 'utf8');
+const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
 
 function routeBlock(path) {
     const start = staffRoute.indexOf(`router.get('${path}'`);
@@ -40,5 +41,21 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function renderScheduleHistoryList/);
         assert.match(staffPage, /fetchScheduleHistory/);
         assert.match(staffPage, /\/api\/staff\/schedule\/history\/\$\{encodeURIComponent\(staffId\)\}/);
+    });
+    it('marks partial shifts with durable load classes and theme-safe colors', () => {
+        assert.match(staffPage, /const STAFF_FULL_SHIFT_MINUTES = 8 \* 60/);
+        assert.match(staffPage, /function scheduleShiftLoadMeta/);
+        assert.match(staffPage, /bucket = 'half'/);
+        assert.match(staffPage, /bucket = 'three-quarter'/);
+        assert.match(staffPage, /bucket = 'long'/);
+        assert.match(staffPage, /className: `shift-load-\$\{bucket\}`/);
+        assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}/);
+        assert.match(staffPage, /data-shift-load="\$\{loadMeta\.bucket \|\| ''\}"/);
+        assert.match(staffPage, /class="sch-load-badge"/);
+        assert.match(staffCss, /\.sch-cell\.shift-load-half/);
+        assert.match(staffCss, /\.sch-cell\.shift-load-three-quarter/);
+        assert.match(staffCss, /\.sch-cell\.shift-load-long/);
+        assert.match(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-half/);
+        assert.match(staffCss, /\[data-theme="dark"\] body\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-three-quarter/);
     });
 });

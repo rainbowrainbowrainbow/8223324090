@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.19 - Timeline Default View
+
+### Timeline / Default view / LocalStorage guard / Release / (Клешня, 12.06.2026) [codex]
+- **Звичайний таймлайн знову відкривається першим** - для всіх користувачів стартовим виглядом став `Свята`, а не кімнатний таймлайн.
+- **Старий браузерний вибір `Кімнати` більше не перебиває дефолт** - marker `room-first-v1` скинуто, тому після релізу CRM не застрягне у кімнатному режимі через localStorage.
+- **Кімнати лишаються доступними вручну** - оператор може переключитися в `Кімнати`, і вже новий явний вибір буде збережений.
+- **Налаштування таймлайну синхронізовано** - fallback у frontend і backend тепер однаково повертається до `animators`, якщо немає явного server setting.
+- **Regression guards оновлено** - UI/static тести контролюють активну кнопку `Свята`, selected option у settings і відсутність старого `room-first-v1`.
+- **Релізні маркери піднято до `0.75.19`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.18 - Menu Catalog Polish
 
 ### Booking drawer / Kitchen catalog / Cart edit / Mobile sheet / (Клешня, 12.06.2026) [codex]

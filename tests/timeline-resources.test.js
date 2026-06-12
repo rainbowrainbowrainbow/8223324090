@@ -187,6 +187,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timelineContext, /defaultTimelineView/);
     assert.match(resources, /TIMELINE_VIEW_MODES/);
     assert.match(resources, /normalizeDefaultTimelineView/);
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park' }, 'event_genix').defaultTimelineView, 'animators');
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park', defaultTimelineView: 'rooms' }, 'event_genix').defaultTimelineView, 'rooms');
     assert.match(timeline, /assignmentMode = isRoomTimelineView\(\) \? 'room' : 'line'/);
     assert.match(booking, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
     assert.match(booking, /bookingPrimaryAnimatorSelect/);
@@ -195,7 +197,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(booking, /openAnimationBookingInAnimatorView/);
     assert.match(booking, /openRoomBookingAnimationBridge/);
     assert.match(html, /id="timelineViewSelector"/);
-    assert.match(html, /class="period-btn timeline-view-btn active" data-timeline-view="rooms"/);
+    assert.match(html, /class="period-btn timeline-view-btn active" data-timeline-view="animators"/);
+    assert.match(html, /<option value="animators" selected>Свята<\/option>/);
     assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);

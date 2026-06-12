@@ -970,7 +970,7 @@ function normalizeTimelineControlSettings(settings = {}) {
             : true);
     const defaultTimelineView = roomTimelineEnabled && ['rooms', 'animators'].includes(settings.defaultTimelineView)
         ? settings.defaultTimelineView
-        : (roomTimelineEnabled ? 'rooms' : 'animators');
+        : 'animators';
     const enabledModules = mergeTimelineToggleDefaults(settings.enabledModules, defaultTimelineControlModules(mode, parkKitchenMode), TIMELINE_CONTROL_MODULES);
     const timelineFeatures = mergeTimelineToggleDefaults(settings.timelineFeatures, defaultTimelineControlFeatures(mode, parkKitchenMode), TIMELINE_CONTROL_FEATURES);
     const bookingPolicy = mergeTimelineToggleDefaults(settings.bookingPolicy, defaultTimelineControlPolicies(mode), TIMELINE_CONTROL_POLICIES);
@@ -1197,7 +1197,7 @@ function collectTimelineDisplaySettingsFromControls() {
     const startPage = document.querySelector('[data-timeline-start-page].is-active')?.dataset.timelineStartPage || (mode === 'disabled' ? 'dashboard' : 'timeline');
     const resourceModel = document.querySelector('[data-timeline-resource-model].is-active')?.dataset.timelineResourceModel || defaultTimelineResourceModel(mode);
     const roomTimelineEnabled = mode === 'park' && controls.roomFirst?.checked !== false;
-    const defaultTimelineView = roomTimelineEnabled ? (controls.defaultView?.value || 'rooms') : 'animators';
+    const defaultTimelineView = roomTimelineEnabled ? (controls.defaultView?.value || 'animators') : 'animators';
     const normalized = normalizeTimelineControlSettings({
         mode,
         timelineEnabled: mode !== 'disabled',
@@ -1458,7 +1458,7 @@ function handleTimelineDisplayModeChange() {
         startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
         resourceModel: defaultTimelineResourceModel(mode),
         roomTimelineEnabled: mode === 'park',
-        defaultTimelineView: mode === 'park' ? 'rooms' : 'animators'
+        defaultTimelineView: 'animators'
     });
 }
 
@@ -1478,7 +1478,7 @@ function handleTimelineControlClick(event) {
             startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
             resourceModel,
             roomTimelineEnabled: mode === 'park',
-            defaultTimelineView: mode === 'park' ? 'rooms' : 'animators'
+            defaultTimelineView: 'animators'
         });
         return;
     }

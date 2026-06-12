@@ -11,7 +11,7 @@ let _renderGen = 0;
 let _leadConversionAutoOpenAttempted = false;
 const TIMELINE_VIEW_ANIMATORS = 'animators';
 const TIMELINE_VIEW_ROOMS = 'rooms';
-const TIMELINE_VIEW_USER_CHOICE_VERSION = 'room-first-v1';
+const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
 
 function normalizeTimelineViewMode(value) {
     return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
@@ -49,7 +49,7 @@ function timelineViewFromUrl() {
 function defaultTimelineViewMode() {
     if (!canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
     const view = window.TimelineBusinessContext?.presentation?.()?.defaultTimelineView;
-    return normalizeTimelineViewMode(view || TIMELINE_VIEW_ROOMS);
+    return normalizeTimelineViewMode(view || TIMELINE_VIEW_ANIMATORS);
 }
 
 function timelineCurrentView() {
@@ -60,7 +60,7 @@ function timelineCurrentView() {
     const choiceVersion = localStorage.getItem(timelineViewChoiceStorageKey());
     const hasExplicitChoice = choiceVersion === TIMELINE_VIEW_USER_CHOICE_VERSION;
     const canUseStored = storedView
-        && (hasExplicitChoice || storedView === defaultView || defaultView !== TIMELINE_VIEW_ROOMS);
+        && (hasExplicitChoice || storedView === defaultView);
     const requested = urlView || (canUseStored ? storedView : null) || defaultView;
     if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
     return requested;

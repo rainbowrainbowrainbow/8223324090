@@ -62,7 +62,7 @@ function normalizeParkKitchenMode(value) {
 function normalizeDefaultTimelineView(value, roomTimelineEnabled) {
     const view = String(value || '').trim().toLowerCase();
     if (roomTimelineEnabled && TIMELINE_VIEW_MODES.has(view)) return view;
-    return roomTimelineEnabled ? 'rooms' : 'animators';
+    return 'animators';
 }
 
 function defaultTimelineModules(mode, parkKitchenMode = 'with_kitchen') {

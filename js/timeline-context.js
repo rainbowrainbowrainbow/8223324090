@@ -577,7 +577,7 @@
                 : ctx.key === 'event_genix');
         const defaultTimelineView = roomTimelineEnabled && VALID_TIMELINE_VIEW_MODES.has(String(value?.defaultTimelineView || ''))
             ? String(value.defaultTimelineView)
-            : (roomTimelineEnabled ? 'rooms' : 'animators');
+            : 'animators';
         const enabledModules = normalizeToggleRecord(value?.enabledModules, defaultModulesForMode(mode, parkKitchenMode), MODULE_KEYS);
         const timelineFeatures = normalizeToggleRecord(value?.timelineFeatures, defaultFeaturesForMode(mode, parkKitchenMode), FEATURE_KEYS);
         const bookingPolicy = normalizeToggleRecord(value?.bookingPolicy, defaultBookingPolicyForMode(mode), POLICY_KEYS);

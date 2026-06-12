@@ -1857,21 +1857,35 @@ function updateBookingMenuCatalogSummary() {
     const summary = bookingMenuCatalogSummaryText();
     const inline = document.getElementById('bookingMenuCatalogEntrySummary');
     const header = document.getElementById('bookingMenuCatalogSummary');
+    const cartSummary = document.getElementById('bookingMenuCatalogCartSummary');
     const footerCount = document.getElementById('bookingMenuCatalogFooterCount');
     const footerTotal = document.getElementById('bookingMenuCatalogFooterTotal');
+    const mobileCart = document.getElementById('bookingMenuCatalogMobileCartBtn');
+    const panel = document.getElementById('bookingMenuCatalogPanel');
     if (inline) inline.textContent = summary.combined;
     if (header) header.textContent = summary.combined;
+    if (cartSummary) cartSummary.textContent = summary.combined;
     if (footerCount) footerCount.textContent = summary.countText;
     if (footerTotal) footerTotal.textContent = summary.subtotalText;
+    if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.subtotalText}`;
+    panel?.classList.toggle('booking-menu-catalog-has-selection', getBookingMenuPositions().length > 0);
+}
+
+function setBookingMenuCatalogCartOpen(open) {
+    const panel = document.getElementById('bookingMenuCatalogPanel');
+    if (!panel) return;
+    panel.classList.toggle('booking-menu-catalog-cart-open', Boolean(open));
 }
 
 function setBookingMenuCatalogOpen(open) {
     const panel = document.getElementById('bookingMenuCatalogPanel');
     if (!panel) return;
     const openBtn = document.getElementById('bookingMenuCatalogOpenBtn');
+    const hadFocusInside = panel.contains(document.activeElement);
     panel.classList.toggle('hidden', !open);
     panel.hidden = !open;
     panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    document.body?.classList.toggle('booking-menu-catalog-active', open);
     if (openBtn) openBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
         ensureBookingMenuCatalogProductsLoaded();
@@ -1881,8 +1895,10 @@ function setBookingMenuCatalogOpen(open) {
         commitActiveBookingMenuCatalogInput();
         BookingPackageState.catalogEditing = null;
         BookingPackageState.catalogFilter = 'all';
+        setBookingMenuCatalogCartOpen(false);
         const search = document.getElementById('bookingMenuCatalogSearch');
         if (search) search.value = '';
+        if (hadFocusInside) openBtn?.focus();
     }
 }
 
@@ -1987,11 +2003,63 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
     list.innerHTML = rows.join('');
 }
 
+function renderBookingMenuCatalogCart() {
+    const list = document.getElementById('bookingMenuCatalogCartList');
+    if (!list) return;
+    const positions = getBookingMenuPositions();
+    if (!positions.length) {
+        list.innerHTML = '<div class="booking-menu-catalog-cart-empty">Позиції ще не додані. Оберіть їжу, напої або торт з каталогу.</div>';
+        return;
+    }
+    list.innerHTML = positions.map((item, index) => {
+        const productId = item.productId ? String(item.productId) : '';
+        const title = item.title || 'Позиція меню';
+        const quantity = Number(item.quantity || 1);
+        const unitPrice = toBookingMoney(item.unitPrice || 0);
+        const note = item.note || '';
+        const quantityControl = productId && isBookingMenuCatalogEditing(productId, 'quantity')
+            ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-qty-input" type="number" min="0.1" step="0.1" value="${escapeHtml(String(quantity))}" data-menu-catalog-quantity-input="${escapeHtml(productId)}" aria-label="Кількість ${escapeHtml(title)}">`
+            : productId
+                ? `<button type="button" class="booking-menu-catalog-qty" data-menu-catalog-edit-quantity="${escapeHtml(productId)}" aria-label="Змінити кількість ${escapeHtml(title)}">${escapeHtml(bookingMenuCatalogQuantityLabel(quantity))}</button>`
+                : `<span class="booking-menu-catalog-cart-static">${escapeHtml(bookingMenuCatalogQuantityLabel(quantity))}</span>`;
+        const priceControl = productId && isBookingMenuCatalogEditing(productId, 'price')
+            ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-price-input" type="number" min="0" step="1" value="${escapeHtml(String(unitPrice))}" data-menu-catalog-price-input="${escapeHtml(productId)}" aria-label="Ціна ${escapeHtml(title)}">`
+            : productId
+                ? `<button type="button" class="booking-menu-catalog-price" data-menu-catalog-edit-price="${escapeHtml(productId)}" aria-label="Змінити ціну ${escapeHtml(title)}">${escapeHtml(formatPrice(unitPrice))}</button>`
+                : `<span>${escapeHtml(formatPrice(unitPrice))}</span>`;
+        const noteEditor = productId && isBookingMenuCatalogEditing(productId, 'note')
+            ? `<div class="booking-menu-catalog-note-editor"><input type="text" maxlength="500" value="${escapeHtml(note)}" data-menu-catalog-note-input="${escapeHtml(productId)}" placeholder="Напр: без горіхів, подати о 16:30"></div>`
+            : '';
+        return `
+            <div class="booking-menu-catalog-cart-item">
+                <div class="booking-menu-catalog-cart-item-head">
+                    <div>
+                        <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+                        <small>${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}${item.servingUnit ? ` · ${escapeHtml(item.servingUnit)}` : ''}</small>
+                    </div>
+                    <button type="button" class="booking-menu-catalog-remove" ${productId ? `data-menu-catalog-remove="${escapeHtml(productId)}"` : `data-menu-catalog-remove-index="${index}"`} aria-label="Видалити ${escapeHtml(title)}">×</button>
+                </div>
+                <div class="booking-menu-catalog-cart-controls">
+                    ${productId ? `<button type="button" data-menu-catalog-dec="${escapeHtml(productId)}" aria-label="Зменшити ${escapeHtml(title)}">−</button>` : ''}
+                    ${quantityControl}
+                    ${productId ? `<button type="button" data-menu-catalog-add="${escapeHtml(productId)}" aria-label="Додати ${escapeHtml(title)}">+</button>` : ''}
+                    ${priceControl}
+                    ${productId ? `<button type="button" class="booking-menu-catalog-note-btn" data-menu-catalog-edit-note="${escapeHtml(productId)}" aria-label="Примітка ${escapeHtml(title)}">✎</button>` : ''}
+                </div>
+                ${note ? `<div class="booking-menu-catalog-note-preview">${escapeHtml(note)}</div>` : ''}
+                ${noteEditor}
+                <div class="booking-menu-catalog-cart-subtotal">${escapeHtml(formatPrice(item.subtotal || 0))}</div>
+            </div>
+        `;
+    }).join('');
+}
+
 function renderBookingMenuCatalog() {
     const panel = document.getElementById('bookingMenuCatalogPanel');
     const products = getBookingMenuProducts();
     renderBookingMenuCatalogTabs(products);
     if (panel && !panel.hidden) renderBookingMenuCatalogList(products);
+    renderBookingMenuCatalogCart();
     updateBookingMenuCatalogSummary();
 }
 
@@ -2367,17 +2435,17 @@ function initBookingPackageWorkspace() {
     document.getElementById('bookingMenuCatalogOpenBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(true));
     document.getElementById('bookingMenuCatalogCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
     document.getElementById('bookingMenuCatalogDoneBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
-    document.getElementById('bookingMenuCatalogSearch')?.addEventListener('input', () => renderBookingMenuCatalogList());
-    document.getElementById('bookingMenuCatalogTabs')?.addEventListener('click', (event) => {
-        const tab = event.target.closest('[data-menu-catalog-filter]');
-        if (!tab) return;
-        BookingPackageState.catalogFilter = tab.dataset.menuCatalogFilter || 'all';
-        renderBookingMenuCatalog();
-    });
-    document.getElementById('bookingMenuCatalogList')?.addEventListener('click', (event) => {
+    document.getElementById('bookingMenuCatalogMobileCartBtn')?.addEventListener('click', () => setBookingMenuCatalogCartOpen(true));
+    document.getElementById('bookingMenuCatalogCartCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogCartOpen(false));
+    document.getElementById('bookingMenuCatalogPanel')?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+            setBookingMenuCatalogOpen(false);
+            return;
+        }
         const add = event.target.closest('[data-menu-catalog-add]');
         const dec = event.target.closest('[data-menu-catalog-dec]');
         const remove = event.target.closest('[data-menu-catalog-remove]');
+        const removeIndex = event.target.closest('[data-menu-catalog-remove-index]');
         const editQuantity = event.target.closest('[data-menu-catalog-edit-quantity]');
         const editPrice = event.target.closest('[data-menu-catalog-edit-price]');
         const editNote = event.target.closest('[data-menu-catalog-edit-note]');
@@ -2406,18 +2474,31 @@ function initBookingPackageWorkspace() {
             commitBookingMenuCatalogPositions(getBookingMenuPositions().filter(item => String(item.productId || '') !== String(productId || '')));
             return;
         }
+        if (removeIndex) {
+            const index = Number(removeIndex.dataset.menuCatalogRemoveIndex);
+            commitBookingMenuCatalogPositions(getBookingMenuPositions().filter((_, itemIndex) => itemIndex !== index));
+            return;
+        }
         if (add) {
             upsertBookingMenuCatalogProduct(add.dataset.menuCatalogAdd, 1);
+            setBookingMenuCatalogCartOpen(true);
             return;
         }
         if (dec) upsertBookingMenuCatalogProduct(dec.dataset.menuCatalogDec, -1);
     });
-    document.getElementById('bookingMenuCatalogList')?.addEventListener('change', (event) => {
+    document.getElementById('bookingMenuCatalogSearch')?.addEventListener('input', () => renderBookingMenuCatalogList());
+    document.getElementById('bookingMenuCatalogTabs')?.addEventListener('click', (event) => {
+        const tab = event.target.closest('[data-menu-catalog-filter]');
+        if (!tab) return;
+        BookingPackageState.catalogFilter = tab.dataset.menuCatalogFilter || 'all';
+        renderBookingMenuCatalog();
+    });
+    document.getElementById('bookingMenuCatalogPanel')?.addEventListener('change', (event) => {
         if (event.target.matches('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) {
             commitBookingMenuCatalogInlineInput(event.target);
         }
     });
-    document.getElementById('bookingMenuCatalogList')?.addEventListener('keydown', (event) => {
+    document.getElementById('bookingMenuCatalogPanel')?.addEventListener('keydown', (event) => {
         if (!event.target.matches('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) return;
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -2426,8 +2507,16 @@ function initBookingPackageWorkspace() {
         if (event.key === 'Escape') {
             event.preventDefault();
             BookingPackageState.catalogEditing = null;
-            renderBookingMenuCatalogList();
+            renderBookingMenuCatalog();
         }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const panel = document.getElementById('bookingMenuCatalogPanel');
+        if (!panel || panel.hidden) return;
+        if (event.target?.matches?.('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) return;
+        event.preventDefault();
+        setBookingMenuCatalogOpen(false);
     });
     document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);
     document.getElementById('freeRoomsPanel')?.addEventListener('click', (event) => {

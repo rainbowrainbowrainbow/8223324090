@@ -31,10 +31,16 @@ function createBookingMenuCatalogHarness() {
                     <input id="bookingMenuCatalogSearch">
                     <div id="bookingMenuCatalogTabs"></div>
                     <div id="bookingMenuCatalogList"></div>
+                    <aside id="bookingMenuCatalogCart">
+                        <span id="bookingMenuCatalogCartSummary"></span>
+                        <button id="bookingMenuCatalogCartCloseBtn"></button>
+                        <div id="bookingMenuCatalogCartList"></div>
+                    </aside>
                     <span id="bookingMenuCatalogEntrySummary"></span>
                     <span id="bookingMenuCatalogSummary"></span>
                     <span id="bookingMenuCatalogFooterCount"></span>
                     <span id="bookingMenuCatalogFooterTotal"></span>
+                    <button id="bookingMenuCatalogMobileCartBtn"></button>
                 </section>
                 <select id="bookingMenuProductSelect"></select>
                 <input id="bookingMenuNote">
@@ -172,11 +178,16 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Усе/);
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Популярне/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-group-heading/);
+    ctx.setBookingMenuCatalogOpen(true);
+    assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), true);
 
     ctx.upsertBookingMenuCatalogProduct('cake_custom', 1);
     assert.equal(ctx.getBookingMenuPositions().length, 1);
     assert.equal(ctx.getBookingMenuPositions()[0].quantity, 1);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-cart-item/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
+    assert.match(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /140|120|грн/);
     assert.match(doc.getElementById('bookingMenuPositionsJson').value, /cake_custom/);
 
     ctx.setBookingMenuCatalogEditing('cake_custom', 'quantity');
@@ -207,6 +218,8 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     doc.getElementById('bookingMenuCatalogSearch').value = 'cake';
     ctx.BookingPackageState.catalogFilter = 'cake';
     ctx.BookingPackageState.catalogEditing = { productId: 'cake_custom', field: 'note' };
+    ctx.setBookingMenuCatalogCartOpen(true);
+    assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), true);
     ctx.resetBookingPackageWorkspace();
     assert.equal(ctx.getBookingMenuPositions().length, 0);
     assert.equal(doc.getElementById('bookingMenuPositionsJson').value, '[]');
@@ -214,6 +227,8 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogSearch').value, '');
     assert.equal(ctx.BookingPackageState.catalogFilter, 'all');
     assert.equal(ctx.BookingPackageState.catalogEditing, null);
+    assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), false);
+    assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
 
 test('booking menu catalog restores saved quantity, manual price, and note when editing existing booking', () => {
@@ -245,6 +260,7 @@ test('booking menu catalog restores saved quantity, manual price, and note when 
     assert.equal(restored.unitPrice, 95);
     assert.equal(restored.note, 'подати о 16:30');
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /95/);
     assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /подати о 16:30/);
     assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л x 95 грн \(подати о 16:30\)/);
 });
@@ -396,10 +412,14 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingLeadDetailsSection/);
     assert.match(html, /bookingMenuProductSelect/);
     assert.match(html, /bookingMenuCatalogOpenBtn/);
-    assert.match(html, /bookingMenuCatalogPanel/);
+    assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
+    assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
     assert.match(html, /bookingMenuCatalogSearch/);
     assert.match(html, /bookingMenuCatalogTabs/);
     assert.match(html, /bookingMenuCatalogList/);
+    assert.match(html, /bookingMenuCatalogCart/);
+    assert.match(html, /bookingMenuCatalogCartList/);
+    assert.match(html, /bookingMenuCatalogMobileCartBtn/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /bookingStickyFooter/);
     assert.match(html, /id="bookingForm" class="booking-form" novalidate/);
@@ -422,6 +442,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /getSelectedProgramIdFromUi/);
     assert.match(bookingJs, /findBookingProductById/);
     assert.match(bookingJs, /function renderBookingMenuCatalog/);
+    assert.match(bookingJs, /function renderBookingMenuCatalogCart/);
+    assert.match(bookingJs, /function setBookingMenuCatalogCartOpen/);
     assert.match(bookingJs, /function upsertBookingMenuCatalogProduct/);
     assert.match(bookingJs, /function setBookingMenuCatalogOpen/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
@@ -430,6 +452,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /data-menu-catalog-note-input/);
     assert.match(bookingJs, /function commitBookingMenuCatalogInlineInput/);
     assert.match(bookingJs, /function commitActiveBookingMenuCatalogInput/);
+    assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', open\)/);
+    assert.match(bookingJs, /bookingMenuCatalogMobileCartBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /bookingMenuCatalogCartCloseBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /event\.key !== 'Escape'/);
     assert.match(bookingJs, /Завантажую меню/);
     assert.match(bookingJs, /Меню ще не налаштоване/);
     assert.match(bookingJs, /Очистити пошук/);
@@ -554,6 +581,17 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /body\.dark-mode \.program-price-badge[\s\S]*color:\s*#F8FAFC/);
     assert.match(panelCss, /\.program-next-price-badge/);
     assert.match(panelCss, /\.selected-activity-item/);
+    assert.match(panelCss, /body\.booking-menu-catalog-active/);
+    assert.match(panelCss, /\.booking-menu-catalog-overlay/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*position:\s*fixed;/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
+    assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(280px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-cart/);
+    assert.match(panelCss, /\.booking-menu-catalog-mobile-cart/);
+    assert.match(panelCss, /\.booking-menu-catalog-cart-open \.booking-menu-catalog-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading/);
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.17 - Fullscreen Menu Catalog
+
+### Booking drawer / Kitchen catalog / Fullscreen UX / Mobile sheet / (Клешня, 12.06.2026) [codex]
+- **Каталог меню винесено з drawer у fullscreen-режим** - кнопка “Додати з меню” відкриває окремий великий робочий екран поверх CRM.
+- **Desktop отримав layout `каталог + вибрано`** - позиції меню розкладаються адаптивною сіткою, а права колонка показує кошик з кількістю, ціною, note і сумою.
+- **Mobile отримав mini-cart і bottom sheet** - пошук, таби й список лишаються основним екраном, а “Вибрано” відкривається окремим нижнім листом.
+- **Діалог поводиться стабільно** - фон блокується, overlay закривається по Esc або кліку на затемнення, а фокус повертається на кнопку відкриття.
+- **Контракт не змінювався** - source of truth лишився `bookingPackage.menuPositions`, backend, DB і payload-структуру не чіпали.
+- **Regression guards посилено** - тести фіксують fullscreen overlay, винесення catalog panel з drawer, body scroll lock, desktop cart і mobile bottom sheet.
+- **Релізні маркери піднято до `0.75.17`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.16 - Kitchen Catalog UX
 
 ### Booking drawer / Kitchen catalog / Inline edit / Mobile UX / (Клешня, 12.06.2026) [codex]

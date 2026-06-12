@@ -51,7 +51,11 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /className: `shift-load-\$\{bucket\}`/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}/);
         assert.match(staffPage, /data-shift-load="\$\{loadMeta\.bucket \|\| ''\}"/);
-        assert.match(staffPage, /class="sch-load-badge"/);
+        assert.doesNotMatch(staffPage, /class="sch-load-badge"/);
+        assert.match(staffCss, /\.sch-cell \.sch-load-badge/);
+        assert.match(staffCss, /display: none !important/);
+        assert.match(staffCss, /--sch-load-marker/);
+        assert.match(staffCss, /\.sch-cell\[class\*="shift-load-"\]::after/);
         assert.match(staffCss, /\.sch-cell\.shift-load-half/);
         assert.match(staffCss, /\.sch-cell\.shift-load-three-quarter/);
         assert.match(staffCss, /\.sch-cell\.shift-load-long/);

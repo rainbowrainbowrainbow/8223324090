@@ -646,14 +646,9 @@ function renderEmpRow(emp, dates, today) {
         const isReplacement = isReplacementEntry(entry);
         const loadMeta = scheduleShiftLoadMeta({ ...entry, status, shift_start: shiftStart, shift_end: shiftEnd });
         const loadClass = loadMeta.className || '';
-        const loadBadge = loadMeta.showBadge && loadMeta.label
-            ? `<span class="sch-load-badge" title="shift load ${loadMeta.label}x">${loadMeta.label}</span>`
-            : '';
-
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
-            cellContent += loadBadge;
             const activeProfession = professionLabel(entry?.profession_key || emp.role_type);
             if (activeProfession) cellContent += `<span class="sch-profession">${escapeHtml(activeProfession)}</span>`;
             if (isReplacement) {

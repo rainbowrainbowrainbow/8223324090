@@ -61,8 +61,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
     assert.match(kitchenMenuImagesJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(kitchenMenuImagesJs, /basePath:\s*'\/images\/kitchen-menu\/'/);
-    assert.match(kitchenMenuImagesJs, /"MENU-026":\s*"01_Бургери\/002_Бургер з біфштексом\.jpg"/);
-    assert.match(kitchenMenuImagesJs, /"CAKE-06":\s*"10_Торти\/088_Снікерс\.jpg"/);
+    assert.match(kitchenMenuImagesJs, /"MENU-026":\s*"products\/menu-026\.jpg"/);
+    assert.match(kitchenMenuImagesJs, /"CAKE-06":\s*"products\/cake-06\.jpg"/);
     assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
     assert.match(html, /id="bookingKitchenToggle" hidden aria-hidden="true"/);
     assert.match(html, /id="bookingLeadDetailsToggle" hidden aria-hidden="true"/);

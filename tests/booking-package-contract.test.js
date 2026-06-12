@@ -734,3 +734,29 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /@media \(max-width:\s*900px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
 });
+
+test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', () => {
+    const manifestCode = read('js', 'kitchen-menu-images.js');
+    const context = { window: {}, Object };
+    vm.createContext(context);
+    vm.runInContext(manifestCode, context);
+    const manifest = context.window.KITCHEN_MENU_IMAGES;
+    assert.equal(manifest.basePath, '/images/kitchen-menu/');
+    assert.equal(manifest.byCode['MENU-026'], 'products/menu-026.jpg');
+    assert.equal(manifest.byCode['CAKE-06'], 'products/cake-06.jpg');
+
+    const values = [
+        ...Object.values(manifest.byCode || {}),
+        ...Object.values(manifest.byId || {})
+    ];
+    assert.ok(values.length >= 93);
+    values.forEach(value => {
+        assert.match(value, /^products\/(?:menu|cake)-\d{2,3}\.(?:jpg|jpeg|png|webp|avif)$/);
+        assert.equal(/[^\x20-\x7E]/.test(value), false, `non-ASCII manifest path: ${value}`);
+        assert.equal(
+            fs.existsSync(path.join(repoRoot, 'images', 'kitchen-menu', ...value.split('/'))),
+            true,
+            `missing kitchen image asset: ${value}`
+        );
+    });
+});

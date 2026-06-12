@@ -42,6 +42,11 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
 
     [
         'bookingMenuAddBtn',
+        'bookingMenuCatalogOpenBtn',
+        'bookingMenuCatalogPanel',
+        'bookingMenuCatalogSearch',
+        'bookingMenuCatalogTabs',
+        'bookingMenuCatalogList',
         'bookingSubmitBtn'
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
     assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
@@ -68,6 +73,16 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);
     assert.doesNotMatch(bookingJs, /bookingLeadDetailsToggle'\)\?\.addEventListener\('change'/);
     assert.match(bookingJs, /bookingMenuAddBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /bookingMenuCatalogOpenBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /bookingMenuCatalogSearch'\)\?\.addEventListener\('input'/);
+    assert.match(bookingJs, /bookingMenuCatalogList'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /bookingMenuCatalogList'\)\?\.addEventListener\('change'/);
+    assert.match(bookingJs, /data-menu-catalog-quantity-input/);
+    assert.match(bookingJs, /data-menu-catalog-price-input/);
+    assert.match(bookingJs, /data-menu-catalog-note-input/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
+    assert.match(bookingJs, /upsertBookingMenuCatalogProduct/);
+    assert.match(bookingJs, /commitBookingMenuCatalogInlineInput/);
     assert.match(bookingJs, /document\.createElement\('button'\)/);
     assert.match(bookingJs, /icon\.type = 'button'/);
     assert.match(bookingJs, /aria-pressed/);
@@ -87,6 +102,13 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.btn-submit:disabled/);
     assert.match(panelCss, /\.booking-mode-card:focus-within/);
     assert.match(panelCss, /\.booking-menu-add-btn:focus-visible/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel/);
+    assert.match(panelCss, /\.booking-menu-catalog-stepper/);
+    assert.match(panelCss, /\.booking-menu-catalog-group-heading/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
+    assert.match(panelCss, /\.booking-menu-catalog-inline-input/);
+    assert.match(panelCss, /\.booking-menu-catalog-note-editor/);
+    assert.match(panelCss, /@media \(max-width:\s*640px\)/);
     assert.match(panelCss, /\.program-icon:focus-visible/);
     assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-mode-section/);
     assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-filler-section select/);

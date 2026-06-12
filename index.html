@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.14">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.14">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.14">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.14">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.14">
-    <link rel="stylesheet" href="css/features.css?v=0.75.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.14">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.14">
+    <link rel="stylesheet" href="css/base.css?v=0.75.16">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.16">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.16">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.16">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.16">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.16">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.16">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.16">
+    <link rel="stylesheet" href="css/features.css?v=0.75.16">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.16">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.16">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.16">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.14">✨ 0.75.14</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.16">✨ 0.75.16</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.14 — Room Timeline Hardening</p>
+                <p class="tagline">AI First CRM v0.75.16 — Kitchen Catalog UX</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.14</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.16</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -800,10 +800,38 @@
                     <div class="booking-section-heading booking-section-heading--compact">
                         <div>
                             <strong>Кухня / меню</strong>
-                            <small>Додавайте лише потрібні позиції, а ручний legacy-опис тримайте окремо.</small>
+                            <small>Каталог відкривається окремо, ручний legacy-опис тримайте окремо.</small>
                         </div>
                     </div>
-                    <div class="booking-menu-grid">
+                    <div class="booking-menu-catalog-entry">
+                        <button type="button" id="bookingMenuCatalogOpenBtn" class="booking-menu-catalog-open">
+                            <span aria-hidden="true">+</span>
+                            <span>Додати з меню</span>
+                        </button>
+                        <div class="booking-menu-catalog-entry-summary" id="bookingMenuCatalogEntrySummary">0 позицій</div>
+                    </div>
+                    <div id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel hidden" hidden aria-hidden="true">
+                        <div class="booking-menu-catalog-header">
+                            <div>
+                                <strong>Каталог меню</strong>
+                                <small id="bookingMenuCatalogSummary">0 позицій · 0 ₴</small>
+                            </div>
+                            <button type="button" id="bookingMenuCatalogCloseBtn" class="booking-menu-catalog-close" aria-label="Закрити каталог">×</button>
+                        </div>
+                        <div class="booking-menu-catalog-search">
+                            <input type="search" id="bookingMenuCatalogSearch" placeholder="Пошук: торт, піца, напій..." autocomplete="off">
+                        </div>
+                        <div id="bookingMenuCatalogTabs" class="booking-menu-catalog-tabs" role="tablist" aria-label="Категорії меню"></div>
+                        <div id="bookingMenuCatalogList" class="booking-menu-catalog-list"></div>
+                        <div class="booking-menu-catalog-footer">
+                            <div>
+                                <strong id="bookingMenuCatalogFooterCount">0 позицій</strong>
+                                <small id="bookingMenuCatalogFooterTotal">0 ₴</small>
+                            </div>
+                            <button type="button" id="bookingMenuCatalogDoneBtn" class="booking-menu-catalog-done">Готово</button>
+                        </div>
+                    </div>
+                    <div class="booking-menu-grid booking-menu-legacy-controls hidden" hidden aria-hidden="true">
                         <div class="form-section">
                             <label>Позиція</label>
                             <select id="bookingMenuProductSelect">
@@ -819,11 +847,11 @@
                             <input type="number" id="bookingMenuUnitPrice" min="0" step="1" placeholder="0">
                         </div>
                     </div>
-                    <div class="form-section">
+                    <div class="form-section booking-menu-legacy-controls hidden" hidden aria-hidden="true">
                         <label>Коментар до позиції</label>
                         <input type="text" id="bookingMenuNote" maxlength="500" placeholder="Напр: без горіхів, подати після квесту">
                     </div>
-                    <button type="button" id="bookingMenuAddBtn" class="booking-menu-add-btn">+ Додати позицію</button>
+                    <button type="button" id="bookingMenuAddBtn" class="booking-menu-add-btn hidden" hidden aria-hidden="true">+ Додати позицію</button>
                     <div id="bookingMenuPositionsList" class="booking-menu-positions-list"></div>
                     <input type="hidden" id="bookingMenuPositionsJson">
                     <div class="booking-menu-banquet-meta">
@@ -1672,6 +1700,28 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.75.16 — Kitchen Catalog UX</h4>
+                    <ul>
+                        <li><b>Кількість, ціна й примітка редагуються прямо в каталозі</b> — клік по кількості або ціні відкриває inline input, а примітка зберігається в позиції меню.</li>
+                        <li><b>Категорії стали стабільними</b> — вкладки <code>Усе</code>, <code>Популярне</code>, <code>Їжа</code>, <code>Напої</code>, <code>Торти</code>, <code>Інше</code> більше не розростаються від довільних секцій.</li>
+                        <li><b>Список згруповано й видно вже вибране</b> — позиції мають заголовки секцій, selected-state, помітну кількість і кнопку видалення.</li>
+                        <li><b>Порожні та loading-стани стали явними</b> — оператор бачить завантаження меню, порожній каталог або кнопку очищення пошуку.</li>
+                        <li><b>Мобільний drawer підчищено</b> — каталог адаптується на вузьких екранах, а footer “Готово” лишається доступним.</li>
+                        <li><b>Regression guards розширено</b> — тести фіксують дробову кількість, ручну ціну, note, selected-state, grouped list і mobile CSS.</li>
+                        <li><b>Релізні маркери піднято до <code>0.75.16</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.15 — Kitchen Menu Catalog</h4>
+                    <ul>
+                        <li><b>Кухня / меню отримала окремий каталог</b> — замість довгого системного select оператор відкриває панель із пошуком, категоріями та зрозумілими рядками позицій.</li>
+                        <li><b>Кількість змінюється прямо в каталозі</b> — кнопки плюс/мінус одразу оновлюють <code>bookingPackage.menuPositions</code>, підсумок і legacy-опис для сумісності.</li>
+                        <li><b>Старий select лишився fallback</b> — payload і серверний контракт не змінювались, тому існуючі бронювання та збережені позиції не ламаються.</li>
+                        <li><b>Regression guard додано</b> — UI smoke перевіряє каталог, пошук, таби, stepper і прихований legacy-блок.</li>
+                        <li><b>Релізні маркери піднято до <code>0.75.15</code></b> — package, cache tags, Service Worker, login badge, tagline, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.75.14 — Room Timeline Hardening</h4>
                     <ul>
@@ -12538,29 +12588,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.14"></script>
-    <script src="js/timeline-visibility.js?v=0.75.14"></script>
-    <script src="js/config.js?v=0.75.14"></script>
-    <script src="js/api.js?v=0.75.14"></script>
-    <script src="js/ui.js?v=0.75.14"></script>
-    <script src="js/auth.js?v=0.75.14"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.14"></script>
-    <script src="js/timeline.js?v=0.75.14"></script>
-    <script src="js/booking.js?v=0.75.14"></script>
-    <script src="js/settings.js?v=0.75.14"></script>
-    <script src="js/booking-form.js?v=0.75.14"></script>
-    <script src="js/booking-linked.js?v=0.75.14"></script>
-    <script src="js/settings-dashboard.js?v=0.75.14"></script>
-    <script src="js/settings-history.js?v=0.75.14"></script>
-    <script src="js/settings-afisha.js?v=0.75.14"></script>
-    <script src="js/settings-certificates.js?v=0.75.14"></script>
-    <script src="js/offline.js?v=0.75.14"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.14"></script>
-    <script src="js/search.js?v=0.75.14"></script>
-    <script src="js/ws.js?v=0.75.14"></script>
-    <script src="js/app.js?v=0.75.14"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.14"></script>
-    <script src="js/components/sidebar.js?v=0.75.14"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.14"></script>
+    <script src="js/timeline-context.js?v=0.75.16"></script>
+    <script src="js/timeline-visibility.js?v=0.75.16"></script>
+    <script src="js/config.js?v=0.75.16"></script>
+    <script src="js/api.js?v=0.75.16"></script>
+    <script src="js/ui.js?v=0.75.16"></script>
+    <script src="js/auth.js?v=0.75.16"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.16"></script>
+    <script src="js/timeline.js?v=0.75.16"></script>
+    <script src="js/booking.js?v=0.75.16"></script>
+    <script src="js/settings.js?v=0.75.16"></script>
+    <script src="js/booking-form.js?v=0.75.16"></script>
+    <script src="js/booking-linked.js?v=0.75.16"></script>
+    <script src="js/settings-dashboard.js?v=0.75.16"></script>
+    <script src="js/settings-history.js?v=0.75.16"></script>
+    <script src="js/settings-afisha.js?v=0.75.16"></script>
+    <script src="js/settings-certificates.js?v=0.75.16"></script>
+    <script src="js/offline.js?v=0.75.16"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.16"></script>
+    <script src="js/search.js?v=0.75.16"></script>
+    <script src="js/ws.js?v=0.75.16"></script>
+    <script src="js/app.js?v=0.75.16"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.16"></script>
+    <script src="js/components/sidebar.js?v=0.75.16"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.16"></script>
 </body>
 </html>

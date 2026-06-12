@@ -362,7 +362,10 @@ function resetPinataModeFields() {
 
 const BookingPackageState = {
     menuPositions: [],
-    editIndex: null
+    editIndex: null,
+    catalogFilter: 'all',
+    catalogEditing: null,
+    catalogProductsLoading: false
 };
 
 const BookingDrawerState = {
@@ -1541,6 +1544,469 @@ function renderBookingMenuProductOptions() {
         select.appendChild(group);
     });
     if (current && products.some(p => p.id === current)) select.value = current;
+    renderBookingMenuCatalog();
+}
+
+function bookingMenuProductTitle(product = {}) {
+    return String(product.name || product.label || product.code || product.id || '').trim();
+}
+
+const BOOKING_MENU_CATALOG_FILTERS = [
+    { key: 'all', label: 'Усе' },
+    { key: 'popular', label: 'Популярне' },
+    { key: 'food', label: 'Їжа' },
+    { key: 'drink', label: 'Напої' },
+    { key: 'cake', label: 'Торти' },
+    { key: 'other', label: 'Інше' }
+];
+const BOOKING_MENU_CATALOG_POPULAR_LIMIT = 12;
+
+function bookingMenuProductCatalogText(product = {}) {
+    return [
+        bookingMenuProductTitle(product),
+        product.code,
+        product.label,
+        product.category,
+        product.domain,
+        product.menuSection || product.menu_section,
+        product.shortDescription,
+        product.description,
+        bookingKitchenTypeLabel(bookingKitchenType(product))
+    ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function bookingMenuProductCatalogFilter(product = {}) {
+    const type = bookingKitchenType(product);
+    if (type === 'cake' || product.category === 'cake') return 'cake';
+    const text = bookingMenuProductCatalogText(product);
+    if (/(нап|сік|сок|вода|чай|кава|лимонад|компот|морс|cola|coffee|juice|drink)/i.test(text)) return 'drink';
+    if (type === 'menu' || product.domain === 'kitchen' || product.category === 'menu') return 'food';
+    return 'other';
+}
+
+function bookingMenuCatalogFilterLabel(filter) {
+    return BOOKING_MENU_CATALOG_FILTERS.find(tab => tab.key === filter)?.label || 'Інше';
+}
+
+function bookingMenuCatalogSelectedIds() {
+    return new Set(getBookingMenuPositions()
+        .map(item => String(item.productId || ''))
+        .filter(Boolean));
+}
+
+function bookingMenuCatalogPopularIds(products = getBookingMenuProducts()) {
+    const ids = new Set(bookingMenuCatalogSelectedIds());
+    [...products]
+        .sort((a, b) => {
+            const sortA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : 999999;
+            const sortB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 999999;
+            return sortA - sortB
+                || bookingMenuProductTitle(a).localeCompare(bookingMenuProductTitle(b), 'uk');
+        })
+        .slice(0, BOOKING_MENU_CATALOG_POPULAR_LIMIT)
+        .forEach(product => ids.add(String(product.id || '')));
+    return ids;
+}
+
+function bookingMenuCatalogMatchesFilter(product = {}, filter = 'all', products = getBookingMenuProducts()) {
+    if (filter === 'all') return true;
+    if (filter === 'popular') return bookingMenuCatalogPopularIds(products).has(String(product.id || ''));
+    return bookingMenuProductCatalogFilter(product) === filter;
+}
+
+function bookingMenuCatalogTabs(products = getBookingMenuProducts()) {
+    return BOOKING_MENU_CATALOG_FILTERS.map(tab => ({
+        ...tab,
+        count: products.filter(product => bookingMenuCatalogMatchesFilter(product, tab.key, products)).length
+    }));
+}
+
+function bookingMenuCatalogSearchText(product = {}) {
+    return bookingMenuProductCatalogText(product);
+}
+
+function bookingMenuCatalogPositionIndex(productId, positions = getBookingMenuPositions()) {
+    return positions.findIndex(item => String(item.productId || '') === String(productId || ''));
+}
+
+function bookingMenuCatalogPosition(productId, positions = getBookingMenuPositions()) {
+    const index = bookingMenuCatalogPositionIndex(productId, positions);
+    return index >= 0 ? positions[index] : null;
+}
+
+function bookingMenuCatalogQuantity(productId, positions = getBookingMenuPositions()) {
+    return positions
+        .filter(item => String(item.productId || '') === String(productId || ''))
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+}
+
+function bookingMenuCatalogQuantityLabel(value) {
+    const qty = Math.round((Number(value || 0) || 0) * 100) / 100;
+    if (!qty) return '0';
+    return Number.isInteger(qty) ? String(qty) : String(qty).replace('.', ',');
+}
+
+function bookingMenuCatalogPositionFromProduct(product = {}, quantity = 1, overrides = {}) {
+    const safeQuantity = Math.max(Number(quantity || 1), 0.1);
+    const unitPrice = toBookingMoney(overrides.unitPrice ?? product.price ?? 0);
+    return normalizeBookingMenuPosition({
+        id: overrides.id || `menu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        productId: product.id || null,
+        code: product.code || null,
+        title: bookingMenuProductTitle(product),
+        quantity: safeQuantity,
+        unitPrice,
+        subtotal: safeQuantity * unitPrice,
+        note: overrides.note || '',
+        menuSection: product.menuSection || null,
+        servingUnit: product.servingUnit || product.priceUnit || null,
+        kitchenType: bookingKitchenType(product),
+        weightValue: product.weightValue || null,
+        cakeDecoration: product.cakeDecoration || null,
+        source: 'product'
+    });
+}
+
+function commitBookingMenuCatalogPositions(nextPositions) {
+    BookingPackageState.menuPositions = (Array.isArray(nextPositions) ? nextPositions : [])
+        .map((item, index) => normalizeBookingMenuPosition(item, index))
+        .filter(Boolean);
+    BookingPackageState.editIndex = null;
+    BookingPackageState.catalogEditing = null;
+    renderBookingMenuPositions();
+    syncLegacyBanquetMenuFromPositions(true);
+    renderBookingPackageSummary();
+    syncBookingWorkspaceMode();
+    if (window.BookingForm) BookingForm._dirty = true;
+}
+
+function upsertBookingMenuCatalogProduct(productId, delta) {
+    const product = getBookingMenuProducts().find(item => String(item.id) === String(productId));
+    if (!product) return;
+    const positions = getBookingMenuPositions();
+    const firstIndex = positions.findIndex(item => String(item.productId || '') === String(product.id));
+    const currentQty = positions
+        .filter(item => String(item.productId || '') === String(product.id))
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const nextQty = Math.max(0, Math.round((currentQty + delta) * 100) / 100);
+    const nextPositions = positions.filter((item, index) =>
+        index === firstIndex || String(item.productId || '') !== String(product.id)
+    );
+    if (nextQty <= 0) {
+        commitBookingMenuCatalogPositions(positions.filter(item => String(item.productId || '') !== String(product.id)));
+    } else if (firstIndex >= 0) {
+        const current = positions[firstIndex];
+        const position = bookingMenuCatalogPositionFromProduct(product, nextQty, {
+            id: current.id,
+            unitPrice: current.unitPrice,
+            note: current.note || ''
+        });
+        nextPositions[firstIndex] = position;
+        commitBookingMenuCatalogPositions(nextPositions.filter(Boolean));
+    } else {
+        commitBookingMenuCatalogPositions([...positions, bookingMenuCatalogPositionFromProduct(product, nextQty)].filter(Boolean));
+    }
+}
+
+function updateBookingMenuCatalogProduct(productId, updates = {}) {
+    const product = getBookingMenuProducts().find(item => String(item.id) === String(productId));
+    if (!product) return;
+    const positions = getBookingMenuPositions();
+    const firstIndex = bookingMenuCatalogPositionIndex(productId, positions);
+    const current = firstIndex >= 0
+        ? positions[firstIndex]
+        : bookingMenuCatalogPositionFromProduct(product, 1);
+    const quantity = updates.quantity !== undefined
+        ? Math.max(Math.round(Number(updates.quantity || 0) * 10) / 10, 0.1)
+        : Number(current.quantity || 1);
+    const unitPrice = updates.unitPrice !== undefined
+        ? toBookingMoney(updates.unitPrice)
+        : toBookingMoney(current.unitPrice ?? product.price ?? 0);
+    const note = updates.note !== undefined
+        ? String(updates.note || '').trim()
+        : (current.note || '');
+    const nextPosition = bookingMenuCatalogPositionFromProduct(product, quantity, {
+        id: current.id,
+        unitPrice,
+        note
+    });
+    const nextPositions = firstIndex >= 0
+        ? positions.map((item, index) => index === firstIndex ? nextPosition : item)
+        : [...positions, nextPosition];
+    commitBookingMenuCatalogPositions(nextPositions);
+}
+
+function setBookingMenuCatalogEditing(productId, field) {
+    BookingPackageState.catalogEditing = productId && field
+        ? { productId: String(productId), field }
+        : null;
+    renderBookingMenuCatalogList();
+    if (productId && field) {
+        setTimeout(() => {
+            const safeId = typeof CSS !== 'undefined' && CSS.escape
+                ? CSS.escape(String(productId))
+                : String(productId).replace(/"/g, '\\"');
+            const input = document.querySelector(`[data-menu-catalog-${field}-input="${safeId}"]`);
+            input?.focus();
+            input?.select?.();
+        }, 0);
+    }
+}
+
+function isBookingMenuCatalogEditing(productId, field) {
+    return BookingPackageState.catalogEditing?.field === field
+        && BookingPackageState.catalogEditing?.productId === String(productId || '');
+}
+
+function bookingMenuCatalogNumberValue(value, fallback = 0) {
+    const parsed = Number(String(value ?? '').replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function commitBookingMenuCatalogInlineInput(input) {
+    if (!input) return;
+    const quantityProductId = input.dataset.menuCatalogQuantityInput;
+    const priceProductId = input.dataset.menuCatalogPriceInput;
+    const noteProductId = input.dataset.menuCatalogNoteInput;
+    if (quantityProductId) {
+        const quantity = Math.max(Math.round(bookingMenuCatalogNumberValue(input.value, 1) * 10) / 10, 0.1);
+        updateBookingMenuCatalogProduct(quantityProductId, { quantity });
+        return;
+    }
+    if (priceProductId) {
+        updateBookingMenuCatalogProduct(priceProductId, { unitPrice: toBookingMoney(bookingMenuCatalogNumberValue(input.value, 0)) });
+        return;
+    }
+    if (noteProductId) {
+        updateBookingMenuCatalogProduct(noteProductId, { note: input.value || '' });
+    }
+}
+
+function commitActiveBookingMenuCatalogInput() {
+    const active = document.activeElement;
+    if (!active || !active.closest?.('#bookingMenuCatalogPanel')) return;
+    if (active.matches('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) {
+        commitBookingMenuCatalogInlineInput(active);
+    }
+}
+
+function bookingMenuCatalogProductGroupLabel(product = {}, filter = 'all', selected = false) {
+    if (filter === 'popular') return selected ? 'Вже додано' : 'Популярне';
+    const section = String(product.menuSection || product.menu_section || '').trim();
+    if (section) return section;
+    return bookingMenuCatalogFilterLabel(bookingMenuProductCatalogFilter(product));
+}
+
+function bookingMenuCatalogSortedProducts(products = [], filter = 'all') {
+    const selectedIds = bookingMenuCatalogSelectedIds();
+    return [...products].sort((a, b) => {
+        if (filter === 'popular') {
+            const selectedA = selectedIds.has(String(a.id || '')) ? 0 : 1;
+            const selectedB = selectedIds.has(String(b.id || '')) ? 0 : 1;
+            if (selectedA !== selectedB) return selectedA - selectedB;
+        }
+        const groupCompare = bookingMenuCatalogProductGroupLabel(a, filter, selectedIds.has(String(a.id || '')))
+            .localeCompare(bookingMenuCatalogProductGroupLabel(b, filter, selectedIds.has(String(b.id || ''))), 'uk');
+        if (groupCompare) return groupCompare;
+        const sortA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : 999999;
+        const sortB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 999999;
+        return sortA - sortB
+            || bookingMenuProductTitle(a).localeCompare(bookingMenuProductTitle(b), 'uk');
+    });
+}
+
+function bookingMenuCatalogLoadState(products = getBookingMenuProducts()) {
+    if (!timelineKitchenEnabled()) return 'disabled';
+    if (typeof AppState !== 'undefined'
+        && typeof timelineDisplayUsesApiProducts === 'function'
+        && timelineDisplayUsesApiProducts()
+        && !Array.isArray(AppState.products)
+        && !products.length) {
+        return 'loading';
+    }
+    return products.length ? 'ready' : 'empty';
+}
+
+function ensureBookingMenuCatalogProductsLoaded() {
+    if (BookingPackageState.catalogProductsLoading || typeof getProducts !== 'function') return;
+    const needsLoad = typeof AppState !== 'undefined'
+        && typeof timelineDisplayUsesApiProducts === 'function'
+        && timelineDisplayUsesApiProducts()
+        && !Array.isArray(AppState.products);
+    if (!needsLoad) return;
+    BookingPackageState.catalogProductsLoading = true;
+    renderBookingMenuCatalogList();
+    getProducts()
+        .then(() => renderBookingMenuProductOptions())
+        .catch(() => renderBookingMenuCatalog())
+        .finally(() => {
+            BookingPackageState.catalogProductsLoading = false;
+            renderBookingMenuCatalog();
+        });
+}
+
+function bookingMenuCatalogSummaryText() {
+    const positions = getBookingMenuPositions();
+    const count = positions.length;
+    const subtotal = bookingMenuPositionsSubtotal(positions);
+    const countText = `${count} ${count === 1 ? 'позиція' : count > 1 && count < 5 ? 'позиції' : 'позицій'}`;
+    return { countText, subtotalText: formatPrice(subtotal), combined: `${countText} · ${formatPrice(subtotal)}` };
+}
+
+function updateBookingMenuCatalogSummary() {
+    const summary = bookingMenuCatalogSummaryText();
+    const inline = document.getElementById('bookingMenuCatalogEntrySummary');
+    const header = document.getElementById('bookingMenuCatalogSummary');
+    const footerCount = document.getElementById('bookingMenuCatalogFooterCount');
+    const footerTotal = document.getElementById('bookingMenuCatalogFooterTotal');
+    if (inline) inline.textContent = summary.combined;
+    if (header) header.textContent = summary.combined;
+    if (footerCount) footerCount.textContent = summary.countText;
+    if (footerTotal) footerTotal.textContent = summary.subtotalText;
+}
+
+function setBookingMenuCatalogOpen(open) {
+    const panel = document.getElementById('bookingMenuCatalogPanel');
+    if (!panel) return;
+    const openBtn = document.getElementById('bookingMenuCatalogOpenBtn');
+    panel.classList.toggle('hidden', !open);
+    panel.hidden = !open;
+    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (openBtn) openBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+        ensureBookingMenuCatalogProductsLoaded();
+        renderBookingMenuCatalog();
+        setTimeout(() => document.getElementById('bookingMenuCatalogSearch')?.focus(), 0);
+    } else {
+        commitActiveBookingMenuCatalogInput();
+        BookingPackageState.catalogEditing = null;
+        BookingPackageState.catalogFilter = 'all';
+        const search = document.getElementById('bookingMenuCatalogSearch');
+        if (search) search.value = '';
+    }
+}
+
+function renderBookingMenuCatalogTabs(products = getBookingMenuProducts()) {
+    const tabsEl = document.getElementById('bookingMenuCatalogTabs');
+    if (!tabsEl) return;
+    const tabs = bookingMenuCatalogTabs(products);
+    if (!tabs.some(tab => tab.key === BookingPackageState.catalogFilter)) {
+        BookingPackageState.catalogFilter = 'all';
+    }
+    tabsEl.innerHTML = tabs.map(tab => `
+        <button type="button" class="booking-menu-catalog-tab${tab.key === BookingPackageState.catalogFilter ? ' active' : ''}"
+            data-menu-catalog-filter="${escapeHtml(tab.key)}"
+            aria-pressed="${tab.key === BookingPackageState.catalogFilter ? 'true' : 'false'}">
+            ${escapeHtml(tab.label)} <span>${escapeHtml(String(tab.count))}</span>
+        </button>
+    `).join('');
+}
+
+function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
+    const list = document.getElementById('bookingMenuCatalogList');
+    if (!list) return;
+    const loadState = bookingMenuCatalogLoadState(products);
+    if (loadState === 'loading' || BookingPackageState.catalogProductsLoading) {
+        list.innerHTML = '<div class="booking-menu-catalog-state">Завантажую меню...</div>';
+        return;
+    }
+    if (loadState === 'disabled') {
+        list.innerHTML = '<div class="booking-menu-catalog-state">Кухня для цього режиму вимкнена.</div>';
+        return;
+    }
+    if (loadState === 'empty') {
+        list.innerHTML = '<div class="booking-menu-catalog-state">Меню ще не налаштоване.</div>';
+        return;
+    }
+    const query = String(document.getElementById('bookingMenuCatalogSearch')?.value || '').trim().toLowerCase();
+    const filter = BookingPackageState.catalogFilter || 'all';
+    const positions = getBookingMenuPositions();
+    const selectedIds = bookingMenuCatalogSelectedIds();
+    const filtered = products.filter(product => {
+        const matchesFilter = bookingMenuCatalogMatchesFilter(product, filter, products);
+        const matchesQuery = !query || bookingMenuCatalogSearchText(product).includes(query);
+        return matchesFilter && matchesQuery;
+    });
+    if (!filtered.length) {
+        list.innerHTML = `
+            <div class="booking-menu-catalog-state">
+                <div>Нічого не знайдено.</div>
+                ${query ? '<button type="button" data-menu-catalog-clear-search>Очистити пошук</button>' : ''}
+            </div>
+        `;
+        return;
+    }
+    const rows = [];
+    let currentGroup = '';
+    bookingMenuCatalogSortedProducts(filtered, filter).forEach(product => {
+        const title = bookingMenuProductTitle(product);
+        const selectedPosition = bookingMenuCatalogPosition(product.id, positions);
+        const selected = Boolean(selectedPosition);
+        const qty = bookingMenuCatalogQuantity(product.id, positions);
+        const unitPrice = selectedPosition ? toBookingMoney(selectedPosition.unitPrice) : toBookingMoney(product.price || 0);
+        const note = selectedPosition?.note || '';
+        const typeLabel = bookingKitchenTypeLabel(bookingKitchenType(product));
+        const groupLabel = bookingMenuCatalogProductGroupLabel(product, filter, selectedIds.has(String(product.id || '')));
+        const section = product.menuSection ? String(product.menuSection) : '';
+        const unit = product.servingUnit || product.priceUnit || '';
+        if (groupLabel !== currentGroup) {
+            currentGroup = groupLabel;
+            rows.push(`<div class="booking-menu-catalog-group-heading">${escapeHtml(groupLabel)}</div>`);
+        }
+        const quantityControl = isBookingMenuCatalogEditing(product.id, 'quantity')
+            ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-qty-input" type="number" min="0.1" step="0.1" value="${escapeHtml(String(qty || 1))}" data-menu-catalog-quantity-input="${escapeHtml(product.id)}" aria-label="Кількість ${escapeHtml(title)}">`
+            : `<button type="button" class="booking-menu-catalog-qty" data-menu-catalog-edit-quantity="${escapeHtml(product.id)}" aria-label="Змінити кількість ${escapeHtml(title)}">${escapeHtml(bookingMenuCatalogQuantityLabel(qty))}</button>`;
+        const priceControl = isBookingMenuCatalogEditing(product.id, 'price')
+            ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-price-input" type="number" min="0" step="1" value="${escapeHtml(String(unitPrice))}" data-menu-catalog-price-input="${escapeHtml(product.id)}" aria-label="Ціна ${escapeHtml(title)}">`
+            : `<button type="button" class="booking-menu-catalog-price" data-menu-catalog-edit-price="${escapeHtml(product.id)}" aria-label="Змінити ціну ${escapeHtml(title)}">${escapeHtml(formatPrice(unitPrice))}</button>`;
+        const noteEditor = selected && isBookingMenuCatalogEditing(product.id, 'note')
+            ? `<div class="booking-menu-catalog-note-editor"><input type="text" maxlength="500" value="${escapeHtml(note)}" data-menu-catalog-note-input="${escapeHtml(product.id)}" placeholder="Напр: без горіхів, подати о 16:30"></div>`
+            : '';
+        rows.push(`
+            <div class="booking-menu-catalog-item${selected ? ' selected' : ''}" data-menu-catalog-product="${escapeHtml(product.id)}">
+                <div class="booking-menu-catalog-main">
+                    <div class="booking-menu-catalog-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                    <div class="booking-menu-catalog-meta">
+                        <span class="booking-menu-catalog-kind">${escapeHtml(typeLabel)}</span>
+                        <span>${priceControl}${unit ? ` / ${escapeHtml(unit)}` : ''}</span>
+                        ${section ? `<span>${escapeHtml(section)}</span>` : ''}
+                        ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
+                    </div>
+                </div>
+                <div class="booking-menu-catalog-stepper">
+                    <button type="button" data-menu-catalog-dec="${escapeHtml(product.id)}" aria-label="Зменшити ${escapeHtml(title)}">−</button>
+                    ${quantityControl}
+                    <button type="button" data-menu-catalog-add="${escapeHtml(product.id)}" aria-label="Додати ${escapeHtml(title)}">+</button>
+                    ${selected ? `<button type="button" class="booking-menu-catalog-note-btn" data-menu-catalog-edit-note="${escapeHtml(product.id)}" aria-label="Примітка ${escapeHtml(title)}">✎</button>` : ''}
+                    ${selected ? `<button type="button" class="booking-menu-catalog-remove" data-menu-catalog-remove="${escapeHtml(product.id)}" aria-label="Видалити ${escapeHtml(title)}">×</button>` : ''}
+                </div>
+                ${noteEditor}
+            </div>
+        `);
+    });
+    list.innerHTML = rows.join('');
+}
+
+function renderBookingMenuCatalog() {
+    const panel = document.getElementById('bookingMenuCatalogPanel');
+    const products = getBookingMenuProducts();
+    renderBookingMenuCatalogTabs(products);
+    if (panel && !panel.hidden) renderBookingMenuCatalogList(products);
+    updateBookingMenuCatalogSummary();
+}
+
+function openBookingMenuCatalogForPosition(item = {}) {
+    const search = document.getElementById('bookingMenuCatalogSearch');
+    if (search) search.value = '';
+    if (item.productId) {
+        BookingPackageState.catalogFilter = bookingMenuProductCatalogFilter({
+            menuSection: item.menuSection,
+            menu_section: item.menuSection,
+            kitchenType: item.kitchenType,
+            type: item.kitchenType
+        });
+    }
+    setBookingMenuCatalogOpen(true);
 }
 
 function renderBookingMenuPositions() {
@@ -1549,7 +2015,10 @@ function renderBookingMenuPositions() {
     const positions = getBookingMenuPositions();
     BookingPackageState.menuPositions = positions;
     if (hidden) hidden.value = JSON.stringify(positions);
-    if (!list) return;
+    if (!list) {
+        renderBookingMenuCatalog();
+        return;
+    }
     if (!positions.length) {
         list.innerHTML = '<div class="booking-summary-empty">Меню або сервісні позиції ще не додані.</div>';
     } else {
@@ -1570,6 +2039,10 @@ function renderBookingMenuPositions() {
                 const index = Number(btn.dataset.menuEdit);
                 const item = BookingPackageState.menuPositions[index];
                 if (!item) return;
+                if (item.productId) {
+                    openBookingMenuCatalogForPosition(item);
+                    return;
+                }
                 BookingPackageState.editIndex = index;
                 const select = document.getElementById('bookingMenuProductSelect');
                 const quantity = document.getElementById('bookingMenuQuantity');
@@ -1602,6 +2075,7 @@ function renderBookingMenuPositions() {
             });
         });
     }
+    renderBookingMenuCatalog();
 }
 
 function syncLegacyBanquetMenuFromPositions(force = false) {
@@ -1676,10 +2150,15 @@ function setBookingMenuPositions(positions) {
 function resetBookingPackageWorkspace() {
     BookingPackageState.menuPositions = [];
     BookingPackageState.editIndex = null;
+    BookingPackageState.catalogFilter = 'all';
+    BookingPackageState.catalogEditing = null;
     ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetTables'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const catalogSearch = document.getElementById('bookingMenuCatalogSearch');
+    if (catalogSearch) catalogSearch.value = '';
+    setBookingMenuCatalogOpen(false);
     const qty = document.getElementById('bookingMenuQuantity');
     if (qty) qty.value = '1';
     const addBtn = document.getElementById('bookingMenuAddBtn');
@@ -1885,6 +2364,71 @@ function initBookingPackageWorkspace() {
         el.addEventListener('input', refreshHosts);
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
+    document.getElementById('bookingMenuCatalogOpenBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(true));
+    document.getElementById('bookingMenuCatalogCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
+    document.getElementById('bookingMenuCatalogDoneBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
+    document.getElementById('bookingMenuCatalogSearch')?.addEventListener('input', () => renderBookingMenuCatalogList());
+    document.getElementById('bookingMenuCatalogTabs')?.addEventListener('click', (event) => {
+        const tab = event.target.closest('[data-menu-catalog-filter]');
+        if (!tab) return;
+        BookingPackageState.catalogFilter = tab.dataset.menuCatalogFilter || 'all';
+        renderBookingMenuCatalog();
+    });
+    document.getElementById('bookingMenuCatalogList')?.addEventListener('click', (event) => {
+        const add = event.target.closest('[data-menu-catalog-add]');
+        const dec = event.target.closest('[data-menu-catalog-dec]');
+        const remove = event.target.closest('[data-menu-catalog-remove]');
+        const editQuantity = event.target.closest('[data-menu-catalog-edit-quantity]');
+        const editPrice = event.target.closest('[data-menu-catalog-edit-price]');
+        const editNote = event.target.closest('[data-menu-catalog-edit-note]');
+        const clearSearch = event.target.closest('[data-menu-catalog-clear-search]');
+        if (clearSearch) {
+            const search = document.getElementById('bookingMenuCatalogSearch');
+            if (search) search.value = '';
+            renderBookingMenuCatalogList();
+            search?.focus();
+            return;
+        }
+        if (editQuantity) {
+            setBookingMenuCatalogEditing(editQuantity.dataset.menuCatalogEditQuantity, 'quantity');
+            return;
+        }
+        if (editPrice) {
+            setBookingMenuCatalogEditing(editPrice.dataset.menuCatalogEditPrice, 'price');
+            return;
+        }
+        if (editNote) {
+            setBookingMenuCatalogEditing(editNote.dataset.menuCatalogEditNote, 'note');
+            return;
+        }
+        if (remove) {
+            const productId = remove.dataset.menuCatalogRemove;
+            commitBookingMenuCatalogPositions(getBookingMenuPositions().filter(item => String(item.productId || '') !== String(productId || '')));
+            return;
+        }
+        if (add) {
+            upsertBookingMenuCatalogProduct(add.dataset.menuCatalogAdd, 1);
+            return;
+        }
+        if (dec) upsertBookingMenuCatalogProduct(dec.dataset.menuCatalogDec, -1);
+    });
+    document.getElementById('bookingMenuCatalogList')?.addEventListener('change', (event) => {
+        if (event.target.matches('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) {
+            commitBookingMenuCatalogInlineInput(event.target);
+        }
+    });
+    document.getElementById('bookingMenuCatalogList')?.addEventListener('keydown', (event) => {
+        if (!event.target.matches('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commitBookingMenuCatalogInlineInput(event.target);
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            BookingPackageState.catalogEditing = null;
+            renderBookingMenuCatalogList();
+        }
+    });
     document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);
     document.getElementById('freeRoomsPanel')?.addEventListener('click', (event) => {
         const chip = event.target.closest('[data-free-room]');

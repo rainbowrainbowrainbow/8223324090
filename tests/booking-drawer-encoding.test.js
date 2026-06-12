@@ -92,9 +92,13 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /upsertBookingMenuCatalogProduct/);
     assert.match(bookingJs, /renderBookingMenuCatalogCart/);
     assert.match(bookingJs, /setBookingMenuCatalogCartOpen/);
+    assert.match(bookingJs, /isBookingMenuCatalogMobileCartLayout/);
+    assert.match(bookingJs, /preferCart/);
     assert.match(bookingJs, /commitBookingMenuCatalogInlineInput/);
-    assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', open\)/);
+    assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', nextOpen\)/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /cart\.setAttribute\('inert'/);
+    assert.match(bookingJs, /window\.addEventListener\('resize'/);
     assert.match(bookingJs, /event\.key !== 'Escape'/);
     assert.match(bookingJs, /document\.createElement\('button'\)/);
     assert.match(bookingJs, /icon\.type = 'button'/);
@@ -130,7 +134,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);
     assert.match(panelCss, /\.booking-menu-catalog-note-editor/);
-    assert.match(panelCss, /@media \(max-width:\s*640px\)/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
     assert.match(panelCss, /\.program-icon:focus-visible/);
     assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-mode-section/);
     assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-filler-section select/);

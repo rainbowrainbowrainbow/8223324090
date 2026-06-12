@@ -141,6 +141,17 @@ function createBookingMenuCatalogHarness() {
         updateBookingSubmitState: () => {},
         updateBookingContextHeaderSummaryCalls: 0
     };
+    context.__bookingMenuCatalogMobile = false;
+    context.window.matchMedia = (query) => ({
+        matches: String(query || '').includes('900px') ? context.__bookingMenuCatalogMobile : false,
+        media: String(query || ''),
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false
+    });
     context.window.BookingForm = context.BookingForm;
 
     vm.createContext(context);
@@ -214,6 +225,28 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(ctx.getBookingMenuPositions()[0].note, 'без горіхів');
     assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 шт x 140 грн \(без горіхів\)/);
     assert.equal(ctx.BookingForm._dirty, true);
+
+    doc.getElementById('bookingMenuCatalogSearch').value = 'juice';
+    ctx.BookingPackageState.catalogFilter = 'food';
+    ctx.renderBookingMenuCatalog();
+    ctx.setBookingMenuCatalogEditing('cake_custom', 'quantity', { preferCart: true });
+    assert.equal(doc.querySelector('#bookingMenuCatalogList [data-menu-catalog-quantity-input="cake_custom"]'), null);
+    const cartQuantityInput = doc.querySelector('#bookingMenuCatalogCart [data-menu-catalog-quantity-input="cake_custom"]');
+    assert.ok(cartQuantityInput, 'cart quantity input rendered even when catalog row is filtered out');
+    cartQuantityInput.value = '3';
+    ctx.commitBookingMenuCatalogInlineInput(cartQuantityInput);
+    assert.equal(ctx.getBookingMenuPositions()[0].quantity, 3);
+    assert.equal(ctx.getBookingMenuPositions()[0].subtotal, 420);
+
+    ctx.__bookingMenuCatalogMobile = true;
+    ctx.setBookingMenuCatalogCartOpen(false);
+    assert.equal(doc.getElementById('bookingMenuCatalogCart').getAttribute('aria-hidden'), 'true');
+    assert.equal(doc.getElementById('bookingMenuCatalogCart').hasAttribute('inert'), true);
+    assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'false');
+    ctx.setBookingMenuCatalogCartOpen(true);
+    assert.equal(doc.getElementById('bookingMenuCatalogCart').getAttribute('aria-hidden'), 'false');
+    assert.equal(doc.getElementById('bookingMenuCatalogCart').hasAttribute('inert'), false);
+    assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'true');
 
     doc.getElementById('bookingMenuCatalogSearch').value = 'cake';
     ctx.BookingPackageState.catalogFilter = 'cake';
@@ -444,6 +477,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function renderBookingMenuCatalog/);
     assert.match(bookingJs, /function renderBookingMenuCatalogCart/);
     assert.match(bookingJs, /function setBookingMenuCatalogCartOpen/);
+    assert.match(bookingJs, /function isBookingMenuCatalogMobileCartLayout/);
+    assert.match(bookingJs, /preferCart/);
     assert.match(bookingJs, /function upsertBookingMenuCatalogProduct/);
     assert.match(bookingJs, /function setBookingMenuCatalogOpen/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
@@ -452,10 +487,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /data-menu-catalog-note-input/);
     assert.match(bookingJs, /function commitBookingMenuCatalogInlineInput/);
     assert.match(bookingJs, /function commitActiveBookingMenuCatalogInput/);
-    assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', open\)/);
+    assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', nextOpen\)/);
     assert.match(bookingJs, /bookingMenuCatalogMobileCartBtn'\)\?\.addEventListener\('click'/);
     assert.match(bookingJs, /bookingMenuCatalogCartCloseBtn'\)\?\.addEventListener\('click'/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /cart\.setAttribute\('inert'/);
+    assert.match(bookingJs, /window\.addEventListener\('resize'/);
     assert.match(bookingJs, /event\.key !== 'Escape'/);
     assert.match(bookingJs, /Завантажую меню/);
     assert.match(bookingJs, /Меню ще не налаштоване/);
@@ -596,5 +633,6 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);
     assert.match(panelCss, /\.booking-menu-catalog-note-editor/);
-    assert.match(panelCss, /@media \(max-width:\s*640px\)/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
 });

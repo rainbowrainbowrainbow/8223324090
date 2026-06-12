@@ -1736,17 +1736,29 @@ function updateBookingMenuCatalogProduct(productId, updates = {}) {
     commitBookingMenuCatalogPositions(nextPositions);
 }
 
-function setBookingMenuCatalogEditing(productId, field) {
+function setBookingMenuCatalogEditing(productId, field, options = {}) {
     BookingPackageState.catalogEditing = productId && field
         ? { productId: String(productId), field }
         : null;
     renderBookingMenuCatalogList();
+    renderBookingMenuCatalogCart();
     if (productId && field) {
         setTimeout(() => {
             const safeId = typeof CSS !== 'undefined' && CSS.escape
                 ? CSS.escape(String(productId))
                 : String(productId).replace(/"/g, '\\"');
-            const input = document.querySelector(`[data-menu-catalog-${field}-input="${safeId}"]`);
+            const selector = `[data-menu-catalog-${field}-input="${safeId}"]`;
+            const roots = [];
+            if (options.preferCart) roots.push(document.getElementById('bookingMenuCatalogCart'));
+            roots.push(
+                document.getElementById('bookingMenuCatalogList'),
+                document.getElementById('bookingMenuCatalogPanel'),
+                document
+            );
+            const input = roots
+                .filter(Boolean)
+                .map(root => root.querySelector?.(selector))
+                .find(Boolean);
             input?.focus();
             input?.select?.();
         }, 0);
@@ -1871,28 +1883,48 @@ function updateBookingMenuCatalogSummary() {
     panel?.classList.toggle('booking-menu-catalog-has-selection', getBookingMenuPositions().length > 0);
 }
 
+function isBookingMenuCatalogMobileCartLayout() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(max-width: 900px)').matches;
+}
+
 function setBookingMenuCatalogCartOpen(open) {
     const panel = document.getElementById('bookingMenuCatalogPanel');
     if (!panel) return;
-    panel.classList.toggle('booking-menu-catalog-cart-open', Boolean(open));
+    const nextOpen = Boolean(open);
+    const cart = document.getElementById('bookingMenuCatalogCart');
+    const trigger = document.getElementById('bookingMenuCatalogMobileCartBtn');
+    const hideCartForA11y = isBookingMenuCatalogMobileCartLayout() && !nextOpen;
+    panel.classList.toggle('booking-menu-catalog-cart-open', nextOpen);
+    if (trigger) trigger.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    if (cart) {
+        cart.setAttribute('aria-hidden', hideCartForA11y ? 'true' : 'false');
+        if (hideCartForA11y) cart.setAttribute('inert', '');
+        else cart.removeAttribute('inert');
+    }
 }
 
-function setBookingMenuCatalogOpen(open) {
+function setBookingMenuCatalogOpen(open, options = {}) {
     const panel = document.getElementById('bookingMenuCatalogPanel');
     if (!panel) return;
+    const nextOpen = Boolean(open);
     const openBtn = document.getElementById('bookingMenuCatalogOpenBtn');
     const hadFocusInside = panel.contains(document.activeElement);
-    panel.classList.toggle('hidden', !open);
-    panel.hidden = !open;
-    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
-    document.body?.classList.toggle('booking-menu-catalog-active', open);
-    if (openBtn) openBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) {
+    if (!nextOpen && !options.skipCommit) {
+        commitActiveBookingMenuCatalogInput();
+    }
+    panel.classList.toggle('hidden', !nextOpen);
+    panel.hidden = !nextOpen;
+    panel.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    document.body?.classList.toggle('booking-menu-catalog-active', nextOpen);
+    if (openBtn) openBtn.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    if (nextOpen) {
         ensureBookingMenuCatalogProductsLoaded();
         renderBookingMenuCatalog();
+        setBookingMenuCatalogCartOpen(panel.classList.contains('booking-menu-catalog-cart-open'));
         setTimeout(() => document.getElementById('bookingMenuCatalogSearch')?.focus(), 0);
     } else {
-        commitActiveBookingMenuCatalogInput();
         BookingPackageState.catalogEditing = null;
         BookingPackageState.catalogFilter = 'all';
         setBookingMenuCatalogCartOpen(false);
@@ -2226,7 +2258,7 @@ function resetBookingPackageWorkspace() {
     });
     const catalogSearch = document.getElementById('bookingMenuCatalogSearch');
     if (catalogSearch) catalogSearch.value = '';
-    setBookingMenuCatalogOpen(false);
+    setBookingMenuCatalogOpen(false, { skipCommit: true });
     const qty = document.getElementById('bookingMenuQuantity');
     if (qty) qty.value = '1';
     const addBtn = document.getElementById('bookingMenuAddBtn');
@@ -2438,6 +2470,14 @@ function initBookingPackageWorkspace() {
     document.getElementById('bookingMenuCatalogMobileCartBtn')?.addEventListener('click', () => setBookingMenuCatalogCartOpen(true));
     document.getElementById('bookingMenuCatalogCartCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogCartOpen(false));
     document.getElementById('bookingMenuCatalogPanel')?.addEventListener('click', (event) => {
+        const mobileCartBackdropClick = event.currentTarget.classList.contains('booking-menu-catalog-cart-open')
+            && isBookingMenuCatalogMobileCartLayout()
+            && !event.target.closest('#bookingMenuCatalogCart')
+            && !event.target.closest('#bookingMenuCatalogMobileCartBtn');
+        if (mobileCartBackdropClick) {
+            setBookingMenuCatalogCartOpen(false);
+            return;
+        }
         if (event.target === event.currentTarget) {
             setBookingMenuCatalogOpen(false);
             return;
@@ -2458,15 +2498,21 @@ function initBookingPackageWorkspace() {
             return;
         }
         if (editQuantity) {
-            setBookingMenuCatalogEditing(editQuantity.dataset.menuCatalogEditQuantity, 'quantity');
+            setBookingMenuCatalogEditing(editQuantity.dataset.menuCatalogEditQuantity, 'quantity', {
+                preferCart: Boolean(editQuantity.closest('#bookingMenuCatalogCart'))
+            });
             return;
         }
         if (editPrice) {
-            setBookingMenuCatalogEditing(editPrice.dataset.menuCatalogEditPrice, 'price');
+            setBookingMenuCatalogEditing(editPrice.dataset.menuCatalogEditPrice, 'price', {
+                preferCart: Boolean(editPrice.closest('#bookingMenuCatalogCart'))
+            });
             return;
         }
         if (editNote) {
-            setBookingMenuCatalogEditing(editNote.dataset.menuCatalogEditNote, 'note');
+            setBookingMenuCatalogEditing(editNote.dataset.menuCatalogEditNote, 'note', {
+                preferCart: Boolean(editNote.closest('#bookingMenuCatalogCart'))
+            });
             return;
         }
         if (remove) {
@@ -2509,6 +2555,11 @@ function initBookingPackageWorkspace() {
             BookingPackageState.catalogEditing = null;
             renderBookingMenuCatalog();
         }
+    });
+    window.addEventListener('resize', () => {
+        const panel = document.getElementById('bookingMenuCatalogPanel');
+        if (!panel || panel.hidden) return;
+        setBookingMenuCatalogCartOpen(panel.classList.contains('booking-menu-catalog-cart-open'));
     });
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;

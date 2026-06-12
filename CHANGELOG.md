@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.18 - Menu Catalog Polish
+
+### Booking drawer / Kitchen catalog / Cart edit / Mobile sheet / (Клешня, 12.06.2026) [codex]
+- **Правий блок “Вибрано” став повноцінним робочим кошиком** - кількість, ціна й note редагуються саме в кошику, навіть якщо позиція прихована пошуком або іншим фільтром каталогу.
+- **Закриття fullscreen-каталогу стало надійнішим** - активний inline input комітиться до приховування overlay, тому остання введена кількість або ціна не губиться.
+- **Reset drawer більше не повертає очищену позицію** - скидання кухонного workspace закриває каталог без повторного коміту старого active input.
+- **Mobile/tablet sheet отримав доступний hidden-state** - закритий блок “Вибрано” отримує `aria-hidden` і `inert`, а відкритий знову стає інтерактивним.
+- **Breakpoint розширено до планшетів** - режим bottom sheet працює до `900px`, щоб не стискати каталог і кошик у дві незручні колонки.
+- **Додано backdrop для mobile cart** - клік по затемненню закриває “Вибрано”, не викидаючи оператора з усього каталогу.
+- **Regression guards посилено** - focused тести перевіряють cart-edit, mobile `inert`, breakpoint `900px`, backdrop і resize-синхронізацію.
+
+---
+
 ## v0.75.17 - Fullscreen Menu Catalog
 
 ### Booking drawer / Kitchen catalog / Fullscreen UX / Mobile sheet / (Клешня, 12.06.2026) [codex]

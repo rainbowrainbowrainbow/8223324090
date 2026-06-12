@@ -205,11 +205,19 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-group-heading/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-thumb/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger\.jpg/);
     ctx.setBookingMenuCatalogOpen(true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), true);
 
-    const manifestImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img');
+    const fallbackImg = doc.querySelector('.booking-menu-catalog-thumb.uses-fallback-image img[data-menu-catalog-fallback="1"]');
+    assert.ok(fallbackImg, 'fallback image is rendered when product has no configured photo');
+
+    const manifestImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img[src="/images/kitchen-menu/juice.webp"]');
     assert.ok(manifestImg, 'manifest image is rendered when configured');
+    ctx.bookingMenuCatalogHandleImageError(manifestImg);
+    assert.equal(manifestImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), true);
+    assert.equal(manifestImg.getAttribute('src'), '/images/kitchen-menu/fallback-burger.jpg');
+    assert.equal(manifestImg.dataset.menuCatalogFallback, '1');
     ctx.bookingMenuCatalogHandleImageError(manifestImg);
     assert.equal(manifestImg.closest('.booking-menu-catalog-thumb').classList.contains('is-image-missing'), true);
 
@@ -721,6 +729,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(320px,\s*1fr\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.is-image-missing img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb--cart/);
@@ -733,6 +742,13 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-note-editor/);
     assert.match(panelCss, /@media \(max-width:\s*900px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '\/images\/kitchen-menu\/fallback-burger\.jpg'/);
+    assert.match(bookingJs, /data-menu-catalog-fallback/);
+    assert.equal(
+        fs.existsSync(path.join(repoRoot, 'images', 'kitchen-menu', 'fallback-burger.jpg')),
+        true,
+        'missing kitchen fallback image asset'
+    );
 });
 
 test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', () => {

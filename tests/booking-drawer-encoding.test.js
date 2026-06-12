@@ -140,6 +140,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(320px,\s*1fr\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.is-image-missing img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb--cart/);

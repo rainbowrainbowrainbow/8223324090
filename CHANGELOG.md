@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.26 - Menu Fallback Photos
+
+### Booking drawer / Kitchen catalog / Fallback photos / Release / (Клешня, 13.06.2026) [codex]
+- **Квадратні emoji-заглушки в каталозі меню замінено на фото fallback** - якщо позиція не має власного фото, CRM показує оптимізоване фото бургера з `images/kitchen-menu/fallback-burger.jpg`.
+- **Биті фото більше не лишають пустий квадратик** - при помилці завантаження реальної картинки позиції frontend автоматично підставляє fallback-фото, а вже потім падає назад на emoji тільки якщо fallback теж недоступний.
+- **Thumbnail у каталозі став прямокутним фото-блоком** - картки меню отримали ширший формат, а не маленьку квадратну іконку.
+- **Regression guards оновлено** - тести перевіряють fallback asset, CSS-клас `uses-fallback-image` і поведінку `onerror`.
+- **Релізні маркери піднято до `0.75.26`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.25 - Schedule Load Visibility
 
 ### Staff schedule / Partial shifts / Visual contrast / Release / (Клешня, 13.06.2026) [codex]

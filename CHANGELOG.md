@@ -4,6 +4,22 @@
 
 ---
 
+## v0.75.20 - Menu Catalog Visuals
+
+### Booking drawer / Kitchen catalog / Visual cards / Mobile layout / (Клешня, 12.06.2026) [codex]
+- **Картки меню отримали окрему зону під картинку** - у каталозі й кошику показується thumbnail; якщо image URL ще немає, CRM підставляє emoji за іконкою продукту, назвою або категорією.
+- **Текст і ціни більше не вилазять за межі картки** - назва, meta, ціна й кнопки рознесені в layout `thumbnail + content + actions`, довгі значення обрізаються без накладання.
+- **Візуал карток підчищено** - ширші catalog tiles, мʼякий gradient-surface, стабільні кнопки кількості й окремий compact thumbnail у правому кошику.
+- **Мобільний режим адаптовано** - на вузьких екранах emoji/картинка лишається біля назви, а stepper і note editor переходять на повну ширину.
+- **Підготовлено майбутні фото продуктів** - frontend приймає `imageUrl`, `image_url`, `photoUrl`, `coverUrl` і `thumbnailUrl` без зміни `bookingPackage.menuPositions`.
+- **Додано локальний image-manifest для страв** - картинки можна класти в `images/kitchen-menu/`, після чого `node scripts/sync-kitchen-menu-images.js` оновлює `js/kitchen-menu-images.js` без змін у базі.
+- **Підключено 93 згенеровані фото меню** - ZIP із фотореалістичними картинками розкладено по `images/kitchen-menu/`, усі 93 файли замапились на реальні `MENU-*` / `CAKE-*` позиції.
+- **Fallback для відсутніх картинок безпечний** - якщо manifest порожній або файл не завантажився, картка автоматично показує emoji й не лишає broken image.
+- **Regression guards оновлено** - tests фіксують thumbnail layout, cart thumbnail, ширші tiles і незмінний payload-контракт.
+- **Релізні маркери піднято до `0.75.20`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.19 - Timeline Default View
 
 ### Timeline / Default view / LocalStorage guard / Release / (Клешня, 12.06.2026) [codex]

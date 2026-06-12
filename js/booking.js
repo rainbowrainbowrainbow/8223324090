@@ -1551,6 +1551,92 @@ function bookingMenuProductTitle(product = {}) {
     return String(product.name || product.label || product.code || product.id || '').trim();
 }
 
+function bookingMenuSafeImageUrl(value) {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    return /^(https?:|data:image\/|\/|uploads\/|images\/)/i.test(url) ? url : '';
+}
+
+function bookingMenuImageManifestUrl(product = {}) {
+    const manifest = (typeof window !== 'undefined' && window.KITCHEN_MENU_IMAGES) ? window.KITCHEN_MENU_IMAGES : null;
+    if (!manifest) return '';
+    const basePath = String(manifest.basePath || '/images/kitchen-menu/').replace(/\/?$/, '/');
+    const byId = manifest.byId || {};
+    const byCode = manifest.byCode || {};
+    const byName = manifest.byName || {};
+    const nameKey = String(bookingMenuProductTitle(product)).trim().toLowerCase();
+    const manifestValue = byId[String(product.id || '')]
+        || byCode[String(product.code || '').trim().toUpperCase()]
+        || byCode[String(product.code || '').trim()]
+        || byName[nameKey]
+        || '';
+    if (!manifestValue) return '';
+    const url = bookingMenuSafeImageUrl(manifestValue);
+    if (url) return url;
+    return bookingMenuSafeImageUrl(`${basePath}${String(manifestValue).replace(/^\/+/, '')}`);
+}
+
+function bookingMenuProductImageUrl(product = {}) {
+    const explicitUrl = bookingMenuSafeImageUrl(
+        product.imageUrl
+        || product.image_url
+        || product.photoUrl
+        || product.photo_url
+        || product.coverUrl
+        || product.cover_url
+        || product.thumbnailUrl
+        || product.thumbnail_url
+        || ''
+    );
+    return explicitUrl || bookingMenuImageManifestUrl(product);
+}
+
+function bookingMenuProductEmoji(product = {}) {
+    const icon = String(product.icon || product.emoji || '').trim();
+    if (icon) return Array.from(icon).slice(0, 4).join('');
+    const text = [
+        bookingMenuProductTitle(product),
+        product.menuSection,
+        product.menu_section,
+        product.category,
+        product.kitchenType,
+        product.kitchen_type
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (/торт|cake|нутел|наполеон|прага|медовик|естерхаз|орео|чіз|чиз|йогурт|десерт/.test(text)) return '🎂';
+    if (/піца|пиц|pizza/.test(text)) return '🍕';
+    if (/бургер|burger/.test(text)) return '🍔';
+    if (/картоп|фрі|fri|fries|діпи|гарнір|пюре/.test(text)) return '🍟';
+    if (/салат|цезар|salad/.test(text)) return '🥗';
+    if (/кава|американо|еспресо|капуч|лате|чай|coffee|tea/.test(text)) return '☕';
+    if (/сік|сок|лимонад|молочн|коктейл|вода|напій|напої|juice|drink|cola/.test(text)) return '🥤';
+    if (/сир|закуск|нагет|фрі|гаряч/.test(text)) return '🍽️';
+    return bookingKitchenType(product) === 'cake' ? '🎂' : '🍽️';
+}
+
+function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
+    const imageUrl = bookingMenuProductImageUrl(product);
+    const emoji = bookingMenuProductEmoji(product);
+    const classes = ['booking-menu-catalog-thumb', imageUrl ? 'has-image' : '', modifier].filter(Boolean).join(' ');
+    return `
+        <div class="${classes}" title="${escapeHtml(title || bookingMenuProductTitle(product) || 'Позиція меню')}">
+            ${imageUrl
+                ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" onerror="window.bookingMenuCatalogHandleImageError && window.bookingMenuCatalogHandleImageError(this)">`
+                : ''}
+            <span aria-hidden="true">${escapeHtml(emoji)}</span>
+        </div>
+    `;
+}
+
+function bookingMenuCatalogHandleImageError(img) {
+    const thumb = img?.closest?.('.booking-menu-catalog-thumb');
+    if (thumb) thumb.classList.add('is-image-missing');
+    if (img) img.removeAttribute('src');
+}
+
+if (typeof window !== 'undefined') {
+    window.bookingMenuCatalogHandleImageError = bookingMenuCatalogHandleImageError;
+}
+
 const BOOKING_MENU_CATALOG_FILTERS = [
     { key: 'all', label: 'Усе' },
     { key: 'popular', label: 'Популярне' },
@@ -2012,6 +2098,7 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
             : '';
         rows.push(`
             <div class="booking-menu-catalog-item${selected ? ' selected' : ''}" data-menu-catalog-product="${escapeHtml(product.id)}">
+                ${bookingMenuCatalogVisualHtml(product, title)}
                 <div class="booking-menu-catalog-main">
                     <div class="booking-menu-catalog-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
                     <div class="booking-menu-catalog-meta">
@@ -2045,6 +2132,9 @@ function renderBookingMenuCatalogCart() {
     }
     list.innerHTML = positions.map((item, index) => {
         const productId = item.productId ? String(item.productId) : '';
+        const product = productId
+            ? getBookingMenuProducts().find(menuProduct => String(menuProduct.id || '') === productId)
+            : null;
         const title = item.title || 'Позиція меню';
         const quantity = Number(item.quantity || 1);
         const unitPrice = toBookingMoney(item.unitPrice || 0);
@@ -2065,7 +2155,8 @@ function renderBookingMenuCatalogCart() {
         return `
             <div class="booking-menu-catalog-cart-item">
                 <div class="booking-menu-catalog-cart-item-head">
-                    <div>
+                    ${bookingMenuCatalogVisualHtml(product || item, title, 'booking-menu-catalog-thumb--cart')}
+                    <div class="booking-menu-catalog-cart-title">
                         <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
                         <small>${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}${item.servingUnit ? ` · ${escapeHtml(item.servingUnit)}` : ''}</small>
                     </div>

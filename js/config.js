@@ -390,6 +390,7 @@ function mapApiProductToTimelineProduct(p) {
         label: p.label,
         name: p.name,
         icon: p.icon,
+        imageUrl: p.imageUrl || p.image_url || p.photoUrl || p.photo_url || p.coverUrl || p.cover_url || p.thumbnailUrl || p.thumbnail_url || null,
         category: p.category,
         duration: p.duration,
         price: p.price,

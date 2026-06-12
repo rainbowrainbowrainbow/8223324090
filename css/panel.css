@@ -2081,9 +2081,13 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-cart-item-head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 10px;
     align-items: start;
+}
+
+.booking-menu-catalog-cart-title {
+    min-width: 0;
 }
 
 .booking-menu-catalog-cart-item-head strong {
@@ -2253,7 +2257,7 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     align-content: start;
     gap: 10px 12px;
     min-width: 0;
@@ -2303,14 +2307,17 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 12px;
-    align-items: center;
-    min-height: 92px;
+    align-items: start;
+    min-height: 108px;
     padding: 12px;
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 14px;
-    background: rgba(30, 41, 59, 0.64);
+    background:
+        linear-gradient(135deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72)),
+        rgba(30, 41, 59, 0.64);
+    overflow: hidden;
 }
 
 .booking-menu-catalog-item.selected {
@@ -2326,6 +2333,56 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-main {
     min-width: 0;
+}
+
+.booking-menu-catalog-thumb {
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.22), transparent 38%),
+        linear-gradient(135deg, rgba(20, 184, 166, 0.28), rgba(59, 130, 246, 0.12));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+    flex: 0 0 auto;
+}
+
+.booking-menu-catalog-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.booking-menu-catalog-thumb.has-image span {
+    display: none;
+}
+
+.booking-menu-catalog-thumb.is-image-missing img {
+    display: none;
+}
+
+.booking-menu-catalog-thumb.has-image.is-image-missing span {
+    display: inline;
+}
+
+.booking-menu-catalog-thumb span {
+    font-size: 28px;
+    line-height: 1;
+    filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.28));
+}
+
+.booking-menu-catalog-thumb--cart {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+}
+
+.booking-menu-catalog-thumb--cart span {
+    font-size: 23px;
 }
 
 .booking-menu-catalog-title {
@@ -2346,6 +2403,15 @@ body.booking-menu-catalog-active {
     margin-top: 4px;
     color: rgba(203, 213, 225, 0.74);
     font-size: 12px;
+    min-width: 0;
+}
+
+.booking-menu-catalog-meta > span {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .booking-menu-catalog-kind {
@@ -2354,19 +2420,19 @@ body.booking-menu-catalog-active {
 }
 
 .booking-menu-catalog-stepper {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 36px minmax(42px, auto) 36px;
     justify-content: flex-end;
     align-items: center;
     gap: 4px;
-    max-width: 170px;
+    max-width: 132px;
 }
 
 .booking-menu-catalog-stepper button {
     display: inline-grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 9px;
     background: rgba(30, 41, 59, 0.82);
@@ -2383,8 +2449,8 @@ body.booking-menu-catalog-active {
 }
 
 .booking-menu-catalog-qty {
-    min-width: 40px;
-    height: 34px;
+    min-width: 42px;
+    height: 36px;
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 9px;
     background: rgba(15, 23, 42, 0.72);
@@ -2398,7 +2464,9 @@ body.booking-menu-catalog-active {
 .booking-menu-catalog-price {
     display: inline-flex;
     align-items: center;
+    max-width: 92px;
     min-height: 24px;
+    padding: 0 6px;
     border: 1px solid rgba(148, 163, 184, 0.18);
     border-radius: 7px;
     background: rgba(30, 41, 59, 0.64);
@@ -2406,6 +2474,9 @@ body.booking-menu-catalog-active {
     font-size: 12px;
     font-weight: 900;
     cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .booking-menu-catalog-inline-input {
@@ -2440,7 +2511,7 @@ body.booking-menu-catalog-active {
 }
 
 .booking-menu-catalog-note-editor {
-    grid-column: 1 / -1;
+    grid-column: 2 / -1;
 }
 
 .booking-menu-catalog-note-editor input {
@@ -2578,8 +2649,18 @@ body.booking-menu-catalog-active {
     }
 
     .booking-menu-catalog-item {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 8px;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+    }
+
+    .booking-menu-catalog-thumb {
+        width: 52px;
+        height: 52px;
+    }
+
+    .booking-menu-catalog-stepper,
+    .booking-menu-catalog-note-editor {
+        grid-column: 1 / -1;
     }
 
     .booking-menu-catalog-stepper {

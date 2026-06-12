@@ -604,7 +604,7 @@ check('Profile cabinet quick cluster removed icon-first pulse markup', !profileC
 check('Profile cabinet quick cluster CSS covers state, theme, mobile, and print', profilePagesCss.includes('.cabinet-quick-cluster') && profilePagesCss.includes('.cabinet-quick-hint') && profilePagesCss.includes('.cabinet-quick-segment--zero') && profilePagesCss.includes('.cabinet-quick-segment--hot') && profilePagesCss.includes('.cabinet-quick-segment--critical') && profilePagesCss.includes('body.dark-mode .cabinet-quick-cluster') && profilePagesCss.includes('@media print') && profilePagesCss.includes('page-break-inside: avoid') && !profilePagesCss.includes('.cabinet-pulse-icon'));
 
 const criticalJS = [
-    'js/config.js', 'js/api.js', 'js/auth.js', 'js/ui.js', 'js/app.js',
+    'js/config.js', 'js/kitchen-menu-images.js', 'js/api.js', 'js/auth.js', 'js/ui.js', 'js/app.js',
     'js/task-create.js',
     'js/assistant-rail.js',
     'js/components/sidebar.js',
@@ -1217,6 +1217,7 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const indexHtmlForBookingPanel = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const bookingPanelStart = indexHtmlForBookingPanel.indexOf('<aside id="bookingPanel"');
 const bookingPanelEnd = indexHtmlForBookingPanel.indexOf('</aside>', bookingPanelStart);
@@ -1319,9 +1320,20 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && htmlContains('index.html', 'bookingMenuCatalogCart')
     && htmlContains('index.html', 'bookingMenuCatalogCartList')
     && htmlContains('index.html', 'bookingMenuCatalogMobileCartBtn')
+    && htmlContains('index.html', 'js/kitchen-menu-images.js?v=0.75.20')
+    && indexHtmlForBookingPanel.indexOf('js/kitchen-menu-images.js') < indexHtmlForBookingPanel.indexOf('js/config.js')
     && htmlContains('index.html', 'booking-menu-legacy-controls hidden')
+    && kitchenMenuImagesCode.includes('window.KITCHEN_MENU_IMAGES')
+    && kitchenMenuImagesCode.includes("basePath: '/images/kitchen-menu/'")
+    && kitchenMenuImagesCode.includes('"MENU-026": "01_Бургери/002_Бургер з біфштексом.jpg"')
+    && kitchenMenuImagesCode.includes('"CAKE-06": "10_Торти/088_Снікерс.jpg"')
     && bookingCode.includes('function renderBookingMenuCatalog')
     && bookingCode.includes('function renderBookingMenuCatalogCart')
+    && bookingCode.includes('function bookingMenuProductEmoji')
+    && bookingCode.includes('function bookingMenuCatalogVisualHtml')
+    && bookingCode.includes('function bookingMenuImageManifestUrl')
+    && bookingCode.includes('window.KITCHEN_MENU_IMAGES')
+    && bookingCode.includes('bookingMenuCatalogHandleImageError')
     && bookingCode.includes('function setBookingMenuCatalogCartOpen')
     && bookingCode.includes('function isBookingMenuCatalogMobileCartLayout')
     && bookingCode.includes('preferCart')
@@ -1351,9 +1363,14 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('inset: 0')
     && panelCss.includes('grid-template-rows: auto minmax(0, 1fr) auto')
     && panelCss.includes('grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)')
-    && panelCss.includes('grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))')
+    && panelCss.includes('grid-template-columns: repeat(auto-fill, minmax(320px, 1fr))')
     && panelCss.includes('.booking-menu-catalog-cart')
     && panelCss.includes('.booking-menu-catalog-mobile-cart')
+    && panelCss.includes('.booking-menu-catalog-thumb')
+    && panelCss.includes('.booking-menu-catalog-thumb--cart')
+    && panelCss.includes('.booking-menu-catalog-thumb img')
+    && panelCss.includes('.booking-menu-catalog-thumb.has-image span')
+    && panelCss.includes('.booking-menu-catalog-thumb.is-image-missing img')
     && panelCss.includes('.booking-menu-catalog-cart-open .booking-menu-catalog-cart')
     && panelCss.includes('.booking-menu-catalog-panel::after')
     && panelCss.includes('.booking-menu-catalog-tabs')

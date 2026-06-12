@@ -19,8 +19,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v0.75.19';
-const API_CACHE_NAME = 'event-genix-api-v0.75.19';
+const CACHE_NAME = 'event-genix-v0.75.20';
+const API_CACHE_NAME = 'event-genix-api-v0.75.20';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [
@@ -50,7 +50,8 @@ const APP_SHELL = [
     '/css/features.css',
     '/css/dark-mode.css',
     '/css/responsive.css',
-    // JS modules (8 original + 2 new)
+    // JS modules (8 original + 3 new)
+    '/js/kitchen-menu-images.js',
     '/js/config.js',
     '/js/api.js',
     '/js/ui.js',

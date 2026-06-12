@@ -91,6 +91,7 @@ function createBookingMenuCatalogHarness() {
                 },
                 {
                     id: 'menu_juice',
+                    code: 'MENU-077',
                     domain: 'kitchen',
                     category: 'menu',
                     name: 'Сік яблучний',
@@ -141,6 +142,12 @@ function createBookingMenuCatalogHarness() {
         updateBookingSubmitState: () => {},
         updateBookingContextHeaderSummaryCalls: 0
     };
+    context.window.KITCHEN_MENU_IMAGES = Object.freeze({
+        basePath: '/images/kitchen-menu/',
+        byId: Object.freeze({}),
+        byCode: Object.freeze({ 'MENU-077': 'juice.webp' }),
+        byName: Object.freeze({})
+    });
     context.__bookingMenuCatalogMobile = false;
     context.window.matchMedia = (query) => ({
         matches: String(query || '').includes('900px') ? context.__bookingMenuCatalogMobile : false,
@@ -189,14 +196,22 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Усе/);
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Популярне/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-group-heading/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-thumb/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
     ctx.setBookingMenuCatalogOpen(true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), true);
+
+    const manifestImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img');
+    assert.ok(manifestImg, 'manifest image is rendered when configured');
+    ctx.bookingMenuCatalogHandleImageError(manifestImg);
+    assert.equal(manifestImg.closest('.booking-menu-catalog-thumb').classList.contains('is-image-missing'), true);
 
     ctx.upsertBookingMenuCatalogProduct('cake_custom', 1);
     assert.equal(ctx.getBookingMenuPositions().length, 1);
     assert.equal(ctx.getBookingMenuPositions()[0].quantity, 1);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-cart-item/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-thumb--cart/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
     assert.match(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /140|120|грн/);
     assert.match(doc.getElementById('bookingMenuPositionsJson').value, /cake_custom/);
@@ -447,6 +462,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogOpenBtn/);
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
+    assert.match(html, /js\/kitchen-menu-images\.js\?v=0\.75\.20/);
+    assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
     assert.match(html, /bookingMenuCatalogSearch/);
     assert.match(html, /bookingMenuCatalogTabs/);
     assert.match(html, /bookingMenuCatalogList/);
@@ -476,6 +493,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /findBookingProductById/);
     assert.match(bookingJs, /function renderBookingMenuCatalog/);
     assert.match(bookingJs, /function renderBookingMenuCatalogCart/);
+    assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
+    assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
+    assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
     assert.match(bookingJs, /function setBookingMenuCatalogCartOpen/);
     assert.match(bookingJs, /function isBookingMenuCatalogMobileCartLayout/);
     assert.match(bookingJs, /preferCart/);
@@ -625,7 +645,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(280px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(320px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.is-image-missing img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb--cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-mobile-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart-open \.booking-menu-catalog-cart/);

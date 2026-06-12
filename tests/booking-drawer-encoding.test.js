@@ -32,6 +32,7 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
+    const kitchenMenuImagesJs = read('js', 'kitchen-menu-images.js');
     const panelCss = read('css', 'panel.css');
     const responsiveCss = read('css', 'responsive.css');
     const panelStart = html.indexOf('<aside id="bookingPanel"');
@@ -54,6 +55,12 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
+    assert.match(html, /js\/kitchen-menu-images\.js\?v=0\.75\.20/);
+    assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
+    assert.match(kitchenMenuImagesJs, /window\.KITCHEN_MENU_IMAGES/);
+    assert.match(kitchenMenuImagesJs, /basePath:\s*'\/images\/kitchen-menu\/'/);
+    assert.match(kitchenMenuImagesJs, /"MENU-026":\s*"01_Бургери\/002_Бургер з біфштексом\.jpg"/);
+    assert.match(kitchenMenuImagesJs, /"CAKE-06":\s*"10_Торти\/088_Снікерс\.jpg"/);
     assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
     assert.match(html, /id="bookingKitchenToggle" hidden aria-hidden="true"/);
     assert.match(html, /id="bookingLeadDetailsToggle" hidden aria-hidden="true"/);
@@ -89,6 +96,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /data-menu-catalog-price-input/);
     assert.match(bookingJs, /data-menu-catalog-note-input/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
+    assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
+    assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
+    assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
     assert.match(bookingJs, /upsertBookingMenuCatalogProduct/);
     assert.match(bookingJs, /renderBookingMenuCatalogCart/);
     assert.match(bookingJs, /setBookingMenuCatalogCartOpen/);
@@ -125,7 +135,12 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*position:\s*fixed;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(280px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(320px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\.is-image-missing img/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb--cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-mobile-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart-open \.booking-menu-catalog-cart/);

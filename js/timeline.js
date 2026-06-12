@@ -22,7 +22,9 @@ function canUseRoomTimelineView() {
     const ctx = window.TimelineBusinessContext?.current?.();
     const presentation = window.TimelineBusinessContext?.presentation?.();
     const contextKey = window.TimelineBusinessContext?.state?.()?.activeBusinessContext || ctx?.apiValue || ctx?.key || 'event_genix';
-    return contextKey === 'event_genix' && presentation?.mode === 'park';
+    return contextKey === 'event_genix'
+        && presentation?.mode === 'park'
+        && presentation?.roomTimelineEnabled !== false;
 }
 
 function timelineViewStorageKey() {
@@ -39,10 +41,17 @@ function timelineViewFromUrl() {
     }
 }
 
+function defaultTimelineViewMode() {
+    if (!canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
+    const view = window.TimelineBusinessContext?.presentation?.()?.defaultTimelineView;
+    return normalizeTimelineViewMode(view || TIMELINE_VIEW_ROOMS);
+}
+
 function timelineCurrentView() {
     const urlView = timelineViewFromUrl();
-    const storedView = normalizeTimelineViewMode(localStorage.getItem(timelineViewStorageKey()));
-    const requested = urlView || storedView;
+    const storedRaw = localStorage.getItem(timelineViewStorageKey());
+    const storedView = storedRaw ? normalizeTimelineViewMode(storedRaw) : null;
+    const requested = urlView || storedView || defaultTimelineViewMode();
     if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
     return requested;
 }

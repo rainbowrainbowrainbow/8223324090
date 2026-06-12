@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.13 - Room-First Timeline UAT
+
+### Timeline / Room-first UAT / Booking drawer / Settings / (Клешня, 12.06.2026) [codex]
+- **Room-first UAT доведено до керованого rollout** - `Кімнати` стали дефолтним виглядом для Park, але увімкнення й початковий вигляд керуються через timeline display settings без нових схем.
+- **Кімнатна форма тепер призначена для кухні й тортів** - у `Кімнати` ховаються анімаційні поля, бронь пишеться через `banquet-service`, а активні програми відкриваються у `Свята`.
+- **Клієнт автопідтягується з кімнати** - нова бронь у тій самій кімнаті бере клієнта з найближчої броні, але оператор може змінити його вручну.
+- **Regression guards оновлено** - UI smoke і timeline/resource тести фіксують default `Кімнати`, server-controlled view settings і room-first booking drawer поведінку.
+- **Релізні маркери піднято до `0.75.13`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.12 - Room-First Timeline
 
 ### Timeline / Rooms / Банкетний workspace / Drag safety / Migration / (Клешня, 12.06.2026) [codex]

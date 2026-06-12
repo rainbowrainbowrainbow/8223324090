@@ -131,6 +131,8 @@ function coerceTimelineDisplay(value = {}, context, fallbackTimeline = null) {
     parkKitchenMode: value.parkKitchenMode || value.timeline?.parkKitchenMode || fallback.parkKitchenMode,
     startPage: value.startPage || value.timeline?.startPage || fallback.startPage,
     resourceModel: value.resourceModel || value.timeline?.resourceModel || fallback.resourceModel,
+    roomTimelineEnabled: value.roomTimelineEnabled ?? value.timeline?.roomTimelineEnabled ?? fallback.roomTimelineEnabled,
+    defaultTimelineView: value.defaultTimelineView || value.timeline?.defaultTimelineView || fallback.defaultTimelineView,
     enabledModules: value.enabledModules || value.timeline?.enabledModules || fallback.enabledModules,
     timelineFeatures: value.timelineFeatures || value.timeline?.timelineFeatures || fallback.timelineFeatures,
     bookingPolicy: value.bookingPolicy || value.timeline?.bookingPolicy || fallback.bookingPolicy,

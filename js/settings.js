@@ -839,6 +839,10 @@ function getTimelineDisplayControls() {
         mode: document.getElementById('settingsTimelineDisplayMode'),
         kitchen: document.getElementById('settingsTimelineKitchenMode'),
         kitchenGroup: document.getElementById('settingsTimelineKitchenGroup'),
+        roomFirst: document.getElementById('settingsTimelineRoomFirstEnabled'),
+        roomFirstGroup: document.getElementById('settingsTimelineRoomFirstGroup'),
+        defaultView: document.getElementById('settingsTimelineDefaultView'),
+        defaultViewGroup: document.getElementById('settingsTimelineDefaultViewGroup'),
         preview: document.getElementById('settingsTimelineDisplayPreview'),
         center: document.getElementById('settingsTimelineControlCenter'),
         businessName: document.getElementById('settingsTimelineBusinessName'),
@@ -960,6 +964,13 @@ function normalizeTimelineControlSettings(settings = {}) {
         : ['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online'].includes(settings.resourceModel)
         ? settings.resourceModel
         : defaultTimelineResourceModel(mode);
+    const roomTimelineEnabled = mode === 'park'
+        && (Object.prototype.hasOwnProperty.call(settings || {}, 'roomTimelineEnabled')
+            ? settings.roomTimelineEnabled !== false
+            : true);
+    const defaultTimelineView = roomTimelineEnabled && ['rooms', 'animators'].includes(settings.defaultTimelineView)
+        ? settings.defaultTimelineView
+        : (roomTimelineEnabled ? 'rooms' : 'animators');
     const enabledModules = mergeTimelineToggleDefaults(settings.enabledModules, defaultTimelineControlModules(mode, parkKitchenMode), TIMELINE_CONTROL_MODULES);
     const timelineFeatures = mergeTimelineToggleDefaults(settings.timelineFeatures, defaultTimelineControlFeatures(mode, parkKitchenMode), TIMELINE_CONTROL_FEATURES);
     const bookingPolicy = mergeTimelineToggleDefaults(settings.bookingPolicy, defaultTimelineControlPolicies(mode), TIMELINE_CONTROL_POLICIES);
@@ -978,6 +989,8 @@ function normalizeTimelineControlSettings(settings = {}) {
         parkKitchenMode,
         startPage,
         resourceModel,
+        roomTimelineEnabled,
+        defaultTimelineView,
         enabledModules,
         timelineFeatures,
         bookingPolicy
@@ -1124,6 +1137,8 @@ function applyTimelineSettingsToControls(settings = {}) {
     const normalized = normalizeTimelineControlSettings(settings);
     if (controls.mode) controls.mode.value = normalized.mode;
     if (controls.kitchen) controls.kitchen.value = normalized.parkKitchenMode;
+    if (controls.roomFirst) controls.roomFirst.checked = normalized.roomTimelineEnabled;
+    if (controls.defaultView) controls.defaultView.value = normalized.defaultTimelineView;
     if (controls.businessName) {
         const activeProfile = window.CrmBusinessContext?.activeProfile?.();
         const ctx = window.TimelineBusinessContext?.current?.();
@@ -1181,12 +1196,16 @@ function collectTimelineDisplaySettingsFromControls() {
     const parkKitchenMode = controls.kitchen?.value || 'with_kitchen';
     const startPage = document.querySelector('[data-timeline-start-page].is-active')?.dataset.timelineStartPage || (mode === 'disabled' ? 'dashboard' : 'timeline');
     const resourceModel = document.querySelector('[data-timeline-resource-model].is-active')?.dataset.timelineResourceModel || defaultTimelineResourceModel(mode);
+    const roomTimelineEnabled = mode === 'park' && controls.roomFirst?.checked !== false;
+    const defaultTimelineView = roomTimelineEnabled ? (controls.defaultView?.value || 'rooms') : 'animators';
     const normalized = normalizeTimelineControlSettings({
         mode,
         timelineEnabled: mode !== 'disabled',
         parkKitchenMode,
         startPage,
         resourceModel,
+        roomTimelineEnabled,
+        defaultTimelineView,
         enabledModules: collectTimelineToggleButtons('[data-timeline-module]', 'timelineModule'),
         timelineFeatures: collectTimelineToggleButtons('[data-timeline-feature]', 'timelineFeature'),
         bookingPolicy: collectTimelineToggleButtons('[data-timeline-policy]', 'timelinePolicy')
@@ -1245,10 +1264,15 @@ function timelineDisplayPreviewText(modeOrSettings, kitchenMode) {
         .filter(([, enabled]) => enabled)
         .map(([key]) => key)
         .join(', ');
-    const enabledFeatures = Object.entries(settings.timelineFeatures || {})
+    let enabledFeatures = Object.entries(settings.timelineFeatures || {})
         .filter(([, enabled]) => enabled)
         .map(([key]) => key)
         .join(', ');
+    const viewLabel = settings.defaultTimelineView === 'rooms' ? 'Кімнати' : 'Свята';
+    const roomFirstText = settings.roomTimelineEnabled
+        ? ` кімнатний таймлайн: увімкнено, старт: ${viewLabel}`
+        : ' кімнатний таймлайн: вимкнено';
+    enabledFeatures = `${enabledFeatures || 'немає'};${roomFirstText}`;
     const map = {
         disabled: 'Без таймлайну: бізнес не відкриває дошку розкладу, але може лишити CRM-модулі на кшталт лідів, клієнтів, Omni та задач.',
         simple: 'Простий режим: мінімальний запис без афіші та park-полів.',
@@ -1266,6 +1290,8 @@ function refreshTimelineDisplaySettingsPreview() {
     const settings = collectTimelineDisplaySettingsFromControls();
     const mode = settings.mode || controls.mode?.value || 'park';
     if (controls.kitchenGroup) controls.kitchenGroup.classList.toggle('hidden', mode !== 'park');
+    if (controls.roomFirstGroup) controls.roomFirstGroup.classList.toggle('hidden', mode !== 'park');
+    if (controls.defaultViewGroup) controls.defaultViewGroup.classList.toggle('hidden', mode !== 'park' || !settings.roomTimelineEnabled);
     document.querySelectorAll('[data-timeline-module="kitchen"], [data-timeline-feature="kitchen"]').forEach(button => {
         const active = settings.parkKitchenMode !== 'without_kitchen' && mode === 'park';
         button.classList.toggle('is-active', active);
@@ -1430,7 +1456,9 @@ function handleTimelineDisplayModeChange() {
         timelineEnabled: mode !== 'disabled',
         parkKitchenMode,
         startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
-        resourceModel: defaultTimelineResourceModel(mode)
+        resourceModel: defaultTimelineResourceModel(mode),
+        roomTimelineEnabled: mode === 'park',
+        defaultTimelineView: mode === 'park' ? 'rooms' : 'animators'
     });
 }
 
@@ -1448,7 +1476,9 @@ function handleTimelineControlClick(event) {
             timelineEnabled: mode !== 'disabled',
             parkKitchenMode: kitchenMode,
             startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
-            resourceModel
+            resourceModel,
+            roomTimelineEnabled: mode === 'park',
+            defaultTimelineView: mode === 'park' ? 'rooms' : 'animators'
         });
         return;
     }

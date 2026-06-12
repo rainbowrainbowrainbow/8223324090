@@ -9,6 +9,7 @@ const { timeToMinutes } = require('./booking');
 
 const TIMELINE_DISPLAY_MODES = new Set(['disabled', 'simple', 'specialist', 'park', 'education']);
 const TIMELINE_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
+const TIMELINE_VIEW_MODES = new Set(['rooms', 'animators']);
 const RESOURCE_TYPES = new Set(['animator', 'specialist', 'cabinet', 'room', 'online']);
 const TIMELINE_START_PAGES = new Set(['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks']);
 const TIMELINE_RESOURCE_MODELS = new Set(['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online']);
@@ -56,6 +57,12 @@ function normalizeTimelineDisplayMode(value, context) {
 function normalizeParkKitchenMode(value) {
     const mode = String(value || '').trim();
     return TIMELINE_PARK_KITCHEN_MODES.has(mode) ? mode : 'with_kitchen';
+}
+
+function normalizeDefaultTimelineView(value, roomTimelineEnabled) {
+    const view = String(value || '').trim().toLowerCase();
+    if (roomTimelineEnabled && TIMELINE_VIEW_MODES.has(view)) return view;
+    return roomTimelineEnabled ? 'rooms' : 'animators';
 }
 
 function defaultTimelineModules(mode, parkKitchenMode = 'with_kitchen') {
@@ -193,6 +200,11 @@ function normalizeTimelineDisplaySettings(value, context) {
     const resourceModel = mode === 'park'
         ? 'auto'
         : normalizeResourceModel(value?.resourceModel, mode);
+    const roomTimelineEnabled = mode === 'park'
+        && (Object.prototype.hasOwnProperty.call(value || {}, 'roomTimelineEnabled')
+            ? value.roomTimelineEnabled !== false
+            : normalizeTimelineContext(context) === DEFAULT_TIMELINE_CONTEXT);
+    const defaultTimelineView = normalizeDefaultTimelineView(value?.defaultTimelineView, roomTimelineEnabled);
 
     return {
         version: 2,
@@ -201,6 +213,8 @@ function normalizeTimelineDisplaySettings(value, context) {
         parkKitchenMode,
         startPage: normalizeStartPage(value?.startPage, mode),
         resourceModel,
+        roomTimelineEnabled,
+        defaultTimelineView,
         enabledModules,
         timelineFeatures,
         bookingPolicy,
@@ -665,6 +679,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
 module.exports = {
     TIMELINE_DISPLAY_MODES,
     TIMELINE_PARK_KITCHEN_MODES,
+    TIMELINE_VIEW_MODES,
     TIMELINE_START_PAGES,
     TIMELINE_RESOURCE_MODELS,
     TIMELINE_MODULE_KEYS,

@@ -229,6 +229,7 @@
     const VALID_PARK_KITCHEN_MODES = new Set(['with_kitchen', 'without_kitchen']);
     const VALID_START_PAGES = new Set(['timeline', 'dashboard', 'leads', 'customers', 'omni', 'tasks']);
     const VALID_RESOURCE_MODELS = new Set(['auto', 'none', 'animator', 'specialist', 'cabinet', 'room', 'online']);
+    const VALID_TIMELINE_VIEW_MODES = new Set(['rooms', 'animators']);
     const RESOURCE_TYPES = new Set(['animator', 'specialist', 'cabinet', 'room', 'online']);
     const MODULE_KEYS = ['timeline', 'bookings', 'leads', 'customers', 'omni', 'tasks', 'products', 'afisha', 'kitchen', 'resources', 'teachers', 'lessonSeries'];
     const FEATURE_KEYS = ['quickCloseSlot', 'freeResources', 'series', 'afisha', 'kitchen', 'compactBlocks', 'seriesBadge', 'teacherConflict', 'resourceCapacity'];
@@ -570,6 +571,13 @@
             ? String(value.resourceModel)
             : defaultResourceModelForMode(mode);
         if (mode === 'park') resourceModel = 'auto';
+        const roomTimelineEnabled = mode === 'park'
+            && (Object.prototype.hasOwnProperty.call(value || {}, 'roomTimelineEnabled')
+                ? value.roomTimelineEnabled !== false
+                : ctx.key === 'event_genix');
+        const defaultTimelineView = roomTimelineEnabled && VALID_TIMELINE_VIEW_MODES.has(String(value?.defaultTimelineView || ''))
+            ? String(value.defaultTimelineView)
+            : (roomTimelineEnabled ? 'rooms' : 'animators');
         const enabledModules = normalizeToggleRecord(value?.enabledModules, defaultModulesForMode(mode, parkKitchenMode), MODULE_KEYS);
         const timelineFeatures = normalizeToggleRecord(value?.timelineFeatures, defaultFeaturesForMode(mode, parkKitchenMode), FEATURE_KEYS);
         const bookingPolicy = normalizeToggleRecord(value?.bookingPolicy, defaultBookingPolicyForMode(mode), POLICY_KEYS);
@@ -588,6 +596,8 @@
             parkKitchenMode,
             startPage,
             resourceModel,
+            roomTimelineEnabled,
+            defaultTimelineView,
             enabledModules,
             timelineFeatures,
             bookingPolicy,
@@ -666,6 +676,8 @@
             timelineEnabled: settings.timelineEnabled !== false && mode.key !== 'disabled',
             startPage: settings.startPage || 'timeline',
             resourceModel: settings.resourceModel || defaultResourceModelForMode(mode.key),
+            roomTimelineEnabled: mode.key === 'park' && settings.roomTimelineEnabled !== false,
+            defaultTimelineView: settings.defaultTimelineView || 'animators',
             defaultBookingRoom: ctx.defaultBookingRoom || null,
             enabledModules,
             timelineFeatures,
@@ -757,6 +769,7 @@
             document.body.setAttribute('data-timeline-park-kitchen', view.parkKitchenEnabled ? 'with_kitchen' : 'without_kitchen');
             document.body.setAttribute('data-timeline-start-page', view.startPage || 'timeline');
             document.body.setAttribute('data-timeline-resource-model', view.resourceModel || 'auto');
+            document.body.setAttribute('data-timeline-default-view', view.defaultTimelineView || 'animators');
         }
 
         const titleEl = document.querySelector('.em-logo-title');

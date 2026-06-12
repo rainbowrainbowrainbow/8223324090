@@ -196,14 +196,18 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
 
     assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
-    assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return Boolean\(getSelectedProgramIdFromUi\(\)\);/);
+    assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return false;/);
     assert.match(bookingJs, /return true;/);
     assert.match(bookingJs, /return isRoomFirstTimelineView\(\) && timelineKitchenEnabled\(\);/);
     assert.match(bookingJs, /function isBookingLeadDetailsEnabled\(\) \{\s*return false;/);
     assert.match(bookingJs, /getSelectedProgramIdFromUi/);
     assert.match(bookingJs, /findBookingProductById/);
-    assert.match(bookingJs, /const hasEvent = roomFirst \? hasExplicitProgram : true;/);
+    assert.match(bookingJs, /const hasEvent = roomFirst \? false : true;/);
     assert.match(bookingJs, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
+    assert.match(bookingJs, /resourceType: 'service'/);
+    assert.match(bookingJs, /prefillRoomFirstCustomerFromRoomLine/);
+    assert.match(bookingJs, /shouldEditBookingInAnimatorView/);
+    assert.match(bookingJs, /openAnimationBookingInAnimatorView/);
     assert.match(bookingJs, /bookingPrimaryAnimatorSelect/);
     assert.match(bookingJs, /booking_workspace_v2/);
     assert.match(bookingJs, /mode: formData\.kitchenEnabled \|\| !formData\.hasEvent \? 'room_first_workspace' : \(BOOKING_PROGRAM_ONLY_WORKSPACE \? 'event_program_only' : 'workspace'\)/);

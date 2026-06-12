@@ -164,7 +164,9 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     const bookingsRoute = read('routes/bookings.js');
     const api = read('js/api.js');
     const timeline = read('js/timeline.js');
+    const timelineContext = read('js/timeline-context.js');
     const booking = read('js/booking.js');
+    const resources = read('services/timelineResources.js');
     const html = read('index.html');
     const migration = read('db/migrations/263_event_genix_room_timeline_resources.sql');
 
@@ -177,11 +179,22 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(api, /function timelineApiUrlWithView/);
     assert.match(api, /timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
     assert.match(timeline, /TIMELINE_VIEW_ROOMS = 'rooms'/);
+    assert.match(timeline, /function defaultTimelineViewMode\(\)/);
+    assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
+    assert.match(timelineContext, /roomTimelineEnabled/);
+    assert.match(timelineContext, /defaultTimelineView/);
+    assert.match(resources, /TIMELINE_VIEW_MODES/);
+    assert.match(resources, /normalizeDefaultTimelineView/);
     assert.match(timeline, /assignmentMode = isRoomTimelineView\(\) \? 'room' : 'line'/);
     assert.match(booking, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
     assert.match(booking, /bookingPrimaryAnimatorSelect/);
+    assert.match(booking, /prefillRoomFirstCustomerFromRoomLine/);
+    assert.match(booking, /shouldEditBookingInAnimatorView/);
+    assert.match(booking, /openAnimationBookingInAnimatorView/);
     assert.match(html, /id="timelineViewSelector"/);
-    assert.match(html, /data-timeline-view="rooms"/);
+    assert.match(html, /class="period-btn timeline-view-btn active" data-timeline-view="rooms"/);
+    assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
+    assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
 });

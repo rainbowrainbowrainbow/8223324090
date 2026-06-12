@@ -844,7 +844,7 @@ function getMaysternyaSlotCloseDuration() {
 }
 
 function getBookingWorkspaceHasEvent() {
-    if (isRoomFirstTimelineView()) return Boolean(getSelectedProgramIdFromUi());
+    if (isRoomFirstTimelineView()) return false;
     return true;
 }
 
@@ -988,8 +988,7 @@ function getSmartBookingValidationState() {
     const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
     const programRequired = getBookingWorkspaceHasEvent();
-    const primaryAnimatorRequired = isRoomFirstTimelineView() && hasProgram;
-    const hasPrimaryAnimator = Boolean(document.getElementById('bookingPrimaryAnimatorSelect')?.value);
+    const primaryAnimatorRequired = false;
     const warnings = [];
     const errors = [];
     const invalidFields = [];
@@ -1007,7 +1006,7 @@ function getSmartBookingValidationState() {
         errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');
         invalidFields.push(isEducation ? 'educationLessonTitle' : 'selectedProgram');
     }
-    if (primaryAnimatorRequired && !hasPrimaryAnimator) {
+    if (primaryAnimatorRequired) {
         errors.push('Оберіть аніматора для активної програми.');
         invalidFields.push('bookingPrimaryAnimatorSelect');
     }
@@ -1112,12 +1111,15 @@ function syncBookingWorkspaceMode(options = {}) {
     const kitchenToggle = document.getElementById('bookingKitchenToggle');
     const leadToggle = document.getElementById('bookingLeadDetailsToggle');
     const roomFirst = isRoomFirstTimelineView();
-    const hasEvent = roomFirst ? Boolean(getSelectedProgramIdFromUi()) : true;
+    const hasEvent = roomFirst ? false : true;
     const kitchenEnabled = roomFirst && timelineKitchenEnabled();
     if (eventToggle) eventToggle.checked = hasEvent;
     if (kitchenToggle) kitchenToggle.checked = kitchenEnabled;
     if (leadToggle) leadToggle.checked = false;
-    if (eventFields) eventFields.classList.remove('hidden');
+    if (eventFields) {
+        eventFields.classList.toggle('hidden', roomFirst);
+        eventFields.hidden = roomFirst;
+    }
     if (banquetFields) {
         banquetFields.classList.toggle('hidden', !kitchenEnabled);
         banquetFields.hidden = !kitchenEnabled;
@@ -1132,7 +1134,7 @@ function syncBookingWorkspaceMode(options = {}) {
     }
     const primaryAnimatorSection = document.getElementById('bookingPrimaryAnimatorSection');
     if (primaryAnimatorSection) {
-        primaryAnimatorSection.classList.toggle('hidden', !roomFirst);
+        primaryAnimatorSection.classList.add('hidden');
     }
     renderBookingPackageSummary();
     updateBookingSubmitState();
@@ -1141,7 +1143,7 @@ function syncBookingWorkspaceMode(options = {}) {
 
 function setBookingWorkspaceHasEvent(hasEvent, options = {}) {
     const toggle = document.getElementById('bookingHasEventToggle');
-    if (toggle) toggle.checked = true;
+    if (toggle) toggle.checked = !isRoomFirstTimelineView();
     syncBookingWorkspaceMode(options);
 }
 
@@ -1753,15 +1755,19 @@ function renderBookingPackageSummary() {
     const selectedCustomerName = document.querySelector('#bookingSelectedCustomerCard strong')?.textContent?.trim() || '';
     const resolvedCustomerName = selectedCustomerName || (customerId ? customerName : '') || (customerId ? 'Існуючий клієнт' : 'не вибрано');
     const totals = getBookingPackageTotals(program);
+    const roomFirst = isRoomFirstTimelineView();
+    const kitchenEnabled = isBookingKitchenEnabled();
     const validation = getSmartBookingValidationState();
-    const finalTotal = hasEvent ? totals.programBasePrice : 0;
+    const finalTotal = kitchenEnabled ? totals.positionsSubtotal : (hasEvent ? totals.programBasePrice : 0);
+    const menuCount = Array.isArray(totals.menuPositions) ? totals.menuPositions.length : 0;
     const programLabel = program
         ? `${program.code || program.shortLabel || 'ПРО'} · ${program.duration ? `${program.duration} хв` : 'без тривалості'}${totals.programBasePrice ? ` · ${formatPrice(totals.programBasePrice)}` : ''}`
-        : (hasEvent ? 'не вибрано' : 'вимкнено');
+        : (roomFirst ? (menuCount ? `${menuCount} позицій меню / тортів` : 'додайте їжу або торт') : (hasEvent ? 'не вибрано' : 'вимкнено'));
+    const programRowLabel = roomFirst ? 'Кухня / меню' : 'Програма';
 
     if (!roomValue && !customerId && !customerName && !document.getElementById('selectedProgram')?.value) {
         container.innerHTML = `
-            <div class="booking-summary-empty">Оберіть кімнату, клієнта і програму — підсумок оновиться автоматично.</div>
+            <div class="booking-summary-empty">${roomFirst ? 'Оберіть кімнату, клієнта і додайте їжу або торт — підсумок оновиться автоматично.' : 'Оберіть кімнату, клієнта і програму — підсумок оновиться автоматично.'}</div>
             ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
         `;
         updateBookingSubmitState();
@@ -1770,7 +1776,7 @@ function renderBookingPackageSummary() {
     container.innerHTML = `
         <div class="booking-summary-row"><span>Кімната</span><strong>${escapeHtml(roomLabel)}</strong></div>
         <div class="booking-summary-row"><span>Клієнт</span><strong>${escapeHtml(resolvedCustomerName)}</strong></div>
-        <div class="booking-summary-row"><span>Програма</span><strong>${escapeHtml(programLabel)}</strong></div>
+        <div class="booking-summary-row"><span>${escapeHtml(programRowLabel)}</span><strong>${escapeHtml(programLabel)}</strong></div>
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
@@ -1988,7 +1994,18 @@ async function openBookingPanel(time, lineId) {
     panelEl?.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
     panelEl?.classList.toggle('booking-panel--room-first', isRoomFirstTimelineView());
     const lines = await getLinesForDate(AppState.selectedDate);
-    const line = lines.find(l => String(l.id) === String(lineId));
+    const roomFirst = isRoomFirstTimelineView();
+    const requestedLineId = String(lineId || '').trim();
+    const line = lines.find(l =>
+        String(l.id) === requestedLineId
+        || (roomFirst && [
+            l.resourceId,
+            l.resource_id,
+            l.name,
+            l.shortName,
+            l.short_name
+        ].some(value => sameBookingRoom(value, requestedLineId)))
+    );
     if (String(lineId || '') === 'afisha') {
         showNotification('Рядок Афіша не створює звичайні бронювання. Додавайте афішні події через сторінку «Афіша» або оберіть лінію аніматора.', 'warning');
         return false;
@@ -2071,10 +2088,12 @@ async function openBookingPanel(time, lineId) {
     resetBookingLeadDetails();
     resetBookingPackageWorkspace();
     applyLeadConversionContextToBookingForm();
+    if (isRoomFirstTimelineView()) {
+        await prefillRoomFirstCustomerFromRoomLine(line.name, time);
+    }
     prepareMaysternyaBookingPanel();
     prepareDisplayModeBookingPanel({ line });
     if (isRoomFirstTimelineView()) {
-        await populatePrimaryAnimatorSelect();
         syncBookingWorkspaceMode({ markDirty: false });
     }
     updateBookingContextHeaderSummary();
@@ -2248,6 +2267,50 @@ async function hydrateBookingCustomerSelection(booking = {}, options = {}) {
         if (options.renderSummary !== false) renderBookingPackageSummary();
         return fallback;
     }
+}
+
+function sameBookingRoom(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
+function scoreRoomCustomerSourceBooking(booking = {}, targetTime = '') {
+    const targetStart = timeToMinutes(targetTime || '00:00');
+    const start = timeToMinutes(booking.time || '00:00');
+    const duration = Number(booking.duration || 0) || 0;
+    const end = start + duration;
+    if (targetStart >= start && targetStart < end) return -10000 + Math.abs(targetStart - start);
+    return Math.min(Math.abs(targetStart - start), Math.abs(targetStart - end));
+}
+
+async function findRoomFirstCustomerSourceBooking(roomName, time) {
+    if (!isRoomFirstTimelineView() || !roomName) return null;
+    const bookings = await getBookingsForDate(AppState.selectedDate, { force: true }).catch(error => {
+        console.warn('[Booking] Не вдалося знайти клієнта для кімнати', error);
+        return [];
+    });
+    const candidates = (Array.isArray(bookings) ? bookings : [])
+        .filter(booking =>
+            booking
+            && !booking.linkedTo
+            && booking.status !== 'cancelled'
+            && booking.customerId
+            && sameBookingRoom(booking.room, roomName)
+        )
+        .sort((a, b) => scoreRoomCustomerSourceBooking(a, time) - scoreRoomCustomerSourceBooking(b, time));
+    return candidates[0] || null;
+}
+
+async function prefillRoomFirstCustomerFromRoomLine(roomName, time) {
+    if (!isRoomFirstTimelineView() || AppState.editingBookingId) return null;
+    if (document.getElementById('selectedCustomerId')?.value) return null;
+    const sourceBooking = await findRoomFirstCustomerSourceBooking(roomName, time);
+    if (!sourceBooking) return null;
+    const customer = await hydrateBookingCustomerSelection(sourceBooking, { renderSummary: false });
+    if (customer?.id) {
+        renderBookingCustomerSearchState(`Клієнта підтягнуто з бронювання ${sourceBooking.time} у цій кімнаті. Можна змінити вручну.`);
+        renderBookingPackageSummary();
+    }
+    return customer;
 }
 
 function clearSelectedCustomerLink() {
@@ -3428,9 +3491,8 @@ function getBookingFormData() {
     const maysternyaMode = isMaysternyaBookingContext();
     const presentation = getTimelineBookingPresentation();
     const selectedProgramId = getSelectedProgramIdFromUi();
-    const hasExplicitProgram = Boolean(selectedProgramId);
     const roomFirst = isRoomFirstTimelineView();
-    const hasEvent = roomFirst ? hasExplicitProgram : true;
+    const hasEvent = roomFirst ? false : true;
     const kitchenEnabled = roomFirst && timelineKitchenEnabled();
     const leadDetailsEnabled = false;
     const programId = hasEvent ? selectedProgramId : '';
@@ -3438,20 +3500,14 @@ function getBookingFormData() {
     const effectiveRoom = room || defaultTimelineBookingRoom(presentation);
     const program = programId ? findBookingProductById(programId) : null;
     const time = document.getElementById('bookingTime')?.value;
-    const primaryAnimatorName = roomFirst ? (document.getElementById('bookingPrimaryAnimatorSelect')?.value || '') : '';
-    const primaryAnimatorCandidate = roomFirst && hasEvent
-        ? selectedAnimatorLineCandidate('bookingPrimaryAnimatorSelect', primaryAnimatorName)
-        : null;
-    const lineId = roomFirst
-        ? (hasEvent ? (primaryAnimatorCandidate?.id || '') : ROOM_FIRST_BANQUET_SERVICE_LINE_ID)
-        : document.getElementById('bookingLine')?.value;
+    const lineId = roomFirst ? ROOM_FIRST_BANQUET_SERVICE_LINE_ID : document.getElementById('bookingLine')?.value;
     const line = roomFirst
         ? {
             id: lineId,
             resourceId: lineId,
-            resourceType: hasEvent ? 'animator' : 'service',
-            name: hasEvent ? (primaryAnimatorCandidate?.name || primaryAnimatorName || '') : 'Банкет / кімната',
-            source: hasEvent ? (primaryAnimatorCandidate?.source || 'primary_animator_select') : 'banquet_service'
+            resourceType: 'service',
+            name: 'Банкет / кімната',
+            source: 'banquet_service'
         }
         : getBookingLineSnapshot(lineId);
 
@@ -3509,7 +3565,7 @@ function getBookingFormData() {
     const baseFormData = {
         hasEvent, kitchenEnabled, leadDetailsEnabled, scenario, leadDetails,
         programId, room: effectiveRoom, program, time, lineId, lineName: line?.name || '', lineSource: line?.source || '', lineResourceType: line?.resourceType || '', duration, label,
-        activityPrograms: packageTotals.activityPrograms || (program ? [program] : []),
+        activityPrograms: hasEvent ? (packageTotals.activityPrograms || (program ? [program] : [])) : [],
         maysternyaMode,
         pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
         secondAnimator,
@@ -4950,6 +5006,27 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
     return { overlap, noPause, conflictWith };
 }
 
+function shouldEditBookingInAnimatorView(booking = {}) {
+    return isRoomFirstTimelineView()
+        && String(booking.lineId || '') !== ROOM_FIRST_BANQUET_SERVICE_LINE_ID
+        && Boolean(booking.programId);
+}
+
+async function openAnimationBookingInAnimatorView(bookingId, action = 'details') {
+    showNotification('Перемикаю у «Свята», бо анімація редагується там.', 'info');
+    closeAllModals();
+    if (window.TimelineView?.set) {
+        await window.TimelineView.set('animators');
+    } else if (typeof renderTimeline === 'function') {
+        await renderTimeline();
+    }
+
+    if (action === 'edit') return editBooking(bookingId);
+    if (action === 'duplicate') return duplicateBooking(bookingId);
+    if (typeof revealHiddenBooking === 'function') revealHiddenBooking(bookingId);
+    return showBookingDetails(bookingId);
+}
+
 // v43.5.0: Reveal a booking that is currently hidden by status filter
 // so user can see what's blocking the slot.
 function revealHiddenBooking(bookingId) {
@@ -5123,6 +5200,9 @@ async function showBookingDetails(bookingId) {
     const deleteActionHtml = canDeleteTimelineBooking()
         ? `<button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>`
         : '';
+    const animatorViewActionHtml = shouldEditBookingInAnimatorView(booking)
+        ? `<button onclick="openAnimationBookingInAnimatorView('${escapeHtml(booking.id)}', 'details')" class="btn-secondary btn-sm">Відкрити у «Свята»</button>`
+        : '';
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -5151,6 +5231,7 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>
         <div class="booking-actions modal-footer-sticky">
+            ${animatorViewActionHtml}
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
@@ -5329,6 +5410,9 @@ async function editBooking(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
+    if (shouldEditBookingInAnimatorView(booking)) {
+        return openAnimationBookingInAnimatorView(booking.id, 'edit');
+    }
 
     closeAllModals();
 
@@ -5338,7 +5422,8 @@ async function editBooking(bookingId) {
     AppState.editingBookingUpdatedAt = booking.updatedAt || null;
 
     // Відкрити панель з даними бронювання
-    await openBookingPanel(booking.time, booking.lineId);
+    const panelLineId = isRoomFirstTimelineView() ? (booking.resourceId || booking.room || booking.lineId) : booking.lineId;
+    await openBookingPanel(booking.time, panelLineId);
 
     // Змінити заголовок і кнопку
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
@@ -5437,13 +5522,17 @@ async function duplicateBooking(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
+    if (shouldEditBookingInAnimatorView(booking)) {
+        return openAnimationBookingInAnimatorView(booking.id, 'duplicate');
+    }
 
     closeAllModals();
 
     // НЕ встановлюємо editingBookingId — це створення нового
     AppState.editingBookingId = null;
 
-    await openBookingPanel(booking.time, booking.lineId);
+    const panelLineId = isRoomFirstTimelineView() ? (booking.resourceId || booking.room || booking.lineId) : booking.lineId;
+    await openBookingPanel(booking.time, panelLineId);
 
     // Заголовок для дублювання
     const dupH3 = document.querySelector('#bookingPanel .panel-header h3');

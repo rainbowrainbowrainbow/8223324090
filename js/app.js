@@ -805,6 +805,10 @@ function initSettingsListeners() {
     if (timelineDisplayMode) timelineDisplayMode.addEventListener('change', handleTimelineDisplayModeChange);
     const timelineKitchenMode = document.getElementById('settingsTimelineKitchenMode');
     if (timelineKitchenMode) timelineKitchenMode.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    const timelineRoomFirst = document.getElementById('settingsTimelineRoomFirstEnabled');
+    if (timelineRoomFirst) timelineRoomFirst.addEventListener('change', refreshTimelineDisplaySettingsPreview);
+    const timelineDefaultView = document.getElementById('settingsTimelineDefaultView');
+    if (timelineDefaultView) timelineDefaultView.addEventListener('change', refreshTimelineDisplaySettingsPreview);
     const settingsTimelineControlCenter = document.getElementById('settingsTimelineControlCenter');
     if (settingsTimelineControlCenter) settingsTimelineControlCenter.addEventListener('click', handleTimelineControlClick);
     const settingsSaveTimelineDisplayBtn = document.getElementById('settingsSaveTimelineDisplayBtn');

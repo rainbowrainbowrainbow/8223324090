@@ -55,10 +55,13 @@ describe('staff schedule safety guards', () => {
         assert.match(staffCss, /\.sch-cell \.sch-load-badge/);
         assert.match(staffCss, /display: none !important/);
         assert.match(staffCss, /--sch-load-marker/);
+        assert.match(staffCss, /--sch-load-bg/);
         assert.match(staffCss, /\.sch-cell\[class\*="shift-load-"\]::after/);
         assert.match(staffCss, /\.sch-cell\.shift-load-half/);
         assert.match(staffCss, /\.sch-cell\.shift-load-three-quarter/);
         assert.match(staffCss, /\.sch-cell\.shift-load-long/);
+        assert.match(staffCss, /\.sch-cell\.shift-load-full::after/);
+        assert.match(staffCss, /display: none;/);
         assert.match(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-half/);
         assert.match(staffCss, /\[data-theme="dark"\] body\[data-page-group="hr"\] \.schedule-table \.sch-cell\.shift-load-three-quarter/);
     });

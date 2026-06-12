@@ -682,8 +682,11 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
             `SELECT b.id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                    b.group_name, b.linked_to
+                    b.group_name, b.linked_to, c.name AS customer_name
              FROM bookings b
+             LEFT JOIN customers c
+               ON c.id = b.customer_id
+              AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
              WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND ${activeBookingStatusSql('b')}
              ${visibility.sql}`,
             params
@@ -709,7 +712,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
             if (excludeId && String(b.id || '') === excludeId) continue;
             if (!b.room || String(b.linked_to || '').trim()) continue;
             if (!dayBookingsByRoom[b.room]) dayBookingsByRoom[b.room] = [];
-            const customerName = b.group_name || b.label || b.program_name || b.program_code || b.id;
+            const customerName = b.customer_name || b.group_name || b.label || b.program_name || b.program_code || b.id;
             dayBookingsByRoom[b.room].push({
                 id: b.id,
                 time: b.time,

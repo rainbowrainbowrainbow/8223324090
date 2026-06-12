@@ -143,14 +143,22 @@ checkPage('index.html', (doc, html) => {
         && appCode.includes('window.TimelineView.set?.(button.dataset.timelineView)')
         && htmlContains('js/timeline.js', 'function defaultTimelineViewMode()')
         && htmlContains('js/timeline.js', 'defaultTimelineView')
+        && htmlContains('js/timeline.js', 'TIMELINE_VIEW_USER_CHOICE_VERSION')
+        && htmlContains('js/timeline.js', 'timelineViewChoiceStorageKey')
         && htmlContains('js/timeline-context.js', 'roomTimelineEnabled')
         && apiCode.includes('function timelineApiUrlWithView')
         && apiCode.includes('timelineView=${encodeURIComponent(String(view))}')
         && bookingCode.includes("ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && bookingCode.includes('function populatePrimaryAnimatorSelect')
-        && bookingCode.includes('openAnimationBookingInAnimatorView'));
+        && bookingCode.includes('openAnimationBookingInAnimatorView')
+        && bookingCode.includes('openRoomBookingAnimationBridge'));
     check('Timeline product sales modal exists', !!doc.getElementById('productSalesModal'));
     check('Timeline room load panel has explicit close affordance', doc.getElementById('roomLoadPanel')?.getAttribute('role') === 'dialog' && doc.getElementById('roomLoadPanel')?.getAttribute('aria-hidden') === 'true' && doc.getElementById('roomLoadClose')?.textContent.includes('Закрити'));
+    check('Timeline room load uses real occupied minutes instead of whole-day busy flag',
+        htmlContains('js/timeline.js', 'function roomLoadBookingMinutes')
+        && htmlContains('js/timeline.js', 'roomLoadBookingMatchesResource')
+        && htmlContains('js/timeline.js', 'roomMinutes[room] += roomLoadBookingMinutes')
+        && !htmlContains('js/timeline.js', 'roomMinutes[room] = totalMinutes; // 100%'));
     check('Timeline product sales month filter exists', doc.getElementById('productSalesMonth')?.type === 'month');
     check('Timeline product sales category and program filters exist', !!doc.getElementById('productSalesCategory') && !!doc.getElementById('productSalesProgram'));
     check('Timeline product sales export buttons exist', !!doc.getElementById('productSalesXlsxBtn') && !!doc.getElementById('productSalesCsvBtn'));
@@ -1293,6 +1301,8 @@ check('Timeline booking workspace keeps default program-only mode and enables ro
     && bookingCode.includes('eventFields.hidden = roomFirst;')
     && bookingCode.includes('prefillRoomFirstCustomerFromRoomLine(line.name, time)')
     && bookingCode.includes('shouldEditBookingInAnimatorView')
+    && bookingCode.includes('canAddAnimationFromRoomBooking')
+    && bookingCode.includes('Додати активну програму')
     && !bookingCode.includes('function getBookingScenarioContentState')
     && !bookingCode.includes("bookingHasEventToggle')?.addEventListener('change'")
     && !bookingCode.includes("bookingKitchenToggle')?.addEventListener('change'")

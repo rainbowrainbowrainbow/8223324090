@@ -181,6 +181,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /TIMELINE_VIEW_ROOMS = 'rooms'/);
     assert.match(timeline, /function defaultTimelineViewMode\(\)/);
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
+    assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
+    assert.match(timeline, /function roomLoadBookingMinutes/);
     assert.match(timelineContext, /roomTimelineEnabled/);
     assert.match(timelineContext, /defaultTimelineView/);
     assert.match(resources, /TIMELINE_VIEW_MODES/);
@@ -191,6 +193,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(booking, /prefillRoomFirstCustomerFromRoomLine/);
     assert.match(booking, /shouldEditBookingInAnimatorView/);
     assert.match(booking, /openAnimationBookingInAnimatorView/);
+    assert.match(booking, /openRoomBookingAnimationBridge/);
     assert.match(html, /id="timelineViewSelector"/);
     assert.match(html, /class="period-btn timeline-view-btn active" data-timeline-view="rooms"/);
     assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
@@ -205,6 +208,7 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     assert.match(settings, /timelineResourceAvailability/);
     assert.match(settings, /resourceTypeForDisplayMode\(display\.mode, display\)/);
     assert.match(settings, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = \$2/);
+    assert.match(settings, /c\.name AS customer_name/);
     assert.match(booking, /appendApiContext\?\.\(`\/rooms\/free\/\$\{date\}\/\$\{time\}\/\$\{duration\}`\)/);
     assert.match(settings, /req\.query\.capacity \|\| req\.query\.attendees \|\| req\.query\.kidsCount/);
     assert.match(booking, /capacity=\$\{encodeURIComponent\(String\(requestedCapacity\)\)\}/);
@@ -288,9 +292,9 @@ test('resource availability keeps day booking metadata separate from selected-ti
     assert.equal(availability.resources[0].occupied, false);
     assert.deepEqual(availability.resources[0].bookings, []);
     assert.equal(availability.resources[0].dayBookings.length, 2);
-    assert.equal(availability.resources[0].dayBookings[0].customerName, 'Lesson A');
+    assert.equal(availability.resources[0].dayBookings[0].customerName, 'Ушакова Ірина');
     assert.equal(availability.resources[0].dayBookings[1].customerName, 'Група B');
-    assert.doesNotMatch(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
+    assert.match(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {

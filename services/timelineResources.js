@@ -593,8 +593,11 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     }
     const bookings = await db.query(
         `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data
+                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, c.name AS customer_name
            FROM bookings b
+           LEFT JOIN customers c
+             ON c.id = b.customer_id
+            AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
@@ -610,7 +613,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         const byName = direct || resources.find(resource => resource.name === booking.room);
         if (!byName) continue;
         if (!String(booking.linked_to || '').trim()) {
-            const customerName = booking.group_name || booking.label
+            const customerName = booking.customer_name || booking.group_name || booking.label
                 || booking.program_name || booking.program_code || booking.id;
             dayBookingsByResource.get(byName.resourceId)?.push({
                 id: booking.id,

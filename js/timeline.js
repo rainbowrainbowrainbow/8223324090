@@ -11,6 +11,7 @@ let _renderGen = 0;
 let _leadConversionAutoOpenAttempted = false;
 const TIMELINE_VIEW_ANIMATORS = 'animators';
 const TIMELINE_VIEW_ROOMS = 'rooms';
+const TIMELINE_VIEW_USER_CHOICE_VERSION = 'room-first-v1';
 
 function normalizeTimelineViewMode(value) {
     return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
@@ -29,6 +30,10 @@ function canUseRoomTimelineView() {
 
 function timelineViewStorageKey() {
     return window.TimelineBusinessContext?.storageKey?.('timeline_view') || 'pzp_timeline_view';
+}
+
+function timelineViewChoiceStorageKey() {
+    return window.TimelineBusinessContext?.storageKey?.('timeline_view_choice') || 'pzp_timeline_view_choice';
 }
 
 function timelineViewFromUrl() {
@@ -51,7 +56,12 @@ function timelineCurrentView() {
     const urlView = timelineViewFromUrl();
     const storedRaw = localStorage.getItem(timelineViewStorageKey());
     const storedView = storedRaw ? normalizeTimelineViewMode(storedRaw) : null;
-    const requested = urlView || storedView || defaultTimelineViewMode();
+    const defaultView = defaultTimelineViewMode();
+    const choiceVersion = localStorage.getItem(timelineViewChoiceStorageKey());
+    const hasExplicitChoice = choiceVersion === TIMELINE_VIEW_USER_CHOICE_VERSION;
+    const canUseStored = storedView
+        && (hasExplicitChoice || storedView === defaultView || defaultView !== TIMELINE_VIEW_ROOMS);
+    const requested = urlView || (canUseStored ? storedView : null) || defaultView;
     if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
     return requested;
 }
@@ -78,6 +88,7 @@ async function setTimelineView(view, options = {}) {
     if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
     const current = timelineCurrentView();
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
+    try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     updateTimelineViewControls();
     if (next !== current && options.render !== false) {
         AppState.cachedBookings = {};
@@ -3990,6 +4001,37 @@ function getRoomLoadClass(pct) {
     return 'load-full';
 }
 
+function roomLoadKey(value) {
+    return String(value ?? '').trim().toLowerCase();
+}
+
+function roomLoadBookingMinutes(booking, dayStart, dayEnd) {
+    const bookingStart = Math.max(dayStart, timeToMinutes(booking.time || '00:00'));
+    const bookingEnd = Math.min(dayEnd, bookingStart + (parseInt(booking.duration, 10) || 0));
+    return Math.max(0, bookingEnd - bookingStart);
+}
+
+function roomLoadBookingMatchesResource(booking, resource, roomTimeline) {
+    if (!booking || !resource) return false;
+    if (!roomTimeline) return roomLoadKey(booking.lineId) === roomLoadKey(resource.id);
+    const bookingKeys = [
+        booking.room,
+        booking.resourceId,
+        booking.resource_id,
+        booking.timelineProjection?.resourceId,
+        booking.timelineProjection?.resource_id,
+        booking.timeline_projection?.resourceId,
+        booking.timeline_projection?.resource_id
+    ].map(roomLoadKey).filter(Boolean);
+    const resourceKeys = [
+        resource.id,
+        resource.resourceId,
+        resource.name,
+        resource.shortName
+    ].map(roomLoadKey).filter(Boolean);
+    return resourceKeys.some(key => bookingKeys.includes(key));
+}
+
 function updateRoomLoadPanel(bookings, date) {
     const panel = document.getElementById('roomLoadPanel');
     const list = document.getElementById('roomLoadList');
@@ -4002,7 +4044,8 @@ function updateRoomLoadPanel(bookings, date) {
     const { start, end } = getTimeRange(date);
     const totalMinutes = (end - start) * 60;
     const presentation = window.TimelineBusinessContext?.presentation?.();
-    const resourceBacked = presentation && presentation.mode !== 'park' && presentation.resourceType;
+    const roomTimeline = typeof isRoomTimelineView === 'function' && isRoomTimelineView();
+    const resourceBacked = presentation && (roomTimeline || (presentation.mode !== 'park' && presentation.resourceType));
 
     if (resourceBacked) {
         const dateStr = formatDate(date);
@@ -4010,7 +4053,9 @@ function updateRoomLoadPanel(bookings, date) {
             .filter(line => line && line.id)
             .map((line, index) => ({
                 id: String(line.id),
+                resourceId: String(line.resourceId || line.resource_id || line.id),
                 name: line.name || `${presentation.emptyLineName || presentation.roomOptionLabel || 'Ресурс'} ${index + 1}`,
+                shortName: line.shortName || line.short_name || '',
                 color: line.color || '#10B981'
             }));
         if (!resources.length) {
@@ -4023,11 +4068,11 @@ function updateRoomLoadPanel(bookings, date) {
         const dayStart = start * 60;
         const dayEnd = end * 60;
         bookings
-            .filter(b => b.status !== 'cancelled' && b.lineId && resourceMinutes[String(b.lineId)] !== undefined)
+            .filter(b => b.status !== 'cancelled')
             .forEach(b => {
-                const bookingStart = Math.max(dayStart, timeToMinutes(b.time || '00:00'));
-                const bookingEnd = Math.min(dayEnd, bookingStart + (parseInt(b.duration, 10) || 0));
-                resourceMinutes[String(b.lineId)] += Math.max(0, bookingEnd - bookingStart);
+                const resource = resources.find(item => roomLoadBookingMatchesResource(b, item, roomTimeline));
+                if (!resource) return;
+                resourceMinutes[resource.id] += roomLoadBookingMinutes(b, dayStart, dayEnd);
             });
 
         let occupiedCount = 0;
@@ -4054,13 +4099,15 @@ function updateRoomLoadPanel(bookings, date) {
     // Calculate occupied minutes per room
     const roomMinutes = {};
     ALL_ROOMS_DISPLAY.forEach(r => { roomMinutes[r] = 0; });
+    const dayStart = start * 60;
+    const dayEnd = end * 60;
 
-    // v20.9.7: Будь-яке бронювання в кімнаті = 100% на весь день
+    // Room-first: show real occupied minutes so one room can host several non-overlapping activities.
     const activeBookings = bookings.filter(b => b.status !== 'cancelled' && b.room && b.room !== 'Інше');
     activeBookings.forEach(b => {
         const room = b.room;
         if (!(room in roomMinutes)) return;
-        roomMinutes[room] = totalMinutes; // 100% — будь-яка активність = весь день зайнятий
+        roomMinutes[room] += roomLoadBookingMinutes(b, dayStart, dayEnd);
     });
 
     let occupiedCount = 0;

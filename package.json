@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.13",
+  "version": "0.75.14",
   "eventGenix": {
-    "releaseLabel": "Room-First Timeline UAT"
+    "releaseLabel": "Room Timeline Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

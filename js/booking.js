@@ -5012,6 +5012,13 @@ function shouldEditBookingInAnimatorView(booking = {}) {
         && Boolean(booking.programId);
 }
 
+function canAddAnimationFromRoomBooking(booking = {}) {
+    return isRoomFirstTimelineView()
+        && String(booking.lineId || '') === ROOM_FIRST_BANQUET_SERVICE_LINE_ID
+        && !booking.programId
+        && Boolean(booking.room);
+}
+
 async function openAnimationBookingInAnimatorView(bookingId, action = 'details') {
     showNotification('Перемикаю у «Свята», бо анімація редагується там.', 'info');
     closeAllModals();
@@ -5025,6 +5032,59 @@ async function openAnimationBookingInAnimatorView(bookingId, action = 'details')
     if (action === 'duplicate') return duplicateBooking(bookingId);
     if (typeof revealHiddenBooking === 'function') revealHiddenBooking(bookingId);
     return showBookingDetails(bookingId);
+}
+
+async function openRoomBookingAnimationBridge(bookingId) {
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const sourceBooking = bookings.find(b => String(b.id) === String(bookingId));
+    if (!sourceBooking) return;
+
+    showNotification('Перемикаю у «Свята» і підтягую кімнату та клієнта.', 'info');
+    closeAllModals();
+    if (window.TimelineView?.set) {
+        await window.TimelineView.set('animators');
+    } else if (typeof renderTimeline === 'function') {
+        await renderTimeline();
+    }
+
+    const lines = await getLinesForDate(AppState.selectedDate);
+    const targetLine = (lines || []).find(line =>
+        line
+        && String(line.id || '') !== ROOM_FIRST_BANQUET_SERVICE_LINE_ID
+        && String(line.id || '') !== 'afisha'
+    );
+    if (!targetLine) {
+        showNotification('Немає активної лінії аніматора для програми.', 'error');
+        return;
+    }
+
+    AppState.editingBookingId = null;
+    const opened = await openBookingPanel(sourceBooking.time, targetLine.id);
+    if (!opened) return;
+
+    if (sourceBooking.room) {
+        ensureTimelineRoomOption(sourceBooking.room);
+        const roomSelect = document.getElementById('roomSelect');
+        if (roomSelect) roomSelect.value = sourceBooking.room;
+        await refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom: sourceBooking.room });
+    }
+    if (sourceBooking.groupName) {
+        const groupInput = document.getElementById('bookingGroupName');
+        if (groupInput) groupInput.value = sourceBooking.groupName;
+    }
+    if (sourceBooking.notes) {
+        const notes = document.getElementById('bookingNotes');
+        if (notes && !notes.value) notes.value = sourceBooking.notes;
+    }
+    await hydrateBookingCustomerSelection(sourceBooking, { renderSummary: false });
+    renderBookingCustomerSearchState('Клієнта підтягнуто з кімнатної броні. Можна змінити вручну.');
+    renderBookingPackageSummary();
+
+    const title = document.querySelector('#bookingPanel .panel-header h3');
+    if (title) title.textContent = 'Додати активну програму';
+    const submit = document.querySelector('#bookingForm .btn-submit');
+    if (submit) submit.textContent = 'Створити програму';
+    if (window.BookingForm?.markClean) BookingForm.markClean();
 }
 
 // v43.5.0: Reveal a booking that is currently hidden by status filter
@@ -5170,6 +5230,7 @@ async function showBookingDetails(bookingId) {
     const program = getProductsSync().find(p => p.id === booking.programId);
     const lesson = educationLessonDetailsFromBooking(booking);
     const isEducationBooking = Boolean(lesson && Object.keys(lesson).length);
+    const roomFirstServiceBooking = canAddAnimationFromRoomBooking(booking);
     const lineRoleLabel = isEducationBooking ? 'Кабінет' : 'Аніматор';
     const descriptionHtml = program && program.description
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
@@ -5189,33 +5250,14 @@ async function showBookingDetails(bookingId) {
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
-    const lineSwitchHtml = otherLines.length > 0 ? `
+    const lineSwitchHtml = !roomFirstServiceBooking && otherLines.length > 0 ? `
         <div class="booking-line-switch">
             <span class="label">Перемістити на лінію:</span>
             <div class="line-switch-buttons">
                 ${otherLines.map(l => `<button onclick="switchBookingLine('${escapeHtml(booking.id)}', '${escapeHtml(l.id)}')" style="border-color: ${escapeHtml(l.color)}; color: ${escapeHtml(l.color)}">${escapeHtml(l.name)}</button>`).join('')}
             </div>
         </div>` : '';
-
-    const deleteActionHtml = canDeleteTimelineBooking()
-        ? `<button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>`
-        : '';
-    const animatorViewActionHtml = shouldEditBookingInAnimatorView(booking)
-        ? `<button onclick="openAnimationBookingInAnimatorView('${escapeHtml(booking.id)}', 'details')" class="btn-secondary btn-sm">Відкрити у «Свята»</button>`
-        : '';
-    const editControls = isViewer() ? '' : `
-        <div class="booking-time-shift">
-            <span class="label">Перенести час:</span>
-            <div class="time-shift-buttons">
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -30)">-30</button>
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -15)">-15</button>
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 15)">+15</button>
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 30)">+30</button>
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 45)">+45</button>
-                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 60)">+60</button>
-            </div>
-        </div>
-        ${lineSwitchHtml}
+    const inviteSectionHtml = roomFirstServiceBooking ? '' : `
         <div class="invite-section">
             <div class="invite-section-header">🎉 Запрошення для клієнта</div>
             <div class="invite-preview">
@@ -5230,8 +5272,34 @@ async function showBookingDetails(bookingId) {
                 ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
             </div>
         </div>
+    `;
+
+    const deleteActionHtml = canDeleteTimelineBooking()
+        ? `<button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>`
+        : '';
+    const animatorViewActionHtml = shouldEditBookingInAnimatorView(booking)
+        ? `<button onclick="openAnimationBookingInAnimatorView('${escapeHtml(booking.id)}', 'details')" class="btn-secondary btn-sm">Відкрити у «Свята»</button>`
+        : '';
+    const addAnimationActionHtml = roomFirstServiceBooking
+        ? `<button onclick="openRoomBookingAnimationBridge('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">Додати активну програму</button>`
+        : '';
+    const editControls = isViewer() ? '' : `
+        <div class="booking-time-shift">
+            <span class="label">Перенести час:</span>
+            <div class="time-shift-buttons">
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -30)">-30</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -15)">-15</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 15)">+15</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 30)">+30</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 45)">+45</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 60)">+60</button>
+            </div>
+        </div>
+        ${lineSwitchHtml}
+        ${inviteSectionHtml}
         <div class="booking-actions modal-footer-sticky">
             ${animatorViewActionHtml}
+            ${addAnimationActionHtml}
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
@@ -5244,13 +5312,33 @@ async function showBookingDetails(bookingId) {
     const headerGradient = generateBookingHeaderGradient(booking);
     const categoryIcon = getCategoryIcon(booking.category);
     const uniqueCode = booking.id ? String(booking.id).slice(-4).toUpperCase() : '----';
+    const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]
+        .filter(Boolean)
+        .join(': ') || (roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
+    const lineDetailHtml = roomFirstServiceBooking ? '' : `
+        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
+            <span class="label">${lineRoleLabel}:</span>
+            <span class="value">${escapeHtml(line ? line.name : '-')}</span>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
+        </div>
+    `;
+    const hostsDetailHtml = roomFirstServiceBooking ? '' : `
+        <div class="booking-detail-row">
+            <span class="label">Ведучих:</span>
+            <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
+        </div>
+    `;
+    const animationExtrasHtml = roomFirstServiceBooking ? '' : `
+        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
+        ${renderPinataDetailRows(booking)}
+    `;
 
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header booking-detail-header--unique" style="background:${headerGradient};color:#fff;padding:16px 20px;border-radius:12px 12px 0 0;margin:-20px -20px 16px -20px;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:28px;">${categoryIcon}</span>
                 <div>
-                    <h3 style="margin:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.3);">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.programName)}</h3>
+                    <h3 style="margin:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.3);">${escapeHtml(bookingDetailTitle)}</h3>
                     <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' · ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} · #${escapeHtml(uniqueCode)}</p>
                 </div>
             </div>
@@ -5265,17 +5353,9 @@ async function showBookingDetails(bookingId) {
             <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
             <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
-        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
-            <span class="label">${lineRoleLabel}:</span>
-            <span class="value">${escapeHtml(line ? line.name : '-')}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
-        </div>
-        <div class="booking-detail-row">
-            <span class="label">Ведучих:</span>
-            <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
-        </div>
-        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
-        ${renderPinataDetailRows(booking)}
+        ${lineDetailHtml}
+        ${hostsDetailHtml}
+        ${animationExtrasHtml}
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
             <span class="label">Ціна:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>

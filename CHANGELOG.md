@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.14 - Room Timeline Hardening
+
+### Timeline / Room-first / Room load / Availability / Booking details / (Клешня, 12.06.2026) [codex]
+- **Панель “Кімнати” більше не робить кімнату зайнятою на весь день** - завантаження рахується за реальними хвилинами бронювань у межах робочого дня, тому кілька непересічних активностей в одній кімнаті відображаються коректно.
+- **Підписи кімнат беруть реального клієнта** - `/api/rooms/free` і resource availability джойнять `customers.name`, а fallback на `group_name`, `label`, `program_name` лишається для старих або неповних записів.
+- **Default `Кімнати` захищено від старого localStorage** - старий вибір `Свята` без нового явного user-choice marker більше не перебиває server default для Park.
+- **Кімнатна бронь відкривається як банкетно-кухонна** - у деталях `banquet-service` більше не показуються зайві рядки аніматора, ведучих, костюму, піньяти й святкового invite-блоку.
+- **Додано bridge до активної програми** - з кімнатної броні можна перейти в `Свята` і створити активну програму з уже підставленими кімнатою, клієнтом, групою та нотатками.
+- **Regression guards посилено** - UI smoke і timeline/resource tests перевіряють room-load minutes, customer join у availability, default-view marker і bridge для активної програми.
+- **Релізні маркери піднято до `0.75.14`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.13 - Room-First Timeline UAT
 
 ### Timeline / Room-first UAT / Booking drawer / Settings / (Клешня, 12.06.2026) [codex]

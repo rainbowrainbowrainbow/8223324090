@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.21 - Staff Schedule Audit
+
+### Staff schedule / Hidden writes / Cell history / Release / (Клешня, 12.06.2026) [codex]
+- **Графік більше не змінюється від перегляду** - `GET /api/staff/schedule`, `hours` і `check` прибрано з прихованого backfill з `hr_shifts` у `staff_schedule`.
+- **Порожні клітинки лишаються порожніми** - навантаження по відділах і CSV-експорт більше не рахують відсутній запис як `working`.
+- **Додано явну історію клітинки** - у модалці графіка видно, хто або система змінила статус, час, професію, нотатку чи підміну.
+- **Audit пишеться у наявний `hr_audit_log`** - одиночне збереження, bulk, копія тижня та підміни залишають durable технічний запис без нової таблиці.
+- **Legacy `day_off` нормалізовано в UI/API читанні** - старі записи відображаються як `dayoff`, щоб не ламати підрахунки й кольори.
+- **Regression guards додано** - тести фіксують read-only schedule API, audit endpoint, історію клітинки і `unset` для порожніх значень.
+- **Релізні маркери піднято до `0.75.21`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовано.
+
+---
+
 ## v0.75.20 - Menu Catalog Visuals
 
 ### Booking drawer / Kitchen catalog / Visual cards / Mobile layout / (Клешня, 12.06.2026) [codex]

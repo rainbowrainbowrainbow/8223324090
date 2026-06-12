@@ -79,6 +79,115 @@ body.dark-mode .hr-kpi-refresh::before {
     background: color-mix(in srgb, var(--primary-light, var(--primary)) 16%, transparent);
 }
 
+/* Staff schedule cell history */
+.sch-readonly-hint {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.sch-history-panel {
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+}
+
+.sch-history-head,
+.sch-history-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sch-history-head {
+    margin-bottom: 10px;
+}
+
+.sch-history-head strong {
+    font-size: 13px;
+    color: var(--gray-800);
+}
+
+.sch-history-refresh {
+    border: 1px solid var(--gray-200);
+    background: var(--white);
+    color: var(--gray-600);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.sch-history-list {
+    display: grid;
+    gap: 8px;
+    max-height: 190px;
+    overflow: auto;
+}
+
+.sch-history-item {
+    padding: 10px;
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+}
+
+.sch-history-top strong {
+    font-size: 12px;
+    color: var(--gray-800);
+}
+
+.sch-history-top span,
+.sch-history-meta {
+    font-size: 11px;
+    color: var(--gray-500);
+    font-weight: 700;
+}
+
+.sch-history-change {
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--gray-700);
+    line-height: 1.35;
+}
+
+.sch-history-empty {
+    padding: 12px;
+    border: 1px dashed var(--gray-200);
+    border-radius: var(--radius-sm);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.sch-history-error {
+    color: #DC2626;
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+body.dark-mode .sch-history-panel,
+[data-theme="dark"] .sch-history-panel {
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.72);
+}
+
+body.dark-mode .sch-history-item,
+[data-theme="dark"] .sch-history-item,
+body.dark-mode .sch-history-refresh,
+[data-theme="dark"] .sch-history-refresh {
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(30, 41, 59, 0.88);
+}
+
 body.dark-mode .hr-kpi-refresh:hover,
 body.dark-mode .hr-kpi-refresh:focus-visible {
     border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 52%, transparent);

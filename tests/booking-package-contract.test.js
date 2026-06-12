@@ -20,6 +20,8 @@ const {
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+const packageJson = JSON.parse(read('package.json'));
+const escapedAssetVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function createBookingMenuCatalogHarness() {
     const dom = new JSDOM(`
@@ -462,7 +464,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogOpenBtn/);
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
-    assert.match(html, /js\/kitchen-menu-images\.js\?v=0\.75\.20/);
+    assert.match(html, new RegExp(`js/kitchen-menu-images\\.js\\?v=${escapedAssetVersion}`));
     assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
     assert.match(html, /bookingMenuCatalogSearch/);
     assert.match(html, /bookingMenuCatalogTabs/);

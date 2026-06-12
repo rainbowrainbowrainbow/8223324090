@@ -114,7 +114,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffRoute, /function scheduleStatusNeedsProfession/);
         assert.match(staffRoute, /resolveScheduleProfession/);
         assert.match(staffRoute, /resolveScheduleProfession\(e\.staffId, entryStatus, e, client\)/);
-        assert.match(staffRoute, /resolveScheduleProfession\(row\.staff_id, row\.status, \{ profession_key: row\.profession_key \}, client\)/);
+        assert.match(staffRoute, /resolveScheduleProfession\(row\.staff_id, rowStatus, \{ profession_key: row\.profession_key \}, client\)/);
         assert.match(staffRoute, /INSERT INTO staff_schedule \(staff_id, date, shift_start, shift_end, status, note, profession_key\)/);
         assert.match(staffRoute, /COALESCE\(s\.secondary_professions, '\[\]'::jsonb\) AS secondary_professions/);
     });

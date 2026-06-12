@@ -56,8 +56,11 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(staffRoute, /INSERT INTO hr_shifts/);
         assert.match(staffRoute, /ON CONFLICT \(staff_id, shift_date\) DO UPDATE/);
         assert.match(staffRoute, /function backfillStaffScheduleFromHrShifts/);
-        assert.match(staffRoute, /await backfillStaffScheduleFromHrShifts\(from, to\)/);
+        assert.doesNotMatch(staffRoute, /router\.get\('\/schedule'[\s\S]*await backfillStaffScheduleFromHrShifts\(from, to\)/);
         assert.match(staffRoute, /hs\.shift_date::text = LEFT\(ss\.date::text, 10\)/);
+        assert.match(staffRoute, /router\.get\('\/schedule\/history\/:staffId\/:date'/);
+        assert.match(staffRoute, /function recordScheduleAudit/);
+        assert.match(staffRoute, /staff_schedule_update/);
         assert.match(staffPage, /async function replaceScheduleEntry/);
         assert.match(staffPage, /async function clearScheduleReplacement/);
         assert.match(staffPage, /function scheduleReplacementCandidates/);

@@ -23,6 +23,7 @@ const StaffState = {
     weekStart: null,    // First date of the current visible schedule window
     staff: [],
     schedule: {},       // { staffId_date: entry }
+    scheduleHistory: {}, // { staffId_date: audit entries }
     departments: {},
     activeDept: 'all',
     editingCell: null,  // { staffId, date }
@@ -53,6 +54,7 @@ const DEPT_ICONS = {
 const STATUS_LABELS = {
     working: 'Робочий',
     dayoff: 'Вихідний',
+    day_off: 'Вихідний',
     vacation: 'Відпустка',
     sick: 'Лікарняний',
     remote: 'Віддалено',
@@ -62,6 +64,7 @@ const STATUS_LABELS = {
 const STATUS_ICONS = {
     working: '●',
     dayoff: '○',
+    day_off: '○',
     vacation: '✈',
     sick: '✚',
     remote: '◉',
@@ -130,6 +133,13 @@ function normalizeProfessionKey(value) {
         .replace(/\s+/g, '_')
         .replace(/[^a-z0-9_:-]/g, '')
         .slice(0, 64);
+}
+
+function normalizeScheduleStatus(value) {
+    const status = String(value || '').trim().toLowerCase();
+    if (!status) return 'unset';
+    if (status === 'day_off') return 'dayoff';
+    return STATUS_LABELS[status] ? status : status;
 }
 
 function parseProfessionArray(value) {
@@ -261,8 +271,9 @@ function replaceScheduleStateEntry(previousEntry, nextEntry) {
         if (oldKey) delete StaffState.schedule[oldKey];
     }
     if (nextEntry) {
-        const newKey = scheduleEntryKey(nextEntry);
-        if (newKey) StaffState.schedule[newKey] = nextEntry;
+        const normalizedEntry = { ...nextEntry, status: normalizeScheduleStatus(nextEntry.status) };
+        const newKey = scheduleEntryKey(normalizedEntry);
+        if (newKey) StaffState.schedule[newKey] = normalizedEntry;
     }
 }
 
@@ -395,7 +406,8 @@ async function fetchSchedule(from, to) {
         if (data.success) {
             StaffState.schedule = {};
             for (const entry of data.data) {
-                StaffState.schedule[`${entry.staff_id}_${entry.date}`] = entry;
+                const normalizedEntry = { ...entry, status: normalizeScheduleStatus(entry.status) };
+                StaffState.schedule[`${entry.staff_id}_${entry.date}`] = normalizedEntry;
             }
         }
         return data;
@@ -414,6 +426,23 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
         body: JSON.stringify({ staffId, date, shiftStart, shiftEnd, status, note, professionKey })
     });
     return await res.json();
+}
+
+async function fetchScheduleHistory(staffId, date) {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/schedule/history/${encodeURIComponent(staffId)}/${encodeURIComponent(date)}?limit=50`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            StaffState.scheduleHistory[`${staffId}_${date}`] = Array.isArray(data.data) ? data.data : [];
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchScheduleHistory error:', err);
+        return { success: false };
+    }
 }
 
 async function replaceScheduleEntry(scheduleId, replacementStaffId, reason) {
@@ -682,10 +711,7 @@ function renderSchedule() {
 
     // Cell click handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
-        if (!StaffState.canManage) {
-            cell.setAttribute('aria-readonly', 'true');
-            return;
-        }
+        if (!StaffState.canManage) cell.setAttribute('aria-readonly', 'true');
         cell.addEventListener('click', () => {
             openEditModal(parseInt(cell.dataset.staff), cell.dataset.date);
         });
@@ -753,7 +779,7 @@ function openEditModal(staffId, date) {
     const entry = StaffState.schedule[`${staffId}_${date}`];
     StaffState.editingCell = { staffId, date, entry };
 
-    document.getElementById('schModalTitle').textContent = `${emp.name} — ${date}`;
+    document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'Редагувати' : 'Перегляд'}: ${emp.name} — ${date}`;
     document.getElementById('schStatus').value = entry?.status || 'working';
     document.getElementById('schStart').value = entry?.shift_start || '10:00';
     document.getElementById('schEnd').value = entry?.shift_end || '20:00';
@@ -798,6 +824,8 @@ function openEditModal(staffId, date) {
     }
 
     toggleTimeFields();
+    setScheduleModalReadOnly(!StaffState.canManage);
+    loadScheduleCellHistory(staffId, date);
     const overlay = document.getElementById('schModalOverlay');
     _staffScheduleInitialState = getStaffScheduleState();
     overlay?.classList.add('visible');
@@ -838,6 +866,114 @@ function toggleTimeFields() {
     const clearReplacementBtn = document.getElementById('schClearReplacementBtn');
     if (replaceBtn) replaceBtn.hidden = !canReplace;
     if (clearReplacementBtn) clearReplacementBtn.hidden = !(canReplace && isReplacement);
+}
+
+function scheduleAuditDetails(row = {}) {
+    const details = row.details;
+    if (!details) return {};
+    if (typeof details === 'string') {
+        try { return JSON.parse(details); } catch { return {}; }
+    }
+    return details;
+}
+
+function scheduleAuditActionLabel(action) {
+    const labels = {
+        staff_schedule_update: 'Змінено клітинку',
+        staff_schedule_bulk_update: 'Масове заповнення',
+        staff_schedule_copy_week: 'Копія тижня',
+        staff_schedule_replacement_removed: 'Зміну знято через підміну',
+        staff_schedule_replacement_set: 'Виставлено підміну',
+        staff_schedule_replacement_clear_removed: 'Підміну знято',
+        staff_schedule_replacement_restored: 'Повернено оригінальну зміну'
+    };
+    return labels[action] || action || 'Зміна графіка';
+}
+
+function scheduleAuditValueLabel(field, value) {
+    if (value === null || value === undefined || value === '') return 'порожньо';
+    if (field === 'status') return STATUS_LABELS[normalizeScheduleStatus(value)] || value;
+    if (field === 'professionKey') return professionLabel(value);
+    return String(value);
+}
+
+function scheduleAuditChangesText(details = {}) {
+    const fieldLabels = {
+        status: 'статус',
+        shiftStart: 'початок',
+        shiftEnd: 'кінець',
+        note: 'нотатка',
+        professionKey: 'професія',
+        originalStaffId: 'оригінальний працівник',
+        replacementReason: 'причина підміни'
+    };
+    const changes = details.changes || {};
+    const parts = Object.entries(changes).map(([field, change]) => {
+        const label = fieldLabels[field] || field;
+        return `${label}: ${scheduleAuditValueLabel(field, change?.from)} → ${scheduleAuditValueLabel(field, change?.to)}`;
+    });
+    return parts.length ? parts.join('; ') : 'Технічний запис без зміни полів';
+}
+
+function formatScheduleAuditTime(value) {
+    if (!value) return '';
+    try {
+        return new Date(value).toLocaleString('uk-UA', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch {
+        return String(value);
+    }
+}
+
+function renderScheduleHistoryList(staffId, date, state = 'ready') {
+    const container = document.getElementById('schHistoryList');
+    if (!container) return;
+    if (state === 'loading') {
+        container.innerHTML = '<div class="sch-history-empty">Завантажую історію...</div>';
+        return;
+    }
+    if (state === 'error') {
+        container.innerHTML = '<div class="sch-history-empty sch-history-error">Не вдалося завантажити історію</div>';
+        return;
+    }
+    const entries = StaffState.scheduleHistory[`${staffId}_${date}`] || [];
+    if (!entries.length) {
+        container.innerHTML = '<div class="sch-history-empty">Історії для цієї клітинки ще немає</div>';
+        return;
+    }
+    container.innerHTML = entries.map(row => {
+        const details = scheduleAuditDetails(row);
+        return `<div class="sch-history-item">
+            <div class="sch-history-top">
+                <strong>${escapeHtml(scheduleAuditActionLabel(row.action))}</strong>
+                <span>${escapeHtml(formatScheduleAuditTime(row.created_at))}</span>
+            </div>
+            <div class="sch-history-meta">${escapeHtml(row.performed_by || 'system')} · ${escapeHtml(details.source || row.action || '')}</div>
+            <div class="sch-history-change">${escapeHtml(scheduleAuditChangesText(details))}</div>
+        </div>`;
+    }).join('');
+}
+
+async function loadScheduleCellHistory(staffId, date) {
+    renderScheduleHistoryList(staffId, date, 'loading');
+    const result = await fetchScheduleHistory(staffId, date);
+    renderScheduleHistoryList(staffId, date, result.success ? 'ready' : 'error');
+}
+
+function setScheduleModalReadOnly(readOnly) {
+    ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = readOnly;
+    });
+    const saveBtn = document.getElementById('schSaveBtn');
+    if (saveBtn) saveBtn.hidden = readOnly;
+    const readOnlyHint = document.getElementById('schReadOnlyHint');
+    if (readOnlyHint) readOnlyHint.hidden = !readOnly;
 }
 
 async function handleSave() {
@@ -1251,7 +1387,7 @@ function renderLoadView() {
                 let cnt = 0;
                 for (const emp of deptStaff) {
                     const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                    const status = entry ? entry.status : 'working';
+                    const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
                     if (status === 'working' || status === 'remote') cnt++;
                 }
                 return sum + cnt;
@@ -1756,7 +1892,7 @@ function handleExcelExport() {
             for (const d of dates) {
                 const ds = formatDateStr(d);
                 const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                const status = entry ? entry.status : 'working';
+                const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
                 const time = (entry?.shift_start && entry?.shift_end)
                     ? `${entry.shift_start.slice(0,5)}-${entry.shift_end.slice(0,5)}`
                     : '';
@@ -1920,6 +2056,10 @@ async function initPage() {
     document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
     document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
     document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
+    document.getElementById('schHistoryRefreshBtn')?.addEventListener('click', () => {
+        const editing = StaffState.editingCell;
+        if (editing) loadScheduleCellHistory(editing.staffId, editing.date);
+    });
 
     document.getElementById('schModalOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeEditModal(false);

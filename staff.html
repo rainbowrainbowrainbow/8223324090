@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.75.20">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.20">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.20">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.20">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.20">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.20">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.20">
+    <link rel="stylesheet" href="css/base.css?v=0.75.21">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.21">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.21">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.21">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.21">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.21">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.21">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -526,7 +526,7 @@
             background: var(--white);
             border-radius: var(--radius-lg);
             padding: 24px;
-            max-width: 380px;
+            max-width: 460px;
             width: 90%;
             box-shadow: var(--shadow-lg);
         }
@@ -1396,6 +1396,7 @@
     <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Редагувати зміну">
         <div class="sch-modal">
             <h3 id="schModalTitle">Редагувати зміну</h3>
+            <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
             <div class="form-group">
                 <label>Статус</label>
                 <select id="schStatus">
@@ -1429,6 +1430,15 @@
             <div class="modal-actions sch-replacement-actions">
                 <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
                 <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
+            </div>
+            <div class="sch-history-panel">
+                <div class="sch-history-head">
+                    <strong>Історія клітинки</strong>
+                    <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
+                </div>
+                <div id="schHistoryList" class="sch-history-list">
+                    <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
@@ -1535,13 +1545,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.75.20"></script>
-    <script src="js/config.js?v=0.75.20"></script>
-    <script src="js/notification.js?v=0.75.20"></script>
-    <script src="js/api.js?v=0.75.20"></script>
-    <script src="js/auth.js?v=0.75.20"></script>
-    <script src="js/components/sidebar.js?v=0.75.20"></script>
+    <script src="js/ui.js?v=0.75.21"></script>
+    <script src="js/config.js?v=0.75.21"></script>
+    <script src="js/notification.js?v=0.75.21"></script>
+    <script src="js/api.js?v=0.75.21"></script>
+    <script src="js/auth.js?v=0.75.21"></script>
+    <script src="js/components/sidebar.js?v=0.75.21"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.75.20"></script><script src="js/alerts.js?v=0.75.20"></script>
+    <script src="js/staff-page.js?v=0.75.21"></script><script src="js/alerts.js?v=0.75.21"></script>
 </body>
 </html>

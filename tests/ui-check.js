@@ -1320,7 +1320,7 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && htmlContains('index.html', 'bookingMenuCatalogCart')
     && htmlContains('index.html', 'bookingMenuCatalogCartList')
     && htmlContains('index.html', 'bookingMenuCatalogMobileCartBtn')
-    && htmlContains('index.html', 'js/kitchen-menu-images.js?v=0.75.20')
+    && htmlContains('index.html', 'js/kitchen-menu-images.js?v=0.75.21')
     && indexHtmlForBookingPanel.indexOf('js/kitchen-menu-images.js') < indexHtmlForBookingPanel.indexOf('js/config.js')
     && htmlContains('index.html', 'booking-menu-legacy-controls hidden')
     && kitchenMenuImagesCode.includes('window.KITCHEN_MENU_IMAGES')

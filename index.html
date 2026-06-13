@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.28">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.28">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.28">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.28">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.28">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.28">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.28">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.28">
-    <link rel="stylesheet" href="css/features.css?v=0.75.28">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.28">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.28">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.28">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.28">
+    <link rel="stylesheet" href="css/base.css?v=0.75.29">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.29">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.29">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.29">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.29">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.29">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.29">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.29">
+    <link rel="stylesheet" href="css/features.css?v=0.75.29">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.29">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.29">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.29">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.29">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.28">✨ 0.75.28</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.29">✨ 0.75.29</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.28 — Menu Wide Fallback</p>
+                <p class="tagline">AI First CRM v0.75.29 — Menu Rectangle Thumbnails</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.28</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.29</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1717,13 +1717,20 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.75.29 — Menu Rectangle Thumbnails</h4>
+                    <ul>
+                        <li><b>Картинки в меню стали прямокутними у рядку</b> — thumbnail тепер має ширину <code>148px</code> і пропорцію <code>2:1</code>, а не квадрат.</li>
+                        <li><b>Картка лишилась компактною</b> — layout тепер <code>фото | назва/ціна | кількість</code>, без великої фото-зони зверху.</li>
+                        <li><b>Мобільний режим теж не повертається до квадрата</b> — на вузьких екранах фото лишається прямокутним <code>128px</code>.</li>
+                        <li><b>Кошик отримав окремий компактний прямокутник</b> — вибрані позиції показують <code>72px</code> thumbnail.</li>
+                        <li><b>Cache-bust оновлено</b> — браузер має забрати новий CSS як <code>v0.75.29</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.75.28 — Menu Wide Fallback</h4>
                     <ul>
-                        <li><b>Fallback-фото меню стало прямокутним</b> — активний тестовий asset тепер <code>images/kitchen-menu/fallback-burger-wide.jpg</code>.</li>
-                        <li><b>Фото показується у пропорції 2:1</b> — формат підігнано під тестове зображення <code>1774×887</code>, без квадратного стискання.</li>
-                        <li><b>Картка меню отримала фото-зону зверху</b> — назва, ціна і кількість більше не тиснуться поруч із картинкою.</li>
-                        <li><b>Кошик теж використовує широкий thumbnail</b> — вибрані позиції лишаються компактними, але картинка не повертається до квадрата.</li>
-                        <li><b>Regression guards оновлено</b> — тести перевіряють wide fallback URL, CSS і поведінку при помилці завантаження.</li>
+                        <li><b>Fallback-фото меню стало прямокутним</b> — активний тестовий asset перейшов на <code>images/kitchen-menu/fallback-burger-wide.jpg</code>.</li>
+                        <li><b>Wide-формат перевірено</b> — цей реліз був проміжним тестом великої фото-зони перед компактним прямокутним thumbnail.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -12725,30 +12732,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.28"></script>
-    <script src="js/timeline-visibility.js?v=0.75.28"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.28"></script>
-    <script src="js/config.js?v=0.75.28"></script>
-    <script src="js/api.js?v=0.75.28"></script>
-    <script src="js/ui.js?v=0.75.28"></script>
-    <script src="js/auth.js?v=0.75.28"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.28"></script>
-    <script src="js/timeline.js?v=0.75.28"></script>
-    <script src="js/booking.js?v=0.75.28"></script>
-    <script src="js/settings.js?v=0.75.28"></script>
-    <script src="js/booking-form.js?v=0.75.28"></script>
-    <script src="js/booking-linked.js?v=0.75.28"></script>
-    <script src="js/settings-dashboard.js?v=0.75.28"></script>
-    <script src="js/settings-history.js?v=0.75.28"></script>
-    <script src="js/settings-afisha.js?v=0.75.28"></script>
-    <script src="js/settings-certificates.js?v=0.75.28"></script>
-    <script src="js/offline.js?v=0.75.28"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.28"></script>
-    <script src="js/search.js?v=0.75.28"></script>
-    <script src="js/ws.js?v=0.75.28"></script>
-    <script src="js/app.js?v=0.75.28"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.28"></script>
-    <script src="js/components/sidebar.js?v=0.75.28"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.28"></script>
+    <script src="js/timeline-context.js?v=0.75.29"></script>
+    <script src="js/timeline-visibility.js?v=0.75.29"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.29"></script>
+    <script src="js/config.js?v=0.75.29"></script>
+    <script src="js/api.js?v=0.75.29"></script>
+    <script src="js/ui.js?v=0.75.29"></script>
+    <script src="js/auth.js?v=0.75.29"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.29"></script>
+    <script src="js/timeline.js?v=0.75.29"></script>
+    <script src="js/booking.js?v=0.75.29"></script>
+    <script src="js/settings.js?v=0.75.29"></script>
+    <script src="js/booking-form.js?v=0.75.29"></script>
+    <script src="js/booking-linked.js?v=0.75.29"></script>
+    <script src="js/settings-dashboard.js?v=0.75.29"></script>
+    <script src="js/settings-history.js?v=0.75.29"></script>
+    <script src="js/settings-afisha.js?v=0.75.29"></script>
+    <script src="js/settings-certificates.js?v=0.75.29"></script>
+    <script src="js/offline.js?v=0.75.29"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.29"></script>
+    <script src="js/search.js?v=0.75.29"></script>
+    <script src="js/ws.js?v=0.75.29"></script>
+    <script src="js/app.js?v=0.75.29"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.29"></script>
+    <script src="js/components/sidebar.js?v=0.75.29"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.29"></script>
 </body>
 </html>

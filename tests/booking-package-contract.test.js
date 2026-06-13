@@ -726,10 +726,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(340px,\s*1fr\)\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*grid-template-columns:\s*148px minmax\(0,\s*1fr\) auto;/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(260px,\s*1fr\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
-    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*148px;[\s\S]*aspect-ratio:\s*2 \/ 1;/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*grid-column:\s*1 \/ -1;[\s\S]*width:\s*100%;[\s\S]*aspect-ratio:\s*2 \/ 1;/);
+    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-column:\s*1 \/ -1;[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);

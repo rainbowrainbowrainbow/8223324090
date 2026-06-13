@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.30 - Menu Photo Cards
+
+### Booking drawer / Kitchen catalog / Photo cards / Release / (Клешня, 13.06.2026) [codex]
+- **Картку меню переведено у формат фото зверху** - product tile тепер показує широку картинку на всю ширину картки, а не стискає її зліва біля тексту.
+- **Функціонал винесено під фото** - назва, ціна, секція, кількість, примітка й видалення йдуть нижче картинки, тому довгі назви більше не обрізаються поруч із кнопками.
+- **Фото лишається прямокутним 2:1** - fallback `images/kitchen-menu/fallback-burger-wide.jpg` зберігає широкий формат під майбутні перегенеровані картинки.
+- **Сітка каталогу стала щільнішою** - картки використовують `minmax(260px, 1fr)`, щоб фото-карти не були надто широкими на desktop.
+- **Regression guards оновлено** - тести перевіряють верхнє фото, одноколонкову картку й нижній блок керування.
+- **Релізні маркери піднято до `0.75.30`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.29 - Menu Rectangle Thumbnails
 
 ### Booking drawer / Kitchen catalog / Rectangle thumbnails / Release / (Клешня, 13.06.2026) [codex]

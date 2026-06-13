@@ -4,10 +4,21 @@
 
 ---
 
+## v0.75.27 - Menu Square Fallback
+
+### Booking drawer / Kitchen catalog / Square image test / Release / (Клешня, 13.06.2026) [codex]
+- **Fallback-фото меню переведено у квадратний формат** - новий asset `images/kitchen-menu/fallback-burger-square.jpg` кадрує головний бургер без кривої автоматичної обрізки.
+- **Картки меню знову використовують квадратний thumbnail** - каталог, кошик і мобільний режим отримали стабільний 1:1 формат для майбутньої генерації фото.
+- **Старий fallback-шлях лишається сумісним** - попередній `fallback-burger.jpg` не прибрано, але активний UI використовує новий square asset, щоб не впиратися в браузерний кеш.
+- **Regression guards оновлено** - тести перевіряють новий square URL, fallback `onerror` і CSS-формат thumbnail.
+- **Релізні маркери піднято до `0.75.27`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.26 - Menu Fallback Photos
 
 ### Booking drawer / Kitchen catalog / Fallback photos / Release / (Клешня, 13.06.2026) [codex]
-- **Квадратні emoji-заглушки в каталозі меню замінено на фото fallback** - якщо позиція не має власного фото, CRM показує оптимізоване фото бургера з `images/kitchen-menu/fallback-burger.jpg`.
+- **Квадратні emoji-заглушки в каталозі меню замінено на фото fallback** - якщо позиція не має власного фото, CRM показує оптимізоване фото бургера з `images/kitchen-menu/fallback-burger-square.jpg`.
 - **Биті фото більше не лишають пустий квадратик** - при помилці завантаження реальної картинки позиції frontend автоматично підставляє fallback-фото, а вже потім падає назад на emoji тільки якщо fallback теж недоступний.
 - **Thumbnail у каталозі став прямокутним фото-блоком** - картки меню отримали ширший формат, а не маленьку квадратну іконку.
 - **Regression guards оновлено** - тести перевіряють fallback asset, CSS-клас `uses-fallback-image` і поведінку `onerror`.

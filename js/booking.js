@@ -1621,7 +1621,7 @@ function bookingMenuProductEmoji(product = {}) {
     return bookingKitchenType(product) === 'cake' ? '🎂' : '🍽️';
 }
 
-const BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '/images/kitchen-menu/fallback-burger.jpg';
+const BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '/images/kitchen-menu/fallback-burger-square.jpg';
 
 function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
     const productImageUrl = bookingMenuProductImageUrl(product);

@@ -727,10 +727,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(260px,\s*1fr\)\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*258px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*304px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*overflow:\s*visible;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
-    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*min-height:\s*118px;[\s\S]*aspect-ratio:\s*2 \/ 1;/);
-    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;[\s\S]*width:\s*100%;[\s\S]*max-width:\s*none;/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*152px;[\s\S]*min-height:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*40px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
@@ -761,6 +762,10 @@ test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', ()
     vm.runInContext(manifestCode, context);
     const manifest = context.window.KITCHEN_MENU_IMAGES;
     assert.equal(manifest.basePath, '/images/kitchen-menu/');
+    assert.equal(manifest.byId['menu_2026_021_item'], 'products/menu-998.png');
+    assert.equal(manifest.byId['menu_2026_026_item'], 'products/menu-999.png');
+    assert.equal(manifest.byId['menu_2026_064_item'], 'products/menu-997.png');
+    assert.equal(manifest.byId['menu_2026_073_item'], 'products/menu-999.png');
     assert.equal(manifest.byCode['MENU-026'], 'products/menu-026.jpg');
     assert.equal(manifest.byCode['CAKE-06'], 'products/cake-06.jpg');
 

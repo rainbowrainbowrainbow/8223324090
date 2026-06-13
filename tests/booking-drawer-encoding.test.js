@@ -61,6 +61,10 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
     assert.match(kitchenMenuImagesJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(kitchenMenuImagesJs, /basePath:\s*'\/images\/kitchen-menu\/'/);
+    assert.match(kitchenMenuImagesJs, /"menu_2026_021_item":\s*"products\/menu-998\.png"/);
+    assert.match(kitchenMenuImagesJs, /"menu_2026_026_item":\s*"products\/menu-999\.png"/);
+    assert.match(kitchenMenuImagesJs, /"menu_2026_064_item":\s*"products\/menu-997\.png"/);
+    assert.match(kitchenMenuImagesJs, /"menu_2026_073_item":\s*"products\/menu-999\.png"/);
     assert.match(kitchenMenuImagesJs, /"MENU-026":\s*"products\/menu-026\.jpg"/);
     assert.match(kitchenMenuImagesJs, /"CAKE-06":\s*"products\/cake-06\.jpg"/);
     assert.match(html, /id="bookingHasEventToggle" checked hidden aria-hidden="true"/);
@@ -138,10 +142,27 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(260px,\s*1fr\)\)/);
-    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*258px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*304px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*overflow:\s*visible;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
-    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*min-height:\s*118px;[\s\S]*aspect-ratio:\s*2 \/ 1;/);
-    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;[\s\S]*width:\s*100%;[\s\S]*max-width:\s*none;/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*152px;[\s\S]*min-height:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*40px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
+    const minimumCatalogCardWidth = 260;
+    const catalogCardHorizontalPadding = 24;
+    const minimumStepperColumnsWidth = 40 + 52 + 40 + 40 + 40;
+    const minimumStepperGapWidth = 4 * 4;
+    assert.ok(
+        minimumStepperColumnsWidth + minimumStepperGapWidth <= minimumCatalogCardWidth - catalogCardHorizontalPadding,
+        'menu catalog stepper must fit the minimum card width without hiding buttons'
+    );
+    const catalogItemMarkupStart = bookingJs.indexOf('booking-menu-catalog-item');
+    const thumbMarkupIndex = bookingJs.indexOf('bookingMenuCatalogVisualHtml(product, title)', catalogItemMarkupStart);
+    const stepperMarkupIndex = bookingJs.indexOf('booking-menu-catalog-stepper', catalogItemMarkupStart);
+    const mainMarkupIndex = bookingJs.indexOf('booking-menu-catalog-main', catalogItemMarkupStart);
+    assert.ok(
+        thumbMarkupIndex > catalogItemMarkupStart && thumbMarkupIndex < stepperMarkupIndex && stepperMarkupIndex < mainMarkupIndex,
+        'menu catalog controls must render directly after the photo, before lower text metadata'
+    );
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.32 - Menu Button Visibility
+
+### Booking drawer / Kitchen catalog / Button visibility hotfix / Release / (Клешня, 13.06.2026) [codex]
+- **Кнопки каталогу меню більше не зникають** - ряд `-`, кількість і `+` винесено одразу під фото, перед назвою, ціною й секцією, щоб нижній край картки не різав controls.
+- **Фото більше не роздуває картку по ширині екрана** - висоту картинки зафіксовано як `152px` на desktop і `132px` у mobile layout, тому картка не мутує між різними viewport.
+- **Тестові фото підключено до конкретних позицій** - asset `products/menu-999.png` тимчасово показується для бургерів і кількох напоїв, `products/menu-998.png` для `Сир фрі`, а `products/menu-997.png` для картопляних позицій `062_item`-`064_item`.
+- **Product tile більше не обрізає власні controls** - внутрішній `overflow` змінено так, щоб кнопки не відрізались при довгій назві, секції або примітці.
+- **Список каталогу отримав нижній scroll-safe запас** - останні картки не ховаються під footer-панеллю `Готово`.
+- **Regression guards оновлено** - тести фіксують fixed-height photo area, visible overflow і мінімальну висоту stepper.
+- **Релізні маркери піднято до `0.75.32`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.31 - Menu Card Layout Fix
 
 ### Booking drawer / Kitchen catalog / Card layout hotfix / Release / (Клешня, 13.06.2026) [codex]

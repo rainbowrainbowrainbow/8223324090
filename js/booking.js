@@ -2151,6 +2151,13 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
         rows.push(`
             <div class="booking-menu-catalog-item${selected ? ' selected' : ''}" data-menu-catalog-product="${escapeHtml(product.id)}">
                 ${bookingMenuCatalogVisualHtml(product, title)}
+                <div class="booking-menu-catalog-stepper">
+                    <button type="button" data-menu-catalog-dec="${escapeHtml(product.id)}" aria-label="Зменшити ${escapeHtml(title)}">−</button>
+                    ${quantityControl}
+                    <button type="button" data-menu-catalog-add="${escapeHtml(product.id)}" aria-label="Додати ${escapeHtml(title)}">+</button>
+                    ${selected ? `<button type="button" class="booking-menu-catalog-note-btn" data-menu-catalog-edit-note="${escapeHtml(product.id)}" aria-label="Примітка ${escapeHtml(title)}">✎</button>` : ''}
+                    ${selected ? `<button type="button" class="booking-menu-catalog-remove" data-menu-catalog-remove="${escapeHtml(product.id)}" aria-label="Видалити ${escapeHtml(title)}">×</button>` : ''}
+                </div>
                 <div class="booking-menu-catalog-main">
                     <div class="booking-menu-catalog-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
                     <div class="booking-menu-catalog-meta">
@@ -2159,13 +2166,6 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
                         ${section ? `<span>${escapeHtml(section)}</span>` : ''}
                         ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
                     </div>
-                </div>
-                <div class="booking-menu-catalog-stepper">
-                    <button type="button" data-menu-catalog-dec="${escapeHtml(product.id)}" aria-label="Зменшити ${escapeHtml(title)}">−</button>
-                    ${quantityControl}
-                    <button type="button" data-menu-catalog-add="${escapeHtml(product.id)}" aria-label="Додати ${escapeHtml(title)}">+</button>
-                    ${selected ? `<button type="button" class="booking-menu-catalog-note-btn" data-menu-catalog-edit-note="${escapeHtml(product.id)}" aria-label="Примітка ${escapeHtml(title)}">✎</button>` : ''}
-                    ${selected ? `<button type="button" class="booking-menu-catalog-remove" data-menu-catalog-remove="${escapeHtml(product.id)}" aria-label="Видалити ${escapeHtml(title)}">×</button>` : ''}
                 </div>
                 ${noteEditor}
             </div>
